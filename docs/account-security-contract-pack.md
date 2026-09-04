@@ -5,19 +5,25 @@ Design). Method per #1577. Extracted, not authored — every field below traces 
 of the files listed, cited to file:line. READ-ONLY session; no code changed producing
 this pack.
 
-Design surface: `artifacts/msp-portal/src/pages/portal-v2-account-security.tsx` — "Your
-login to this portal — not your Microsoft 365 tenant" (page's own subtitle,
-`accountSecurityData.ts:23`).
+Design surface: `artifacts/portal/src/pages/portal-v2-account-security.tsx` (NOT carried
+over — retired in `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in
+`artifacts/portal`) — "Your login to this portal — not your Microsoft 365 tenant"
+(page's own subtitle, `accountSecurityData.ts:23`).
 
 Sources this pack is built against, and nothing else:
 
-- `artifacts/msp-portal/src/components/portal-v2/useAccountSecurityLive.ts` — the live
-  data hook (client-side wire contract + normalization)
-- `artifacts/msp-portal/src/components/portal-v2/accountSecurityData.ts` — the fixture
-  (design copy + fallback shapes)
-- `artifacts/msp-portal/src/components/portal-v2/accountSecurityModel.ts` — pure
-  derivations (tones, summaries, gates)
-- `artifacts/msp-portal/src/pages/portal-v2-account-security.tsx` — the page itself
+- `artifacts/portal/src/components/useAccountSecurityLive.ts` (NOT carried over —
+  retired in `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in
+  `artifacts/portal`) — the live data hook (client-side wire contract + normalization)
+- `artifacts/portal/src/components/accountSecurityData.ts` (NOT carried over — retired
+  in `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in
+  `artifacts/portal`) — the fixture (design copy + fallback shapes)
+- `artifacts/portal/src/components/accountSecurityModel.ts` (NOT carried over — retired
+  in `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in
+  `artifacts/portal`) — pure derivations (tones, summaries, gates)
+- `artifacts/portal/src/pages/portal-v2-account-security.tsx` (NOT carried over —
+  retired in `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in
+  `artifacts/portal`) — the page itself
 - `artifacts/api-server/src/routes/mfa.ts` — `GET /api/auth/mfa/enrollments`
 - `artifacts/api-server/src/routes/auth.ts` — `/auth/sessions*`, `/auth/login-history`,
   `/auth/change-password`
@@ -25,9 +31,11 @@ Sources this pack is built against, and nothing else:
   queries backing all of the above
 - `lib/db/src/schema/msp.ts`, `lib/db/src/schema/index.ts` — `user_sessions` /
   `mfa_enrollments` table definitions (the real enum sources)
-- `artifacts/msp-portal/src/pages/portal-v2-security.tsx`,
-  `artifacts/msp-portal/src/components/portal-v2/useMfaRegistrationLive.ts` — the
-  Security pillar dashboard, for the overlap check in §7
+- `artifacts/portal/src/pages/portal-v2-security.tsx` (NOT carried over — retired in
+  `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in `artifacts/portal`),
+  `artifacts/portal/src/components/useMfaRegistrationLive.ts` (carried over, but the
+  `portal-v2/` subdir was dropped — real current path is directly under `components/`) —
+  the Security pillar dashboard, for the overlap check in §7
 
 ---
 

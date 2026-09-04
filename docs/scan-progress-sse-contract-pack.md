@@ -327,7 +327,10 @@ stream; do not conflate the two when reading admin-panel code.
 All three lived under the retired portal-v2 and are **not** to be treated as a current baseline
 (per this repo's standing rule — portal-v2 is retired, not a fallback target for new work). Cited
 here only because their real, already-proven wiring is the pattern any new portal consumer should
-follow, same discipline as any other archived-but-instructive code:
+follow, same discipline as any other archived-but-instructive code. Paths below are as of the
+`artifacts/msp-portal` tree at that archive tag — `artifacts/msp-portal` was retired for
+`artifacts/portal` in `f40438cdc` (#1921), and none of these three files were carried over; none
+exist in `artifacts/portal` today:
 
 - `artifacts/msp-portal/src/lib/scan-status-context.tsx` — the shell-wide context both
   `ScanStatusIndicator` and the Assessment telemetry page's Scan step read; polls

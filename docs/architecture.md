@@ -129,7 +129,11 @@ All traffic enters through a **Replit reverse proxy** that routes by path prefix
 
 ---
 
-### MSP Portal (`artifacts/msp-portal`, path `/portal`)
+### MSP Portal (`artifacts/portal`, path `/portal` — NOT carried over: this section describes
+`artifacts/msp-portal` as it stood before `f40438cdc` retired it wholesale for the #1485
+portal-v2 rebuild; the MSP-facing capabilities below do not exist in the current
+`artifacts/portal` tree, which as of this writing has only `coming-soon`/`index`/`not-found`/
+`support` pages)
 
 **Purpose:** White-label portal for Managed Service Providers who resell or operate this platform for their own clients.
 

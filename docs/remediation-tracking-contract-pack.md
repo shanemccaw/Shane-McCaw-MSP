@@ -386,7 +386,10 @@ that varies from the fixed 28-step list.
 
 Per the epic's standing convention (recorded on #1485's 2026-08-29 comment): every real live
 endpoint with no page consumer must be filed as a sub-issue at pack time, not left as a note.
-**Checked all six of this module's endpoints against every caller in `artifacts/msp-portal`:**
+**Checked all six of this module's endpoints against every caller in `artifacts/msp-portal`**
+(path stale — `artifacts/msp-portal` was retired for `artifacts/portal` in `f40438cdc`, #1921;
+the callers named below, e.g. `portal-v2-remediation.tsx`, were NOT carried over and do not
+exist in `artifacts/portal` today):
 
 | Endpoint | Caller(s) |
 |---|---|

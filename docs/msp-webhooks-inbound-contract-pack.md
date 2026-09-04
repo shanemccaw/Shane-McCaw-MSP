@@ -288,8 +288,8 @@ genuine behavioral test coverage of the signature verification and dedup logic, 
 - **Does not scope idempotency per-MSP** — both routes explicitly pass `mspId: null` (§5); dedup is
   platform-global, not per-tenant, because neither caller carries a platform tenant identity.
 - **Has no UI surface anywhere in this codebase.** Pure server-to-server ingress; nothing in
-  `artifacts/msp-portal`, `artifacts/admin-panel`, or any other frontend package references this
-  route's path or response shape.
+  `artifacts/portal` (renamed from `artifacts/msp-portal` in `f40438cdc`, #1921), `artifacts/admin-panel`,
+  or any other frontend package references this route's path or response shape.
 
 ---
 
