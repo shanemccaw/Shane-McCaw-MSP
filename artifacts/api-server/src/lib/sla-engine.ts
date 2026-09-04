@@ -53,7 +53,7 @@ export interface SlaTimer {
   policyId: number;
   ticketRef: string | null;
   ticketType: string;
-  status: "running" | "paused" | "stopped" | "breached";
+  status: "running" | "paused" | "stopped" | "breached" | "warning";
   phase: "response" | "resolution";
   startedAt: string;
   warningFiredAt: string | null;
@@ -170,7 +170,11 @@ export function computeSlaEngine(
   weights: { wSignal: number; wTimer: number } = { wSignal: 50, wTimer: 50 },
 ): SlaEngineOutput {
   const policyMap = new Map(policies.map(p => [p.id, p]));
-  const runningTimers = timers.filter(t => t.status === "running");
+  // "running" and "warning" are both still-active timers — a timer that has
+  // crossed the warning threshold (status flipped by fireSlaWarning) must
+  // keep being evaluated so it can still progress to "breached". Only
+  // "stopped"/"breached" timers are excluded from further evaluation.
+  const runningTimers = timers.filter(t => t.status === "running" || t.status === "warning");
 
   const evaluations: SlaTimerEvaluation[] = [];
   for (const timer of runningTimers) {
@@ -253,7 +257,7 @@ async function fetchRunningTimers(mspId?: number, customerId?: number): Promise<
               breached_at AS "breachedAt", stopped_at AS "stoppedAt",
               idempotency_key AS "idempotencyKey", trace_id AS "traceId",
               metadata, created_at AS "createdAt", updated_at AS "updatedAt"
-            FROM sla_timers WHERE status = 'running' AND customer_id = ${customerId}`
+            FROM sla_timers WHERE status IN ('running', 'warning') AND customer_id = ${customerId}`
       : mspId != null
         ? sql`SELECT id, timer_id AS "timerId", msp_id AS "mspId", customer_id AS "customerId",
                 policy_id AS "policyId", ticket_ref AS "ticketRef", ticket_type AS "ticketType",
@@ -261,14 +265,14 @@ async function fetchRunningTimers(mspId?: number, customerId?: number): Promise<
                 breached_at AS "breachedAt", stopped_at AS "stoppedAt",
                 idempotency_key AS "idempotencyKey", trace_id AS "traceId",
                 metadata, created_at AS "createdAt", updated_at AS "updatedAt"
-              FROM sla_timers WHERE status = 'running' AND msp_id = ${mspId}`
+              FROM sla_timers WHERE status IN ('running', 'warning') AND msp_id = ${mspId}`
         : sql`SELECT id, timer_id AS "timerId", msp_id AS "mspId", customer_id AS "customerId",
                 policy_id AS "policyId", ticket_ref AS "ticketRef", ticket_type AS "ticketType",
                 status, phase, started_at AS "startedAt", warning_fired_at AS "warningFiredAt",
                 breached_at AS "breachedAt", stopped_at AS "stoppedAt",
                 idempotency_key AS "idempotencyKey", trace_id AS "traceId",
                 metadata, created_at AS "createdAt", updated_at AS "updatedAt"
-              FROM sla_timers WHERE status = 'running'`,
+              FROM sla_timers WHERE status IN ('running', 'warning')`,
   );
   return rows.rows as unknown as SlaTimer[];
 }
@@ -343,7 +347,7 @@ export async function stopSlaTimer(timerId: string, idempotencyKey?: string): Pr
   const result = await db.execute(sql`
     UPDATE sla_timers
     SET status = 'stopped', stopped_at = NOW(), updated_at = NOW()
-    WHERE timer_id = ${timerId} AND status = 'running'
+    WHERE timer_id = ${timerId} AND status IN ('running', 'warning')
     RETURNING id
   `);
   const stopped = result.rows.length > 0;
@@ -396,6 +400,24 @@ export async function fireSlaBreachRecord(opts: FireBreachOptions): Promise<{ br
   return { breachId, alreadyExisted: false };
 }
 
+// A timer crossing the warning threshold moves status to 'warning', mirroring
+// how fireSlaBreachRecord moves a breached timer to 'breached'. Guarded to
+// only fire once (warning_fired_at IS NULL) and only from 'running' — a
+// timer already 'breached'/'stopped' must not be pulled back to 'warning'.
+export async function fireSlaWarning(timerId: string): Promise<{ warningFired: boolean }> {
+  const result = await db.execute(sql`
+    UPDATE sla_timers
+    SET status = 'warning', warning_fired_at = NOW(), updated_at = NOW()
+    WHERE timer_id = ${timerId} AND status = 'running' AND warning_fired_at IS NULL
+    RETURNING id
+  `);
+  const warningFired = result.rows.length > 0;
+  if (warningFired) {
+    log.info({ timerId }, "sla-engine: warning fired");
+  }
+  return { warningFired };
+}
+
 export interface EscalateOptions {
   breachId: string;
   mspId: number;
@@ -441,7 +463,7 @@ export async function resolveSlaTimer(
   const result = await db.execute(sql`
     UPDATE sla_timers
     SET status = 'stopped', stopped_at = NOW(), updated_at = NOW()
-    WHERE timer_id = ${timerId} AND status IN ('running', 'paused', 'breached')
+    WHERE timer_id = ${timerId} AND status IN ('running', 'paused', 'warning', 'breached')
     RETURNING id
   `);
   const resolved = result.rows.length > 0;
