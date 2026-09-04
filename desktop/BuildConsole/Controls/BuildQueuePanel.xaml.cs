@@ -110,6 +110,19 @@ namespace BuildConsole.Controls
         /// verifying) recolor on-screen mentions even with no chat text mutation to trigger the
         /// DOM-mutation scan.</summary>
         public event EventHandler? QueueRefreshed;
+
+        /// <summary>
+        /// Git #2795 — wired once by MainWindow to <c>LeftSidebar.GetEpicForIssueNumber</c> (the
+        /// generalized form of GetEpicForChat's own real ancestor-walk resolution). BuildQueuePanel
+        /// has no direct issue/epic tree of its own — this is the same "MainWindow owns both panels,
+        /// pushes real resolved state into this one" idiom <see cref="ApplyOpenIssueSet"/> already
+        /// established for the live open-issue set (Git #1862), except on-demand per card render
+        /// rather than a synced snapshot, so it always reads LeftSidebar's current live board state.
+        /// Null until MainWindow wires it (cold start) — cards render with no Epic chip, never a
+        /// fake one.
+        /// </summary>
+        public Func<int, Services.BoardEpic?>? ResolveEpicForIssue { get; set; }
+
         private bool _isPinned = true;
 
         private int _refreshGeneration;
@@ -3618,6 +3631,10 @@ namespace BuildConsole.Controls
             var progressBubbleRow = BuildProgressBubbleRow(item.Id);
             mainStack.Children.Add(progressBubbleRow);
 
+            // ── Git #2795 — real Epic-name chip, right after the progress bubble row ──
+            var epicChipRow = BuildEpicChipRow(item);
+            if (epicChipRow != null) mainStack.Children.Add(epicChipRow);
+
             // ── Third Row: Extra info (blocker ghost cards, exit code) ──
             // Git #2070: gate on the same live-filtered set BuildWaitingOnText renders,
             // not the raw declared list — otherwise this row can render with an empty
@@ -3695,6 +3712,46 @@ namespace BuildConsole.Controls
             card.ContextMenu = BuildCardContextMenu(item, node);
 
             return card;
+        }
+
+        /// <summary>
+        /// Git #2795 — a small chip, same Border+TextBlock convention as this card's other real
+        /// badges (chatBadge, blockBadge above), showing which real top-level Epic <paramref
+        /// name="item"/>'s own GitHub issue belongs to. Resolved on-demand via
+        /// <see cref="ResolveEpicForIssue"/> (MainWindow wires this to LeftSidebar's real
+        /// ancestor-walk resolution — see that delegate's own doc comment). Returns null (renders
+        /// nothing — no row at all) when the item carries no GitHub issue number, the delegate
+        /// isn't wired yet, or the issue genuinely has no resolvable Epic ancestor (a real
+        /// loose/unparented issue) — never a fake/placeholder Epic name.
+        /// </summary>
+        private FrameworkElement? BuildEpicChipRow(QueueItem item)
+        {
+            if (!item.GithubNumber.HasValue) return null;
+            var epic = ResolveEpicForIssue?.Invoke(item.GithubNumber.Value);
+            if (epic == null || string.IsNullOrWhiteSpace(epic.Title)) return null;
+
+            var title = epic.Title.Trim();
+            if (title.Length > 42) title = title.Substring(0, 39) + "…";
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(1, 3, 0, 0) };
+            var chip = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x20, 0x30)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x6C, 0x70, 0x86)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(5, 1.5, 5, 1.5),
+                ToolTip = epic.GithubNumber.HasValue ? $"Epic #{epic.GithubNumber}: {epic.Title.Trim()}" : epic.Title.Trim()
+            };
+            chip.Child = new TextBlock
+            {
+                Text = $"◆ {title}",
+                FontSize = 9.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xBA, 0xB4, 0xCD))
+            };
+            row.Children.Add(chip);
+            return row;
         }
 
         /// <summary>
