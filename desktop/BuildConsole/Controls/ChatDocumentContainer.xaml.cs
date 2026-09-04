@@ -43,7 +43,16 @@ namespace BuildConsole.Controls
     {
         // README §2 budget + estimate constants (kept as an honest two-part shape until a real
         // tokeniser is wired: 40k fixed overhead + conversation estimate).
-        private const double ContextBudget = 300_000;
+        // Git #2802 — Shane's real, confirmed decision (2026-09-04): Sonnet 5's real native
+        // context window is 1,000,000 tokens (not a separate API-only beta tier), and 300k
+        // significantly undersold it. 900_000 is the deliberate safety margin below the full 1M,
+        // giving real headroom before the practical degradation zone. NOTE: the color-tier /
+        // "Start New Chat" thresholds in UpdateGauge below (60k/85k/100k) are a DIFFERENT,
+        // deliberately-independent set of raw-token thresholds — ported verbatim from the retired
+        // meterState banner's own absolute per-conversation degradation points (Git #2727), not
+        // computed as a percentage of ContextBudget — so they do NOT scale with this value and are
+        // intentionally left unchanged here.
+        private const double ContextBudget = 900_000;
         private const double FixedOverhead = 40_000;
         private const double CharsPerTokenFactor = 0.28;
 
@@ -108,9 +117,21 @@ namespace BuildConsole.Controls
 
             CrumbChat.Text = string.IsNullOrWhiteSpace(_chat.Title) ? "New Chat" : _chat.Title;
 
+            // Git #2802 — the real, confirmed bug behind "gauge still not updating" post-#2781:
+            // #2781 fixed the _contextMeters registration gap, but this timer's Tick was only ever
+            // wired to UpdateActiveTime()+UpdateSendToChatAffordance(), never UpdateGauge() (or the
+            // epic-scoped status counts). ChatContextMeterStore genuinely was being written to on
+            // every BT_CHAT_STATS poll — Band 1 just never had anything telling it to re-read the
+            // store and repaint. UpdateGauge() only ever fired on construction, a manual resize, or
+            // typing in the composer, so a tab left open and merely watched (or reselected after
+            // being away, since TabControl detaches/reattaches Content and Loaded fires again on
+            // reselect) sat frozen at whatever it read once. RefreshContext() calls UpdateGauge() +
+            // UpdateActiveTime() (which is what actually populates "Messages:", also reported stuck)
+            // together, so both are what genuinely stay live now. Also run it once immediately on
+            // Loaded (tab reselect) rather than waiting for the first 30s tick.
             _activeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
-            _activeTimer.Tick += (_, _) => { UpdateActiveTime(); UpdateSendToChatAffordance(); };
-            Loaded += (_, _) => _activeTimer.Start();
+            _activeTimer.Tick += (_, _) => { RefreshContext(); UpdateSendToChatAffordance(); };
+            Loaded += (_, _) => { _activeTimer.Start(); RefreshContext(); };
             Unloaded += (_, _) => _activeTimer.Stop();
 
             RefreshContext();
@@ -260,8 +281,8 @@ namespace BuildConsole.Controls
 
         /// <summary>README §2 context maths. used = 40k overhead + conversation estimate + draft; the
         /// conversation estimate uses the real meter store when it has one, else the 0.28/char shape.
-        /// The gauge fill + "≈Xk / 300k" text stay on this overhead-inclusive scale (Shane confirmed
-        /// this half is correct as-is — Git #2727).
+        /// The gauge fill + "≈Xk / {budget}k" text stay on this overhead-inclusive scale (Shane
+        /// confirmed this half is correct as-is — Git #2727; budget was 300k, now 900k — Git #2802).
         ///
         /// Git #2727 — colour + Start-New-Chat now use the RAW conversation token count against the
         /// retired `meterState` banner's own real absolute-token tiers (60k/85k/100k/130k), ported
@@ -281,7 +302,10 @@ namespace BuildConsole.Controls
             double used = FixedOverhead + conversationTokens + draftTokens;
             double pct = Math.Min(1.0, used / ContextBudget);
 
-            CtxGauge.Text = $"{FormatK(used)} / 300k ctx";
+            // Git #2802 — this used to be a literal "300k" string, a SECOND independently-hardcoded
+            // value that silently went stale the moment ContextBudget changed above (exactly the
+            // class of thing Shane asked to be checked for). Derive it from the real constant instead.
+            CtxGauge.Text = $"{FormatK(used)} / {FormatK(ContextBudget)} ctx";
 
             // Ported tiers (were meterState's 60k/85k/100k/130k, MainWindow.xaml.cs — Git #2727).
             // Hex values match the app's own GreenBrush/YellowBrush/PeachBrush/RedBrush
