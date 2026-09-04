@@ -88,6 +88,19 @@ vi.mock("@workspace/db", () => {
               offset: vi.fn().mockReturnValue(Promise.resolve([fakeRun])),
             }),
           }),
+          // .from(usersTable).innerJoin(...).innerJoin(...).where().orderBy().limit()
+          // — the packageKey-resolution lookup on POST /run when packageKey is
+          // omitted/"default". No matching subscription in this fixture, so the
+          // route falls back to its own "core:security-baseline" default.
+          innerJoin: vi.fn().mockReturnValue({
+            innerJoin: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockResolvedValue([]),
+                }),
+              }),
+            }),
+          }),
         }),
       };
     }),
@@ -110,6 +123,12 @@ vi.mock("@workspace/db", () => {
     tenantsTable: { id: "id", mspId: "msp_id", customerName: "customer_name", tenantId: "tenant_id" },
     portalWfRunsTable: {},
     portalWfOperatorTasksTable: {},
+    usersTable: { id: "id", tenantId: "tenant_id" },
+    clientServicesTable: { id: "id", clientUserId: "client_user_id", serviceId: "service_id", status: "status" },
+    servicesTable: { id: "id", typeAttributes: "type_attributes", fulfillmentTypeKey: "fulfillment_type_key" },
+    industryBenchmarkReferenceTable: {},
+    monitorChecksTable: {},
+    scriptModulesTable: {},
   };
 });
 
@@ -170,17 +189,22 @@ vi.mock("../middlewares/requireAuth", () => {
   return {
     requireAuth: makeMiddleware(),
     requireRole: (_minimumRole: string) => makeMiddleware(_minimumRole),
+    assertCustomerAccess: vi.fn().mockResolvedValue(true),
   };
 });
 
 // ── drizzle-orm mock ──────────────────────────────────────────────────────────
 
-vi.mock("drizzle-orm", () => ({
-  eq: vi.fn((col: unknown, val: unknown) => ({ col, val })),
-  and: vi.fn((...args: unknown[]) => ({ args })),
-  desc: vi.fn((col: unknown) => ({ desc: col })),
-  count: vi.fn(() => ({ count: true })),
-}));
+vi.mock("drizzle-orm", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("drizzle-orm")>();
+  return {
+    ...actual,
+    eq: vi.fn((col: unknown, val: unknown) => ({ col, val })),
+    and: vi.fn((...args: unknown[]) => ({ args })),
+    desc: vi.fn((col: unknown) => ({ desc: col })),
+    count: vi.fn(() => ({ count: true })),
+  };
+});
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
