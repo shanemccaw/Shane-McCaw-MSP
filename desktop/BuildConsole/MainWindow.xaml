@@ -893,6 +893,20 @@
                                     <Button x:Name="BtnLayoutGrid4" Style="{StaticResource IconButton}" Content="⊞ 4 Squares" ToolTip="2x2 Grid View" Click="BtnLayout_Click" Tag="Grid4"/>
                                 </StackPanel>
                                 <TextBlock DockPanel.Dock="Left" Text="EDITOR PANES" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+
+                                <!-- Git #2800 — live, midnight-resetting daily stats strip. No
+                                     DockPanel.Dock set, so it naturally fills the DockPanel's
+                                     remaining middle space between the "EDITOR PANES" label
+                                     (left) and the layout buttons (right) — real estate that
+                                     was genuinely empty before this. Four real chips, same
+                                     visual weight as the label beside it; collapsed until the
+                                     first real fetch resolves so it never shows a fabricated 0. -->
+                                <StackPanel x:Name="EditorPanesStatsStrip" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+                                    <TextBlock x:Name="EditorPanesStatNew" Text="New: 0" FontSize="10" Foreground="{StaticResource GreenBrush}" VerticalAlignment="Center" Margin="0,0,10,0" ToolTip="Real issues opened today (resets at UTC midnight)"/>
+                                    <TextBlock x:Name="EditorPanesStatClosed" Text="Closed: 0" FontSize="10" Foreground="{StaticResource MauveBrush}" VerticalAlignment="Center" Margin="0,0,10,0" ToolTip="Real issues closed today (resets at UTC midnight)"/>
+                                    <TextBlock x:Name="EditorPanesStatFeaturesOpen" Text="Features open: 0" FontSize="10" Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center" Margin="0,0,10,0" ToolTip="Real Feature-titled issues in the active milestone not yet 100% complete"/>
+                                    <TextBlock x:Name="EditorPanesStatFeaturesDone" Text="Features done: 0" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" ToolTip="Real Feature-titled issues in the active milestone fully complete"/>
+                                </StackPanel>
                             </DockPanel>
                         </Border>
 

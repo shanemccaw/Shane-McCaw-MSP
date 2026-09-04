@@ -158,6 +158,9 @@ namespace BuildConsole
         /// <summary>The persisted open-chat-tabs snapshot loaded ONCE at launch — what the Home "Where you left off" section shows, so it always reflects where the LAST session ended, not this session's live tab state.</summary>
         private List<BuildConsole.Services.PersistedChatTab> _chatTabsAtLaunch = new();
         private DispatcherTimer? _homeRollupTimer;
+        // ── Git #2800 Editor Panes toolbar stat strip ──────────────────────────────
+        private DispatcherTimer? _editorPanesStatsTimer;
+        private bool _editorPanesStatsFetchInFlight;
         // ── Home "What's New" patch-notes (computed ONCE at launch) ───────────────
         // The real commit titles for BuildConsole that landed since the last launch,
         // computed off the UI thread once at startup (VersionInfo.GetNewCommitTitles,
@@ -927,6 +930,11 @@ namespace BuildConsole
                 }
             };
 
+            // Git #2800 — Editor Panes toolbar stat strip rides the same real board-refresh
+            // cascade as every other consumer above; the 60s timer above is the "feel alive"
+            // top-up on top of this real floor.
+            LeftSidebar.BoardRefreshCompleted += async (s, e) => await RefreshEditorPanesStatsAsync(forceRefresh: true);
+
             // Git #802 - Shane: "The Claude chats should open in their own
             // tabs. And if there is a build, that tab should split with the
             // build happening right there in that chats tab." Each chat gets
@@ -1049,6 +1057,18 @@ namespace BuildConsole
             _homeRollupTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
             _homeRollupTimer.Tick += async (_, _) => await RefreshHomeRollupAsync();
             _homeRollupTimer.Start();
+
+            // Git #2800 — Editor Panes toolbar stat strip. Real refresh floor is the same
+            // board-refresh cascade everything else on this line rides
+            // (LeftSidebar.BoardRefreshCompleted, wired below); on top of that, Shane wants
+            // this "to feel alive" ("might be fun to watch the numbers"), so also re-derive
+            // every real minute — cheap, since GetAllIssuesAsync/ResolveActiveMilestoneAsync
+            // are both already 5-minute-TTL cached, so a 60s tick almost always reads that
+            // cache rather than issuing a new GitHub call.
+            _ = RefreshEditorPanesStatsAsync();
+            _editorPanesStatsTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+            _editorPanesStatsTimer.Tick += async (_, _) => await RefreshEditorPanesStatsAsync();
+            _editorPanesStatsTimer.Start();
 
             // Git #805 (Epic #803 Phase 1) / #1421 — "polling, not webhook/SSE...
             // follow the existing pattern." Same 3s DispatcherTimer shape as
@@ -3948,6 +3968,44 @@ namespace BuildConsole
             // 3. Genuinely nothing either way — fail honestly, never a fake/wrong activation.
             ToastEngine.Warning("Epic Chat",
                 $"No open or remembered chat tab found for Epic{(epic.GithubNumber.HasValue ? $" #{epic.GithubNumber}" : "")}: {epic.Title}");
+        }
+
+        /// <summary>
+        /// Git #2800 — real, midnight-resetting daily stat strip in the Editor Panes
+        /// toolbar's DockPanel middle. Reuses <see cref="Services.EditorPanesStatsService"/>
+        /// (itself reusing #2711's time series + #2739/#2773's transitive leaf rollup), so
+        /// this method is pure UI-thread rendering + a re-entrancy guard, no data logic of
+        /// its own. Fails closed: an unreachable GitHub / no active milestone collapses the
+        /// strip back to hidden rather than showing a stale or fabricated number.
+        /// </summary>
+        private async System.Threading.Tasks.Task RefreshEditorPanesStatsAsync(bool forceRefresh = false)
+        {
+            if (_editorPanesStatsFetchInFlight) return;
+            _editorPanesStatsFetchInFlight = true;
+            try
+            {
+                var stats = await Services.EditorPanesStatsService.GetActiveMilestoneStatsAsync(forceRefresh);
+                if (!stats.HasData)
+                {
+                    EditorPanesStatsStrip.Visibility = Visibility.Collapsed;
+                    return;
+                }
+
+                EditorPanesStatNew.Text = $"New: {stats.NewToday}";
+                EditorPanesStatClosed.Text = $"Closed: {stats.ClosedToday}";
+                EditorPanesStatFeaturesOpen.Text = $"Features open: {stats.FeaturesOpen}";
+                EditorPanesStatFeaturesDone.Text = $"Features done: {stats.FeaturesDone}";
+                EditorPanesStatsStrip.Visibility = Visibility.Visible;
+            }
+            catch (Exception ex)
+            {
+                Services.ActivityLog.Log("git-board.data", $"Git #2800 editor-panes stat strip refresh failed (fail-closed, strip hidden): {ex.Message}");
+                EditorPanesStatsStrip.Visibility = Visibility.Collapsed;
+            }
+            finally
+            {
+                _editorPanesStatsFetchInFlight = false;
+            }
         }
 
         /// <summary>
