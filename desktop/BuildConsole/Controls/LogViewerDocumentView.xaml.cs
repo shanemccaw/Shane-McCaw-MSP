@@ -71,6 +71,11 @@ namespace BuildConsole.Controls
 
         private readonly List<(string Name, LogQuery Query)> _savedFilters = new();
 
+        // Git #2788 — real per-build scope, the "Open Build Log" replacement
+        // entry point (see ScopeToBuild below).
+        private int? _scopedBuildQueueItemId;
+        private string? _scopedBuildLabel;
+
         /// <summary>
         /// Git #2786 — routed through the same real active-chat composer
         /// injection MainWindow already built for the SQL Runner (#937/#940,
@@ -99,6 +104,35 @@ namespace BuildConsole.Controls
                 RefreshQuery();
             }
             RenderAll();
+        }
+
+        /// <summary>
+        /// Git #2788 — the decommissioned BuildLogView.LoadQueueItem's real
+        /// replacement entry point. Scopes this document to exactly
+        /// <paramref name="queueItemId"/>'s own log file (BuildLogPaths.ForQueueItem,
+        /// via LogQuery.BuildQueueItemId) instead of the aggregated "Build"
+        /// source's most-recent-5 default, restricts the source rail to just
+        /// "Build" so the stream isn't diluted with every other channel, and
+        /// starts LIVE tailing when the build is still running — same
+        /// behavior the old bottom panel gave a "running" queue item.
+        /// FindResource calls inside RenderAll resolve via
+        /// Application.Current's merged theme dictionaries (DarkTheme.xaml),
+        /// so this is safe to call immediately after construction, before the
+        /// control's own Loaded event has fired.
+        /// </summary>
+        public void ScopeToBuild(int queueItemId, string epic, string task, string status)
+        {
+            EnsureLoaded();
+
+            _scopedBuildQueueItemId = queueItemId;
+            _scopedBuildLabel = string.IsNullOrWhiteSpace(epic) ? task : $"{epic} — {task}";
+
+            _enabledSourceIds.Clear();
+            _enabledSourceIds.Add("build");
+
+            RefreshQuery();
+            RenderRail();
+            SetStreamMode(status.Equals("running", StringComparison.OrdinalIgnoreCase) ? LogStreamMode.Live : LogStreamMode.Cold);
         }
 
         private void SeedSavedFilters()
@@ -257,7 +291,7 @@ namespace BuildConsole.Controls
         {
             try
             {
-                await foreach (var line in _logService.Tail(_enabledSourceIds, ct))
+                await foreach (var line in _logService.Tail(_enabledSourceIds, ct, _scopedBuildQueueItemId))
                 {
                     if (ct.IsCancellationRequested) break;
                     lock (_bufferLock)
@@ -294,7 +328,7 @@ namespace BuildConsole.Controls
             // text is deliberately withheld from the query itself when active —
             // RenderLines applies it client-side as a dim, not a filter.
             var text = _highlight ? null : (string.IsNullOrWhiteSpace(_searchText) ? null : _searchText);
-            return new LogQuery(text, _regex, excludes, levels, sourceIds, from, null, _loggerFilter);
+            return new LogQuery(text, _regex, excludes, levels, sourceIds, from, null, _loggerFilter, _scopedBuildQueueItemId);
         }
 
         private bool LineMatchesSearchText(LogLine line)
@@ -572,7 +606,16 @@ namespace BuildConsole.Controls
                     foreach (LogLevel lv in Enum.GetValues<LogLevel>()) _selectedLevels.Add(lv);
                     RefreshQuery(); RenderLevelPills();
                 });
-            if (_enabledSourceIds.Count < LogService.Sources.Count)
+            if (_scopedBuildQueueItemId.HasValue)
+                Chip($"build: {_scopedBuildLabel ?? $"#{_scopedBuildQueueItemId}"}", () =>
+                {
+                    _scopedBuildQueueItemId = null;
+                    _scopedBuildLabel = null;
+                    _enabledSourceIds.Clear();
+                    foreach (var s in LogService.Sources) _enabledSourceIds.Add(s.Id);
+                    RefreshQuery(); RenderRail(); RestartStreamIfActive();
+                });
+            else if (_enabledSourceIds.Count < LogService.Sources.Count)
                 Chip($"sources: {_enabledSourceIds.Count}/{LogService.Sources.Count}", () =>
                 {
                     _enabledSourceIds.Clear();

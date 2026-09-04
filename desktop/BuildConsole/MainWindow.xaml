@@ -1075,10 +1075,6 @@
                                 Grid.Row="1"
                                 BorderThickness="0">
 
-                        <TabItem Header="Build Log">
-                            <ctrl:BuildLogView x:Name="BuildLogView"/>
-                        </TabItem>
-
                         <TabItem Header="Terminal">
                             <ctrl:TerminalView x:Name="TerminalView"/>
                         </TabItem>

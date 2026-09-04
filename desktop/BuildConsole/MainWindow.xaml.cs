@@ -704,7 +704,6 @@ namespace BuildConsole
 
                 // Phase 4: Sidebar and Log Views
                 LeftSidebar.Initialize(_buildTrackerApi, _queueDb);
-                BuildLogView.Initialize(_buildTrackerApi, _queueDb);
                 TerminalView.Initialize(_buildTrackerApi);
                 MarketingLogView.Initialize("shane-mccaw-consulting", "Marketing", 5173, "artifacts/shane-mccaw-consulting", "🌐");
                 PortalLogView.Initialize("portal", "Portal", 5175, "artifacts/portal", "💼");
@@ -6051,14 +6050,31 @@ namespace BuildConsole
             }
         }
 
+        /// <summary>Git #2788 — decommissioned BuildLogView's own bottom-panel tab; the
+        /// real "Open Build Log" right-click action (#2689) now opens (or updates) the
+        /// Log Viewer document tab (#2786), scoped to exactly this queue item's own log
+        /// file. #2689's original rule is preserved: keep an already-open Log Viewer's
+        /// content in sync on every selection (even a plain click), but only force a
+        /// NEW tab open/focused on an explicit right-click.</summary>
         private void BuildQueuePanel_TaskSelected(object? sender, Controls.TaskSelectedEventArgs e)
         {
-            // Git #2689 — keep the panel's content in sync on every selection (even a plain
-            // click), but only force the panel open when explicitly requested (right-click →
-            // "Open Build Log"). A plain click should just select/highlight the card.
-            BuildLogView.LoadQueueItem(e.QueueItemId, e.Epic, e.Task, e.Status, e.ExitCode);
+            var existing = FindOpenLogViewerTab();
+            if (existing != null)
+                existing.ScopeToBuild(e.QueueItemId, e.Epic, e.Task, e.Status);
+
             if (e.OpenLogPanel)
-                SetBottomPanel(true, tabIndex: 0);
+                OpenLogViewerTab().ScopeToBuild(e.QueueItemId, e.Epic, e.Task, e.Status);
+        }
+
+        /// <summary>Git #2788 — looks for an already-open Log Viewer tab in the primary
+        /// EditorTabs host without creating one, so a plain card click can keep it in
+        /// sync without forcing it open (see BuildQueuePanel_TaskSelected).</summary>
+        private Controls.LogViewerDocumentView? FindOpenLogViewerTab()
+        {
+            foreach (TabItem item in EditorTabs.Items)
+                if (item.Tag is string tagPath && tagPath == "log_viewer")
+                    return (Controls.LogViewerDocumentView)item.Content;
+            return null;
         }
 
         /// <summary>QueueWatcherService.BuildFinished — the genuine "a queue-managed
@@ -6191,12 +6207,14 @@ namespace BuildConsole
         // DevServicesManager.KnownServices entry (e.g. Website, or a new artifact added
         // later) still gets a full dynamic Start/Stop/Open-in-Edge menu - it just has no
         // dedicated log tab to jump to until one is built for it by name here.
+        // Git #2788 — shifted down by one: removing the "Build Log" tab
+        // (BuildLogView, decommissioned) moved every tab after it back one slot.
         private static int TabIndexForService(string name) => name switch
         {
-            "shane-mccaw-consulting" => 2,
-            "portal" => 3,
-            "admin-panel" => 4,
-            "api-server" => 5,
+            "shane-mccaw-consulting" => 1,
+            "portal" => 2,
+            "admin-panel" => 3,
+            "api-server" => 4,
             _ => -1,
         };
 
@@ -6323,7 +6341,7 @@ namespace BuildConsole
 
         private async void MenuStartAllServices_Click(object sender, RoutedEventArgs e)
         {
-            SetBottomPanel(true, tabIndex: 2);
+            SetBottomPanel(true, tabIndex: 1); // Git #2788 — Marketing, shifted down 1 (Build Log tab removed)
             await DevServicesManager.StartAllServicesAsync();
             await System.Threading.Tasks.Task.Delay(2000);
             await RefreshTopServicesStatusAsync();
@@ -6979,12 +6997,13 @@ namespace BuildConsole
             => GetActiveWebView().Reload();
 
         // ── Menu: Terminal ────────────────────────────────────────────────────
+        // Git #2788 — Terminal shifted down to index 0 (Build Log tab removed).
         private void OpenTerminal_Click(object sender, RoutedEventArgs e)
-            => SetBottomPanel(true, tabIndex: 1);
+            => SetBottomPanel(true, tabIndex: 0);
 
         private void GitChip_Click(object sender, RoutedEventArgs e)
         {
-            SetBottomPanel(true, tabIndex: 1);
+            SetBottomPanel(true, tabIndex: 0);
             if (sender is MenuItem mi)
                 TerminalView.SetCommand(mi.Tag?.ToString() ?? string.Empty);
         }
@@ -8564,7 +8583,7 @@ namespace BuildConsole
                 : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..")); // bin\Debug\net7.0-windows -> project dir
 
             BuildConsole.Services.ActivityLog.Log("release-build", $"Starting: dotnet build --configuration Release ({projectDir})");
-            SetBottomPanel(true, tabIndex: 5); // Output tab
+            SetBottomPanel(true, tabIndex: 5); // Output tab (Git #2788 — Build Log tab removed; this index is unchanged post-shift)
 
             var psi = new System.Diagnostics.ProcessStartInfo
             {

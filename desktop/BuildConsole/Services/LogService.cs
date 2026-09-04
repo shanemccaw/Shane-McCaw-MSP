@@ -71,9 +71,17 @@ public sealed record LogLine(
     DateTime Ts, LogLevel Level, string SourceId, string Logger,
     string CorrelationId, string Message, bool LevelIsInferred);
 
+// Git #2788 — BuildQueueItemId is additive (trailing, defaulted) so every
+// existing positional LogQuery(...) call site keeps compiling unchanged. When
+// set, the "build" source resolves to exactly that queue item's own log file
+// (BuildLogPaths.ForQueueItem) instead of the aggregated most-recent-5 default
+// — the real scoping the decommissioned BuildLogView.LoadQueueItem gave the
+// old bottom panel, now expressed as a query field instead of a whole
+// separate control.
 public sealed record LogQuery(
     string? Text, bool Regex, string[]? Exclude, LogLevel[]? Levels,
-    string[]? SourceIds, DateTime? From, DateTime? To, string? Logger);
+    string[]? SourceIds, DateTime? From, DateTime? To, string? Logger,
+    int? BuildQueueItemId = null);
 
 public sealed record ArchiveNode(
     string Id, string Label, string Kind,
@@ -85,7 +93,10 @@ public interface ILogService
     /// (an empty/null collection means "the sources that have real backing at
     /// all") into one ordered stream. Self-contained: the caller owns
     /// cancellation, BURST's self-cancel timer, and LIVE's indefinite hold.
-    IAsyncEnumerable<LogLine> Tail(IEnumerable<string>? sourceIds, CancellationToken ct);
+    /// <param name="buildQueueItemId">Git #2788 — when set, scopes the "build"
+    /// source to exactly this queue item's own log file instead of the
+    /// aggregated most-recent-5 default. Ignored by every other source.</param>
+    IAsyncEnumerable<LogLine> Tail(IEnumerable<string>? sourceIds, CancellationToken ct, int? buildQueueItemId = null);
 
     /// COLD search — works with or without anything streaming, per the
     /// "COLD still returns search results" done-when criterion.
@@ -342,8 +353,18 @@ public sealed class LogService : ILogService
     // internal queue id, not Git issue number — there is no reliable id → issue
     // mapping without a live queue-DB join, so lines here are shown as-is (not
     // labeled with a Git issue).
-    private static IEnumerable<string> BuildLogFiles()
+    // Git #2788 — scopedQueueItemId narrows this to exactly one build's own
+    // file (the real "Open Build Log" / decommissioned BuildLogView use case)
+    // instead of the unscoped most-recent-5 default used by the aggregated
+    // "Build" source rail entry.
+    private static IEnumerable<string> BuildLogFiles(int? scopedQueueItemId = null)
     {
+        if (scopedQueueItemId.HasValue)
+        {
+            var scopedPath = BuildLogPaths.ForQueueItem(scopedQueueItemId.Value);
+            return File.Exists(scopedPath) ? new[] { scopedPath } : Array.Empty<string>();
+        }
+
         var dir = BuildLogPaths.LogDirectory;
         if (!Directory.Exists(dir)) return Array.Empty<string>();
         return Directory.GetFiles(dir, "queue-*.log")
@@ -452,7 +473,7 @@ public sealed class LogService : ILogService
             }
 
             case "build":
-                return BuildLogFiles().SelectMany(f => ReadTailLines(f, "build", readAt));
+                return BuildLogFiles(q.BuildQueueItemId).SelectMany(f => ReadTailLines(f, "build", readAt));
 
             case "ssh":
             case "terminal":
@@ -537,7 +558,7 @@ public sealed class LogService : ILogService
     // than FileSystemWatcher/SSE: simplest correct thing that is still real
     // (no fabricated heartbeats), and consistent with this project's default
     // of connecting directly rather than adding an HTTP/token hop.
-    public async IAsyncEnumerable<LogLine> Tail(IEnumerable<string>? sourceIds, [EnumeratorCancellation] CancellationToken ct)
+    public async IAsyncEnumerable<LogLine> Tail(IEnumerable<string>? sourceIds, [EnumeratorCancellation] CancellationToken ct, int? buildQueueItemId = null)
     {
         var wantSources = (sourceIds != null && sourceIds.Any())
             ? sourceIds.ToHashSet()
@@ -553,7 +574,7 @@ public sealed class LogService : ILogService
         {
             if (src.Id == "api" || !wantSources.Contains(src.Id)) continue;
             if (src.Id == "ssh" || src.Id == "terminal") continue; // no real backing
-            tasks.Add(TailRawSourceAsync(src, channel.Writer, ct));
+            tasks.Add(TailRawSourceAsync(src, channel.Writer, ct, src.Id == "build" ? buildQueueItemId : null));
         }
 
         if (wantSources.Contains("console"))
@@ -613,14 +634,14 @@ public sealed class LogService : ILogService
         }
     }
 
-    private async Task TailRawSourceAsync(LogSource src, ChannelWriter<LogLine> writer, CancellationToken ct)
+    private async Task TailRawSourceAsync(LogSource src, ChannelWriter<LogLine> writer, CancellationToken ct, int? scopedBuildQueueItemId = null)
     {
         string? ResolvePath() => src.Id switch
         {
             "sql" => Directory.Exists(ResolvePostgresLogDir())
                 ? Directory.GetFiles(ResolvePostgresLogDir()!, "*.log").OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault()
                 : null,
-            "build" => BuildLogFiles().FirstOrDefault(),
+            "build" => BuildLogFiles(scopedBuildQueueItemId).FirstOrDefault(),
             _ => MainRepoRoot != null && src.RelativeLogPath != null
                 ? Path.Combine(DevAllLogDir(MainRepoRoot), src.RelativeLogPath)
                 : null
