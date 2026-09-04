@@ -24,8 +24,14 @@ public partial class PlaidLinkWindow : Window
     // leaving the dialog blank forever with no way to know what's wrong.
     private static readonly TimeSpan WebViewStartupTimeout = TimeSpan.FromSeconds(20);
 
+    // Virtual host used via SetVirtualHostNameToFolderMapping so the Link page gets a real
+    // (virtual) origin instead of the opaque "null" origin NavigateToString produces — see
+    // StartWebViewAsync for why that opaque origin breaks Plaid's own postMessage calls.
+    private const string VirtualHostName = "shanessurvival.local";
+
     private readonly string _linkToken;
     private bool _handled;
+    private string? _linkHtmlFolder;
 
     /// <summary>Set once the dialog closes. Null only if the window was closed before WebView2
     /// finished initializing (e.g. the owner force-closed it).</summary>
@@ -36,6 +42,7 @@ public partial class PlaidLinkWindow : Window
         InitializeComponent();
         _linkToken = linkToken;
         Loaded += async (_, _) => await InitializeWebViewAsync();
+        Closed += (_, _) => CleanUpLinkHtmlFolder();
     }
 
     private async Task InitializeWebViewAsync()
@@ -88,7 +95,52 @@ public partial class PlaidLinkWindow : Window
 
         await LinkWebView.EnsureCoreWebView2Async(environment);
         LinkWebView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
-        LinkWebView.NavigateToString(BuildHtml(_linkToken));
+
+        // NavigateToString gives the resulting document an opaque origin of the literal string
+        // "null" (same as about:blank / a data: URI). Plaid's own Link bundle (flink.js, loaded
+        // by link-initialize.js below) internally calls window.postMessage(msg, targetOrigin) for
+        // its own real internal iframe communication, and Chromium throws
+        // "SyntaxError: Invalid target origin 'null'" because Plaid's code assumes a real origin.
+        // That throw happens inside Plaid's own bundle, uncaught, so it never reaches this app's
+        // own onerror/watchdog handling — the fix is to give the page a real (virtual) origin via
+        // SetVirtualHostNameToFolderMapping instead of navigating to a literal string.
+        _linkHtmlFolder = Path.Combine(Path.GetTempPath(), "ShanesSurvival-PlaidLink-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_linkHtmlFolder);
+        var linkHtmlPath = Path.Combine(_linkHtmlFolder, "link.html");
+        await File.WriteAllTextAsync(linkHtmlPath, BuildHtml(_linkToken));
+
+        LinkWebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+            VirtualHostName, _linkHtmlFolder, CoreWebView2HostResourceAccessKind.Allow);
+        LinkWebView.CoreWebView2.Navigate($"https://{VirtualHostName}/link.html");
+    }
+
+    private void CleanUpLinkHtmlFolder()
+    {
+        if (_linkHtmlFolder is null)
+        {
+            return;
+        }
+
+        try
+        {
+            LinkWebView.CoreWebView2?.ClearVirtualHostNameToFolderMapping(VirtualHostName);
+        }
+        catch
+        {
+            // CoreWebView2 may already be gone if the window closed before WebView2 finished
+            // initializing — the folder delete below still needs to run either way.
+        }
+
+        try
+        {
+            Directory.Delete(_linkHtmlFolder, recursive: true);
+        }
+        catch
+        {
+            // Best-effort cleanup of a temp file; never let this block the dialog from closing.
+        }
+
+        _linkHtmlFolder = null;
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
