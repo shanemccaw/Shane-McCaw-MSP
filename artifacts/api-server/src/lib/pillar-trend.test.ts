@@ -102,6 +102,7 @@ function makeRule(overrides: Partial<SignalDerivationRule> & Pick<SignalDerivati
     id: 1,
     groupId: null,
     compareValue: null,
+    denominatorKey: null,
     description: null,
     sortOrder: 0,
     createdAt: BASE_DATE,

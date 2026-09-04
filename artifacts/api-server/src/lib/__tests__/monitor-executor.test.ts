@@ -1680,6 +1680,7 @@ describe("executeMonitorCheck", () => {
     status: "active" as const,
     createdByAdminId: null,
     updatedByAdminId: null,
+    isCustomerFacing: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -1843,6 +1844,7 @@ describe("executeMonitorCheck — cached result label recovery", () => {
     status: "active" as const,
     createdByAdminId: null,
     updatedByAdminId: null,
+    isCustomerFacing: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -2202,6 +2204,7 @@ describe("executeMonitorCheck — fan-out (group-scoped)", () => {
     status: "active" as const,
     createdByAdminId: null,
     updatedByAdminId: null,
+    isCustomerFacing: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -2441,6 +2444,7 @@ describe("executeMonitorCheck — PowerShell-backed (executorType='powershell')"
     status: "active" as const,
     createdByAdminId: null,
     updatedByAdminId: null,
+    isCustomerFacing: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -2620,6 +2624,7 @@ describe("executeMonitorCheck — SharePoint-admin-backed (executorType='sharepo
     status: "active" as const,
     createdByAdminId: null,
     updatedByAdminId: null,
+    isCustomerFacing: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -2794,6 +2799,7 @@ describe("executeMonitorCheck — Power-Platform-backed (executorType='power-pla
     status: "active" as const,
     createdByAdminId: null,
     updatedByAdminId: null,
+    isCustomerFacing: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -3004,7 +3010,7 @@ describe("appendQueryParams", () => {
  * one level down, and servicePlans is an array. A count/first/exists transform
  * can carry ONE of those numbers; only a pass-through carries the SKU list.
  */
-const SUBSCRIBED_SKUS = [
+const SUBSCRIBED_SKUS_NESTED = [
   {
     capabilityStatus: "Enabled",
     consumedUnits: 14,
@@ -3056,7 +3062,7 @@ describe("applyMapping — raw (#402)", () => {
     // mapping produced nothing. Not an assertion about the new code: an
     // assertion about what happens to a sourceField naming the OData envelope
     // the items were already unwrapped out of.
-    const before = applyMapping(SUBSCRIBED_SKUS, [
+    const before = applyMapping(SUBSCRIBED_SKUS_NESTED, [
       { sourceField: "value", targetField: "skuData", transform: "notImplementedYet" },
     ], ["skuPartNumber"]);
     expect(before.skuData).toEqual([]);
@@ -3069,10 +3075,10 @@ describe("applyMapping — raw (#402)", () => {
 
   it("passes the FULL item array through when sourceField names the item itself", () => {
     for (const sourceField of ["value", "*", ".", "item", "items", ""]) {
-      const result = applyMapping(SUBSCRIBED_SKUS, [
+      const result = applyMapping(SUBSCRIBED_SKUS_NESTED, [
         { sourceField, targetField: "skuData", transform: "raw" },
       ], []);
-      expect(result.skuData, `sourceField "${sourceField}"`).toEqual(SUBSCRIBED_SKUS);
+      expect(result.skuData, `sourceField "${sourceField}"`).toEqual(SUBSCRIBED_SKUS_NESTED);
       expect((result.skuData as Array<{ skuPartNumber: string }>).map(s => s.skuPartNumber))
         .toEqual(["ENTERPRISEPREMIUM", "SPE_E3", "Microsoft_365_Copilot", "VISIOCLIENT"]);
     }
@@ -3080,7 +3086,7 @@ describe("applyMapping — raw (#402)", () => {
   });
 
   it("carries the nested numbers no derived transform can: consumed vs prepaid, per SKU", () => {
-    const result = applyMapping(SUBSCRIBED_SKUS, [
+    const result = applyMapping(SUBSCRIBED_SKUS_NESTED, [
       { sourceField: "value", targetField: "skuData", transform: "raw" },
     ], []);
     const rows = (result.skuData as Array<{ skuPartNumber: string; consumedUnits: number; prepaidUnits: { enabled: number } }>)
@@ -3094,7 +3100,7 @@ describe("applyMapping — raw (#402)", () => {
   });
 
   it("passes one property off every item through when sourceField names a property", () => {
-    const result = applyMapping(SUBSCRIBED_SKUS, [
+    const result = applyMapping(SUBSCRIBED_SKUS_NESTED, [
       { sourceField: "skuPartNumber", targetField: "skus", transform: "raw" },
       { sourceField: "prepaidUnits", targetField: "units", transform: "raw" },
       { sourceField: "prepaidUnits.enabled", targetField: "owned", transform: "raw" },
@@ -3117,10 +3123,10 @@ describe("applyMapping — raw (#402)", () => {
   it("falls back to the whole items — loudly — when sourceField resolves on nothing", () => {
     // The shape every currently-broken stored rule is in. Emitting [] again
     // would reproduce the bug faithfully; guessing silently would be worse.
-    const result = applyMapping(SUBSCRIBED_SKUS, [
+    const result = applyMapping(SUBSCRIBED_SKUS_NESTED, [
       { sourceField: "skuData", targetField: "skuData", transform: "raw" },
     ], []);
-    expect(result.skuData).toEqual(SUBSCRIBED_SKUS);
+    expect(result.skuData).toEqual(SUBSCRIBED_SKUS_NESTED);
     expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
       expect.objectContaining({ targetField: "skuData", transform: "raw" }),
       expect.stringContaining("passed through the WHOLE items instead"),
@@ -3155,7 +3161,7 @@ describe("applyMapping — raw (#402)", () => {
   });
 
   it("copies the item array rather than aliasing the caller's", () => {
-    const items = [...SUBSCRIBED_SKUS];
+    const items = [...SUBSCRIBED_SKUS_NESTED];
     const result = applyMapping(items, [
       { sourceField: "value", targetField: "skuData", transform: "raw" },
     ], []);
@@ -3176,7 +3182,7 @@ describe("applyMapping — raw (#402)", () => {
   });
 
   it("treats bare 'raw' as implemented and an argument-bearing 'raw(...)' as malformed", () => {
-    applyMapping(SUBSCRIBED_SKUS, [{ sourceField: "value", targetField: "a", transform: "raw" }], []);
+    applyMapping(SUBSCRIBED_SKUS_NESTED, [{ sourceField: "value", targetField: "a", transform: "raw" }], []);
     expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
 
     vi.mocked(logger.warn).mockClear();
@@ -3386,7 +3392,7 @@ describe("applyMapping — countWhere (#402)", () => {
   });
 
   it("treats both new names as implemented, so neither trips the unknown-transform warning", () => {
-    applyMapping(SUBSCRIBED_SKUS, [
+    applyMapping(SUBSCRIBED_SKUS_NESTED, [
       { sourceField: "value", targetField: "skuData", transform: "raw" },
       { sourceField: "value", targetField: "suspended", transform: `countWhere('{{capabilityStatus}} == "Suspended"')` },
     ], []);
@@ -3451,6 +3457,7 @@ describe("executeMonitorCheck — DNS-backed (executorType='dns', #496)", () => 
     status: "active" as const,
     createdByAdminId: null,
     updatedByAdminId: null,
+    isCustomerFacing: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -3621,6 +3628,7 @@ describe("executeMonitorCheck — azure-rm transport (#1871)", () => {
     status: "active" as const,
     createdByAdminId: null,
     updatedByAdminId: null,
+    isCustomerFacing: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

@@ -580,6 +580,7 @@ describe("compliance:eeeu-site-sharing — end to end through the fan-out execut
     status: "active" as const,
     createdByAdminId: null,
     updatedByAdminId: null,
+    isCustomerFacing: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
