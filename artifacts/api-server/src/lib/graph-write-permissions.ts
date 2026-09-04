@@ -38,6 +38,20 @@
  * cell is a bug; a rule that holds a documented two-permission conjunction is
  * not. `graph-write-permissions.test.ts` enforces this.
  *
+ * THREE OUTCOMES, NOT TWO (Git #1901). A rule can end in one of three states,
+ * and collapsing any of them into another produces a false reading:
+ *
+ *   1. REQUESTED — `permissions` are asked for. The step runs once consented.
+ *   2. DOCUMENTED BUT NOT REQUESTED (`grantRecommended: false`) — Microsoft's
+ *      permission is real, but this platform judges the scope too broad to ask
+ *      every customer for. Shane can overrule it; the product is the trade.
+ *   3. APP-ONLY UNSUPPORTED (`appOnlyUnsupported: true`) — Microsoft documents
+ *      NO application permission at all. Nobody can overrule this one, and no
+ *      consent screen changes it. See the field's own doc comment.
+ *
+ * And a step with no rule at all is a FOURTH thing — unknown, not "none" — which
+ * is why `requiredPermissionsForWrite` returns `rule: null` rather than guessing.
+ *
  * THIS TABLE GRANTS NOTHING. It is the derivation and the justification. The
  * actual grant is two steps in Entra: the app registration must DECLARE the
  * permission (`requiredResourceAccess`), and a tenant admin must CONSENT to it
@@ -61,7 +75,13 @@ export interface WritePermissionRule {
    * ids are collapsed to `*` by `normaliseEndpoint`.
    */
   pattern: string;
-  /** Application permissions required, ALL of them, for this operation. */
+  /**
+   * Application permissions required, ALL of them, for this operation.
+   *
+   * Empty ONLY when `appOnlyUnsupported` is true — see that field. An empty
+   * array on any other rule would mean "this write needs nothing", which is
+   * never true of a real write.
+   */
   permissions: string[];
   /**
    * The **Application** row of this operation's Microsoft Learn Permissions
@@ -96,6 +116,30 @@ export interface WritePermissionRule {
   grantRecommended?: boolean;
   /** Why it is not requested, when `grantRecommended` is false. */
   notRequestedReason?: string;
+  /**
+   * True when Microsoft's Application row for this operation reads
+   * "Not supported." — i.e. there is NO application permission that authorises
+   * it, at any privilege level. The operation is delegated-only, so an app-only
+   * daemon credential like this platform's write app can never perform it, and
+   * no amount of consent changes that.
+   *
+   * This is a THIRD state, distinct from the two the table already had, and it
+   * exists because collapsing it into either one produces a lie (Git #1901):
+   *
+   *   - Leaving the endpoint UNMAPPED says "we don't know what this needs",
+   *     when in fact we know exactly, and the answer is "nothing will work".
+   *   - Giving it a rule with `permissions: []` and no marker would make
+   *     `required` empty, `missing` empty, and the executable render READY —
+   *     the precise false-green the whole table exists to prevent.
+   *
+   * A rule with this flag carries `permissions: []`, quotes the real
+   * "Not supported." cells in `documentedApplicationTiers`, and names the
+   * delegated permission Microsoft DOES document in its `justification` so a
+   * reader can see the operation is real and only the auth mode is wrong.
+   * `requiredPermissionsForWrite` reports it back as `appOnlyUnsupported` so the
+   * route can surface it as its own honest category.
+   */
+  appOnlyUnsupported?: boolean;
 }
 
 /**
@@ -216,6 +260,28 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
     docUrl: "https://learn.microsoft.com/en-us/graph/api/authentication-list-methods",
   },
   {
+    // #1901 — identity-hygiene-v1 step 5.
+    method: "POST",
+    pattern: "/users/*/authentication/temporaryAccessPassMethods",
+    documentedApplicationTiers: {
+      leastPrivileged: "UserAuthMethod-TAP.Read.All",
+      higherPrivileged: "UserAuthenticationMethod.ReadWrite.All, UserAuthenticationMethod.Read.All, UserAuthMethod-TAP.ReadWrite.All",
+    },
+    permissions: ["UserAuthenticationMethod.ReadWrite.All"],
+    justification:
+      "identity-hygiene-v1 step 5 (action.generate-temporary-access-pass) issues a Temporary Access Pass " +
+      "so a user who has lost their MFA method can sign in once and re-register. NOTE Microsoft's " +
+      "least-privileged Application cell for this POST is UserAuthMethod-TAP.Read.All — a READ permission " +
+      "named as least-privileged for an operation that creates a credential. That is Microsoft's own " +
+      "wording, quoted verbatim above, not a transcription slip. This platform does NOT request it: the " +
+      "higher-privileged cell is a comma-separated list of ALTERNATIVES, and the first of them, " +
+      "UserAuthenticationMethod.ReadWrite.All, is already required by mfa-enforcement-v1 step 1's " +
+      "enumerate-and-delete flow (#1899). Reusing it adds no new permission to the request, and it avoids " +
+      "putting a name ending in .Read.All on a write, which would trip the #1975 guard for a reason that " +
+      "does not apply here — Microsoft lists these as alternatives (`,`), not a conjunction (`and`).",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/authentication-post-temporaryaccesspassmethods",
+  },
+  {
     method: "POST",
     pattern: "/users",
     documentedApplicationTiers: {
@@ -313,6 +379,210 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
     docUrl: "https://learn.microsoft.com/en-us/graph/api/group-delete-members",
   },
 
+  {
+    // #1901 — baseline-licensing-v1 steps 1 and 2. Must stay ABOVE any generic
+    // /groups/* rule; it is more specific than the PATCH /groups/* rule below.
+    method: "POST",
+    pattern: "/groups/*/assignLicense",
+    documentedApplicationTiers: {
+      leastPrivileged: "LicenseAssignment.ReadWrite.All",
+      higherPrivileged: "Directory.ReadWrite.All, Group.ReadWrite.All",
+    },
+    permissions: ["LicenseAssignment.ReadWrite.All"],
+    justification:
+      "baseline-licensing-v1 step 1 (action.group-based-license-assign) puts a licence on a group so every " +
+      "member inherits it, and step 2 (action.group-based-license-remove) takes it off. Unlike the " +
+      "per-user POST /users/*/assignLicense rule above — which reuses User.ReadWrite.All because that is " +
+      "already held for the user create/update steps — the group form's only higher-privileged " +
+      "alternatives are Directory.ReadWrite.All and Group.ReadWrite.All, both tenant-wide write scopes " +
+      "this platform deliberately never requests. LicenseAssignment.ReadWrite.All is therefore both " +
+      "Microsoft's least-privileged option and the only acceptable one: it permits licence assignment " +
+      "and nothing else.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/group-assignlicense",
+  },
+  {
+    // #1901 — governance-groups-v1. Not in the 13 endpoints #1901's body listed:
+    // that list was captured 2026-08-30 and governance-groups-v1 has been wired
+    // since. Found by re-running the same derivation over the live table.
+    method: "POST",
+    pattern: "/groups/*/owners/$ref",
+    documentedApplicationTiers: {
+      leastPrivileged: "Group.ReadWrite.All",
+      higherPrivileged: "Directory.ReadWrite.All",
+    },
+    permissions: ["Group.ReadWrite.All"],
+    justification:
+      "governance-groups-v1 (action.add-group-owner) assigns an owner to an ownerless group. Microsoft " +
+      "documents exactly two application permissions for this operation and BOTH are tenant-wide write " +
+      "scopes: Group.ReadWrite.All at the least-privileged tier and Directory.ReadWrite.All above it. " +
+      "There is no narrow owners-only permission — GroupMember.ReadWrite.All covers members, not owners, " +
+      "and Group.Create covers creation only.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/group-post-owners",
+    grantRecommended: false,
+    notRequestedReason:
+      "Group.ReadWrite.All is the least privileged permission Microsoft offers for adding a group owner, " +
+      "but it is tenant-wide: the same grant lets the app rename, re-scope or DELETE any group in the " +
+      "customer's directory, including role-assignable ones. This platform's whole group posture is built " +
+      "on avoiding that — quickstart-v1 uses Group.Create (create only) and GroupMember.ReadWrite.All " +
+      "(membership only) precisely so it never holds a general group write. Taking Group.ReadWrite.All to " +
+      "ship one owner-assignment step would undo that for every customer. Shane's call: request it and " +
+      "gain governance-groups-v1's owner steps, or drop them from the pack.",
+  },
+  {
+    // #1901 — governance-groups-v1, two templates on the same endpoint.
+    method: "PATCH",
+    pattern: "/groups/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "Group-NestingSupport.ReadWrite.All",
+      higherPrivileged: "Directory.ReadWrite.All, Group-PreferredDataLocation.ReadWrite.All, Group.ManageProtection.All, Group.ReadWrite.All",
+    },
+    permissions: ["Group.ReadWrite.All"],
+    justification:
+      "governance-groups-v1 (action.set-group-visibility-private and action.set-team-visibility-private) " +
+      "both PATCH /groups/{id} with body {\"visibility\": \"Private\"}, confirmed against the live " +
+      "baseline_action_templates rows. Microsoft's least-privileged Application cell here is " +
+      "Group-NestingSupport.ReadWrite.All, but it CANNOT be used for these steps: the same page's " +
+      "\"Permissions for specific scenarios\" section restricts it to the disableNesting property " +
+      "specifically — \"Group-NestingSupport.ReadWrite.All is the least privileged permission to update " +
+      "the disableNesting property\". Updating **visibility** falls back to the higher-privileged cell, " +
+      "whose only app-usable entries are Directory.ReadWrite.All and Group.ReadWrite.All " +
+      "(Group.ManageProtection.All is delegated-only — \"App-only scenarios aren't supported\" — and " +
+      "Group-PreferredDataLocation.ReadWrite.All covers preferredDataLocation only).",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/group-update",
+    grantRecommended: false,
+    notRequestedReason:
+      "Same tenant-wide group-write objection as the owners rule above, and for the same two steps' worth " +
+      "of product. Group.ReadWrite.All would let the app rewrite or delete any group in the directory. " +
+      "Not requested; governance-groups-v1's visibility steps will report as refused until Shane decides " +
+      "the pack is worth that scope.",
+  },
+  {
+    // #1901 — governance-groups-v1.
+    method: "POST",
+    pattern: "/groupLifecyclePolicies",
+    documentedApplicationTiers: {
+      leastPrivileged: "Directory.ReadWrite.All",
+      higherPrivileged: "Not available.",
+    },
+    permissions: ["Directory.ReadWrite.All"],
+    justification:
+      "governance-groups-v1 (action.configure-group-expiration-policy) creates the tenant's group " +
+      "expiration policy so stale groups are aged out. Microsoft documents ONE application permission for " +
+      "this operation — Directory.ReadWrite.All — and lists no alternative at any tier " +
+      "(\"Higher privileged permissions: Not available.\"). There is no narrower lifecycle-specific " +
+      "permission to fall back to.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/grouplifecyclepolicy-post-grouplifecyclepolicies",
+    grantRecommended: false,
+    notRequestedReason:
+      "Directory.ReadWrite.All is the broadest write permission in Microsoft Graph — it confers write " +
+      "access to essentially the entire directory: users, groups, devices, service principals, " +
+      "administrative units. This platform has never requested it, and every existing rule that could " +
+      "have taken it (group create, member add, app-consent revoke) deliberately took a narrower " +
+      "alternative instead. Microsoft offers no alternative here, so the honest outcome is that this ONE " +
+      "step is unshippable rather than that the platform asks every customer for full directory write. " +
+      "Shane's call, and the decision is about one step in one pack, not the pack as a whole.",
+  },
+  {
+    // #1901 — identity-hygiene-v1 step 4.
+    method: "POST",
+    pattern: "/directory/deletedItems/*/restore",
+    documentedApplicationTiers: {
+      leastPrivileged: "User.DeleteRestore.All (the 'user' resource row)",
+      higherPrivileged: "Not listed — this page uses a per-resource-type table (\"The following table shows the least privileged permission or permissions required to call this API on each supported resource type\") with a single Application column and no higher-privileged column.",
+    },
+    permissions: ["User.DeleteRestore.All"],
+    justification:
+      "identity-hygiene-v1 step 4 (action.restore-deleted-user) restores a user deleted in error, within " +
+      "Microsoft's 30-day soft-delete window. This page permissions PER RESOURCE TYPE rather than per " +
+      "tier; the row that applies is [user], whose Application permission is User.DeleteRestore.All — a " +
+      "narrow, restore-specific scope, NOT User.ReadWrite.All. NOTE a real limit a permission grant alone " +
+      "does not clear, quoted from the same page: \"In app-only scenarios and in addition to being " +
+      "granted the User.ReadWrite.All application permission, the app must be assigned a higher " +
+      "privileged administrator role\" in order to restore users who themselves hold privileged " +
+      "administrator roles. Ordinary users restore fine with this permission; a deleted Global Admin will " +
+      "not, and that is a directory-role assignment, not a consent — the same class of gap already " +
+      "documented on PASSWORD_PROFILE_JUSTIFICATION below. The sibling template " +
+      "action.restore-deleted-group hits this same endpoint but is not wired into any Config Pack, and " +
+      "the [group] row needs Group.ReadWrite.All, which this platform does not request — see #1901's " +
+      "catalogue-wide finding.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/directory-deleteditems-restore",
+  },
+
+  // ── Privileged Identity Management (PIM) writes ────────────────────────────
+  {
+    // #1901 — privileged-access-v1 steps 0 and 4 (assign + remove eligibility;
+    // adminAssign/adminRemove are both actions on this one POST endpoint).
+    method: "POST",
+    pattern: "/roleManagement/directory/roleEligibilityScheduleRequests",
+    documentedApplicationTiers: {
+      leastPrivileged: "RoleEligibilitySchedule.ReadWrite.Directory",
+      higherPrivileged: "RoleManagement.ReadWrite.Directory",
+    },
+    permissions: ["RoleManagement.ReadWrite.Directory"],
+    justification:
+      "privileged-access-v1 step 0 (action.pim-assign-role-eligibility) makes a principal ELIGIBLE for a " +
+      "directory role, and step 4 (action.pim-remove-role-eligibility) revokes that eligibility — both " +
+      "are actions on this single POST. Microsoft's least-privileged application permission is " +
+      "RoleEligibilitySchedule.ReadWrite.Directory, but RoleManagement.ReadWrite.Directory is the listed " +
+      "higher-privileged alternative and is ALREADY required by the POST " +
+      "/roleManagement/directory/roleAssignments rule above (quickstart-v1 step 2 and the ps-execution " +
+      "Global Reader provisioning). Requesting the narrower one as well would enlarge the consent screen " +
+      "without reducing real privilege — the same reasoning the POST /users/*/assignLicense rule records.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/rbacapplication-post-roleeligibilityschedulerequests",
+  },
+  {
+    // #1901 — privileged-access-v1 step 1.
+    method: "POST",
+    pattern: "/roleManagement/directory/roleAssignmentScheduleRequests",
+    documentedApplicationTiers: {
+      leastPrivileged: "RoleAssignmentSchedule.ReadWrite.Directory",
+      higherPrivileged: "RoleManagement.ReadWrite.Directory, RoleAssignmentSchedule.Remove.Directory, RoleEligibilitySchedule.Remove.Directory",
+    },
+    permissions: ["RoleManagement.ReadWrite.Directory"],
+    justification:
+      "privileged-access-v1 step 1 (action.pim-activate-role) activates an eligible role assignment into " +
+      "an active one. Same choice, and same reason, as the eligibility rule above: " +
+      "RoleAssignmentSchedule.ReadWrite.Directory is Microsoft's least-privileged cell, but the " +
+      "higher-privileged cell is a comma-separated list of ALTERNATIVES whose first entry, " +
+      "RoleManagement.ReadWrite.Directory, this platform already holds for quickstart-v1 step 2. Reusing " +
+      "it adds nothing to the request. NOTE a real runtime constraint from the same page that consent " +
+      "does not satisfy: self-service activation requires the caller to have been MFA-challenged in the " +
+      "session, which an app-only daemon credential has no way to do — so this step is usable for " +
+      "adminAssign-style activation on behalf of a principal, not for selfActivate.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/rbacapplication-post-roleassignmentschedulerequests",
+  },
+  {
+    // #1901 — privileged-access-v1 step 2. THE ONLY appOnlyUnsupported rule in
+    // this table; read the field's doc comment before touching it.
+    method: "PATCH",
+    pattern: "/roleManagement/directory/roleAssignmentApprovals/*/steps/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "Not supported.",
+      higherPrivileged: "Not supported.",
+    },
+    permissions: [],
+    appOnlyUnsupported: true,
+    justification:
+      "privileged-access-v1 step 2 (action.pim-approve-elevation) approves or denies a pending PIM " +
+      "elevation request. NO APPLICATION PERMISSION EXISTS FOR THIS OPERATION. Microsoft's page carries " +
+      "three separate permission tables — entitlement management, PIM for Microsoft Entra roles, and PIM " +
+      "for Groups — and the Application row reads \"Not supported.\" in ALL THREE. The table that applies " +
+      "to this endpoint is \"For PIM for Microsoft Entra roles\", whose only documented permission is the " +
+      "DELEGATED RoleAssignmentSchedule.ReadWrite.Directory. The operation is real and the endpoint is " +
+      "correct; it simply cannot be called by an app-only daemon credential, which is the only kind this " +
+      "platform's write app has. That is a design decision on Microsoft's side and an entirely reasonable " +
+      "one — approving your own elevation request is exactly the thing a human-in-the-loop control is for. " +
+      "The endpoint is also beta-only: the page has no graph-rest-1.0 moniker.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/approvalstep-update?view=graph-rest-beta",
+    grantRecommended: false,
+    notRequestedReason:
+      "Nothing to request — Microsoft documents no application permission for this operation at any " +
+      "privilege tier. This is not a scope this platform declined to ask for; it is one that does not " +
+      "exist. action.pim-approve-elevation therefore cannot ship on the app-only Graph executor no matter " +
+      "what a customer consents to, and privileged-access-v1 can never be fully green while it contains " +
+      "this step. Filed as its own issue under #2489.",
+  },
+
   // ── Tenant policy writes ───────────────────────────────────────────────────
   {
     method: "PATCH",
@@ -389,6 +659,53 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
       "inline note: \"This method has a known permissions issue and may require consent to multiple " +
       "permissions.\" Dropping Policy.Read.All would 403 this remediation at runtime.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/conditionalaccesspolicy-update",
+  },
+  {
+    // #1901 — conditional-access-baseline-v1 step 1.
+    method: "POST",
+    pattern: "/identity/conditionalAccess/namedLocations",
+    documentedApplicationTiers: {
+      leastPrivileged: "Policy.Read.All and Policy.ReadWrite.ConditionalAccess",
+      higherPrivileged: "Not available.",
+    },
+    permissions: ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"],
+    justification:
+      "conditional-access-baseline-v1 step 1 (action.create-named-location) creates the trusted-IP or " +
+      "country named location that the baseline Conditional Access policies scope against. Same " +
+      "documented CONJUNCTION as the two Conditional Access rules above (Git #1975): the Application cell " +
+      "reads \"Policy.Read.All and Policy.ReadWrite.ConditionalAccess\" — one tier requiring BOTH, joined " +
+      "by \"and\", not two alternatives separated by a comma. Here it is unambiguous, because this page " +
+      "lists \"Not available.\" as the higher-privileged cell: the conjunction IS the only tier, so there " +
+      "is nothing narrower to reduce to and no broader tier that was picked by mistake. Both permissions " +
+      "are already required by quickstart-v1 steps 5 and 6, so this rule adds nothing to the request.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/conditionalaccessroot-post-namedlocations",
+  },
+  {
+    // #1901 — conditional-access-baseline-v1 step 3. See the justification: the
+    // stored METHOD is wrong, the permission is not.
+    method: "PUT",
+    pattern: "/identity/conditionalAccess/policies/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "Policy.Read.All and Policy.ReadWrite.ConditionalAccess",
+      higherPrivileged: "Not available.",
+    },
+    permissions: ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"],
+    justification:
+      "conditional-access-baseline-v1 step 3 (action.delete-ca-policy) removes a Conditional Access " +
+      "policy. THE STORED METHOD IS WRONG AND THIS RULE DOES NOT ENDORSE IT: the live " +
+      "baseline_action_templates row is `PUT /identity/conditionalAccess/policies/{{policyId}}` with an " +
+      "empty body `{}`, but Microsoft Graph exposes no PUT on this resource at all — deletion is DELETE " +
+      "(conditionalaccesspolicy-delete) and update is PATCH (conditionalaccesspolicy-update). The stored " +
+      "PUT will fail at runtime regardless of consent; it is filed as its own issue under #2489, together " +
+      "with the other PUT-where-DELETE-was-meant templates in the catalogue. The rule is still correct " +
+      "and still worth holding, because the permission is IDENTICAL on all three verbs — DELETE, PATCH " +
+      "and the intended operation whichever it turns out to be — so the derived permission set is right " +
+      "no matter which way the method bug is fixed, and the pack stops reporting an unmapped step in the " +
+      "meantime. The tiers quoted above are from the DELETE page, the operation the template's name and " +
+      "empty body indicate it means; the PATCH page carries the same conjunction with " +
+      "\"Application.Read.All and Policy.ReadWrite.ConditionalAccess\" as its higher tier. Both " +
+      "permissions are already held.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/conditionalaccesspolicy-delete",
   },
   {
     method: "PATCH",
@@ -492,6 +809,106 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
       "should accept, so it is documented here and deliberately left out of the requested set. Shane's " +
       "call: request it and gain the product, or drop remediate-device-compliance-gap from the catalogue.",
   },
+  {
+    // #1901 — device-compliance-v1 step 1.
+    method: "POST",
+    pattern: "/deviceManagement/deviceCompliancePolicies/*/assign",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementConfiguration.ReadWrite.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementConfiguration.ReadWrite.All"],
+    justification:
+      "device-compliance-v1 step 1 (action.update-compliance-policy-assignment) targets an Intune device " +
+      "compliance policy at a group. This is a normal Intune configuration scope — note it is NOT the " +
+      "DeviceManagementManagedDevices.PrivilegedOperations.All that the syncDevice rule above is refused " +
+      "over: this permission writes POLICY, it confers no per-device remote action and cannot wipe, " +
+      "retire or lock anything. Microsoft's Intune pages still use the older single-column table, so " +
+      "there is one Application cell rather than two tiers.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-deviceconfig-devicecompliancepolicy-assign",
+  },
+  {
+    // #1901 — device-compliance-v1 step 2. Same permission as the compliance
+    // policy assign above; Intune scopes both under Configuration.
+    method: "POST",
+    pattern: "/deviceManagement/deviceConfigurations/*/assign",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementConfiguration.ReadWrite.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementConfiguration.ReadWrite.All"],
+    justification:
+      "device-compliance-v1 step 2 (action.update-config-profile-assignment) targets an Intune device " +
+      "configuration profile at a group. Microsoft scopes device configuration profiles and device " +
+      "compliance policies under the same DeviceManagementConfiguration.ReadWrite.All permission, so this " +
+      "rule adds no permission beyond the one step 1 already needs.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-deviceconfig-deviceconfiguration-assign",
+  },
+  {
+    // #1901 — device-compliance-v1 step 3. See the justification: the stored
+    // ENDPOINT targets an abstract base type, the permission is still right.
+    method: "POST",
+    pattern: "/deviceAppManagement/managedAppPolicies/*/assign",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementApps.ReadWrite.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementApps.ReadWrite.All"],
+    justification:
+      "device-compliance-v1 step 3 (action.assign-app-protection-policy) targets an Intune app protection " +
+      "(MAM) policy at a group. THE STORED ENDPOINT IS WRONG AND THIS RULE DOES NOT ENDORSE IT: " +
+      "`managedAppPolicy` is Microsoft's ABSTRACT BASE TYPE for MAM policies and carries no `assign` " +
+      "action; the real v1.0 path for the assignment this step performs is " +
+      "`POST /deviceAppManagement/targetedManagedAppConfigurations/{id}/assign`. The stored call will not " +
+      "resolve regardless of consent, and it is filed as its own issue under #2489. The rule is still " +
+      "correct and still worth holding: Microsoft scopes the whole deviceAppManagement MAM surface under " +
+      "the single DeviceManagementApps.ReadWrite.All application permission, so the derived permission " +
+      "set is right either way, and the pack stops reporting an unmapped step in the meantime. Tiers are " +
+      "quoted from the real targetedManagedAppConfiguration assign page, since the stored path has no " +
+      "page of its own to quote.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-mam-targetedmanagedappconfiguration-assign",
+  },
+  {
+    // #1901 — device-compliance-v1 step 4. Three path segments; the syncDevice
+    // rule above is four, so the two cannot shadow each other.
+    method: "PATCH",
+    pattern: "/deviceManagement/managedDevices/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementManagedDevices.ReadWrite.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementManagedDevices.ReadWrite.All"],
+    justification:
+      "device-compliance-v1 step 4 (action.update-device-category) sets a managed device's category. Read " +
+      "this alongside the syncDevice rule above, because the two look similar and are not: that one is " +
+      "refused because syncDevice's ONLY documented permission is " +
+      "DeviceManagementManagedDevices.PrivilegedOperations.All, the Intune 'user-impacting remote " +
+      "actions' scope that also confers remote WIPE, RETIRE and lock. This one is the ordinary " +
+      "DeviceManagementManagedDevices.ReadWrite.All — it updates managedDevice PROPERTIES and grants no " +
+      "remote action at all. It is genuinely requestable and is requested.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-devices-manageddevice-update",
+  },
+
+  // ── Microsoft 365 Defender / security incident writes ──────────────────────
+  {
+    // #1901 — security-incident-response-v1 step 5.
+    method: "PATCH",
+    pattern: "/security/incidents/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "SecurityIncident.ReadWrite.All",
+      higherPrivileged: "Not available.",
+    },
+    permissions: ["SecurityIncident.ReadWrite.All"],
+    justification:
+      "security-incident-response-v1 step 5 (action.manage-incident) closes out the incident in Microsoft " +
+      "365 Defender — setting status, classification, determination and the resolving comment — after the " +
+      "pack's earlier containment steps have run. Microsoft lists no higher-privileged alternative, and " +
+      "SecurityIncident.ReadWrite.All is scoped to incidents alone: it does not carry the broader " +
+      "SecurityAlert or SecurityActions surfaces. Note this endpoint is unavailable in the China " +
+      "(21Vianet) national cloud per the same page's availability table; the Global, GCC L4 and GCC High " +
+      "L5 clouds this platform targets all support it.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/security-incident-update",
+  },
 ];
 
 /**
@@ -569,6 +986,15 @@ export interface WritePermissionLookup {
   rule: WritePermissionRule | null;
   /** True when the endpoint is not a Graph REST endpoint at all (EXO / Defender). */
   nonGraph: boolean;
+  /**
+   * True when a rule matched and that rule is `appOnlyUnsupported` — Microsoft
+   * documents NO application permission for the operation, so no consent can
+   * make it run on this platform's app-only credential (Git #1901).
+   *
+   * Callers MUST branch on this before treating an empty `required` as "needs
+   * nothing". `required: []` with this flag set means "impossible", not "ready".
+   */
+  appOnlyUnsupported: boolean;
 }
 
 /**
@@ -585,7 +1011,7 @@ export function requiredPermissionsForWrite(
   opts: { templateId?: string; body?: unknown } = {},
 ): WritePermissionLookup {
   if (isNonGraphEndpoint(endpoint)) {
-    return { required: [], notRequested: [], rule: null, nonGraph: true };
+    return { required: [], notRequested: [], rule: null, nonGraph: true, appOnlyUnsupported: false };
   }
 
   const normalised = normaliseEndpoint(endpoint);
@@ -606,7 +1032,13 @@ export function requiredPermissionsForWrite(
     required.add(PASSWORD_PROFILE_PERMISSION);
   }
 
-  return { required: [...required], notRequested: [...notRequested], rule, nonGraph: false };
+  return {
+    required: [...required],
+    notRequested: [...notRequested],
+    rule,
+    nonGraph: false,
+    appOnlyUnsupported: rule?.appOnlyUnsupported === true,
+  };
 }
 
 /**
@@ -630,7 +1062,13 @@ export const DERIVED_WRITE_APP_PERMISSIONS: readonly string[] = (() => {
   return [...set].sort();
 })();
 
-/** Permissions documented as required by a real step but deliberately not requested. */
+/**
+ * Permissions documented as required by a real step but deliberately not requested.
+ *
+ * `appOnlyUnsupported` rules contribute nothing here by construction — they carry
+ * no permissions, because Microsoft documents none. They are not a permission this
+ * platform declined to ask for; see APP_ONLY_UNSUPPORTED_OPERATIONS below.
+ */
 export const DOCUMENTED_BUT_NOT_REQUESTED: readonly { permission: string; reason: string }[] =
   GRAPH_WRITE_PERMISSION_RULES.filter((r) => r.grantRecommended === false).flatMap((r) =>
     r.permissions.map((permission) => ({
@@ -638,3 +1076,23 @@ export const DOCUMENTED_BUT_NOT_REQUESTED: readonly { permission: string; reason
       reason: r.notRequestedReason ?? "not requested",
     })),
   );
+
+/**
+ * Operations Microsoft documents as having NO application permission at all, so
+ * they can never run on this platform's app-only write credential (Git #1901).
+ *
+ * Deliberately separate from DOCUMENTED_BUT_NOT_REQUESTED: that list is "we could
+ * ask for this and chose not to", which a customer could overrule. This one is
+ * "there is nothing to ask for", which nobody can overrule.
+ */
+export const APP_ONLY_UNSUPPORTED_OPERATIONS: readonly {
+  method: string;
+  pattern: string;
+  reason: string;
+  docUrl: string;
+}[] = GRAPH_WRITE_PERMISSION_RULES.filter((r) => r.appOnlyUnsupported === true).map((r) => ({
+  method: r.method,
+  pattern: r.pattern,
+  reason: r.notRequestedReason ?? "no application permission exists for this operation",
+  docUrl: r.docUrl,
+}));
