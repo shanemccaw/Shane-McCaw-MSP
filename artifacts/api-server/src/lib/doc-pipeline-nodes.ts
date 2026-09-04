@@ -577,8 +577,11 @@ async function handleDocRegisterVersion(ctx: NodeExecutionContext): Promise<Reco
 // Config:
 //   publishedByUserId: number — optional
 //
-// Input: { documentId, versionId }
-// Output: { documentId, publishedAt }
+// Input: { documentId, versionId, autoPublish? }
+//   autoPublish === false skips the actual publish (no status/timestamp writes) —
+//   the pipeline still runs to completion, the document just stays in its prior
+//   (non-published) status/pipelineStatus. Absent/true publishes as before.
+// Output: { documentId, publishedAt } | { documentId, published: false, skipped: true }
 
 async function handleDocPublish(ctx: NodeExecutionContext): Promise<Record<string, unknown>> {
   const documentId = String(ctx.input["documentId"] ?? "");
@@ -586,6 +589,26 @@ async function handleDocPublish(ctx: NodeExecutionContext): Promise<Record<strin
   const publishedByUserId = Number(ctx.config["publishedByUserId"] ?? ctx.input["publishedByUserId"] ?? 0) || null;
 
   if (!documentId) throw new Error("doc_publish: documentId is required");
+
+  if (ctx.input["autoPublish"] === false) {
+    log.info(
+      { runId: ctx.runId, nodeId: ctx.nodeId, documentId },
+      "doc_publish: autoPublish=false — skipping publish step",
+    );
+    // "version_registered" is the real terminal state here: the version exists
+    // and is registered, it just hasn't been published — no new enum value needed.
+    if (versionId) {
+      await db
+        .update(mspDocumentVersionsTable)
+        .set({ pipelineStatus: "version_registered" })
+        .where(eq(mspDocumentVersionsTable.versionId, versionId));
+    }
+    await db
+      .update(mspDocumentsTable)
+      .set({ pipelineStatus: "version_registered", updatedAt: new Date() })
+      .where(eq(mspDocumentsTable.documentId, documentId));
+    return { documentId, versionId, published: false, skipped: true };
+  }
 
   const [doc] = await db
     .select({ status: mspDocumentsTable.status, publishedAt: mspDocumentsTable.publishedAt })

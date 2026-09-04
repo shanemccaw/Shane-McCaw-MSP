@@ -282,7 +282,11 @@ router.post(
         return;
       }
 
-      const { htmlContent, changeNote } = req.body as { htmlContent?: string; changeNote?: string };
+      const { htmlContent, changeNote, autoPublish = false } = req.body as {
+        htmlContent?: string;
+        changeNote?: string;
+        autoPublish?: boolean;
+      };
       if (!htmlContent) { res.status(400).json({ error: "htmlContent is required" }); return; }
 
       const authorUserId = req.user!.id ?? 0;
@@ -299,7 +303,7 @@ router.post(
           htmlContent,
           authorUserId,
           changeNote: changeNote ?? "",
-          autoPublish: false,
+          autoPublish,
         },
       });
 
