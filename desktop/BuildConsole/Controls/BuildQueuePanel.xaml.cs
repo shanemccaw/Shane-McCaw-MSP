@@ -91,6 +91,11 @@ namespace BuildConsole.Controls
         /// <summary>Opens or focuses the Claude chat that created this Build Queue item.</summary>
         public event EventHandler<QueueItem>? QueueItemChatRequested;
         public event EventHandler<int>? EpicSubIssueClicked;
+        /// <summary>Git #2801 — the Epic-name chip (<see cref="BuildEpicChipRow"/>) was clicked;
+        /// carries the real resolved <see cref="Services.BoardEpic"/> so MainWindow can activate
+        /// that Epic's already-open chat tab, or reopen the last remembered one, per its own
+        /// established resolution/reuse logic — this panel has no chat-tab state of its own.</summary>
+        public event EventHandler<Services.BoardEpic>? EpicChipClicked;
         /// <summary>Git #1994 — "Open Git #N" card context-menu item: reuses MainWindow's
         /// existing OpenGitDetailByNumberAsync (focus-or-fetch, no second issue-opening path).
         /// Tuple carries the real GitHub number plus whether to open it side-by-side.</summary>
@@ -3741,7 +3746,9 @@ namespace BuildConsole.Controls
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(5, 1.5, 5, 1.5),
-                ToolTip = epic.GithubNumber.HasValue ? $"Epic #{epic.GithubNumber}: {epic.Title.Trim()}" : epic.Title.Trim()
+                Cursor = Cursors.Hand,
+                ToolTip = (epic.GithubNumber.HasValue ? $"Epic #{epic.GithubNumber}: {epic.Title.Trim()}" : epic.Title.Trim())
+                    + "\n\nClick to activate this Epic's open chat tab, or reopen the last one."
             };
             chip.Child = new TextBlock
             {
@@ -3749,6 +3756,13 @@ namespace BuildConsole.Controls
                 FontSize = 9.5,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = new SolidColorBrush(Color.FromRgb(0xBA, 0xB4, 0xCD))
+            };
+            // Git #2801 — clicking the chip activates/reopens this Epic's chat tab; MainWindow
+            // owns the actual open-tabs/persisted-tabs resolution (see EpicChipClicked doc comment).
+            chip.MouseLeftButtonDown += (s, e) =>
+            {
+                e.Handled = true;
+                EpicChipClicked?.Invoke(this, epic);
             };
             row.Children.Add(chip);
             return row;

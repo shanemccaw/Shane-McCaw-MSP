@@ -788,6 +788,9 @@ namespace BuildConsole
             // its own item.GithubNumber to its real top-level Epic on demand (always reads
             // LeftSidebar's current live board state, not a stale synced snapshot).
             BuildQueuePanel.ResolveEpicForIssue = LeftSidebar.GetEpicForIssueNumber;
+            // Git #2801 — clicking that same chip: activate its Epic's already-open chat tab, or
+            // reopen the last remembered one for it. See ActivateOrReopenEpicChat's own doc comment.
+            BuildQueuePanel.EpicChipClicked += (s, epic) => ActivateOrReopenEpicChat(epic);
             // Git #2691 — point 3: live queue-state changes (queued → running → verifying) recolor
             // on-screen #NNN mentions even with no chat text mutation, by reusing this same real
             // ~15s poll tick that already updates BuildQueuePanel.CurrentQueueItems — no new
@@ -3893,6 +3896,58 @@ namespace BuildConsole
             {
                 Home_ResumeChatRequested(sender, p);
             }
+        }
+
+        /// <summary>
+        /// Git #2801 — Build Queue card's Epic-name chip (<see cref="BuildEpicChipRow"/>/
+        /// <c>EpicChipClicked</c>) was clicked. Two real cases, same order the issue lays out:
+        /// 1. A tab for this Epic is already open (in ANY of the four editor panes) — reuses
+        ///    <see cref="OpenChatTab"/>'s own established already-open dedupe (activates it,
+        ///    same real mechanism every other chat-open path in this file already relies on —
+        ///    UniversalSearch's chat results, <see cref="Home_ResumeChatRequested"/>, etc).
+        /// 2. No open tab matches — falls back to the real remembered set,
+        ///    <see cref="BuildConsole.Services.BuildConsoleSettings.OpenChatTabs"/> (freshly
+        ///    reloaded, since it's rewritten on every tab open/close/drag — not the launch-time
+        ///    <c>_chatTabsAtLaunch</c> snapshot), filtered to this Epic's real <c>EpicId</c>,
+        ///    most-recent by <c>SavedAt</c>, reopened through the exact same
+        ///    <see cref="Home_ResumeChatRequested"/> path #2707's Reopen All already uses.
+        /// Genuinely nothing either way (no open tab, nothing remembered) fails honestly with a
+        /// toast — never a fake/wrong tab activation.
+        /// </summary>
+        private void ActivateOrReopenEpicChat(BuildConsole.Services.BoardEpic epic)
+        {
+            // 1. Currently-open real tabs, across all four panes — resolve each one's own real
+            // epic the same established way GetEpicForChat/GetEpicForIssueNumber already do.
+            foreach (var kvp in _chatTabs)
+            {
+                if (kvp.Key.Tag is not BuildConsole.Services.BoardChat openChat) continue;
+                var openEpic = LeftSidebar?.GetEpicForChat(openChat);
+                if (openEpic == null && openChat.IssueGithubNumber.HasValue)
+                {
+                    openEpic = LeftSidebar?.GetEpicForIssueNumber(openChat.IssueGithubNumber.Value);
+                }
+                if (openEpic != null && openEpic.Id == epic.Id)
+                {
+                    OpenChatTab(openChat, openChat.IssueGithubNumber);
+                    return;
+                }
+            }
+
+            // 2. Nothing currently open for this Epic — fall back to the real remembered set.
+            var remembered = BuildConsole.Services.BuildConsoleSettings.Load().OpenChatTabs ?? new();
+            var lastForEpic = remembered
+                .Where(p => p.EpicId == epic.Id)
+                .OrderByDescending(p => p.SavedAt)
+                .FirstOrDefault();
+            if (lastForEpic != null)
+            {
+                Home_ResumeChatRequested(this, lastForEpic);
+                return;
+            }
+
+            // 3. Genuinely nothing either way — fail honestly, never a fake/wrong activation.
+            ToastEngine.Warning("Epic Chat",
+                $"No open or remembered chat tab found for Epic{(epic.GithubNumber.HasValue ? $" #{epic.GithubNumber}" : "")}: {epic.Title}");
         }
 
         /// <summary>
