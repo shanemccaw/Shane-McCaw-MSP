@@ -199,6 +199,7 @@ namespace BuildConsole.Controls
             // except on the rare tick the TTL actually expires.
             RefreshBurndown();
             RefreshOpenCloseRateChart();
+            RefreshEpicBurndownCard();
 
             if (issues == null) return;
 
@@ -1168,7 +1169,7 @@ namespace BuildConsole.Controls
         {
             // A resize (column reflow, window resize) needs a full redraw — the polyline's
             // points are computed against the canvas's actual pixel size.
-            if (_lastBurndownSeries is { HasEnoughData: true } series) DrawBurndownCanvas(series);
+            if (_lastBurndownSeries is { HasEnoughData: true } series) DrawBurndownCanvas(BurndownCanvas, series);
         }
 
         /// <summary>
@@ -1190,7 +1191,7 @@ namespace BuildConsole.Controls
             catch (Exception ex)
             {
                 _lastBurndownSeries = null;
-                ShowBurndownMessage($"Burndown chart failed to load: {ex.Message}");
+                ShowBurndownMessage(BurndownCanvas, BurndownSummaryText, BurndownEmptyText, $"Burndown chart failed to load: {ex.Message}");
             }
             finally
             {
@@ -1198,40 +1199,48 @@ namespace BuildConsole.Controls
             }
         }
 
-        private void RenderBurndown(IssueTimeSeries series)
+        private void RenderBurndown(IssueTimeSeries series) =>
+            RenderBurndown(BurndownScopeText, BurndownCanvas, BurndownSummaryText, BurndownEmptyText, series);
+
+        /// <summary>
+        /// Git #2776 — generalized so the milestone-wide SCOPE &amp; COMPLETION card and the new
+        /// per-Epic EPIC BURNDOWN card share one real rendering path instead of duplicating it;
+        /// the caller passes its own set of named XAML elements to render into.
+        /// </summary>
+        private void RenderBurndown(TextBlock scopeText, Canvas canvas, TextBlock summaryText, TextBlock emptyText, IssueTimeSeries series)
         {
-            BurndownScopeText.Text = series.ScopeLabel;
+            scopeText.Text = series.ScopeLabel;
 
             // Fail-closed (#2711's HasEnoughData contract): an honest "not enough history"
             // state, never a fabricated/interpolated curve.
             if (!series.HasEnoughData)
             {
-                ShowBurndownMessage(series.Reason ?? "Not enough real history yet to chart a trend.");
+                ShowBurndownMessage(canvas, summaryText, emptyText, series.Reason ?? "Not enough real history yet to chart a trend.");
                 return;
             }
 
-            BurndownEmptyText.Visibility = Visibility.Collapsed;
-            BurndownCanvas.Visibility = Visibility.Visible;
-            BurndownSummaryText.Visibility = Visibility.Visible;
+            emptyText.Visibility = Visibility.Collapsed;
+            canvas.Visibility = Visibility.Visible;
+            summaryText.Visibility = Visibility.Visible;
 
-            DrawBurndownCanvas(series);
+            DrawBurndownCanvas(canvas, series);
 
             var last = series.Points[series.Points.Count - 1];
             // Real remaining-work gap = the real scope line minus the real completed line at
             // today's real point — the visual gap the chart draws, stated as a number.
             int remaining = last.CumulativeOpened - last.ClosedCumulative;
-            BurndownSummaryText.Text =
+            summaryText.Text =
                 $"{series.CurrentClosed}/{series.TotalIssues} closed  ·  {remaining} remaining " +
                 $"(scope grew from {series.Points[0].CumulativeOpened} to {last.CumulativeOpened} since {series.FirstDate:MMM d})";
         }
 
-        private void ShowBurndownMessage(string message)
+        private void ShowBurndownMessage(Canvas canvas, TextBlock summaryText, TextBlock emptyText, string message)
         {
-            BurndownCanvas.Children.Clear();
-            BurndownCanvas.Visibility = Visibility.Collapsed;
-            BurndownSummaryText.Visibility = Visibility.Collapsed;
-            BurndownEmptyText.Text = message;
-            BurndownEmptyText.Visibility = Visibility.Visible;
+            canvas.Children.Clear();
+            canvas.Visibility = Visibility.Collapsed;
+            summaryText.Visibility = Visibility.Collapsed;
+            emptyText.Text = message;
+            emptyText.Visibility = Visibility.Visible;
         }
 
         /// <summary>
@@ -1244,12 +1253,12 @@ namespace BuildConsole.Controls
         /// between the two lines is the real remaining-work gap — it reads correctly even while
         /// real scope keeps growing, unlike a single open-count line trending toward zero.
         /// </summary>
-        private void DrawBurndownCanvas(IssueTimeSeries series)
+        private void DrawBurndownCanvas(Canvas canvas, IssueTimeSeries series)
         {
-            BurndownCanvas.Children.Clear();
+            canvas.Children.Clear();
 
-            double width = BurndownCanvas.ActualWidth;
-            double height = BurndownCanvas.ActualHeight;
+            double width = canvas.ActualWidth;
+            double height = canvas.ActualHeight;
             var points = series.Points;
             if (points.Count < 2 || width <= 1 || height <= 1) return;
 
@@ -1280,20 +1289,20 @@ namespace BuildConsole.Controls
             var gapGeo = new PathGeometry();
             gapGeo.Figures.Add(gapFigure);
             var gapFillColor = ((SolidColorBrush)scopeBrush).Color;
-            BurndownCanvas.Children.Add(new System.Windows.Shapes.Path
+            canvas.Children.Add(new System.Windows.Shapes.Path
             {
                 Data = gapGeo,
                 Fill = new SolidColorBrush(gapFillColor) { Opacity = 0.10 },
             });
 
-            BurndownCanvas.Children.Add(new System.Windows.Shapes.Polyline
+            canvas.Children.Add(new System.Windows.Shapes.Polyline
             {
                 Points = scopePoints,
                 Stroke = scopeBrush,
                 StrokeThickness = 1.75,
                 StrokeLineJoin = PenLineJoin.Round,
             });
-            BurndownCanvas.Children.Add(new System.Windows.Shapes.Polyline
+            canvas.Children.Add(new System.Windows.Shapes.Polyline
             {
                 Points = completedPoints,
                 Stroke = completedBrush,
@@ -1305,12 +1314,113 @@ namespace BuildConsole.Controls
             var lastScope = new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = scopeBrush };
             Canvas.SetLeft(lastScope, scopePoints[scopePoints.Count - 1].X - 3.5);
             Canvas.SetTop(lastScope, scopePoints[scopePoints.Count - 1].Y - 3.5);
-            BurndownCanvas.Children.Add(lastScope);
+            canvas.Children.Add(lastScope);
 
             var lastCompleted = new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = completedBrush };
             Canvas.SetLeft(lastCompleted, completedPoints[completedPoints.Count - 1].X - 3.5);
             Canvas.SetTop(lastCompleted, completedPoints[completedPoints.Count - 1].Y - 3.5);
-            BurndownCanvas.Children.Add(lastCompleted);
+            canvas.Children.Add(lastCompleted);
+        }
+
+        #endregion
+
+        #region Per-Epic Burndown Card (Git #2776)
+
+        // Same overlapping-fetch guard as the milestone-wide burndown card.
+        private bool _epicBurndownFetchInFlight;
+        private bool _epicPickerPopulated;
+        private IssueTimeSeries? _lastEpicBurndownSeries;
+        private int? _selectedEpicNumber;
+
+        private void BtnRefreshEpicBurndown_Click(object sender, RoutedEventArgs e) => RefreshEpicBurndownCard(forceRefresh: true);
+
+        private void EpicBurndownCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (_lastEpicBurndownSeries is { HasEnoughData: true } series) DrawBurndownCanvas(EpicBurndownCanvas, series);
+        }
+
+        private void EpicPicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (EpicPicker.SelectedItem is GitHubIssueTimeSeriesService.EpicOption option && option.Number != _selectedEpicNumber)
+            {
+                _selectedEpicNumber = option.Number;
+                RefreshEpicBurndownChart();
+            }
+        }
+
+        /// <summary>
+        /// Git #2776 — real per-Epic burndown card. On first call, populates <see cref="EpicPicker"/>
+        /// with every real open Epic (<see cref="GitHubIssueTimeSeriesService.GetOpenEpicsAsync"/> —
+        /// deliberately including the internal-tooling Epics #1202/#1095, since Shane wants those
+        /// selectable here to see their own real burndown) and picks a real default selection: the
+        /// Epic with the most real open work right now (a judgement call — no "last active in Focus
+        /// Mode" state is persisted anywhere to read instead). Subsequent calls (the passive rollup
+        /// tick, or the manual ⟳) just re-fetch the currently-selected Epic's chart from the
+        /// service's cache.
+        /// </summary>
+        public async void RefreshEpicBurndownCard(bool forceRefresh = false)
+        {
+            if (_epicPickerPopulated && !forceRefresh)
+            {
+                RefreshEpicBurndownChart(forceRefresh);
+                return;
+            }
+
+            try
+            {
+                var epics = await GitHubIssueTimeSeriesService.GetOpenEpicsAsync(forceRefresh);
+                if (epics.Count == 0)
+                {
+                    ShowBurndownMessage(EpicBurndownCanvas, EpicBurndownSummaryText, EpicBurndownEmptyText,
+                        "no real open Epics found (no GitHub PAT configured, GitHub unreachable, or no open Epic exists).");
+                    return;
+                }
+
+                int? previousSelection = _selectedEpicNumber;
+                EpicPicker.ItemsSource = epics;
+                _epicPickerPopulated = true;
+
+                var toSelect = previousSelection.HasValue
+                    ? epics.FirstOrDefault(e => e.Number == previousSelection.Value)
+                    : null;
+                toSelect ??= epics.OrderByDescending(e => e.OpenRealWork).First();
+
+                _selectedEpicNumber = toSelect.Number;
+                // Setting SelectedItem fires EpicPicker_SelectionChanged, which calls
+                // RefreshEpicBurndownChart() itself — but only when the number actually changes; on
+                // a forced re-population with the same selection retained, fire it explicitly here.
+                if (!ReferenceEquals(EpicPicker.SelectedItem, toSelect))
+                    EpicPicker.SelectedItem = toSelect;
+                else
+                    RefreshEpicBurndownChart(forceRefresh);
+            }
+            catch (Exception ex)
+            {
+                ShowBurndownMessage(EpicBurndownCanvas, EpicBurndownSummaryText, EpicBurndownEmptyText,
+                    $"Epic list failed to load: {ex.Message}");
+            }
+        }
+
+        private async void RefreshEpicBurndownChart(bool forceRefresh = false)
+        {
+            if (_epicBurndownFetchInFlight || _selectedEpicNumber is not int epicNumber) return;
+            _epicBurndownFetchInFlight = true;
+            try
+            {
+                var series = await GitHubIssueTimeSeriesService.GetEpicSeriesAsync(epicNumber, forceRefresh);
+                _lastEpicBurndownSeries = series;
+                RenderBurndown(EpicBurndownScopeText, EpicBurndownCanvas, EpicBurndownSummaryText, EpicBurndownEmptyText, series);
+            }
+            catch (Exception ex)
+            {
+                _lastEpicBurndownSeries = null;
+                ShowBurndownMessage(EpicBurndownCanvas, EpicBurndownSummaryText, EpicBurndownEmptyText,
+                    $"Epic burndown chart failed to load: {ex.Message}");
+            }
+            finally
+            {
+                _epicBurndownFetchInFlight = false;
+            }
         }
 
         #endregion

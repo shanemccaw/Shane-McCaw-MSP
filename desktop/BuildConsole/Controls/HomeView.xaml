@@ -510,6 +510,50 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- 📉 Real Per-Epic Burndown (Git #2776) — same #2711 daily series and the
+                             SAME reused RenderBurndown/DrawBurndownCanvas drawing code as the
+                             milestone-wide SCOPE &amp; COMPLETION card above, scoped instead to one
+                             Epic the user picks (real open Epics from GitHubIssueTimeSeriesService.
+                             GetOpenEpicsAsync — deliberately including internal-tooling Epics
+                             #1202/#1095, since a per-Epic view should show that Epic's OWN real
+                             work, same #2773 self-rollup principle). Fails closed to
+                             EpicBurndownEmptyText the same honest way when the selected Epic's
+                             real history is too thin — never a fabricated curve. -->
+                        <Border x:Name="EpicBurndownCard" Style="{StaticResource HomeCard}" Margin="0,0,0,18">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="📉" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="EPIC BURNDOWN" Style="{StaticResource HomeCardHeader}"/>
+                                    </StackPanel>
+                                    <Button x:Name="BtnRefreshEpicBurndown" Content="⟳" Style="{StaticResource SecondaryButton}"
+                                            Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold" Cursor="Hand"
+                                            HorizontalAlignment="Right" ToolTip="Re-fetch this Epic's real open-issue history now"
+                                            Click="BtnRefreshEpicBurndown_Click"/>
+                                </Grid>
+                                <ComboBox x:Name="EpicPicker" FontSize="10.5" Margin="0,0,0,8"
+                                          DisplayMemberPath="Title" SelectionChanged="EpicPicker_SelectionChanged"/>
+                                <Grid Margin="0,0,0,8">
+                                    <TextBlock x:Name="EpicBurndownScopeText" Text="" FontSize="10.5"
+                                               Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Ellipse Width="7" Height="7" Fill="{StaticResource LavenderBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="Total Scope" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <Ellipse Width="7" Height="7" Fill="{StaticResource GreenBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="Completed" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Canvas x:Name="EpicBurndownCanvas" Height="120" Background="Transparent"
+                                        SizeChanged="EpicBurndownCanvas_SizeChanged"/>
+                                <TextBlock x:Name="EpicBurndownSummaryText" Text="" FontSize="10.5"
+                                           Foreground="{StaticResource Subtext1Brush}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                           Visibility="Collapsed"/>
+                                <TextBlock x:Name="EpicBurndownEmptyText" Text="Loading real Epics…"
+                                           FontSize="11" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"
+                                           Margin="2,4,0,0" Visibility="Visible"/>
+                            </StackPanel>
+                        </Border>
+
                         <!-- What's New Collapsible Tile -->
                         <StackPanel x:Name="WhatsNewSection" Margin="0,0,0,16" Visibility="Collapsed">
                             <ToggleButton x:Name="WhatsNewTile" Style="{StaticResource QuietTile}" Click="WhatsNewTile_Click">

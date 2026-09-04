@@ -146,6 +146,16 @@ namespace BuildConsole.Services
     /// </summary>
     public static class GitHubIssueTimeSeriesService
     {
+        /// <summary>Git #2776 — one real, open Epic offered in the Home dashboard's per-Epic
+        /// burndown picker, plus its real open-real-work count (used only to pick a sensible
+        /// default selection, never faked).</summary>
+        public sealed class EpicOption
+        {
+            public int Number { get; init; }
+            public string Title { get; init; } = "";
+            public int OpenRealWork { get; init; }
+        }
+
         /// <summary>How long the "all issues" fetch is cached before a background read refetches.
         /// Historical data doesn't change per-tick, but a just-closed issue should surface within
         /// a few minutes — 5 minutes balances both (a manual refresh can force it sooner).</summary>
@@ -230,12 +240,20 @@ namespace BuildConsole.Services
         /// internal-tooling-Epic ancestor climb for issues whose parent chain reaches outside
         /// <paramref name="scopedIssues"/> itself; defaults to <paramref name="scopedIssues"/> when
         /// the caller has nothing broader on hand.
+        ///
+        /// <paramref name="selfRootEpicNumber"/> — Git #2776, the same #2773 self-rollup escape
+        /// hatch <see cref="GitBoardIssueFilters.IsUnderInternalToolingEpic"/> already defines: pass
+        /// the Epic number a per-Epic scope is itself rooted under (e.g. #1202) so THAT Epic's own
+        /// real descendants aren't excluded from its own burndown — a per-Epic view must show that
+        /// Epic's own real work, same principle #2773 established for #1202/#1095's own numbers.
+        /// Null (default) is the original cross-scope aggregation behavior (whole-milestone charts):
+        /// #1202/#1095 and everything under them stay excluded, unchanged.
         /// </summary>
         public static IssueTimeSeries BuildSeries(IReadOnlyList<GitBoardIssue> scopedIssues, string scopeLabel, DateTime nowUtc,
-            IReadOnlyList<GitBoardIssue>? allIssuesForAncestry = null)
+            IReadOnlyList<GitBoardIssue>? allIssuesForAncestry = null, int? selfRootEpicNumber = null)
         {
             var byNumber = GitBoardIssueFilters.BuildByNumberLookup(allIssuesForAncestry ?? scopedIssues);
-            var realWork = scopedIssues.Where(i => GitBoardIssueFilters.CountsAsRealWork(i, byNumber)).ToList();
+            var realWork = scopedIssues.Where(i => GitBoardIssueFilters.CountsAsRealWork(i, byNumber, selfRootEpicNumber)).ToList();
 
             // Only issues with a real creation timestamp can contribute — createdAt is always
             // present on a real GitHub issue, so a null here means the field wasn't fetched; skip
@@ -342,7 +360,13 @@ namespace BuildConsole.Services
         /// <summary>Real daily series scoped to one Epic's issue set — every transitive descendant
         /// (children, their children, …) of <paramref name="epicNumber"/> that's present in the
         /// fetch, excluding the Epic node itself (a container, not a work item). This is the
-        /// per-Epic scope #2714's ETA projection consumes.</summary>
+        /// per-Epic scope #2714's ETA projection consumes.
+        ///
+        /// Git #2776 — passes <paramref name="epicNumber"/> itself as <c>BuildSeries</c>'s
+        /// <c>selfRootEpicNumber</c> so a caller charting one internal-tooling Epic's OWN burndown
+        /// (e.g. #1202 Build Console) sees that Epic's real work, not an empty series — same
+        /// self-rollup principle #2773 established, deliberately NOT the cross-scope exclusion
+        /// <see cref="GetMilestoneSeriesAsync"/> still applies.</summary>
         public static async Task<IssueTimeSeries> GetEpicSeriesAsync(int epicNumber, bool forceRefresh = false)
         {
             var fetch = await GetAllIssuesAsync(forceRefresh);
@@ -352,7 +376,35 @@ namespace BuildConsole.Services
                 return IssueTimeSeries.NotEnough(label, $"GitHub unreachable: {fetch.Error}");
 
             var descendants = GitBoardIssueFilters.CollectDescendants(fetch.Issues, epicNumber);
-            return BuildSeries(descendants, label, DateTime.UtcNow, fetch.Issues);
+            return BuildSeries(descendants, label, DateTime.UtcNow, fetch.Issues, selfRootEpicNumber: epicNumber);
+        }
+
+        /// <summary>Git #2776 — every real OPEN Epic in the repo (Git #839 definition: top-level
+        /// issue with ≥1 sub-issue), for the Home dashboard's per-Epic burndown picker.
+        /// Deliberately does NOT exclude the internal-tooling Epics (#1202/#1095) the way
+        /// <see cref="GetOpenEpicsInMilestoneAsync"/> does — Shane explicitly wants #1202 selectable
+        /// here so its own real burndown can be viewed (see <see cref="GetEpicSeriesAsync"/>'s
+        /// self-rollup). <see cref="EpicOption.OpenRealWork"/> is each Epic's own real open
+        /// descendant-work count (self-rollup applied) so the caller can pick a sensible default
+        /// selection — the Epic with the most real open work — rather than defaulting to nothing
+        /// selected. Empty on an unreachable GitHub (fail-closed).</summary>
+        public static async Task<List<EpicOption>> GetOpenEpicsAsync(bool forceRefresh = false)
+        {
+            var fetch = await GetAllIssuesAsync(forceRefresh);
+            if (!fetch.Success) return new List<EpicOption>();
+
+            var byNumber = GitBoardIssueFilters.BuildByNumberLookup(fetch.Issues);
+            var epics = fetch.Issues.Where(i => i.IsEpic && !i.IsClosed).OrderBy(i => i.Number).ToList();
+
+            var result = new List<EpicOption>();
+            foreach (var epic in epics)
+            {
+                var descendants = GitBoardIssueFilters.CollectDescendants(fetch.Issues, epic.Number);
+                int openReal = descendants.Count(i =>
+                    !i.IsClosed && GitBoardIssueFilters.CountsAsRealWork(i, byNumber, selfRootEpicNumber: epic.Number));
+                result.Add(new EpicOption { Number = epic.Number, Title = $"#{epic.Number} {epic.Title}", OpenRealWork = openReal });
+            }
+            return result;
         }
 
         /// <summary>The open Epics (Git #839 definition: top-level issue with ≥1 sub-issue) that
