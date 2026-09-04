@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, documentsTable, projectsTable, notificationsTable } from "@workspace/db";
+import { db, documentsTable, projectsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { createNotification } from "../lib/notification-center";
 import { createAuditLog } from "../lib/audit";
 import { logger } from "../lib/logger";
 import multer from "multer";
@@ -51,12 +52,13 @@ router.post("/admin/documents", requireAdmin, uploadDoc.single("file"), async (r
   // Notify client
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, parseInt(projectId, 10)));
   if (project?.clientUserId) {
-    await db.insert(notificationsTable).values({
-      userId: project.clientUserId,
+    await createNotification({
       title: "New document uploaded",
       body: name ?? req.file.originalname,
-      type: "document",
+      notifType: "document",
+      category: "project",
       linkPath: `/portal/projects/${projectId}`,
+      recipient: { type: "customer_user", userId: project.clientUserId },
     });
   }
 

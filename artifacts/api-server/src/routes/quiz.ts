@@ -3,8 +3,9 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { db, quizLeadsTable, quizAnalyticsEventsTable, notificationsTable, usersTable, servicesTable, leadOfferRuleGroupsTable } from "@workspace/db";
+import { db, quizLeadsTable, quizAnalyticsEventsTable, servicesTable, leadOfferRuleGroupsTable } from "@workspace/db";
 import { sendWebPushToAdmins } from "../lib/web-push";
+import { createNotificationForAllAdmins } from "../lib/notification-center";
 import { and, asc, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "growth.quiz" });
@@ -602,18 +603,13 @@ Respond ONLY with valid JSON in this exact shape:
 
     void (async () => {
       try {
-        const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
-        if (admins.length > 0) {
-          await db.insert(notificationsTable).values(
-            admins.map(a => ({
-              userId: a.id,
-              title: `New quiz lead: ${name}`,
-              body: company ? `${company} — ${tier}` : tier,
-              type: "quiz_lead_created" as const,
-              linkPath: `/crm/quiz-leads/${leadId}`,
-            }))
-          );
-        }
+        await createNotificationForAllAdmins({
+          title: `New quiz lead: ${name}`,
+          body: company ? `${company} — ${tier}` : tier,
+          notifType: "quiz_lead_created",
+          category: "lead",
+          linkPath: `/crm/quiz-leads/${leadId}`,
+        });
         void sendWebPushToAdmins({
           title: `New quiz lead: ${name}`,
           body: company ? `${company} — ${tier}` : tier,

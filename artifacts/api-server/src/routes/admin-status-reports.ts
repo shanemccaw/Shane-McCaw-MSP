@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, statusReportsTable, notificationsTable, usersTable, kanbanTasksTable } from "@workspace/db";
+import { db, statusReportsTable, usersTable, kanbanTasksTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { createNotification } from "../lib/notification-center.ts";
 import { sendEmailFromTemplate, getTenantHealthBlockHtml, statusReportReplyEmail, adminThreadReplyEmail, canSendAutomatedCustomerEmailForUser } from "../lib/mailer.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { createAuditLog } from "../lib/audit.ts";
@@ -40,12 +41,13 @@ router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request
     const linkPath = report.projectId
       ? `/portal/projects/${report.projectId}`
       : "/portal/projects";
-    await db.insert(notificationsTable).values({
-      userId: report.clientUserId,
+    await createNotification({
       title: `Reply to your question on: ${report.title}`,
       body: "Shane has replied to your question on a status report. View it in your portal.",
-      type: "project_update",
+      notifType: "project_update",
+      category: "project",
       linkPath,
+      recipient: { type: "customer_user", userId: report.clientUserId },
     });
 
     const [client] = await db.select({ email: usersTable.email, name: usersTable.name })
@@ -113,12 +115,13 @@ router.post("/admin/status-reports/:id/thread", requireAdmin, async (req: Reques
     const linkPath = report.projectId
       ? `/portal/projects/${report.projectId}`
       : "/portal/projects";
-    void db.insert(notificationsTable).values({
-      userId: report.clientUserId,
+    void createNotification({
       title: `New reply on: ${report.title}`,
       body: "Shane has replied to your follow-up message on a status report.",
-      type: "project_update",
+      notifType: "project_update",
+      category: "project",
       linkPath,
+      recipient: { type: "customer_user", userId: report.clientUserId },
     });
     const [client] = await db.select({ email: usersTable.email, name: usersTable.name })
       .from(usersTable)
@@ -212,12 +215,13 @@ router.post("/admin/status-reports/:id/send", requireAdmin, async (req: Request,
     .returning();
 
   if (report.clientUserId) {
-    await db.insert(notificationsTable).values({
-      userId: report.clientUserId,
+    await createNotification({
       title: `New status report: ${report.title}`,
       body: "Your consultant has sent you a project status report. View it in your portal.",
-      type: "project_update",
+      notifType: "project_update",
+      category: "project",
       linkPath: "/portal/projects",
+      recipient: { type: "customer_user", userId: report.clientUserId },
     });
   }
 

@@ -4,7 +4,6 @@ import {
   db,
   projectsTable,
   usersTable,
-  notificationsTable,
   contractsTable,
   invoicesTable,
   reportsTable,
@@ -24,6 +23,7 @@ import {
 } from "@workspace/db";
 import { eq, and, asc, desc, count, sql, inArray, isNotNull, isNull, gte } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { createNotification } from "../lib/notification-center.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { createProjectFolder } from "../lib/graph.ts";
 import { resolveTemplateTaskMetadata } from "../lib/template-task-metadata";
@@ -208,12 +208,13 @@ router.post("/admin/projects", requireAdmin, async (req: Request, res: Response)
 
   // Notify client
   if (clientUserId) {
-    await db.insert(notificationsTable).values({
-      userId: clientUserId,
+    await createNotification({
       title: `New project started: ${title}`,
-      body: description?.slice(0, 100) ?? null,
-      type: "project_update",
+      body: description?.slice(0, 100) ?? undefined,
+      notifType: "project_update",
+      category: "project",
       linkPath: `/portal/projects/${project.id}`,
+      recipient: { type: "customer_user", userId: clientUserId },
     });
   }
 

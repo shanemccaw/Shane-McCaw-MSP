@@ -18,7 +18,6 @@ import {
   scriptRunResultsTable,
   projectsTable,
   kanbanTasksTable,
-  notificationsTable,
   usersTable,
   clientScoresTable,
   clientM365ProfilesTable,
@@ -26,6 +25,7 @@ import {
 } from "@workspace/db";
 import { eq, and, isNull, isNotNull } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { createNotificationForAllAdmins } from "../lib/notification-center.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "auth" });
 import { createHash } from "crypto";
@@ -192,22 +192,12 @@ async function runCallbackAnalysis(
 
   // Notify all admin users (bell + web push)
   try {
-    const admins = await db
-      .select({ id: usersTable.id })
-      .from(usersTable)
-      .where(eq(usersTable.role, "admin"));
-
-    if (admins.length > 0) {
-      await db.insert(notificationsTable).values(
-        admins.map((a) => ({
-          userId: a.id,
-          title: `Customer script results received`,
-          body: `${customerName} submitted script results via auto-callback. AI analysis is ready.`,
-          type: "general" as const,
-          linkPath: `/admin-panel/script-runs/${resultId}`,
-        }))
-      );
-    }
+    await createNotificationForAllAdmins({
+      title: `Customer script results received`,
+      body: `${customerName} submitted script results via auto-callback. AI analysis is ready.`,
+      category: "ai",
+      linkPath: `/admin-panel/script-runs/${resultId}`,
+    });
   } catch (notifErr) {
     log.warn({ notifErr, resultId }, "admin-callback-tokens: admin notification failed (non-fatal)");
   }

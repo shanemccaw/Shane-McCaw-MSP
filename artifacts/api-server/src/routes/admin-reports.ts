@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, reportsTable, notificationsTable } from "@workspace/db";
+import { db, reportsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { createNotification } from "../lib/notification-center";
 import { logger } from "../lib/logger";
 import multer from "multer";
 import path from "path";
@@ -52,12 +53,11 @@ router.post("/admin/reports", requireAdmin, uploadReport.single("file"), async (
     reportDate: reportDate ? new Date(reportDate) : null,
   }).returning();
 
-  await db.insert(notificationsTable).values({
-    userId: parseInt(clientUserId, 10),
+  await createNotification({
     title: `New report available: ${title}`,
-    body: null,
-    type: "general",
+    category: "project",
     linkPath: "/portal/reports",
+    recipient: { type: "customer_user", userId: parseInt(clientUserId, 10) },
   });
 
   res.status(201).json(report);

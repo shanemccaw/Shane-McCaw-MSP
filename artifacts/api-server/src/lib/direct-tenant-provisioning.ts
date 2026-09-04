@@ -1,7 +1,8 @@
-import { db, tenantsTable, mspsTable, usersTable, notificationsTable } from "@workspace/db";
+import { db, tenantsTable, mspsTable, usersTable } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { sendAdminSms } from "./sms.ts";
 import { convertLeadForClient } from "./crm-pipeline.ts";
+import { createNotificationForAllAdmins } from "./notification-center.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -387,18 +388,13 @@ export async function verifyCustomerBridge(
     );
 
     try {
-      const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
-      if (admins.length > 0) {
-        await db.insert(notificationsTable).values(
-          admins.map((a) => ({
-            userId: a.id,
-            title: "URGENT: customer bridge missing after purchase",
-            body: `User #${userId} completed ${context} but has no msp_customers/msp_users record — their portal will show no data. Manual repair required.`,
-            type: "general" as const,
-            linkPath: "/dashboard",
-          })),
-        );
-      }
+      await createNotificationForAllAdmins({
+        title: "URGENT: customer bridge missing after purchase",
+        body: `User #${userId} completed ${context} but has no msp_customers/msp_users record — their portal will show no data. Manual repair required.`,
+        category: "system",
+        severity: "critical",
+        linkPath: "/dashboard",
+      });
     } catch (notifyErr) {
       log.error({ err: notifyErr, userId }, "verifyCustomerBridge: failed to create admin notifications for missing bridge");
     }

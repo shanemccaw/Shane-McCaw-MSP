@@ -1,11 +1,12 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, messagesTable, usersTable, notificationsTable, deviceTokensTable } from "@workspace/db";
+import { db, messagesTable, usersTable, deviceTokensTable } from "@workspace/db";
 import { eq, and, asc, count, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 import { resolveSiblingUserIds } from "../lib/tenant-signals";
 import { sendEmailFromTemplate, getTenantHealthBlockHtml, canSendAutomatedCustomerEmailForUser } from "../lib/mailer";
 import { sendPushNotifications } from "../lib/push";
 import { sendWebPushToAdmins } from "../lib/web-push";
+import { createNotification } from "../lib/notification-center";
 import { logger } from "../lib/logger";
 import { getMspPortalBaseUrl } from "../lib/portal-url";
 
@@ -78,12 +79,13 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
 
   // Create in-app notification + email for the other party
   if (isAdmin) {
-    await db.insert(notificationsTable).values({
-      userId: clientUserId,
+    await createNotification({
       title: "New message from Shane",
       body: body.trim().slice(0, 100),
-      type: "message",
+      notifType: "message",
+      category: "message",
       linkPath: "/portal/messages",
+      recipient: { type: "customer_user", userId: clientUserId },
     });
     // Email the client
     const [clientUser] = await db.select({ email: usersTable.email, name: usersTable.name })
@@ -110,12 +112,13 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
   } else {
     const [adminUser] = await db.select({ id: usersTable.id, email: usersTable.email }).from(usersTable).where(eq(usersTable.role, "admin")).limit(1);
     if (adminUser) {
-      await db.insert(notificationsTable).values({
-        userId: adminUser.id,
+      await createNotification({
         title: "New client message",
         body: body.trim().slice(0, 100),
-        type: "message",
+        notifType: "message",
+        category: "message",
         linkPath: `/dashboard/messages?clientId=${senderId}`,
+        recipient: { type: "customer_user", userId: adminUser.id },
       });
       void sendWebPushToAdmins({
         title: "New client message",

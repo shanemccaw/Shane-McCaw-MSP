@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, servicesTable, usersTable, contractsTable, invoicesTable, projectsTable, clientServicesTable, workflowStepsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, kanbanTasksTable, documentsTable, notificationsTable, deviceTokensTable, messagesTable } from "@workspace/db";
+import { db, servicesTable, usersTable, contractsTable, invoicesTable, projectsTable, clientServicesTable, workflowStepsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, kanbanTasksTable, documentsTable, deviceTokensTable, messagesTable } from "@workspace/db";
 import { eq, and, inArray, isNull, asc, count } from "drizzle-orm";
 import { isServiceFree, resolveServicePriceCents, resolveTypeAttributesMonthlyPriceCents } from "../lib/catalog-pricing.ts";
 import { ensureLeadForClient } from "../lib/crm-pipeline.ts";
@@ -8,6 +8,7 @@ import { getPortalBaseUrl, getMspPortalBaseUrl, buildAccountSetupUrl } from "../
 import { sendEmailFromTemplate, getTenantHealthBlockHtml, adminPurchaseAlertEmail } from "../lib/mailer.ts";
 import { sendAdminSms } from "../lib/sms.ts";
 import { sendWebPushToAdmins } from "../lib/web-push.ts";
+import { createNotificationForAllAdmins } from "../lib/notification-center.ts";
 import { sendPushNotifications } from "../lib/push.ts";
 import { fireWorkflowsForEvent } from "../lib/workflow-executor.ts";
 import { verifyCaptchaToken } from "../lib/captcha.ts";
@@ -291,18 +292,12 @@ async function provisionFreeOnboarding(opts: {
         `New zero-price onboarding: ${buyer.name ?? buyer.email} — ${projectTitle} — $0`,
       ).catch(() => null);
 
-      const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
-      if (admins.length > 0) {
-        await db.insert(notificationsTable).values(
-          admins.map(a => ({
-            userId: a.id,
-            title: `New zero-price onboarding: ${buyer.name ?? buyer.email}`,
-            body: `${projectTitle} — $0.00. Project #${project.id} auto-created.`,
-            type: "general" as const,
-            linkPath: `/dashboard`,
-          }))
-        );
-      }
+      await createNotificationForAllAdmins({
+        title: `New zero-price onboarding: ${buyer.name ?? buyer.email}`,
+        body: `${projectTitle} — $0.00. Project #${project.id} auto-created.`,
+        category: "onboarding",
+        linkPath: `/dashboard`,
+      });
       void sendWebPushToAdmins({
         title: `New zero-price onboarding: ${buyer.name ?? buyer.email}`,
         body: `${projectTitle} — $0.00`,
