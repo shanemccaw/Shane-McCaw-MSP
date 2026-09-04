@@ -217,10 +217,11 @@ router.get("/portal/customer/requests/:ticketId", requireRole("CustomerUser"), a
       return;
     }
     const thread = await getDeskTicketThread(ticketId, mspId);
-    res.json({ request: owned.ticket, thread });
+    res.json({ configured: true, request: owned.ticket, thread });
   } catch (err) {
     if (isZohoUnavailable(err)) {
-      res.status(503).json({ error: "Ticketing is not available right now." });
+      log.warn({ customerId, ticketId }, "portal-customer-requests: Zoho Desk not connected — returning unconfigured state");
+      res.json({ configured: false, request: null, thread: [] });
       return;
     }
     log.error({ err, customerId, ticketId }, "portal-customer-requests: detail failed");
@@ -275,10 +276,11 @@ router.post("/portal/customer/requests/:ticketId/reply", requireRole("CustomerUs
     );
 
     log.info({ customerId, mspId, ticketId, jobId: result.jobId }, "portal-customer-requests: reply queued");
-    res.status(202).json({ queued: true, message: "Your reply has been added to the request." });
+    res.status(202).json({ configured: true, queued: true, message: "Your reply has been added to the request." });
   } catch (err) {
     if (isZohoUnavailable(err)) {
-      res.status(503).json({ error: "Ticketing is not available right now." });
+      log.warn({ customerId, ticketId }, "portal-customer-requests: Zoho Desk not connected — returning unconfigured state");
+      res.json({ configured: false, queued: false, message: "Ticketing is not available right now." });
       return;
     }
     if (err instanceof ZohoApiError) {
