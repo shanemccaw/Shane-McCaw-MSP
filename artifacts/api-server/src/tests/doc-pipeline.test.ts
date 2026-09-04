@@ -15,6 +15,13 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+// #2865 — this file's PDF generation test does a real `await import("pdf-lib")`
+// (see below) whose transform can lose the race against ~300 other files'
+// cold transforms under the full-suite parallel run and blow the default
+// 5000ms per-test budget, even though the same import resolves in well under
+// 100ms in isolation. Scoped to this file only — not a global config change.
+vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
+
 // ── Module mocks (must be before any imports that transitively use them) ──────
 
 vi.mock("@workspace/db", () => {
@@ -113,9 +120,10 @@ describe("computeChecksum", () => {
 
 describe("PDF generation from HTML text", () => {
   it("produces a valid PDF buffer", async () => {
-    const { PDFDocument: PD } = await import("pdf-lib");
-    // Create a minimal test PDF to verify pdf-lib is operational
-    const doc = await PD.create();
+    // pdf-lib is already statically imported above (PDFDocument) — this used
+    // to re-import it dynamically for no reason, paying its transform cost
+    // again inside this test's timeout budget instead of once at file load.
+    const doc = await PDFDocument.create();
     doc.addPage([612, 792]);
     const bytes = await doc.save();
     const buf = Buffer.from(bytes);
