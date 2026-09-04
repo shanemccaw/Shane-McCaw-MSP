@@ -17,10 +17,13 @@ const log = logger.child({ channel: "integration.powerplatform" });
 //   - client-credentials against login.microsoftonline.com/{tenant}/oauth2/v2.0/token,
 //   - the same MT_APP_CLIENT_ID as Graph/Exchange/SharePoint/Activity API.
 //
-// ── EVERY REQUEST HERE IS A GET (#1869 is explicitly read-only) ───────────────
+// ── EVERY REQUEST HERE IS A READ (#1869 is explicitly read-only) ──────────────
 // No DLP policy is created, modified or deleted by anything in this file, and
 // no write helper exists for one. Governance means seeing the policy first;
 // deciding what to assert about it is a separate decision, on a separate issue.
+// Most reads are GET (bapGet); getTenantSettings() is POST (bapPostRead) because
+// BAP's own `listtenantsettings` action is POST-only despite reading (#1973) —
+// the verb difference is a BAP-side inconsistency, not a write from this file.
 //
 // ── AUTH FACTS, ESTABLISHED FROM SOURCE AND THEN PROVEN LIVE ──────────────────
 // Endpoint/scope values below are taken from Microsoft365DSC + its
@@ -225,15 +228,19 @@ function isNotRegisteredResponse(status: number, body: string): boolean {
 }
 
 /**
- * Single GET against the BAP admin surface. There is no POST/PUT/PATCH/DELETE
- * counterpart in this module by design (#1869 is read-only).
+ * Shared request/error handling for both bapGet and bapPostRead below — the only
+ * difference between the two is the HTTP method (#1973: BAP's own "list*" actions
+ * are not uniformly GET; `listTenantSettings` specifically is POST-only even
+ * though it only reads). Neither ever sends a request body — #1869 is read-only,
+ * and the POST-only BAP actions used here take none (confirmed live, see
+ * bapPostRead below).
  */
-async function bapGet(aadTenantId: string, path: string): Promise<unknown> {
+async function bapRequest(aadTenantId: string, path: string, method: "GET" | "POST"): Promise<unknown> {
   const token = await getPowerPlatformToken(aadTenantId);
   const url = `https://${POWER_PLATFORM_BAP_HOST}${path}`;
 
   const res = await fetch(url, {
-    method: "GET",
+    method,
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/json",
@@ -258,6 +265,28 @@ async function bapGet(aadTenantId: string, path: string): Promise<unknown> {
   }
 
   return await res.json();
+}
+
+/**
+ * GET against the BAP admin surface. There is no POST/PUT/PATCH/DELETE
+ * counterpart *for a mutation* in this module by design (#1869 is read-only) —
+ * bapPostRead below is also a read, just one BAP only accepts via POST.
+ */
+async function bapGet(aadTenantId: string, path: string): Promise<unknown> {
+  return bapRequest(aadTenantId, path, "GET");
+}
+
+/**
+ * POST against a BAP admin "list*" action that is, despite the verb, a read —
+ * no request body is sent and nothing is created/modified/deleted (#1973).
+ * Confirmed against Microsoft's own REST reference (learn.microsoft.com/en-us/
+ * power-platform/admin/list-tenantsettings, 2020-10-01): `listtenantsettings`
+ * is documented as `POST .../providers/Microsoft.BusinessAppPlatform/
+ * listtenantsettings` with "Don't supply a request body for this method" — and
+ * verified live against the testbed tenant (200 OK, real settings payload).
+ */
+async function bapPostRead(aadTenantId: string, path: string): Promise<unknown> {
+  return bapRequest(aadTenantId, path, "POST");
 }
 
 /**
@@ -354,11 +383,20 @@ export async function listEnvironments(aadTenantId: string): Promise<PowerPlatfo
  * Read tenant-wide Power Platform settings (the surface Microsoft365DSC's
  * MSFT_PPTenantSettings covers). Returned verbatim — this module does not
  * reshape or editorialise the payload.
+ *
+ * #1973: this is a POST, not a GET, and lives directly under
+ * `/providers/Microsoft.BusinessAppPlatform/`, NOT under the `/scopes/admin/`
+ * prefix the other reads in this file use — both the GET verb and the
+ * `/scopes/admin/` segment BAP's own listDlpPolicies/listEnvironments use were
+ * wrong for this specific action, which is why it 404'd while its siblings
+ * succeeded. Fixed path/verb confirmed against Microsoft's own REST reference
+ * (learn.microsoft.com/en-us/power-platform/admin/list-tenantsettings) and
+ * verified live against the testbed tenant (200 OK, real settings payload).
  */
 export async function getTenantSettings(aadTenantId: string): Promise<Record<string, unknown>> {
-  const body = (await bapGet(
+  const body = (await bapPostRead(
     aadTenantId,
-    "/providers/Microsoft.BusinessAppPlatform/scopes/admin/listTenantSettings?api-version=2020-10-01",
+    "/providers/Microsoft.BusinessAppPlatform/listtenantsettings?api-version=2020-10-01",
   )) as Record<string, unknown>;
   log.info({ aadTenantId }, "Power Platform: read tenant settings");
   return body ?? {};
