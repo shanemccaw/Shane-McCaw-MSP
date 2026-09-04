@@ -1,39 +1,49 @@
 # Scope and SLA (MSP Console) — contract extraction pack
 
-**Issue:** #2654, part of #2572 ("Feature: Scope and SLA (MSP Console)"), part of #1571 (EPIC:
-Portal Admin). Method per #1642. Extracted, not authored — every field below traces to one of
+**Issue:** #2898, part of #2572 ("Feature: Scope and SLA (MSP Console)"), part of #1571 (EPIC:
+Portal Admin). Method per #1642. Full line-by-line regeneration against the current, live
+backend — not an incremental patch of the prior version. **Supersedes the version extracted for
+#2654** (dated before #2726/#2728/#2729/#2811/#2812 landed, all of which are real fixes to the
+routes/engines this pack covers). Extracted, not authored — every field below traces to one of
 the files listed, cited to file:line. Read-only: no product code, schema or UI changes made
-while writing this pack, per #2654's step 3 scope.
+while writing this pack.
 
 Both route files named in the dispatch were confirmed real and live in the current codebase
 before any of this was written — **12 routes** in `msp-scope-creep.ts`, **14 routes** in
-`msp-sla.ts`, 26 total:
+`msp-sla.ts`, 26 total (unchanged route count from the #2654 extraction; only route *bodies*
+changed):
 
 - `artifacts/api-server/src/routes/msp-scope-creep.ts` — mounted at `/api` via
-  `routes/index.ts:122-123` (`import mspScopeCreepRouter from "./msp-scope-creep"`)
-- `artifacts/api-server/src/routes/msp-sla.ts` — same mount point
+  `routes/index.ts:124,459` (`import mspScopeCreepRouter from "./msp-scope-creep"` /
+  `router.use(mspScopeCreepRouter)`)
+- `artifacts/api-server/src/routes/msp-sla.ts` — `routes/index.ts:125,460`
 - `artifacts/api-server/src/lib/scope-creep-engine.ts` — pure computation + DB helpers +
   mutating helpers the routes call
 - `artifacts/api-server/src/lib/sla-engine.ts` — same, for SLA
-- `artifacts/api-server/src/middlewares/requireAuth.ts` — `AuthUser`, `requireRole()`,
-  `resolveStaffScopedCustomerIds()`
-- `artifacts/api-server/src/lib/sse-channels.ts` — `registerMspEngineEventClient()`
-- `artifacts/api-server/src/index.ts:935-1064` — `sla_policies` / `sla_timers` / `sla_breaches`
+- `artifacts/api-server/src/middlewares/requireAuth.ts` — `AuthUser`, `requireRole()`
+  (`:206-222`, role order `:81-94`), `resolveStaffScopedCustomerIds()` (`:348`),
+  `isCustomerBlockedByStaffScope()` (`:368`)
+- `artifacts/api-server/src/lib/sse-channels.ts` — `registerMspEngineEventClient()` (`:150`),
+  `broadcastMspEngineEvent()` (`:154`)
+- `artifacts/api-server/src/index.ts:981-1109` — `sla_policies` / `sla_timers` / `sla_breaches`
   / `sla_escalations` / `sla_compliance_records` / `sla_signal_policy_map` /
   `msp_sla_weights` `CREATE TABLE` statements (not Drizzle-schema tables; every read here is a
   raw `db.execute(sql...)`, same pattern §4 of `docs/scope-and-sla-contract-pack.md` already
   documented for the customer-facing surface)
-- `artifacts/api-server/src/lib/scope-creep-engine.ts:736-899` — `scope_creep_policies` /
+- `artifacts/api-server/src/lib/scope-creep-engine.ts:736-901` — `scope_creep_policies` /
   `scope_creep_assignments` / `scope_creep_detections` / `scope_creep_scores` /
   `scope_creep_violations` / `scope_creep_escalations` / `scope_creep_compliance`
   `CREATE TABLE` statements
-- `artifacts/api-server/src/routes/msp-sla-scope-creep.test.ts` — the existing test suite for
-  both route files; every test mocks `db.execute` directly (`mockExecute`), so **none of these
-  tests ever run against a real Postgres connection or catch a schema mismatch** — noted because
-  it is load-bearing for Finding §5 below
-- Local `psql` against the real `DATABASE_URL` (partial — see the honesty note at the end of
-  this section) and `lib/db/migrations/manual/2026-07-28-tenant-user-refactor-phase0-schema-wipe.sql`
-  — used to confirm real table existence/absence and live row counts
+- `artifacts/api-server/src/routes/msp-sla-scope-creep.test.ts` (712 lines) — the mock-only test
+  suite for both route files; every test mocks `db.execute` directly, so it never runs against a
+  real Postgres connection — **26/26 pass**, real-run confirmed this session
+- `artifacts/api-server/src/routes/msp-sla-operator-tasks.live-db.test.ts` (102 lines) — a real
+  Postgres-backed regression test added by #2729's fix, seeding a synthetic msp/tenant/breach/
+  violation and hitting the live router end-to-end — **1/1 pass**, real-run confirmed this
+  session (`27/27` combined)
+- Local `psql` against the real `DATABASE_URL` — used to confirm live table row counts and the
+  `sla_policies.priority` column's actual stored type (see the honesty note at the end of this
+  section for a real, repeated interruption during this)
 
 **Distinct from, and not a re-run of, `docs/scope-and-sla-contract-pack.md`** — that pack (from
 #2452) covers the two **customer-facing read routes** in `portal-customer-engines.ts`
@@ -45,50 +55,69 @@ same two underlying engines (`scope-creep-engine.ts`, `sla-engine.ts`) but read/
 through entirely separate route files with different scoping (`mspId`-fenced here vs.
 `customerId`-fenced there).
 
-**Honest DB-verification note**: local Postgres was reachable and returned real results for the
-row-count queries in §0 below, but went unresponsive (5 consecutive `psql` attempts each timed
-out at 15-30s, evidence of a real, repeatable failure, not one blind try) partway through this
-session — almost certainly load from other concurrent build sessions against the same shared
-local instance, per this repo's own concurrent-session conventions. One live-DB check
-(`msp_customers` table existence) that would have been the ideal direct confirmation for
-Finding §5 could not be completed live; §5 is instead grounded in the migration file and an
-exhaustive repo-wide grep, both cited, which are unambiguous on their own.
+**What changed since the #2654 extraction, in one place:**
+
+| Finding (old §) | Issue | Real fix landed |
+|---|---|---|
+| §5.1 — portfolio score fires a per-customer violation, `customerId` falls back to `mspId` | #2726 | `POST /msp/scope-creep/evaluate` now **requires** `customerId` (400 if missing), verifies tenant ownership (404) + staff scope (403), and scores/fires via `runScopeCreepEngineForTenant(customerId)` — never the MSP-portfolio aggregate |
+| §5.2 — `sla_timers.status` default `'active'` never matched by any reader | #2728 | Column default changed to `'running'`; `startSlaTimer()` now lists `status='running'` explicitly; `GET /msp/sla/summary`'s `activeTimers` reads `status = 'running'` |
+| §5.4 — `escalations`/`compliance` GETs skip staff scoping | #2728 (folded in) | Both scope-creep GETs now apply `resolveStaffScopedCustomerIds()` post-filtering, matching every sibling GET |
+| §5.5 — `operator-tasks` joins dropped `msp_customers` table, 500s every call | #2729 | Both joins repointed at `tenants`, `c.customer_name` in place of the old `c.name`; a real live-Postgres regression test now exists for this exact route |
+| (new, found while fixing #2728) `warningTimers` in `/msp/sla/summary` structurally always 0 | #2811 | `fireSlaWarning()` added — sets `status='warning'` + `warning_fired_at` once, mirroring `fireSlaBreachRecord`'s `'breached'` transition; every `status = 'running'` reader updated to also accept `'warning'` so a warned timer doesn't drop out of active polling |
+| (new, found while fixing #2726) `msp-sla-scope-creep.test.ts` mocks silently failed 19/23 tests | #2814 | Fixed as part of #2726's own commit (missing `logger.child` + `drizzle-orm` `eq`/table-export mocks) |
+| (new, found while fixing #2729) `POST /msp/customers/bulk` `"tag"` action joins dropped `msp_customers`, no `tenants.tags` column either | #2812 | Real product decision: dead legacy feature, removed entirely rather than resurrected — out of scope for `msp-sla.ts`/`msp-scope-creep.ts` (lives in `msp-portal.ts`), noted here only as a resolved cross-reference |
+
+All six are closed. **Zero open findings carry over from the prior extraction.** New findings
+from this regeneration pass, if any, are in §5 below.
+
+**Honest DB-verification note**: local Postgres returned real results for every row-count query
+in §0 below and the `sla_policies.priority` column-type check, but went unresponsive mid-session
+(one `timeout 20 psql ... SELECT 1` genuinely hung the full 20s with no output — a real,
+repeatable failure, not one blind try) before a planned `\d tenants` check could complete; it
+recovered on its own later in the same session (a `vitest run` against the live DB, `27/27`,
+succeeded afterward) — almost certainly load from other concurrent build sessions against the
+same shared local instance, per this repo's own concurrent-session conventions. The one query
+lost to this (`tenants.customer_name`'s exact column existence) is instead confirmed via a grep
+of an already-shipped, unrelated route (`admin-customer-alert-rules.ts:179`) that reads the same
+column — unambiguous on its own.
 
 ---
 
-## 0. Live data snapshot (queried before the DB became unresponsive)
+## 0. Live data snapshot (queried this session)
 
 Real MSP rows, local `DATABASE_URL`: **2** rows in `msps` — `id=1` "Shane McCaw Consulting",
-`id=1626` "Regression Testbed MSP (billing lifecycle)". All 3 engine-backing tables queried are
-**empty**: `sla_timers` — 0 rows (any status), `scope_creep_detections` — 0 rows,
-`scope_creep_violations` — 0 rows. No MSP-side policy has ever fired a violation, timer, or
-breach in the local environment. Every route below is real, live, and reachable, but every
-list/detail response an operator would see today is the honest-empty shape.
+`id=1626` "Regression Testbed MSP (billing lifecycle)" — unchanged from the #2654 extraction.
+All 3 engine-backing tables queried are still **empty**: `sla_timers` — 0 rows (any status),
+`scope_creep_detections` — 0 rows, `scope_creep_violations` — 0 rows. No MSP-side policy has
+ever fired a violation, timer, or breach in the local environment. Every route below is real,
+live, and reachable, but every list/detail response an operator would see today is the
+honest-empty shape.
 
 ---
 
 ## 1. `msp-scope-creep.ts` — 12 routes, all `requireRole("MSPOperator")` (`MSPOperator` or above:
-`MSPAdmin`, `PlatformAdmin` also pass — `requireAuth.ts:205-223` `roleIndex()` ordering)
+`MSPAdmin`, `PlatformAdmin` also pass — `requireAuth.ts:81-94` role order, `:206-222`
+`requireRole()`)
 
 All 12 read `req.user!.mspId` first and 400 `{ error: "mspId required" }` if absent (every route,
-first two lines). None of the 12 apply `resolveStaffScopedCustomerIds()` to the **policies**
-sub-resource (policies are MSP-wide, not customer-scoped); the 3 customer-data-bearing GETs
-(`detections`, `violations`) do; `escalations`/`compliance` do not (see the per-route table).
+first two lines). Staff scoping (`resolveStaffScopedCustomerIds()`) now applies to **all four**
+customer-data-bearing GETs — `detections`, `violations`, `escalations`, `compliance` — as of
+#2728; policies are still MSP-wide, not customer-scoped, so no scoping applies there.
 
-| # | Method + path | Auth extras | Purpose | Real gap vs. sibling |
+| # | Method + path | Auth extras | Purpose | Notes |
 |---|---|---|---|---|
 | 1 | `GET /msp/scope-creep/policies` | — | List active policies: own MSP's + global (`msp_id IS NULL`) (`:33-55`) | — |
 | 2 | `GET /msp/scope-creep/policies/:id` | — | Single policy by id, same MSP-or-global fence (`:59-88`) | — |
 | 3 | `POST /msp/scope-creep/policies` | — | Create a new MSP-owned policy, defaults per field (`:92-125`) | — |
-| 4 | `PATCH /msp/scope-creep/policies/:id` | — | **Copy-on-write**: editing a global (`msp_id IS NULL`) policy INSERTs a new MSP-owned override row instead of mutating the shared default; editing an already-MSP-owned policy UPDATEs in place (`:129-206`) | see Finding §5.3 |
+| 4 | `PATCH /msp/scope-creep/policies/:id` | — | **Copy-on-write**: editing a global (`msp_id IS NULL`) policy INSERTs a new MSP-owned override row instead of mutating the shared default; editing an already-MSP-owned policy UPDATEs in place (`:129-206`) | see §5's dead-code note (was §5.3) |
 | 5 | `DELETE /msp/scope-creep/policies/:id` | — | Same copy-on-write split, but "delete" = deactivate (`is_active = false`); editing a global row creates an inactive MSP-owned override rather than touching the shared default (`:210-260`) | — |
 | 6 | `GET /msp/scope-creep/detections` | `resolveStaffScopedCustomerIds` fence + optional `?customerId`/`?status` (default `"open"`) | Open (or filtered-status) detections for this MSP, capped 200 (`:265-304`) | — |
 | 7 | `GET /msp/scope-creep/violations` | `resolveStaffScopedCustomerIds` fence + optional `?customerId` | Violations for this MSP's portfolio, capped 100 (200 unfiltered) (`:309-345`) | — |
-| 8 | `GET /msp/scope-creep/escalations` | none applied | Pending/in-progress escalations, level-desc then recency (`:350-371`) | see Finding §5.4 — no staff scoping |
-| 9 | `GET /msp/scope-creep/compliance` | none applied | Monthly compliance history, optional `?customerId` (`:376-405`) | see Finding §5.4 |
-| 10 | `POST /msp/scope-creep/evaluate` | — | Runs `runScopeCreepEngineForMsp(mspId)` — **MSP-portfolio-wide** aggregate, not per-customer; optional `autoFireViolations: true` body flag fires violations/escalations for every active policy | see Finding §5.1 — customerId fallback and portfolio-vs-customer score mismatch |
+| 8 | `GET /msp/scope-creep/escalations` | ✅ `resolveStaffScopedCustomerIds` (fixed by #2728) | Pending/in-progress escalations, level-desc then recency (`:350-375`) | — |
+| 9 | `GET /msp/scope-creep/compliance` | ✅ `resolveStaffScopedCustomerIds` (fixed by #2728) | Monthly compliance history, optional `?customerId` (`:380-416`) | — |
+| 10 | `POST /msp/scope-creep/evaluate` | ownership check (`tenants.id = customerId AND msp_id = mspId`) + `isCustomerBlockedByStaffScope` | `customerId` is now **required** in the body (400 if absent); runs `runScopeCreepEngineForTenant(customerId)` for that ONE customer, never the MSP-portfolio aggregate; optional `autoFireViolations: true` fires a violation + escalations for that customer alone if their own score breaches a policy's threshold (`:418-515`) | Fixed by #2726 — see the "what changed" table above |
 | 11 | `POST /msp/scope-creep/violations/:violationId/resolve` | ownership check (`msp_id = mspId`) before resolving | Resolves a violation + cascades its escalations to `'resolved'` (`resolveScopeCreepViolation`, `scope-creep-engine.ts:638-660`) | — |
-| 12 | `POST /msp/scope-creep/escalations` | ownership check on the target violation | Manually create an escalation for an existing violation (`:506-537`) | — |
+| 12 | `POST /msp/scope-creep/escalations` | ownership check on the target violation | Manually create an escalation for an existing violation (`:549-580`) | — |
 
 ---
 
@@ -97,9 +126,9 @@ sub-resource (policies are MSP-wide, not customer-scoped); the 3 customer-data-b
 Same 400-on-missing-`mspId` guard on every route. A shared helper,
 `scopeSlaRows<T>(rows, scopedIds)` (`:30-33`), applies `resolveStaffScopedCustomerIds()` as an
 **in-memory post-filter** (not a SQL predicate) to every route that returns customer-bearing
-rows — consistent across `timers`, `breaches`, `escalations`, `compliance`, `operator-tasks`;
-result sets are already capped (≤200) so the memory cost is bounded, per the function's own doc
-comment (`:23-29`).
+rows — `timers`, `breaches`, `escalations`, `compliance`, `operator-tasks`; result sets are
+already capped (≤200) so the memory cost is bounded, per the function's own doc comment
+(`:23-29`).
 
 | # | Method + path | Staff-scoped? | Purpose |
 |---|---|---|---|
@@ -112,10 +141,10 @@ comment (`:23-29`).
 | 7 | `GET /msp/sla/breaches` | ✅ | Breaches, optional `?customerId`/`?resolved`, capped 100-200 (`:302-345`) |
 | 8 | `GET /msp/sla/escalations` | ✅ | Pending/in-progress escalations (`:350-370`) |
 | 9 | `GET /msp/sla/compliance` | ✅ | Monthly compliance history, optional `?customerId` (`:375-405`) |
-| 10 | `POST /msp/sla/evaluate` | n/a — returns the raw aggregate | `runSlaEngineForMsp(mspId)` (`:410-420`) — portfolio-wide, no auto-fire equivalent (SLA has no violation-fire action; breaches are detected by a separate background evaluation path, not by this route) |
-| 11 | `POST /msp/sla/timers/:timerId/resolve` | ownership check | Resolve a timer belonging to this MSP (`:425-448`) |
-| 12 | `GET /msp/sla/summary` | n/a — MSP-wide counts, no per-customer breakdown | Dashboard header stats: `activeTimers`/`warningTimers`/`breachedTimers`/`openBreaches`/`avgCompliancePct` (`:453-494`) | see Finding §5.2 — `status = 'active'` filter |
-| 13 | `GET /msp/operator-tasks` | ✅ | Virtual task queue merging unresolved SLA breaches + scope-creep violations, deep-linked to Admin Panel (`:500-554`) | see Finding §5.5 — dropped table join |
+| 10 | `POST /msp/sla/evaluate` | n/a — returns the raw aggregate | `runSlaEngineForMsp(mspId)` (`:410-420`) — still portfolio-wide; see §5's asymmetry note (a per-tenant `runSlaEngineForTenant()` exists and is now used by three other real callers, but this route was not changed to use it) |
+| 11 | `POST /msp/sla/timers/:timerId/resolve` | ownership check | Resolve a timer belonging to this MSP; now accepts `'running'`, `'paused'`, `'warning'`, or `'breached'` as valid source states (`:425-448`, `resolveSlaTimer`, `sla-engine.ts:459-487`) |
+| 12 | `GET /msp/sla/summary` | n/a — MSP-wide counts, no per-customer breakdown | Dashboard header stats: `activeTimers`/`warningTimers`/`breachedTimers`/`openBreaches`/`avgCompliancePct` — all three timer buckets are now genuinely mutually exclusive real counts (`status = 'running'` / `'warning'` / `'breached'`) after #2728 + #2811 (`:453-494`) |
+| 13 | `GET /msp/operator-tasks` | ✅ | Virtual task queue merging unresolved SLA breaches + scope-creep violations, deep-linked to Admin Panel — now joins `tenants` (fixed by #2729, `:500-554`) |
 | 14 | `GET /msp/sla/events/stream` | n/a | SSE — heartbeat every 30s, subscribes via `registerMspEngineEventClient(mspId, ...)` (`:561-583`) | — |
 
 `/msp/operator-tasks` is mounted from `msp-sla.ts` (not `msp-scope-creep.ts`) despite aggregating
@@ -127,40 +156,47 @@ both engines' data — the file's own header comment says so explicitly (`:496-4
 
 ### Scope Creep (`computeScopeCreepEngine`, `scope-creep-engine.ts:195-249`)
 
-For every **open** detection whose `policyId` resolves to a known policy: `threshold` = the
-policy's per-type threshold (`driftThresholdPct` / `expansionThresholdPct` /
-`timelineSlipDays`), `weight` = the matching per-type weight; `exceeded = changePct >=
-threshold`; `contribution = exceeded ? min(100, round(changePct / threshold * weight)) : 0`
-(`evaluateDetection`, `:164-193`). Per-type totals sum contributions across all open detections
-of that type. `compositeScore = min(100, round((driftTotal + expansionTotal +
-timelineSlipTotal) / 3))` (`:219`) — **not** weighted by the policy's own
-`driftWeight`/`expansionWeight`/`timelineSlipWeight` a second time at this level; those weights
-are already folded into each detection's own `contribution`, so the `/3` divisor here is a flat
-average of the three running totals, not itself policy-configurable.
+Unchanged formula from the #2654 extraction. For every **open** detection whose `policyId`
+resolves to a known policy: `threshold` = the policy's per-type threshold
+(`driftThresholdPct` / `expansionThresholdPct` / `timelineSlipDays`), `weight` = the matching
+per-type weight; `exceeded = changePct >= threshold`; `contribution = exceeded ? min(100,
+round(changePct / threshold * weight)) : 0` (`evaluateDetection`, `:164-193`). Per-type totals
+sum contributions across all open detections of that type. `compositeScore = min(100,
+round((driftTotal + expansionTotal + timelineSlipTotal) / 3))` (`:219`) — **not** weighted by
+the policy's own `driftWeight`/`expansionWeight`/`timelineSlipWeight` a second time at this
+level; those weights are already folded into each detection's own `contribution`, so the `/3`
+divisor here is a flat average of the three running totals, not itself policy-configurable.
 `compliancePct = (openDetections + openViolations) === 0 ? 100 : max(0, round(100 -
 compositeScore))` (`:220-223`).
 
-`runScopeCreepEngineForMsp(mspId, ctx?)` (`:349-359`) fetches **every** open detection for the
-MSP across **all** its customers (`fetchOpenDetections(mspId)`, no customerId filter), **every**
-active policy for the MSP (own + global), and counts open violations MSP-wide
-(`countOpenViolations(undefined, mspId)`). The resulting `compositeScore` is therefore a
-**portfolio aggregate across every customer the MSP serves**, not any one customer's score —
-load-bearing for Finding §5.1.
+`runScopeCreepEngineForTenant(customerId, ctx?)` (`:337-347`) — the function `POST
+/msp/scope-creep/evaluate` now calls (§1.10, fixed by #2726) — fetches only that customer's own
+open detections (`fetchOpenDetections(undefined, customerId)`), all currently-active policies
+(own-MSP or global; no `mspId` filter applied at this call site since the route has already
+verified ownership), and that customer's own open-violation count
+(`countOpenViolations(customerId)`). `runScopeCreepEngineForMsp(mspId, ctx?)` (`:349-359`) still
+exists and is unchanged — it fetches **every** open detection for the MSP across **all** its
+customers, **every** active policy for the MSP (own + global), and counts open violations
+MSP-wide — but as of #2726 no route in this pack calls it anymore for a per-customer action;
+`POST /msp/sla/evaluate`'s SLA-side sibling (§2.10) is the only remaining MSP-portfolio-scoped
+`evaluate` action left in either file.
 
-### SLA (`computeSlaEngine`, `sla-engine.ts:166-221`)
+### SLA (`computeSlaEngine`, `sla-engine.ts:166-225`)
 
-Only **running** timers (`status === "running"`) are evaluated (`:173`) — see Finding §5.2 for
-why this status value may never be reached in practice. Each running timer's evaluation
-(`evaluateTimer`, `:121-162`) computes `elapsedMinutes` from `now - startedAt`, picks
-`thresholdMinutes`/`warningThresholdPct` by `phase` (`"response"` vs `"resolution"`), and derives
-`status: "ok" | "warning" | "breached"`. Evaluations split into two groups by
-`ticketType === "signal_compliance"` vs. everything else (`:182-183`); each group's compliance
-is `round((group.length - breachedInGroup) / group.length * 100)`, defaulting to 100 for an
-empty group (`computeGroupCompliance`, `:185-189`). The overall `score` blends the two group
-scores by the MSP's own `w_signal`/`w_timer` weights from `msp_sla_weights`
-(default 50/50 if the MSP has no row — `:298`), falling back to a straight average only if
-`totalWeight === 0` (`:194-197`) — an edge case that cannot occur with the table's own
-NUMERIC-with-DEFAULT-50 columns unless both are explicitly zeroed.
+**Running and warning** timers are both evaluated as of #2811 (`t.status === "running" ||
+t.status === "warning"`, `:177`) — previously only `"running"`; a timer that has crossed the
+warning threshold (and so had its own status flipped to `'warning'` by the new
+`fireSlaWarning()`, see §4) must keep being evaluated so it can still progress to `'breached'`.
+Each evaluated timer's evaluation (`evaluateTimer`, `:121-162`) computes `elapsedMinutes` from
+`now - startedAt`, picks `thresholdMinutes`/`warningThresholdPct` by `phase` (`"response"` vs
+`"resolution"`), and derives `status: "ok" | "warning" | "breached"`. Evaluations split into two
+groups by `ticketType === "signal_compliance"` vs. everything else (`:186-187`); each group's
+compliance is `round((group.length - breachedInGroup) / group.length * 100)`, defaulting to 100
+for an empty group (`computeGroupCompliance`, `:189-193`). The overall `score` blends the two
+group scores by the MSP's own `w_signal`/`w_timer` weights from `msp_sla_weights` (default 50/50
+if the MSP has no row — `:302`), falling back to a straight average only if `totalWeight === 0`
+(`:198-201`) — an edge case that cannot occur with the table's own NUMERIC-with-DEFAULT-50
+columns unless both are explicitly zeroed.
 
 ---
 
@@ -169,23 +205,29 @@ NUMERIC-with-DEFAULT-50 columns unless both are explicitly zeroed.
 Neither engine's tables are Drizzle-schema-defined; every column/constraint source below is each
 file's own `CREATE TABLE IF NOT EXISTS`.
 
-**SLA** (`index.ts:935-1064`):
+**SLA** (`index.ts:981-1109`):
 - `sla_policies` — `msp_id` nullable INTEGER FK to `msps(id) ON DELETE CASCADE` (NULL = global
-  default), `priority` is plain `INTEGER DEFAULT 0` — **not** the `"low" | "standard" | "high" |
-  "critical"` string union `SlaPolicy.priority` claims in TS (`sla-engine.ts:34`); the route's
-  own POST default is the **string** `"standard"` (`msp-sla.ts:112`), so the column is
-  effectively TEXT-shaped-as-INTEGER-by-migration-drift — no CHECK constraint enforces either
-  reading. Not exercised live (0 policies exist locally to confirm the actual stored type at
-  runtime), flagged as a real, confirmed schema/type mismatch regardless.
-- `sla_timers` — `status TEXT NOT NULL DEFAULT 'active'`, no CHECK constraint. See Finding §5.2.
+  default), `priority` is plain `INTEGER NOT NULL DEFAULT 0` (`index.ts:992`) — **still not**
+  the `"low" | "standard" | "high" | "critical"` string union `SlaPolicy.priority` claims in TS
+  (`sla-engine.ts:34`); the route's own POST default is the **string** `"standard"`
+  (`msp-sla.ts:112`), so the column is effectively TEXT-shaped-as-INTEGER-by-migration-drift —
+  no CHECK constraint enforces either reading. Unchanged since #2654's extraction; live-confirmed
+  this session via `\d sla_policies` (0 policies exist locally to observe the actual stored
+  runtime value, but the column definition itself is confirmed real). Not filed as a new bug —
+  same real, confirmed schema/type mismatch already on record, not re-filed to avoid a duplicate.
+- `sla_timers` — `status TEXT NOT NULL DEFAULT 'running'` (`index.ts:1007`, changed from
+  `'active'` by #2728), plus `sla_timers_status_idx` on the column (`:1020`). See §3's SLA
+  formula section and §2 row 12 — `'running'`/`'warning'`/`'breached'`/`'stopped'` are now all
+  real, reachable, mutually-consistent states across every reader and writer in `sla-engine.ts`.
 - `sla_breaches` — `breach_type TEXT NOT NULL DEFAULT 'breach'`, no CHECK — the TS union is
   `"threshold_exceeded" | "warning_only"` (`sla-engine.ts:78`), neither of which is the column's
-  own default string.
+  own default string. Unchanged, not filed (same reasoning as the priority mismatch above — a
+  real but narrow schema/TS drift, no live row has ever exercised it).
 - `sla_escalations` / `sla_compliance_records` / `sla_signal_policy_map` / `msp_sla_weights` — no
   further mismatches found; `msp_sla_weights.msp_id` is `UNIQUE`, confirming one weights row per
   MSP is the intended shape `runSlaEngineForMsp`'s `LIMIT 1` read relies on.
 
-**Scope Creep** (`scope-creep-engine.ts:736-899`):
+**Scope Creep** (`scope-creep-engine.ts:736-901`):
 - `scope_creep_policies` — `msp_id` nullable INTEGER, **no FK** to `msps(id)` (contrast with
   `sla_policies.msp_id`, which does have one); `fulfillment_type` has a real CHECK
   (`'assessment','monitoring','project','retainer'`), added via a self-healing
@@ -209,119 +251,50 @@ file's own `CREATE TABLE IF NOT EXISTS`.
   unlisted snapshot job), noted for completeness since it shares a table this pack does read from
   (`GET /msp/scope-creep/compliance`).
 
+**New this session** — `sla-engine.ts`'s `fireSlaWarning()` (`:407-419`, added by #2811): sets
+`status = 'warning'` + `warning_fired_at = NOW()`, guarded `WHERE status = 'running' AND
+warning_fired_at IS NULL` so it fires exactly once per timer and only from `'running'` (never
+pulls a `'breached'`/`'stopped'` timer back to `'warning'`). Called from
+`workflow-executor.ts`'s `sla_warning` node (not one of this pack's 26 routes, but the one real,
+non-test caller — replacing that node's prior raw `UPDATE` which only ever touched
+`warning_fired_at` and never `status`, per #2811's own fix).
+
 ---
 
 ## 5. Findings
 
-### 5.1 `POST /msp/scope-creep/evaluate` — MSP-portfolio score fires a violation attributed to one customer, and defaults that customer to the MSP's own id
+**No open findings.** Every finding from the #2654 extraction (§5.1 evaluate-portfolio-score,
+§5.2 sla_timers status-default, §5.3 dead-code note, §5.4 missing staff scoping, §5.5 dropped
+`msp_customers` join) is now fixed and verified — see the "what changed" table in this pack's
+intro. Two items are carried forward as **notes**, not findings, because neither is new,
+neither has a live consequence today, and re-filing either would duplicate an already-tracked
+gap:
 
-`msp-scope-creep.ts:412-472`. When `autoFireViolations: true` is passed, the route loops every
-active policy for the MSP and calls `fireScopeCreepViolation()` once per policy, using
-`output.score.compositeScore` — the **MSP-wide aggregate across every customer's open
-detections** (§3) — as the score being compared against that policy's own
-`violationScoreThreshold`, and inserts the resulting violation row with:
+- **§1.4/§2.4 copy-on-write `mspId === 0` dead branch** (was §5.3) — both files still branch on
+  `original.mspId === null || original.mspId === 0` (`msp-scope-creep.ts:154`,
+  `msp-sla.ts:148`) to detect "this is a global default policy." No live writer inserts
+  `msp_id = 0` in either table (`POST` always supplies the caller's real `mspId`), so the branch
+  is harmless defensive code with no observed effect. Design/future-authoring awareness only.
+- **`sla_policies.priority`/`sla_breaches.breach_type` schema-vs-TS-union mismatches** (§4) —
+  unchanged, real, and already effectively documented at §4 rather than re-filed as new bugs;
+  neither has a live row to demonstrate the mismatch in practice (0 policies, 0 breaches
+  locally), and filing a third near-duplicate finding for a column-type drift class already on
+  record elsewhere in this repo's history would not surface anything new for Design or a future
+  build to act on.
 
-```
-customerId: b.customerId != null ? Number(b.customerId) : mspId
-```
-
-(`:444`, `:459` — both call sites). Two real, compounding problems:
-
-1. **No customerId in the request body inserts `customer_id = mspId`.** `scope_creep_violations
-   .customer_id` is `NOT NULL` with no FK (§4), so this silently succeeds and creates a
-   violation row whose `customer_id` is actually an `msps.id` value — the same id-space
-   confusion class `docs/scope-and-sla-contract-pack.md` §5 already documented for
-   `runSlaEngineForTenant()`, but here it is the **route itself** doing the mixing, not a
-   downstream engine function.
-2. **Even with a real `customerId` supplied**, the `compositeScore` being compared against
-   threshold is the whole MSP's portfolio score, not that customer's own. A single customer with
-   zero open detections of their own can have a violation fired against them because a
-   *different* customer of the same MSP is driving the aggregate score up — every policy that
-   MSP has active fires (or skips) identically for every customerId an operator passes, since
-   the loop body never re-scopes `output` per customer.
-
-Not observed live (0 `scope_creep_detections`/`violations` rows exist locally, §0), so no
-customer has been affected yet, but the code path is real, reachable by any `MSPOperator`, and
-would misattribute or fabricate violations the moment real detections exist. Filed as **#2726**,
-sibling of this issue's own Feature #2572, labeled `bug`.
-
-### 5.2 `sla_timers.status` default (`'active'`) is never read by the engine, and never written by the route's own timer-creation path
-
-`index.ts:960` — `status TEXT NOT NULL DEFAULT 'active'`. `startSlaTimer()`
-(`sla-engine.ts:317-339`) INSERTs a new timer row without listing `status` in its column list at
-all, so every timer created through it starts, and permanently stays, at `'active'` — a value:
-
-- **never selected by `fetchRunningTimers()`**, which is hardcoded to `WHERE status = 'running'`
-  (`:256`, `:264`, `:271`) — the SLA engine (`runSlaEngineForMsp`, `POST /msp/sla/evaluate`) will
-  never see this timer, so it can never warn or breach through the normal evaluation path;
-- **never reachable by `resolveSlaTimer()`**, whose UPDATE requires
-  `status IN ('running','paused','breached')` (`sla-engine.ts:444`) — a timer stuck at `'active'`
-  can never be resolved via `POST /msp/sla/timers/:timerId/resolve` either (the route's own
-  ownership-check SELECT would find the row, but `resolveSlaTimer`'s UPDATE would affect 0 rows,
-  silently returning `resolved: false` with no error);
-- **is, however, what `GET /msp/sla/summary`'s `activeTimers` count actually reads**
-  (`msp-sla.ts:460`: `COUNT(*) FILTER (WHERE status = 'active')`) — the one place in this whole
-  pack's 26 routes that the DEFAULT value is ever queried for, and it is querying a state the
-  rest of the engine treats as inert.
-
-Two real callers of `startSlaTimer()` exist (`lib/tenant-signals.ts:1629`,
-`routes/admin-sla.ts:266`), so this is not a theoretical dead path — every timer either of those
-creates lands in this stuck state. 0 live `sla_timers` rows exist locally (§0) to show the effect
-today, but the bug is real and structural, mirroring exactly the "internal consistency note"
-`docs/scope-and-sla-contract-pack.md` §4 already flagged for this same table from the customer
-side — this pack elevates it from a note to a filed finding because this side's summary route
-(`activeTimers`) actively surfaces the mismatched value to an MSP operator, and two real,
-non-test call sites exist. Filed as **#2728**, sibling of #2572, labeled `bug`.
-
-### 5.3 Copy-on-write policy override — `mspId === 0` branch is dead code
-
-`msp-scope-creep.ts:154` and `msp-sla.ts:148` both branch on
-`original.mspId === null || original.mspId === 0` to decide "is this a global default policy."
-`scope_creep_policies.msp_id` and `sla_policies.msp_id` are both nullable INTEGER columns with no
-default value written by either the `CREATE TABLE` or any INSERT in either route file (`POST`
-always supplies the caller's real `mspId`, never `0`) — so `msp_id = 0` can only occur if
-something outside this pack's two files inserts it directly. Not filed as a bug (harmless
-defensive code, and no live writer was found that would trigger it), but noted here since a
-`mspId === 0` MSP operator (`msps.id` starting at 1, confirmed at §0) would otherwise be
-indistinguishable from "global" under this check — worth Design/future-authoring awareness only.
-
-### 5.4 `GET /msp/scope-creep/escalations` and `GET /msp/scope-creep/compliance` apply no staff scoping
-
-Both routes (`msp-scope-creep.ts:350-371`, `:376-405`) return MSP-wide rows with no
-`resolveStaffScopedCustomerIds()` filter — unlike every other customer-bearing GET in both files,
-which apply it either as a SQL predicate guard (§1's `detections`/`violations`, which 400/empty
-on an out-of-scope `?customerId`) or as `scopeSlaRows` post-filtering (all of §2's
-customer-bearing GETs). A scoped `MSPOperator` (one with rows in
-`msp_staff_customer_scopes`, per `requireAuth.ts:349-361`) would see every customer's
-escalations and compliance history, not just their assigned subset — a real, if narrower,
-staff-scoping gap. Not filed separately; folded into #2728's write-up since it is the same class
-of "scoping applied inconsistently across sibling routes in this pack" and #2728 is already the
-natural home for msp-sla.ts's own summary-route inconsistency (which, note, also applies no
-staff-scoping — `msp-sla.ts:453-494` — an MSP-wide aggregate is arguably correct there by
-design, unlike the two per-row GETs named here).
-
-### 5.5 `GET /msp/operator-tasks` joins a table that was dropped
-
-`msp-sla.ts:517` and `:533` — `LEFT JOIN msp_customers c ON c.id = b.customer_id` /
-`... ON c.id = v.customer_id`. `msp_customers` was dropped by the Tenant/User Refactor:
-`lib/db/migrations/manual/2026-07-28-tenant-user-refactor-phase0-schema-wipe.sql:544` —
-`DROP TABLE IF EXISTS msp_customers CASCADE;`. A repo-wide grep of every `.ts` file under
-`artifacts/api-server/src` for `msp_customers` (54 matches, enumerated in full while building
-this pack) found these are the **only two live SQL references** to the table anywhere in the
-codebase — every other one of the 54 hits is a comment describing the *old*, now-replaced id
-space (`msp_customers.id` → `tenants.id`), consistent with every other route in the codebase
-having already been migrated off this table. `msp-sla-scope-creep.test.ts`'s own
-`operator-tasks` tests (`:250-359`) mock `db.execute` directly and never touch a real
-connection, so this route has never been exercised against actual schema by its own test suite
-(§ intro). Live confirmation via `psql` was attempted but the local DB became unresponsive
-mid-session (see the honesty note at the top of this pack) — the migration-file + grep evidence
-is unambiguous on its own: every real call to `GET /msp/operator-tasks` today would throw
-`relation "msp_customers" does not exist` and return a 500 (caught by the route's own try/catch,
-`msp-sla.ts:550-553`, so it degrades to `{ error: "Failed to load operator tasks" }` rather than
-crashing the process — but the route's actual feature, task aggregation, is completely dead).
-Filed as **#2729**, sibling of #2572, labeled `bug`, prefixed `URGENT:` — this is a currently-500
-route with a live, non-test call path once any UI exists for it, and the fix (join `tenants`
-instead, matching every other migrated route) is small and unambiguous.
+**One real architectural asymmetry, worth Design's awareness rather than a filed bug:**
+`POST /msp/scope-creep/evaluate` (§1.10) was moved to a genuinely per-customer call
+(`runScopeCreepEngineForTenant`) by #2726, but `POST /msp/sla/evaluate` (§2.10) was not — it
+still calls `runSlaEngineForMsp(mspId)`, the MSP-portfolio aggregate. This is not a bug: SLA has
+no "fire a violation" action analogous to scope-creep's `autoFireViolations` (breaches are
+detected by a separate background evaluation path, not by this route), so there is no
+customer-misattribution consequence to the portfolio-wide score the way #2726 found for
+scope-creep. But the two sibling `/evaluate` routes in this pack now have genuinely different
+scoping models, and a future SLA-side "evaluate one customer" UI action would need
+`runSlaEngineForTenant()` (which already exists and has three other real callers —
+`dashboard-resolvers.ts:286`, `engine-registry.ts:270`, `admin-sla.ts:463,482`,
+`portal-customer-engines.ts:184` — just never wired into this route) rather than assuming
+`msp-sla.ts` already has the same shape `msp-scope-creep.ts` does.
 
 ---
 
@@ -334,13 +307,16 @@ instead, matching every other migrated route) is small and unambiguous.
 - `GET /msp/sla/summary` returns real zeros / `avgCompliancePct: null` (not `0`) when
   `sla_compliance_records` has no rows in the trailing-90-day window (`msp-sla.ts:486-488`) —
   the one route in this pack that distinguishes "never computed" (`null`) from "computed as
-  zero."
-- `POST /msp/scope-creep/evaluate` / `POST /msp/sla/evaluate` return a real, honest zero-signal
-  engine output (`compositeScore: 0`, empty `breakdown`/`rawSignals`) for an MSP with no open
-  detections/timers — not a fixture, the same `computeScopeCreepEngine([], policies, 0)` /
-  `computeSlaEngine([], policies, ...)` pure-function path any populated portfolio runs through.
-- `GET /msp/operator-tasks` cannot currently reach its honest-empty state or its populated state
-  — every call 500s per Finding §5.5.
+  zero." `warningTimers` is now a genuinely reachable non-zero value (per #2811), not a
+  structurally-dead counter the way it was at the #2654 extraction.
+- `POST /msp/scope-creep/evaluate` returns a real per-customer engine output now (fixed by
+  #2726) — `compositeScore: 0`, empty `breakdown`/`rawSignals` for a customer with no open
+  detections of their own, the same honest zero-signal
+  `computeScopeCreepEngine([], policies, 0)` pure-function path any populated customer runs
+  through. `POST /msp/sla/evaluate` is unchanged — still the MSP-portfolio
+  `computeSlaEngine([], policies, ...)` path for an MSP with no running/warning timers.
+- `GET /msp/operator-tasks` now reaches its honest-empty state correctly (fixed by #2729) —
+  previously every call 500'd (old §5.5).
 
 ---
 
@@ -349,24 +325,29 @@ instead, matching every other migrated route) is small and unambiguous.
 - **Customer-facing counterpart**: `docs/scope-and-sla-contract-pack.md` (#2452) — the read-only
   friendly-translated views a `CustomerUser` sees (`sla-status`/`scope-status`). That pack's own
   §5 finding (`runSlaEngineForTenant()`'s id-space bug, filed as #2513) is about the
-  **tenant-scoped** engine entry point; this pack's §5.1 is a **separate**, MSP-scoped bug in a
-  different function (`runScopeCreepEngineForMsp` + the route's own auto-fire loop) — the two are
-  not the same finding and do not share a fix.
+  **tenant-scoped** engine entry point on the customer-facing route
+  (`portal-customer-engines.ts:184`) — separate from, and already resolved independently of, this
+  pack's own former §5.1 (`runScopeCreepEngineForMsp` + the route's own auto-fire loop, fixed by
+  #2726).
 - **Admin-side counterpart**: both route files' own header comments explicitly contrast
   themselves with `/api/admin/scope-creep/*` and `/api/admin/sla/*`, which require
-  `PlatformAdmin` rather than `MSPOperator` (`msp-scope-creep.ts:10`, `msp-sla.ts:9`). Those
-  admin routes (`routes/admin-sla.ts`, referenced at §5.2 as one of `startSlaTimer()`'s two real
-  callers) were read only as far as needed to confirm that one call site — a full admin-side
+  `PlatformAdmin`/`requireAdmin` rather than `MSPOperator` (`msp-scope-creep.ts:10`,
+  `msp-sla.ts:9`, `admin-sla.ts:15`, `requireAdmin` import). Those admin routes
+  (`routes/admin-sla.ts`, `routes/admin-scope-creep.ts`) were read only as far as needed to
+  confirm `startSlaTimer()`'s and `runSlaEngineForTenant()`'s real call sites — a full admin-side
   audit is out of scope for this pack.
 - **`/msp/operator-tasks`' `deepLink`** fields (`/admin-panel/#/sla`, `/admin-panel/#/scope-creep`)
-  point into the Admin Panel, not the (nonexistent) MSP Console — the only concrete UI-routing
-  signal found in either file, worth Design's awareness for whichever surface Feature #2572
-  ultimately builds.
+  point into the Admin Panel, not the MSP Console — the only concrete UI-routing signal found in
+  either file, and now materially relevant to Design's awareness: **`artifacts/msp-console` now
+  exists** (scaffolded by commit `68ae2c22b`, 2026-09-03 — after the #2654 extraction was
+  written), with real `src/pages/index.tsx` and `src/lib` directories, but **zero wiring to
+  either of this pack's 26 routes yet** — see the orphaned-endpoint check below.
 - **SSE**: `GET /msp/sla/events/stream` subscribes to channel `"engine.alert"` scoped by `mspId`
-  (`sse-channels.ts:150-152`). No emitter for this exact channel/scope pair was located within
-  either route file or engine lib read for this pack — `broadcastMspEngineEvent(mspId, event)`
-  exists (`sse-channels.ts:154-156`) but its real callers were not traced as part of this pack's
-  scope; noted for Design as an open question, not asserted as broken.
+  (`sse-channels.ts:150-152`). Still no real emitter for this exact channel/scope pair was
+  located within either route file or engine lib read for this pack —
+  `broadcastMspEngineEvent(mspId, event)` exists (`sse-channels.ts:154-156`) but a repo-wide grep
+  for real (non-test, non-definition) call sites this session found **zero** — unchanged from the
+  #2654 extraction. Noted for Design as an open question, not asserted as broken.
 
 ---
 
@@ -374,26 +355,30 @@ instead, matching every other migrated route) is small and unambiguous.
 
 ```
 grep -rln "scope-creep\|msp/sla\|admin/scope-creep\|admin/sla" artifacts/admin-panel/src
-grep -rn "operator-tasks\|/msp/sla\|scope-creep" artifacts/msp-portal/src artifacts/portal 2>/dev/null
+grep -rn "operator-tasks\|/msp/sla\|scope-creep" artifacts/msp-console/src artifacts/portal 2>/dev/null
 ```
 
-Real result: **zero matches** in `artifacts/admin-panel/src`, and `artifacts/msp-portal` does
-not exist in the current tree at all (`ls artifacts/` — `admin-panel`, `api-server`,
-`mcp-server`, `msp-website`, `portal`, `shane-mccaw-consulting`; no `msp-console`, no
-`msp-portal`). This matches Feature #2572's own body verbatim: *"`artifacts/msp-console` doesn't
-exist yet ... scaffolding is itself the first real piece of work needed here."* All 26 routes in
-this pack are real, live, and callable via `curl`/Postman today, but **zero UI anywhere in this
-repo calls any of them** — Design should build against these 26 real, unexercised endpoints;
-their absence of a caller is the honest current state, not evidence something is broken (except
-where Finding §5.5 makes that literal for one specific route).
+Real result: **zero matches** in `artifacts/admin-panel/src`, and **zero matches** in
+`artifacts/msp-console/src` either — the directory now exists (see §7) but its only real content
+is scaffolding (`src/pages/index.tsx`, `src/pages/not-found.tsx`, `components.json`,
+`package.json`, `tsconfig.json`; `node_modules` junctioned in). `ls artifacts/` today:
+`admin-panel`, `api-server`, `mcp-server`, `msp-console`, `msp-website`, `portal`,
+`shane-mccaw-consulting` — `msp-console` is the real successor to what the #2654 extraction
+called "doesn't exist yet," but it is still pre-wiring: all 26 routes in this pack remain real,
+live, and callable via `curl`/Postman today, with **zero UI anywhere in this repo calling any of
+them**. Design should build against these 26 real, unexercised endpoints into the now-scaffolded
+`msp-console`; their absence of a caller is the honest current state, not evidence something is
+broken.
 
 ---
 
 ## Not covered by this pack
 
 The admin-side `/api/admin/scope-creep/*` and `/api/admin/sla/*` route files
-(`PlatformAdmin`-gated) were not read beyond the one `startSlaTimer()` call site cited in §5.2.
+(`PlatformAdmin`/`requireAdmin`-gated) were not read beyond the call sites cited in §3/§7.
 `scope_creep_scores` and `scope_creep_compliance`'s snapshot-writer job
 (`computeScopeCreepCompliance` / `computeAndPersistScore`, §4) were read for their formulas but
 their real trigger/scheduler was not located — out of scope for a pack limited to the 26 routes
-named in #2654's dispatch. `sla_signal_policy_map`'s real reader/writer was not located either.
+named in #2898's dispatch. `sla_signal_policy_map`'s real reader/writer was not located either.
+`workflow-executor.ts`'s `sla_warning` node (the one real caller of the new `fireSlaWarning()`,
+§4) was read only as far as confirming that one call site.
