@@ -11,6 +11,16 @@ namespace BuildConsole.Services
   if (window.__bcChatContextMeterInjected) return;
   window.__bcChatContextMeterInjected = true;
 
+  // Git #2808 — the context meter is only meaningful for the top-level claude.ai chat document.
+  // This script is added via AddScriptToExecuteOnDocumentCreatedAsync, which WebView2 runs in
+  // EVERY frame (any ad/analytics/embed iframe included). A subframe's location.pathname is never
+  // /chat/<uuid>, so it computes a null conversation id and posts a BT_CHAT_STATS the host then
+  // can't persist (ChatContextMeterStore.Merge is skipped on an empty id) — and, worse, that
+  // subframe reading would also overwrite the live in-memory meter with junk. Both are real
+  // candidates for the "store never written / Band 1 frozen at the 40k floor" symptom #2808 is
+  // chasing across three attempts. Only ever run the meter in the real top frame.
+  try { if (window.top !== window.self) return; } catch (e) { /* cross-origin frame: definitely not the top chat doc */ return; }
+
   // Git #1628 — the meter used to recompute its whole total from whatever was
   // MOUNTED on each 2s poll, so any DOM churn (a heavy turn scrolling out of the
   // virtualization window, a mid-render/streaming poll, a re-render dropping the
@@ -52,6 +62,27 @@ namespace BuildConsole.Services
 
   function countStats() {
     const s = store();
+
+    // Git #2808 — LINK 1 diagnostic: emit the REAL pathname/href and the conversation id THIS
+    // script actually computed, once per distinct pathname (rare — only on navigation, so not
+    // per-poll spam). The host logs it (ChatWv_WebMessageReceived → ActivityLog, channel
+    // system.core.chat-context), so on the next live occurrence Shane can read the log and see at
+    // a glance whether link 1 (this scraper) is alive AND whether it derived a real conversation
+    // id — the exact key the whole write chain (UpdateContextMeter → ChatContextMeterStore.Merge)
+    // persists under. A null id here is precisely why the store stays empty and Band 1 sits at the
+    // 40k floor with "Messages: —", even with #2781's + #2802's fixes both present.
+    try {
+      if (window.__bcCtxDiagPath !== location.pathname) {
+        window.__bcCtxDiagPath = location.pathname;
+        window.chrome.webview.postMessage(JSON.stringify({
+          type: 'BT_CHAT_METER_DIAG',
+          pathname: location.pathname,
+          href: location.href,
+          conversationId: s.convId,
+          matched: s.convId != null
+        }));
+      }
+    } catch (e) {}
 
     // Git #1436 — content selectors (specific class/testid hooks first, structural
     // fallbacks after). Kept for the stale-selector self-diagnostic below, which is

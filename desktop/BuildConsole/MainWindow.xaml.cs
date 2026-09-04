@@ -148,6 +148,12 @@ namespace BuildConsole
         private readonly Dictionary<Microsoft.Web.WebView2.Wpf.WebView2, ChatContextMeterState> _contextMeters = new();
         /// <summary>Git #2781 — WebView2s UpdateContextMeter has already logged a "no registered meterState" warning for, so that warning fires once per distinct missing wv rather than spamming on every poll.</summary>
         private readonly HashSet<Microsoft.Web.WebView2.Wpf.WebView2> _loggedMissingContextMeterFor = new();
+        /// <summary>Git #2808 — WebView2s the first BT_CHAT_STATS receipt has already been logged for (link 2 diagnostic), so it fires once per tab, not on every 2s poll.</summary>
+        private readonly HashSet<Microsoft.Web.WebView2.Wpf.WebView2> _loggedFirstChatStatsFor = new();
+        /// <summary>Git #2808 — WebView2s the "store WRITTEN (Merge ran)" confirmation has already been logged for (link 3+4 diagnostic), once per tab.</summary>
+        private readonly HashSet<Microsoft.Web.WebView2.Wpf.WebView2> _loggedMeterWriteFor = new();
+        /// <summary>Git #2808 — WebView2s the "conversationId EMPTY → Merge SKIPPED → store never written" root-cause warning has already been logged for (link 3 broken), once per tab so the loud line is unmissable but not spammed 30×/min.</summary>
+        private readonly HashSet<Microsoft.Web.WebView2.Wpf.WebView2> _loggedMeterConvEmptyFor = new();
         /// <summary>Git #942 — queue item id -> last label pushed to that item's injected chat button ("In Progress..."/"Done"/"Failed: Retry"). Populated when BT_QUEUE_BUILD captures a real id; drained by PushChatButtonStatuses the moment an item hits a terminal state (done/failed/canceled) or leaves the queue, so nothing is polled forever. UI-thread only (event handler + DispatcherTimer), so no locking needed.</summary>
         private readonly Dictionary<int, string> _chatButtonStatus = new();
         private DispatcherTimer? _buildTailTimer;
@@ -5516,6 +5522,11 @@ namespace BuildConsole
                 // same chat restores its level from disk.
                 _contextMeters.Remove(wv);
                 _loggedMissingContextMeterFor.Remove(wv);
+                // Git #2808 — drop the per-wv diagnostic dedup latches too, so a genuinely new tab
+                // reusing a recycled instance re-logs its own link 1/2/3 trail rather than staying silent.
+                _loggedFirstChatStatsFor.Remove(wv);
+                _loggedMeterWriteFor.Remove(wv);
+                _loggedMeterConvEmptyFor.Remove(wv);
                 try { wv.Dispose(); } catch { }
                 return;
             }
@@ -7409,6 +7420,34 @@ namespace BuildConsole
             return new SolidColorBrush(blended);
         }
 
+        /// <summary>Git #2808 — a stable-enough identifier for a chat WebView2 in the diagnostic log
+        /// (its XAML Name when it has one — e.g. the primary docked ClaudeWebView — else its hash code
+        /// so per-chat-tab views, which are unnamed, are still individually distinguishable across lines).</summary>
+        private static string ContextMeterWvId(Microsoft.Web.WebView2.Wpf.WebView2? wv)
+        {
+            if (wv == null) return "<null>";
+            return string.IsNullOrEmpty(wv.Name) ? wv.GetHashCode().ToString() : wv.Name;
+        }
+
+        /// <summary>Git #2808 — read the LIVE in-memory context meter for a specific chat WebView2: the
+        /// latest per-poll reading UpdateContextMeter records on every BT_CHAT_STATS, set REGARDLESS of
+        /// whether the persisted ChatContextMeterStore write ran (Merge is skipped on an empty
+        /// conversationId, but meterState.EstimatedTokens/TurnCount are still updated). ChatDocumentContainer
+        /// (Band 1) uses this as the real fallback when the persisted store has no entry for its
+        /// conversation id — the verified #2808 symptom was an empty store file while the live meter had
+        /// reached real token counts (a 174k handoff genuinely fired). Returns false when this wv has no
+        /// registered meter yet.</summary>
+        public bool TryGetLiveContextMeter(Microsoft.Web.WebView2.Wpf.WebView2? wv, out double estTokens, out int turnCount, out int heavyTurnCount)
+        {
+            estTokens = 0; turnCount = 0; heavyTurnCount = 0;
+            if (wv == null) return false;
+            if (!_contextMeters.TryGetValue(wv, out var st)) return false;
+            estTokens = st.EstimatedTokens;
+            turnCount = st.TurnCount;
+            heavyTurnCount = st.HeavyTurnCount;
+            return true;
+        }
+
         private void UpdateContextMeter(Microsoft.Web.WebView2.Wpf.WebView2 wv, double estTokens, int turnCount, int heavyTurnCount, bool selectorsLikelyStale = false, string? conversationId = null)
         {
             if (!_contextMeters.TryGetValue(wv, out var meterState))
@@ -7440,6 +7479,33 @@ namespace BuildConsole
                 estTokens = hw.EstTokens;
                 turnCount = hw.TurnCount;
                 heavyTurnCount = hw.HeavyTurnCount;
+
+                // Git #2808 — LINK 3+4 diagnostic: the write chain is intact for this tab. Merge
+                // genuinely persisted to ChatContextMeterStore (which writes context-meter-highwater.json
+                // on every call), keyed on this convId. Log once per wv. If Band 1 is STILL frozen with
+                // this line present in the log, the break is a reader-side key mismatch — the container
+                // reads ChatContextMeterStore.Get(_chat.ConversationId), which must equal this convId
+                // (see the [link 5] line ChatDocumentContainer logs).
+                if (_loggedMeterWriteFor.Add(wv))
+                {
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context",
+                        $"[link 3+4] Store WRITTEN for wv={ContextMeterWvId(wv)} convId={conversationId} — ChatContextMeterStore.Merge persisted EstTokens={hw.EstTokens:0} TurnCount={hw.TurnCount}. The reader (ChatDocumentContainer Band 1) must key on this exact convId.");
+                }
+            }
+            else
+            {
+                // Git #2808 — LINK 3 BROKEN: a real reading arrived but with NO conversation id, so
+                // Merge is skipped and NOTHING is persisted. The live in-memory meter below still
+                // updates (so the retired banner/handoff path and the #2808 live-meter fallback keep
+                // working), but the persisted store stays empty — which is exactly why a per-chat tab's
+                // Band 1 (ChatDocumentContainer reads the store) shows the 40k floor + "Messages: —".
+                // This is the concrete, live-observable root cause the three attempts have been chasing;
+                // logged once per wv so it's unmissable without spamming 30×/min.
+                if (_loggedMeterConvEmptyFor.Add(wv))
+                {
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context",
+                        $"[link 3 BROKEN] wv={ContextMeterWvId(wv)} posted a context reading (estTokens={estTokens:0} turnCount={turnCount}) with an EMPTY conversationId — ChatContextMeterStore.Merge SKIPPED, so context-meter-highwater.json is never written and any per-chat Band 1 reading the store shows the 40k floor + 'Messages: —'. See the [link 1] pathname line above for WHY the id was empty.");
+                }
             }
 
             // Cost/buffer derive from the (clamped) token total, so recompute them here rather than
@@ -7912,8 +7978,40 @@ namespace BuildConsole
 
                         double estTokens = charCount / 4.0;
 
+                        // Git #2808 — LINK 2 diagnostic: the JS scraper's message genuinely reached
+                        // the host handler for this tab. Log once per wv (not every 2s poll) with the
+                        // raw payload so the log distinguishes "link 1/2 fine, id present" from
+                        // "link 1/2 fine but id empty" (the [link 3 BROKEN] case UpdateContextMeter
+                        // logs next). This is the first-hand proof #2781/#2802 could only assume.
+                        if (_loggedFirstChatStatsFor.Add(activeWv))
+                        {
+                            BuildConsole.Services.ActivityLog.Log("system.core.chat-context",
+                                $"[link 2] First BT_CHAT_STATS reached the host for wv={ContextMeterWvId(activeWv)} — convId={(string.IsNullOrEmpty(conversationId) ? "<EMPTY>" : conversationId)} charCount={charCount} turnCount={turnCount} estTokens={estTokens:0}. (The injected scraper is alive and its messages are being received.)");
+                        }
+
                         UpdateContextMeter(activeWv, estTokens, turnCount, heavyTurnCount, selectorsLikelyStale, conversationId);
                     }
+                }
+                else if (type == "BT_CHAT_METER_DIAG")
+                {
+                    // Git #2808 — LINK 1 diagnostic (see ChatContextMeterScript): the scraper posts
+                    // this once per distinct pathname, carrying the REAL location it's reading and the
+                    // conversation id it derived. This is what turns "the gauge is frozen" into a
+                    // concrete, single-glance answer on the next live occurrence: is the id null
+                    // (URL isn't /chat/<uuid>, so the write chain has no key to persist under), or is
+                    // it a real uuid (then the break is downstream — Merge/store/reader, all of which
+                    // also log below/in ChatDocumentContainer).
+                    var diagWv = sender as Microsoft.Web.WebView2.Wpf.WebView2;
+                    string path = Str("pathname") ?? "";
+                    string href = Str("href") ?? "";
+                    string convId = Str("conversationId") ?? "";
+                    bool matched = Bool("matched");
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context",
+                        $"[link 1] ChatContextMeterScript alive on wv={ContextMeterWvId(diagWv)} — pathname='{path}' " +
+                        (matched
+                            ? $"convId={convId} (real /chat/<uuid> — the write chain HAS a key to persist under; any frozen gauge is downstream of here)"
+                            : "convId=<NULL> (this pathname is NOT /chat/<uuid>, so ChatContextMeterStore.Merge has no key and persists NOTHING — this is the frozen-gauge root cause when it fires)") +
+                        $" href='{href}'");
                 }
                 else if (type == "BT_EDIT_BUILD")
                 {

@@ -86,6 +86,10 @@ namespace BuildConsole.Controls
         /// re-render instantly against the same data (filtered by <see cref="_dismissed"/>)
         /// instead of forcing a fresh GitHub round-trip.</summary>
         private ChatDockData? _lastDockData;
+        /// <summary>Git #2808 — which source last answered the Band 1 context read
+        /// ("persisted-store" / "live-meter-fallback" / "none"). Used to throttle the [link 5]
+        /// diagnostic so it logs only when the source genuinely changes, not on every 30s tick.</summary>
+        private string _lastCtxSource = "";
 
         // README §5 — tool identity table (id, label, Segoe MDL2 glyph, colour). Internals are each a
         // sibling Feature under #1202; here they open an honest stub panel body.
@@ -275,8 +279,61 @@ namespace BuildConsole.Controls
             var span = DateTime.Now - _sessionStart;
             CtxActive.Text = $"Active: {(int)span.TotalDays}d {span.Hours}h {span.Minutes}m";
 
+            var (_, turnCount, haveData) = ResolveConversationMeter();
+            CtxMessages.Text = haveData ? $"Messages: {turnCount}" : "Messages: —";
+        }
+
+        /// <summary>Git #2808 — resolve THIS tab's conversation token/turn counts for Band 1, with a
+        /// real per-link diagnostic trail and a real fallback. Reads the persisted
+        /// <see cref="ChatContextMeterStore"/> first (keyed on <c>_chat.ConversationId</c>), then falls
+        /// back to the LIVE in-memory meter for this tab's WebView2 when the store has no entry —
+        /// verified #2808 symptom: the store file was never written (Merge kept being skipped on an
+        /// empty conversation id) while the live meter held real values. Logs (channel
+        /// system.core.chat-context, throttled to source changes) exactly which source answered, so the
+        /// reader end of the chain is as diagnosable as the writer end. Returns <c>haveData=false</c>
+        /// only when NEITHER source has anything — a genuinely empty upstream, not a frozen reader.</summary>
+        private (double estTokens, int turnCount, bool haveData) ResolveConversationMeter()
+        {
+            double estTokens = 0;
+            int turnCount = 0;
+            bool haveData;
+            string source;
+
             var meter = ChatContextMeterStore.Get(_chat.ConversationId);
-            CtxMessages.Text = meter != null ? $"Messages: {meter.TurnCount}" : "Messages: —";
+            if (meter != null)
+            {
+                estTokens = meter.EstTokens;
+                turnCount = meter.TurnCount;
+                haveData = true;
+                source = "persisted-store";
+            }
+            else if (_owner.TryGetLiveContextMeter(ResolveWebView(), out var liveEst, out var liveTurn, out _)
+                     && (liveEst > 0 || liveTurn > 0))
+            {
+                estTokens = liveEst;
+                turnCount = liveTurn;
+                haveData = true;
+                source = "live-meter-fallback";
+            }
+            else
+            {
+                haveData = false;
+                source = "none";
+            }
+
+            if (source != _lastCtxSource)
+            {
+                _lastCtxSource = source;
+                ActivityLog.Log("system.core.chat-context",
+                    $"[link 5] Band 1 read for chat convId='{_chat.ConversationId}' → source={source} estTokens={estTokens:0} turnCount={turnCount}. " +
+                    (source == "none"
+                        ? "Neither the persisted store nor the live in-memory meter has data for this tab yet — the write chain upstream has produced no reading for this conversation (see the [link 1]/[link 3] lines for why)."
+                        : source == "live-meter-fallback"
+                        ? "Persisted store had NO entry for this convId (Merge never ran, or it was keyed differently), but the live meter did — gauge is now live via the #2808 fallback; note persistence across reopen is still broken upstream and worth fixing at the [link 3] point."
+                        : "Persisted store answered normally — the full write→read chain is intact for this tab."));
+            }
+
+            return (estTokens, turnCount, haveData);
         }
 
         /// <summary>README §2 context maths. used = 40k overhead + conversation estimate + draft; the
@@ -291,12 +348,12 @@ namespace BuildConsole.Controls
         /// retired.</summary>
         private void UpdateGauge()
         {
-            double conversationTokens;
-            var meter = ChatContextMeterStore.Get(_chat.ConversationId);
-            if (meter != null && meter.EstTokens > 0)
-                conversationTokens = meter.EstTokens;
-            else
-                conversationTokens = 0;
+            // Git #2808 — read through ResolveConversationMeter so Band 1's gauge uses the same
+            // persisted-store-then-live-meter fallback (and per-link diagnostic) as "Messages:" above,
+            // instead of reading only the persisted store (which the verified #2808 symptom showed was
+            // never written, leaving this stuck at 0 → the 40k floor).
+            var (resolvedTokens, _, _) = ResolveConversationMeter();
+            double conversationTokens = resolvedTokens > 0 ? resolvedTokens : 0;
 
             double draftTokens = (ChatComposer?.Text?.Length ?? 0) * CharsPerTokenFactor;
             double used = FixedOverhead + conversationTokens + draftTokens;
