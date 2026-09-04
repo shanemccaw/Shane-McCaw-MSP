@@ -48,6 +48,7 @@ vi.mock("@workspace/db", () => ({
   mspEventStoreTable: { mspId: "msp_id", customerId: "customer_id", eventType: "event_type" },
   mspAuditLogsTable: { id: "id" },
   salesOffersTable: { id: "id", mspId: "msp_id", state: "state" },
+  RETENTION_CLOCK_RUNNING_TENANT_STATUSES: ["active", "onboarding"] as const,
   mspSalesBundlesTable: {
     bundleId: "bundle_id",
     mspId: "msp_id",
