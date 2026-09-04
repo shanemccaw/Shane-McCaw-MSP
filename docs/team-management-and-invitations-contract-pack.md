@@ -1,38 +1,48 @@
 # Team Management and Invitations (Portal) — contract extraction pack
 
-**Issue:** #2447, part of #1656 ("Feature: Team Management and Invitations (Portal)"), part
+**Issue:** #2895, part of #1656 ("Feature: Team Management and Invitations (Portal)"), part
 of #1485 (EPIC: Portal). Method per #1642. Extracted, not authored — every field below traces
 to one of the files listed, cited to file:line. This is Phase 2 of the Portal build order
 (architect → build the endpoints → regenerate the contract pack → Design → wire) — no
 page/UI-shape decisions are made here.
 
-#2447's Step 1 named three endpoints from the old portal-v2 page (`portal/team`,
-`portal/team/:userId`, `portal/team/invite`). Confirmed real and live, but the real surface is
-more granular than that naming: there is no single `portal/team/:userId` route — it's ten
-distinct routes, one file, one router:
+**Regeneration note (#2895 — supersedes the #2447 extraction):** the real surface grew by one
+route since the last pack. #2527 landed the buildable half of #1519's "escalates internally,
+to the assigner or up their chain" — a real, nullable, self-referencing `usersTable.managerUserId`
+column, written only by a new eleventh route (`PATCH /portal/team/:userId/manager`), and read by
+`notifyOwnershipDeclined()` (`notification-center.ts`, out of scope for this pack, cited at §6)
+to walk the chain on a customer-side Ownership/RACI decline. Everything else in this pack was
+re-verified line-by-line against the current backend, not carried forward unchecked; two file:line
+citations drifted (noted where they occur) and are corrected below.
 
-- `artifacts/api-server/src/routes/portal-team.ts` — all 10 routes, mounted at `/api` in
-  `artifacts/api-server/src/routes/index.ts:13,333` (`import portalTeamRouter from
-  "./portal-team"; ... router.use(portalTeamRouter);`) — the router's own paths already carry
-  the literal `/portal/team/...` prefix, so the real mounted path is
-  `/api/portal/team/...` (confirmed by the route file's own test,
-  `portal-team.test.ts:127-131`).
+`artifacts/api-server/src/routes/portal-team.ts` — **11** distinct routes, one file, one router,
+mounted at `/api` in `artifacts/api-server/src/routes/index.ts:13,354` (`import portalTeamRouter
+from "./portal-team"; ... router.use(portalTeamRouter);`) — the router's own paths already carry
+the literal `/portal/team/...` prefix, so the real mounted path is `/api/portal/team/...`
+(confirmed by the route file's own test, `portal-team.test.ts:127-131`).
 
-**All 10 routes are currently orphaned — no live frontend consumer.** `artifacts/msp-portal`
-(the old portal-v2 codebase whose `customer-team.tsx` called these — 1,369 lines against this
-same backend, per #1656's own body) was retired wholesale on 2026-08-29 (`f40438cdc`,
-preserved at tag `portal-archive-2026-08-29`); the replacement `artifacts/portal` scaffold
-under #1485 has exactly one real route (`/`, `App.tsx:54-55`) and no page calling any of these
-routes yet, and no `Design/portal/` export exists for Team Management. That is real, current
-state, not a gap this pack invents.
+**All 11 routes are currently orphaned — no live frontend consumer**, re-confirmed this pass:
+
+```
+grep -rn "portal/team" artifacts/portal/src artifacts/msp-website artifacts/shane-mccaw-consulting
+```
+
+returns no matches. `artifacts/msp-portal` (the old portal-v2 codebase whose `customer-team.tsx`
+called these — 1,369 lines against this same backend, per #1656's own body) was retired wholesale
+on 2026-08-29 (`f40438cdc`, preserved at tag `portal-archive-2026-08-29`); the replacement
+`artifacts/portal` scaffold under #1485 still has no page calling any of these routes, and no
+`Design/portal/` export exists for Team Management. That is real, current state, not a gap this
+pack invents.
 
 Sources this pack is built against, and nothing else:
 
-- `artifacts/api-server/src/routes/portal-team.ts` — all 10 routes
+- `artifacts/api-server/src/routes/portal-team.ts` — all 11 routes
 - `artifacts/api-server/src/routes/portal-team.test.ts` — real mount path, real request/response
-  shapes exercised by the one live test
+  shapes exercised by the one live test (`reset-mfa`, #172) — **no test coverage exists for the
+  new manager route (§4i)**, noted at §5
 - `artifacts/api-server/src/middlewares/requireAuth.ts` — `AuthUser` shape, `assertCustomerAccess`
-  (the tenant-isolation gate), `MSP_ROLES` role-hierarchy comparison
+  (the tenant-isolation gate, now at `:294-321`, drifted from the prior pack's `:295-324`),
+  `MSP_ROLES` role-hierarchy comparison
 - `artifacts/api-server/src/lib/session-tracking.ts` — `revokeAllOtherSessions()`
 - `artifacts/api-server/src/lib/audit.ts` — `createAuditLog()` call shape (fire-and-forget,
   `void`-called, never blocks the response)
@@ -40,10 +50,15 @@ Sources this pack is built against, and nothing else:
 - `artifacts/api-server/src/lib/portal-url.ts` — `getPortalBaseUrl()`, `getMspPortalBaseUrl()`,
   `buildAccountSetupUrl()`
 - `artifacts/api-server/src/lib/mailer.ts` — `sendEmailFromTemplate()`, `passwordResetEmail()`
-- `lib/db/src/schema/index.ts` — `usersTable`, `mfaEnrollmentsTable`, `webauthnCredentialsTable`,
-  `passwordResetTokensTable`, `mfaChallengesTable`, `webauthnChallengesTable`,
-  `mfaBypassCodesTable`, `MSP_ROLES` (real column/enum sources)
+- `artifacts/api-server/src/lib/notification-center.ts` — `notifyOwnershipDeclined()`, the one
+  real reader of `managerUserId` (out of scope, cross-surface edge only, §6)
+- `lib/db/src/schema/index.ts` — `usersTable` (including the new `managerUserId` column,
+  `:131-142`), `mfaEnrollmentsTable`, `webauthnCredentialsTable`, `passwordResetTokensTable`,
+  `mfaChallengesTable`, `webauthnChallengesTable`, `mfaBypassCodesTable`, `MSP_ROLES` (real
+  column/enum sources)
 - `lib/db/src/schema/msp.ts` — `userSessionsTable`
+- `lib/db/migrations/manual/2026-09-04-users-manager-reports-to-2527.sql` — the real, additive
+  migration that added `manager_user_id`, confirmed run (`simulator_migration_runs` self-mark)
 - `artifacts/portal/src/App.tsx` — comparison surface for the orphaned-endpoint check
 
 ---
@@ -54,7 +69,7 @@ Sources this pack is built against, and nothing else:
 this file except the read-only `GET /portal/team`. Two ordered checks:
 
 1. **Tenant isolation** — `assertCustomerAccess(user, targetCustomerId)`
-   (`requireAuth.ts:295-324`): PlatformAdmin always; MSPAdmin/MSPOperator iff the target
+   (`requireAuth.ts:294-321`): PlatformAdmin always; MSPAdmin/MSPOperator iff the target
    tenant belongs to their MSP (plus per-staff-member scope, `isCustomerBlockedByStaffScope`);
    CustomerUser/Free/Assessment iff `user.customerId === targetCustomerId` (own tenant only).
    Failing this returns 403 before the second check runs.
@@ -70,7 +85,8 @@ failed. `canManageTeam` mirrors the shape of `usersTable.canApprovePurchases` (p
 authority) and `usersTable.canApproveChanges` (change-control approval authority) — three
 distinct per-user capability flags on the same table, deliberately not merged, since each
 grants a different authority nobody should get by accident from one flag (`index.ts:88-113`
-comments).
+comments). The new §4i manager-assignment route gates on this same flag — there is no separate
+"who may set reporting lines" capability.
 
 Every mutating route additionally: parses `req.params.userId` with `parseInt(...,10)`, 400s
 `{ error: "Invalid userId" }` on `NaN`; looks up the target's `tenantId` (called `customerId` in
@@ -118,6 +134,11 @@ every enrolled method.
 No sort is applied — rows return in whatever order the tenant-scoped `SELECT` produces (no
 `ORDER BY` clause at `:175-189`).
 
+**`GET /portal/team` does not return `managerUserId`.** The new self-referencing column exists
+on `users` and is set/read elsewhere (§4i, §6), but the roster route's own `SELECT` (`:176-187`)
+was not extended to project it — a caller of this route cannot see a member's current manager
+without a separate call. Real, current state; see §5 for whether this rises to a finding.
+
 ---
 
 ## 2. Wire contract — `POST /portal/team/invite`
@@ -153,6 +174,10 @@ On success, inserts a new `users` row (`:121-132`):
 | `department` | trimmed input or `null` |
 | `jobTitle` | trimmed input or `null` |
 
+`managerUserId` is **not** one of the inserted columns — a newly invited teammate always starts
+with no manager on file (column default `NULL`), the same as every pre-#2527 row; invite carries
+no `managerUserId` input field.
+
 Fires (non-blocking, `void`-called, failures logged but never surfaced to the caller):
 
 - `createAuditLog({ actionType: "team_member_invited", ... })` (`:134-142`)
@@ -174,16 +199,18 @@ caller (contrast with §2c's share response, which does return generated data).
   anywhere — recomputed on every roster fetch from live `mfa_enrollments` + `webauthn_credentials`
   rows.
 - **`mfa_enrollments.method`** — real DB enum `"totp" | "sms" | "passkey"`
-  (`index.ts:1755-1763`). The roster route reads only `enabled = true` rows (`:201`) — a
-  disabled/superseded enrollment never contributes to `mfaStatus`.
+  (`index.ts:1778`, drifted from the prior pack's `:1755-1763`). The roster route reads only
+  `enabled = true` rows (`:201`) — a disabled/superseded enrollment never contributes to
+  `mfaStatus`.
 - **`user_sessions.session_type`** — real DB enum `"standard" | "impersonation"`
-  (`msp.ts:647`). Every query in this file that touches `user_sessions` (active-count,
-  last-login, `revokeAllOtherSessions`) filters to `"standard"` only — an impersonation session
-  never counts toward a team member's active-session count or last-login timestamp, and is
-  never revoked by these routes.
+  (`msp.ts:691`, drifted from `:647`). Every query in this file that touches `user_sessions`
+  (active-count, last-login, `revokeAllOtherSessions`) filters to `"standard"` only — an
+  impersonation session never counts toward a team member's active-session count or last-login
+  timestamp, and is never revoked by these routes.
 - **`user_sessions.login_method`** — real DB enum `"password" | "totp" | "sms" | "passkey" |
-  "impersonation" | "bypass"` (`msp.ts:648`). Not read or returned by any route in this pack —
-  cited here because `emergency-bypass` (§2h) mints the credential that a subsequent login would
+  "impersonation" | "bypass"` (`msp.ts:692`, drifted from `:648`). Not read or returned by any
+  route in this pack —
+  cited here because `emergency-bypass` (§4h) mints the credential that a subsequent login would
   record as `login_method = "bypass"`, a cross-surface edge (§6), not a value this pack's own
   routes ever produce or filter on.
 - **`MSP_ROLES`** — `"PlatformAdmin" | "MSPAdmin" | "MSPOperator" | "CustomerUser" |
@@ -195,10 +222,17 @@ caller (contrast with §2c's share response, which does return generated data).
   are gated identically to `CustomerUser` by `denyIfCannotManageTeam` (they'd need the DB flag
   set, same as any customer-tier user), but nothing in this repo currently sets it for them.
 - **Per-user capability flags on `usersTable`** (not a DB enum, three independent booleans,
-  `index.ts:88-113`): `canManageTeam` (this pack — invite/suspend/reset/unlock/bypass),
+  `index.ts:88-113`): `canManageTeam` (this pack — invite/suspend/reset/unlock/bypass/manager-set),
   `canApprovePurchases` (purchase-charge approval, out of scope here), `canApproveChanges`
   (Change Control approval, Git #1496, out of scope here). Deliberately not merged into one
   flag or a role — see the schema's own comment for why.
+- **`managerUserId` (new, #2527)** — not an enum, a nullable `integer` self-FK on `usersTable`
+  (`references(() => usersTable.id, { onDelete: "set null" })`, `index.ts:142`). No DB constraint
+  enforces same-tenant or acyclic — both are enforced only in the route handler (§4i), by
+  convention, the same pattern this table already uses for other cross-row invariants (schema
+  comment, `index.ts:133-134`). `ON DELETE SET NULL`: deleting a manager's user row clears the
+  pointer on their reports rather than cascading, so a report's own record survives their
+  manager's row being removed.
 
 ---
 
@@ -232,23 +266,23 @@ isActive }`.
 
 ### 4c. `PATCH /portal/team/:userId/mfa-enforcement`
 
-(`:308-349`) Body: `{ enforced: boolean }` — same 400 typeof-guard as §4b. `UPDATE users SET
+(`:394-435`) Body: `{ enforced: boolean }` — same 400 typeof-guard as §4b. `UPDATE users SET
 mfa_enforced = enforced`. Audit `team_member_mfa_enforcement_enabled` /
 `_disabled`. Response: `{ ok: true, mfaEnforced: enforced }`. This flag is read live at login
-(schema comment, `index.ts:81-82`) — toggling it here takes effect on the target's next login
+(schema comment, `index.ts:114-116`) — toggling it here takes effect on the target's next login
 attempt, not their current session.
 
 ### 4d. `POST /portal/team/:userId/unlock`
 
-(`:351-389`) No body. `UPDATE users SET failed_login_attempts = 0, last_failed_login_at = NULL,
+(`:437-475`) No body. `UPDATE users SET failed_login_attempts = 0, last_failed_login_at = NULL,
 locked_until = NULL` — full lockout-state reset, not just clearing `locked_until`. Audit
 `team_member_unlocked`. Response: `{ ok: true, isLockedOut: false }` — the `false` is hardcoded
 post-update state, not re-queried.
 
 ### 4e. `POST /portal/team/:userId/reset-password`
 
-(`:393-441`) No body. Mints a `password_reset_tokens` row (`token`: 32 random bytes hex,
-`expiresAt`: now + 1 hour — `TEAM_RESET_TOKEN_TTL_MS`, `:391`, explicitly commented as matching
+(`:479-527`) No body. Mints a `password_reset_tokens` row (`token`: 32 random bytes hex,
+`expiresAt`: now + 1 hour — `TEAM_RESET_TOKEN_TTL_MS`, `:477`, explicitly commented as matching
 `/auth/forgot-password`'s own TTL). Emails the target a reset link
 (`${getPortalBaseUrl()}/reset-password?token=...`) via the same `passwordResetEmail()` template
 as self-service forgot-password. Audit `team_member_password_reset_email_sent`. Response: `{
@@ -257,7 +291,7 @@ target.
 
 ### 4f. `POST /portal/team/:userId/temp-password`
 
-(`:443-482`) No body. Generates a temp password (`Temp-${6 random bytes hex, uppercased}!9` —
+(`:529-568`) No body. Generates a temp password (`Temp-${6 random bytes hex, uppercased}!9` —
 fixed pattern, not configurable), bcrypt-hashes it (cost 12), `UPDATE users SET password_hash =
 ...`. Audit `team_member_temp_password_set`. Response: `{ ok: true, tempPassword: string }` —
 **the plaintext temp password is returned directly in the API response**, not emailed — the
@@ -266,11 +300,11 @@ email is sent by this route, unlike §4e.
 
 ### 4g. `POST /portal/team/:userId/reset-mfa`
 
-(`:484-549`) No body. Reads the target's current enrollments (`mfa_enrollments` rows +
+(`:570-635`) No body. Reads the target's current enrollments (`mfa_enrollments` rows +
 whether any `webauthn_credentials` row exists) to build a `clearedMethods: string[]` list for
 the audit metadata and the notification email, **then deletes** all four MFA-related rows for
 the target: `mfa_enrollments`, `mfa_challenges`, `webauthn_credentials`, `webauthn_challenges`
-(`:519-522`) — a full MFA teardown, not a per-method reset. Emails the target
+(`:605-608`) — a full MFA teardown, not a per-method reset. Emails the target
 (`mfa-reset` template) with a human-readable rendering of `clearedMethods` (`"totp"` →
 "Authenticator App (TOTP)", `"sms"` → "SMS", `"passkey"` → "Passkey / Security Key", else the
 raw value; `.join(", ")`, or `"None"` if empty). Audit `team_member_mfa_reset` with
@@ -280,11 +314,11 @@ this route resolves exclusively off `getMspPortalBaseUrl()`, never a stale `/crm
 
 ### 4h. `POST /portal/team/:userId/emergency-bypass`
 
-(`:551-605`) No body. Generates a cryptographically random bypass code (`EMERGENCY-XXXX-XXXX-
+(`:637-691`) No body. Generates a cryptographically random bypass code (`EMERGENCY-XXXX-XXXX-
 XXXX-XXXX`, 16 hex chars from 8 random bytes, uppercased and grouped for legibility), bcrypt-
 hashes it (cost 12), `expiresAt` = now + 24 hours. **Enforces one active code per user** — any
 existing `mfa_bypass_codes` row for the target (used or unused) is deleted before the new one
-is inserted (`:584`), so generating a new code silently invalidates any prior unused one. Insert
+is inserted (`:670`), so generating a new code silently invalidates any prior unused one. Insert
 carries `createdByUserId` (the caller) and `customerId` (the target's tenant, captured at
 generation for audit/reporting per the schema comment, `index.ts` `mfaBypassCodesTable`).
 Audit `team_member_emergency_bypass_generated` with `metadata: { expiresAt }`. Response: `{ ok:
@@ -292,6 +326,37 @@ true, bypassCode: string, expiresAt: string (ISO) }` — **the plaintext code is
 directly**, same pattern as §4f's temp password: relay is the caller's responsibility, no email
 sent. This is the single highest-privilege action in the file — a working bypass code lets its
 holder skip MFA entirely on the target's account for 24 hours.
+
+### 4i. `PATCH /portal/team/:userId/manager` (new, #2527)
+
+(`:315-391`) The only writer of `usersTable.managerUserId` anywhere in the repo. Body:
+`{ managerUserId: number | null }` — 400 `{ error: "managerUserId must be a number or null" }`
+if the field is present and not one of those two shapes (`:322-326`); a request that omits the
+field entirely also fails this check (`undefined` is neither `null` nor `"number"`).
+
+Beyond the shared §0 gate, three additional ordered checks run only when `managerUserId !==
+null` (clearing a manager, i.e. `managerUserId: null`, skips straight to the update — `:344`):
+
+1. **Not self** — 400 `{ error: "A team member cannot be their own manager" }` if
+   `managerUserId === targetUserId` (`:345-348`).
+2. **Same tenant** — 400 `{ error: "managerUserId must be a member of the same team" }` if no
+   `users` row with that id exists, or its `tenantId` differs from the target's (`:350-358`).
+   This is the one place in the file this invariant is enforced in code — there is no DB
+   constraint backing it (§3).
+3. **Cycle guard** — walks the *candidate* manager's own existing chain upward (via
+   `managerUserId`, one row per hop, cursor-following, `:362-376`), 400 `{ error: "That
+   assignment would create a reporting-chain cycle" }` if `targetUserId` appears anywhere in
+   that walk. Capped at 50 hops (`hops < 50`, `:364`) — the same cap `notifyOwnershipDeclined`'s
+   own read-side walk uses (§6), so a pathological 51+-deep chain (which nothing else in this
+   route prevents from being built one hop at a time) would silently stop enforcing the cycle
+   check past hop 50 rather than erroring; real but low-probability, not filed (§5).
+
+On success: `UPDATE users SET manager_user_id = managerUserId WHERE id = targetUserId`
+(`:379`) — a bare overwrite, no diff/no-op short-circuit if the value is unchanged. Audit
+`team_member_manager_set`, no `metadata` field (contrast §4g/§4h, which do carry `metadata`) —
+the audit row records that a change happened and by whom, but not the before/after
+`managerUserId` values themselves (§5). Response: `{ ok: true, managerUserId }` — echoes back
+exactly what was written (including `null` on a clear), not a re-queried row.
 
 ---
 
@@ -302,32 +367,50 @@ the same judgment call the Documents pack (#2449 §2d, §5) used for its own low
 observations):
 
 - **`GET /portal/team`'s `lastLoginAt` reads `max(user_sessions.created_at)`, never
-  `users.last_login_at`** (`:214-217` vs. the dedicated column at `index.ts` — comment: "Checked
-  live"). The two are not obviously kept in sync by anything in this file — `users.last_login_at`
-  is written elsewhere (login flow, out of scope for this pack), and this route ignores it
-  entirely in favor of a derived `max()` over session history for the same "standard" session
-  type. Functionally this likely converges to the same value in practice (a login both updates
+  `users.last_login_at`** (`:214-217` vs. the dedicated column at `index.ts:130`). The two are
+  not obviously kept in sync by anything in this file — `users.last_login_at` is written
+  elsewhere (login flow, out of scope for this pack), and this route ignores it entirely in
+  favor of a derived `max()` over session history for the same "standard" session type.
+  Functionally this likely converges to the same value in practice (a login both updates
   `last_login_at` and creates a `user_sessions` row), but it's two independently-maintained
   sources for the same displayed field, worth Design/implementation knowing rather than assuming
-  the column and the roster's displayed value are the same write path.
+  the column and the roster's displayed value are the same write path. Unchanged since #2447.
 - **`DELETE /portal/team/:userId/sessions` is the one mutating route in this file with no
-  `createAuditLog` call** (contrast every other mutating route, §4b–4h, which all fire one).
+  `createAuditLog` call** (contrast every other mutating route, §4b–4i, which all fire one).
   A manager force-revoking a teammate's sessions leaves no audit trail distinguishing it from
   natural session expiry. Low severity (the action is non-destructive and reversible — the
   teammate just re-logs in), flagged for awareness rather than filed, consistent with the
-  Documents pack's own precedent for a similarly low-severity gap (missing `try/catch` on an
-  otherwise-consistent route file).
+  Documents pack's own precedent for a similarly low-severity gap. Unchanged since #2447.
 - **`POST /portal/team/invite` always creates the new teammate at `mspRole: "CustomerUser"`
   with `canManageTeam` unset (defaults `false`)** — there is no invite-time option to grant the
   new teammate management capability themselves; a second, separate action against their user
   row (not exposed by any route in this file) would be needed. This is a real product-shape
   question (should invite support "invite as manager"?), not a bug — flagged for Design, not
   filed, since it's a product decision this pack's own scope (Step 3: "no page/UI-shape
-  decisions get made in this issue") explicitly defers.
+  decisions get made in this issue") explicitly defers. Unchanged since #2447.
+- **`GET /portal/team` does not project `managerUserId`** (new this pass). A caller reading the
+  roster has no way to see who reports to whom without a separate, unbuilt lookup — the roster
+  and the manager-assignment write path (§4i) are currently disconnected surfaces. This is
+  squarely a page/UI-shape and read-contract decision for whoever wires the actual Team
+  Management page (the same Step 3 deferral as the invite-role question above, and this pack's
+  own scope is extraction, not authoring a new response field) — flagged for Design, not filed.
+- **`PATCH /portal/team/:userId/manager`'s audit row carries no `metadata`** — unlike §4g/§4h,
+  the `team_member_manager_set` audit entry doesn't record the prior or new `managerUserId`
+  value, only that *a* change happened, by whom, to which target. A reviewer reconstructing "who
+  reported to whom, and when that changed" from the audit log alone cannot, without also having
+  captured `usersTable.managerUserId`'s value at each point in time. Low severity (informational
+  gap in an otherwise-complete audit trail, not a security or correctness defect), flagged for
+  awareness rather than filed.
+- **The cycle guard's 50-hop cap (§4i) and `notifyOwnershipDeclined`'s independent 50-hop cap
+  (§6) are two separately-maintained constants enforcing the same real limit** — nothing ties
+  them together, so a future change to one without the other would silently desync write-time
+  cycle prevention from read-time walk depth. Low severity (both are generous caps unlikely to
+  matter at real org sizes), flagged for awareness rather than filed.
 
 **No genuine bug found that rises to the filing bar** (a live endpoint the surface doesn't call
 is already covered by the orphaned-endpoint check below, not a separate finding; every gate,
-every enum, and every derived field traced cleanly to real, live code).
+every enum, and every derived field traced cleanly to real, live code, including the new
+manager-assignment route and its cycle/tenant guards).
 
 ---
 
@@ -347,14 +430,25 @@ every enum, and every derived field traced cleanly to real, live code).
   `portal-checkout-free.ts`'s onboarding flow, not exclusive to team invites; both paths produce
   the same advisory-locked, 72-hour-expiry setup-token shape.
 - **`user_sessions.login_method = "bypass"`** — a value this pack's `emergency-bypass` route
-  (§4h) never writes itself, but whose existence in the schema (`msp.ts:648`) is the login-side
+  (§4h) never writes itself, but whose existence in the schema (`msp.ts:692`) is the login-side
   half of the feature this route mints credentials for.
+- **`usersTable.managerUserId` — written only here (§4i), read only by
+  `notifyOwnershipDeclined()`** (`notification-center.ts:329-396`, out of scope for this pack).
+  That function is the entire reason #2527 exists: a customer-side Ownership/RACI decline
+  (`portal_ownership_assignments`, a table this pack does not otherwise touch) notifies the
+  assigner (`setByPersonId`, #1519) and then walks `managerUserId` upward from the assigner,
+  notifying every real manager on file, cycle-guarded and capped at 50 hops the same way §4i's
+  write-side guard is (see §5's note that the two caps are independently maintained). A row
+  with no `managerUserId` set — the common case today, since nothing backfills it and nothing
+  outside §4i writes it — notifies only the assigner, same behavior as before #2527 shipped.
+  `notifyOwnershipDeclined` itself, `portal_ownership_assignments`, and the Ownership/RACI
+  matrix surface are all out of scope for this pack beyond this cross-reference.
 
 ---
 
 ## Orphaned-endpoint check
 
-None of the 10 routes in this pack has a live frontend caller anywhere in the current tree:
+None of the 11 routes in this pack has a live frontend caller anywhere in the current tree:
 
 ```
 grep -rn "portal/team" artifacts/portal/src artifacts/msp-website artifacts/shane-mccaw-consulting
@@ -362,18 +456,23 @@ grep -rn "portal/team" artifacts/portal/src artifacts/msp-website artifacts/shan
 
 returns no matches. This is expected, current state — `artifacts/msp-portal` (the only prior
 caller, via `customer-team.tsx`) was retired 2026-08-29, and no `Design/portal/` export exists
-yet for Team Management. All 10 routes are real, none is exercised by any live surface today;
-that is the honest state Design should build against, not a gap this pack needs to close.
+yet for Team Management. All 11 routes are real, none is exercised by any live surface today;
+that is the honest state Design should build against, not a gap this pack needs to close. The
+new manager-assignment route (§4i) is exercised only by its own route handler's internal reads
+(the cycle guard) and by `notifyOwnershipDeclined()` reading the column it writes — no route in
+this file, and no frontend page, calls `PATCH /portal/team/:userId/manager` today.
 
 ---
 
 ## Not covered by this pack
 
 Per #2447 Step 3 (mirrored from the Documents pack's own Step 3 language), no page/UI-shape
-decisions are made here. This pack extracts what exists on `portal-team.ts` in full (all 10
-routes, not just the 3 named in #2447's Step 1) — it does not decide what a Team Management page
-should look like, how the roster table should be organized, or which of the eight per-user
-mutating actions get surfaced as buttons vs. an overflow menu. The MFA-bypass redemption route,
-the self-service "log out other sessions" route, and `portal-checkout-free.ts`'s onboarding flow
-are separate routers/routes sharing tables or helpers with this one (§6) but are not analyzed
-here beyond that cross-reference.
+decisions are made here. This pack extracts what exists on `portal-team.ts` in full (all 11
+routes) — it does not decide what a Team Management page should look like, how the roster table
+should be organized, whether/how a "reports to" picker gets surfaced against the roster, or
+which of the nine per-user mutating actions get surfaced as buttons vs. an overflow menu. The
+MFA-bypass redemption route, the self-service "log out other sessions" route,
+`portal-checkout-free.ts`'s onboarding flow, and `notifyOwnershipDeclined()` /
+`portal_ownership_assignments` (the Ownership/RACI matrix this pack's new manager column now
+feeds) are separate routers/routes/tables sharing tables or helpers with this one (§6) but are
+not analyzed here beyond that cross-reference.
