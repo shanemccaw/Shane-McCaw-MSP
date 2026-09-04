@@ -2267,7 +2267,7 @@ const SCOPE_CATEGORY_BY_NAME: Record<string, ScopeCategoryKey> = {
   "RecordsManagement.Read.All": "security",
   "DeviceManagementConfiguration.Read.All": "devices",
   "DeviceManagementManagedDevices.Read.All": "devices",
-  "BitLockerKey.Read.All": "devices",
+  "BitlockerKey.Read.All": "devices",
   "Exchange.ManageAsApp": "collaboration",
   "Sites.Read.All": "collaboration",
   "TeamSettings.Read.All": "collaboration",
