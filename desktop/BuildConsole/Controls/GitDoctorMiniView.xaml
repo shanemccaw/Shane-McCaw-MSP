@@ -1,0 +1,137 @@
+<UserControl x:Class="BuildConsole.Controls.GitDoctorMiniView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        Git Doctor mini panel — the chat document tool-rail's 280px flyout version of
+        Git Doctor (Git #2799, sibling of #2798's full ActivityBar view). Built to
+        README-ClaudeChat.md §6.2 against #2798's real, already-landed GitDoctorService
+        contract (RunChecksAsync / ComputeBranchesAsync / GetRepoStatusAsync /
+        RunStepsAsync) — every finding comes from real git against this repo, no seeded
+        data.
+
+        Body-only, exactly like LogPeekView (#2787): ChatDocumentContainer.xaml's rail
+        header already owns the title/close/refresh/send-to-chat/maximize chrome for
+        every tool it hosts (README §6). Cached one-instance-per-chat-tab in the
+        container (_gitDoctorMiniView), the same per-tab-cache precedent as _terminalView
+        (#2769) and _logPeekView (#2787), so an in-progress run log / extracted plan
+        survives rail close/reopen.
+
+        Colors are README §6.2's literal design hexes (the same palette the container
+        rail itself uses in ChatDocumentContainer.xaml.cs), not the Catppuccin resource
+        keys — this rail is drawn in the design's own palette.
+
+        §6.2 body order: Summary → Findings → Claude bridge → Plan → Run log. Sections are
+        flex:none inside one scrolling column (a flex:1 child inside a scrolling column
+        collapses to 0 — the bug README §6 calls out; avoided by keeping every section
+        Auto-height and letting the outer ScrollViewer scroll).
+    -->
+    <Grid Background="#232320">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+
+                <!-- 1. Summary -->
+                <Border BorderBrush="#302f2d" BorderThickness="0,0,0,1" Padding="12,11,12,12">
+                    <StackPanel>
+                        <TextBlock x:Name="GdmHeadline" Text="Checking git…"
+                                   FontSize="11" FontWeight="Bold" Foreground="#ece9e4"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock x:Name="GdmSubline" Text=""
+                                   Margin="0,3,0,0" FontFamily="Consolas" FontSize="9"
+                                   Foreground="#7a7975" TextWrapping="Wrap"/>
+
+                        <Border x:Name="GdmNightmareBtn" Height="30" Margin="0,10,0,0"
+                                CornerRadius="5" Background="#e2593f" Cursor="Hand"
+                                MouseLeftButtonUp="GdmNightmareBtn_MouseLeftButtonUp">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="&#xE945;" FontFamily="Segoe MDL2 Assets"
+                                           FontSize="12" Foreground="#1a0f0a"
+                                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock x:Name="GdmNightmareLabel" Text="Fix My Git Nightmare"
+                                           FontSize="12" FontWeight="ExtraBold" Foreground="#1a0f0a"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock x:Name="GdmNightmareSub" Text=""
+                                   Margin="0,4,0,0" HorizontalAlignment="Center"
+                                   FontSize="8.5" Foreground="#7a7975" TextAlignment="Center"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- 2. Findings -->
+                <StackPanel x:Name="GdmFindingsPanel" Margin="8,8,8,0"/>
+
+                <!-- selected-finding compact detail (local highlight target — README-ClaudeChat.md
+                     §6.2 "selects the finding": the full-document surface is a separate instance here,
+                     so selection highlights + previews the doctor's recommended fix inline, and the
+                     rail-header maximize opens the full document). -->
+                <Border x:Name="GdmSelectedDetail" Margin="10,4,10,0" Padding="9,8,9,8"
+                        CornerRadius="6" Background="#0d0f10" BorderBrush="#302f2d"
+                        BorderThickness="1" Visibility="Collapsed">
+                    <StackPanel x:Name="GdmSelectedDetailBody"/>
+                </Border>
+
+                <!-- 3. Claude bridge -->
+                <StackPanel Margin="12,14,12,0">
+                    <DockPanel LastChildFill="False">
+                        <TextBlock DockPanel.Dock="Left" Text="CLAUDE BRIDGE"
+                                   FontSize="9" FontWeight="ExtraBold" Foreground="#7a7975"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock x:Name="GdmSendFindings" DockPanel.Dock="Right"
+                                   Text="send findings" Cursor="Hand"
+                                   FontSize="10" FontWeight="SemiBold" Foreground="#d97757"
+                                   VerticalAlignment="Center"
+                                   MouseLeftButtonUp="GdmSendFindings_Click"/>
+                    </DockPanel>
+
+                    <Grid Margin="0,6,0,0">
+                        <TextBox x:Name="GdmPasteBox" MinHeight="52" MaxHeight="120"
+                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 Background="#0d0f10" Foreground="#ece9e4"
+                                 BorderBrush="#302f2d" BorderThickness="1" Padding="7,5,7,5"
+                                 FontFamily="Consolas" FontSize="10.5"
+                                 TextChanged="GdmPasteBox_TextChanged"/>
+                        <TextBlock x:Name="GdmPastePlaceholder" Text="Paste Claude's commands…"
+                                   Margin="9,7,0,0" VerticalAlignment="Top"
+                                   IsHitTestVisible="False" FontFamily="Consolas" FontSize="10.5"
+                                   Foreground="#7a7975"/>
+                    </Grid>
+
+                    <Border x:Name="GdmExtractBtn" Height="24" Margin="0,6,0,0"
+                            CornerRadius="5" Background="Transparent"
+                            BorderBrush="#3d3b37" BorderThickness="1" Cursor="Hand"
+                            HorizontalAlignment="Left" MouseLeftButtonUp="GdmExtractBtn_Click">
+                        <TextBlock Text="Extract commands" Margin="12,0,12,0"
+                                   FontSize="10.5" Foreground="#c2c0bc"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- 4. Plan -->
+                <StackPanel x:Name="GdmPlanPanel" Margin="12,10,12,0"/>
+                <Border x:Name="GdmRunPlanBtn" Height="26" Margin="12,8,12,0"
+                        CornerRadius="5" Background="#d97757" Cursor="Hand"
+                        Visibility="Collapsed" HorizontalAlignment="Left"
+                        MouseLeftButtonUp="GdmRunPlanBtn_Click">
+                    <TextBlock x:Name="GdmRunPlanLabel" Text="Run 0 approved" Margin="14,0,14,0"
+                               FontSize="11.5" FontWeight="Bold" Foreground="#1a0f0a"
+                               VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- 5. Run log -->
+                <TextBlock Text="RUN LOG" Margin="12,14,12,0"
+                           FontSize="9" FontWeight="ExtraBold" Foreground="#7a7975"/>
+                <Border Margin="12,5,12,12" MaxHeight="140" CornerRadius="6"
+                        Background="#0d0f10" BorderBrush="#302f2d" BorderThickness="1">
+                    <ScrollViewer x:Name="GdmLogScroll" VerticalScrollBarVisibility="Auto"
+                                  Padding="8,7,8,7">
+                        <StackPanel x:Name="GdmLogPanel"/>
+                    </ScrollViewer>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

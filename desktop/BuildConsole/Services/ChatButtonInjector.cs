@@ -27,8 +27,10 @@ namespace BuildConsole.Services
   // one of these words further down is NOT caught. Build-dispatch blocks start with a "--flag" line
   // (or "BUILD:" / plain prose) and never with one of these executables, so they still fall through
   // to "prompt" and keep the Send-to-Builder bar. The list is the real CLIs this repo drives from
-  // chat (the issue names npm/npx/pnpm/yarn/git first), extend as needed.
-  const SHELL_BLOCK_RE = /^\s*(?:#.*\n|\s*\n)*\s*(?:sudo\s+)?(npm|npx|pnpm|yarn|node|tsc|vitest|jest|deno|bun|git|gh|az|dotnet|python3?|pip3?|curl|wget|docker|kubectl|terraform|make|cargo|go|psql|bash|sh|pwsh|powershell|cd|ls|dir|cat|echo|mkdir|rm|cp|mv|export|set)\b/i;
+  // chat (the issue names npm/npx/pnpm/yarn/git first), extend as needed. Git #2810 added
+  // winget (the reported gap) plus other genuinely-likely real Windows commands: choco,
+  // msiexec, robocopy, copy, del, type, findstr.
+  const SHELL_BLOCK_RE = /^\s*(?:#.*\n|\s*\n)*\s*(?:sudo\s+)?(npm|npx|pnpm|yarn|node|tsc|vitest|jest|deno|bun|git|gh|az|dotnet|python3?|pip3?|curl|wget|docker|kubectl|terraform|make|cargo|go|psql|bash|sh|pwsh|powershell|winget|choco|msiexec|robocopy|copy|del|type|findstr|cd|ls|dir|cat|echo|mkdir|rm|cp|mv|export|set)\b/i;
 
   function classifyCodeBlock(text) {
     if (SQL_BLOCK_RE.test(text)) return "sql";

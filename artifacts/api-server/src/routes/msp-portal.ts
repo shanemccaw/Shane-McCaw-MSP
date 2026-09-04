@@ -27,6 +27,7 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { calculateMspPortfolioRisk } from "../lib/msp-engine.ts";
 import { aggregateMspTelemetry } from "../lib/msp-financial-aggregator.ts";
 import { logger } from "../lib/logger.ts";
+import { syncTenantsAfterStatusWrite } from "../lib/retention/subscription-state.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -978,6 +979,13 @@ router.post(
           .set({ status: "archived" as "active" | "inactive" | "onboarding" | "archived", updatedAt: new Date() })
           .where(and(inArray(tenantsTable.id, ids), eq(tenantsTable.mspId, mspId)));
 
+        // #2765 — archiving is a cancellation: it takes the tenant out of the
+        // clock-running statuses, so every per-record retention clock freezes where it
+        // stands and the post-termination window starts (#1944 part 7). Reconciled
+        // rather than assumed — a tenant already archived is a no-op, so a repeated bulk
+        // action cannot re-stamp the lapse instant and push the purge date years out.
+        await syncTenantsAfterStatusWrite(ids);
+
         req.log.info({ mspId, count: ids.length }, "msp-portal: bulk archive complete");
         res.json({ action: "archive", updated: ids.length });
         return;
@@ -1313,6 +1321,15 @@ router.patch(
           createdAt: tenantsTable.createdAt,
           updatedAt: tenantsTable.updatedAt,
         });
+
+      // #2765 — a status change here is a cancellation or a return. Freeze every
+      // per-record retention clock and start the post-termination window, or resume every
+      // clock from exactly the remainder it froze with and unlock the portal (#1944 part 7).
+      // Only when `status` was actually in the patch: reconciling on a name edit would be
+      // work with nothing to reconcile.
+      if (data.status !== undefined) {
+        await syncTenantsAfterStatusWrite([customerId]);
+      }
 
       // Audit log
       try {
