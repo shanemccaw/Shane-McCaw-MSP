@@ -183,10 +183,21 @@ principal and left every freshly-onboarded tenant's container PowerShell checks 
 are the same app. The resolved appId + which env var supplied it is recorded in the step
 detail and audit metadata so a mis-target is visible, not silent.
 
-**Sibling with the identical bug (filed separately):** `dlp-role-group-provisioning.ts`
-(#249) adds `MT_APP_CLIENT_ID`'s SP (`6bae4b49`) to the Purview DLP role group, but the
-DLP `powershell` checks run in the container as B (`1c640fe8`) — so it adds the wrong SP.
-Tracked as its own finding under #1096.
+**Sibling with the identical bug — also fixed (#2166, 2026-09-04):**
+`dlp-role-group-provisioning.ts` (#249) added `MT_APP_CLIENT_ID`'s SP (`6bae4b49`) to the
+Entra security group that is assigned to the Purview DLP role group, but the DLP
+`powershell` checks (`compliance:zero-dlp-policies`, `weak-dlp-policies`,
+`missing-labels`, `label-errors`, `dlp-incidents`, `audit-log-retention`) run in the
+container as B (`1c640fe8`) — so the role-group membership landed on a principal that
+never runs them. Fixed with the same `resolveTargetServicePrincipalId` shape:
+`PS_EXECUTION_APP_CLIENT_ID` first, `MT_APP_CLIENT_ID` only as a unified-deployment
+fallback, with the resolved appId + source env var recorded in the step detail, on the
+returned result (`targetAppId` / `targetAppIdSource`), in the `dlp_role_group_provisioning`
+audit metadata, and surfaced in the admin panel's DLP provisioning card.
+`getDlpProvisioningState`'s live membership read resolves the same target, so the panel
+cannot report "member: yes" for a principal the chain no longer targets.
+
+**Both modules now depend on `PS_EXECUTION_APP_CLIENT_ID` being set** — see §9.
 
 ---
 
@@ -221,14 +232,15 @@ missing detector or code defect per the container logs.
 
 | Env var | Where | Value | Status |
 |---|---|---|---|
-| `PS_EXECUTION_APP_CLIENT_ID` | **api-server** environment | `9ea2e409-d1b9-422a-8451-02fa0b98d1c3` | **New (this session).** Makes `global-reader-role-provisioning.ts` target the correct (ps-execution) SP. If unset, the module falls back to `MT_APP_CLIENT_ID` and logs that it did so — which in the split-app dev/prod config is the wrong app. |
+| `PS_EXECUTION_APP_CLIENT_ID` | **api-server** environment | `9ea2e409-d1b9-422a-8451-02fa0b98d1c3` | **Added #2161; now also required by #2166.** Makes **both** `global-reader-role-provisioning.ts` (Global Reader) and `dlp-role-group-provisioning.ts` (Purview DLP role group) target the correct (ps-execution) SP. If unset, both modules fall back to `MT_APP_CLIENT_ID` and record that they did so — which in the split-app dev/prod config is the wrong app. |
 
 - **Local dev:** add `PS_EXECUTION_APP_CLIENT_ID=9ea2e409-…` to `.env.local` (agent-modifiable; DEV/testbed scope).
 - **Staging / production api-server env:** setting this is a deployment config change and
   belongs to the **#1281** release gate, not an in-session apply (production-change gate,
   CLAUDE.md §"Production-change gate"). Without it in prod, onboarding provisioning will
   fall back and mis-target unless the prod api-server's `MT_APP_CLIENT_ID` is already the
-  `9ea2e409` app.
+  `9ea2e409` app. This applies to the Purview DLP chain (#2166) exactly as it does to the
+  Global Reader chain (#2161) — one env var, two provisioning modules.
 
 ---
 

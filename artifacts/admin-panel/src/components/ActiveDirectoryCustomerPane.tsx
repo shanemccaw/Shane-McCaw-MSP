@@ -300,6 +300,10 @@ interface DlpProvisioningState {
   status: "not_provisioned" | "partially_provisioned" | "provisioned" | "unknown";
   groupExists: boolean;
   servicePrincipalIsMember: boolean;
+  // #2166 — which app registration's service principal the membership check ran
+  // against, and which env var named it. Shown so a wrong target is visible.
+  targetAppId: string | null;
+  targetAppIdSource: string | null;
   lastRun: DlpProvisioningLastRun | null;
   reason?: string;
 }
@@ -313,6 +317,8 @@ interface DlpProvisioningTriggerResult {
   overallStatus: string;
   groupId: string | null;
   servicePrincipalId: string | null;
+  targetAppId: string | null;
+  targetAppIdSource: string | null;
   steps: {
     resolveServicePrincipal: DlpProvisioningStepResult;
     createGroup: DlpProvisioningStepResult;
@@ -941,6 +947,9 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
             {dlpState.reason && <Field label="Note" value={dlpState.reason} />}
             <Field label="Security group exists" value={dlpState.groupExists ? "Yes" : "No"} />
             <Field label="Service principal is a member" value={dlpState.servicePrincipalIsMember ? "Yes" : "No"} />
+            {dlpState.targetAppId && (
+              <Field label="Target app registration" value={`${dlpState.targetAppId} (${dlpState.targetAppIdSource ?? "unknown source"})`} />
+            )}
             {dlpState.lastRun && (
               <>
                 <Field label="Last run" value={formatDateTime(dlpState.lastRun.at)} />

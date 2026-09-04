@@ -46,7 +46,7 @@ router.get("/admin/customers/:customerId/dlp-provisioning", requireAdmin, async 
     return;
   }
   if (!customer.tenantId) {
-    res.json({ status: "not_provisioned", groupExists: false, servicePrincipalIsMember: false, lastRun: null, reason: "Tenant has no connected Microsoft 365 tenant yet" });
+    res.json({ status: "not_provisioned", groupExists: false, servicePrincipalIsMember: false, targetAppId: null, targetAppIdSource: null, lastRun: null, reason: "Tenant has no connected Microsoft 365 tenant yet" });
     return;
   }
   try {

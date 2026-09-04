@@ -137,9 +137,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
     permissions: ["RoleManagement.ReadWrite.Directory"],
     justification:
       "quickstart-v1 step 2 (quickstart-v1.assign-global-admin-role) grants the break-glass account the " +
-      "Global Administrator role, and global-reader-role-provisioning.ts assigns the READ app's service " +
-      "principal the tenant-wide Global Reader role. This permission lives on the WRITE app deliberately " +
-      "so the READ app never carries a role-management write scope.",
+      "Global Administrator role, and global-reader-role-provisioning.ts assigns the ps-execution app's " +
+      "service principal (PS_EXECUTION_APP_CLIENT_ID — #2161) the tenant-wide Global Reader role. This " +
+      "permission lives on the WRITE app deliberately so the READ app never carries a role-management " +
+      "write scope.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/rbacapplication-post-roleassignments",
   },
   {
@@ -301,7 +302,8 @@ export const TEMPLATE_EXTRA_PERMISSIONS: Readonly<Record<string, { permissions: 
   "groups.add_service_principal_member": {
     permissions: ["Application.ReadWrite.All"],
     justification:
-      "dlp-role-group-provisioning.ts adds the READ app's SERVICE PRINCIPAL (not a user) to the security " +
+      "dlp-role-group-provisioning.ts adds the ps-execution app's SERVICE PRINCIPAL (PS_EXECUTION_APP_CLIENT_ID, " +
+      "not the READ app and not a user — #2166) to the security " +
       "group it just created. Microsoft's 'Add members' permissions table requires GroupMember.ReadWrite.All " +
       "AND Application.ReadWrite.All when the member being added is a servicePrincipal. This is the only " +
       "step in the platform that requires Application.ReadWrite.All.",
