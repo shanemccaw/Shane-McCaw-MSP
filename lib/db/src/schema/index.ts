@@ -128,10 +128,23 @@ export const usersTable = pgTable("users", {
   department: text("department"),
   jobTitle: text("job_title"),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  // Real reports-to relationship (#2527 — the buildable half of #1519's "or up
+  // their chain" escalation, which #1519 itself correctly declined to fake).
+  // Self-referencing, same-tenant by convention (enforced in the route, not a
+  // DB constraint, same as other cross-row invariants in this table). Null
+  // until someone with canManageTeam sets it via
+  // PATCH /portal/team/:userId/manager — there is no Graph-sourced sync
+  // populating this automatically; that would be a separate integration
+  // decision (new Graph manager-read scope/consent) out of scope here. A
+  // manager row deleted just clears this pointer (onDelete: set null) rather
+  // than cascading, since a decliner's own assignment shouldn't disappear
+  // because their manager's user row did.
+  managerUserId: integer("manager_user_id").references((): AnyPgColumn => usersTable.id, { onDelete: "set null" }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("users_msp_id_idx").on(t.mspId),
   index("users_tenant_id_idx").on(t.tenantId),
+  index("users_manager_user_id_idx").on(t.managerUserId),
   check("users_role_scope_check", sql`
     (${t.mspRole} IN ('CustomerUser', 'Free', 'Assessment') AND ${t.tenantId} IS NOT NULL)
     OR

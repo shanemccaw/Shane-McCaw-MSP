@@ -314,10 +314,17 @@ export async function notifyOwnershipPending(opts: {
  * the assigner and the decliner are the same person — declining your own
  * assignment needs no escalation to yourself.
  *
- * "Escalates ... or up their chain" (the issue's own words) stops at the
- * assigner here: there is no management-hierarchy column anywhere in this
- * schema to climb further, so that half is a real, filed gap (see #1519's
- * own build notes), not something invented for this function.
+ * "Escalates ... or up their chain" (the issue's own words): #1519 stopped at
+ * the assigner because there was no management-hierarchy column anywhere in
+ * this schema to climb further. #2527 adds that column for real
+ * (`usersTable.managerUserId` — nullable, self-referencing, populated only by
+ * a real `canManageTeam` action via `PATCH /portal/team/:userId/manager`,
+ * never invented or Graph-synced). This function now notifies the assigner
+ * AND walks that chain upward from the assigner, notifying every real
+ * manager on file above them — cycle-guarded and hop-capped the same way the
+ * write path is, since the chain is user-editable data, not a guaranteed DAG
+ * at read time. A row with no `managerUserId` set (the common case today,
+ * since nothing backfills it) notifies only the assigner, same as before.
  */
 export async function notifyOwnershipDeclined(opts: {
   customerId: number;
@@ -331,9 +338,11 @@ export async function notifyOwnershipDeclined(opts: {
   if (!assignerPersonId || assignerPersonId === declinerPersonId) return;
   const match = /^u(\d+)$/.exec(assignerPersonId);
   if (!match) return;
-  const userId = Number(match[1]);
+  const assignerUserId = Number(match[1]);
 
-  try {
+  const roleLabel = roleKey === "r" ? "Responsible" : "Accountable";
+
+  async function notifyRecipient(userId: number, escalatedFromChain: boolean): Promise<void> {
     const [row] = await db
       .select({ id: usersTable.id, mspRole: usersTable.mspRole, mspId: usersTable.mspId })
       .from(usersTable)
@@ -341,8 +350,9 @@ export async function notifyOwnershipDeclined(opts: {
       .limit(1);
     if (!row) return;
 
-    const roleLabel = roleKey === "r" ? "Responsible" : "Accountable";
-    const title = `${roleLabel} assignment declined on your Ownership matrix`;
+    const title = escalatedFromChain
+      ? `${roleLabel} assignment declined — escalated to you`
+      : `${roleLabel} assignment declined on your Ownership matrix`;
     const body = declineReason
       ? `The cell you assigned was declined: "${declineReason}"`
       : "The cell you assigned was declined.";
@@ -358,6 +368,28 @@ export async function notifyOwnershipDeclined(opts: {
         ? { type: "msp_user", mspUserId: row.id, mspId: row.mspId ?? undefined }
         : { type: "customer_user", userId: row.id },
     });
+  }
+
+  try {
+    await notifyRecipient(assignerUserId, false);
+
+    // Walk the assigner's real reports-to chain, if any is on file.
+    const visited = new Set<number>([assignerUserId]);
+    let cursor: number = assignerUserId;
+    let hops = 0;
+    while (hops < 50) {
+      const rows = await db
+        .select({ managerUserId: usersTable.managerUserId })
+        .from(usersTable)
+        .where(eq(usersTable.id, cursor))
+        .limit(1);
+      const managerUserId = rows[0]?.managerUserId ?? null;
+      if (managerUserId === null || visited.has(managerUserId)) break;
+      visited.add(managerUserId);
+      await notifyRecipient(managerUserId, true);
+      cursor = managerUserId;
+      hops++;
+    }
   } catch (err) {
     log.warn({ err, customerId, assignerPersonId, objectId }, "notification-center: ownership decline escalation failed (non-fatal)");
   }

@@ -304,6 +304,92 @@ router.patch("/portal/team/:userId/status", requireAuth, async (req: Request, re
   res.json({ ok: true, isActive });
 });
 
+// ─── CLIENT: Team member reports-to (manager) assignment (#2527) ────────────
+//
+// The real, buildable half of #1519's "escalates internally, to the assigner
+// or up their chain": a self-referencing manager pointer on `users`
+// (`managerUserId`), set here by a real person with `canManageTeam`, not
+// synced from anywhere. `notifyOwnershipDeclined` (notification-center.ts)
+// walks this chain when populated. Starts null on every row — this endpoint
+// is the only writer.
+router.patch("/portal/team/:userId/manager", requireAuth, async (req: Request, res: Response) => {
+  const targetUserId = parseInt(req.params.userId as string, 10);
+  if (isNaN(targetUserId)) {
+    res.status(400).json({ error: "Invalid userId" });
+    return;
+  }
+
+  const { managerUserId } = req.body as { managerUserId?: number | null };
+  if (managerUserId !== null && typeof managerUserId !== "number") {
+    res.status(400).json({ error: "managerUserId must be a number or null" });
+    return;
+  }
+
+  const [target] = await db
+    .select({ customerId: usersTable.tenantId })
+    .from(usersTable)
+    .where(eq(usersTable.id, targetUserId))
+    .limit(1);
+  if (!target?.customerId) {
+    res.status(404).json({ error: "Team member not found" });
+    return;
+  }
+
+  const denyStatus = await denyIfCannotManageTeam(req.user!, target.customerId);
+  if (denyStatus) {
+    res.status(denyStatus).json({ error: "Access to this team member is not permitted" });
+    return;
+  }
+
+  if (managerUserId !== null) {
+    if (managerUserId === targetUserId) {
+      res.status(400).json({ error: "A team member cannot be their own manager" });
+      return;
+    }
+
+    const [candidate] = await db
+      .select({ id: usersTable.id, tenantId: usersTable.tenantId, managerUserId: usersTable.managerUserId })
+      .from(usersTable)
+      .where(eq(usersTable.id, managerUserId))
+      .limit(1);
+    if (!candidate || candidate.tenantId !== target.customerId) {
+      res.status(400).json({ error: "managerUserId must be a member of the same team" });
+      return;
+    }
+
+    // Cycle guard: walk the candidate's own chain upward — if targetUserId
+    // shows up, assigning this manager would close a loop.
+    let cursor: number | null = candidate.managerUserId;
+    let hops = 0;
+    while (cursor !== null && hops < 50) {
+      if (cursor === targetUserId) {
+        res.status(400).json({ error: "That assignment would create a reporting-chain cycle" });
+        return;
+      }
+      const [next]: { managerUserId: number | null }[] = await db
+        .select({ managerUserId: usersTable.managerUserId })
+        .from(usersTable)
+        .where(eq(usersTable.id, cursor))
+        .limit(1);
+      cursor = next?.managerUserId ?? null;
+      hops++;
+    }
+  }
+
+  await db.update(usersTable).set({ managerUserId }).where(eq(usersTable.id, targetUserId));
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: "team_member_manager_set",
+    entityType: "user",
+    entityId: targetUserId,
+  });
+
+  res.json({ ok: true, managerUserId });
+});
+
 // ─── CLIENT: Team member MFA enforcement toggle ──────────────────────────────
 router.patch("/portal/team/:userId/mfa-enforcement", requireAuth, async (req: Request, res: Response) => {
   const targetUserId = parseInt(req.params.userId as string, 10);
