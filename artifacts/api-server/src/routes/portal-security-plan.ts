@@ -65,6 +65,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
+import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { getLastSignedSecurityPlanVersion } from "../lib/security-plan-versioning";
 import { logger } from "../lib/logger";
