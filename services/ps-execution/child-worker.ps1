@@ -67,6 +67,88 @@ $script:StrayStdout = New-Object System.IO.StringWriter
 # before spawning a child, and never evaluates a Script body.
 . (Join-Path $PSScriptRoot "survey.ps1")
 
+# #2852's real, confirmed root cause (NOT OOM/a buffer limit — that was this
+# issue's own stated, unconfirmed guess, and live Log Analytics evidence pulled
+# during this fix rules it out: no ContainerTerminated/eviction system-log event
+# exists anywhere near either failure timestamp). The raw ContainerAppConsoleLogs_CL
+# for both `get-data-classification` and `get-dlp-sensitive-info-types` shows the
+# SAME uncaught PowerShell terminating error at child-worker.ps1:85 (Send-ChildResult's
+# own ConvertTo-Json call):
+#   ConvertTo-Json: The type 'System.Collections.Hashtable' is not supported for
+#   serialization or deserialization of a dictionary. Keys must be strings.
+# PowerShell 7's ConvertTo-Json refuses ANY IDictionary whose keys are not already
+# [string] — Get-DataClassification and Get-DlpSensitiveInformationType both return
+# objects carrying at least one .NET Dictionary/Hashtable property with non-string
+# (enum/object) keys somewhere in their graph. That trace is real stderr — the
+# parent (entrypoint.ps1's Invoke-ChildRequest) *did* relay it onto the container's
+# stdout stream — but it's a raw multi-line ANSI-colored PowerShell exception dump,
+# not a structured `{"message":...}` JSON line, so anything grepping the log stream
+# for that shape (as #2852 itself did) reads it as "no stderr at all". "225 objects"
+# was a correlation (more objects → higher odds of hitting a property with this
+# shape), never the actual cause.
+#
+# Fix, in two layers:
+#  1. ConvertTo-JsonSafeValue below walks the WHOLE payload graph and coerces every
+#     dictionary's keys to strings before Send-ChildResult ever calls ConvertTo-Json,
+#     so this can't recur for any future cmdlet whose output happens to carry the
+#     same shape.
+#  2. Send-ChildResult's own serialization is now wrapped in try/catch — belt and
+#     suspenders: if some OTHER ConvertTo-Json-incompatible shape shows up later,
+#     fail loud with a STRUCTURED stderr log line (Write-Log, real JSON) and a
+#     still-valid ok:false stdout line, instead of the raw non-JSON trace dump that
+#     made this exact defect look like a dead end (the issue's own step 1 ask).
+function ConvertTo-JsonSafeValue {
+    param($Value, [int]$Depth = 10)
+
+    if ($null -eq $Value -or $Depth -le 0) { return $Value }
+
+    if ($Value -is [System.Collections.IDictionary]) {
+        $safe = [ordered]@{}
+        foreach ($key in $Value.Keys) {
+            $safe[[string]$key] = ConvertTo-JsonSafeValue -Value $Value[$key] -Depth ($Depth - 1)
+        }
+        return $safe
+    }
+
+    # Strings ARE IEnumerable (of chars) — never walk them as a collection.
+    # Other JSON-primitive-safe leaf types pass through unchanged too, same
+    # list ConvertTo-Json itself treats as scalars.
+    if ($Value -is [string] -or $Value -is [datetime] -or $Value -is [decimal] -or
+        $Value -is [guid] -or $Value.GetType().IsPrimitive) {
+        return $Value
+    }
+
+    if ($Value -is [System.Collections.IEnumerable]) {
+        return @($Value | ForEach-Object { ConvertTo-JsonSafeValue -Value $_ -Depth ($Depth - 1) })
+    }
+
+    # A plain/custom object (PSCustomObject, or a wrapped .NET type ConvertTo-Json
+    # would otherwise walk via reflection) — the confirmed #2852 case is exactly
+    # this: the offending Hashtable is a PROPERTY of the object Get-DataClassification/
+    # Get-DlpSensitiveInformationType return, not the top-level object itself, so it
+    # has to be found by walking properties, not just dictionaries/collections.
+    # Rebuild property-by-property so any Hashtable/Dictionary nested anywhere in
+    # the graph gets its keys sanitized too.
+    $properties = $Value.PSObject.Properties | Where-Object { $_.MemberType -in @('Property', 'NoteProperty', 'ScriptProperty', 'AliasProperty') }
+    if ($properties) {
+        $safe = [ordered]@{}
+        foreach ($prop in $properties) {
+            try {
+                $safe[$prop.Name] = ConvertTo-JsonSafeValue -Value $prop.Value -Depth ($Depth - 1)
+            }
+            catch {
+                # A getter that throws on access rather than a genuinely
+                # unsanitizable value — drop that one property rather than let
+                # it fail the whole payload.
+                $safe[$prop.Name] = $null
+            }
+        }
+        return $safe
+    }
+
+    return $Value
+}
+
 function Send-ChildResult {
     param([hashtable]$Payload)
     # Surface anything a module wrote straight to stdout (captured by the
@@ -82,7 +164,14 @@ function Send-ChildResult {
             [void]$script:StrayStdout.GetStringBuilder().Clear()
         }
     }
-    $json = $Payload | ConvertTo-Json -Compress -Depth 10
+    try {
+        $safePayload = ConvertTo-JsonSafeValue -Value $Payload
+        $json = $safePayload | ConvertTo-Json -Compress -Depth 10
+    }
+    catch {
+        Write-Log -Level "error" -Message "child result failed to serialize to JSON even after key sanitization (#2852)" -Extra @{ error = $_.Exception.Message; payloadOk = [bool]$Payload.ok }
+        $json = @{ ok = $false; statusCode = 500; kind = "script_error"; message = "child result could not be serialized to JSON." } | ConvertTo-Json -Compress
+    }
     # Write the one result line to the REAL stdout, bypassing the diversion.
     $script:ResultWriter.WriteLine($json)
     $script:ResultWriter.Flush()
