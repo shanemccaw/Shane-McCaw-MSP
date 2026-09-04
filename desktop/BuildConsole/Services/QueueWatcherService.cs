@@ -1896,6 +1896,16 @@ namespace BuildConsole.Services
         /// fresh dispatch only (never a Reply/--resume continuation — see the isFreshDispatch
         /// guard at the call site). Fails open: a GitHub/DB hiccup here logs and lets the
         /// build launch anyway — this is a heads-up toast, not a launch gate.
+        ///
+        /// Git #2900 audit note: this IS the real "per-captured-item" GitHub check Shane's
+        /// corrected #2900 scope asked to preserve — one real, targeted <c>gh</c> call for
+        /// THAT SPECIFIC issue number (<see cref="GitHubIssuesService.GetLastLeftBatterUpFamilyAtAsync"/>,
+        /// which is exactly "did it move out of Batter Up") fired only when a build is genuinely
+        /// captured/claimed and starts running (from <see cref="LaunchItem"/>), naturally capped
+        /// at the real concurrency limit since at most <see cref="_maxConcurrent"/> builds can be
+        /// running at once. It lives here in QueueWatcherService, entirely separate from
+        /// BuildQueuePanel's now-removed broad 15s <c>_pollTimer</c> — it never rode that timer,
+        /// so removing the broad timer left this real per-item check untouched.
         /// </summary>
         private async Task TrackDispatchAsync(QueueItem item)
         {
