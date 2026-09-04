@@ -225,6 +225,10 @@ export async function uploadToSharePoint(opts: UploadOptions): Promise<UploadRes
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": opts.mimeType,
+      // #393/#488/#1919 — undici injects `accept-language: *` when no header is
+      // set, which Microsoft APIs reject with a misleading 400
+      // CultureNotFoundException. Same fix as graph.ts.
+      "Accept-Language": "en-US",
     },
     body: opts.buffer,
   });
@@ -278,6 +282,8 @@ export async function ensureSharePointFolder(opts: {
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
+        // #393/#488/#1919 — see uploadToSharePoint above.
+        "Accept-Language": "en-US",
       },
       body: JSON.stringify({
         name: part,
@@ -320,7 +326,13 @@ export async function resolveConnectorSiteId(opts: {
     const sitePath = parsed.pathname.replace(/\/$/, "");
     const res = await fetch(
       `${GRAPH_BASE}/sites/${encodeURIComponent(hostname)}:${sitePath}?$select=id,webUrl`,
-      { headers: { Authorization: `Bearer ${token}` } },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // #393/#488/#1919 — see uploadToSharePoint above.
+          "Accept-Language": "en-US",
+        },
+      },
     );
     if (!res.ok) return null;
     const data = (await res.json()) as { id: string };

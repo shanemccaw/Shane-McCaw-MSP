@@ -503,8 +503,9 @@ The **`provenance`** block (`:482-504`) is the page's honesty spine and must be 
 ## 6. The forbidden list — what the module deliberately does NOT serve
 
 Swept from the route/lib headers themselves and named as forbidden, not merely absent. **The
-retired `artifacts/msp-portal/src/components/portal-v2/msChangesData.ts` fixture is NOT a source of
-truth** (portal-v2 is retired per CLAUDE.md) — these are the capabilities the *real backend*
+retired `artifacts/portal/src/components/portal-v2/msChangesData.ts` fixture is NOT a source of
+truth** (portal-v2 is retired per CLAUDE.md; this file was NOT carried over — retired in `f40438cdc`'s
+#1485 portal-v2 rebuild, and does not exist anywhere in `artifacts/portal`) — these are the capabilities the *real backend*
 declines to provide, so Design must not assume a field exists just because the old prototype drew
 it:
 

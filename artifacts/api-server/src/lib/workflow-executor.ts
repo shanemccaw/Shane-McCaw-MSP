@@ -743,6 +743,80 @@ export async function resolveBaselineTemplateRequest(
  * node handler and the admin "Testing" endpoint (routes/admin-baseline-templates.ts)
  * so there is exactly one implementation of "run this template for real."
  */
+/**
+ * `action.require-security-info-reregistration`'s real Graph mechanism (#1899): there is no
+ * single Graph v1.0 endpoint that "forces re-registration" — the DB row's old
+ * `POST /users/{id}/authentication/methods` endpoint doesn't exist as a writable collection
+ * (confirmed against Microsoft Learn: authenticationmethods-overview, softwareoathauthentication
+ * method-delete). The real, documented mechanism (same one the Entra admin center's own
+ * "Require re-register MFA" button uses) is: list the user's current authentication methods,
+ * then DELETE each individually-typed method the user could otherwise sign in with — phone,
+ * Microsoft Authenticator, software OATH token. Once none of those remain, Entra prompts the
+ * user to register a new method at next sign-in requiring strong auth. FIDO2, Windows Hello for
+ * Business, certificate-based auth and the password method are deliberately left alone — Microsoft
+ * doesn't delete those for this action either.
+ *
+ * This is a genuine fan-out (GET, then N DELETEs) that `baseline_action_templates`'
+ * {endpoint,method,bodyTemplate} single-call model cannot express (see the
+ * baseline-action-templates-are-single-graph-call-only memory) — same class of gap as the
+ * sharepoint-admin per-site/bulk executor branch, so it gets its own dedicated code path here
+ * rather than a template row that lies about being one call.
+ */
+const FORCE_MFA_REREGISTRATION_TEMPLATE_ID = "action.require-security-info-reregistration";
+
+/** `@odata.type` → the real typed collection segment Graph deletes that method type through. */
+const DELETABLE_AUTH_METHOD_COLLECTIONS: Record<string, string> = {
+  "#microsoft.graph.phoneAuthenticationMethod": "phoneMethods",
+  "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod": "microsoftAuthenticatorMethods",
+  "#microsoft.graph.softwareOathAuthenticationMethod": "softwareOathMethods",
+};
+
+async function runForceMfaReregistrationAgainstTenant(
+  tenantId: string,
+  customerId: number,
+  userId: string,
+  label: string,
+): Promise<BaselineTemplateExecutionResult & { methodsFound: number; methodsDeleted: number; deletedTypes: string[] }> {
+  const { graphReadForTenantWithWriteToken, graphWriteForTenant } = await import("./graph");
+  const listEndpoint = `/users/${userId}/authentication/methods`;
+
+  let methods: Array<{ id: string; "@odata.type"?: string }>;
+  try {
+    const listBody = await graphReadForTenantWithWriteToken(tenantId, listEndpoint);
+    methods = Array.isArray(listBody?.value) ? listBody.value : [];
+  } catch (err) {
+    log.warn({ err, tenantId, userId }, "runForceMfaReregistrationAgainstTenant: listing authentication methods failed");
+    return {
+      success: false, status: 0, errorType: "unexpected", data: err instanceof Error ? err.message : String(err),
+      endpoint: listEndpoint, method: "GET", label,
+      methodsFound: 0, methodsDeleted: 0, deletedTypes: [],
+    };
+  }
+
+  const targets = methods.filter((m) => DELETABLE_AUTH_METHOD_COLLECTIONS[m["@odata.type"] ?? ""]);
+  const deletedTypes: string[] = [];
+
+  for (const m of targets) {
+    const collection = DELETABLE_AUTH_METHOD_COLLECTIONS[m["@odata.type"]!];
+    const deleteEndpoint = `/users/${userId}/authentication/${collection}/${m.id}`;
+    const result = await graphWriteForTenant(tenantId, customerId, deleteEndpoint, "DELETE", {}, [200, 204]);
+    if (!result.success) {
+      return {
+        success: false, status: result.status, errorType: result.errorType, data: result.data,
+        endpoint: deleteEndpoint, method: "DELETE", label,
+        methodsFound: methods.length, methodsDeleted: deletedTypes.length, deletedTypes,
+      };
+    }
+    deletedTypes.push(m["@odata.type"]!);
+  }
+
+  return {
+    success: true, status: 204, data: null,
+    endpoint: listEndpoint, method: "GET+DELETE(fan-out)", label,
+    methodsFound: methods.length, methodsDeleted: deletedTypes.length, deletedTypes,
+  };
+}
+
 export async function runBaselineTemplateAgainstTenant(
   templateId: string,
   tenantId: string,
@@ -759,6 +833,45 @@ export async function runBaselineTemplateAgainstTenant(
       success: false, status: 400, errorType: "bad_request", data: null,
       endpoint: resolved.rawEndpoint, method: resolved.method, label: resolved.label,
       missingVariables: resolved.missingVariables,
+    };
+  }
+
+  // Fan-out special case (#1899) — see runForceMfaReregistrationAgainstTenant's own
+  // comment for why this template can't be a single {endpoint,method,body} row.
+  if (templateId === FORCE_MFA_REREGISTRATION_TEMPLATE_ID) {
+    const userId = String(payload.userId ?? "");
+    const fanoutResult = await runForceMfaReregistrationAgainstTenant(tenantId, customerId, userId, resolved.label);
+
+    let fanoutAuditLogId: number | undefined;
+    try {
+      const [inserted] = await db.insert(baselineActionTemplateAuditLogTable).values({
+        action: fanoutResult.success ? "executed" : "failed",
+        templateId,
+        requestVariables: payload,
+        afterSnapshot: {
+          success: fanoutResult.success,
+          status: fanoutResult.status,
+          errorType: fanoutResult.errorType ?? null,
+          endpoint: fanoutResult.endpoint,
+          method: fanoutResult.method,
+          customerId,
+          tenantId,
+          executedAt: new Date().toISOString(),
+          methodsFound: fanoutResult.methodsFound,
+          methodsDeleted: fanoutResult.methodsDeleted,
+          deletedTypes: fanoutResult.deletedTypes,
+          ...(source !== undefined ? { source } : {}),
+        },
+      }).returning({ id: baselineActionTemplateAuditLogTable.id });
+      fanoutAuditLogId = inserted?.id;
+    } catch (auditErr) {
+      log.warn({ auditErr, templateId }, "runBaselineTemplateAgainstTenant: audit log insert failed (non-fatal)");
+    }
+
+    return {
+      success: fanoutResult.success, status: fanoutResult.status, data: fanoutResult.data,
+      errorType: fanoutResult.errorType, endpoint: fanoutResult.endpoint, method: fanoutResult.method,
+      label: fanoutResult.label, auditLogId: fanoutAuditLogId,
     };
   }
 

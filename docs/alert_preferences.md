@@ -9,7 +9,9 @@ Built against ONLY these six files. Every field below traces to one of them; not
 - `artifacts/api-server/src/lib/customer-alert-delivery.ts`
 - `lib/db/migrations/manual/2026-08-25-customer-tenant-alert-rules-1278.sql`
 - `lib/db/migrations/manual/2026-08-25-customer-alert-preferences-1276.sql`
-- `artifacts/msp-portal/src/pages/portal-v2-alert-preferences.tsx`
+- `artifacts/portal/src/pages/portal-v2-alert-preferences.tsx` (NOT carried over —
+  retired in `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in
+  `artifacts/portal`)
 
 ## Fields drawn, with source
 

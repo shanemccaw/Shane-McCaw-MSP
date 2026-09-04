@@ -153,7 +153,7 @@ describe("adding a service principal to a group needs the body-driven extra", ()
 });
 
 describe("the derived request set", () => {
-  it("is exactly the 16 permissions #1875 derived from the packs' real steps", () => {
+  it("is exactly the 17 permissions #1875/#1899 derived from the packs' real steps", () => {
     expect([...DERIVED_WRITE_APP_PERMISSIONS]).toEqual([
       "Application.ReadWrite.All",
       "DelegatedPermissionGrant.ReadWrite.All",
@@ -171,6 +171,10 @@ describe("the derived request set", () => {
       "User-PasswordProfile.ReadWrite.All",
       "User.ReadWrite.All",
       "User.RevokeSessions.All",
+      // #1899 — mfa-enforcement-v1 step 1 now really enumerates + deletes a user's
+      // authentication methods (runForceMfaReregistrationAgainstTenant), so this
+      // permission is genuinely requested now instead of documented-but-excluded.
+      "UserAuthenticationMethod.ReadWrite.All",
     ]);
   });
 

@@ -22,11 +22,11 @@ skips #1578 steps 1–2 (schema, honest read) and starts at step 3.
 | `artifacts/api-server/src/lib/webhook-delivery.ts` | Delivery engine: secret generation/signing, HTTP delivery + retry, fan-out from the event bus, and `getDeliveryLog` (the actual query behind the deliveries endpoint). |
 | `lib/db/src/schema/msp.ts:998-1045` | `outboundWebhooksTable` (`outbound_webhooks`) and `outboundWebhookDeliveriesTable` (`outbound_webhook_deliveries`) — the real Drizzle schema, source of truth for column types/nullability/enums. |
 | `artifacts/api-server/src/lib/event-bus.ts` | `EVENT_TYPES` canonical event constant (line 241) and `dispatchUnsafe` (line 162), which is what actually triggers webhook fan-out (line 195: `void fanOutWebhooks(...)`). |
-| `artifacts/msp-portal/src/components/portal-v2/webhooksWire.ts` | The **Design page's own** (consumer-side) reconstruction of the wire shapes it expects — `WireWebhook` (line 29), `WireDelivery` (line 44) — plus the live-mapping functions. Not authoritative; included because it is the closest thing to a named `Wire*` interface for this module and is useful to cross-check against what the route actually returns. |
-| `artifacts/msp-portal/src/components/portal-v2/webhooksLive.ts` | `useWebhooksLive()` — the hook #1463 audited. |
-| `artifacts/msp-portal/src/components/portal-v2/webhooksData.ts` | The Design fixture: `WEBHOOK_EVENTS` (11-row event catalogue) and `WEBHOOKS` (4-row fixture endpoint list), still rendered whenever `dataState === "fixture"`. |
-| `artifacts/msp-portal/src/pages/portal-v2-webhooks.tsx` | The page under design in this epic. |
-| `artifacts/msp-portal/src/pages/webhooks.tsx` | A separate, **older, fully-wired** webhooks page (not portal-v2) — its own `Webhook`/`Delivery` interfaces (lines 48, 62) match the route's real fields exactly and it has working create/edit/delete/rotate against the real endpoints. Included because it is real, working, consumer-verified evidence of the wire shape; it is not the page in scope for this Design pass. |
+| `artifacts/portal/src/components/webhooksWire.ts` (path corrected from `artifacts/msp-portal/src/components/portal-v2/webhooksWire.ts`; NOT carried over in the `f40438cdc` rename — this file does not exist in `artifacts/portal`) | The **Design page's own** (consumer-side) reconstruction of the wire shapes it expects — `WireWebhook` (line 29), `WireDelivery` (line 44) — plus the live-mapping functions. Not authoritative; included because it is the closest thing to a named `Wire*` interface for this module and is useful to cross-check against what the route actually returns. |
+| `artifacts/portal/src/components/webhooksLive.ts` (path corrected from `artifacts/msp-portal/src/components/portal-v2/webhooksLive.ts`; NOT carried over in the `f40438cdc` rename — this file does not exist in `artifacts/portal`) | `useWebhooksLive()` — the hook #1463 audited. |
+| `artifacts/portal/src/components/webhooksData.ts` (path corrected from `artifacts/msp-portal/src/components/portal-v2/webhooksData.ts`; NOT carried over in the `f40438cdc` rename — this file does not exist in `artifacts/portal`) | The Design fixture: `WEBHOOK_EVENTS` (11-row event catalogue) and `WEBHOOKS` (4-row fixture endpoint list), still rendered whenever `dataState === "fixture"`. |
+| `artifacts/portal/src/pages/portal-v2-webhooks.tsx` (path corrected from `artifacts/msp-portal/src/pages/portal-v2-webhooks.tsx`; NOT carried over in the `f40438cdc` rename — this file does not exist in `artifacts/portal`) | The page under design in this epic. |
+| `artifacts/portal/src/pages/webhooks.tsx` (path corrected from `artifacts/msp-portal/src/pages/webhooks.tsx`; NOT carried over in the `f40438cdc` rename — this file does not exist in `artifacts/portal`) | A separate, **older, fully-wired** webhooks page (not portal-v2) — its own `Webhook`/`Delivery` interfaces (lines 48, 62) match the route's real fields exactly and it has working create/edit/delete/rotate against the real endpoints. Included because it is real, working, consumer-verified evidence of the wire shape; it is not the page in scope for this Design pass. |
 
 **Important, and stated plainly up front:** `webhooks.ts` declares **no
 `interface Wire*`** anywhere in the file — unlike `portal-change-control.ts:157`,
@@ -483,8 +483,11 @@ endpoint) is `CURRENT` — real, wired, and reads/writes actual rows in
   `artifacts/api-server/src/routes/webhooks.ts`,
   `artifacts/api-server/src/lib/webhook-delivery.ts`,
   `artifacts/api-server/src/lib/event-bus.ts`,
-  `lib/db/src/schema/msp.ts`, and the `artifacts/msp-portal/src/components/portal-v2/webhooks*`
-  / `artifacts/msp-portal/src/pages/webhooks*.tsx` files in this worktree at
+  `lib/db/src/schema/msp.ts`, and the `artifacts/portal/src/components/webhooks*`
+  / `artifacts/portal/src/pages/webhooks*.tsx` files (paths corrected from
+  `artifacts/msp-portal/src/components/portal-v2/webhooks*` /
+  `artifacts/msp-portal/src/pages/webhooks*.tsx`; NOT carried over in the `f40438cdc`
+  rename — none of these files exist in `artifacts/portal`) in this worktree at
   commit `895b76f3a` (the bookend commit this session started from) plus this
   session's own read-only investigation — no product code was changed.
 - The "zero occurrences" claims in §4 (fixture event strings never dispatched;
