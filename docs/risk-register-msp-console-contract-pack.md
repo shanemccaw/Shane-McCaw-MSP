@@ -1,11 +1,20 @@
 # Risk Register / RBD — MSP Console contract extraction pack
 
-**#2580**, the Document step for **#1682** (Feature: Risk Register / RBD, MSP Console — the
-operator half of #1487), under the reset #1571 (EPIC: Portal Admin) and its fixed 4-step order:
-API build-out → **Document (this pack)** → Design → Implement & wire. `artifacts/msp-console`
-itself does not exist yet (#1680 was closed `NOT_PLANNED` 2026-09-03 as part of #1571's reset —
-the artifact not existing is a blocker for #2582 (wire), not for this step: the backend this pack
-documents is real, audited, and already mounted).
+**#2897**, regenerating **#2580** (the Document step for **#1682**, Feature: Risk Register / RBD,
+MSP Console — the operator half of #1487), under the reset #1571 (EPIC: Portal Admin) and its
+fixed 4-step order: API build-out → **Document (this pack)** → Design → Implement & wire.
+`artifacts/msp-console` itself still does not exist (#1680 was closed `NOT_PLANNED` 2026-09-03 as
+part of #1571's reset — the artifact not existing is a blocker for #2582 (wire), not for this
+step: the backend this pack documents is real, audited, and already mounted).
+
+**What changed since #2580's original pass:** `msp_risk_decisions.registerRef` moved from
+DECIDED-not-built to actually written — `assignRegisterRef` (`lib/risk-register-ref.ts`, #2529)
+now runs on both `POST /api/msp/rbd` (this pack, §1.3) and `admin-rbd.ts`'s own create route. The
+prior pass's §1.1 "no MSP-side route writes any of these" note for `registerRef` is corrected
+below. Also: the live bug this pack's prior pass found and filed (§6, `admin-rbd.ts` writing
+`status = "expired"`) shipped a fix and closed as **#2697** — restated below as resolved, not
+re-flagged as live. Regenerated whole, not patched — every file:line citation below was re-read
+against current `main`, not carried forward from the prior pass.
 
 Read-only. Every field below is extracted verbatim from the route's own `Wire*` interfaces (where
 one exists — see §0.2, not every route here has one) and the Drizzle schema, cited to file:line,
@@ -16,8 +25,8 @@ pack, #1712). That pack explicitly scopes the MSP-side routes as "context only, 
 surfaces." This pack is the operator-facing wire contract those routes actually need, extracted to
 the same standard.
 
-Backend routes (all live, all mounted — `artifacts/api-server/src/routes/index.ts:266-269,
-535-538`):
+Backend routes (all live, all mounted — `artifacts/api-server/src/routes/index.ts:283-286,
+568-571`):
 - `artifacts/api-server/src/routes/msp-rbd.ts` — catalogs, list, create, sign, revoke (6 routes)
 - `artifacts/api-server/src/routes/msp-rbd-instances.ts` — line items: list/add/accept/resolve
   (4 routes)
@@ -25,11 +34,11 @@ Backend routes (all live, all mounted — `artifacts/api-server/src/routes/index
   capture/sign/render/share/narrative-audit (7 routes)
 
 **17 routes total, not 16** (the dispatch comment's spot-check count) — the extra is
-`available-obligations` (`msp-rbd.ts:109`), a real, live, mounted route the spot-check missed.
+`available-obligations` (`msp-rbd.ts:110`), a real, live, mounted route the spot-check missed.
 Recounted directly from the route files, not from the dispatch estimate.
 
-Schema: `lib/db/src/schema/msp.ts:5945` (`mspRiskDecisionsTable`), `:6258`
-(`mspRbdVersionsTable`), `:6368` (`mspRbdNarrativeAuditTable`), `:6738` (`riskInstancesTable`).
+Schema: `lib/db/src/schema/msp.ts:6088` (`mspRiskDecisionsTable`), `:6399`
+(`mspRbdVersionsTable`), `:6509` (`mspRbdNarrativeAuditTable`), `:6879` (`riskInstancesTable`).
 Verified live against local PostgreSQL (`psql "$DATABASE_URL" -c '\d msp_risk_decisions'` /
 `'\d risk_instances'` / `'\d msp_rbd_versions'`) — every column cited below is confirmed present
 on the running schema, not just in the Drizzle source.
@@ -42,12 +51,12 @@ on the running schema, not just in the Drizzle source.
 
 | Endpoint | Method | Route file:line | Consumer today | Status |
 |---|---|---|---|---|
-| `/api/msp/rbd/available-checks` | GET | `msp-rbd.ts:79-101` | **AdminV2** Risk-Based Decisions screen (`riskDecisionsStore.ts:170`, #1294) | live, cross-surface reuse |
-| `/api/msp/rbd/available-obligations` | GET | `msp-rbd.ts:109-148` | none | live, genuinely unconsumed today — staged for #2582 |
-| `/api/msp/rbd` | GET | `msp-rbd.ts:152-177` | **MCP server** `get_risk_register` tool (`get-risk-register.ts:54`) | live, cross-surface reuse |
-| `/api/msp/rbd` | POST | `msp-rbd.ts:181-246` | none | live, staged for #2582 |
-| `/api/msp/rbd/:rbdId/sign` | PATCH | `msp-rbd.ts:250-316` | none | live, staged for #2582 |
-| `/api/msp/rbd/:rbdId/revoke` | PATCH | `msp-rbd.ts:320-368` | none | live, staged for #2582 |
+| `/api/msp/rbd/available-checks` | GET | `msp-rbd.ts:80-102` | **AdminV2** Risk-Based Decisions screen (`riskDecisionsStore.ts:170`, #1294) | live, cross-surface reuse |
+| `/api/msp/rbd/available-obligations` | GET | `msp-rbd.ts:110-149` | none | live, genuinely unconsumed today — staged for #2582 |
+| `/api/msp/rbd` | GET | `msp-rbd.ts:153-178` | **MCP server** `get_risk_register` tool (`artifacts/mcp-server/src/tools/get-risk-register.ts:61`) | live, cross-surface reuse |
+| `/api/msp/rbd` | POST | `msp-rbd.ts:182-250` | none | live, staged for #2582 |
+| `/api/msp/rbd/:rbdId/sign` | PATCH | `msp-rbd.ts:254-320` | none | live, staged for #2582 |
+| `/api/msp/rbd/:rbdId/revoke` | PATCH | `msp-rbd.ts:324-372` | none | live, staged for #2582 |
 | `/api/msp/rbd/:rbdId/instances` | GET | `msp-rbd-instances.ts:94-116` | none | live, staged for #2582 |
 | `/api/msp/rbd/:rbdId/instances` | POST | `msp-rbd-instances.ts:126-167` | none | live, staged for #2582 |
 | `/api/msp/rbd/:rbdId/instances/:instanceId/accept` | PATCH | `msp-rbd-instances.ts:172-206` | none | live, staged for #2582 |
@@ -70,13 +79,13 @@ mounted, zero consumers, explicitly staged, not a gap.
 
 **`msp-rbd-instances.ts` and `msp-rbd-versions.ts` both define and return curated `Wire*`
 interfaces** (`WireRiskInstance`, `WireRbdVersion`, `WireRbdNarrativeAudit`, `WireRbdDocument` —
-§§2–3). **`msp-rbd.ts` does not.** `GET /api/msp/rbd` (`:164-170`) and the sign/revoke PATCH
+§§2–3). **`msp-rbd.ts` does not.** `GET /api/msp/rbd` (`:165-169`) and the sign/revoke PATCH
 responses' `existing`/`updatedApprover` reads are all bare `db.select()` / `db.update().returning()`
 calls against `mspRiskDecisionsTable` — every column on the table (§1.1) is on the wire, verbatim,
 with no filtering and no derived fields. This is real, live behavior, not a gap this pack invents:
-`get-risk-register.ts:25-40`'s own `RiskDecision` interface documents the fact by only cherry-
-picking the fields it cares about behind a `[k: string]: unknown` index signature — it already
-treats the wire as effectively untyped.
+`artifacts/mcp-server/src/tools/get-risk-register.ts:32-47`'s own `RiskDecision` interface
+documents the fact by only cherry-picking the fields it cares about behind a
+`[k: string]: unknown` index signature — it already treats the wire as effectively untyped.
 
 **Concretely, this means `GET /api/msp/rbd` does NOT carry the derived/formatted fields the
 customer-portal pack's `WireRisk` does** — no `obligationType` (join), no
@@ -93,10 +102,10 @@ row — this pack states the fact, the choice is #2582's to make, not this pack'
 
 ### 1.1 List — `GET /api/msp/rbd`
 
-Returns a bare array of `mspRiskDecisionsTable.$inferSelect` rows (`:164-170`), newest-id first,
+Returns a bare array of `mspRiskDecisionsTable.$inferSelect` rows (`:165-169`), newest-id first,
 scoped to `mspId` only (`resolveMspIdStrict`, never the request body). No customer/tenant filter —
 this is the cross-customer register for one MSP, matching the MCP tool's own description
-(`get-risk-register.ts:45`, "across their customers").
+(`artifacts/mcp-server/src/tools/get-risk-register.ts:52`, "across their customers").
 
 Every DB column is on the wire (camelCased by Drizzle), verified live:
 
@@ -124,9 +133,10 @@ Every DB column is on the wire (camelCased by Drizzle), verified live:
 | `mspAssessor` | `msp_assessor` | jsonb `{name, upn, timestamp}` | no | server-set from `req.user` on create, never client-supplied |
 | `clientApprover` | `client_approver` | jsonb `ClientApprover` | no | client-supplied at create (pre-signature shell), server-overwritten on sign (§1.4) |
 | `expirationDate` | `expiration_date` | text | no | free-text date; not the review clock (`reviewDueAt` below) |
-| `status` | `status` | text | no | **enum §5 — `pending_signature\|active\|revoked`, `expired` removed #1507.** See §6 for a live violation of this |
+| `status` | `status` | text | no | **enum §5 — `pending_signature\|active\|revoked`, `expired` removed #1507.** See §6 — a prior-pass live violation of this, now fixed (#2697) |
 | `createdAt` / `updatedAt` | `created_at` / `updated_at` | timestamptz | no | |
-| `pillar`, `owner`, `ownerId`, `riskStatus`, `reviewDate`, `weight`, `likelihood`, `impact`, `outcome`, `evidence`, `plan`, `registerRef`, `rationale`, `obligation`, `verificationNote`, `decisionState` | — | mixed, all nullable | yes | customer-register-extension columns (§1.1 note below) — present on the raw row but **no MSP-side route in this pack writes any of them** |
+| `pillar`, `owner`, `ownerId`, `riskStatus`, `reviewDate`, `weight`, `likelihood`, `impact`, `outcome`, `evidence`, `plan`, `rationale`, `obligation`, `verificationNote`, `decisionState` | — | mixed, all nullable | yes | customer-register-extension columns (§1.1 note below) — present on the raw row but **no MSP-side route in this pack writes any of them** |
+| `registerRef` | `register_ref` | text | yes | **now written** — `assignRegisterRef` (`lib/risk-register-ref.ts`, #2529) runs after every `POST /api/msp/rbd` insert (§1.3), guarded `WHERE register_ref IS NULL` so it never overwrites an existing ref. Format `RR-2026-<id, zero-padded ≥3 digits>`. This is the one customer-register-extension column this pack's own routes DO write — everything else in the row above remains genuinely unwritten by any route in this pack |
 | `accepted_at`/`acceptedAt`, `acceptedStatement` | `accepted_at`, `accepted_statement` | timestamptz / text | yes | **not** written by `msp-rbd.ts` — this is the customer-accept path's own column (`portal-risk-register.ts`, see the customer pack §1.2). MSP-side `sign` (§1.4) writes `status`+`clientApprover` only, never these two |
 | `reviewDueAt`, `reviewState` | `review_due_at`, `review_state` | timestamptz / text | yes | the review clock (#1507) — not written by any route in this pack; advanced only by `alert-engine.ts`'s `advanceRiskReviewClock` |
 | `spawnedByChangeRequestId`, `dischargedByChangeRequestId` | integer, FK → `msp_change_requests.id` set-null | | yes | raw FK ids only — **no formatted `CR-2026-<n>` code on this wire**, unlike the customer pack's `WireRisk.spawnedByChangeRequestCode` (§0.2) |
@@ -136,11 +146,15 @@ Every DB column is on the wire (camelCased by Drizzle), verified live:
 
 **Note on the customer-register-extension columns:** every column in that row above ("customer-
 register-extension columns") exists because the customer portal's Risk Register page needed it
-(see `msp.ts:6009-6013`'s own header comment). They are real, live, and on this wire because this
-route returns the whole row — but `msp-rbd.ts`, `msp-rbd-instances.ts`, and `msp-rbd-versions.ts`
-never populate any of them. A decision authored purely through this pack's routes will show these
-as `null` when read back on the customer portal side, exactly as the customer pack's §8 "null is
-served as null" rule says it should.
+(see `msp.ts:6151-6158`'s own header comment). They are real, live, and on this wire because this
+route returns the whole row. As of #2529, `registerRef` is the one exception — `msp-rbd.ts`'s
+`POST` route now populates it (§1.3) — every other column in that group (`pillar`, `owner`,
+`ownerId`, `riskStatus`, `reviewDate`, `weight`, `likelihood`, `impact`, `outcome`, `evidence`,
+`plan`, `rationale`, `obligation`, `verificationNote`, `decisionState`) is still never written by
+`msp-rbd.ts`, `msp-rbd-instances.ts`, or `msp-rbd-versions.ts`. A decision authored purely through
+this pack's routes will show `registerRef` populated but the rest of that group `null` when read
+back on the customer portal side, exactly as the customer pack's §8 "null is served as null" rule
+says it should.
 
 ### 1.2 A pre-existing, separate, deliberate AdminV2 surface reads/writes the SAME table
 
@@ -154,17 +168,22 @@ it exists: #1294 rebuilt the old msp-portal `RiskBasedDecisionConsole.tsx`'s cre
 keeps a working create/edit flow (and the `available-checks` picker that makes #1279's
 alert-suppression reachable) independent of whenever the MSP Console itself gets built. This is a
 real, deliberate, already-issue-tracked (#1294) decision — not a bug, and not this pack's finding
-to raise on its own terms. It is documented here only because §6 below is a live bug found IN
-`admin-rbd.ts`, and because `admin-rbd.ts`'s own `rbdToWire()` (`:49-71`) is a **third**, narrower
-curated shape over the same table (deliberately excludes the customer-register-extension columns,
-per its own comment `:46-48`) — a third data shape for whoever eventually reconciles all of AdminV2
-Risk Decisions, the MCP tool, and the MSP Console into one picture should know all three exist.
+to raise on its own terms. It is documented here only because §6 below covers a bug this pack
+previously found IN `admin-rbd.ts` (since fixed), and because `admin-rbd.ts`'s own `rbdToWire()`
+(`:51-72`) is a **third**, narrower curated shape over the same table (deliberately excludes the
+customer-register-extension columns, per its own comment `:48-50`) — a third data shape for
+whoever eventually reconciles all of AdminV2 Risk Decisions, the MCP tool, and the MSP Console
+into one picture should know all three exist. **`registerRef` is one of the columns `rbdToWire()`
+excludes** — `admin-rbd.ts` writes it via the same `assignRegisterRef` call this pack's own create
+route uses (`:246`, same lib), but never returns it to the AdminV2 client; not a bug (it falls
+inside the deliberately-excluded "register-extension columns" group per that comment), just a real
+consequence worth stating since it's the one column in that group that now actually has a value.
 
 ### 1.3 Create — `POST /api/msp/rbd`
 
-Request body (`createRbdSchema`, `:35-63`) — **the caller must supply `rbdId` itself** (no
+Request body (`createRbdSchema`, `:36-64`) — **the caller must supply `rbdId` itself** (no
 server-side generation, unlike `admin-rbd.ts`'s `POST` which mints `RBD-${Date.now()...}` at
-`:207`). See §7.2 — flagged as an open design note for #2582, not a bug: this route was built
+`:209`). See §7.2 — flagged as an open design note for #2582, not a bug: this route was built
 programmatically-only to date (no consumer), so there was nothing to decide this against yet.
 
 | Field | Rule | Notes |
@@ -175,14 +194,19 @@ programmatically-only to date (no consumer), so there was nothing to decide this
 | `rawRiskScore`, `residualRiskScore` | `z.number().int()` | **client-supplied, no range validation** (unlike `admin-rbd.ts`'s `min(0).max(100)`) — see §7.2 |
 | `liabilityValueUsd` | `z.number().int()` | |
 | `compensatingControls` | `z.array({type: enum, description: string})` | type enum §5 |
-| `clientApprover` | `{name, title, email, signedAt?, ipAddress?, signatureHash?}` | the pre-signature shell — this route can create an already-populated approver record, unlike `admin-rbd.ts` which always starts blank (`:237`) |
+| `clientApprover` | `{name, title, email, signedAt?, ipAddress?, signatureHash?}` | the pre-signature shell — this route can create an already-populated approver record, unlike `admin-rbd.ts` which always starts blank (`:239`) |
 | `expirationDate` | `z.string()` | required here (vs. optional+defaulted in `admin-rbd.ts`) |
-| `status` | `z.enum(RISK_ACCEPTANCE_STATUSES)` | **correctly uses the canonical enum** (`:2,55`) — contrast §6 |
+| `status` | `z.enum(RISK_ACCEPTANCE_STATUSES)` | **correctly uses the canonical enum** (`:2,56`) — contrast §6 (now resolved) |
 | `checkKey`, `obligationId` | optional/nullable | §4 edges |
 
-Server-derived (`:199-232`): `mspId` (from session), `mspAssessor` (`{name, upn, timestamp}` from
-`req.user`, never client-supplied). Success `201`: `{id, rbdId, message}` (`:235-239`) — **not**
-the full row, unlike every other create/mutate route in this module.
+Server-derived (`:200-202,223-227`): `mspId` (from session), `mspAssessor` (`{name, upn, timestamp}` from
+`req.user`, never client-supplied), and **`registerRef`** (`:236`, `assignRegisterRef(inserted.id)`
+— #2529, see §1.1) — the id isn't known until the insert returns, so this runs as a second
+statement right after the insert, guarded `WHERE register_ref IS NULL` inside `assignRegisterRef`
+itself so it's safe even against a future upsert path. Success `201`: `{id, rbdId, registerRef,
+message}` (`:238-243`) — **still not** the full row, unlike every other create/mutate route in
+this module, but as of #2529 it now includes the one field a caller would otherwise have no way to
+read back without a follow-up `GET /api/msp/rbd`.
 
 No conflict handling for a duplicate `(mspId, rbdId)` — the DB's own unique constraint
 (`msp_risk_decisions_msp_id_rbd_id_uidx`) will reject a repeat insert with a raw Postgres error,
@@ -191,18 +215,18 @@ caught by the generic `catch` block and surfaced as a 500 `INTERNAL`, not a `409
 
 ### 1.4 Sign — `PATCH /api/msp/rbd/:rbdId/sign`
 
-`requireRole("MSPAdmin")`. Body (`signRbdSchema`, `:65-71`): `name`, `title`, `email`, `ipAddress`,
+`requireRole("MSPAdmin")`. Body (`signRbdSchema`, `:66-72`): `name`, `title`, `email`, `ipAddress`,
 `signatureHash` — all plain `z.string()`, **all required, all client-supplied** (contrast the
 customer-facing sign paths, which derive `ipAddress`/`signatureHash` server-side — see §7.4).
 
-Guaranteed only-if-`pending_signature` (`:282-285`, `409 CONFLICT` otherwise). On success
-(`:298-304`): sets `status = "active"` and overwrites `clientApprover` wholesale with
+Guaranteed only-if-`pending_signature` (`:285-288`, `409 CONFLICT` otherwise). On success
+(`:301-307`): sets `status = "active"` and overwrites `clientApprover` wholesale with
 `{name, title, email, signedAt: <server-set>, ipAddress, signatureHash}` — `signedAt` is the one
 server-derived field; everything else in the approver record is exactly what the client sent, with
 no cross-check against the authenticated MSP user's own identity (this is expected — the person
 being recorded as "who approved" here is the customer contact the MSP staff member is capturing
 the signature on behalf of, not the MSP staff member themself). Response: `{rbdId, message}`
-(`:306-309`) — again not the full row.
+(`:309-312`) — again not the full row.
 
 **No role-based authority check runs on this path at all** — contrast the customer-portal accept
 route (#1511, customer pack §1.4), which resolves whether the signer currently holds Accountable
@@ -216,16 +240,16 @@ identical authority-affordance treatment.
 ### 1.5 Revoke — `PATCH /api/msp/rbd/:rbdId/revoke`
 
 `requireRole("MSPAdmin")`. No body. Guarded to only `active`/`pending_signature` →
-`409 CONFLICT` otherwise (`:346-349`). Sets `status = "revoked"` only — leaves `clientApprover`,
-`acceptedAt`, everything else untouched. Response: `{rbdId, message}` (`:358-361`).
+`409 CONFLICT` otherwise (`:350-353`). Sets `status = "revoked"` only — leaves `clientApprover`,
+`acceptedAt`, everything else untouched. Response: `{rbdId, message}` (`:362-365`).
 
 ### 1.6 Catalogs — `available-checks` / `available-obligations`
 
-`GET /api/msp/rbd/available-checks` (`:79-101`) — `requireRole("MSPOperator")`, no `mspId` scoping
+`GET /api/msp/rbd/available-checks` (`:80-102`) — `requireRole("MSPOperator")`, no `mspId` scoping
 at all (the catalog itself, `monitor_checks.key/label/description`, carries no MSP ownership).
 Returns a bare array `{key, label, description}[]`, alphabetical by label.
 
-`GET /api/msp/rbd/available-obligations` (`:109-148`) — `requireRole("MSPOperator")`, scoped: the
+`GET /api/msp/rbd/available-obligations` (`:110-149`) — `requireRole("MSPOperator")`, scoped: the
 global/seeded catalog (`compliance_frameworks.mspId IS NULL`) UNION this MSP's own authored
 authorities (`compliance_frameworks.mspId = <this mspId>`), joined to `compliance_obligations`,
 both `active = true`. Returns `{obligationId, citation, requires, frameworkName, authorityType,
@@ -268,8 +292,8 @@ interface WireRiskInstance {
 | `resolutionNote` | `.resolution_note` | CURRENT |
 
 **Field on the DB, NOT on this wire shape:** `driftEventId` (`risk_instances.drift_event_id`,
-`msp.ts:6778`) — the `drift_events.id` a line item was raised from when it was added by the Shadow
-IT governance accumulation path (`shadow-it-governance.ts:218`, the only caller of
+`msp.ts:6927`) — the `drift_events.id` a line item was raised from when it was added by the Shadow
+IT governance accumulation path (`shadow-it-governance.ts:224`, the only caller of
 `addRiskInstance` outside this route file's own `POST`). `WireRiskInstance` has no field for it, so
 an automatically-raised line item is indistinguishable, on the wire, from one an operator typed in
 by hand via `POST .../instances`. Same shape of gap as the customer pack's §1.1/§7.3 finding on
@@ -360,7 +384,7 @@ interface WireRbdNarrativeAudit {
 ```
 
 `changedFields` is real shape `Array<{field, previousValue, newValue}>` server-side
-(`msp.ts:6380`) but `unknown` on the wire, same pattern as §3.1. `GET .../narrative-audit` →
+(`msp.ts:6521`) but `unknown` on the wire, same pattern as §3.1. `GET .../narrative-audit` →
 `{rbdId, audit: WireRbdNarrativeAudit[]}`, newest first (`:316`). One row is written per version
 transition that changed a narrative/score field; **zero rows exist for a container whose scope-only
 or first-ever version never touched hazard/controls/score** — an empty array here is a genuinely
@@ -441,11 +465,12 @@ URL; whoever builds #2582 constructs the actual share link client-side, same as 
 | Container ↔ line items | `risk_instances.risk_decision_id` | `msp_risk_decisions.id` | Yes, real FK `ON DELETE CASCADE` | The one hard-FK'd relationship in this whole module |
 | Container ↔ versions | `msp_rbd_versions.rbd_id` | `msp_risk_decisions.rbd_id` | Yes, on §3, but **no DB FK** — resolved by `(mspId, rbdId)` lookup at the route layer, matching the container's own addressing scheme, not a constraint | `POST .../versions` (§3.3) DOES require the container to already exist, despite no FK enforcing it |
 | Line-item scope ↔ versions | `msp_rbd_versions.scope_instance_ids` | `risk_instances.id[]` | Yes, §3.1 | Server-derived at capture time, never client-supplied (§3.3) |
-| Drift-governance ↔ line items | `risk_instances.drift_event_id` | `drift_events.id`, FK set-null | **No** — not on `WireRiskInstance` (§2) | Only writer is `shadow-it-governance.ts:218`, not any route in this pack |
+| Drift-governance ↔ line items | `risk_instances.drift_event_id` | `drift_events.id`, FK set-null | **No** — not on `WireRiskInstance` (§2) | Only writer is `shadow-it-governance.ts:224`, not any route in this pack |
 | Change-Control provenance | `spawned_by_change_request_id` / `discharged_by_change_request_id` | `msp_change_requests.id` | Raw ids only, `GET /msp/rbd` (§0.2 — no formatted code) | Formatted `CR-2026-<n>` code exists only on the customer pack's `WireRisk` |
 | Remediation provenance | `spawned_by_remediation_step_id` | `remediation_tracker_steps.id`, no FK | Raw id only, `GET /msp/rbd` | Same gap the customer pack already flagged (its §7.3), inherited here since it's the same column |
 | Obligation | `obligation_id` | `compliance_obligations.id` | Raw id only, `GET /msp/rbd` — no `obligationType` join | The join exists in `msp-rbd.ts`'s own `available-obligations` route (§1.6) but is not applied to the `msp_risk_decisions` row read |
 | Acceptance authority audit | `authorizing_workload_id` / `_label` / `authorizing_holder_person_ids` / `signed_by_person_id` | `portal_ownership_assignments` / `portal_ownership_events` (indirectly, via the customer accept path) | Raw columns only, always null for an MSP-signed decision | Written exclusively by `portal-risk-register.ts`'s customer accept route (#1511) — never by any route in this pack |
+| Register number | `register_ref` | none (self-contained formatted string, not a join) | Raw string, `GET /msp/rbd` — populated | **Written by this pack as of #2529** — `assignRegisterRef` (§1.1, §1.3) runs after every `POST /api/msp/rbd` insert. `admin-rbd.ts` also writes it (same lib call, `:246`) but its own `rbdToWire()` never returns it (§1.2) |
 
 ---
 
@@ -457,33 +482,34 @@ plain `text`, enforced only by whichever zod schema happens to validate the writ
 
 | Vocabulary | Values | Where fixed | Enforced by |
 |---|---|---|---|
-| Acceptance `status` | `pending_signature`, `active`, `revoked` | `RISK_ACCEPTANCE_STATUSES`, `msp.ts:5920` | **`msp-rbd.ts:55` — correct.** `admin-rbd.ts:43` and `get-risk-register.ts:17` both independently hand-duplicate a STALE copy that still contains `expired` — §6, live bug filed |
-| Raw risk level | `critical`, `high`, `medium` | `msp-rbd.ts:43` (`z.enum`) | `msp-rbd.ts` only; `admin-rbd.ts:41` duplicates the same three values independently (harmless — this one wasn't changed by #1507) |
-| Residual risk level | `high`, `medium`, `low` | `msp-rbd.ts:44` (`z.enum`) | same duplication note as above, also harmless |
-| Compensating control `type` | `technical`, `administrative`, `operational` | `msp-rbd.ts:16` (`z.enum`) | `msp-rbd.ts` only |
-| Risk instance exit reason | `remediated`, `object_removed` | `RISK_INSTANCE_EXIT_REASONS`, `msp.ts:6732` | `msp-rbd-instances.ts:210` — imports the canonical const correctly |
-| Risk instance `status` | `active`, `remediated`, `object_removed` | `RISK_INSTANCE_STATUS`, `msp.ts:6735` | **DB CHECK `risk_instances_status_check`, confirmed live** — the one hard-enforced vocabulary in this module |
+| Acceptance `status` | `pending_signature`, `active`, `revoked` | `RISK_ACCEPTANCE_STATUSES`, `msp.ts:6063` | **`msp-rbd.ts:56` — correct**, and now `admin-rbd.ts:30` correctly imports the same canonical const too (see §6 — the prior pass's live bug is fixed) |
+| Raw risk level | `critical`, `high`, `medium` | `msp-rbd.ts:44` (`z.enum`) | `msp-rbd.ts` only; `admin-rbd.ts:42` duplicates the same three values independently (harmless — this one wasn't changed by #1507) |
+| Residual risk level | `high`, `medium`, `low` | `msp-rbd.ts:45` (`z.enum`) | same duplication note as above, also harmless |
+| Compensating control `type` | `technical`, `administrative`, `operational` | `msp-rbd.ts:17` (`z.enum`) | `msp-rbd.ts` only |
+| Risk instance exit reason | `remediated`, `object_removed` | `RISK_INSTANCE_EXIT_REASONS`, `msp.ts:6873` | `msp-rbd-instances.ts:210` — imports the canonical const correctly |
+| Risk instance `status` | `active`, `remediated`, `object_removed` | `RISK_INSTANCE_STATUS`, `msp.ts:6876` | **DB CHECK `risk_instances_status_check`, confirmed live** — the one hard-enforced vocabulary in this module |
 
 ---
 
-## 6. Live bug found by this audit — filed
+## 6. Live bug found by the prior pass — now fixed (Git #2697)
 
-**`admin-rbd.ts` can still write `status = "expired"` onto `msp_risk_decisions`, undoing #1507.**
-`admin-rbd.ts:43` defines its own stale `RBD_STATUSES = ["active", "pending_signature", "expired",
-"revoked"]` instead of importing the canonical `RISK_ACCEPTANCE_STATUSES` (which `msp-rbd.ts`
-imports and uses correctly, `:2,55`), and applies it to both `POST /api/admin/rbd/:customerId`
-(`:177`) and `PATCH /api/admin/rbd/entry/:id` (`:268`) — both live, both reachable by any
-PlatformAdmin session today. A PlatformAdmin can PATCH a live decision to `status: "expired"`
-right now, resurrecting the exact value `#1507`/`#1527` shipped a fix to eliminate everywhere else,
-directly contradicting `docs/risk-register-contract-pack.md` §5's claim that the fix is "shipped,
-not merely settled" module-wide.
+**Historical record, not a live finding.** The prior pass (#2580) found `admin-rbd.ts` could still
+write `status = "expired"` onto `msp_risk_decisions`, undoing #1507 — a stale local
+`RBD_STATUSES = ["active", "pending_signature", "expired", "revoked"]` instead of the canonical
+`RISK_ACCEPTANCE_STATUSES`, reachable through both `POST /api/admin/rbd/:customerId` and
+`PATCH /api/admin/rbd/entry/:id`. Filed and closed as **#2697**
+("admin-rbd.ts can still write status="expired", undoing #1507's fix").
 
-Same root cause, lower severity, filed together: `get-risk-register.ts:17` independently
-duplicates the identical stale array for its read-only `status` filter parameter.
-
-**Filed as its own issue, parented under #1682 (this Feature) per this build's standing rules —
-see the DONE bookend for the issue number.** Not filed `URGENT` — real but not actively causing
-incident-level harm; the fix is a one-line import swap in each file.
+Confirmed fixed on this pass: `admin-rbd.ts:30` now imports `RISK_ACCEPTANCE_STATUSES` from
+`@workspace/db` and both schemas (`:179`, `:272`) use `z.enum(RISK_ACCEPTANCE_STATUSES)` — the
+stale local array is gone, replaced with the header comment at `:44-45` citing #2697. The
+`artifacts/mcp-server/src/tools/get-risk-register.ts` side of the same finding is also fixed —
+its `RBD_STATUSES` local copy (`:24`) now correctly omits `expired` too, with a header comment
+(`:17-23`) explaining the local-copy-not-import choice and citing #2697. **One small residual
+leftover, not worth a new issue:** that same file's tool `description` string (`:54`) still lists
+`expired` among the filterable statuses in its prose — a stale docstring in an otherwise-fixed
+file, harmless since the actual `z.enum` no longer accepts the value, flagged here rather than
+filed since it's copy, not behavior.
 
 ---
 
@@ -546,22 +572,32 @@ spirit as the customer pack's §1.6 note on `public-rbd-document.ts`'s own IP-ca
 4. **Scope expansion cannot be gamed.** `scopeInstanceIds`/`scopeAddedInstanceIds`/
    `scopeRemovedInstanceIds` are always server-derived from live `risk_instances` rows inside the
    same transaction as version capture (§3.3) — no route in this pack accepts them as client input.
-5. **`status = "expired"` must not be writable.** Declared here as a forbidden-list item precisely
-   because §6 found it IS currently writable through `admin-rbd.ts` — the fix (§6) closes this.
+5. **`status = "expired"` must not be writable.** Declared here as a forbidden-list item because
+   §6 found it WAS writable through `admin-rbd.ts` on the prior pass — confirmed fixed (#2697) on
+   this pass, re-verified live against the current file rather than assumed.
 
 ---
 
 ## 9. Provenance
 
-Written 2026-09-03 against `main` (branch `agent/2580-q1404`), for #2580 (Document step of #1682,
-the reset #1571 Epic's Risk Register / RBD MSP Console Feature). Read in full, not sampled:
-`msp-rbd.ts` (370 lines), `msp-rbd-instances.ts` (264 lines), `msp-rbd-versions.ts` (476 lines),
-plus their supporting libs `rbd-instances.ts`, `rbd-versioning.ts`, `rbd-document-render.ts`, and
-the cross-referenced `admin-rbd.ts` (320 lines) and `riskDecisionsStore.ts`/`get-risk-register.ts`
-consumers. Verified live against local PostgreSQL — `msp_risk_decisions`, `risk_instances`,
-`msp_rbd_versions` schemas all confirmed to match the Drizzle source exactly, including the one
-real CHECK constraint (§5) and every FK/unique constraint cited above.
+**Regenerated 2026-09-04** against `main`, for **#2897** (superseding the original #2580 pass,
+written 2026-09-03 — dedup limit already fired once on #2580 per this issue's own body), Document
+step of #1682, the reset #1571 Epic's Risk Register / RBD MSP Console Feature. Read in full, not
+sampled: `msp-rbd.ts` (374 lines — grew by 4 for #2529's `registerRef` writer), `msp-rbd-instances.ts`
+(264 lines, unchanged since the prior pass), `msp-rbd-versions.ts` (476 lines, unchanged since the
+prior pass), plus their supporting libs `rbd-instances.ts`, `rbd-versioning.ts`,
+`rbd-document-render.ts`, `risk-register-ref.ts` (#2529's `assignRegisterRef`/`formatRegisterRef`,
+new since the prior pass), and the cross-referenced `admin-rbd.ts` (323 lines) and
+`riskDecisionsStore.ts` / `artifacts/mcp-server/src/tools/get-risk-register.ts` consumers. Verified
+live against local PostgreSQL — `msp_risk_decisions`, `risk_instances`, `msp_rbd_versions` schemas
+all re-confirmed to match the Drizzle source exactly, including the one real CHECK constraint (§5)
+and every FK/unique constraint cited above. Every file:line citation in this document was re-read
+against current `main` for this pass, not carried forward from #2580's version — the whole pack
+was regenerated, not patched, per this issue's own instruction.
 
-One real bug found and filed (§6). No orphaned-endpoint sub-issues filed — every unconsumed
-endpoint is already staged for #2582 (§0.1). No product code, schema, or UI was changed by this
-pass.
+**What changed since the #2580 pass, concretely:** `registerRef` moved from documented-absent to
+documented-written (§1.1, §1.3, §4) — the real product change this issue exists to capture. The
+one live bug the prior pass found and filed (§6, `admin-rbd.ts` writing `status = "expired"`) is
+now confirmed fixed and closed as #2697 — restated as resolved rather than re-flagged. No new bug
+was found on this pass. No orphaned-endpoint sub-issues filed — every unconsumed endpoint is
+already staged for #2582 (§0.1). No product code, schema, or UI was changed by this pass.
