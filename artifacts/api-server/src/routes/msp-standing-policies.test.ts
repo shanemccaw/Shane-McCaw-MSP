@@ -35,11 +35,15 @@ vi.mock("@workspace/db", () => ({
   STANDING_POLICY_TARGET_KIND: ["mailbox_attribute", "group_membership", "service_policy"],
 }));
 
-vi.mock("drizzle-orm", () => ({
-  eq: (c: unknown, v: unknown) => ({ eq: [c, v] }),
-  and: (...args: unknown[]) => ({ and: args }),
-  desc: (c: unknown) => ({ desc: c }),
-}));
+vi.mock("drizzle-orm", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("drizzle-orm")>();
+  return {
+    ...actual,
+    eq: (c: unknown, v: unknown) => ({ eq: [c, v] }),
+    and: (...args: unknown[]) => ({ and: args }),
+    desc: (c: unknown) => ({ desc: c }),
+  };
+});
 
 vi.mock("../lib/logger", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };

@@ -108,6 +108,7 @@ vi.mock("./sse-channels", () => ({
     state.broadcastCalls.push(args[0]);
   },
   broadcastAdminEvent: () => {},
+  broadcastWorkflowRunError: () => {},
 }));
 
 vi.mock("@workspace/integrations-anthropic-ai", () => ({

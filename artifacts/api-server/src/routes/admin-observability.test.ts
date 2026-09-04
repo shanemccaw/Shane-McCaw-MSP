@@ -15,6 +15,10 @@ vi.mock("../middlewares/requireAuth", () => ({
     next(),
   requireRole: () => (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
     next(),
+  // Same unconditional-pass behavior as requireAdmin above — no test here
+  // exercises the ingest-token path of the real requireAdminOrIngestToken.
+  requireAdminOrIngestToken:
+    () => (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
 }));
 
 // ── alert-engine mock ────────────────────────────────────────────────────────

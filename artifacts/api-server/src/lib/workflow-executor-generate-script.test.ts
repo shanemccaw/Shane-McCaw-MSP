@@ -170,6 +170,7 @@ vi.mock("./sse-channels", () => ({
   broadcastPresentationDocsChange: () => {},
   broadcastPresentationProjectReady: () => {},
   replayPhaseGenState: () => {},
+  broadcastWorkflowRunError: () => {},
 }));
 
 vi.mock("./document-engine-sow", () => ({

@@ -54,10 +54,14 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("drizzle-orm", () => ({
-  asc: (col: any) => col,
-  eq: (col: any, val: any) => ({ col, val }),
-}));
+vi.mock("drizzle-orm", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("drizzle-orm")>();
+  return {
+    ...actual,
+    asc: (col: any) => col,
+    eq: (col: any, val: any) => ({ col, val }),
+  };
+});
 
 vi.mock("./m365-change-router", () => ({
   declineRoutedChangeToRisk: vi.fn(),

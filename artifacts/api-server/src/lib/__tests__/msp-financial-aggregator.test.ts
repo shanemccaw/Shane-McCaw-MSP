@@ -36,7 +36,7 @@ const createChain = (resolveValue: any) => {
 describe("aggregateMspTelemetry", () => {
   it("queries and aggregates telemetry correctly", async () => {
     const subsMock = [{ priceCents: 10000, internalCostCents: 7000 }]; // 100.00 retail, 70.00 wholesale
-    const invoicesMock = [{ amount: "150.00" }]; // 150.00 retail, default 70% = 105.00 wholesale => 45.00 margin (30%)
+    const invoicesMock = [{ amount: 15000 }]; // invoicesTable.amount is integer cents (Git #1610): 150.00 retail, default 70% = 105.00 wholesale => 45.00 margin (30%)
     const tasksMock = [{ priceCents: 5000, internalCostCents: 3000 }]; // 50.00 retail, 30.00 wholesale => 20.00 margin (40%)
     const offersMock = [{ adjustedPriceCents: 30000, internalCostCents: 21000 }]; // 300.00 retail, 210.00 wholesale => 90.00 margin (30%)
     const activeSignalsMock = [{ count: 12 }];
@@ -165,10 +165,10 @@ describe("aggregateMspTelemetry categoryBreakdown (5-way split)", () => {
     const subsMock = [{ priceCents: 100000, internalCostCents: 70000 }]; // monitoring: 1000.00 / 700.00
 
     const invoicesMock = [
-      { amount: "100.00", projectType: "project" }, // -> consulting
-      { amount: "200.00", projectType: "retainer" }, // -> subscriptionsRetainers
-      { amount: "300.00", projectType: "quick_win" }, // -> assessmentsQuickFixes
-      { amount: "50.00", projectType: null }, // no linked project -> other
+      { amount: 10000, projectType: "project" }, // -> consulting
+      { amount: 20000, projectType: "retainer" }, // -> subscriptionsRetainers
+      { amount: 30000, projectType: "quick_win" }, // -> assessmentsQuickFixes
+      { amount: 5000, projectType: null }, // no linked project -> other
     ];
 
     const tasksMock = [

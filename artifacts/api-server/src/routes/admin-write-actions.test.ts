@@ -198,6 +198,16 @@ vi.mock("../middlewares/requireAuth", () => ({
     if (req.headers["authorization"] === `Bearer ${ADMIN_PASS}`) return next();
     res.status(401).json({ error: "Unauthorized" });
   },
+  // Same admin-session check as requireAdmin above (see the real
+  // requireAdminOrIngestToken in ../middlewares/requireAuth.ts, which falls
+  // back to requireAdmin when no ingest-token env var is set — no test here
+  // exercises the ingest-token path, so the mock only needs the fallback).
+  requireAdminOrIngestToken:
+    (_envVar?: string) =>
+    (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      if (req.headers["authorization"] === `Bearer ${ADMIN_PASS}`) return next();
+      res.status(401).json({ error: "Unauthorized" });
+    },
 }));
 
 vi.mock("../lib/logger", () => ({

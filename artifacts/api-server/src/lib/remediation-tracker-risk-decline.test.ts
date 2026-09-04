@@ -39,10 +39,19 @@ vi.mock("@workspace/db", () => {
     returning: () => Promise.resolve(mockInsertReturning),
   };
 
+  // assignRegisterRef() (risk-register-ref.ts) runs `db.update(...).set(...).where(...)`
+  // right after every insert — no test here asserts on the write itself, so this
+  // just needs to resolve.
+  const updateChain: any = {
+    set: () => updateChain,
+    where: () => Promise.resolve(undefined),
+  };
+
   return {
     db: {
       select: vi.fn(() => makeSelectChain()),
       insert: vi.fn(() => insertChain),
+      update: vi.fn(() => updateChain),
     },
     mspRiskDecisionsTable: { mspId: "msp_id", rbdId: "rbd_id" },
     mspDiagnosticFindingsTable: {},

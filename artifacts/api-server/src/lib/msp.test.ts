@@ -69,9 +69,10 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("./logger", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+vi.mock("./logger", () => {
+  const stub = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  return { logger: { ...stub, child: vi.fn(() => stub) } };
+});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

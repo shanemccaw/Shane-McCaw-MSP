@@ -115,6 +115,7 @@ vi.mock("./web-push", () => ({
 vi.mock("./sse-channels", () => ({
   broadcastAdminWorkflowEvent: () => {},
   broadcastAdminEvent:         () => {},
+  broadcastWorkflowRunError:   () => {},
 }));
 
 vi.mock("@workspace/integrations-anthropic-ai", () => ({

@@ -111,6 +111,7 @@ vi.mock("./web-push", () => ({
 vi.mock("./sse-channels", () => ({
   broadcastAdminWorkflowEvent: () => {},
   broadcastAdminEvent:         () => {},
+  broadcastWorkflowRunError:   () => {},
 }));
 
 // Anthropic mock — returns a JSON blob compatible with ALL nodes that parse AI JSON:

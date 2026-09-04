@@ -124,7 +124,7 @@ describe("calculateColonyCompositeScore", () => {
     // Lifetime round: monitoringMrr = 1000, projectRevenue = 500, remediation = 200, offer = 100
     queueTelemetryRound({
       subs: [{ priceCents: 100000, internalCostCents: 100000 }], // 1000.00 retail, 0 margin
-      invoices: [{ amount: "500.00" }], // 500.00 retail (default wholesale split, doesn't matter for grossRevenueUsd)
+      invoices: [{ amount: 50000 }], // invoicesTable.amount is integer cents (Git #1610): 500.00 retail (default wholesale split, doesn't matter for grossRevenueUsd)
       tasks: [{ priceCents: 20000, internalCostCents: 20000 }], // 200.00 retail
       offers: [{ adjustedPriceCents: 10000, internalCostCents: 10000 }], // 100.00 retail
     });
