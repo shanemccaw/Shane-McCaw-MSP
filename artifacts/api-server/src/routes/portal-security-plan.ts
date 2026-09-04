@@ -1,10 +1,11 @@
 /**
  * portal-security-plan.ts — the CUSTOMER-scoped Security Plan (plan of record).
  *
- *   GET /api/portal/security-plan — this customer's authoritative Security Plan:
- *                                   its header, its numbered sections, each
- *                                   section's requirement rows, and its version
- *                                   history.
+ *   GET /api/portal/security-plan — this customer's Security Plan, in TWO parts
+ *                                   (#2576 — see "Two models, bridged" below):
+ *                                   `plan` (the legacy hand-authored table) and
+ *                                   `assembledPlan` (the settled #1561 pipeline's
+ *                                   last SIGNED version).
  *
  * ── Why this route exists at all ───────────────────────────────────────────
  * Nothing backed `/portal-v2/security-plan` before it. The page was built from
@@ -13,21 +14,48 @@
  * customer-side or MSP-side. The four `portal_security_plan*` tables are that
  * store; this route reads them back for the calling customer.
  *
+ * ── Two models, bridged (#2576) ─────────────────────────────────────────────
+ * #2576 found this route's `portal_security_plans` table (`plan`, below) and
+ * the real, tested, MSP-side assembled/versioned/signed pipeline
+ * (`msp-security-plan.ts`, `security-plan-assembly.ts` + siblings, #1561-#1567)
+ * were two live, completely disconnected representations of "the Security
+ * Plan," with nothing bridging them. #1561's own settled architecture comment
+ * (2026-08-28, closed) already decided the assembled pipeline is the real one
+ * ("not a tenth module... owns almost no data of its own") — what had never
+ * been scheduled was the bridge itself. `assembledPlan` IS that bridge: the
+ * caller's tenant resolved via `resolveTenantScope` (read-only lookup, no MSP
+ * session required) and the last **signed** `msp_security_plan_versions` row
+ * for it, if any. Only ever the *signed* version — an unsigned draft/current
+ * version is an MSP-internal work product (freeze → author prose → seal is an
+ * authoring sequence, not a publication one) and is never surfaced here.
+ *
+ * `plan` (the legacy table) is kept exactly as it was — unchanged schema, zero
+ * rows locally as of #2576, no live consumer — because dropping it is a
+ * destructive schema change out of scope for this route-level bridge; see the
+ * #2576 build's own bookend/issue comment for the recommendation on retiring
+ * it outright. **The eventual customer-facing Security Plan page (no
+ * `Design/portal` export exists yet — see moduleNav.ts's `builtPath: null`)
+ * should be built against `assembledPlan`, not `plan`** — building it against
+ * the legacy field would re-wire the stale model #2576 exists to flag.
+ *
  * ── ADMIN-AUTHORED, READ-ONLY (and why there is no POST) ────────────────────
  * A Security Plan is the plan of record the MSP (Shane's team) writes and signs
  * FOR a tenant; the customer reads it, they do not edit it. So this route is
  * GET-only — the same read-only stance `portal-ownership.ts` took, for the same
- * PRODUCT reason rather than a security one. The plan's content is authored and
+ * PRODUCT reason rather than a security one. `plan`'s content is authored and
  * seeded through the manual migration
- * (`lib/db/migrations/manual/2026-08-21-portal-v2-security-plan.sql`), not through
- * the portal. If a customer-editable plan is ever wanted, that is a new table
- * decision and its own piece of work — it is deliberately not faked here.
+ * (`lib/db/migrations/manual/2026-08-21-portal-v2-security-plan.sql`); `assembledPlan`
+ * is authored through `msp-security-plan.ts`'s freeze/prose/seal/sign sequence. If a
+ * customer-editable plan is ever wanted, that is a new table decision and its own
+ * piece of work — it is deliberately not faked here.
  *
  * ── Scoping ─────────────────────────────────────────────────────────────────
  * `resolveCustomerId` — `tenants.id`, straight off the JWT's `customerId` claim,
- * which is exactly the id every `portal_security_plan*` row is keyed on. One
- * value, direct comparison. No `resolveTenantScope` needed: unlike Ownership,
- * nothing here reads an MSP-era `(mspId, tenantId)` table.
+ * which is exactly the id every `portal_security_plan*` row is keyed on, for
+ * `plan`. `assembledPlan` additionally resolves `resolveTenantScope(customerId)`
+ * to get the `mspId` the MSP-era `msp_security_plan_versions` table is keyed on
+ * (same two-scoping-shapes split `portal-customer-scope.ts`'s own header
+ * documents) — read-only, fails closed to `null` on any resolution error.
  *
  * ── Role floor ─────────────────────────────────────────────────────────────
  * `requireRole("CustomerUser")`, matching `portal-ownership.ts`: a security plan
@@ -39,7 +67,10 @@
  * DERIVED from the rows on the client (`securityPlanModel.ts`), and stay there —
  * a plan that could disagree with itself defeats its own claim, so there is one
  * derivation, not a server copy that could drift from it. This route serves the
- * rows; the client counts them.
+ * rows; the client counts them. `assembledPlan.content` is likewise served as
+ * the full, self-contained signed snapshot with no server-side re-derivation
+ * (matching `msp-security-plan.ts`'s own "no rolled-up score" rule, §6.3 of the
+ * Security Plan contract pack).
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -53,7 +84,8 @@ import {
 import { asc, eq, inArray } from "drizzle-orm";
 
 import { requireRole } from "../middlewares/requireAuth";
-import { resolveCustomerId } from "../lib/portal-customer-scope";
+import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import { getLastSignedSecurityPlanVersion } from "../lib/security-plan-versioning";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -101,9 +133,62 @@ export interface WireSecurityPlan {
   readonly history: readonly WireSecPlanVersion[];
 }
 
+/**
+ * The #1561 assembled/versioned/signed pipeline's last SIGNED version, bridged
+ * onto this customer route (#2576) — see the file header "Two models, bridged."
+ * `content` is `SecurityPlanContent` (`security-plan-assembly.ts`'s module rows,
+ * the #1563 scope and the #1565 filter footprint, plus authored prose) and
+ * `signedBy` is `ClientApprover` — both left as `unknown` here exactly as
+ * `msp-security-plan.ts`'s own `WireSecurityPlanVersion` does, since neither
+ * type is exported for cross-module reuse and this route does not need to
+ * inspect their shape, only pass it through.
+ */
+export interface WireAssembledSecurityPlan {
+  readonly versionNumber: number;
+  readonly content: unknown;
+  /** Mirrored out of `content.footprint.scope.statement` — see #1564. */
+  readonly scopeStatement: string;
+  readonly signedAt: string;
+  readonly signedBy: unknown;
+}
+
 export interface WireSecurityPlanPayload {
-  /** The plan of record, or null when this customer has none authored yet. */
+  /** The legacy hand-authored plan of record, or null when this customer has
+   * none authored yet. See the file header — new work should not extend this. */
   readonly plan: WireSecurityPlan | null;
+  /** The settled #1561 pipeline's last signed version, or null when nothing
+   * has ever been signed for this customer. #2576's bridge — see file header. */
+  readonly assembledPlan: WireAssembledSecurityPlan | null;
+}
+
+/**
+ * Resolves `assembledPlan` (#2576). Fails closed to `null` on any error —
+ * resolution failure here must never take down the legacy `plan` half of this
+ * response, and vice versa, so this is intentionally isolated from the try/catch
+ * around the legacy lookup below.
+ */
+async function resolveAssembledPlan(customerId: number): Promise<WireAssembledSecurityPlan | null> {
+  try {
+    const tenantScope = await resolveTenantScope(customerId);
+    if (!tenantScope) return null;
+
+    const lastSigned = await getLastSignedSecurityPlanVersion(tenantScope.mspId, customerId);
+    if (!lastSigned || !lastSigned.signedAt) return null;
+
+    return {
+      versionNumber: lastSigned.versionNumber,
+      content: lastSigned.content,
+      scopeStatement: lastSigned.content.footprint.scope.statement,
+      signedAt: lastSigned.signedAt.toISOString(),
+      signedBy: lastSigned.signedBy,
+    };
+  } catch (err) {
+    log.error(
+      { customerId, err: err instanceof Error ? err.message : String(err) },
+      "portal security plan: #2576 assembledPlan bridge lookup failed",
+    );
+    return null;
+  }
 }
 
 router.get(
@@ -115,6 +200,8 @@ router.get(
       res.status(403).json({ error: "No customer identity on token" });
       return;
     }
+
+    const assembledPlan = await resolveAssembledPlan(customerId);
 
     try {
       const [planRow] = await db
@@ -128,7 +215,7 @@ router.get(
       // for) rather than an empty masthead.
       if (!planRow) {
         log.info({ customerId }, "portal security plan: none authored for customer");
-        res.json({ plan: null } satisfies WireSecurityPlanPayload);
+        res.json({ plan: null, assembledPlan } satisfies WireSecurityPlanPayload);
         return;
       }
 
@@ -196,11 +283,12 @@ router.get(
           sections: plan.sections.length,
           requirements: reqRows.length,
           history: plan.history.length,
+          hasAssembledPlan: assembledPlan !== null,
         },
         "portal security plan served",
       );
 
-      res.json({ plan } satisfies WireSecurityPlanPayload);
+      res.json({ plan, assembledPlan } satisfies WireSecurityPlanPayload);
     } catch (err) {
       log.error(
         { customerId, err: err instanceof Error ? err.message : String(err) },
