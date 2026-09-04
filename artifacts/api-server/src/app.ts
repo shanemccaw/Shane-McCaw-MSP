@@ -8,6 +8,7 @@ import { logger } from "./lib/logger";
 import { ConsentRevokedError } from "./lib/graph";
 import { runWithRequestContext, getRequestContext } from "./lib/request-context.ts";
 import { captureException } from "./lib/exception-tracker.ts";
+import { apiError, ApiErrorCode } from "./lib/api-helpers.ts";
 
 // Durably record a crash before the process dies, but never let a hung DB
 // write delay exit — a stuck process is strictly worse than one lost record.
@@ -123,7 +124,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     return;
   }
   logger.error({ err }, "Unhandled error");
-  res.status(500).json({ error: "Internal server error" });
+  apiError(res, 500, ApiErrorCode.INTERNAL, "Internal server error");
 });
 
 export default app;

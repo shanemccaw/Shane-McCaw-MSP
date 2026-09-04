@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { db, tenantsTable, mspStaffCustomerScopesTable, type MspRole } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { enrichRequestContext } from "../lib/request-context.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 
 export interface AuthUser {
   id: number;
@@ -99,14 +100,14 @@ const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Missing or invalid Authorization header" });
+    apiError(res, 401, ApiErrorCode.AUTH, "Missing or invalid Authorization header");
     return;
   }
 
   const token = authHeader.slice(7);
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    res.status(500).json({ error: "JWT_SECRET not configured" });
+    apiError(res, 500, ApiErrorCode.INTERNAL, "JWT_SECRET not configured");
     return;
   }
 
@@ -117,7 +118,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     if (payload.mfaSetupPending) {
       const allowed = MFA_SETUP_ALLOWLIST.some((a) => a.method === req.method && a.path === req.path);
       if (!allowed) {
-        res.status(403).json({ error: "mfa_setup_required" });
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "mfa_setup_required");
         return;
       }
     }
@@ -143,13 +144,13 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     });
 
     if (payload.impersonatedBy && !READ_METHODS.has(req.method)) {
-      res.status(403).json({ error: "This action is not available in admin preview mode" });
+      apiError(res, 403, ApiErrorCode.FORBIDDEN, "This action is not available in admin preview mode");
       return;
     }
 
     next();
   } catch {
-    res.status(401).json({ error: "Invalid or expired token" });
+    apiError(res, 401, ApiErrorCode.AUTH, "Invalid or expired token");
   }
 }
 
@@ -158,7 +159,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   requireAuth(req, res, () => {
     if (req.user?.role !== "admin") {
-      res.status(403).json({ error: "Admin access required" });
+      apiError(res, 403, ApiErrorCode.FORBIDDEN, "Admin access required");
       return;
     }
     next();
@@ -212,9 +213,7 @@ export function requireRole(minimumRole: MspRole) {
         user.role === "admin" ? "PlatformAdmin" : user.mspRole;
 
       if (roleIndex(effectiveRole) < roleIndex(minimumRole)) {
-        res.status(403).json({
-          error: `Insufficient privileges — ${minimumRole} or above required`,
-        });
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, `Insufficient privileges — ${minimumRole} or above required`);
         return;
       }
       next();
@@ -235,7 +234,7 @@ export function requireMspScope(source: "params" | "query" | "body" = "params") 
   return (req: Request, res: Response, next: NextFunction): void => {
     const user = req.user;
     if (!user) {
-      res.status(401).json({ error: "Authentication required" });
+      apiError(res, 401, ApiErrorCode.AUTH, "Authentication required");
       return;
     }
 
@@ -256,12 +255,12 @@ export function requireMspScope(source: "params" | "query" | "body" = "params") 
 
     const requestedMspId = parseInt(rawMspId, 10);
     if (isNaN(requestedMspId)) {
-      res.status(400).json({ error: "mspId is required" });
+      apiError(res, 400, ApiErrorCode.VALIDATION, "mspId is required");
       return;
     }
 
     if (user.mspId !== requestedMspId) {
-      res.status(403).json({ error: "Access to this MSP is not permitted" });
+      apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this MSP is not permitted");
       return;
     }
 
@@ -375,7 +374,7 @@ export function requireCustomerScope(source: "params" | "query" | "body" = "para
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const user = req.user;
     if (!user) {
-      res.status(401).json({ error: "Authentication required" });
+      apiError(res, 401, ApiErrorCode.AUTH, "Authentication required");
       return;
     }
 
@@ -395,19 +394,19 @@ export function requireCustomerScope(source: "params" | "query" | "body" = "para
 
     const requestedCustomerId = parseInt(rawCustomerId, 10);
     if (isNaN(requestedCustomerId)) {
-      res.status(400).json({ error: "customerId is required" });
+      apiError(res, 400, ApiErrorCode.VALIDATION, "customerId is required");
       return;
     }
 
     try {
       const ok = await assertCustomerAccess(user, requestedCustomerId);
       if (!ok) {
-        res.status(403).json({ error: "Access to this customer is not permitted" });
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this customer is not permitted");
         return;
       }
       next();
     } catch {
-      res.status(500).json({ error: "Customer scope verification failed" });
+      apiError(res, 500, ApiErrorCode.INTERNAL, "Customer scope verification failed");
     }
   };
 }
