@@ -56,6 +56,7 @@ import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
 import { getMetric } from "@workspace/dashboard-registry";
 import { resolveMetric, resolveMetricHistory, type MetricResult, type ResolveContext } from "../lib/dashboard-resolvers.ts";
 import { logger } from "../lib/logger";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -131,7 +132,7 @@ router.post(
       if (requested != null) {
         const owns = await assertCustomerAccess(user, requested);
         if (!owns) {
-          res.status(403).json({ error: "Access to this customer is not permitted" });
+          apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this customer is not permitted");
           return;
         }
         customerId = requested;

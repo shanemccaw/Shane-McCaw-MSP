@@ -47,6 +47,7 @@ import { requireRole, requireMspScope, assertCustomerAccess } from "../middlewar
 import { loadTier, tierAllowsFeature } from "../lib/msp-entitlement";
 import { resolveCustomerUserIds } from "../lib/tenant-signals";
 import { logger } from "../lib/logger";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 
 const log = logger.child({ channel: "engine.launch-control" });
 
@@ -144,7 +145,7 @@ router.get(
 
     try {
       if (!(await assertCustomerAccess(req.user!, customerId))) {
-        res.status(403).json({ error: "Access to this customer is not permitted" });
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this customer is not permitted");
         return;
       }
 
@@ -199,7 +200,7 @@ router.post(
 
     try {
       if (!(await assertCustomerAccess(req.user!, customerId))) {
-        res.status(403).json({ error: "Access to this customer is not permitted" });
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this customer is not permitted");
         return;
       }
 
@@ -331,7 +332,7 @@ router.post(
         return;
       }
       if (!(await assertCustomerAccess(req.user!, customerId))) {
-        res.status(403).json({ error: "Access to this customer is not permitted" });
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this customer is not permitted");
         return;
       }
 
