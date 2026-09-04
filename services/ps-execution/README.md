@@ -34,6 +34,46 @@ Standalone Docker image for the containerized PowerShell execution service
 Not part of the pnpm workspace — this is a plain Docker image, built and
 run independently of the Node/pnpm toolchain.
 
+## Snapshot-shaped unfiltered read entries (#1961)
+
+`#1796`'s configuration-snapshot collector ran live against the testbed and found
+**215 registry resource types recorded `skipped` / `no_executor`**: each named a
+real read cmdlet this catalog had no entry for. That is #209's boundary working
+as designed — `cmdletKey` resolves only to a code-owned entry here and a caller
+can never name a cmdlet — so the gap could only be closed inside the container.
+
+#1961 pass 1 added **63 entries**, taking the catalog from 38 to 101 and the
+PowerShell-reachable resource types from **5 to 88**. Two rules define them:
+
+- **Unfiltered, always.** A snapshot's consumer is #1797's differ; a check's
+  consumer wants the bad subset. A `PostFilter`ed entry used for a snapshot would
+  make the differ report every excluded object as *deleted* on the next run. So
+  the check-shaped entries are untouched, and five cmdlets that previously existed
+  only behind a filter now also have an unfiltered twin under a `get-all-*` key
+  (`Get-DkimSigningConfig`, `Get-InboundConnector`, `Get-Label`, `Get-LabelPolicy`,
+  `Get-HostedOutboundSpamFilterPolicy`) — the precedent `get-all-dlp-policies`
+  (#1301) already set.
+- **Chosen from live evidence, not from docs.** Every cmdlet added was recorded
+  `status = 'ok'` by #1793's capability survey (run 4) executing it under app-only
+  certificate auth *in this container* against the live testbed. That survey only
+  probes cmdlets with a zero-mandatory-parameter parameter set, which is why every
+  new entry can safely declare `AllowedParams = @()`.
+
+The security posture is unchanged: this widens *which* cmdlets may run and nothing
+else. All 63 are literal, code-owned, `Get-*` reads with `AllowedParams = @()` —
+the request body cannot fill a single parameter value — and none carries `IsWrite`.
+
+**Deliberately not in pass 1**, tracked as real follow-up rather than left silent:
+Teams (`Get-Cs*`, ~54 resource types, a uniform block of its own), and per-user /
+per-mailbox / directory enumerations (`Get-Mailbox`, `Get-User`, `Get-Recipient`,
+`Get-Group`, `Get-ManagementRoleAssignment`, …) — tenant *inventory* rather than
+tenant *configuration*, unbounded in size, and not what a Dev→Test→Prod promotion
+moves.
+
+The api-server half is `PS_CATALOG_BY_CMDLET` in
+`artifacts/api-server/src/lib/config-snapshot-collector.ts`; without a row there
+an entry here exists but nothing routes to it.
+
 ## The app-only capability survey (#1793) — `survey.ps1`
 
 Six catalog entries (`survey-list-commands-{compliance,exchange,teams}` and
