@@ -15,12 +15,28 @@
  * disagree with the code that issues the writes.
  *
  * WHERE THE PERMISSION NAMES COME FROM. Each rule cites the Microsoft Learn API
- * reference page whose "Permissions" table names the least-privileged
- * **Application** permission for that exact method + path. They are quoted, not
- * inferred. Where Microsoft lists several, the least-privileged one is used
- * unless a broader one is ALREADY held for another step (noted per rule) — in
- * that case adding the narrower duplicate would enlarge the request without
- * reducing real privilege.
+ * reference page whose "Permissions" table names the **Application** permission
+ * for that exact method + path, and carries that page's Application row quoted
+ * verbatim in `documentedApplicationTiers`. They are quoted, not inferred. The
+ * least-privileged cell is used unless a broader one is ALREADY held for another
+ * step (noted per rule) — in that case adding the narrower duplicate would
+ * enlarge the request without reducing real privilege.
+ *
+ * READ THIS BEFORE "FIXING" A RULE THAT LISTS TWO PERMISSIONS (Git #1975).
+ * Microsoft's permission tables use two different separators inside ONE cell and
+ * they do not mean the same thing:
+ *
+ *   - `A, B` — ALTERNATIVES. Any one of them authorises the call. Pick one.
+ *   - `A and B` — a CONJUNCTION. The call needs BOTH, together, in that tier.
+ *
+ * So a cell reading "Policy.Read.All and Policy.ReadWrite.ConditionalAccess" is a
+ * single tier requiring two permissions — NOT two tiers that a careless reader
+ * concatenated. Three rules below legitimately carry a `*.Read.All` permission on
+ * a write for exactly this reason, and #1975 confirmed against Microsoft's own
+ * known-issues page that dropping it would break the call at runtime. A rule
+ * whose `permissions` array does not match its own `documentedApplicationTiers`
+ * cell is a bug; a rule that holds a documented two-permission conjunction is
+ * not. `graph-write-permissions.test.ts` enforces this.
  *
  * THIS TABLE GRANTS NOTHING. It is the derivation and the justification. The
  * actual grant is two steps in Entra: the app registration must DECLARE the
@@ -47,6 +63,26 @@ export interface WritePermissionRule {
   pattern: string;
   /** Application permissions required, ALL of them, for this operation. */
   permissions: string[];
+  /**
+   * The **Application** row of this operation's Microsoft Learn Permissions
+   * table, quoted verbatim from `docUrl` — both cells, exactly as Microsoft
+   * words them, including the `and`/`,` distinction that decides whether a cell
+   * is a conjunction or a list of alternatives (see the header note above).
+   *
+   * This is the evidence a customer's security reviewer actually needs: it lets
+   * them check `permissions` against Microsoft's own wording without leaving the
+   * file, and it is what stops a future reader re-deriving the table from memory
+   * and "fixing" a documented conjunction into a single permission. Every rule
+   * carries it; a new rule cannot be added without reading the real page.
+   *
+   * Verified in full against Microsoft Learn on 2026-09-04 (Git #1975).
+   */
+  documentedApplicationTiers: {
+    /** The "Least privileged permissions" cell, verbatim. */
+    leastPrivileged: string;
+    /** The "Higher privileged permissions" cell, verbatim. */
+    higherPrivileged: string;
+  };
   /** The concrete product step that needs it — this is the customer-facing justification. */
   justification: string;
   /** The Microsoft Learn page whose Permissions table this was read from. */
@@ -71,6 +107,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "POST",
     pattern: "/users/*/assignLicense",
+    documentedApplicationTiers: {
+      leastPrivileged: "LicenseAssignment.ReadWrite.All",
+      higherPrivileged: "AgentIdUser.ReadWrite.All, AgentIdUser.ReadWrite.IdentityParentedBy, Directory.ReadWrite.All, User.ReadWrite.All",
+    },
     permissions: ["User.ReadWrite.All"],
     justification:
       "onboarding-v1 step 2 (action.assign-single-license) assigns a licence to the new starter, and " +
@@ -83,6 +123,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "POST",
     pattern: "/users/*/revokeSignInSessions",
+    documentedApplicationTiers: {
+      leastPrivileged: "User.RevokeSessions.All",
+      higherPrivileged: "Not available.",
+    },
     permissions: ["User.RevokeSessions.All"],
     justification:
       "micro-remediation remediate-revoke-sessions (microrem.revoke-sign-in-sessions), and the same step " +
@@ -95,6 +139,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "PATCH",
     pattern: "/users/*/authentication/requirements",
+    documentedApplicationTiers: {
+      leastPrivileged: "Policy.ReadWrite.AuthenticationMethod",
+      higherPrivileged: "Not available.",
+    },
     permissions: ["Policy.ReadWrite.AuthenticationMethod"],
     justification:
       "mfa-enforcement-v1 step 2 (action.enforce-per-user-mfa) sets perUserMfaState to enforced.",
@@ -112,6 +160,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
     // DELETE rules immediately below document the per-type deletes it drives.
     method: "DELETE",
     pattern: "/users/*/authentication/phoneMethods/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "UserAuthenticationMethod.ReadWrite.All",
+      higherPrivileged: "UserAuthMethod-Phone.ReadWrite.All",
+    },
     permissions: ["UserAuthenticationMethod.ReadWrite.All"],
     justification:
       "mfa-enforcement-v1 step 1 (action.require-security-info-reregistration) deletes a user's " +
@@ -121,6 +173,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "DELETE",
     pattern: "/users/*/authentication/microsoftAuthenticatorMethods/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "UserAuthenticationMethod.ReadWrite.All",
+      higherPrivileged: "UserAuthMethod-MicrosoftAuthApp.ReadWrite.All",
+    },
     permissions: ["UserAuthenticationMethod.ReadWrite.All"],
     justification:
       "mfa-enforcement-v1 step 1 (action.require-security-info-reregistration) deletes a user's " +
@@ -130,6 +186,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "DELETE",
     pattern: "/users/*/authentication/softwareOathMethods/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "UserAuthenticationMethod.ReadWrite.All",
+      higherPrivileged: "UserAuthMethod-SoftwareOATH.ReadWrite.All",
+    },
     permissions: ["UserAuthenticationMethod.ReadWrite.All"],
     justification:
       "mfa-enforcement-v1 step 1 (action.require-security-info-reregistration) deletes a user's " +
@@ -139,30 +199,56 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "GET",
     pattern: "/users/*/authentication/methods",
+    documentedApplicationTiers: {
+      leastPrivileged: "UserAuthenticationMethod.Read.All",
+      higherPrivileged: "UserAuthenticationMethod.ReadWrite.All",
+    },
     permissions: ["UserAuthenticationMethod.ReadWrite.All"],
     justification:
       "mfa-enforcement-v1 step 1 (action.require-security-info-reregistration) lists a user's current " +
-      "authentication methods first, to know which typed per-method DELETE calls above to fire.",
-    docUrl: "https://learn.microsoft.com/en-us/graph/api/authenticationmethod-list",
+      "authentication methods first, to know which typed per-method DELETE calls above to fire. " +
+      "UserAuthenticationMethod.Read.All is Microsoft's least-privileged permission for this GET, but " +
+      "UserAuthenticationMethod.ReadWrite.All is the listed higher-privileged alternative and is already " +
+      "required by the three DELETEs above — requesting the read-only one as well would enlarge the " +
+      "request without reducing real privilege.",
+    // #1975 — the previous docUrl here (`.../api/authenticationmethod-list`) 404s. The real page for
+    // `GET /users/{id}/authentication/methods` is `authentication-list-methods`.
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/authentication-list-methods",
   },
   {
     method: "POST",
     pattern: "/users",
+    documentedApplicationTiers: {
+      leastPrivileged: "User.Create",
+      higherPrivileged: "User.ReadWrite.All, Directory.ReadWrite.All",
+    },
     permissions: ["User.ReadWrite.All"],
     justification:
       "quickstart-v1 step 1 (quickstart-v1.create-break-glass-account) creates the emergency-access admin, " +
       "and onboarding-v1 step 1 (action.create-user) creates a new starter. Microsoft's least-privileged " +
       "application permission for POST /users is User.Create; User.ReadWrite.All is the listed " +
-      "higher-privileged alternative and is required anyway by the user-update steps below.",
+      "higher-privileged alternative and is required anyway by the user-update steps below. " +
+      "NOTE (Git #1975): Microsoft has since introduced narrower permissions on both pages — User.Create " +
+      "here and User.ReadUpdate.All on PATCH /users — so User.ReadWrite.All is no longer forced by the " +
+      "update step the way this justification originally reasoned. Narrowing it is a real least-privilege " +
+      "reduction but changes what the app must be granted, so it is tracked separately as #2845 rather " +
+      "than changed here.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/user-post-users",
   },
   {
     method: "PATCH",
     pattern: "/users/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "User.ReadUpdate.All",
+      higherPrivileged: "User.ReadWrite.All, Directory.ReadWrite.All",
+    },
     permissions: ["User.ReadWrite.All"],
     justification:
       "offboarding-v1 and security-incident-response-v1 disable a user's sign-in (action.disable-user-signin " +
-      "sets accountEnabled=false via PATCH /users/{id}).",
+      "sets accountEnabled=false via PATCH /users/{id}). Microsoft's least-privileged application " +
+      "permission for this PATCH is now User.ReadUpdate.All, with User.ReadWrite.All listed as the " +
+      "higher-privileged alternative; User.ReadWrite.All is retained here because it is what the app is " +
+      "already granted — narrowing it is tracked as #2845 (Git #1975).",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/user-update",
   },
 
@@ -170,6 +256,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "POST",
     pattern: "/roleManagement/directory/roleAssignments",
+    documentedApplicationTiers: {
+      leastPrivileged: "RoleManagement.ReadWrite.Directory",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
     permissions: ["RoleManagement.ReadWrite.Directory"],
     justification:
       "quickstart-v1 step 2 (quickstart-v1.assign-global-admin-role) grants the break-glass account the " +
@@ -182,6 +272,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "POST",
     pattern: "/groups",
+    documentedApplicationTiers: {
+      leastPrivileged: "Group.Create",
+      higherPrivileged: "Directory.ReadWrite.All, Group-PreferredDataLocation.ReadWrite.All, Group.ReadWrite.All",
+    },
     permissions: ["Group.Create"],
     justification:
       "quickstart-v1 step 3 (quickstart-v1.create-ca-exclusion-group) creates the Conditional Access " +
@@ -193,6 +287,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "POST",
     pattern: "/groups/*/members/$ref",
+    documentedApplicationTiers: {
+      leastPrivileged: "GroupMember.ReadWrite.All (the 'user' member row)",
+      higherPrivileged: "GroupMember.ReadWrite.All and Application.ReadWrite.All (the 'servicePrincipal' member row)",
+    },
     permissions: ["GroupMember.ReadWrite.All"],
     justification:
       "quickstart-v1 step 4 adds the break-glass account to the CA exclusion group; onboarding-v1 step 3 " +
@@ -204,6 +302,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "DELETE",
     pattern: "/groups/*/members/*/$ref",
+    documentedApplicationTiers: {
+      leastPrivileged: "GroupMember.ReadWrite.All",
+      higherPrivileged: "Directory.ReadWrite.All, Group.ReadWrite.All",
+    },
     permissions: ["GroupMember.ReadWrite.All"],
     justification:
       "micro-remediation remediate-remove-stale-group-member, and the same final step in offboarding-v1, " +
@@ -215,17 +317,33 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "PATCH",
     pattern: "/policies/identitySecurityDefaultsEnforcementPolicy",
+    documentedApplicationTiers: {
+      leastPrivileged: "Policy.Read.All",
+      higherPrivileged: "Policy.Read.All and Policy.ReadWrite.ConditionalAccess",
+    },
     permissions: ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"],
     justification:
       "quickstart-v1 step 5 (quickstart-v1.disable-security-defaults) turns off Security Defaults so the " +
       "baseline Conditional Access policy created in step 6 can take effect — the two are mutually " +
-      "exclusive in Entra. Microsoft's table lists Policy.Read.All AND " +
-      "Policy.ReadWrite.ConditionalAccess together for this operation.",
+      "exclusive in Entra. WHY A WRITE CARRIES Policy.Read.All (Git #1975): Microsoft's least-privileged " +
+      "Application cell for this PATCH is Policy.Read.All alone, which cannot authorise a write; the only " +
+      "usable tier is therefore the higher-privileged one, and that cell reads " +
+      "\"Policy.Read.All and Policy.ReadWrite.ConditionalAccess\" — one tier requiring BOTH, not two tiers " +
+      "concatenated. Policy.ReadWrite.ConditionalAccess is what authorises the write; Policy.Read.All is " +
+      "required alongside it by Microsoft's own table. Security Defaults sits under the Conditional Access " +
+      "write scope because Entra treats the two as one mutually-exclusive setting — the same reason step 5 " +
+      "has to run before step 6 at all. Verified against the v1.0 AND beta pages on 2026-09-04: both carry " +
+      "this identical table, and neither lists Policy.ReadWrite.SecurityDefaults, which does exist as a " +
+      "narrower Graph permission — see #2846 for whether it can replace the pair here.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/identitysecuritydefaultsenforcementpolicy-update",
   },
   {
     method: "PATCH",
     pattern: "/policies/authorizationPolicy",
+    documentedApplicationTiers: {
+      leastPrivileged: "Policy.ReadWrite.Authorization",
+      higherPrivileged: "Not available.",
+    },
     permissions: ["Policy.ReadWrite.Authorization"],
     justification:
       "quickstart-v1 step 8 (quickstart-v1.restrict-guest-access) restricts who may invite external guests. " +
@@ -235,24 +353,50 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "POST",
     pattern: "/identity/conditionalAccess/policies",
+    documentedApplicationTiers: {
+      leastPrivileged: "Policy.Read.All and Policy.ReadWrite.ConditionalAccess",
+      higherPrivileged: "Application.Read.All and Policy.ReadWrite.ConditionalAccess",
+    },
     permissions: ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"],
     justification:
       "quickstart-v1 step 6 (quickstart-v1.create-ca-baseline-policy) creates the baseline Conditional " +
-      "Access policy, excluding the break-glass group created in step 3.",
+      "Access policy, excluding the break-glass group created in step 3. WHY A WRITE CARRIES " +
+      "Policy.Read.All (Git #1975): this is Microsoft's LEAST-privileged Application tier for this POST, " +
+      "not an over-broad choice — the cell reads \"Policy.Read.All and Policy.ReadWrite.ConditionalAccess\", " +
+      "one tier requiring both. Microsoft documents the reason explicitly under Known issues > Identity and " +
+      "access > \"Conditional access policy requires consent to additional permission\": \"The " +
+      "conditionalAccessPolicy API currently requires consent to the Policy.Read.All permission to call the " +
+      "POST and PATCH methods. In the future, the Policy.ReadWrite.ConditionalAccess permission will enable " +
+      "you to read policies from the directory.\" Dropping Policy.Read.All would 403 this step at runtime. " +
+      "The higher-privileged tier substitutes Application.Read.All for Policy.Read.All and is NOT requested. " +
+      "See https://learn.microsoft.com/en-us/graph/known-issues",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/conditionalaccessroot-post-policies",
   },
   {
     method: "PATCH",
     pattern: "/identity/conditionalAccess/policies/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "Policy.Read.All and Policy.ReadWrite.ConditionalAccess",
+      higherPrivileged: "Application.Read.All and Policy.ReadWrite.ConditionalAccess",
+    },
     permissions: ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"],
     justification:
       "micro-remediation remediate-enable-ca-policy (microrem.enforce-ca-policy) flips a reported-only or " +
-      "disabled Conditional Access policy to enabled.",
+      "disabled Conditional Access policy to enabled. WHY A WRITE CARRIES Policy.Read.All (Git #1975): " +
+      "same least-privileged conjunction as the POST above — Microsoft's Application cell reads " +
+      "\"Policy.Read.All and Policy.ReadWrite.ConditionalAccess\", and the same Known issues entry names " +
+      "PATCH alongside POST as requiring consent to Policy.Read.All. This page additionally carries its own " +
+      "inline note: \"This method has a known permissions issue and may require consent to multiple " +
+      "permissions.\" Dropping Policy.Read.All would 403 this remediation at runtime.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/conditionalaccesspolicy-update",
   },
   {
     method: "PATCH",
     pattern: "/organization/*/branding/localizations/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "OrganizationalBranding.ReadWrite.All",
+      higherPrivileged: "Organization.ReadWrite.All",
+    },
     permissions: ["OrganizationalBranding.ReadWrite.All"],
     justification:
       "quickstart-v1 step 7 (quickstart-v1.set-tenant-branding) sets the tenant sign-in page branding. " +
@@ -266,6 +410,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "PATCH",
     pattern: "/admin/sharepoint/settings",
+    documentedApplicationTiers: {
+      leastPrivileged: "SharePointTenantSettings.ReadWrite.All",
+      higherPrivileged: "Not available.",
+    },
     permissions: ["SharePointTenantSettings.ReadWrite.All"],
     justification:
       "sharepoint-oversharing-v1 steps 3-5 (action.enforce-tenant-sharing-policy, " +
@@ -276,6 +424,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "DELETE",
     pattern: "/sites/*/drive/items/*/permissions/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "Files.ReadWrite.All",
+      higherPrivileged: "Sites.ReadWrite.All",
+    },
     permissions: ["Files.ReadWrite.All"],
     justification:
       "sharepoint-oversharing-v1 step 6 and micro-remediation remediate-remove-sharing-link " +
@@ -289,6 +441,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "DELETE",
     pattern: "/oauth2PermissionGrants/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "DelegatedPermissionGrant.ReadWrite.All",
+      higherPrivileged: "Directory.ReadWrite.All",
+    },
     permissions: ["DelegatedPermissionGrant.ReadWrite.All"],
     justification:
       "micro-remediation remediate-remove-risky-app-consent (microrem.remove-risky-app-consent) revokes a " +
@@ -301,6 +457,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "POST",
     pattern: "/teams/*/archive",
+    documentedApplicationTiers: {
+      leastPrivileged: "TeamSettings.ReadWrite.Group",
+      higherPrivileged: "Directory.ReadWrite.All, Group.ReadWrite.All, TeamSettings.ReadWrite.All",
+    },
     permissions: ["TeamSettings.ReadWrite.All"],
     justification:
       "micro-remediation remediate-deactivate-ownerless-team (microrem.deactivate-ownerless-team) archives " +
@@ -314,6 +474,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
   {
     method: "POST",
     pattern: "/deviceManagement/managedDevices/*/syncDevice",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementManagedDevices.PrivilegedOperations.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
     permissions: ["DeviceManagementManagedDevices.PrivilegedOperations.All"],
     justification:
       "micro-remediation remediate-device-compliance-gap (microrem.remediate-device-compliance) forces a " +

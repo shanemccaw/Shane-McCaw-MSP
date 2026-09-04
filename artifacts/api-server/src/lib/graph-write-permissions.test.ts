@@ -202,6 +202,105 @@ describe("the derived request set", () => {
   });
 });
 
+/**
+ * Git #1975 — the audit that produced these assertions.
+ *
+ * #1975 was raised because three rules attribute a read-only `Policy.Read.All`
+ * to a write, which looks self-evidently wrong. It is not: Microsoft's tables
+ * separate ALTERNATIVES with `,` and CONJUNCTIONS with `and`, and all three of
+ * those rules hold a documented `A and B` tier verbatim. Every one of the 23
+ * rules was re-read against its own `docUrl` on 2026-09-04 and no rule was found
+ * requesting a permission Microsoft does not document for that operation.
+ *
+ * These tests exist so the next reader does not have to take that on trust, and
+ * so a rule cannot be "simplified" back into being wrong.
+ */
+describe("#1975 — no rule invents a permission its own Microsoft Learn page does not list", () => {
+  /** Split a documented tier cell into the permission names it actually names. */
+  const namesIn = (cell: string): string[] =>
+    cell.match(/[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)?(?:\.[A-Za-z0-9]+)+/g) ?? [];
+
+  it("every rule quotes the Application row of its own doc page", () => {
+    for (const rule of GRAPH_WRITE_PERMISSION_RULES) {
+      expect(
+        rule.documentedApplicationTiers,
+        `${rule.method} ${rule.pattern} has no documentedApplicationTiers`,
+      ).toBeDefined();
+      expect(rule.documentedApplicationTiers.leastPrivileged.length).toBeGreaterThan(0);
+      expect(rule.documentedApplicationTiers.higherPrivileged.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("every requested permission appears in one of that rule's own documented tiers", () => {
+    for (const rule of GRAPH_WRITE_PERMISSION_RULES) {
+      const documented = new Set([
+        ...namesIn(rule.documentedApplicationTiers.leastPrivileged),
+        ...namesIn(rule.documentedApplicationTiers.higherPrivileged),
+      ]);
+      for (const p of rule.permissions) {
+        expect(
+          documented.has(p),
+          `${rule.method} ${rule.pattern} requests ${p}, which appears in neither tier of ` +
+            `${rule.docUrl}. Either the permission is wrong or the quoted row is stale — re-read the page.`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("a read-only permission on a write is allowed ONLY where Microsoft documents it as a conjunction", () => {
+    const readOnly = (p: string) => /\.Read\.[A-Za-z]+$/.test(p);
+    const writes = GRAPH_WRITE_PERMISSION_RULES.filter((r) => r.method !== "GET");
+
+    for (const rule of writes) {
+      for (const p of rule.permissions.filter(readOnly)) {
+        const { leastPrivileged, higherPrivileged } = rule.documentedApplicationTiers;
+        // The tier this platform is actually relying on must join the read-only
+        // permission to a write permission with the word "and". A `,` there would
+        // mean Microsoft offered alternatives and the derivation picked both.
+        const conjunctions = [leastPrivileged, higherPrivileged].filter(
+          (cell) => cell.includes(" and ") && namesIn(cell).includes(p),
+        );
+        expect(
+          conjunctions.length,
+          `${rule.method} ${rule.pattern} requests read-only ${p} on a write, but no tier on ` +
+            `${rule.docUrl} lists it as part of an "A and B" conjunction. That is the #1975 bug class.`,
+        ).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("the three Conditional-Access-family rules still hold the documented pair, and say why", () => {
+    // Removing Policy.Read.All from these would 403 at runtime — Microsoft's
+    // known-issues page states the conditionalAccessPolicy API "currently requires
+    // consent to the Policy.Read.All permission to call the POST and PATCH methods".
+    const affected: [string, string][] = [
+      ["PATCH", "/policies/identitySecurityDefaultsEnforcementPolicy"],
+      ["POST", "/identity/conditionalAccess/policies"],
+      ["PATCH", "/identity/conditionalAccess/policies/{{policyId}}"],
+    ];
+
+    for (const [method, endpoint] of affected) {
+      const got = requiredPermissionsForWrite(method, endpoint);
+      expect(got.rule, `${method} ${endpoint} matched no rule`).not.toBeNull();
+      expect(got.required.sort()).toEqual(["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"]);
+      // The justification has to answer the security reviewer's question, not
+      // just restate that Microsoft lists both.
+      expect(got.rule!.justification).toMatch(/Git #1975/);
+      expect(got.rule!.documentedApplicationTiers.higherPrivileged + got.rule!.documentedApplicationTiers.leastPrivileged)
+        .toContain("Policy.Read.All and Policy.ReadWrite.ConditionalAccess");
+    }
+  });
+
+  it("Policy.Read.All is in the requested set only because those rules need it", () => {
+    const owners = GRAPH_WRITE_PERMISSION_RULES.filter((r) => r.permissions.includes("Policy.Read.All"));
+    expect(owners.map((r) => r.pattern).sort()).toEqual([
+      "/identity/conditionalAccess/policies",
+      "/identity/conditionalAccess/policies/*",
+      "/policies/identitySecurityDefaultsEnforcementPolicy",
+    ]);
+  });
+});
+
 describe("rule ordering", () => {
   it("specific /users sub-paths win over the generic /users/* rule", () => {
     // If the generic PATCH /users/* rule were matched first, per-user MFA would

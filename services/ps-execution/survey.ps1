@@ -61,6 +61,35 @@
 #      would produce a survey that times out rather than a survey that
 #      answers the question. Recorded `not_attempted` with that reason.
 #
+# TEST-* — PER-CMDLET JUDGMENT PASS (Git #1854, follow-up to #1793)
+# -------------------------------------------------------------------
+# #1793 blocked the whole `Test-*` verb, sight unseen, because the verb alone
+# cannot separate a genuine read from a real probe/mutation. #1854 did the
+# actual per-cmdlet reading of Microsoft Learn this was always deferred work
+# for, covering the 15 `Test-*` cmdlets the survey's own `exchange`/`compliance`/
+# `teams` sessions actually export (9 Exchange, 6 Teams — `compliance` exports
+# none of them). Two lists below carry the real per-cmdlet verdicts:
+#
+#   $script:TestVerbConfirmedSafeNames — cmdlets read and confirmed to be a
+#   genuine read with no side effect (no real mutation, no outbound
+#   transmission, no third-party network call). These fall through to gates
+#   2-4 like any `Get-*` instead of being blocked at the verb gate. Most of
+#   them still end up `not_attempted` anyway — several require a mandatory
+#   parameter (a phone number, a dialed number) that #1793 forbids inventing,
+#   and a couple declare SupportsShouldProcess (WhatIf/Confirm) despite
+#   reading as a pure test — but the reason recorded is now the REAL one
+#   (mandatory params / ShouldProcess) instead of the old blanket "Test-* is
+#   unmeasured" text.
+#
+#   $script:TestVerbConfirmedUnsafe — cmdlets confirmed to genuinely mutate or
+#   transmit something, or to open a real connection to a third party, backed
+#   by Microsoft's own documented behaviour for each. Permanently excluded,
+#   each with its own documented reason (not the blanket one).
+#
+# Any `Test-*` name that is neither list — none are expected, since #1854
+# covered the full 15 the survey exports — still fails closed on the original
+# blanket reason below.
+#
 # WHAT IS CAPTURED — SHAPES, NEVER VALUES
 # ---------------------------------------
 # For an `ok` cmdlet the probe records the item count, the round-trip time,
@@ -109,6 +138,36 @@ $script:SurveyUnboundedDenyList = @(
     # applies to both — deliberately, because the survey cannot know in advance
     # which session it will wedge.
     @{ Pattern = "^Get-ScopeEntities$";          Reason = "measured to hang past the container's child timeout AND wedge the parent listener until a manual revision restart (Git #1852); its real timed-out result is recorded in survey run #2" }
+)
+
+# Git #1854 — the 8 of the 15 excluded `Test-*` cmdlets read and confirmed to
+# be a genuine read: local calculation/lookup against already-configured
+# tenant data, no mutation, no outbound network call. Falling through to
+# gates 2-4 lets the real reason (mandatory params / ShouldProcess) be
+# recorded instead of the old blanket "Test-* is unmeasured" text.
+$script:TestVerbConfirmedSafeNames = @(
+    "Test-ApplicationAccessPolicy"       # Exchange — pure app-access-policy lookup for a recipient/app pair. Mandatory Identity + AppId (per MS Learn), so still not_attempted, but for the real reason.
+    "Test-ClientAccessRule"              # Exchange — pure rule-match lookup for a hypothetical connection. Declares WhatIf/Confirm (SupportsShouldProcess) per MS Learn, so still excluded, but via gate 2 with the real reason. Also deprecated for EXO since Sept 2025.
+    "Test-M365DataAtRestEncryptionPolicy" # Exchange — pure policy-validity check. Declares WhatIf/Confirm (SupportsShouldProcess) per MS Learn, so still excluded via gate 2 with the real reason.
+    "Test-CsEffectiveTenantDialPlan"     # Teams — local dial-plan normalization calculation only. Mandatory DialedNumber.
+    "Test-CsInboundBlockedNumberPattern" # Teams — local pattern match against configured blocked numbers. Mandatory PhoneNumber.
+    "Test-CsTeamsTranslationRule"        # Teams — local number-translation-rule match. Mandatory DialedNumber.
+    "Test-CsTeamsUnassignedNumberTreatment" # Teams — local unassigned-number-treatment match. Mandatory PhoneNumber.
+    "Test-CsVoiceNormalizationRule"      # Teams — local voice normalization calculation. Mandatory DialedNumber + NormalizationRule.
+)
+
+# Git #1854 — the 7 of the 15 confirmed to genuinely mutate or transmit
+# something, or to open a real connection to a third party, per Microsoft's
+# own documented behaviour for each. Permanently excluded with the specific,
+# documented reason rather than the blanket Test-* reason.
+$script:TestVerbConfirmedUnsafe = @(
+    @{ Name = "Test-Message";                    Reason = "Microsoft Learn: introduces a real message into the transport/DLP evaluation pipeline — actions such as Block or Moderate can genuinely fire on the test message, and notifications are sent to configured recipients" }
+    @{ Name = "Test-DlpPolicies";                Reason = "Microsoft Learn: sends a real report email to the caller-specified SendReportTo/report address as part of evaluating a SharePoint/OneDrive item against DLP policy" }
+    @{ Name = "Test-OrganizationRelationship";   Reason = "Microsoft Learn: opens a real outbound connection to the external federated organization to retrieve a delegation token, and declares WhatIf/Confirm (SupportsShouldProcess)" }
+    @{ Name = "Test-CsTeamsShiftsConnectionValidate"; Reason = "Microsoft Learn: validates the caller-provided WFM connector account/password and endpoint reachability against the live third-party Workforce Management host; also retired from the Teams PowerShell module as of 7.9.0" }
+    @{ Name = "Test-DatabaseEvent";              Reason = "no public Microsoft documentation found for this cmdlet (checked Microsoft Learn and the office-docs-powershell source repo) — read-safety not establishable, fail closed per #1793" }
+    @{ Name = "Test-DataEncryptionPolicy";       Reason = "no public Microsoft documentation found for this exact cmdlet name (only the distinct Test-M365DataAtRestEncryptionPolicy is documented) — read-safety not establishable, fail closed per #1793" }
+    @{ Name = "Test-MailboxAssistant";           Reason = "no public Microsoft documentation found for this cmdlet (checked Microsoft Learn and the office-docs-powershell source repo) — read-safety not establishable, fail closed per #1793" }
 )
 
 function Get-SurveySessionModules {
@@ -207,13 +266,29 @@ function Get-SurveyEligibility {
 
     if ($Record.Verb -ne "Get") {
         if ($Record.Verb -eq "Test") {
-            return @{
-                Eligible = $false
-                Reason   = "Test-* verb excluded fail-closed: read-safety is not establishable from the cmdlet's own metadata (several ExchangeOnlineManagement Test-* cmdlets send real probe mail or open outbound connections rather than reading state)"
+            # Git #1854 — per-cmdlet judgment pass on the 15 Test-* cmdlets #1793
+            # blocked wholesale. A confirmed-unsafe name is permanently excluded
+            # with its own documented reason; a confirmed-safe name falls through
+            # to gates 2-4 below like any Get-*. Anything neither list (not
+            # expected — #1854 covered the full 15) keeps the original blanket
+            # fail-closed reason.
+            $unsafe = $script:TestVerbConfirmedUnsafe | Where-Object { $_.Name -eq $Record.Name } | Select-Object -First 1
+            if ($unsafe) {
+                return @{ Eligible = $false; Reason = $unsafe.Reason }
             }
+            if ($script:TestVerbConfirmedSafeNames -notcontains $Record.Name) {
+                return @{
+                    Eligible = $false
+                    Reason   = "Test-* verb excluded fail-closed: read-safety is not establishable from the cmdlet's own metadata (several ExchangeOnlineManagement Test-* cmdlets send real probe mail or open outbound connections rather than reading state)"
+                }
+            }
+            # Confirmed safe — fall through to gates 2-4 (SupportsShouldProcess /
+            # mandatory params / deny list) instead of returning here.
         }
-        $verbText = if ($Record.Verb) { "$($Record.Verb)-*" } else { "non-verb-noun command" }
-        return @{ Eligible = $false; Reason = "$verbText is not a read verb (survey executes Get-* only)" }
+        else {
+            $verbText = if ($Record.Verb) { "$($Record.Verb)-*" } else { "non-verb-noun command" }
+            return @{ Eligible = $false; Reason = "$verbText is not a read verb (survey executes Get-* only)" }
+        }
     }
 
     if ($Record.SupportsShouldProcess) {

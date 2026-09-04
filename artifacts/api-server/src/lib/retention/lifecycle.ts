@@ -233,10 +233,14 @@ export async function softDelete(input: SoftDeleteInput): Promise<RecordDeletion
   const bypassing = input.hardDeleteBypass === true;
   const stage: RetentionStage = bypassing ? "purged" : "soft";
 
+  // A bypass destroys the row outright, so the soft-delete triple is never written —
+  // marking a row deleted and then deleting it in the same statement pair would be a
+  // write with no reader.
   const row = await db.transaction(async (tx) => {
-    await type.markDeleted(tx, input.recordId, { deletedAt: now, deletedBy: input.actor.name, deleteReason: reason });
     if (bypassing) {
       await type.hardDelete(tx, input.recordId);
+    } else {
+      await type.markDeleted(tx, input.recordId, { deletedAt: now, deletedBy: input.actor.name, deleteReason: reason });
     }
     const [inserted] = await tx
       .insert(recordDeletionsTable)
@@ -256,7 +260,14 @@ export async function softDelete(input: SoftDeleteInput): Promise<RecordDeletion
         originManual,
         bypassUsed: bypassing,
         purgedAt: bypassing ? now : null,
-        ...clockColumns(bypassing ? { ...clock, stageRemainingSeconds: 0, stageDueAt: null } : clock),
+        // A purged row has no clock at all — not a frozen one. Leaving `frozenAt` set
+        // on a record that is already gone would make the ledger read as though
+        // something were still waiting to resume.
+        ...clockColumns(
+          bypassing
+            ? { ...clock, stageRemainingSeconds: 0, stageDueAt: null, frozenAt: null, frozenReason: null }
+            : clock,
+        ),
       })
       .returning();
     return inserted;

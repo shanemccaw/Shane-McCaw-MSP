@@ -72,7 +72,7 @@ export const REQUIRED_MT_SCOPES = [
   "Policy.Read.All",
   "DeviceManagementConfiguration.Read.All",
   "DeviceManagementManagedDevices.Read.All",
-  "BitLockerKey.Read.All",
+  "BitlockerKey.Read.All",
   "AuditLog.Read.All",
   "ActivityFeed.Read",
   "IdentityRiskyUser.Read.All",
