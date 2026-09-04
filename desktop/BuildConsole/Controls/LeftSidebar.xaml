@@ -1,6 +1,7 @@
 <UserControl x:Class="BuildConsole.Controls.LeftSidebar"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:BuildConsole.Controls"
              MinWidth="180">
 
     <Border Background="{StaticResource MantleBrush}"
@@ -979,6 +980,14 @@
                               SelectedItemChanged="GraphApiTree_SelectedItemChanged"/>
                 </DockPanel>
             </Grid>
+
+            <!-- ══════════════════════════════════
+                 GIT DOCTOR VIEW (Git #2798 — full-capability port of ShaneBuilder's
+                 GitDoctorDock/#2194: real repo status, RunChecksAsync findings, remedies,
+                 branch management, commit lookup, PAT-paste auth fix, Claude bridge, run
+                 log). Placed LAST so LastChildFill gives it the full panel height.
+                 ══════════════════════════════════ -->
+            <controls:GitDoctorView x:Name="GitDoctorView" Visibility="Collapsed"/>
 
         </DockPanel>
     </Border>

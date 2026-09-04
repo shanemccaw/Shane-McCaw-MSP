@@ -88,6 +88,22 @@
                     <TextBlock Text="&#xE9A1;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{StaticResource BlueBrush}"/>
                 </RadioButton>
 
+                <!-- Git #2798 — Git Doctor: full-capability ActivityBar view (real port of
+                     ShaneBuilder's GitDoctorService/#2194). Shane's literal placement ask is
+                     "on the left where the Admin Panel link is now, at the top", which #2797
+                     vacates by removing the standalone Admin Center rail button. #2797 has NOT
+                     landed yet, so this sits as the last workspace RadioButton for now (grouped
+                     with the other views it belongs with); once #2797 lands, move it into the
+                     exact slot the Admin Center QuickNav button leaves behind. Health/heart
+                     glyph, red, reads as "doctor". -->
+                <RadioButton x:Name="BtnGitDoctor"
+                             GroupName="ActivityBar"
+                             Style="{StaticResource ActivityBarButton}"
+                             Checked="Btn_Checked" Tag="GitDoctor"
+                             ToolTip="Git Doctor — real repo status, diagnostic findings, branch &amp; commit tools">
+                    <TextBlock Text="&#xE95E;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource RedBrush}"/>
+                </RadioButton>
+
                 <!-- Separator -->
                 <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>
 
