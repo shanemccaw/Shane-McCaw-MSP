@@ -44,6 +44,7 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, count, or } from "drizzle-orm";
 import { requireRole, requireAuth } from "../middlewares/requireAuth.ts";
+import { resolveMspId, resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "workflow.doc-pipeline" });
@@ -61,15 +62,6 @@ function p(val: string | string[] | undefined): string {
 
 function apiErr(res: Response, status: number, message: string): void {
   res.status(status).json({ error: message });
-}
-
-function getMspIdFromRequest(req: Request): number | null {
-  const user = req.user!;
-  if (user.role === "admin" || user.mspRole === "PlatformAdmin") {
-    const q = parseInt(p(req.query["mspId"] as string | undefined), 10);
-    return isNaN(q) ? null : q;
-  }
-  return user.mspId ?? null;
 }
 
 /** Generate a secure random share token */
@@ -145,7 +137,7 @@ router.post(
     const offerId = parseInt(p(req.params["offerId"]), 10);
     if (isNaN(offerId)) { apiErr(res, 400, "offerId must be a number"); return; }
 
-    const mspId = getMspIdFromRequest(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 403, "MSP scope required"); return; }
 
     const [offer] = await db
@@ -426,7 +418,7 @@ router.post(
     if (!parsed.success) { apiErr(res, 400, parsed.error.message); return; }
 
     const data = parsed.data;
-    const mspId = getMspIdFromRequest(req) ?? data.mspId;
+    const mspId = (await resolveMspId(req)) ?? data.mspId;
 
     // Get optional customer agreement template
     let customerAgreementText: string | null = null;
@@ -486,7 +478,7 @@ router.get(
   "/msp/sows",
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
-    const mspId = getMspIdFromRequest(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 403, "MSP scope required"); return; }
 
     const limit = Math.min(parseInt(p(req.query["limit"] as string | undefined) || "20", 10), 100);
@@ -534,7 +526,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     const sowId = p(req.params["sowId"]);
-    const mspId = getMspIdFromRequest(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 403, "MSP scope required"); return; }
 
     const [sow] = await db
@@ -685,7 +677,7 @@ router.post(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     const sowId = p(req.params["sowId"]);
-    const mspId = getMspIdFromRequest(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 403, "MSP scope required"); return; }
 
     const [sow] = await db
@@ -724,7 +716,7 @@ router.post(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     const sowId = p(req.params["sowId"]);
-    const mspId = getMspIdFromRequest(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 403, "MSP scope required"); return; }
 
     const [sow] = await db
@@ -898,7 +890,7 @@ router.get(
     if (isNaN(customerId)) { apiErr(res, 400, "customerId must be a number"); return; }
 
     const user = req.user!;
-    const mspId = user.mspId ?? getMspIdFromRequest(req);
+    const mspId = user.mspId ?? (await resolveMspId(req));
 
     // Resolve MSP from customer
     const [customer] = await db
@@ -951,7 +943,7 @@ router.post(
     if (isNaN(customerId)) { apiErr(res, 400, "customerId must be a number"); return; }
 
     const user = req.user!;
-    const mspId = user.mspId ?? getMspIdFromRequest(req);
+    const mspId = user.mspId ?? (await resolveMspId(req));
 
     const [customer] = await db
       .select({ mspId: tenantsTable.mspId })
