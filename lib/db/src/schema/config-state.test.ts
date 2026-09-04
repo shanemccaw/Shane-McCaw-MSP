@@ -7,6 +7,7 @@ import {
   CONFIG_READ_TRANSPORTS,
   EXECUTOR_BACKED_TRANSPORTS,
   coverageStateFor,
+  isOperationResource,
   transportHasExecutor,
 } from "./config-state";
 
@@ -89,5 +90,46 @@ describe("coverageStateFor", () => {
       expect(coverageStateFor(transport, 0, null)).toBe("uncovered");
       expect(coverageStateFor(transport, 0, undefined)).toBe("uncovered");
     }
+  });
+
+  // Git #1929 — a bound Graph Function is an operation, not persistent config
+  // state, so it is excluded from the coverage measurement entirely rather
+  // than counted as an ordinary gap.
+  it("is 'operation' for a function-kind resource, regardless of transport, availability or check count", () => {
+    expect(coverageStateFor("graph", 0, null, "function")).toBe("operation");
+    expect(coverageStateFor("graph", 5, null, "function")).toBe("operation");
+    expect(coverageStateFor("unknown", 0, null, "function")).toBe("operation");
+    expect(coverageStateFor("azure-rm", 0, "unavailable", "function")).toBe("operation");
+  });
+
+  it("'operation' wins over both 'no_executor' and 'unavailable' — the precedence rule #1929 adds", () => {
+    // A function on an unreachable transport, or one whose derived availability
+    // happens to read 'unavailable', is still an operation first; reporting it
+    // as a transport or permission gap would suggest closing that gap could
+    // ever make it "coverable", which is false — it is not config state at all.
+    expect(coverageStateFor("unknown", 0, null, "function")).toBe("operation");
+    expect(coverageStateFor("azure-rm", 0, "unavailable", "function")).toBe("operation");
+  });
+
+  it("is unaffected by a non-function container kind", () => {
+    expect(coverageStateFor("graph", 0, null, "entitySet")).toBe("uncovered");
+    expect(coverageStateFor("graph", 0, null, "singleton")).toBe("uncovered");
+    expect(coverageStateFor("graph", 0, null, "navigation")).toBe("uncovered");
+    expect(coverageStateFor("graph", 0, null, null)).toBe("uncovered");
+    expect(coverageStateFor("graph", 0, null, undefined)).toBe("uncovered");
+  });
+});
+
+describe("isOperationResource", () => {
+  it("is true only for 'function'", () => {
+    expect(isOperationResource("function")).toBe(true);
+  });
+
+  it("is false for every other container kind, including null/undefined", () => {
+    expect(isOperationResource("entitySet")).toBe(false);
+    expect(isOperationResource("singleton")).toBe(false);
+    expect(isOperationResource("navigation")).toBe(false);
+    expect(isOperationResource(null)).toBe(false);
+    expect(isOperationResource(undefined)).toBe(false);
   });
 });

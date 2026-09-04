@@ -56,8 +56,13 @@ interface ConfigResource {
   verificationStatus: string;
   propertyCount: number;
   checkCoverageCount: number;
-  /** covered | uncovered | no_executor — computed server-side from the row's transport (#1869). */
-  coverageState: "covered" | "uncovered" | "no_executor";
+  /**
+   * covered | uncovered | no_executor | unavailable | operation — computed
+   * server-side from the row's transport (#1869), its own `availability`
+   * (#1917), and its container kind (#1929). `operation` marks a bound Graph
+   * Function — an operation, not config state, so coverage does not apply.
+   */
+  coverageState: "covered" | "uncovered" | "no_executor" | "unavailable" | "operation";
   sourceRef: string | null;
   notes: string | null;
 }
@@ -130,12 +135,29 @@ interface ServiceAvailabilitySummary {
 interface ModelSummary {
   serviceAvailability: ServiceAvailabilitySummary;
   totals: {
+    /** Raw model size, including bound-Function rows (#1929). */
     resources: number;
     properties: number;
+    /**
+     * Bound Graph Functions (#1929) — an operation, not persistent config
+     * state. Kept in the model as reachable read endpoints, but excluded from
+     * `properties`, `resourcesCoveredByAtLeastOneCheck`,
+     * `resourcesEntirelyUncovered`, `resourcesWithNoExecutor` and
+     * `resourcesUnavailable` below.
+     */
+    resourcesOperations: number;
+    operationProperties: number;
+    /** `resources` minus `resourcesOperations` — the honest coverage denominator (#1929). */
+    resourcesCoverageEligible: number;
     resourcesCoveredByAtLeastOneCheck: number;
     resourcesEntirelyUncovered: number;
     /** Resources no code path could read at all — their transport has no executor (#1869). */
     resourcesWithNoExecutor: number;
+    /**
+     * Resources on an executor-backed transport whose own scope sits above
+     * anything this platform's principal can ever be granted (#1917).
+     */
+    resourcesUnavailable: number;
     transportsWithNoExecutor: string[];
     checksMapped: number;
     checksUnmatched: number;
@@ -282,12 +304,17 @@ export default function ConfigResourceModel() {
   const transports = useMemo(() => Object.keys(summary?.byTransport ?? {}).sort(), [summary]);
   const availabilities = useMemo(() => Object.keys(summary?.byAvailability ?? {}).sort(), [summary]);
 
-  // Coverage is measured against the REACHABLE model, not the whole model
-  // (#1869). Resources whose transport has no executor cannot be covered by any
-  // check, so counting them in the denominator would permanently understate
-  // coverage and blame check authors for a transport gap.
+  // Coverage is measured against the REACHABLE, non-operation model (#1869,
+  // #1917, #1929). Resources whose transport has no executor, or whose own
+  // scope is out of reach on an executor-backed transport, cannot be covered
+  // by any check — counting them in the denominator would permanently
+  // understate coverage and blame check authors for a transport/scope gap.
+  // Bound-Function rows are an operation, not config state, so "coverage"
+  // does not apply to them at all and they are excluded the same way.
   const reachableResources = summary
-    ? summary.totals.resources - summary.totals.resourcesWithNoExecutor
+    ? summary.totals.resourcesCoverageEligible
+      - summary.totals.resourcesWithNoExecutor
+      - summary.totals.resourcesUnavailable
     : 0;
   const coveragePct = reachableResources > 0
     ? Math.round((summary!.totals.resourcesCoveredByAtLeastOneCheck / reachableResources) * 1000) / 10
@@ -318,7 +345,7 @@ export default function ConfigResourceModel() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5" data-testid="config-model-totals">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-7" data-testid="config-model-totals">
             <StatTile label="Resources modelled" value={summary.totals.resources} />
             <StatTile label="Properties modelled" value={summary.totals.properties} />
             <StatTile
@@ -339,6 +366,16 @@ export default function ConfigResourceModel() {
                   ? `unreachable transport: ${summary.totals.transportsWithNoExecutor.join(", ")}`
                   : "every modelled transport has an executor"
               }
+            />
+            <StatTile
+              label="Unavailable (scope)"
+              value={summary.totals.resourcesUnavailable}
+              sub="executor exists, but this resource's own scope is out of reach"
+            />
+            <StatTile
+              label="Operations (excluded)"
+              value={summary.totals.resourcesOperations}
+              sub="bound Graph Functions — an operation, not config state; kept as reachable read endpoints, excluded from coverage and property counts"
             />
           </div>
 
@@ -419,7 +456,7 @@ export default function ConfigResourceModel() {
             <FilterSelect label="Surface" value={surface} onChange={setSurface} options={surfaces} testId="config-model-surface" />
             <FilterSelect label="Transport" value={transport} onChange={setTransport} options={transports} testId="config-model-transport" />
             <FilterSelect label="Availability" value={availability} onChange={setAvailability} options={availabilities} testId="config-model-availability" />
-            <FilterSelect label="Coverage" value={coverage} onChange={setCoverage} options={["covered", "uncovered", "no_executor"]} testId="config-model-coverage" />
+            <FilterSelect label="Coverage" value={coverage} onChange={setCoverage} options={["covered", "uncovered", "no_executor", "unavailable", "operation"]} testId="config-model-coverage" />
             <Button variant="outline" onClick={() => { void loadResources(); void loadSummary(); }}>Refresh</Button>
           </div>
 
@@ -457,14 +494,21 @@ export default function ConfigResourceModel() {
                       <Badge variant="outline" className={VERIFICATION_TONE[r.verificationStatus] ?? ""}>{r.verificationStatus}</Badge>
                       <Badge variant="outline">{r.readTransport}</Badge>
                       <Badge variant="outline">{r.surface}</Badge>
-                      {/* Three states, not two (#1869): "no executor" is a red
-                          transport gap no check author can close, distinct from
-                          the orange "nobody has written this check yet". */}
-                      {r.coverageState === "no_executor"
-                        ? <Badge variant="outline" className="bg-red-50 text-red-800 border-red-200" title={`No executor exists for the "${r.readTransport}" transport — this resource is unreachable by any code path.`}>no executor</Badge>
-                        : r.checkCoverageCount > 0
-                          ? <Badge variant="outline">{r.checkCoverageCount} check{r.checkCoverageCount === 1 ? "" : "s"}</Badge>
-                          : <Badge variant="outline" className="bg-orange-50 text-orange-800 border-orange-200">uncovered</Badge>}
+                      {/* Five states, not two (#1869, #1917, #1929): "operation" is a
+                          bound Graph Function — not config state, coverage does not
+                          apply; "no executor" is a red transport gap no check author
+                          can close; "unavailable" is a permission-scope gap on an
+                          executor-backed transport; both distinct from the orange
+                          "nobody has written this check yet". */}
+                      {r.coverageState === "operation"
+                        ? <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-200" title="Bound Graph Function — an operation, not persistent config state. Kept as a reachable read endpoint, excluded from coverage.">operation</Badge>
+                        : r.coverageState === "no_executor"
+                          ? <Badge variant="outline" className="bg-red-50 text-red-800 border-red-200" title={`No executor exists for the "${r.readTransport}" transport — this resource is unreachable by any code path.`}>no executor</Badge>
+                          : r.coverageState === "unavailable"
+                            ? <Badge variant="outline" className="bg-rose-50 text-rose-800 border-rose-200" title="An executor exists for this transport, but this resource's own scope sits above anything this platform's principal can ever be granted.">unavailable</Badge>
+                            : r.checkCoverageCount > 0
+                              ? <Badge variant="outline">{r.checkCoverageCount} check{r.checkCoverageCount === 1 ? "" : "s"}</Badge>
+                              : <Badge variant="outline" className="bg-orange-50 text-orange-800 border-orange-200">uncovered</Badge>}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {r.workload} · {r.propertyCount} propert{r.propertyCount === 1 ? "y" : "ies"}

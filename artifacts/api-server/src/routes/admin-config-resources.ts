@@ -159,20 +159,31 @@ async function loadSummary() {
       .from(configResourcesTable).groupBy(configResourcesTable.verificationStatus),
     db.select({
       totalResources: sql<number>`count(*)::int`,
-      // Four states, not two (#1849 point 3, built in #1869; `unavailable` added
-      // in #1917). `no_executor` is evaluated first and wins: a resource whose
-      // transport this platform has no executor for is UNREACHABLE by any code
-      // path. `unavailable` wins next: a resource on an executor-backed
+      // Five states, not two (#1849 point 3, built in #1869; `unavailable`
+      // added in #1917; `operation` added in #1929). `operation` (bound Graph
+      // Functions — an operation, not config state) is excluded from every
+      // other bucket below: it is not a coverage gap of any kind, so folding
+      // it into `uncovered`/`unavailable`/`noExecutor` would misreport it the
+      // same way #1849 asked to stop conflating "no check yet" with "no
+      // executor". `no_executor` is evaluated next and wins: a resource whose
+      // transport this platform has no executor for is UNREACHABLE by any
+      // code path. `unavailable` wins next: a resource on an executor-backed
       // transport whose own scope this platform's principal can never be
       // granted (billing-account, tenant-root microsoft.aadiam) is just as
       // unreachable, even though its transport IS executor-backed — reporting
       // either as ordinary "uncovered" is the exact conflation #1849 asked to
       // end, restated for #1917.
-      covered: sql<number>`count(*) filter (where ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} > 0)::int`,
-      uncovered: sql<number>`count(*) filter (where ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} = 0)::int`,
-      noExecutor: sql<number>`count(*) filter (where ${configResourcesTable.readTransport} not in ${EXECUTOR_BACKED_SQL})::int`,
-      unavailable: sql<number>`count(*) filter (where ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} = 'unavailable')::int`,
-      totalProperties: sql<number>`coalesce(sum(${configResourcesTable.propertyCount}), 0)::int`,
+      operations: sql<number>`count(*) filter (where ${configResourcesTable.graphContainerKind} = 'function')::int`,
+      covered: sql<number>`count(*) filter (where ${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} > 0)::int`,
+      uncovered: sql<number>`count(*) filter (where ${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} = 0)::int`,
+      noExecutor: sql<number>`count(*) filter (where ${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} not in ${EXECUTOR_BACKED_SQL})::int`,
+      unavailable: sql<number>`count(*) filter (where ${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} = 'unavailable')::int`,
+      // Git #1929 — the property-count roll-up excludes bound-Function rows:
+      // 44 of them carry zero property rows at all (an operation has no
+      // property SHAPE to model), so folding them in quietly averaged the
+      // per-resource property count over rows that describe nothing.
+      totalProperties: sql<number>`coalesce(sum(${configResourcesTable.propertyCount}) filter (where ${configResourcesTable.graphContainerKind} is distinct from 'function'), 0)::int`,
+      operationProperties: sql<number>`coalesce(sum(${configResourcesTable.propertyCount}) filter (where ${configResourcesTable.graphContainerKind} = 'function'), 0)::int`,
     }).from(configResourcesTable),
     db.select().from(configModelExtractionsTable)
       .orderBy(desc(configModelExtractionsTable.startedAt)).limit(1),
@@ -182,14 +193,38 @@ async function loadSummary() {
     Object.fromEntries(rows.filter((r) => r.key).map((r) => [r.key as string, r.n]));
 
   const latest = extraction[0] ?? null;
-  const c = coverage[0] ?? { totalResources: 0, covered: 0, uncovered: 0, noExecutor: 0, unavailable: 0, totalProperties: 0 };
+  const c = coverage[0] ?? {
+    totalResources: 0,
+    operations: 0,
+    covered: 0,
+    uncovered: 0,
+    noExecutor: 0,
+    unavailable: 0,
+    totalProperties: 0,
+    operationProperties: 0,
+  };
   const serviceAvailability = await loadServiceAvailability(latest?.reconciledAgainstTenantId ?? null);
 
   return {
     serviceAvailability,
     totals: {
+      // Raw model size, including bound-Function rows — they stay real,
+      // discoverable rows in `config_resources` (#1929).
       resources: c.totalResources,
       properties: c.totalProperties,
+      /**
+       * Bound Graph Functions (`graph_container_kind = 'function'`) — an
+       * operation, not persistent config state. Kept in the model as
+       * reachable read endpoints, but excluded from every count below:
+       * `resourcesCoverageEligible`, coverage percentages and
+       * `properties` (#1929). `operationProperties` is the property total
+       * those excluded rows carry, reported separately rather than silently
+       * dropped.
+       */
+      resourcesOperations: c.operations,
+      operationProperties: c.operationProperties,
+      /** The honest coverage denominator: total resources minus operations (#1929). */
+      resourcesCoverageEligible: c.totalResources - c.operations,
       // The coverage measurement this issue exists to replace a guess with.
       resourcesCoveredByAtLeastOneCheck: c.covered,
       // NOTE: as of #1869 this counts only resources on a transport that HAS an
@@ -213,6 +248,9 @@ async function loadSummary() {
        * resource that is out of reach.
        */
       resourcesUnavailable: c.unavailable,
+      // NOTE: resourcesOperations (#1929) is deliberately not folded into
+      // resourcesUnavailable — an operation isn't unreachable, it simply
+      // isn't config state, a different fact.
       /** Which transports those resources are on, so the number is actionable rather than just alarming. */
       transportsWithNoExecutor: (CONFIG_READ_TRANSPORTS as readonly string[]).filter(
         (t) => !(EXECUTOR_BACKED_TRANSPORTS as readonly string[]).includes(t),
@@ -290,22 +328,25 @@ router.get("/admin/config-resources", requireAdmin, async (req: Request, res: Re
       conditions.push(eq(configResourcesTable.serviceKey, serviceKey as (typeof TENANT_SERVICE_KEYS)[number]));
     }
 
-    // coverage=covered | uncovered | no_executor | unavailable — the four states
-    // of the measurement (#1849 point 3, built in #1869; `unavailable` added in
-    // #1917). `uncovered` now excludes both resources whose transport has no
-    // executor AND resources whose own scope is out of reach on an
-    // executor-backed transport: those are separate, separately-filterable
-    // states, not an ordinary check-authoring gap.
+    // coverage=covered | uncovered | no_executor | unavailable | operation —
+    // the five states of the measurement (#1849 point 3, built in #1869;
+    // `unavailable` added in #1917; `operation` added in #1929). `uncovered`
+    // excludes resources whose transport has no executor, whose own scope is
+    // out of reach on an executor-backed transport, AND bound-Function rows
+    // (an operation, not config state): each is a separate, separately-
+    // filterable state, not an ordinary check-authoring gap.
     const coverage = String(q["coverage"] ?? "").trim();
     if ((CONFIG_COVERAGE_STATES as readonly string[]).includes(coverage)) {
-      if (coverage === "covered") {
-        conditions.push(sql`${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} > 0`);
+      if (coverage === "operation") {
+        conditions.push(sql`${configResourcesTable.graphContainerKind} = 'function'`);
+      } else if (coverage === "covered") {
+        conditions.push(sql`${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} > 0`);
       } else if (coverage === "uncovered") {
-        conditions.push(sql`${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} = 0`);
+        conditions.push(sql`${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} = 0`);
       } else if (coverage === "unavailable") {
-        conditions.push(sql`${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} = 'unavailable'`);
+        conditions.push(sql`${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} = 'unavailable'`);
       } else {
-        conditions.push(sql`${configResourcesTable.readTransport} not in ${EXECUTOR_BACKED_SQL}`);
+        conditions.push(sql`${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} not in ${EXECUTOR_BACKED_SQL}`);
       }
     }
 
@@ -372,16 +413,18 @@ router.get("/admin/config-resources", requireAdmin, async (req: Request, res: Re
         propertyCount: r.propertyCount,
         checkCoverageCount: r.checkCoverageCount,
         /**
-         * covered | uncovered | no_executor | unavailable (#1849 point 3, built
-         * in #1869; `unavailable` added in #1917 for resources whose transport
-         * has an executor but whose own scope — e.g. billing-account or
-         * tenant-root `microsoft.aadiam` — sits above anything this platform's
-         * principal can ever be granted). Computed rather than stored: it is a
-         * function of the row's transport, its own availability, and the
-         * executors that exist right now, so it cannot go stale the way a
-         * persisted copy would when a new executor ships.
+         * covered | uncovered | no_executor | unavailable | operation (#1849
+         * point 3, built in #1869; `unavailable` added in #1917 for resources
+         * whose transport has an executor but whose own scope — e.g.
+         * billing-account or tenant-root `microsoft.aadiam` — sits above
+         * anything this platform's principal can ever be granted;
+         * `operation` added in #1929 for bound Graph Functions). Computed
+         * rather than stored: it is a function of the row's transport, its
+         * own availability, its container kind, and the executors that exist
+         * right now, so it cannot go stale the way a persisted copy would
+         * when a new executor ships.
          */
-        coverageState: coverageStateFor(r.readTransport, r.checkCoverageCount, r.availability),
+        coverageState: coverageStateFor(r.readTransport, r.checkCoverageCount, r.availability, r.graphContainerKind),
         sourceRef: r.sourceRef,
         notes: r.notes,
       })),
@@ -423,9 +466,9 @@ router.get("/admin/config-resources/:id", requireAdmin, async (req: Request, res
     res.json({
       resource: {
         ...resource,
-        // Same computed four-state coverage the list endpoint returns, so the
-        // detail view cannot disagree with the row the operator clicked (#1869, #1917).
-        coverageState: coverageStateFor(resource.readTransport, resource.checkCoverageCount, resource.availability),
+        // Same computed coverage the list endpoint returns, so the detail
+        // view cannot disagree with the row the operator clicked (#1869, #1917, #1929).
+        coverageState: coverageStateFor(resource.readTransport, resource.checkCoverageCount, resource.availability, resource.graphContainerKind),
         createdAt: resource.createdAt instanceof Date ? resource.createdAt.toISOString() : resource.createdAt,
         updatedAt: resource.updatedAt instanceof Date ? resource.updatedAt.toISOString() : resource.updatedAt,
       },

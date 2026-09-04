@@ -593,6 +593,116 @@ SELECT m.permission, count(*)
 
 ---
 
+## #1929 — excluding bound Graph Functions from the coverage denominator and property roll-up
+
+**This is a new section, not an edit of the figures above.** Everything in "What the
+first extraction measured" and "#1865 — PowerShell reconciliation" is left exactly as it
+was written — the honest record of what each of those runs measured. This section
+records what changed when #1929 corrected how the model is *counted*, not re-derived it.
+
+### The problem
+
+129 of the 1,539 `config_resources` rows are bound OData **Functions**
+(`graph_container_kind = 'function'`) — `/reports/getPrinterArchivedPrintJobs`,
+`/deviceManagement/getEffectivePermissions`, and similar. A Function is an *operation*
+that computes an answer on demand, not persistent tenant configuration: there is no
+stored object to snapshot or diff, no key to pair it across two points in time, and many
+require parameters that make an unparameterized read meaningless. 44 of the 129 carry
+zero property rows at all — the model's per-resource property model quietly averaged
+over rows that describe nothing.
+
+#1795's snapshot registry already excluded them (commit `80c07204a`,
+`graph_container_kind = 'function'` registered non-collectable) — but `config_resources`
+itself, and everything counting against it, did not.
+
+### The fix
+
+Taking the issue's first option — **keep, but mark** — matching the precedent #1795's
+registry already set:
+
+- `isOperationResource()` / a fifth `coverageState` value, `operation` (added to
+  `coverageStateFor()` in `lib/db/src/schema/config-state.ts`, alongside `covered` /
+  `uncovered` / `no_executor` / `unavailable`). `operation` is evaluated **first**, ahead
+  of `no_executor` and `unavailable` — a bound Function is not configuration state at
+  all, so no transport, availability or check-count fact about it can make it "covered"
+  or "uncovered".
+- `GET /api/admin/config-resources/summary` (`artifacts/api-server/src/routes/admin-config-resources.ts`)
+  now returns `totals.resourcesOperations`, `totals.operationProperties` and
+  `totals.resourcesCoverageEligible` (`resources − resourcesOperations`), and excludes
+  function-kind rows from `resourcesCoveredByAtLeastOneCheck`, `resourcesEntirelyUncovered`,
+  `resourcesWithNoExecutor`, `resourcesUnavailable` and `properties`.
+- `GET /api/admin/config-resources` gained a fifth `coverage=operation` filter value, and
+  every returned row's `coverageState` now reflects the new precedence.
+- The Config Resource Model admin UI (`artifacts/admin-panel/src/pages/ConfigResourceModel.tsx`)
+  gained an "Operations (excluded)" stat tile, an `operation` coverage badge, and computes
+  its coverage percentage against `resourcesCoverageEligible` rather than the raw total.
+- Functions are **not dropped** from `config_resources` — they remain real, queryable
+  rows, discoverable as reachable read endpoints. Only the coverage/property-count math
+  excludes them.
+
+### The real, corrected denominator and property-count figures
+
+Live query against local Postgres, 2026-09-04, against the same `run_id
+5a714586-b19c-4675-84fe-e38da3ee1245` extraction the figures above were measured from
+(154 checks mapped, 3 unmatched — unchanged by this fix, since it only changes what is
+*counted*, not the model itself):
+
+```sql
+SELECT
+  count(*)::int AS total_resources,
+  count(*) filter (where graph_container_kind = 'function')::int AS operations,
+  count(*) filter (where graph_container_kind is distinct from 'function'
+    and read_transport in ('graph','powershell','sharepoint-admin','dns','azure-rm','power-platform')
+    and availability != 'unavailable' and check_coverage_count > 0)::int AS covered,
+  count(*) filter (where graph_container_kind is distinct from 'function'
+    and read_transport in ('graph','powershell','sharepoint-admin','dns','azure-rm','power-platform')
+    and availability != 'unavailable' and check_coverage_count = 0)::int AS uncovered,
+  count(*) filter (where graph_container_kind is distinct from 'function'
+    and read_transport not in ('graph','powershell','sharepoint-admin','dns','azure-rm','power-platform'))::int AS no_executor,
+  count(*) filter (where graph_container_kind is distinct from 'function'
+    and read_transport in ('graph','powershell','sharepoint-admin','dns','azure-rm','power-platform')
+    and availability = 'unavailable')::int AS unavailable,
+  coalesce(sum(property_count) filter (where graph_container_kind is distinct from 'function'), 0)::int AS total_properties,
+  coalesce(sum(property_count) filter (where graph_container_kind = 'function'), 0)::int AS operation_properties
+FROM config_resources;
+
+ total_resources | operations | covered | uncovered | no_executor | unavailable | total_properties | operation_properties
+------------------+------------+---------+-----------+-------------+-------------+------------------+----------------------
+             1539 |        129 |      90 |      1296 |           6 |          18 |            17311 |                  237
+```
+
+(90 + 1,296 + 6 + 18 + 129 = 1,539 — every resource lands in exactly one bucket. This is
+the real five-way split with both #1917's `unavailable` state and #1929's `operation`
+exclusion live together. `no_executor` (6, not 4) and the newly-broken-out `unavailable`
+(18) reflect #1917's own reclassification of specific `azure-rm` resources that happened
+between the earlier query in this document and this one — not something #1929 changed;
+this section only adds the `operation` exclusion on top.)
+
+| | Including operations (old, wrong denominator) | Excluding operations (#1929, corrected) |
+|---|---:|---:|
+| Resources | 1,539 | **1,410** (`resourcesCoverageEligible`) |
+| Property definitions (excl. DSC connection parameters) | 17,548 | **17,311** |
+| Property definitions (raw, incl. connection parameters) | 22,565 | **22,328** |
+| Covered by ≥1 check | 90 / 1,539 = 5.8% | **90 / 1,410 = 6.4%** |
+| Covered against the *reachable* model (excludes `no_executor` and `unavailable` too) | 90 / 1,515 = 5.9% | **90 / 1,386 = 6.5%** |
+
+This document's earlier "1,539 resources / 22,565 properties" and "62/1,539 (4.0%)" /
+"62/1,517 (4.1%)" claims (from the 2026-08-30 initial extraction) were always counting
+129 rows that describe an operation, not configuration — those percentages understated
+real coverage and inflated the property-count claim on rows with nothing to model. (The
+`covered` count has also independently moved from 62 to 90 between that extraction and
+this query — a separate change in `check_coverage_count`/mapping, not something this
+issue caused or investigated; this section only corrects what is *counted*, not why the
+mapping changed.) **If this section and the database disagree, the database is right** — re-run the
+query above.
+
+44 of the 129 function rows carry zero property rows at all; `operation_properties`
+(237) above is the property total the remaining 85 functions carry (e.g.
+`getGroupArchivedPrintJobs`'s response shape). Neither figure is folded into the
+corrected 17,311/22,328 property totals — they are reported separately, not dropped.
+
+---
+
 ## Power Platform transport — how app-only auth actually works (#1869)
 
 Established from Microsoft's published documentation and Microsoft365DSC's own

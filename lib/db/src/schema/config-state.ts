@@ -87,8 +87,25 @@ export function transportHasExecutor(transport: string | null | undefined): bool
 }
 
 /**
+ * True for a bound OData Function (`graph_container_kind = 'function'`) — an
+ * operation that computes an answer on demand, not persistent tenant
+ * configuration. There is no stored object behind e.g.
+ * `/reports/getPrinterArchivedPrintJobs` to snapshot or diff, no key to pair
+ * it across two points in time, and many take required parameters that make
+ * an unparameterized read meaningless (Git #1929).
+ *
+ * Functions stay real rows in `config_resources` — they are genuinely
+ * reachable read endpoints, worth keeping discoverable — but every place that
+ * counts the model for coverage or property-count purposes must exclude them,
+ * the same way #1795's snapshot registry already marks them non-collectable.
+ */
+export function isOperationResource(graphContainerKind: string | null | undefined): boolean {
+  return graphContainerKind === "function";
+}
+
+/**
  * Coverage measurement states (Git #1849 point 3, built in #1869; `unavailable`
- * added in #1917).
+ * added in #1917; `operation` added in #1929).
  *
  * Before #1869, the measurement had two states and "no check written yet" was
  * indistinguishable from "no code path could ever read this". That understated
@@ -104,10 +121,16 @@ export function transportHasExecutor(transport: string | null | undefined): bool
  * close the gap, which is false — no check, however written, changes what a
  * Lighthouse-delegated Reader can see.
  *
+ * #1929 found a different-shaped conflation: 129 resources are bound Graph
+ * Functions — an OPERATION, not configuration state at all. "Coverage" as a
+ * concept does not apply to them; folding them into `uncovered` (or even
+ * `no_executor`/`unavailable`) implied there was a config gap to close, when
+ * there is nothing there to snapshot or diff in the first place.
+ *
  *  - covered      at least one monitor check reads this resource
  *  - uncovered    an executor exists for its transport, this resource is not
- *                 marked `unavailable`, but no check reads it yet — a genuine,
- *                 closeable gap
+ *                 marked `unavailable` or an operation, but no check reads it
+ *                 yet — a genuine, closeable gap
  *  - no_executor  this platform has NO executor for the resource's transport, so
  *                 the resource is unreachable by any code path and writing a
  *                 check could not change that. Not a check-authoring gap; a
@@ -117,24 +140,32 @@ export function transportHasExecutor(transport: string | null | undefined): bool
  *                 resource (`config_resources.availability = 'unavailable'`) —
  *                 e.g. a scope above anything Azure Lighthouse can delegate.
  *                 Not a check-authoring gap either; a permission-scope gap.
+ *  - operation    the resource is a bound Function — an operation, not config
+ *                 state, so "coverage" does not apply to it at all (#1929). Not
+ *                 a gap of any kind; excluded from the coverage denominator.
  */
-export const CONFIG_COVERAGE_STATES = ["covered", "uncovered", "no_executor", "unavailable"] as const;
+export const CONFIG_COVERAGE_STATES = ["covered", "uncovered", "no_executor", "unavailable", "operation"] as const;
 export type ConfigCoverageState = typeof CONFIG_COVERAGE_STATES[number];
 
 /**
- * Classify one resource's coverage. Precedence, most-unreachable first:
- *   1. `no_executor` — no code path exists for this transport at all.
- *   2. `unavailable` — a code path exists for the transport, but this specific
+ * Classify one resource's coverage. Precedence, most-fundamental-exclusion first:
+ *   1. `operation` — not configuration state at all; nothing else about the
+ *      row (transport, availability, check count) can change that (#1929).
+ *   2. `no_executor` — no code path exists for this transport at all.
+ *   3. `unavailable` — a code path exists for the transport, but this specific
  *      resource's own `availability` says no read of it is possible (#1917).
- *   3. `covered` / `uncovered` — ordinary check-authoring coverage.
- * Both 1 and 2 win over check count: a resource nobody can reach is not merely
- * "uncovered" regardless of how many checks happen to be mapped onto it.
+ *   4. `covered` / `uncovered` — ordinary check-authoring coverage.
+ * All of 1–3 win over check count: a resource that isn't config state, or that
+ * nobody can reach, is not merely "uncovered" regardless of how many checks
+ * happen to be mapped onto it.
  */
 export function coverageStateFor(
   transport: string | null | undefined,
   checkCoverageCount: number,
   availability?: string | null,
+  graphContainerKind?: string | null,
 ): ConfigCoverageState {
+  if (isOperationResource(graphContainerKind)) return "operation";
   if (!transportHasExecutor(transport)) return "no_executor";
   if (availability === "unavailable") return "unavailable";
   return checkCoverageCount > 0 ? "covered" : "uncovered";
