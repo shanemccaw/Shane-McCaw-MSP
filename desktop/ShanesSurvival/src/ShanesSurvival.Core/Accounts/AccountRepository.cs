@@ -13,7 +13,8 @@ public sealed record AccountRow(
     decimal? AvailableBalance,
     AccountRole Role,
     decimal? TargetAmount,
-    bool IsGate);
+    bool IsGate,
+    int? DueDay);
 
 public sealed record AccountListResult(bool Success, IReadOnlyList<AccountRow> Accounts, string? ErrorMessage);
 public sealed record AccountUpdateResult(bool Success, string? ErrorMessage);
@@ -41,7 +42,8 @@ public sealed class AccountRepository
             await using var command = new NpgsqlCommand(
                 """
                 SELECT a.id, a.name, p.institution_name, a.type, a.subtype,
-                       a.current_balance, a.available_balance, a.role, a.target_amount, a.is_gate
+                       a.current_balance, a.available_balance, a.role, a.target_amount, a.is_gate,
+                       a.due_day
                 FROM accounts a
                 JOIN plaid_items p ON p.id = a.plaid_item_id
                 ORDER BY p.institution_name, a.name
@@ -59,7 +61,8 @@ public sealed class AccountRepository
                     reader.IsDBNull(6) ? null : reader.GetDecimal(6),
                     AccountRoleExtensions.ParseDbValue(reader.IsDBNull(7) ? null : reader.GetString(7)),
                     reader.IsDBNull(8) ? null : reader.GetDecimal(8),
-                    reader.GetBoolean(9)));
+                    reader.GetBoolean(9),
+                    reader.IsDBNull(10) ? null : reader.GetInt32(10)));
             }
 
             return new AccountListResult(true, accounts, null);
@@ -105,6 +108,40 @@ public sealed class AccountRepository
         catch (Exception ex)
         {
             return new AccountUpdateResult(false, $"Could not save account role: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Persists one account's due_day (migrations/007_bill_due_days.sql) — the real calendar
+    /// day-of-month a Bill-role account's payment is due. Only meaningful for role = Bill;
+    /// callers reject a non-Bill account before calling this, same as
+    /// <see cref="UpdateRoleAsync"/> leaving that check to its caller.
+    /// </summary>
+    public async Task<AccountUpdateResult> UpdateDueDayAsync(string? connectionString, Guid accountId, int dueDay)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return new AccountUpdateResult(false, "No Postgres connection string configured. Open Settings to add one.");
+        }
+
+        try
+        {
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            await using var command = new NpgsqlCommand(
+                "UPDATE accounts SET due_day = @dueDay WHERE id = @id", connection);
+            command.Parameters.AddWithValue("dueDay", dueDay);
+            command.Parameters.AddWithValue("id", accountId);
+
+            var rows = await command.ExecuteNonQueryAsync();
+            return rows > 0
+                ? new AccountUpdateResult(true, null)
+                : new AccountUpdateResult(false, "Account not found — it may have been removed by a Plaid sync.");
+        }
+        catch (Exception ex)
+        {
+            return new AccountUpdateResult(false, $"Could not save due day: {ex.Message}");
         }
     }
 }

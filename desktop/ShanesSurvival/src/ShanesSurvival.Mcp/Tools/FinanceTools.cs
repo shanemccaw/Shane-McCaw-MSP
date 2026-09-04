@@ -24,7 +24,8 @@ public sealed class FinanceTools(
     SettingsService settingsService,
     DashboardService dashboardService,
     AccountRepository accountRepository,
-    TransactionRepository transactionRepository)
+    TransactionRepository transactionRepository,
+    PayPeriodDueService payPeriodDueService)
 {
     private static readonly CultureInfo Usd = CultureInfo.GetCultureInfo("en-US");
 
@@ -275,6 +276,98 @@ public sealed class FinanceTools(
         }
 
         return $"Set \"{account.Name}\" target to {Money(targetAmount)}. Run bill_status to confirm the shortfall total.";
+    }
+
+    [McpServerTool(Name = "set_bill_due_day")]
+    [Description(
+        "Sets a real due_day (1-31, the real calendar day of month the bill is due) on an " +
+        "existing account with the Bill role — same validation pattern as set_bill_target. The " +
+        "account must already exist (match by real name, case-insensitive) and must already " +
+        "have role = Bill; setting a due day on a Spend/Income Gate/Unassigned/Emergency Fund " +
+        "account is rejected with a clear error rather than silently accepted or ignored.")]
+    public async Task<string> SetBillDueDayAsync(
+        [Description("The account's real name, exactly as shown by bill_status/spend_bleed/gate_status (case-insensitive).")]
+        string accountName,
+        [Description("The real day of month this bill is due, 1-31.")]
+        int dueDay)
+    {
+        if (dueDay is < 1 or > 31)
+        {
+            return $"dueDay must be between 1 and 31 (got {dueDay}).";
+        }
+
+        var connectionString = ConnectionString;
+
+        var accounts = await accountRepository.ListAsync(connectionString);
+        if (!accounts.Success)
+        {
+            return $"Could not read accounts: {accounts.ErrorMessage}";
+        }
+
+        var account = accounts.Accounts.FirstOrDefault(
+            a => string.Equals(a.Name, accountName, StringComparison.OrdinalIgnoreCase));
+        if (account is null)
+        {
+            var known = string.Join(", ", accounts.Accounts.Select(a => a.Name));
+            return $"No account named \"{accountName}\" found. Real known accounts: {(known.Length == 0 ? "(none synced yet)" : known)}";
+        }
+
+        if (account.Role != AccountRole.Bill)
+        {
+            return $"\"{account.Name}\" has role {account.Role.DisplayName()}, not Bill — " +
+                   "due_day only applies to Bill accounts. Assign it the Bill role first " +
+                   "(via \"Assign Account Roles…\" in the WPF app) before setting a due day.";
+        }
+
+        var update = await accountRepository.UpdateDueDayAsync(connectionString, account.Id, dueDay);
+        if (!update.Success)
+        {
+            return $"Could not set due day for \"{account.Name}\": {update.ErrorMessage}";
+        }
+
+        return $"Set \"{account.Name}\" due day to {dueDay}. Run pay_period_due_status to confirm.";
+    }
+
+    [McpServerTool(Name = "pay_period_due_status")]
+    [Description(
+        "Real 'what's due between this paycheck and the next one' view — every Bill-role " +
+        "account whose real due_day falls within [today, nextPayDate), with its real " +
+        "target_amount and the real sum. Handles real month wraparound (e.g. due_day 5 when " +
+        "today is the 25th and nextPayDate is early next month). Does not touch bill_status/" +
+        "gate_status's existing flat monthly-shortfall math — this is a separate lens. Bill " +
+        "accounts with no due_day set yet are called out in Warnings rather than silently " +
+        "under-counted.")]
+    public async Task<string> GetPayPeriodDueStatusAsync(
+        [Description("The real date the next paycheck arrives, e.g. 2026-09-19. Must be after today.")]
+        DateOnly nextPayDate)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var result = await payPeriodDueService.ComputeAsync(ConnectionString, today, nextPayDate);
+        if (!result.Success)
+        {
+            return $"Could not compute pay-period due status: {result.ErrorMessage}";
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Bills due between {result.Today:yyyy-MM-dd} and {result.NextPayDate:yyyy-MM-dd} (exclusive):");
+
+        if (result.DueBills.Count == 0)
+        {
+            sb.AppendLine("  (none)");
+        }
+        else
+        {
+            foreach (var bill in result.DueBills)
+            {
+                var target = bill.TargetAmount is null ? (bill.Warning ?? "no target") : Money(bill.TargetAmount);
+                sb.AppendLine($"  - {bill.Name}: due {bill.DueDate:yyyy-MM-dd} — {target}");
+            }
+            sb.AppendLine();
+            sb.AppendLine($"Total real due in this window: {Money(result.TotalDue)}");
+        }
+
+        AppendWarnings(sb, result.Warnings);
+        return sb.ToString().TrimEnd();
     }
 
     [McpServerTool(Name = "emergency_fund_status")]

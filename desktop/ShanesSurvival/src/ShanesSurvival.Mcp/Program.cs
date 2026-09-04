@@ -28,6 +28,7 @@ builder.Services.AddSingleton<AccountRepository>();
 builder.Services.AddSingleton<TransactionRepository>();
 builder.Services.AddSingleton<PayPeriodPlanRepository>();
 builder.Services.AddSingleton<IncomeRepository>();
+builder.Services.AddSingleton<PayPeriodDueService>();
 
 builder.Services
     .AddMcpServer(options =>
