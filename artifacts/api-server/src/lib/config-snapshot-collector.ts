@@ -175,6 +175,7 @@ const DEFAULT_THROTTLE_BASE_DELAY_MS = 2_000;
  *   get-inbound-connector-tls-gap  PostFilter -> connectors without RequireTls
  *                                  (twin: get-all-inbound-connector)
  *   get-cs-online-user             PostFilter -> Teams Phone users only
+ *                                  (twin: get-all-cs-online-user, Git #2850)
  *   get-litigation-hold-gap        PostFilter -> mailboxes without hold
  *   get-archive-mailbox-gap        PostFilter -> mailboxes without an active archive
  *   get-shared-mailboxes           fixed RecipientTypeDetails -> shared mailboxes only
@@ -182,10 +183,20 @@ const DEFAULT_THROTTLE_BASE_DELAY_MS = 2_000;
  *   get-dlp-incidents              Export-ActivityExplorerData -> event data, not config
  *   add-role-group-member          IsWrite = $true. Never reachable from a read path.
  *
- * Still unmapped after pass 1, deliberately, and tracked as real follow-up work
- * rather than left silent — these keep producing an honest `no_executor` row:
- *   - Teams (`Get-Cs*`, ~54 resource types). A uniform block of its own, split
- *     out so pass 1's live verification stayed bounded.
+ * Git #2850 landed pass 2: the Microsoft Teams block pass 1 deferred. 57 further
+ * `Get-Cs*` cmdlets are mapped below — every one named by a real `powershell`-transport
+ * registry row AND recorded `status = 'ok'` by #1793's capability survey run 4, same
+ * evidence bar as pass 1. `Get-CsOnlineUser` is mapped to the unfiltered twin
+ * `get-all-cs-online-user`, never to the check-shaped `get-cs-online-user`.
+ *
+ * Still unmapped, deliberately, and tracked as real follow-up work rather than left
+ * silent — these keep producing an honest `no_executor` row:
+ *   - Five Teams cmdlets the registry names that #1793's survey recorded
+ *     `not_attempted`, so nothing proves they run app-only in this container:
+ *     Get-CsOnlineApplicationInstance, Get-CsOnlineVoicemailUserSettings,
+ *     Get-CsTeamsSettingsCustomApp, Get-CsUserCallingSettings,
+ *     Get-CsUserPolicyAssignment. Allowlisting an unproven cmdlet on a guess is
+ *     exactly what pass 1's evidence rule forbids.
  *   - Per-user / per-mailbox / directory enumerations (Get-Mailbox, Get-User,
  *     Get-Recipient, Get-Group, Get-ManagementRoleAssignment, …). Tenant
  *     INVENTORY, not tenant CONFIGURATION: unbounded, and not what a
@@ -207,7 +218,64 @@ const PS_CATALOG_BY_CMDLET: Readonly<Record<string, string>> = {
   "Get-CASMailboxPlan": "get-cas-mailbox-plan",
   "Get-ComplianceRetentionEventType": "get-retention-event-types",
   "Get-ComplianceTag": "get-compliance-tags",
+  "Get-CsCallQueue": "get-cs-call-queue",
+  "Get-CsGroupPolicyAssignment": "get-cs-group-policy-assignment",
+  "Get-CsOnlineDialInConferencingTenantSettings": "get-cs-online-dial-in-conferencing-tenant-settings",
+  "Get-CsOnlinePSTNGateway": "get-cs-online-pstn-gateway",
+  "Get-CsOnlinePstnUsage": "get-cs-online-pstn-usage",
+  "Get-CsOnlineUser": "get-all-cs-online-user",
+  "Get-CsOnlineVoicemailPolicy": "get-cs-online-voicemail-policy",
+  "Get-CsOnlineVoiceRoute": "get-cs-online-voice-route",
+  "Get-CsOnlineVoiceRoutingPolicy": "get-cs-online-voice-routing-policy",
+  "Get-CsPhoneNumberAssignment": "get-cs-phone-number-assignment",
+  "Get-CsTeamsAIPolicy": "get-cs-teams-ai-policy",
+  "Get-CsTeamsAppPermissionPolicy": "get-cs-teams-app-permission-policy",
+  "Get-CsTeamsAppSetupPolicy": "get-cs-teams-app-setup-policy",
+  "Get-CsTeamsAudioConferencingPolicy": "get-cs-teams-audio-conferencing-policy",
+  "Get-CsTeamsCallHoldPolicy": "get-cs-teams-call-hold-policy",
+  "Get-CsTeamsCallingPolicy": "get-cs-teams-calling-policy",
+  "Get-CsTeamsCallParkPolicy": "get-cs-teams-call-park-policy",
+  "Get-CsTeamsChannelsPolicy": "get-cs-teams-channels-policy",
+  "Get-CsTeamsClientConfiguration": "get-cs-teams-client-configuration",
+  "Get-CsTeamsComplianceRecordingApplication": "get-cs-teams-compliance-recording-application",
+  "Get-CsTeamsComplianceRecordingPolicy": "get-cs-teams-compliance-recording-policy",
+  "Get-CsTeamsCortanaPolicy": "get-cs-teams-cortana-policy",
+  "Get-CsTeamsEmergencyCallingPolicy": "get-cs-teams-emergency-calling-policy",
+  "Get-CsTeamsEmergencyCallRoutingPolicy": "get-cs-teams-emergency-call-routing-policy",
+  "Get-CsTeamsEnhancedEncryptionPolicy": "get-cs-teams-enhanced-encryption-policy",
+  "Get-CsTeamsEventsPolicy": "get-cs-teams-events-policy",
+  "Get-CsTeamsFeedbackPolicy": "get-cs-teams-feedback-policy",
+  "Get-CsTeamsFilesPolicy": "get-cs-teams-files-policy",
+  "Get-CsTeamsGuestCallingConfiguration": "get-cs-teams-guest-calling-configuration",
+  "Get-CsTeamsGuestMeetingConfiguration": "get-cs-teams-guest-meeting-configuration",
+  "Get-CsTeamsGuestMessagingConfiguration": "get-cs-teams-guest-messaging-configuration",
+  "Get-CsTeamsIPPhonePolicy": "get-cs-teams-ip-phone-policy",
+  "Get-CsTeamsMeetingBroadcastConfiguration": "get-cs-teams-meeting-broadcast-configuration",
+  "Get-CsTeamsMeetingBroadcastPolicy": "get-cs-teams-meeting-broadcast-policy",
+  "Get-CsTeamsMeetingConfiguration": "get-cs-teams-meeting-configuration",
   "Get-CsTeamsMeetingPolicy": "get-cs-teams-meeting-policy",
+  "Get-CsTeamsMessagingConfiguration": "get-cs-teams-messaging-configuration",
+  "Get-CsTeamsMessagingPolicy": "get-cs-teams-messaging-policy",
+  "Get-CsTeamsMobilityPolicy": "get-cs-teams-mobility-policy",
+  "Get-CsTeamsNetworkRoamingPolicy": "get-cs-teams-network-roaming-policy",
+  "Get-CsTeamsNotificationAndFeedsPolicy": "get-cs-teams-notification-and-feeds-policy",
+  "Get-CsTeamsShiftsPolicy": "get-cs-teams-shifts-policy",
+  "Get-CsTeamsTargetingPolicy": "get-cs-teams-targeting-policy",
+  "Get-CsTeamsTemplatePermissionPolicy": "get-cs-teams-template-permission-policy",
+  "Get-CsTeamsTranslationRule": "get-cs-teams-translation-rule",
+  "Get-CsTeamsUnassignedNumberTreatment": "get-cs-teams-unassigned-number-treatment",
+  "Get-CsTeamsUpdateManagementPolicy": "get-cs-teams-update-management-policy",
+  "Get-CsTeamsUpgradeConfiguration": "get-cs-teams-upgrade-configuration",
+  "Get-CsTeamsUpgradePolicy": "get-cs-teams-upgrade-policy",
+  "Get-CsTeamsVdiPolicy": "get-cs-teams-vdi-policy",
+  "Get-CsTeamsWorkLoadPolicy": "get-cs-teams-work-load-policy",
+  "Get-CsTeamTemplateList": "get-cs-team-template-list",
+  "Get-CsTenantDialPlan": "get-cs-tenant-dial-plan",
+  "Get-CsTenantFederationConfiguration": "get-cs-tenant-federation-configuration",
+  "Get-CsTenantNetworkRegion": "get-cs-tenant-network-region",
+  "Get-CsTenantNetworkSite": "get-cs-tenant-network-site",
+  "Get-CsTenantNetworkSubnet": "get-cs-tenant-network-subnet",
+  "Get-CsTenantTrustedIPAddress": "get-cs-tenant-trusted-ip-address",
   "Get-DataClassification": "get-data-classification",
   "Get-DeviceConditionalAccessPolicy": "get-device-conditional-access-policies",
   "Get-DeviceConditionalAccessRule": "get-device-conditional-access-rule",

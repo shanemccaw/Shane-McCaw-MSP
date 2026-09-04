@@ -1035,6 +1035,335 @@ $script:CmdletCatalog = @{
         AllowedParams  = @()
         Session        = "compliance"
     }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # #2850 — UNFILTERED snapshot-shaped read entries (pass 2: Microsoft Teams)
+    # ═══════════════════════════════════════════════════════════════════════
+    #
+    # The block #1961 pass 1 deliberately deferred and said so on the record in
+    # its own DELIBERATELY NOT IN THIS PASS note above. Everything that note
+    # says about pass 1 applies here unchanged — same shape, same posture, same
+    # evidence standard — so only what is SPECIFIC to Teams is restated:
+    #
+    # SESSION. Every entry declares `Session = "teams"`, the third session type
+    # (alongside "exchange" and "compliance") that #1253 added for
+    # Get-CsTeamsMeetingPolicy. No new session type is introduced here.
+    #
+    # WHY THESE 57 CMDLETS. Same evidence source as pass 1, not Microsoft Learn:
+    # each one is named by a real `config_snapshot_resource_types` row whose
+    # `read_transport = 'powershell'`, AND was recorded `status = 'ok'` by
+    # #1793's capability survey (run 4) executing it under app-only certificate
+    # auth INSIDE THIS CONTAINER, in the `teams` session, against the live
+    # testbed tenant. Five further Get-Cs* cmdlets the registry names are
+    # deliberately absent because the survey recorded them `not_attempted` —
+    # unproven, so not allowlisted on a guess:
+    #   Get-CsOnlineApplicationInstance   Get-CsOnlineVoicemailUserSettings
+    #   Get-CsTeamsSettingsCustomApp      Get-CsUserCallingSettings
+    #   Get-CsUserPolicyAssignment
+    #
+    # SECURITY POSTURE IS UNCHANGED, exactly as pass 1: every entry below is
+    # code-owned and literal here, is a `Get-*` read, declares
+    # `AllowedParams = @()` so the request body cannot fill a single parameter
+    # value, and carries no `PostFilter` / `ResultProperty` / `IsWrite`.
+    #
+    # ONE TWIN. `Get-CsOnlineUser` already has the check-shaped
+    # `get-cs-online-user` entry above (PostFilter -> Teams Phone users only).
+    # Per #1961's rule a filtered key is never reused for a snapshot, so it is
+    # left untouched and an unfiltered twin `get-all-cs-online-user` is added
+    # alongside it — the #1301 `get-all-dlp-policies` precedent. Note this one
+    # IS a per-user enumeration, the class pass 1 otherwise defers for lack of a
+    # paging story; it is included only because three real Teams resource types
+    # (TeamsCallQueue, TeamsOnlineVoiceUser, TeamsOnlineVoicemailUserSettings)
+    # name it as a read cmdlet and this issue explicitly directs the twin.
+    #
+    # Get-CsTeamsMeetingPolicy is NOT repeated here — #1253's unfiltered
+    # `get-cs-teams-meeting-policy` above already serves it.
+
+    "get-cs-call-queue" = @{
+        Cmdlet         = "Get-CsCallQueue"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-group-policy-assignment" = @{
+        Cmdlet         = "Get-CsGroupPolicyAssignment"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-online-dial-in-conferencing-tenant-settings" = @{
+        Cmdlet         = "Get-CsOnlineDialInConferencingTenantSettings"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-online-pstn-gateway" = @{
+        Cmdlet         = "Get-CsOnlinePSTNGateway"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-online-pstn-usage" = @{
+        Cmdlet         = "Get-CsOnlinePstnUsage"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-all-cs-online-user" = @{
+        Cmdlet         = "Get-CsOnlineUser"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-online-voicemail-policy" = @{
+        Cmdlet         = "Get-CsOnlineVoicemailPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-online-voice-route" = @{
+        Cmdlet         = "Get-CsOnlineVoiceRoute"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-online-voice-routing-policy" = @{
+        Cmdlet         = "Get-CsOnlineVoiceRoutingPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-phone-number-assignment" = @{
+        Cmdlet         = "Get-CsPhoneNumberAssignment"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-ai-policy" = @{
+        Cmdlet         = "Get-CsTeamsAIPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-app-permission-policy" = @{
+        Cmdlet         = "Get-CsTeamsAppPermissionPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-app-setup-policy" = @{
+        Cmdlet         = "Get-CsTeamsAppSetupPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-audio-conferencing-policy" = @{
+        Cmdlet         = "Get-CsTeamsAudioConferencingPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-call-hold-policy" = @{
+        Cmdlet         = "Get-CsTeamsCallHoldPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-calling-policy" = @{
+        Cmdlet         = "Get-CsTeamsCallingPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-call-park-policy" = @{
+        Cmdlet         = "Get-CsTeamsCallParkPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-channels-policy" = @{
+        Cmdlet         = "Get-CsTeamsChannelsPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-client-configuration" = @{
+        Cmdlet         = "Get-CsTeamsClientConfiguration"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-compliance-recording-application" = @{
+        Cmdlet         = "Get-CsTeamsComplianceRecordingApplication"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-compliance-recording-policy" = @{
+        Cmdlet         = "Get-CsTeamsComplianceRecordingPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-cortana-policy" = @{
+        Cmdlet         = "Get-CsTeamsCortanaPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-emergency-calling-policy" = @{
+        Cmdlet         = "Get-CsTeamsEmergencyCallingPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-emergency-call-routing-policy" = @{
+        Cmdlet         = "Get-CsTeamsEmergencyCallRoutingPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-enhanced-encryption-policy" = @{
+        Cmdlet         = "Get-CsTeamsEnhancedEncryptionPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-events-policy" = @{
+        Cmdlet         = "Get-CsTeamsEventsPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-feedback-policy" = @{
+        Cmdlet         = "Get-CsTeamsFeedbackPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-files-policy" = @{
+        Cmdlet         = "Get-CsTeamsFilesPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-guest-calling-configuration" = @{
+        Cmdlet         = "Get-CsTeamsGuestCallingConfiguration"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-guest-meeting-configuration" = @{
+        Cmdlet         = "Get-CsTeamsGuestMeetingConfiguration"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-guest-messaging-configuration" = @{
+        Cmdlet         = "Get-CsTeamsGuestMessagingConfiguration"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-ip-phone-policy" = @{
+        Cmdlet         = "Get-CsTeamsIPPhonePolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-meeting-broadcast-configuration" = @{
+        Cmdlet         = "Get-CsTeamsMeetingBroadcastConfiguration"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-meeting-broadcast-policy" = @{
+        Cmdlet         = "Get-CsTeamsMeetingBroadcastPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-meeting-configuration" = @{
+        Cmdlet         = "Get-CsTeamsMeetingConfiguration"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-messaging-configuration" = @{
+        Cmdlet         = "Get-CsTeamsMessagingConfiguration"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-messaging-policy" = @{
+        Cmdlet         = "Get-CsTeamsMessagingPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-mobility-policy" = @{
+        Cmdlet         = "Get-CsTeamsMobilityPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-network-roaming-policy" = @{
+        Cmdlet         = "Get-CsTeamsNetworkRoamingPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-notification-and-feeds-policy" = @{
+        Cmdlet         = "Get-CsTeamsNotificationAndFeedsPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-shifts-policy" = @{
+        Cmdlet         = "Get-CsTeamsShiftsPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-targeting-policy" = @{
+        Cmdlet         = "Get-CsTeamsTargetingPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-template-permission-policy" = @{
+        Cmdlet         = "Get-CsTeamsTemplatePermissionPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-translation-rule" = @{
+        Cmdlet         = "Get-CsTeamsTranslationRule"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-unassigned-number-treatment" = @{
+        Cmdlet         = "Get-CsTeamsUnassignedNumberTreatment"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-update-management-policy" = @{
+        Cmdlet         = "Get-CsTeamsUpdateManagementPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-upgrade-configuration" = @{
+        Cmdlet         = "Get-CsTeamsUpgradeConfiguration"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-upgrade-policy" = @{
+        Cmdlet         = "Get-CsTeamsUpgradePolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-vdi-policy" = @{
+        Cmdlet         = "Get-CsTeamsVdiPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-teams-work-load-policy" = @{
+        Cmdlet         = "Get-CsTeamsWorkLoadPolicy"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-team-template-list" = @{
+        Cmdlet         = "Get-CsTeamTemplateList"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-tenant-dial-plan" = @{
+        Cmdlet         = "Get-CsTenantDialPlan"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-tenant-federation-configuration" = @{
+        Cmdlet         = "Get-CsTenantFederationConfiguration"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-tenant-network-region" = @{
+        Cmdlet         = "Get-CsTenantNetworkRegion"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-tenant-network-site" = @{
+        Cmdlet         = "Get-CsTenantNetworkSite"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-tenant-network-subnet" = @{
+        Cmdlet         = "Get-CsTenantNetworkSubnet"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
+    "get-cs-tenant-trusted-ip-address" = @{
+        Cmdlet         = "Get-CsTenantTrustedIPAddress"
+        AllowedParams  = @()
+        Session        = "teams"
+    }
 }
 
 # Resolves cmdletKey against the allowlist and merges request params into
