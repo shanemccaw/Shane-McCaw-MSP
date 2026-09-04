@@ -329,6 +329,7 @@ export const tenantAddOnEntitlementsTable = pgTable("tenant_add_on_entitlements"
 export type TenantAddOnEntitlement = typeof tenantAddOnEntitlementsTable.$inferSelect;
 export type InsertTenantAddOnEntitlement = typeof tenantAddOnEntitlementsTable.$inferInsert;
 
+
 // ── Compliance framework / obligation catalog + per-tenant scope (#1256) ──────
 // No table anywhere modelled "which frameworks are in scope for this tenant and
 // what state each is in" — msp_risk_decisions.framework/.obligation are free-text
@@ -1567,6 +1568,146 @@ export const mspSubscriptionsTable = pgTable("msp_subscriptions", {
 
 export type MspSubscription = typeof mspSubscriptionsTable.$inferSelect;
 export type InsertMspSubscription = typeof mspSubscriptionsTable.$inferInsert;
+
+// ── Per-customer subscription / billing state (Git #2847) ─────────────────────
+//
+// THE gap #2847 was filed for. #1944 part 8 gates the whole customer portal on
+// *"whether a subscription is active"*, calling it *"a fact the platform already
+// has to track for billing anyway"*. It did not. Before this table the only
+// per-customer signal in the schema was `tenants.status` — an operational
+// lifecycle enum (active/inactive/onboarding/archived) that no billing event ever
+// writes — so the retention gate and the 7-year post-termination clock in #2765
+// both rested on a column that could never say "this customer stopped paying".
+//
+// `msp_subscriptions` is NOT that fact and cannot be made into it: it is
+// `msp_id .unique()`, one row per MSP, describing the MSP's own subscription to
+// the platform.
+//
+// TWO REAL BILLING CHANNELS, both already in the code, which is why `billingParty`
+// exists and is not an invented dimension:
+//
+//   - **MSP / wholesale.** `msp-marketplace-purchase.ts` charges the MSP's card on
+//     file at the wholesale price (`catalog-pricing.ts`) and creates the Stripe
+//     Subscription against the *MSP's* Stripe customer, on behalf of a named
+//     customer tenant. The MSP then bills that customer retail, outside this
+//     platform. Before #2847 the `subscriptionId` that call created was returned to
+//     the caller, written into an audit-log metadata blob, and persisted nowhere.
+//   - **Direct.** `tenants.stripe_customer_id` (#490) is the customer's own Stripe
+//     customer, used by the assessment/checkout flow for charges the customer pays
+//     themselves.
+//
+// So "who is charged" genuinely differs per row, and the row records which — read
+// from the real Stripe object, never guessed.
+//
+// WHAT THE ABSENCE OF A ROW MEANS: nothing. A tenant with no row here has not
+// cancelled; it has never been recorded as subscribing. `resolveTenantBillingState()`
+// falls back to `tenants.status` for those tenants, exactly as before this table
+// existed. Treating absence as cancellation would gate every existing customer and
+// start their 7-year purge clocks on deploy — a data-loss-direction change made by a
+// migration, which is precisely what #2847 warned about.
+
+/**
+ * Per-customer subscription statuses. Deliberately the SAME five values as
+ * `MSP_SUBSCRIPTION_STATUSES`, because both are read straight off a Stripe
+ * Subscription's `status` and a second vocabulary for the same field would be an
+ * invented one. Stripe's `incomplete*` statuses are absent for the same reason they
+ * are absent there: no write path in this codebase ever persists one — a purchase
+ * that does not reach `active`/`trialing` is rejected at the point of sale
+ * (`msp-marketplace-purchase.ts` answers 402) and no row is written.
+ */
+export const TENANT_SUBSCRIPTION_STATUSES = ["trialing", "active", "past_due", "canceled", "unpaid"] as const;
+export type TenantSubscriptionStatus = typeof TENANT_SUBSCRIPTION_STATUSES[number];
+
+/**
+ * Which statuses mean the customer's portal is open.
+ *
+ * `past_due` counts as active, and that is a deliberate call with a real precedent
+ * in this repo rather than a new policy: `msp-entitlement.ts` revokes MSP access when
+ * `dunning_state` reaches `access_revoked`/`archival_flagged`, NOT on `past_due`.
+ * Stripe holds a subscription in `past_due` while it retries a card, so gating there
+ * would lock a customer out — and, far worse here, freeze their retention clocks and
+ * start a 7-year purge window — because a card expired. `unpaid` and `canceled` are
+ * the terminal states Stripe moves to when the retries are exhausted or the
+ * subscription genuinely ends, and those are what close the portal.
+ */
+export const TENANT_SUBSCRIPTION_ACTIVE_STATUSES = ["trialing", "active", "past_due"] as const;
+
+/** Whose payment method actually funds this subscription. Read off the real Stripe customer. */
+export const TENANT_SUBSCRIPTION_BILLING_PARTIES = ["msp", "customer"] as const;
+export type TenantSubscriptionBillingParty = typeof TENANT_SUBSCRIPTION_BILLING_PARTIES[number];
+
+/**
+ * Which real code path created the row. Every value maps to a path that exists today;
+ * none is speculative.
+ *   - `msp_marketplace` — `routes/msp-marketplace-purchase.ts`, staff-initiated
+ *     card-on-file purchase made for a customer.
+ *   - `checkout`        — the direct customer checkout / assessment flow.
+ *   - `manual`          — recorded by an operator for a subscription billed outside
+ *     Stripe. Carries no Stripe ids, which is why every Stripe column is nullable.
+ */
+export const TENANT_SUBSCRIPTION_SOURCES = ["msp_marketplace", "checkout", "manual"] as const;
+export type TenantSubscriptionSource = typeof TENANT_SUBSCRIPTION_SOURCES[number];
+
+export const tenantSubscriptionsTable = pgTable("tenant_subscriptions", {
+  id: serial("id").primaryKey(),
+  /** The customer this subscription is FOR — always, regardless of who pays for it. */
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  /**
+   * The MSP that owns the customer, denormalized from `tenants.msp_id` so an
+   * MSP-scoped billing read costs one indexed pass instead of a join. Not the payer —
+   * `billingParty` says that.
+   */
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /**
+   * The Product Catalog row that was sold. Not a TS-level FK, matching
+   * `msp_subscriptions.serviceId` — same cross-file circular-reference reason.
+   */
+  serviceId: integer("service_id"),
+  /**
+   * The product name as it was at purchase. A snapshot, not a lookup: a catalog
+   * rename must not silently rewrite what a customer was told they bought. Null when
+   * the caller genuinely had no name to record — never a placeholder string.
+   */
+  planName: text("plan_name"),
+  billingParty: text("billing_party", { enum: TENANT_SUBSCRIPTION_BILLING_PARTIES }).notNull(),
+  status: text("status", { enum: TENANT_SUBSCRIPTION_STATUSES }).notNull(),
+  /** The Stripe customer actually charged — the MSP's or the tenant's, per `billingParty`. */
+  stripeCustomerId: text("stripe_customer_id"),
+  /** Unique where present, so a webhook replay updates the row rather than duplicating it. */
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  stripePriceId: text("stripe_price_id"),
+  billingInterval: text("billing_interval", { enum: MSP_BILLING_INTERVALS }),
+  /** What is actually charged per period, in integer cents. Never dollars. */
+  unitAmountCents: integer("unit_amount_cents"),
+  currency: text("currency").notNull().default("usd"),
+  currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  /** Stripe's `cancel_at_period_end`: still active today, ending at the period boundary. */
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  /** When cancellation was *requested*. Service may still run until `endedAt`. */
+  canceledAt: timestamp("canceled_at", { withTimezone: true }),
+  /** When the subscription actually stopped providing service. */
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  /** First observed payment failure on this subscription. Cleared once payment succeeds. */
+  paymentFailedAt: timestamp("payment_failed_at", { withTimezone: true }),
+  source: text("source", { enum: TENANT_SUBSCRIPTION_SOURCES }).notNull(),
+  /** Operator note, for a `manual` row that needs one. Never rendered as billing truth. */
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("tenant_subscriptions_tenant_id_idx").on(t.tenantId),
+  index("tenant_subscriptions_msp_id_idx").on(t.mspId),
+  index("tenant_subscriptions_status_idx").on(t.status),
+  // Partial-unique in the migration (`WHERE stripe_subscription_id IS NOT NULL`), so
+  // `manual` rows with no Stripe id are not forced to collide on NULL.
+  index("tenant_subscriptions_stripe_sub_idx").on(t.stripeSubscriptionId),
+]);
+
+export type TenantSubscription = typeof tenantSubscriptionsTable.$inferSelect;
+export type InsertTenantSubscription = typeof tenantSubscriptionsTable.$inferInsert;
+
 
 // ── MSP Connector Configuration ────────────────────────────────────────────────
 // One row per MSP. Stores connector mode and Exchange Online integration settings.
