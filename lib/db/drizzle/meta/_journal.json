@@ -1439,6 +1439,13 @@
       "when": 1784391454341,
       "tag": "0202_tenant_write_consent",
       "breakpoints": true
+    },
+    {
+      "idx": 201,
+      "version": "7",
+      "when": 1788564307220,
+      "tag": "0192_rename_sales_offers_tenant_id",
+      "breakpoints": true
     }
   ]
 }
