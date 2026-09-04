@@ -356,14 +356,15 @@ describe("#1975 — no rule invents a permission its own Microsoft Learn page do
     // this list, someone has to have checked that page. #1901 added two, and both
     // are Conditional Access family with that exact documented conjunction:
     // namedLocations (whose higher tier is "Not available.", so the conjunction
-    // is the ONLY tier) and the PUT that action.delete-ca-policy stores.
+    // is the ONLY tier) and the DELETE that action.delete-ca-policy stores
+    // (#2855 — was PUT, a method Graph does not expose on this resource).
     const owners = GRAPH_WRITE_PERMISSION_RULES.filter((r) => r.permissions.includes("Policy.Read.All"));
     expect(owners.map((r) => `${r.method} ${r.pattern}`).sort()).toEqual([
+      "DELETE /identity/conditionalAccess/policies/*",
       "PATCH /identity/conditionalAccess/policies/*",
       "PATCH /policies/identitySecurityDefaultsEnforcementPolicy",
       "POST /identity/conditionalAccess/namedLocations",
       "POST /identity/conditionalAccess/policies",
-      "PUT /identity/conditionalAccess/policies/*",
     ]);
   });
 });
@@ -388,10 +389,10 @@ describe("#1901 — the other Config Packs' endpoints all resolve to a documente
     // [pack, method, endpoint (verbatim from the template row), expected required]
     ["baseline-licensing-v1", "POST", "/groups/{{groupId}}/assignLicense", ["LicenseAssignment.ReadWrite.All"]],
     ["conditional-access-baseline-v1", "POST", "/identity/conditionalAccess/namedLocations", ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"]],
-    ["conditional-access-baseline-v1", "PUT", "/identity/conditionalAccess/policies/{{policyId}}", ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"]],
+    ["conditional-access-baseline-v1", "DELETE", "/identity/conditionalAccess/policies/{{policyId}}", ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"]],
     ["device-compliance-v1", "POST", "/deviceManagement/deviceCompliancePolicies/{{policyId}}/assign", ["DeviceManagementConfiguration.ReadWrite.All"]],
     ["device-compliance-v1", "POST", "/deviceManagement/deviceConfigurations/{{profileId}}/assign", ["DeviceManagementConfiguration.ReadWrite.All"]],
-    ["device-compliance-v1", "POST", "/deviceAppManagement/managedAppPolicies/{{policyId}}/assign", ["DeviceManagementApps.ReadWrite.All"]],
+    ["device-compliance-v1", "POST", "/deviceAppManagement/targetedManagedAppConfigurations/{{policyId}}/assign", ["DeviceManagementApps.ReadWrite.All"]],
     ["device-compliance-v1", "PATCH", "/deviceManagement/managedDevices/{{deviceId}}", ["DeviceManagementManagedDevices.ReadWrite.All"]],
     ["identity-hygiene-v1", "POST", "/directory/deletedItems/{{userId}}/restore", ["User.DeleteRestore.All"]],
     ["identity-hygiene-v1", "POST", "/users/{{userId}}/authentication/temporaryAccessPassMethods", ["UserAuthenticationMethod.ReadWrite.All"]],
@@ -541,17 +542,22 @@ describe("#1901 — the other Config Packs' endpoints all resolve to a documente
     expect(got.rule!.documentedApplicationTiers.higherPrivileged).not.toContain(" and ");
   });
 
-  it("the two rules whose stored template is broken say so in their justification", () => {
-    // Neither is a permission error, and neither should be "cleaned up" by a
-    // later reader who checks the endpoint against Microsoft Learn and finds it
-    // does not exist. The permission is right; the stored template is not, and
-    // both are filed separately. Keeping the note load-bearing here means
-    // deleting it breaks a test rather than losing the finding.
-    const put = requiredPermissionsForWrite("PUT", "/identity/conditionalAccess/policies/{{policyId}}");
-    expect(put.rule!.justification).toContain("THE STORED METHOD IS WRONG");
+  it("#2855 — the two previously-broken templates now resolve on their fixed method/endpoint", () => {
+    // action.delete-ca-policy previously stored PUT, a method Graph does not
+    // expose on this resource; #2855 corrected it to DELETE. The old PUT no
+    // longer matches any rule.
+    const del = requiredPermissionsForWrite("DELETE", "/identity/conditionalAccess/policies/{{policyId}}");
+    expect(del.rule).not.toBeNull();
+    expect(del.required.sort()).toEqual(["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"]);
+    expect(requiredPermissionsForWrite("PUT", "/identity/conditionalAccess/policies/{{policyId}}").rule).toBeNull();
 
-    const mam = requiredPermissionsForWrite("POST", "/deviceAppManagement/managedAppPolicies/{{policyId}}/assign");
-    expect(mam.rule!.justification).toContain("THE STORED ENDPOINT IS WRONG");
+    // action.assign-app-protection-policy previously targeted managedAppPolicies,
+    // Microsoft's abstract base type with no assign action; #2855 corrected it to
+    // the real concrete targetedManagedAppConfigurations resource.
+    const mam = requiredPermissionsForWrite("POST", "/deviceAppManagement/targetedManagedAppConfigurations/{{policyId}}/assign");
+    expect(mam.rule).not.toBeNull();
+    expect(mam.required).toEqual(["DeviceManagementApps.ReadWrite.All"]);
+    expect(requiredPermissionsForWrite("POST", "/deviceAppManagement/managedAppPolicies/{{policyId}}/assign").rule).toBeNull();
   });
 });
 

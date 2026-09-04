@@ -7599,11 +7599,75 @@ namespace BuildConsole.Controls
         }
 
         /// <summary>Git #1898 — collapses/expands the real branch list. Collapsed by default,
-        /// same convention branches used to share with the (removed, #2637) commit graph toggle.</summary>
+        /// same convention branches used to share with the (removed, #2637) commit graph toggle.
+        /// Git #1976 — PopulateGitBranches no longer does any work while collapsed (mirrors
+        /// #1968's fix for the commit graph), so expanding is now the trigger that fetches
+        /// it — "current data the moment it's shown" still holds.</summary>
         private void BtnGitBranchesToggle_Click(object sender, RoutedEventArgs e)
         {
             bool collapsed = BtnGitBranchesToggle.IsChecked == true;
             GitBranchListHost.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+
+            if (!collapsed)
+            {
+                PopulateGitBranches();
+            }
+        }
+
+        // Git #1976 — the last ComputeGitBranchesSignature() result the branch list was
+        // actually rendered from. Null until the first real render. Mirrors #1968's
+        // _lastGitGraphSignature.
+        private string? _lastGitBranchesSignature;
+
+        /// <summary>
+        /// Git #1976 — a cheap, process-free signal for "has anything the branch list cares
+        /// about changed" (a commit, checkout, branch create/delete/move, or fetch/pull
+        /// updating a remote-tracking ref). Every one of those touches at least one of
+        /// .git/HEAD, .git/packed-refs, or a file under .git/refs/heads or .git/refs/remotes,
+        /// so the newest mtime among them is a reliable proxy without spawning
+        /// `git branch -a` just to find out. Mirrors #1968's ComputeGitGraphSignature, plus
+        /// refs/remotes since remote-tracking branches are rendered here too (unlike the
+        /// commit graph, which only cares about local history).
+        /// </summary>
+        private string ComputeGitBranchesSignature()
+        {
+            try
+            {
+                string gitDir = System.IO.Path.Combine(RootWorkspacePath, ".git");
+                DateTime newest = DateTime.MinValue;
+
+                void Consider(string path)
+                {
+                    if (System.IO.File.Exists(path))
+                    {
+                        var t = System.IO.File.GetLastWriteTimeUtc(path);
+                        if (t > newest) newest = t;
+                    }
+                }
+
+                Consider(System.IO.Path.Combine(gitDir, "HEAD"));
+                Consider(System.IO.Path.Combine(gitDir, "packed-refs"));
+
+                void ConsiderDir(string dir)
+                {
+                    if (System.IO.Directory.Exists(dir))
+                    {
+                        foreach (var f in System.IO.Directory.EnumerateFiles(dir, "*", System.IO.SearchOption.AllDirectories))
+                            Consider(f);
+                    }
+                }
+
+                ConsiderDir(System.IO.Path.Combine(gitDir, "refs", "heads"));
+                ConsiderDir(System.IO.Path.Combine(gitDir, "refs", "remotes"));
+
+                return newest.Ticks.ToString();
+            }
+            catch
+            {
+                // Never let a failed probe suppress a real refresh — a unique
+                // signature just means "always refresh," the safe failure direction.
+                return Guid.NewGuid().ToString();
+            }
         }
 
         /// <summary>
@@ -7612,9 +7676,22 @@ namespace BuildConsole.Controls
         /// thread. The current branch is marked with a filled
         /// dot; a local (non-current) branch checks out on click via the existing RunGitCommand
         /// pipeline, which already re-refreshes the whole panel afterward.
+        ///
+        /// Git #1976 — this used to do all of that unconditionally on every single call,
+        /// including the #859 FileSystemWatcher auto-refresh, even though the branch list is
+        /// collapsed by default and most calls found nothing had changed. Two gates now
+        /// short-circuit the expensive part (the `git branch -a` subprocess + full
+        /// StackPanel rebuild): skip entirely while collapsed (nobody can see it), and skip
+        /// if ComputeGitBranchesSignature() shows nothing branch-relevant has moved since the
+        /// last real render. Mirrors #1968's fix for PopulateGitGraph.
         /// </summary>
         public void PopulateGitBranches()
         {
+            if (GitBranchListHost.Visibility != Visibility.Visible) return;
+
+            string signature = ComputeGitBranchesSignature();
+            if (_lastGitBranchesSignature != null && signature == _lastGitBranchesSignature) return;
+
             // Git #2536 — same swallowed-stderr/exit-code pattern #2535 fixed on the
             // mutation path: drain stderr and capture the real exit code so a genuine
             // failure isn't indistinguishable from a repo with no branches.
@@ -7674,6 +7751,12 @@ namespace BuildConsole.Controls
             }).ContinueWith(t =>
             {
                 var (branches, code, errText, outText, launchErr) = t.Result;
+
+                // Git #1976 — re-sampled after the fetch (not reused from before it) so
+                // what's stored reflects the git state actually captured, in case a
+                // branch/ref moved in the narrow window while `git branch -a` was running.
+                _lastGitBranchesSignature = ComputeGitBranchesSignature();
+
                 Dispatcher.Invoke(() =>
                 {
                     if (launchErr != null || code != 0)

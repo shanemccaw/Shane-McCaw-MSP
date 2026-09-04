@@ -88,14 +88,25 @@ export async function lookupSkuMonthlyPriceCents(
   return { priceCents: row.monthlyPriceCents, displayName: row.displayName ?? skuPartNumber };
 }
 
+/** A pre-resolved `skuPartNumber -> price/displayName` map, as produced by an
+ * upfront `lookupSkuMonthlyPriceCents` pass. Pass this to `computeSkuCostBreakdown`
+ * to reuse a caller's already-resolved prices instead of re-querying
+ * `sku_price_reference` a second time for the same SKUs (Git #2863). */
+export type SkuPriceMap = Map<string, { priceCents: number | null; displayName: string }>;
+
 /**
  * 2 & 3. Multiplication + aggregation — count × price per SKU, no further
  * rollup (no bundle × SKU, no tenant × bundle math). `counts` is the raw
  * `{ skuPartNumber: count }` map already produced by the groupByCount transform.
+ *
+ * `opts.priceMap`, when provided, is used instead of querying
+ * `sku_price_reference` again — pass the map a caller already resolved via its
+ * own `lookupSkuMonthlyPriceCents` pass (e.g. a paid-only filtering step) to
+ * avoid querying the same SKUs twice per resolve.
  */
 export async function computeSkuCostBreakdown(
   counts: Record<string, number>,
-  opts: { region?: string; mspId?: number } = {},
+  opts: { region?: string; mspId?: number; priceMap?: SkuPriceMap } = {},
 ): Promise<SkuCostBreakdown> {
   const lines: SkuCostLine[] = [];
   const unknownSkus: string[] = [];
@@ -103,11 +114,13 @@ export async function computeSkuCostBreakdown(
 
   for (const [skuPartNumber, count] of Object.entries(counts)) {
     if (!Number.isFinite(count) || count <= 0) continue;
-    const { priceCents, displayName } = await lookupSkuMonthlyPriceCents({
-      skuPartNumber,
-      region: opts.region,
-      mspId: opts.mspId,
-    });
+    const { priceCents, displayName } =
+      opts.priceMap?.get(skuPartNumber) ??
+      (await lookupSkuMonthlyPriceCents({
+        skuPartNumber,
+        region: opts.region,
+        mspId: opts.mspId,
+      }));
     const totalForSku = priceCents == null ? null : priceCents * count;
     if (totalForSku != null) totalMonthlyCents += totalForSku;
     else unknownSkus.push(skuPartNumber);

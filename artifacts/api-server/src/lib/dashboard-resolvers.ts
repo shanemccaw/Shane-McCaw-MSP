@@ -97,7 +97,7 @@ import { getRecentEngineSnapshots } from "./tenant-engine-snapshots.ts";
 import { runSlaEngineForTenant } from "./sla-engine.ts";
 import { runScopeCreepEngineForTenant } from "./scope-creep-engine.ts";
 import { logger } from "./logger.ts";
-import { computeSkuCostBreakdown, centsToDollars, lookupSkuMonthlyPriceCents } from "./cost-engine.ts";
+import { computeSkuCostBreakdown, centsToDollars, lookupSkuMonthlyPriceCents, type SkuPriceMap } from "./cost-engine.ts";
 import { resolveLicenseWasteCounts, paidSeatFiguresFromLines } from "./license-waste-source.ts";
 import { evaluateDocGateCoverage } from "./doc-gate-coverage";
 import { getTenantServiceState, serviceDisplayName } from "./service-availability.ts";
@@ -844,10 +844,15 @@ async function resolveMonitorAggregation(def: MetricDef, tenantId: string): Prom
     // filtered client-side, leaving a "broken/empty panel" with no honest
     // reason why. paidSeatFiguresFromLines also reports what was excluded.
     const priceBySku = new Map<string, number | null>();
+    // Also keep the full { priceCents, displayName } shape so computeSkuCostBreakdown
+    // below can reuse this same resolved lookup instead of re-querying
+    // sku_price_reference a second time for the same SKUs (Git #2863).
+    const resolvedPrices: SkuPriceMap = new Map();
     for (const line of source.lines) {
       if (priceBySku.has(line.skuPartNumber)) continue;
-      const { priceCents } = await lookupSkuMonthlyPriceCents({ skuPartNumber: line.skuPartNumber });
+      const { priceCents, displayName } = await lookupSkuMonthlyPriceCents({ skuPartNumber: line.skuPartNumber });
       priceBySku.set(line.skuPartNumber, priceCents);
+      resolvedPrices.set(line.skuPartNumber, { priceCents, displayName });
     }
     const figures = paidSeatFiguresFromLines(source.lines, priceBySku);
     if (Object.keys(figures.paidCounts).length === 0) {
@@ -857,7 +862,7 @@ async function resolveMonitorAggregation(def: MetricDef, tenantId: string): Prom
         "every unused seat is on an unpriced/free/trial SKU — no genuinely priced waste to report",
       );
     }
-    const breakdown = await computeSkuCostBreakdown(figures.paidCounts);
+    const breakdown = await computeSkuCostBreakdown(figures.paidCounts, { priceMap: resolvedPrices });
     const buckets = breakdown.lines.map((l) => ({
       label: l.displayName,
       value: l.priceKnown ? centsToDollars(l.totalMonthlyPriceCents as number) : 0,
