@@ -73,7 +73,7 @@ vi.mock("./logger", () => {
   return { logger: noopLogger };
 });
 
-import { declineRemediationStepToRisk } from "./remediation-tracker-risk-decline";
+import { declineRemediationStepToRisk, declineRemediationChecklistItemToRisk } from "./remediation-tracker-risk-decline";
 import type { TenantScope } from "./portal-customer-scope";
 
 const scope: TenantScope = { customerId: 42, mspId: 9, tenantId: "contoso.onmicrosoft.com", tenantName: "Contoso", primaryDomain: "contoso.com", businessUnit: null };
@@ -207,5 +207,62 @@ describe("declineRemediationStepToRisk", () => {
     await declineRemediationStepToRisk({ ...baseInput, stepId: "s26", trackerStepRowId: 999 });
     // s26 IS in the catalogue — sanity check the real title is used, not a placeholder.
     expect(mockInsertValues[0].title).not.toMatch(/^Remediation step/);
+  });
+});
+
+describe("declineRemediationChecklistItemToRisk (#2869)", () => {
+  const checklistInput = {
+    checkKey: "sharepoint:orgwide-links",
+    trackerStepRowId: 601,
+    scope,
+    findingTitle: "2,940 anonymous links found",
+    severity: "critical" as const,
+    hazardCore: "Anonymous sharing links bypass tenant access controls.",
+    approverName: "Jordan Diaz",
+    statement: "We accept this risk for now.",
+  };
+
+  it("creates a signed, active risk decision from the caller's already-resolved finding evidence, no extra lookups", async () => {
+    mockSelectResultsQueue = [[]]; // no existing risk decision for this (mspId, rbdId) — the ONLY select this path makes
+
+    const result = await declineRemediationChecklistItemToRisk(checklistInput);
+
+    expect(result).toEqual({ riskDecisionId: 777, rbdId: "RR-RT-42-sharepoint:orgwide-links", alreadyDeclined: false });
+
+    const values = mockInsertValues[0];
+    expect(values.mspId).toBe(9);
+    expect(values.rbdId).toBe("RR-RT-42-sharepoint:orgwide-links");
+    expect(values.title).toBe("2,940 anonymous links found");
+    expect(values.controlViolated).toBe("Remediation Checklist");
+    expect(values.framework).toBe("Remediation Checklist");
+    expect(values.checkKey).toBe("sharepoint:orgwide-links");
+    expect(values.rawRiskLevel).toBe("critical");
+    expect(values.residualRiskLevel).toBe("critical");
+    expect(values.rawRiskScore).toBe(100);
+    expect(values.liabilityValueUsd).toBe(0); // never an invented dollar figure
+    expect(values.graphEndpoint).toBe("");
+    expect(values.hazardDescription).toContain("Anonymous sharing links bypass tenant access controls.");
+    expect(values.hazardDescription).toContain("The customer declined this remediation item");
+    expect(values.status).toBe("active");
+    expect(values.riskStatus).toBe("Accepted");
+    expect(values.acceptedStatement).toBe("We accept this risk for now.");
+    expect(values.spawnedByRemediationStepId).toBe(601);
+    expect(values.additionalCheckKeys).toBeUndefined();
+  });
+
+  it("maps warning severity to the high risk level, same as a scan's own warning severity", async () => {
+    mockSelectResultsQueue = [[]];
+    await declineRemediationChecklistItemToRisk({ ...checklistInput, severity: "warning" });
+    expect(mockInsertValues[0].rawRiskLevel).toBe("high");
+    expect(mockInsertValues[0].rawRiskScore).toBe(75);
+  });
+
+  it("is idempotent: a repeat decline returns the existing signed risk without re-inserting", async () => {
+    mockSelectResultsQueue = [[{ id: 950, acceptedAt: new Date("2026-08-01T00:00:00.000Z") }]];
+
+    const result = await declineRemediationChecklistItemToRisk(checklistInput);
+
+    expect(result).toEqual({ riskDecisionId: 950, rbdId: "RR-RT-42-sharepoint:orgwide-links", alreadyDeclined: true });
+    expect(mockInsertValues).toHaveLength(0);
   });
 });
