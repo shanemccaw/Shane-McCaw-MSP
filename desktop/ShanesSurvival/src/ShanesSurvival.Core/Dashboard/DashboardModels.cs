@@ -1,4 +1,4 @@
-namespace ShanesSurvival.App.Dashboard;
+namespace ShanesSurvival.Core.Dashboard;
 
 /// <summary>
 /// One bill account's real shortfall status. Shortfall is null (not 0) when it genuinely

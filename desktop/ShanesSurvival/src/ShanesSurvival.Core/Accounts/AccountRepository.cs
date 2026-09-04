@@ -1,6 +1,6 @@
 using Npgsql;
 
-namespace ShanesSurvival.App.Accounts;
+namespace ShanesSurvival.Core.Accounts;
 
 /// <summary>Real row from accounts, joined with its owning plaid_items.institution_name.</summary>
 public sealed record AccountRow(

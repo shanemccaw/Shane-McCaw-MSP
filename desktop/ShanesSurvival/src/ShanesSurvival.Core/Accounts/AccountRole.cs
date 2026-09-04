@@ -1,4 +1,4 @@
-namespace ShanesSurvival.App.Accounts;
+namespace ShanesSurvival.Core.Accounts;
 
 /// <summary>
 /// The role Shane explicitly assigns to a synced Plaid account — never inferred from the

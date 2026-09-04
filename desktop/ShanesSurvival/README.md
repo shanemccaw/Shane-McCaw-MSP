@@ -135,14 +135,19 @@ migrations/
   002_plaid_sync.sql
   003_account_roles.sql
 src/
+  ShanesSurvival.App/            — WPF (net8.0-windows) desktop shell, see below
+  ShanesSurvival.Core/           — net8.0 class library: settings + Dashboard shortfall math +
+                                    account/transaction reads, shared by App and Mcp so neither
+                                    reimplements the other's queries
+  ShanesSurvival.Mcp/            — net8.0 console app: the real local MCP server, see below
+
   ShanesSurvival.App/
     App.xaml(.cs)
     MainWindow.xaml(.cs)        — shell window: connection/migration status, Link, Sync Now,
                                   Assign Account Roles, Open Dashboard
     Settings/
-      AppSettings.cs            — settings shape (Postgres connection string, Plaid credentials)
-      SettingsService.cs        — load/save %AppData%\ShanesSurvival\settings.json
       SettingsWindow.xaml(.cs)  — dialog for entering connection string + Plaid credentials
+                                  (AppSettings/SettingsService now live in ShanesSurvival.Core)
     Data/
       DatabaseConnectionTester.cs — real Npgsql connect + required-table check
       MigrationRunner.cs          — applies migrations/*.sql in order, tracked in schema_migrations
@@ -154,14 +159,91 @@ src/
       PlaidSyncService.cs   — pulls accounts/balances + paged transactions/sync into Postgres
       PlaidLinkWindow.xaml(.cs) — WebView2 window hosting Plaid's real hosted Link flow
     Accounts/
+      AccountRoleWindow.xaml(.cs) — dialog to assign role/target/GATE per synced account
+                                     (AccountRole/AccountRepository now live in ShanesSurvival.Core)
+    Dashboard/
+      DashboardWindow.xaml(.cs) — top-line covered/short, GATE cards, bills, spend bleed by merchant
+                                   (DashboardModels/DashboardService now live in ShanesSurvival.Core)
+
+  ShanesSurvival.Core/
+    Settings/
+      AppSettings.cs            — settings shape (Postgres connection string, Plaid credentials)
+      SettingsService.cs        — load/save %AppData%\ShanesSurvival\settings.json
+    Accounts/
       AccountRole.cs             — income_gate / bill / spend vocabulary
       AccountRepository.cs       — real read/write of accounts.role / target_amount / is_gate
-      AccountRoleWindow.xaml(.cs) — dialog to assign role/target/GATE per synced account
     Dashboard/
       DashboardModels.cs   — real result shapes (BillStatus, SpendAccountBleed, DashboardResult)
       DashboardService.cs  — real shortfall math computed live off Postgres balances/transactions
-      DashboardWindow.xaml(.cs) — top-line covered/short, GATE cards, bills, spend bleed by merchant
+                              (the same math both the WPF Dashboard and the MCP server use —
+                              never reimplemented a second time)
+    Transactions/
+      TransactionRepository.cs — real, bounded, most-recent-first transaction reads per account
+
+  ShanesSurvival.Mcp/
+    Program.cs             — real local MCP server entry point (stdio transport)
+    Tools/FinanceTools.cs  — the 4 real read-only MCP tools, see below
 ```
+
+## MCP server (Claude Desktop)
+
+`ShanesSurvival.Mcp` is a real local [MCP](https://modelcontextprotocol.io/) server (stdio
+transport, built on the official `ModelContextProtocol` .NET SDK) so Claude Desktop can answer
+real questions grounded in this app's own real Postgres data — the same connection string from
+`%AppData%\ShanesSurvival\settings.json`, never hardcoded or logged. **Read-only in this pass —
+no write tools.** All 4 tools reuse `ShanesSurvival.Core`'s `DashboardService`/`AccountRepository`/
+`TransactionRepository` directly; none of the GATE shortfall or bleed math is re-derived here.
+
+Real tools exposed:
+
+| Tool | What it returns |
+|---|---|
+| `gate_status` | Income Gate (Direct Deposit) real balance vs. total real shortfall across every bill account — covered, or short by $X — plus the two GATE-tier bills (mortgage, Tesla). |
+| `bill_status` | Every Bill-role account: real target vs. real current Plaid balance and the real shortfall, GATE-tier called out separately, sorted worst-shortfall-first. |
+| `spend_bleed` | The 2 spend accounts' real transactions from the last 30 days, grouped and summed by merchant. |
+| `recent_transactions` | Bounded, most-recent-first real transactions for one named account (`accountName`, `limit` up to 100). |
+
+Build it:
+
+```
+dotnet build ShanesSurvival.sln
+```
+
+The server binary lands at `src\ShanesSurvival.Mcp\bin\Debug\net8.0\ShanesSurvival.Mcp.exe`
+(or `bin\Release\net8.0\...` after a Release build). It requires no arguments — on launch it
+reads the real Postgres connection string from `%AppData%\ShanesSurvival\settings.json` (same
+file, same rule as the WPF app: never hardcoded, never logged) and speaks MCP over stdio. All
+log output goes to stderr, never stdout, so it never corrupts the JSON-RPC stream.
+
+To point Claude Desktop at it, add an entry to Claude Desktop's `claude_desktop_config.json`
+(Windows: `%AppData%\Claude\claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "shanes-survival": {
+      "command": "C:\\path\\to\\ShanesSurvival\\src\\ShanesSurvival.Mcp\\bin\\Release\\net8.0\\ShanesSurvival.Mcp.exe"
+    }
+  }
+}
+```
+
+(Use the real path to wherever this repo actually lives, and a Release build for day-to-day use.)
+Restart Claude Desktop after editing the config — it launches the server as a subprocess per
+session, so no separate "start the server" step is needed. `%AppData%\ShanesSurvival\settings.json`
+must already have a real Postgres connection string configured (Settings… in the WPF app) for
+the tools to return real data instead of a "no connection string configured" message.
+
+**Live-verified, for real:** a real `initialize` → `tools/list` → `tools/call` MCP session driven
+over the server's actual stdin/stdout pipes (not a mock) confirmed all 4 tools register with
+correct schemas and execute against the real local Postgres database — `gate_status`,
+`bill_status`, and `spend_bleed` each returned real, honest "no account assigned this role yet"
+warnings (the real current state: no account has Income Gate/Bill/Spend roles assigned yet in
+the connected database), and `recent_transactions` correctly reported "no account named ... —
+none synced yet" for an unassigned name. This run caught and fixed a real bug in-session:
+`InvariantGlobalization` in the project file made `CultureInfo.GetCultureInfo("en-US")` throw at
+runtime (surfaced as MCP's generic "An error occurred invoking 'gate_status'"); removed, and all
+4 tools were re-verified clean afterward.
 
 ## Dashboard — account roles, targets, and shortfall math
 
@@ -194,7 +276,6 @@ renders current Postgres state; click Refresh to pull fresh Plaid data first.
 
 Deliberately out of scope for this build:
 
-- **MCP server** — no MCP server exposing this data to an agent yet.
 - Automatic/background sync — "Sync Now" (and the dashboard's "Refresh") are manual clicks;
   no scheduled sync yet.
 - Multi-item UI beyond a plain per-institution status line — no per-account view outside the

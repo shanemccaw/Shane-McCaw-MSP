@@ -1,7 +1,7 @@
 using System.IO;
 using System.Text.Json;
 
-namespace ShanesSurvival.App.Settings;
+namespace ShanesSurvival.Core.Settings;
 
 /// <summary>
 /// Loads and saves <see cref="AppSettings"/> to a per-user file outside the repo/source tree,

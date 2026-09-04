@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using ShanesSurvival.Core.Accounts;
 
 namespace ShanesSurvival.App.Accounts;
 

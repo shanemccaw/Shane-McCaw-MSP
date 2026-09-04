@@ -1,4 +1,4 @@
-namespace ShanesSurvival.App.Settings;
+namespace ShanesSurvival.Core.Settings;
 
 /// <summary>
 /// Locally-persisted app settings. Never hardcoded into source, never logged.

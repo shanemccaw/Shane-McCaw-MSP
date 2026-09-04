@@ -1,6 +1,6 @@
 using Npgsql;
 
-namespace ShanesSurvival.App.Dashboard;
+namespace ShanesSurvival.Core.Dashboard;
 
 /// <summary>
 /// Real shortfall math computed live off real Plaid balances already in Postgres — not

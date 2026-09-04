@@ -1,5 +1,6 @@
 using System.Windows;
 using ShanesSurvival.App.Data;
+using ShanesSurvival.Core.Settings;
 
 namespace ShanesSurvival.App.Settings;
 

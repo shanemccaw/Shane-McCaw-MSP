@@ -3,7 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using ShanesSurvival.App.Plaid;
-using ShanesSurvival.App.Settings;
+using ShanesSurvival.Core.Dashboard;
+using ShanesSurvival.Core.Settings;
 
 namespace ShanesSurvival.App.Dashboard;
 

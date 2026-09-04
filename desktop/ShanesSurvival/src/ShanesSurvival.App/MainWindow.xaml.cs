@@ -5,6 +5,9 @@ using ShanesSurvival.App.Dashboard;
 using ShanesSurvival.App.Data;
 using ShanesSurvival.App.Plaid;
 using ShanesSurvival.App.Settings;
+using ShanesSurvival.Core.Accounts;
+using ShanesSurvival.Core.Dashboard;
+using ShanesSurvival.Core.Settings;
 
 namespace ShanesSurvival.App;
 
