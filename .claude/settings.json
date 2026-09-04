@@ -18,7 +18,22 @@
       "Bash(pnpm:*)",
       "Bash(node:*)",
       "Bash(gh:*)",
-      "Bash(dotnet:*)"
+      "Bash(dotnet:*)",
+      "PowerShell(psql:*)",
+      "PowerShell(pg_dump:*)",
+      "PowerShell(npx tsx:*)",
+      "PowerShell(grep:*)",
+      "PowerShell(rg:*)",
+      "PowerShell(find:*)",
+      "PowerShell(sed:*)",
+      "PowerShell(awk:*)",
+      "PowerShell(wc:*)",
+      "PowerShell(cat:*)",
+      "PowerShell(git:*)",
+      "PowerShell(pnpm:*)",
+      "PowerShell(node:*)",
+      "PowerShell(gh:*)",
+      "PowerShell(dotnet:*)"
     ]
   },
   "hooks": {
