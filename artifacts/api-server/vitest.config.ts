@@ -473,6 +473,10 @@ export default defineConfig({
       // fixes so a caught failure never records with neither http_status nor
       // error_code.
       "src/lib/config-snapshot-collector.test.ts",
+      // #1947 — the freeze-safe retention clock (a 7-year freeze that resumes from
+      // exactly the remainder it froze with), the referential delete guard, and the
+      // provenance bypass gate. Pure functions and in-memory registries, no database.
+      "src/lib/retention/retention-clock.test.ts",
     ],
     coverage: {
       provider: "v8",
