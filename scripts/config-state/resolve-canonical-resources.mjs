@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * #2821 — Canonical-record resolution for `config_resources`.
  *
@@ -70,6 +69,17 @@
  * cache, and re-running it is safe.
  *
  * Usage: node scripts/config-state/resolve-canonical-resources.mjs [--dry-run] [--verbose]
+ *
+ * NO SHEBANG, deliberately — this file is imported by `build-resource-model.mjs` AND by
+ * `canonical-resource-resolution-2821.test.ts`. This repo runs `core.autocrlf=true` with
+ * no `.gitattributes` override for `.mjs`, so a fresh checkout on Windows lands the file
+ * with CRLF endings, and a shebang line ending `\r\n` makes Vite's module loader throw
+ * `SyntaxError: Invalid or unexpected token` on import — confirmed by isolating all four
+ * combinations (CRLF+shebang fails; CRLF without one, and LF with one, both load). Node
+ * itself parses it fine either way, so `node --check` and a direct CLI run both pass and
+ * only the test sees it. The other importable modules here (`parse-m365dsc.mjs`,
+ * `map-monitor-checks.mjs`) already carry no shebang for the same reason; only the
+ * never-imported entry points (`build-resource-model.mjs`, `fetch-sources.mjs`) do.
  */
 import { pathToFileURL } from "node:url";
 import { connect } from "./db.mjs";
