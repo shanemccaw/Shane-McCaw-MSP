@@ -141,6 +141,16 @@ vi.mock("express-rate-limit", () => ({
   default: vi.fn(() => (_req: Request, _res: Response, next: NextFunction) => next()),
 }));
 
+// The sign route dynamically `import()`s the workflow executor to fire the
+// "MSP SOW Charge Approval" workflow. The real module is ~11k lines and pulls
+// in transitive integrations (e.g. the Anthropic AI client, which throws at
+// module-load time if its env vars aren't provisioned) — mocking it here keeps
+// this a unit test of msp-sow.ts and avoids a real, expensive, flaky-timeout
+// transitive import.
+vi.mock("../lib/workflow-executor.ts", () => ({
+  emitWorkflowEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 // ── Import router AFTER all mocks ─────────────────────────────────────────────
 
 import router from "./msp-sow.ts";

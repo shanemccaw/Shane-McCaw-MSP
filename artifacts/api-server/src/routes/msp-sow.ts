@@ -658,12 +658,20 @@ router.post(
     // Charge now requires MSP approval (spec: MSP_Full_Catalog_Purchase_Charging_Spec_v1,
     // Phase 1) — no longer auto-fires here. Fires the "MSP SOW Charge Approval" seeded
     // workflow instead, which pauses at an approval_gate before calling charge_msp_card.
-    const { emitWorkflowEvent } = await import("../lib/workflow-executor");
-    void emitWorkflowEvent("sow.signed", {
-      sowId, mspId: sow.mspId, amountCents: sow.amountCents, actorUserId: user.id,
-    }).catch((err) => {
-      log.warn({ err, sowId }, "msp-sow: failed to fire sow.signed workflow event (charge approval will not trigger)");
-    });
+    // The import itself (not just the call) must be non-fatal: workflow-executor.ts
+    // transitively pulls in integrations that throw at module-load time when their
+    // env vars aren't provisioned (e.g. the Anthropic AI integration), and a signed
+    // SOW must not 500 just because charge-approval automation can't be wired up.
+    try {
+      const { emitWorkflowEvent } = await import("../lib/workflow-executor");
+      void emitWorkflowEvent("sow.signed", {
+        sowId, mspId: sow.mspId, amountCents: sow.amountCents, actorUserId: user.id,
+      }).catch((err) => {
+        log.warn({ err, sowId }, "msp-sow: failed to fire sow.signed workflow event (charge approval will not trigger)");
+      });
+    } catch (err) {
+      log.warn({ err, sowId }, "msp-sow: failed to load workflow executor (charge approval will not trigger)");
+    }
 
     res.json({ ok: true, status: "signed", message: "SOW signed successfully. Awaiting MSP approval to charge." });
   },
