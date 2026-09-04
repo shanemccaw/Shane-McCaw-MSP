@@ -10,11 +10,14 @@ using ShanesSurvival.Core.Transactions;
 namespace ShanesSurvival.Mcp.Tools;
 
 /// <summary>
-/// Real, read-only MCP tools grounded in ShanesSurvival's own Postgres database — the same
-/// connection string the WPF app reads from %AppData%\ShanesSurvival\settings.json, and the
-/// same GATE shortfall/bleed math already built and verified in <see cref="DashboardService"/>
-/// (#2885). No math is re-derived here; every tool below either calls DashboardService directly
-/// or runs a real, bounded read against the same tables. No write tools in this pass.
+/// Real MCP tools grounded in ShanesSurvival's own Postgres database — the same connection
+/// string the WPF app reads from %AppData%\ShanesSurvival\settings.json, and the same GATE
+/// shortfall/bleed math already built and verified in <see cref="DashboardService"/> (#2885). No
+/// math is re-derived here; every tool below either calls DashboardService directly or runs a
+/// real, bounded read/write against the same tables. <see cref="SetBillTargetAsync"/> (#2902) is
+/// the one write tool so far — it reuses <see cref="AccountRepository.UpdateRoleAsync"/>, the
+/// same call the WPF "Assign Account Roles…" dialog makes, rather than re-deriving the
+/// lookup/update logic.
 /// </summary>
 [McpServerToolType]
 public sealed class FinanceTools(
@@ -226,6 +229,52 @@ public sealed class FinanceTools(
         }
 
         return sb.ToString().TrimEnd();
+    }
+
+    [McpServerTool(Name = "set_bill_target")]
+    [Description(
+        "Sets a real target_amount on an existing account with the Bill role — the same field " +
+        "the WPF \"Assign Account Roles…\" dialog writes. The account must already exist (match " +
+        "by real name, case-insensitive, same convention as recent_transactions) and must " +
+        "already have role = Bill; setting a target on a Spend/Income Gate/Unassigned account " +
+        "is rejected with a clear error rather than silently accepted or ignored.")]
+    public async Task<string> SetBillTargetAsync(
+        [Description("The account's real name, exactly as shown by bill_status/spend_bleed/gate_status (case-insensitive).")]
+        string accountName,
+        [Description("The new real target amount for this bill account, e.g. 1850.00.")]
+        decimal targetAmount)
+    {
+        var connectionString = ConnectionString;
+
+        var accounts = await accountRepository.ListAsync(connectionString);
+        if (!accounts.Success)
+        {
+            return $"Could not read accounts: {accounts.ErrorMessage}";
+        }
+
+        var account = accounts.Accounts.FirstOrDefault(
+            a => string.Equals(a.Name, accountName, StringComparison.OrdinalIgnoreCase));
+        if (account is null)
+        {
+            var known = string.Join(", ", accounts.Accounts.Select(a => a.Name));
+            return $"No account named \"{accountName}\" found. Real known accounts: {(known.Length == 0 ? "(none synced yet)" : known)}";
+        }
+
+        if (account.Role != AccountRole.Bill)
+        {
+            return $"\"{account.Name}\" has role {account.Role.DisplayName()}, not Bill — " +
+                   "target_amount only applies to Bill accounts. Assign it the Bill role first " +
+                   "(via \"Assign Account Roles…\" in the WPF app) before setting a target.";
+        }
+
+        var update = await accountRepository.UpdateRoleAsync(
+            connectionString, account.Id, account.Role, targetAmount, account.IsGate);
+        if (!update.Success)
+        {
+            return $"Could not set target for \"{account.Name}\": {update.ErrorMessage}";
+        }
+
+        return $"Set \"{account.Name}\" target to {Money(targetAmount)}. Run bill_status to confirm the shortfall total.";
     }
 
     private static string FormatBill(BillStatus bill)
