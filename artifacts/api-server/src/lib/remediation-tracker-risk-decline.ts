@@ -77,6 +77,7 @@ import {
 } from "@workspace/db";
 
 import { riskScoreForLevel } from "./m365-change-router";
+import { assignRegisterRef } from "./risk-register-ref";
 import { REMEDIATION_TRACKER_CATALOGUE, type RemediationTrackerCatalogueStep } from "./remediation-tracker-catalogue";
 import { REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "./remediation-tracker-verification";
 import type { TenantScope } from "./portal-customer-scope";
@@ -276,6 +277,8 @@ export async function declineRemediationStepToRisk(input: RemediationDeclineInpu
       set: { updatedAt: acceptedAt },
     })
     .returning({ id: mspRiskDecisionsTable.id });
+
+  await assignRegisterRef(inserted.id);
 
   log.info(
     { customerId: scope.customerId, stepId, riskDecisionId: inserted.id, rbdId, checkKey: primaryCheckKey, additionalCheckKeys },

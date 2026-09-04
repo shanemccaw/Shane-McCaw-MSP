@@ -32,6 +32,7 @@ import { and, eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { assignRegisterRef } from "../lib/risk-register-ref.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -241,6 +242,8 @@ router.post("/admin/rbd/:customerId", requireAdmin, async (req: Request, res: Re
         rationale: d.rationale ?? null,
       })
       .returning();
+
+    inserted.registerRef = await assignRegisterRef(inserted.id);
 
     log.info({ customerId, rbdId, checkKey: inserted.checkKey }, "risk-based decision created");
     res.status(201).json({ decision: rbdToWire(inserted) });

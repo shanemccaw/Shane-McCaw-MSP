@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { assignRegisterRef } from "../lib/risk-register-ref.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -232,9 +233,12 @@ router.post(
         })
         .returning({ id: mspRiskDecisionsTable.id });
 
+      const registerRef = await assignRegisterRef(inserted.id);
+
       res.status(201).json({
         id: inserted.id,
         rbdId: parsedBody.data.rbdId,
+        registerRef,
         message: "Risk-Based Decision request created successfully",
       });
     } catch (err: unknown) {

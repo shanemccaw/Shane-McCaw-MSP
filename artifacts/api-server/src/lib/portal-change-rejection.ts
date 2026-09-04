@@ -31,6 +31,7 @@ import { declineRoutedChangeToRisk } from "./m365-change-router";
 import { violatesSeparationOfDuties } from "./portal-change-approvals";
 import { resolveDelegatedAuthority, NO_POLICY, type ApprovalPolicyConfig, type ApproverIdentity, type CrEssentials } from "./portal-change-approvals-store";
 import { recordCrEvent } from "./portal-change-timeline-store";
+import { assignRegisterRef } from "./risk-register-ref";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "workflow.change-control" });
@@ -272,5 +273,6 @@ async function createAssignedRiskFromRejection(
       set: { updatedAt: now },
     })
     .returning({ id: mspRiskDecisionsTable.id });
+  await assignRegisterRef(inserted.id);
   return inserted.id;
 }
