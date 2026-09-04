@@ -84,7 +84,7 @@ public sealed class DashboardService
 
                 bills.Add(new BillStatus(
                     account.Id, account.Name, account.TargetAmount, account.CurrentBalance,
-                    account.IsGate, shortfall, warning));
+                    account.IsGate, shortfall, warning, account.LastPaidDate));
             }
 
             foreach (var missing in bills.Where(b => b.Warning is not null))
@@ -137,13 +137,14 @@ public sealed class DashboardService
         }
     }
 
-    private sealed record RoleAccount(Guid Id, string Name, decimal? CurrentBalance, decimal? TargetAmount, bool IsGate);
+    private sealed record RoleAccount(
+        Guid Id, string Name, decimal? CurrentBalance, decimal? TargetAmount, bool IsGate, DateOnly? LastPaidDate);
 
     private static async Task<List<RoleAccount>> LoadRoleAccountsAsync(NpgsqlConnection connection, string role)
     {
         var accounts = new List<RoleAccount>();
         await using var command = new NpgsqlCommand(
-            "SELECT id, name, current_balance, target_amount, is_gate FROM accounts WHERE role = @role ORDER BY name",
+            "SELECT id, name, current_balance, target_amount, is_gate, last_paid_date FROM accounts WHERE role = @role ORDER BY name",
             connection);
         command.Parameters.AddWithValue("role", role);
         await using var reader = await command.ExecuteReaderAsync();
@@ -154,7 +155,8 @@ public sealed class DashboardService
                 reader.GetString(1),
                 reader.IsDBNull(2) ? null : reader.GetDecimal(2),
                 reader.IsDBNull(3) ? null : reader.GetDecimal(3),
-                reader.GetBoolean(4)));
+                reader.GetBoolean(4),
+                reader.IsDBNull(5) ? null : DateOnly.FromDateTime(reader.GetDateTime(5))));
         }
         return accounts;
     }

@@ -4,7 +4,10 @@ namespace ShanesSurvival.Core.Dashboard;
 /// One bill account's real shortfall status. Shortfall is null (not 0) when it genuinely
 /// can't be computed — no target set, or Plaid hasn't returned a balance for this account —
 /// so the dashboard can say "target not set" / "balance unknown" instead of silently
-/// reporting a false $0 shortfall.
+/// reporting a false $0 shortfall. LastPaidDate (#2912) is purely informational here — it
+/// doesn't change this record's own shortfall math (current balance vs. target), a separate
+/// real question from "is this cycle's payment already made"; that question is answered by
+/// <see cref="PayPeriodDueService"/> instead.
 /// </summary>
 public sealed record BillStatus(
     Guid AccountId,
@@ -13,7 +16,8 @@ public sealed record BillStatus(
     decimal? CurrentBalance,
     bool IsGate,
     decimal? Shortfall,
-    string? Warning);
+    string? Warning,
+    DateOnly? LastPaidDate);
 
 public sealed record MerchantBleed(string Merchant, int TransactionCount, decimal TotalAmount);
 

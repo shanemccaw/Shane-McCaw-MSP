@@ -50,6 +50,17 @@ public sealed class PayPeriodDueService(AccountRepository accountRepository)
                 continue;
             }
 
+            // Already paid this cycle (#2912): a bill drops out of the due-window list once
+            // its real last_paid_date is on or after the most recent real due-day occurrence
+            // at or before today — i.e. it's covered through the cycle currently in progress,
+            // regardless of whether the specific dueDate landed in this window is still ahead.
+            // It reappears once a full cycle genuinely passes without a fresh mark_bill_paid.
+            var mostRecentDueDate = FindMostRecentDueDateOnOrBefore(today, account.DueDay.Value);
+            if (account.LastPaidDate is not null && account.LastPaidDate.Value >= mostRecentDueDate)
+            {
+                continue;
+            }
+
             string? warning = account.TargetAmount is null ? "target not set" : null;
             dueBills.Add(new DueBill(account.Id, account.Name, dueDate.Value, account.TargetAmount, warning));
         }
@@ -87,6 +98,27 @@ public sealed class PayPeriodDueService(AccountRepository accountRepository)
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Real "already paid this cycle" anchor (#2912): the most recent real due-day occurrence
+    /// that falls on or before today. Tries the current month first, clamping dueDay to that
+    /// month's real last day (same convention as <see cref="FindDueDateInWindow"/>); if that
+    /// candidate is still ahead of today, falls back one month. dueDay is 1-31 so at most one
+    /// month back is ever needed to land on or before today.
+    /// </summary>
+    private static DateOnly FindMostRecentDueDateOnOrBefore(DateOnly today, int dueDay)
+    {
+        var thisMonthDays = DateTime.DaysInMonth(today.Year, today.Month);
+        var thisMonthCandidate = new DateOnly(today.Year, today.Month, Math.Min(dueDay, thisMonthDays));
+        if (thisMonthCandidate <= today)
+        {
+            return thisMonthCandidate;
+        }
+
+        var prevMonth = new DateOnly(today.Year, today.Month, 1).AddMonths(-1);
+        var prevMonthDays = DateTime.DaysInMonth(prevMonth.Year, prevMonth.Month);
+        return new DateOnly(prevMonth.Year, prevMonth.Month, Math.Min(dueDay, prevMonthDays));
     }
 
     private static PayPeriodDueResult Failure(string message) =>

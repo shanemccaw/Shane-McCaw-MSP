@@ -116,7 +116,9 @@ public sealed class FinanceTools(
         "Real per-bill-account status for every account with the Bill role: real target " +
         "amount vs. real current Plaid balance, and the real shortfall (max(0, target - " +
         "balance)), sorted worst-shortfall-first. GATE-tier bills (mortgage, Tesla) and the " +
-        "rest of the bills are both included, GATE-tier called out separately.")]
+        "rest of the bills are both included, GATE-tier called out separately. Each bill also " +
+        "shows its real last_paid_date (#2912) — informational only here; it doesn't change " +
+        "this shortfall math, use pay_period_due_status for the already-paid-this-cycle lens.")]
     public async Task<string> GetBillStatusAsync()
     {
         var result = await dashboardService.ComputeAsync(ConnectionString);
@@ -359,6 +361,55 @@ public sealed class FinanceTools(
         return $"Set \"{account.Name}\" due day to {dueDay}. Run pay_period_due_status to confirm.";
     }
 
+    [McpServerTool(Name = "mark_bill_paid")]
+    [Description(
+        "Records that a real Bill-role account's payment for the current cycle has genuinely " +
+        "been made — sets accounts.last_paid_date, the field pay_period_due_status uses to tell " +
+        "\"already paid this cycle\" apart from a genuinely neglected bill (#2912). Real bug " +
+        "this fixes: pay_period_due_status previously had no way to know a bill was already " +
+        "paid, and would list it as still due — a real overcount on the short-runway total. " +
+        "Same validation pattern as set_bill_target/set_bill_due_day: the account must already " +
+        "exist (match by real name, case-insensitive) and must already have role = Bill.")]
+    public async Task<string> MarkBillPaidAsync(
+        [Description("The account's real name, exactly as shown by bill_status/spend_bleed/gate_status (case-insensitive).")]
+        string accountName,
+        [Description("The real date this bill was paid, e.g. 2026-09-05. Defaults to today if omitted.")]
+        DateOnly? paidDate = null)
+    {
+        var connectionString = ConnectionString;
+
+        var accounts = await accountRepository.ListAsync(connectionString);
+        if (!accounts.Success)
+        {
+            return $"Could not read accounts: {accounts.ErrorMessage}";
+        }
+
+        var account = accounts.Accounts.FirstOrDefault(
+            a => string.Equals(a.Name, accountName, StringComparison.OrdinalIgnoreCase));
+        if (account is null)
+        {
+            var known = string.Join(", ", accounts.Accounts.Select(a => a.Name));
+            return $"No account named \"{accountName}\" found. Real known accounts: {(known.Length == 0 ? "(none synced yet)" : known)}";
+        }
+
+        if (account.Role != AccountRole.Bill)
+        {
+            return $"\"{account.Name}\" has role {account.Role.DisplayName()}, not Bill — " +
+                   "last_paid_date only applies to Bill accounts. Assign it the Bill role first " +
+                   "(via \"Assign Account Roles…\" in the WPF app) before marking it paid.";
+        }
+
+        var resolvedPaidDate = paidDate ?? DateOnly.FromDateTime(DateTime.Now);
+
+        var update = await accountRepository.UpdateLastPaidDateAsync(connectionString, account.Id, resolvedPaidDate);
+        if (!update.Success)
+        {
+            return $"Could not mark \"{account.Name}\" paid: {update.ErrorMessage}";
+        }
+
+        return $"Marked \"{account.Name}\" paid as of {resolvedPaidDate:yyyy-MM-dd}. Run pay_period_due_status to confirm it's dropped from the current cycle.";
+    }
+
     [McpServerTool(Name = "pay_period_due_status")]
     [Description(
         "Real 'what's due between this paycheck and the next one' view — every Bill-role " +
@@ -465,7 +516,11 @@ public sealed class FinanceTools(
             : bill.Shortfall.Value == 0
                 ? "covered"
                 : $"short {Money(bill.Shortfall)}";
-        return $"{bill.Name}: target {target}, balance {balance} — {shortfall}";
+        // last_paid_date (#2912) is informational only here — it doesn't change this bill's own
+        // shortfall math (current balance vs. target); pay_period_due_status is what actually
+        // acts on "already paid this cycle."
+        var lastPaid = bill.LastPaidDate is null ? "never marked paid" : $"last paid {bill.LastPaidDate:yyyy-MM-dd}";
+        return $"{bill.Name}: target {target}, balance {balance} — {shortfall} ({lastPaid})";
     }
 
     private static void AppendWarnings(StringBuilder sb, IReadOnlyList<string> warnings)
