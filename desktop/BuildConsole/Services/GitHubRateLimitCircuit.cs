@@ -62,20 +62,66 @@ namespace BuildConsole.Services
         private static readonly TimeSpan MaxWindow = TimeSpan.FromMinutes(15);
 
         /// <summary>
-        /// True if a real GitHub call should be SUPPRESSED right now (the breaker is open and its
-        /// window hasn't elapsed). When it returns true, <paramref name="reason"/> is a short human
-        /// explanation for the caller to surface as its failure text. When the window has elapsed
-        /// this returns false (half-open) so exactly one real call is allowed through to probe.
+        /// Git #2867 — how long a single half-open probe call is granted exclusive passage. When the
+        /// backoff window elapses, exactly ONE real call is let through to probe GitHub; every other
+        /// concurrent caller keeps short-circuiting for this brief lease until that probe reports its
+        /// outcome (<see cref="RecordSuccess"/> closes the breaker, <see cref="RecordRateLimited"/>
+        /// re-opens it — either way overwriting this lease). If the probe never reports back (it hit a
+        /// non-rate-limit failure the circuit isn't told about, or was lost), the lease simply elapses
+        /// and the next caller becomes a fresh probe — so a lost probe can never wedge the breaker
+        /// open forever. Must comfortably exceed a single GitHub call's round trip yet be short enough
+        /// that a lost probe recovers quickly.
+        /// </summary>
+        private static readonly TimeSpan ProbeLease = TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        /// True if a real GitHub call should be SUPPRESSED right now.
+        ///
+        /// Git #2867 — the breaker has three real states, not two:
+        /// <list type="bullet">
+        /// <item>CLOSED (<c>_openUntilUtc == MinValue</c>): never suppress — every call runs.</item>
+        /// <item>OPEN (<c>now &lt; _openUntilUtc</c>): suppress — the backoff window hasn't elapsed.</item>
+        /// <item>HALF-OPEN (<c>now &gt;= _openUntilUtc &amp;&amp; _openUntilUtc != MinValue</c>): the window
+        /// has elapsed. Let EXACTLY ONE call through as a probe and immediately push
+        /// <c>_openUntilUtc</c> forward by <see cref="ProbeLease"/> so every other concurrent caller
+        /// keeps suppressing until that probe reports back.</item>
+        /// </list>
+        /// The previous implementation returned <c>false</c> for EVERY caller the instant the window
+        /// elapsed, releasing a thundering herd of simultaneous GitHub calls — which is exactly what
+        /// re-triggers GitHub's <em>secondary</em> rate limit, re-tripping the breaker every window on
+        /// a token that is actually healthy. That self-perpetuating live-lock is #2867. Leasing the
+        /// probe makes the code honour the single-probe contract its own doc comment already promised.
+        ///
+        /// When this returns true, <paramref name="reason"/> is a short human explanation for the
+        /// caller to surface as its failure text.
         /// </summary>
         public static bool ShouldShortCircuit(out string reason)
         {
             lock (_gate)
             {
-                if (_openUntilUtc == DateTime.MinValue || DateTime.UtcNow >= _openUntilUtc)
+                // CLOSED — nothing to suppress.
+                if (_openUntilUtc == DateTime.MinValue)
                 {
                     reason = "";
                     return false;
                 }
+
+                // HALF-OPEN — the backoff window has elapsed. Hand this ONE caller through as the
+                // probe and lease the window forward so the rest keep short-circuiting until it
+                // reports back. Exactly one real call per window, as documented.
+                if (DateTime.UtcNow >= _openUntilUtc)
+                {
+                    _openUntilUtc = DateTime.UtcNow + ProbeLease;
+                    _loggedThisWindow = false;
+                    ActivityLog.Log("github",
+                        "Rate-limit circuit HALF-OPEN — backoff window elapsed; letting exactly one probe " +
+                        $"call through and holding the rest for up to {Math.Ceiling(ProbeLease.TotalSeconds):F0}s " +
+                        "until it reports back (Git #2815/#2867).");
+                    reason = "";
+                    return false;
+                }
+
+                // OPEN — still inside the window (or a probe is in flight under its lease). Suppress.
                 var remaining = _openUntilUtc - DateTime.UtcNow;
                 reason = $"GitHub rate-limit circuit open — backing off {Math.Ceiling(remaining.TotalSeconds):F0}s more (Git #2815)";
                 bool shouldLog = !_loggedThisWindow;
