@@ -681,9 +681,9 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
     docUrl: "https://learn.microsoft.com/en-us/graph/api/conditionalaccessroot-post-namedlocations",
   },
   {
-    // #1901 — conditional-access-baseline-v1 step 3. See the justification: the
-    // stored METHOD is wrong, the permission is not.
-    method: "PUT",
+    // #1901 — conditional-access-baseline-v1 step 3. #2855 fixed the stored
+    // method from PUT (which Graph does not expose on this resource) to DELETE.
+    method: "DELETE",
     pattern: "/identity/conditionalAccess/policies/*",
     documentedApplicationTiers: {
       leastPrivileged: "Policy.Read.All and Policy.ReadWrite.ConditionalAccess",
@@ -692,19 +692,12 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
     permissions: ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"],
     justification:
       "conditional-access-baseline-v1 step 3 (action.delete-ca-policy) removes a Conditional Access " +
-      "policy. THE STORED METHOD IS WRONG AND THIS RULE DOES NOT ENDORSE IT: the live " +
-      "baseline_action_templates row is `PUT /identity/conditionalAccess/policies/{{policyId}}` with an " +
-      "empty body `{}`, but Microsoft Graph exposes no PUT on this resource at all — deletion is DELETE " +
-      "(conditionalaccesspolicy-delete) and update is PATCH (conditionalaccesspolicy-update). The stored " +
-      "PUT will fail at runtime regardless of consent; it is filed as its own issue under #2489, together " +
-      "with the other PUT-where-DELETE-was-meant templates in the catalogue. The rule is still correct " +
-      "and still worth holding, because the permission is IDENTICAL on all three verbs — DELETE, PATCH " +
-      "and the intended operation whichever it turns out to be — so the derived permission set is right " +
-      "no matter which way the method bug is fixed, and the pack stops reporting an unmapped step in the " +
-      "meantime. The tiers quoted above are from the DELETE page, the operation the template's name and " +
-      "empty body indicate it means; the PATCH page carries the same conjunction with " +
-      "\"Application.Read.All and Policy.ReadWrite.ConditionalAccess\" as its higher tier. Both " +
-      "permissions are already held.",
+      "policy. The baseline_action_templates row previously stored `PUT /identity/conditionalAccess/" +
+      "policies/{{policyId}}`, a method Graph does not expose on this resource at all; #2855 corrected it " +
+      "to DELETE (conditionalaccesspolicy-delete), matching the template's name and its empty `{}` body. " +
+      "The permission was identical under the old, wrong method too — DELETE and PATCH " +
+      "(conditionalaccesspolicy-update) both require this same conjunction — so this rule did not change " +
+      "when the stored method was fixed.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/conditionalaccesspolicy-delete",
   },
   {
@@ -845,10 +838,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
     docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-deviceconfig-deviceconfiguration-assign",
   },
   {
-    // #1901 — device-compliance-v1 step 3. See the justification: the stored
-    // ENDPOINT targets an abstract base type, the permission is still right.
+    // #1901 — device-compliance-v1 step 3. #2855 fixed the stored endpoint from
+    // the abstract managedAppPolicies base type to the real concrete resource.
     method: "POST",
-    pattern: "/deviceAppManagement/managedAppPolicies/*/assign",
+    pattern: "/deviceAppManagement/targetedManagedAppConfigurations/*/assign",
     documentedApplicationTiers: {
       leastPrivileged: "DeviceManagementApps.ReadWrite.All",
       higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
@@ -856,16 +849,14 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
     permissions: ["DeviceManagementApps.ReadWrite.All"],
     justification:
       "device-compliance-v1 step 3 (action.assign-app-protection-policy) targets an Intune app protection " +
-      "(MAM) policy at a group. THE STORED ENDPOINT IS WRONG AND THIS RULE DOES NOT ENDORSE IT: " +
-      "`managedAppPolicy` is Microsoft's ABSTRACT BASE TYPE for MAM policies and carries no `assign` " +
-      "action; the real v1.0 path for the assignment this step performs is " +
-      "`POST /deviceAppManagement/targetedManagedAppConfigurations/{id}/assign`. The stored call will not " +
-      "resolve regardless of consent, and it is filed as its own issue under #2489. The rule is still " +
-      "correct and still worth holding: Microsoft scopes the whole deviceAppManagement MAM surface under " +
-      "the single DeviceManagementApps.ReadWrite.All application permission, so the derived permission " +
-      "set is right either way, and the pack stops reporting an unmapped step in the meantime. Tiers are " +
-      "quoted from the real targetedManagedAppConfiguration assign page, since the stored path has no " +
-      "page of its own to quote.",
+      "(MAM) policy at a group. The baseline_action_templates row previously stored " +
+      "`POST /deviceAppManagement/managedAppPolicies/{{policyId}}/assign` — `managedAppPolicy` is " +
+      "Microsoft's ABSTRACT BASE TYPE for MAM policies and carries no `assign` action, so that call could " +
+      "never resolve. #2855 corrected the stored endpoint to the real v1.0 path, " +
+      "`POST /deviceAppManagement/targetedManagedAppConfigurations/{id}/assign`. The permission was " +
+      "identical under the old, wrong endpoint too — Microsoft scopes the whole deviceAppManagement MAM " +
+      "surface under the single DeviceManagementApps.ReadWrite.All application permission — so this rule " +
+      "did not change when the stored endpoint was fixed.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-mam-targetedmanagedappconfiguration-assign",
   },
   {
