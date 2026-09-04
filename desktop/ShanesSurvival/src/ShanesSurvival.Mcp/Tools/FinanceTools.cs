@@ -33,10 +33,11 @@ public sealed class FinanceTools(
 
     [McpServerTool(Name = "gate_status")]
     [Description(
-        "Real GATE status: the Income Gate (Direct Deposit) account's current real Plaid " +
-        "balance against the total real shortfall summed across every bill account, and " +
-        "whether that leaves things covered or short by $X. Grounded in live balances, not " +
-        "invented numbers.")]
+        "Real GATE status: total real available funds (Income Gate balance + every real " +
+        "reserve-role account's balance) against the total real shortfall summed across every " +
+        "bill account, and whether that leaves things covered or short by $X. Shows the Income " +
+        "Gate balance, each reserve account and its balance, and the combined total separately " +
+        "before the final covered/short line. Grounded in live balances, not invented numbers.")]
     public async Task<string> GetGateStatusAsync()
     {
         var result = await dashboardService.ComputeAsync(ConnectionString);
@@ -55,6 +56,29 @@ public sealed class FinanceTools(
         else
         {
             sb.AppendLine($"Income Gate (\"{result.IncomeGateAccountName}\") real balance: {Money(result.IncomeGateBalance)}");
+        }
+
+        if (result.ReserveAccounts.Count == 0)
+        {
+            sb.AppendLine("No accounts are assigned the Reserve role.");
+        }
+        else
+        {
+            sb.AppendLine("Reserve accounts:");
+            foreach (var reserve in result.ReserveAccounts)
+            {
+                sb.AppendLine($"  - {reserve.Name}: {Money(reserve.CurrentBalance)}");
+            }
+            sb.AppendLine($"Total reserve: {Money(result.ReserveTotal)}");
+        }
+
+        if (result.TotalAvailable is null)
+        {
+            sb.AppendLine("Total real available funds cannot be computed without a known Income Gate balance.");
+        }
+        else
+        {
+            sb.AppendLine($"Total real available funds (Income Gate + reserve): {Money(result.TotalAvailable)}");
         }
 
         sb.AppendLine($"Total real shortfall across bill accounts: {Money(result.TotalShortfall)}");

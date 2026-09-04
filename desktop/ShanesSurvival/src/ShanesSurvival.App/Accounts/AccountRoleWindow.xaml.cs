@@ -28,6 +28,7 @@ public partial class AccountRoleWindow : Window
         new(AccountRole.Bill, "Bill"),
         new(AccountRole.Spend, "Spend"),
         new(AccountRole.EmergencyFund, "Emergency Fund"),
+        new(AccountRole.Reserve, "Reserve"),
     ];
 
     private sealed record RowControls(Guid AccountId, ComboBox RoleCombo, TextBox TargetBox, CheckBox GateCheck);

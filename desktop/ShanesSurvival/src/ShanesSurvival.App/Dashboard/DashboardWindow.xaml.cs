@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -167,8 +168,12 @@ public partial class DashboardWindow : Window
             TopLineBorder.Background = ShortBackground;
         }
 
+        var reserveSuffix = result.ReserveAccounts.Count > 0
+            ? $"  +  Reserve ({string.Join(", ", result.ReserveAccounts.Select(r => r.Name))}): {result.ReserveTotal:C2}"
+            : string.Empty;
+
         TopLineSubText.Text =
-            $"{result.IncomeGateAccountName} balance: {result.IncomeGateBalance:C2}  −  " +
+            $"{result.IncomeGateAccountName} balance: {result.IncomeGateBalance:C2}{reserveSuffix}  −  " +
             $"Total shortfall across bills: {result.TotalShortfall:C2}";
     }
 

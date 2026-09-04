@@ -27,6 +27,15 @@ public enum AccountRole
     /// bill-only-meaningful today.
     /// </summary>
     EmergencyFund,
+
+    /// <summary>
+    /// A real account holding usable reserve money that isn't the primary Income Gate (Direct
+    /// Deposit) account but should still count toward "can I actually cover this" — e.g. a real
+    /// Capital One account Shane keeps real usable funds in. Counts toward gate_status's total
+    /// real available funds alongside Income Gate; unlike Bill/EmergencyFund, target_amount
+    /// isn't meaningful here (no savings goal, just real usable balance).
+    /// </summary>
+    Reserve,
 }
 
 public static class AccountRoleExtensions
@@ -37,6 +46,7 @@ public static class AccountRoleExtensions
         AccountRole.Bill => "bill",
         AccountRole.Spend => "spend",
         AccountRole.EmergencyFund => "emergency_fund",
+        AccountRole.Reserve => "reserve",
         AccountRole.Unassigned => null,
         _ => null,
     };
@@ -47,6 +57,7 @@ public static class AccountRoleExtensions
         "bill" => AccountRole.Bill,
         "spend" => AccountRole.Spend,
         "emergency_fund" => AccountRole.EmergencyFund,
+        "reserve" => AccountRole.Reserve,
         _ => AccountRole.Unassigned,
     };
 
@@ -56,6 +67,7 @@ public static class AccountRoleExtensions
         AccountRole.Bill => "Bill",
         AccountRole.Spend => "Spend",
         AccountRole.EmergencyFund => "Emergency Fund",
+        AccountRole.Reserve => "Reserve",
         AccountRole.Unassigned => "Unassigned",
         _ => "Unassigned",
     };

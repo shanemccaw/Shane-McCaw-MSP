@@ -8,12 +8,17 @@ namespace ShanesSurvival.Core.Dashboard;
 /// honest signal. Never throws: every real failure becomes a Result the UI shows, same
 /// pattern as the rest of this app's services.
 ///
-/// Math (per the real spec worked out with Shane on 2026-09-04):
+/// Math (per the real spec worked out with Shane on 2026-09-04, extended 2026-09-04 (#2909)
+/// to include real reserve accounts):
 ///   Per bill account: shortfall = max(0, target_amount - current_balance)
 ///   Total shortfall  = sum across every bill account (accounts missing a target/balance are
 ///                       excluded from the sum and called out in Warnings, never silently
 ///                       treated as $0 or as fully unfunded)
-///   Top-line         = Income Gate account's current_balance - total shortfall
+///   Reserve total    = sum of every real role = 'reserve' account's current_balance (accounts
+///                       missing a balance are excluded and called out in Warnings, same
+///                       convention as bill shortfalls)
+///   Total available  = Income Gate account's current_balance + reserve total
+///   Top-line         = total available - total shortfall
 /// </summary>
 public sealed class DashboardService
 {
@@ -88,7 +93,19 @@ public sealed class DashboardService
             }
 
             var totalShortfall = bills.Where(b => b.Shortfall.HasValue).Sum(b => b.Shortfall!.Value);
-            var topLine = incomeGateBalance.HasValue ? incomeGateBalance.Value - totalShortfall : (decimal?)null;
+
+            var reserveRoleAccounts = await LoadRoleAccountsAsync(connection, "reserve");
+            var reserveAccounts = reserveRoleAccounts
+                .Select(a => new ReserveAccountBalance(a.Id, a.Name, a.CurrentBalance))
+                .ToList();
+            foreach (var reserve in reserveAccounts.Where(r => r.CurrentBalance is null))
+            {
+                warnings.Add($"\"{reserve.Name}\" has no real balance from Plaid yet — click \"Sync Now\". Excluded from reserve total.");
+            }
+            var reserveTotal = reserveAccounts.Where(r => r.CurrentBalance.HasValue).Sum(r => r.CurrentBalance!.Value);
+
+            var totalAvailable = incomeGateBalance.HasValue ? incomeGateBalance.Value + reserveTotal : (decimal?)null;
+            var topLine = totalAvailable.HasValue ? totalAvailable.Value - totalShortfall : (decimal?)null;
 
             var gateBills = bills.Where(b => b.IsGate)
                 .OrderByDescending(b => b.Shortfall ?? -1m)
@@ -111,7 +128,8 @@ public sealed class DashboardService
             return new DashboardResult(
                 true, null, warnings,
                 incomeGateBalance, incomeGateName,
-                gateBills, otherBills, totalShortfall, topLine, spendBleed);
+                gateBills, otherBills, totalShortfall, topLine, spendBleed,
+                reserveAccounts, reserveTotal, totalAvailable);
         }
         catch (Exception ex)
         {
@@ -175,5 +193,5 @@ public sealed class DashboardService
     }
 
     private static DashboardResult Failure(string message) =>
-        new(false, message, [], null, null, [], [], 0m, null, []);
+        new(false, message, [], null, null, [], [], 0m, null, [], [], 0m, null);
 }
