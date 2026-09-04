@@ -146,6 +146,8 @@ namespace BuildConsole
         }
 
         private readonly Dictionary<Microsoft.Web.WebView2.Wpf.WebView2, ChatContextMeterState> _contextMeters = new();
+        /// <summary>Git #2781 — WebView2s UpdateContextMeter has already logged a "no registered meterState" warning for, so that warning fires once per distinct missing wv rather than spamming on every poll.</summary>
+        private readonly HashSet<Microsoft.Web.WebView2.Wpf.WebView2> _loggedMissingContextMeterFor = new();
         /// <summary>Git #942 — queue item id -> last label pushed to that item's injected chat button ("In Progress..."/"Done"/"Failed: Retry"). Populated when BT_QUEUE_BUILD captures a real id; drained by PushChatButtonStatuses the moment an item hits a terminal state (done/failed/canceled) or leaves the queue, so nothing is polled forever. UI-thread only (event handler + DispatcherTimer), so no locking needed.</summary>
         private readonly Dictionary<int, string> _chatButtonStatus = new();
         private DispatcherTimer? _buildTailTimer;
@@ -5379,6 +5381,7 @@ namespace BuildConsole
                 // per-conversation high-water (ChatContextMeterStore) is unaffected — reopening the
                 // same chat restores its level from disk.
                 _contextMeters.Remove(wv);
+                _loggedMissingContextMeterFor.Remove(wv);
                 try { wv.Dispose(); } catch { }
                 return;
             }
@@ -7033,7 +7036,16 @@ namespace BuildConsole
         /// </summary>
         private FrameworkElement CreateChatContextWrapper(Microsoft.Web.WebView2.Wpf.WebView2 wv)
         {
-            if (wv == ClaudeWebView) return wv;
+            // Git #2781 — this used to early-return here for ClaudeWebView (the primary/docked
+            // chat tab) WITHOUT ever building/registering a meterState in _contextMeters, so
+            // UpdateContextMeter's real Merge() call into ChatContextMeterStore silently no-op'd
+            // for that tab forever (Band 1's gauge stuck at the fixed baseline). git blame shows
+            // that early-return predates #2727 (originally excluded ReplitWatcherWebView/
+            // UsageMeterWebView too, back when this method reparented wv into a visible wrapping
+            // Border/ProgressBar) — it was never a #2727 regression. Since #2727 made the whole
+            // banner/progressBar headless and parentless for every wv (nothing is ever attached to
+            // the visual tree here anymore), there's no reason left to special-case ClaudeWebView:
+            // let it fall through and register the same headless meterState as every other tab.
             if (_contextMeters.TryGetValue(wv, out var existing)) return wv;
 
             // Headless — built but never inserted into the visual tree (Git #2727).
@@ -7195,7 +7207,19 @@ namespace BuildConsole
 
         private void UpdateContextMeter(Microsoft.Web.WebView2.Wpf.WebView2 wv, double estTokens, int turnCount, int heavyTurnCount, bool selectorsLikelyStale = false, string? conversationId = null)
         {
-            if (!_contextMeters.TryGetValue(wv, out var meterState)) return;
+            if (!_contextMeters.TryGetValue(wv, out var meterState))
+            {
+                // Git #2781 — this used to be a silent no-op, which is exactly what let the
+                // ClaudeWebView-never-registered bug go unnoticed. Log once per distinct missing
+                // wv (not every poll) so a future case like this surfaces immediately instead of
+                // silently degrading indefinitely.
+                if (_loggedMissingContextMeterFor.Add(wv))
+                {
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context",
+                        $"UpdateContextMeter called for a WebView2 with no registered meterState — real token/turn data for this tab is being dropped, not just deferred. wv={wv.Name ?? wv.GetHashCode().ToString()}");
+                }
+                return;
+            }
 
             // Git #1628 — clamp the incoming reading to the persisted per-conversation high-water
             // (and write back when a new maximum arrives) BEFORE it touches the bar. A transcript
@@ -7527,6 +7551,14 @@ namespace BuildConsole
         /// <summary>Git #816 — injects the builder buttons into ClaudeWebView BEFORE navigating it to claude.ai for the first time (the XAML Source binding that used to do this navigated too early).</summary>
         private async System.Threading.Tasks.Task InitializeClaudeTabAsync()
         {
+            // Git #2781 — ClaudeWebView never flows through CreateChatContextWrapper via any of
+            // the normal per-chat-tab call sites (BuildChatWebView always constructs a brand-new
+            // WebView2 for a tab; this is THE one shared, statically-declared primary WebView2),
+            // so nothing else in the app ever registers it in _contextMeters. Call it explicitly
+            // here, once, at the same point every other setup step for this WebView2 runs, so
+            // UpdateContextMeter's real Merge() calls (fired from ChatWv_WebMessageReceived below,
+            // which IS wired to ClaudeWebView) stop silently no-op'ing for the primary docked tab.
+            CreateChatContextWrapper(ClaudeWebView);
             await InjectBuilderButtonsAsync(ClaudeWebView);
             if (ClaudeWebView.CoreWebView2 != null) ClaudeWebView.CoreWebView2.Navigate("https://claude.ai");
             else ClaudeWebView.Source = new Uri("https://claude.ai");
