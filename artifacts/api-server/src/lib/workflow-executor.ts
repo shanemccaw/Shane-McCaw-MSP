@@ -103,6 +103,7 @@ import { handlePolicyEvaluateDue } from "./policy-engine-nodes.js";
 import { handleM365RoadmapSync } from "./m365-roadmap-sync.js";
 import { handleM365RouteChanges } from "./m365-change-router.js";
 import { handlePlatformLogStreamPrune } from "./telemetry-retention-nodes";
+import { handleConfigSnapshotPrune } from "./config-snapshot-retention-nodes";
 import { handleZohoBatchDrain } from "./zoho-batch-drain.js";
 import { executeZohoCrmNode } from "./zoho-crm.js";
 import { getZohoCrmNodeSpec } from "./zoho-crm-nodes.js";
@@ -1443,6 +1444,15 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "platform_log_stream_prune": {
       const retentionDaysDry = Number((node.data.retentionDays as number | undefined) ?? 7);
       return { dryRun: true, retentionDays: retentionDaysDry, rowsDeleted: 0, note: "dry run — prune skipped" };
+    }
+
+    case "config_snapshot_prune": {
+      const keepPerTenantDry = Number((node.data.keepPerTenant as number | undefined) ?? 20);
+      return {
+        dryRun: true, keepPerTenant: keepPerTenantDry, tenantsConsidered: 0,
+        candidatesOverCap: 0, protectedByDiff: 0, protectedByBaseline: 0,
+        snapshotsDeleted: 0, objectsDeletedEstimate: 0, note: "dry run — prune skipped",
+      };
     }
 
     case "zoho_batch_drain": {
@@ -6686,6 +6696,14 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       case "platform_log_stream_prune": {
         // Promoted node type: deletes platform_log_stream rows past retention.
         output = await handlePlatformLogStreamPrune(node.data as Record<string, unknown>);
+        break;
+      }
+
+      case "config_snapshot_prune": {
+        // Promoted node type (#2114): prunes tenant_config_snapshots beyond a
+        // per-tenant keep count, excluding anything a live config_diffs row or
+        // a config_snapshot_baselines row still references.
+        output = await handleConfigSnapshotPrune({ ...(node.data as Record<string, unknown>), wfRunId: runId });
         break;
       }
 

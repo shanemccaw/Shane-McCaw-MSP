@@ -2437,6 +2437,50 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  // ── Tenant Configuration Snapshot Retention Prune (Git #2114) ───────────────
+  {
+    name: "__system__: Tenant Configuration Snapshot Retention Prune",
+    description:
+      "Runs nightly at 03:00 UTC. Keeps the most recent keepPerTenant (default 20) " +
+      "non-running tenant_config_snapshots per tenant and deletes the rest — the real " +
+      "retention policy for #1795/#1796's full-fidelity snapshot store, which had no " +
+      "bound before this (34 MB / 50,176 object rows per full snapshot, measured " +
+      "live). Never deletes a snapshot a config_diffs row (base or head, any diff, " +
+      "ever) or a config_snapshot_baselines row still references — see " +
+      "config-snapshot-retention-nodes.ts for why that exclusion has to be enforced " +
+      "in application code rather than left to config_diffs' own ON DELETE CASCADE. " +
+      "Deleting a snapshot header cascades to its objects and resource-status rows " +
+      "by existing FK, so this is one DELETE per pruned snapshot. Every run is logged " +
+      "to config_snapshot_prune_runs.",
+    triggerType: "schedule",
+    cron: "0 3 * * *",
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 60 },
+          data: { nodeType: "start", label: "Daily 03:00 UTC" },
+        },
+        {
+          id: "prune",
+          type: "config_snapshot_prune",
+          position: { x: 300, y: 180 },
+          data: { nodeType: "config_snapshot_prune", label: "Prune Configuration Snapshots", keepPerTenant: 20 },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 300, y: 300 },
+          data: { nodeType: "end", label: "Done" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "prune" },
+        { id: "e2", source: "prune", target: "end" },
+      ],
+    },
+  },
   // ── MSP Portfolio Risk Snapshot ─────────────────────────────────────────────
   {
     name: "__system__: MSP Portfolio Risk Snapshot",

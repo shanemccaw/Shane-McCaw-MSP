@@ -811,6 +811,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     description: "Deletes platform_log_stream rows older than the retention window — no AI",
   },
   {
+    nodeType: "config_snapshot_prune",
+    isAIDependent: false,
+    description: "Prunes tenant_config_snapshots beyond a per-tenant keep count, excluding any snapshot a config_diffs or config_snapshot_baselines row still references — no AI",
+  },
+  {
     nodeType: "zoho_batch_drain",
     isAIDependent: false,
     description: "Drains a bounded batch of pending zoho.* jobs from msp_job_queue — no AI",

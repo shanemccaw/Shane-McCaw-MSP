@@ -2961,6 +2961,8 @@ export interface WfNode {
     | "m365_route_changes"
     // Telemetry Retention
     | "platform_log_stream_prune"
+    // Tenant configuration snapshot retention (Git #2114)
+    | "config_snapshot_prune"
     // Zoho Integration — queue drain (Foundation, #82)
     | "zoho_batch_drain"
     // Zoho CRM (#83) — 26 nodes. Reads (get_/find_/search_) execute inline

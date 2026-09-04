@@ -876,3 +876,68 @@ export const configSnapshotBaselinesTable = pgTable("config_snapshot_baselines",
 
 export type ConfigSnapshotBaseline = typeof configSnapshotBaselinesTable.$inferSelect;
 export type InsertConfigSnapshotBaseline = typeof configSnapshotBaselinesTable.$inferInsert;
+
+// ── 6. Retention — the prune run audit trail (Git #2114) ─────────────────────
+
+/**
+ * One row per execution of the `config_snapshot_prune` workflow node.
+ *
+ * The store accumulates by design (see the file header): 34 MB / 50,176 object
+ * rows per full snapshot was measured live with NO retention in place, and every
+ * manual snapshot run adds another. The policy is a per-tenant COUNT CAP — keep
+ * the most recent `keep_per_tenant` non-running snapshots for each tenant, delete
+ * the rest — with two hard exclusions the prune query enforces before it ever
+ * issues a DELETE:
+ *
+ *   - a snapshot named by ANY `config_diffs.base_snapshot_row_id` or
+ *     `head_snapshot_row_id` row, ever (not just a "currently active" one — a
+ *     diff is permanent evidence per #1797's own immutability rule, and that file's
+ *     FK is `ON DELETE CASCADE`, so an unfiltered prune would silently destroy an
+ *     immutable diff rather than being blocked by the database).
+ *   - a snapshot named by any `config_snapshot_baselines.snapshot_row_id` row.
+ *     This one IS structurally blocked by the database (`ON DELETE NO ACTION`,
+ *     see that table's migration), but the prune query still pre-filters it so a
+ *     baseline never turns an otherwise-clean sweep into a failed statement.
+ *
+ * This table exists so that exclusion, and every actual prune run, is real
+ * evidence rather than an assumed side effect — the same "honest completeness"
+ * discipline `tenant_config_snapshot_resource_status` applies to collection,
+ * applied here to deletion. `snapshots_deleted` is what the database actually
+ * removed (from the DELETE's own row count), never estimated.
+ */
+export const configSnapshotPruneRunsTable = pgTable("config_snapshot_prune_runs", {
+  id: serial("id").primaryKey(),
+
+  /** The cap applied on this run — the most recent N non-running snapshots kept per tenant. */
+  keepPerTenant: integer("keep_per_tenant").notNull(),
+
+  /** Distinct tenants that had at least one non-running snapshot considered. */
+  tenantsConsidered: integer("tenants_considered").notNull().default(0),
+  /** Snapshots beyond the cap, before exclusions were applied. */
+  candidatesOverCap: integer("candidates_over_cap").notNull().default(0),
+  /** Of those, excluded because a live `config_diffs` row names them. */
+  protectedByDiff: integer("protected_by_diff").notNull().default(0),
+  /** Of those, excluded because a `config_snapshot_baselines` row names them. */
+  protectedByBaseline: integer("protected_by_baseline").notNull().default(0),
+  /** Rows the DELETE actually removed — from the statement's own row count. */
+  snapshotsDeleted: integer("snapshots_deleted").notNull().default(0),
+  /** Sum of the deleted snapshots' own `object_count` — the real freed row estimate. */
+  objectsDeletedEstimate: integer("objects_deleted_estimate").notNull().default(0),
+
+  trigger: text("trigger", { enum: SNAPSHOT_TRIGGERS }).notNull().default("scheduled"),
+  wfRunId: integer("wf_run_id"),
+
+  durationMs: integer("duration_ms"),
+  ranAt: timestamp("ran_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("config_snapshot_prune_runs_ran_at_idx").on(t.ranAt.desc()),
+  check(
+    "config_snapshot_prune_runs_counts_nonnegative",
+    sql`keep_per_tenant >= 0 AND tenants_considered >= 0 AND candidates_over_cap >= 0
+        AND protected_by_diff >= 0 AND protected_by_baseline >= 0
+        AND snapshots_deleted >= 0 AND objects_deleted_estimate >= 0`,
+  ),
+]);
+
+export type ConfigSnapshotPruneRun = typeof configSnapshotPruneRunsTable.$inferSelect;
+export type InsertConfigSnapshotPruneRun = typeof configSnapshotPruneRunsTable.$inferInsert;

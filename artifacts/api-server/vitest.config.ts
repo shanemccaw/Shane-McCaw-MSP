@@ -49,6 +49,7 @@ export default defineConfig({
       "src/lib/workflow-executor-content.test.ts",
       "src/lib/workflow-executor-integrations.test.ts",
       "src/lib/telemetry-retention-nodes.test.ts",
+      "src/lib/config-snapshot-retention-nodes.test.ts",
       "src/lib/tenant-signals.test.ts",
       "src/lib/tenant-signals-stabilization.test.ts",
       "src/lib/tenant-signals-customer-bridge.test.ts",
