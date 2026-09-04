@@ -51,6 +51,7 @@ function rule(overrides: Partial<SignalDerivationRule> & Pick<SignalDerivationRu
   return {
     groupId: null,
     compareValue: null,
+    denominatorKey: null,
     description: null,
     sortOrder: 0,
     createdAt: BASE_DATE,

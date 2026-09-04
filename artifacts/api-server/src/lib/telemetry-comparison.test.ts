@@ -91,6 +91,7 @@ function makeRule(
     id: nextRuleId++,
     groupId: null,
     compareValue: null,
+    denominatorKey: null,
     description: null,
     sortOrder: 0,
     createdAt: BASE_DATE,

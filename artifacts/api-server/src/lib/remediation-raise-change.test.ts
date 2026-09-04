@@ -18,7 +18,7 @@ function makeItem(overrides: Partial<RemediationChecklistItem> = {}): Remediatio
     severity: "critical",
     title: "MFA not enforced for 12 admins",
     description: "12 privileged accounts have no MFA requirement.",
-    fixRoute: "manual",
+    fixRoute: "you_must_run",
     affordance: "copy",
     hasVerifiedContent: true,
     summary: "Require MFA for all users via Conditional Access.",

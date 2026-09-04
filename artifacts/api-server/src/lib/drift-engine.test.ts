@@ -56,6 +56,7 @@ function makeRule(
     id: Math.floor(Math.random() * 9000) + 1000,
     groupId: null,
     compareValue: null,
+    denominatorKey: null,
     description: null,
     sortOrder: 0,
     createdAt: BASE_DATE,
