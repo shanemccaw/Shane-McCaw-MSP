@@ -899,44 +899,31 @@ export async function rollbackExecution(auditLogId: number): Promise<RollbackExe
     return { ...result, rollbackAuditLogId: result.auditLogId };
   }
 
-  // Special case — Teams remove, when rolling back an add: teams.remove_member
-  // requires the Teams CONVERSATION MEMBERSHIP id, not the memberId (user id)
-  // captured for the add — that id can't be pulled from requestVariables
-  // alone and requires a live read immediately before the reverse call.
-  //
-  // NOTE (#2703 / #2772): teams.add_member/teams.remove_member are NOT live
-  // baseline_action_templates rows — no Teams conversation-member template
-  // exists in the current 102-row catalog under any naming, confirmed against
-  // local DATABASE_URL. This branch is therefore currently unreachable dead
-  // code (no execution can ever produce an audit log row with this
-  // templateId), left in place as the correct implementation pending #2772's
-  // resolution (add real action.add-team-member/action.remove-team-member
-  // templates, or remove this branch if Teams membership actions are dropped
-  // from the catalog). Do not re-point these ids without a live template to
-  // back them.
-  if (template.templateId === "teams.add_member" && template.reverseTemplateId === "teams.remove_member") {
-    const teamId = requestVariables["teamId"];
-    const memberId = requestVariables["memberId"];
-    if (typeof teamId !== "string" || !teamId || typeof memberId !== "string" || !memberId) {
-      throw new Error(`Audit log entry ${auditLogId} is missing teamId/memberId needed to resolve the Teams membership id`);
-    }
-
-    const { graphFetchForTenant } = await import("./graph");
-    const membersRes = await graphFetchForTenant(tenantId, `/teams/${teamId}/members`);
-    if (!membersRes.ok) {
-      throw new Error(`Failed to resolve Teams membership id for user ${memberId} in team ${teamId} (GET /teams/{teamId}/members returned ${membersRes.status})`);
-    }
-    const membersData = (await membersRes.json()) as { value?: Array<{ id: string; userId?: string }> };
-    const membership = (membersData.value ?? []).find((m) => m.userId === memberId);
-    if (!membership) {
-      throw new Error(`User ${memberId} is not a current member of team ${teamId} — nothing to roll back`);
-    }
-
-    const result = await runBaselineTemplateAgainstTenant(
-      "teams.remove_member", tenantId, customerId, { teamId, membershipId: membership.id }, "launch_control_rollback",
-    );
-    return { ...result, rollbackAuditLogId: result.auditLogId };
-  }
+  // RESOLVED (#2772): a Teams conversation-membership special case
+  // (teams.add_member/teams.remove_member, live-resolving the Teams
+  // CONVERSATION MEMBERSHIP id via GET /teams/{teamId}/members before the
+  // reverse call) used to live here. Confirmed against local DATABASE_URL:
+  // no baseline_action_templates row named teams.add_member/teams.remove_member
+  // has ever actually been live — the 2026-07-20 phase-3 seed that would have
+  // inserted them recorded itself as run but never actually applied (same
+  // phantom-migration pattern #2703 found for 2026-07-21's rollback file; 0
+  // rows anywhere in the catalog use the dotted teams.*/users.*/groups.*
+  // naming, only action.*/microrem.*). The special case was therefore always
+  // unreachable dead code, not a real gap: Teams member add/remove is already
+  // served live by the SAME group-membership templates Groups uses —
+  // write_action_catalog rows 177 ("Teams | Add/remove member") and 178
+  // ("Teams | Add/remove owner") are deliberately linked to
+  // action.add-group-member / action.add-group-owner
+  // (2026-09-03-write-action-catalog-template-links-2702.sql), because a
+  // Microsoft Team's membership IS group membership under the hood (a Team is
+  // backed by an M365 Group) — the same Graph call genuinely serves both. That
+  // pairing (action.add-group-member <-> microrem.remove-stale-group-member)
+  // was already re-promoted reversible by #2703, including the
+  // memberId/userId alias special case immediately above this comment.
+  // Nothing further is missing here; the dead branch is removed rather than
+  // pointed at invented action.add-team-member/action.remove-team-member
+  // templates, which would just duplicate a Graph call the live catalog
+  // already deliberately routes through group membership.
 
   // All other pairs: replay the paired reverse template with the same
   // captured requestVariables.
