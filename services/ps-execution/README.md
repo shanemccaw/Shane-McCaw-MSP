@@ -70,6 +70,36 @@ per-mailbox / directory enumerations (`Get-Mailbox`, `Get-User`, `Get-Recipient`
 tenant *configuration*, unbounded in size, and not what a Dev→Test→Prod promotion
 moves.
 
+### Pass 2 — Microsoft Teams (#2850)
+
+Pass 2 added the Teams block pass 1 deferred: **57 further entries**, all
+`Session = "teams"`, taking the catalog from 101 to 158 and the
+PowerShell-reachable resource types from **88 to 142**. Same two rules, same
+evidence bar — every cmdlet was recorded `status = 'ok'` by #1793's survey run 4
+in the `teams` session against the live testbed, and every entry is unfiltered
+with `AllowedParams = @()`.
+
+One twin: `Get-CsOnlineUser` already had the check-shaped `get-cs-online-user`
+(PostFilter → Teams Phone users only), so it gained the unfiltered
+`get-all-cs-online-user` alongside it rather than having the filtered key reused.
+
+Five Teams cmdlets the registry names are still deliberately absent, because
+#1793's survey recorded them `not_attempted` — nothing proves they run app-only
+in this container, and allowlisting an unproven cmdlet on a guess is what the
+evidence rule forbids: `Get-CsOnlineApplicationInstance`,
+`Get-CsOnlineVoicemailUserSettings`, `Get-CsTeamsSettingsCustomApp`,
+`Get-CsUserCallingSettings`, `Get-CsUserPolicyAssignment`. The four resource
+types that name only those keep producing an honest `no_executor` row.
+
+Since #2841, a catalog change has a **third** file to keep in sync:
+`PS_CATALOG_CMDLETS` in `scripts/config-state/build-snapshot-registry.mjs`
+mirrors `PS_CATALOG_BY_CMDLET`'s keys, and re-running that script is what turns
+a new entry into `is_collectable = true` on the registry rows that name it.
+
+The per-user / per-mailbox / directory enumeration class (`Get-Mailbox`,
+`Get-User`, `Get-Recipient`, `Get-Group`, `Get-ManagementRoleAssignment`, …)
+remains out of scope for the same reason pass 1 gave.
+
 The api-server half is `PS_CATALOG_BY_CMDLET` in
 `artifacts/api-server/src/lib/config-snapshot-collector.ts`; without a row there
 an entry here exists but nothing routes to it.
