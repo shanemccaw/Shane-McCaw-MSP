@@ -1117,6 +1117,71 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>
+        /// Git #2792 — how many worktrees <see cref="PrewarmWorktreesAsync"/> provisions at once.
+        /// Deliberately small: the win comes from overlapping the slow working-tree checkout +
+        /// junction-linking across builds, not from a thundering herd of concurrent
+        /// <c>git worktree add</c>/node processes — which is exactly the burst shape Git #2539
+        /// traced git's 0x40000015 crashes to. 3 is enough to collapse a 6-slot batch's provisioning
+        /// from "sum of each" back toward "a couple of rounds" without stressing git.
+        /// </summary>
+        private const int WorktreePrewarmParallelism = 3;
+
+        /// <summary>
+        /// Git #2792 — pre-warm each claimed build's isolated worktree CONCURRENTLY, before the
+        /// sequential launch loop in <see cref="TickAsync"/> runs.
+        ///
+        /// Root cause of the live "API-work builds start one-at-a-time, minutes apart, look like
+        /// they're hanging" symptom (real 2026-09-03 evidence, queue #1492/#1496–#1500 launching
+        /// ~1.3–3 min apart into 6 free slots): <see cref="LaunchItem"/> provisions its worktree with
+        /// <c>git worktree add</c> INLINE (see the ProvisionWorktreeAsync call there), and TickAsync's
+        /// launch loop <c>await</c>s each LaunchItem in turn — so build N+1's provisioning did not even
+        /// BEGIN until build N had fully launched. That serialization was always present but cheap
+        /// (~1s/build) when worktrees were small/reused; with the repo's real accumulated bloat (355
+        /// branches, ~10k loose objects, dozens of stray C:\wt dirs) a FRESH <c>git worktree add</c>
+        /// (reused=False) grew to tens of seconds–minutes, turning a whole batch into a multi-minute
+        /// stagger. Nothing about the launch code changed — the environment got heavier under a
+        /// pre-existing sequential design, which is exactly why Shane saw it appear "since the last
+        /// recompile" (a restart re-provisions fresh instead of reusing warm worktrees).
+        ///
+        /// Provisioning is idempotent: the provisioner's reuse path turns the SECOND call (the one
+        /// LaunchItem still makes) into a fast reused=True no-op, so pre-warming here overlaps the
+        /// expensive checkout/link across builds while leaving LaunchItem — and the single-threaded
+        /// mutation of <c>_running</c>/<c>_reservedSlots</c> it performs — completely unchanged. This is
+        /// purely a concurrency win on the git step; it is NOT the fail-loud authority. Any pre-warm
+        /// failure is swallowed here and left for LaunchItem's own real provisioning + error handling
+        /// to surface exactly as before. Bounded by <see cref="WorktreePrewarmParallelism"/>.
+        /// </summary>
+        private async Task PrewarmWorktreesAsync(IReadOnlyList<QueueItem> items)
+        {
+            // Only the worktree-isolation path provisions; an explicit --cwd build skips it entirely,
+            // and there's nothing to overlap for a single item. Mirror LaunchItem's own gating so we
+            // never pre-warm something it wouldn't provision.
+            if (!BuildConsoleSettings.Load().EnforceWorktreeIsolation) return;
+            var toWarm = items.Where(i => string.IsNullOrWhiteSpace(i.Cwd)).ToList();
+            if (toWarm.Count <= 1) return;
+
+            int launcherPid = Process.GetCurrentProcess().Id;
+            using var gate = new SemaphoreSlim(WorktreePrewarmParallelism);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var tasks = toWarm.Select(async item =>
+            {
+                await gate.WaitAsync();
+                try
+                {
+                    string name = ComposeWorktreeName(item);
+                    await WorktreeProvisionService.ProvisionWorktreeAsync(name, launcherPid, link: true);
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("watcher", $"Worktree pre-warm for queue #{item.Id} ({item.Title}) failed — LaunchItem will retry/surface it: {ex.Message}");
+                }
+                finally { gate.Release(); }
+            });
+            await Task.WhenAll(tasks);
+            ActivityLog.Log("watcher", $"Pre-warmed {toWarm.Count} worktree(s) concurrently (max {WorktreePrewarmParallelism} at once) in {sw.ElapsedMilliseconds}ms — the launch loop below now hits fast reused=True provisions instead of serializing a fresh `git worktree add` per build (#2792).");
+        }
+
         private async Task TickAsync()
         {
             // A tick can take longer than 10s (network latency, a slow
@@ -1366,6 +1431,12 @@ namespace BuildConsole.Services
                         : await _api.GetNextQueueItemsAsync(freeSlots, BuildConsoleSettings.Load().PausedBuildIds);
                 }
                 catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't poll/claim next queue item(s): {ex.Message}"); return; }
+
+                // Git #2792 — overlap the expensive `git worktree add` across every claimed build
+                // BEFORE the sequential launch loop below, so a 6-slot batch no longer starts one
+                // build every couple of minutes (the "builds hang / start one-at-a-time" symptom).
+                // Idempotent: LaunchItem's own provisioning call then hits the fast reused=True path.
+                await PrewarmWorktreesAsync(next);
 
                 foreach (var item in next)
                 {

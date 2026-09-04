@@ -78,6 +78,13 @@ namespace BuildConsole.Services
                     UseShellExecute = false,
                     CreateNoWindow = true,
                 };
+                // Git #2792 — time the provisioning call. A fresh `git worktree add` (reused=False)
+                // silently grew from ~1s to tens-of-seconds/minutes as the repo accumulated branches
+                // and loose objects, and — because launches were serialized — that turned a whole
+                // batch into a multi-minute one-at-a-time stagger with no visible signal WHY. Logging
+                // the elapsed time makes any future provisioning slowdown immediately diagnosable from
+                // the activity log instead of manifesting only as "builds seem to hang".
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 using var process = Process.Start(psi);
                 if (process == null)
                     return new WorktreeProvisionResult { Ok = false, Error = "Failed to launch node" };
@@ -85,6 +92,7 @@ namespace BuildConsole.Services
                 string stdout = await process.StandardOutput.ReadToEndAsync();
                 string stderr = await process.StandardError.ReadToEndAsync();
                 await process.WaitForExitAsync();
+                sw.Stop();
 
                 var res = new WorktreeProvisionResult { RawOutput = stdout };
                 try
@@ -104,10 +112,13 @@ namespace BuildConsole.Services
                     if (!res.Ok) res.Error = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
                 }
 
+                // Git #2792 — a slow fresh provision is the real cost the serialized launch loop used
+                // to sum; flag it loudly (WARN-shaped wording) so a future regression is obvious.
+                string slow = (!res.Reused && sw.ElapsedMilliseconds >= 15000) ? " ⚠ SLOW fresh worktree add" : "";
                 if (res.Ok)
-                    ActivityLog.Log(LogChannel, $"{actionDescription}: ok (path={res.Path}, reused={res.Reused}).");
+                    ActivityLog.Log(LogChannel, $"{actionDescription}: ok (path={res.Path}, reused={res.Reused}) in {sw.ElapsedMilliseconds}ms.{slow}");
                 else
-                    ActivityLog.Log(LogChannel, $"{actionDescription}: FAILED — {res.Error}");
+                    ActivityLog.Log(LogChannel, $"{actionDescription}: FAILED in {sw.ElapsedMilliseconds}ms — {res.Error}");
                 return res;
             }
             catch (Exception ex)
