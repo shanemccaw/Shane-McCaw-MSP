@@ -160,7 +160,7 @@ export function parseSchemaMof(mof) {
  * Excludes DSC's own scaffolding (Get-TargetResource, Export-ModuleMember, ...) and
  * the Microsoft365DSC/MSCloudLogin helpers, which are plumbing, not tenant reads.
  */
-const CMDLET_NOISE = /^(Get|Export)-(TargetResource|Command|Module|ModuleMember|Content|Date|Random|Credential|Item|ChildItem|Variable|Member|PSSession|Culture|Location|Host|Process|Unique|CimInstance|TypeData)$/;
+const CMDLET_NOISE = /^(Get|Export)-(TargetResource|Command|Module|ModuleMember|Content|Date|Random|Credential|Item|ChildItem|Variable|Member|PSSession|Culture|Location|Host|Process|Unique|CimInstance|TypeData|CompareParameters|M365TenantId)$/;
 export function extractInvokedReadCmdlets(psm1) {
   const found = new Set();
   for (const m of psm1.matchAll(/\b((?:Get|Export)-[A-Z][A-Za-z0-9]+)\b/g)) {
