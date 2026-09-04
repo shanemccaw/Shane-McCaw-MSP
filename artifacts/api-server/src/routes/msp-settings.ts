@@ -86,6 +86,7 @@ import { getStripeKey } from "../lib/stripe.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent } from "../lib/graph.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { sendEmailForMsp, emailButton, brandedEmail, sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
+import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
 
 const router: IRouter = Router();
 
@@ -927,6 +928,11 @@ router.patch("/msp/settings/users/:userId/mfa-enforcement", requireRole("MSPAdmi
 
   const { enforced } = req.body as { enforced?: boolean };
 
+  await db
+    .update(usersTable)
+    .set({ mfaEnforced: !!enforced, updatedAt: new Date() })
+    .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)));
+
   await writeAuditLog({
     req,
     actionType: "user.mfa.enforcement_toggle",
@@ -981,15 +987,18 @@ router.delete("/msp/settings/users/:userId/sessions", requireRole("MSPAdmin"), a
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
 
+  const revokedCount = await revokeAllOtherSessions(userId, null);
+
   await writeAuditLog({
     req,
     actionType: "user.sessions.revoke_all",
     entityType: "msp_user",
     entityId: String(userId),
     mspId,
+    metadata: { revokedCount },
   });
 
-  res.json({ ok: true, message: "All sessions revoked" });
+  res.json({ ok: true, revokedCount });
 });
 
 // ── Billing ───────────────────────────────────────────────────────────────────
