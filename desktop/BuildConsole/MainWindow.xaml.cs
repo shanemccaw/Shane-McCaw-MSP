@@ -193,6 +193,10 @@ namespace BuildConsole
         //    floaty Build Queue Map in the left-toolbar slot) ─────────────────────
         private BuildChainMapWindow? _buildChainMap;
 
+        // ── Git #2807: sibling Local (Database Schema) Map window, opened via the same
+        //    chain-map icon's Git Map / Local Map picker ───────────────────────────────
+        private LocalMapWindow? _localMap;
+
 
         // ── Git #1472: floaty Visual Test Tracker window (separate from Sticky Notes) ──
         private VisualTestTrackerWindow? _visualTestTracker;
@@ -1821,6 +1825,12 @@ namespace BuildConsole
         /// one is already open it's brought to front rather than opening a second, and if
         /// none is open we default to whatever Epic Git Board currently has marked
         /// "WORKING", falling back to a quick prompt when nothing is active.
+        ///
+        /// Git #2807 — this click now shows a real Git Map / Local Map choice first (unless
+        /// one of the two windows is already open, in which case we just bring that one
+        /// forward, same as before). "Git Map" opens exactly the same window/logic as before,
+        /// byte-for-byte; "Local Map" opens the new #2806 <see cref="LocalMapWindow"/>. Only
+        /// this call site changed — the two windows' own logic is untouched.
         /// </summary>
         private void OpenBuildChainMap()
         {
@@ -1830,7 +1840,25 @@ namespace BuildConsole
                 _buildChainMap.Activate();
                 return;
             }
+            if (_localMap != null)
+            {
+                if (_localMap.WindowState == WindowState.Minimized) _localMap.WindowState = WindowState.Normal;
+                _localMap.Activate();
+                return;
+            }
 
+            var choice = PromptForMapChoice();
+            if (choice == null) return; // Shane cancelled the picker
+
+            if (choice == MapChoice.GitMap) OpenGitMap();
+            else OpenLocalMap();
+        }
+
+        /// <summary>Git #2483's original open path, unchanged — extracted verbatim out of
+        /// <see cref="OpenBuildChainMap"/> so the #2807 picker can call it without altering
+        /// its real behavior.</summary>
+        private void OpenGitMap()
+        {
             int? epicNumber = LeftSidebar.ActiveEpicGithubNumber ?? PromptForEpicNumber();
             if (epicNumber == null) return; // Shane cancelled the prompt
 
@@ -1842,6 +1870,64 @@ namespace BuildConsole
             };
             _buildChainMap.Show();
             BuildConsole.Services.ActivityLog.Log("build-chain-map", $"open epic=#{epicNumber.Value}");
+        }
+
+        /// <summary>Git #2807 — opens the new #2806 <see cref="LocalMapWindow"/> (real live
+        /// Postgres schema graph). Same open-or-activate single-instance lifecycle as the
+        /// Git Map window above; no epic prompt needed since it isn't Epic-scoped.</summary>
+        private void OpenLocalMap()
+        {
+            _localMap = new LocalMapWindow { Owner = this };
+            _localMap.Closed += (s, e) =>
+            {
+                _localMap = null;
+                BuildConsole.Services.ActivityLog.Log("local-map", "close");
+            };
+            _localMap.Show();
+            BuildConsole.Services.ActivityLog.Log("local-map", "open");
+        }
+
+        private enum MapChoice { GitMap, LocalMap }
+
+        /// <summary>Git #2807 — real small choice popup shown when the chain-map icon is
+        /// clicked with neither map window already open. Same minimal ad-hoc-dialog style as
+        /// <see cref="PromptForEpicNumber"/> just below (label + buttons, no dedicated XAML).</summary>
+        private MapChoice? PromptForMapChoice()
+        {
+            var dlg = new Window
+            {
+                Title = "Build Map — which view?",
+                Width = 340,
+                Height = 160,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                Background = System.Windows.Media.Brushes.White
+            };
+
+            var stack = new StackPanel { Margin = new Thickness(16) };
+            stack.Children.Add(new TextBlock { Text = "Open which map?", Margin = new Thickness(0, 0, 0, 12), FontSize = 14 });
+
+            var buttonRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+            var gitMapBtn = new Button { Content = "Git Map", Width = 130, Height = 34, Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
+            var localMapBtn = new Button { Content = "Local Map", Width = 130, Height = 34 };
+            buttonRow.Children.Add(gitMapBtn);
+            buttonRow.Children.Add(localMapBtn);
+            stack.Children.Add(buttonRow);
+
+            var cancelRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
+            var cancel = new Button { Content = "Cancel", Width = 130, IsCancel = true };
+            cancelRow.Children.Add(cancel);
+            stack.Children.Add(cancelRow);
+
+            dlg.Content = stack;
+
+            MapChoice? result = null;
+            gitMapBtn.Click += (s, e) => { result = MapChoice.GitMap; dlg.DialogResult = true; };
+            localMapBtn.Click += (s, e) => { result = MapChoice.LocalMap; dlg.DialogResult = true; };
+            gitMapBtn.Focus();
+            dlg.ShowDialog();
+            return result;
         }
 
         /// <summary>Git #2483 — minimal inline prompt for the Epic number when Build Chain Map
