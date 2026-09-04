@@ -40,7 +40,7 @@
                     Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="OpenDashboardButton_Click"/>
         </StackPanel>
 
-        <Border Grid.Row="2" BorderThickness="1" BorderBrush="LightGray" Padding="12" Margin="0,0,0,12">
+        <Border Grid.Row="2" BorderThickness="1" Padding="12" Margin="0,0,0,12">
             <StackPanel Orientation="Horizontal">
                 <Ellipse x:Name="StatusDot" Width="12" Height="12" Fill="Gray" VerticalAlignment="Center"/>
                 <TextBlock x:Name="StatusText" Text="Checking database connection…"
@@ -48,17 +48,17 @@
             </StackPanel>
         </Border>
 
-        <Border Grid.Row="3" BorderThickness="1" BorderBrush="LightGray" Padding="12" Margin="0,0,0,12">
+        <Border Grid.Row="3" BorderThickness="1" Padding="12" Margin="0,0,0,12">
             <TextBlock x:Name="MigrationStatusText" Text="Migrations not checked yet."
-                       Foreground="Gray" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                       Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" VerticalAlignment="Center"/>
         </Border>
 
-        <Border Grid.Row="4" BorderThickness="1" BorderBrush="LightGray" Padding="12" Margin="0,0,0,12">
+        <Border Grid.Row="4" BorderThickness="1" Padding="12" Margin="0,0,0,12">
             <TextBlock x:Name="PlaidStatusText" Text="No bank accounts linked yet. Click &quot;Link Bank Account&quot; to connect one via Plaid."
-                       Foreground="Gray" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                       Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" VerticalAlignment="Center"/>
         </Border>
 
-        <TextBlock Grid.Row="5" Foreground="Gray" TextWrapping="Wrap" VerticalAlignment="Top"
+        <TextBlock Grid.Row="5" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" VerticalAlignment="Top"
                    Text="The MCP server is a separate, later dispatch — see README.md."/>
     </Grid>
 </Window>

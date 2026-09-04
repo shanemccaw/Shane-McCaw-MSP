@@ -7,6 +7,8 @@ using ShanesSurvival.App.Plaid;
 using ShanesSurvival.App.Settings;
 using ShanesSurvival.Core.Accounts;
 using ShanesSurvival.Core.Dashboard;
+using ShanesSurvival.Core.Debts;
+using ShanesSurvival.Core.Income;
 using ShanesSurvival.Core.PayPeriodPlans;
 using ShanesSurvival.Core.Settings;
 
@@ -26,10 +28,19 @@ public partial class MainWindow : Window
     private readonly AccountRepository _accountRepository = new();
     private readonly DashboardService _dashboardService = new();
     private readonly PayPeriodPlanRepository _planRepository = new();
+    private readonly DebtRepository _debtRepository = new();
+    private readonly IncomeRepository _incomeRepository = new();
+    private readonly PayPeriodDueService _payPeriodDueService;
+    private readonly PayPeriodForecastService _payPeriodForecastService;
 
     public MainWindow()
     {
         InitializeComponent();
+        // Reuses the already-real AccountRepository/DashboardService instances above — no
+        // shortfall/due-window math is re-derived here, same discipline PayPeriodForecastService
+        // itself follows (#2918).
+        _payPeriodDueService = new PayPeriodDueService(_accountRepository);
+        _payPeriodForecastService = new PayPeriodForecastService(_incomeRepository, _payPeriodDueService, _dashboardService);
         Loaded += async (_, _) => await CheckConnectionAsync();
     }
 
@@ -427,7 +438,9 @@ public partial class MainWindow : Window
     {
         try
         {
-            var window = new DashboardWindow(_settingsService, _plaidSyncService, _dashboardService, _planRepository) { Owner = this };
+            var window = new DashboardWindow(
+                _settingsService, _plaidSyncService, _dashboardService, _planRepository,
+                _debtRepository, _payPeriodForecastService) { Owner = this };
             window.Show();
         }
         catch (Exception ex)

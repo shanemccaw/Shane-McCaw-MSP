@@ -1,0 +1,125 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Real "instrument panel" theme (#2919) — a solo financial-survival triage tool, not a
+        generic budgeting app. The visual treatment must never soften a real bad number: no
+        gamification, no cheerful progress bars, no motivational copy. Numbers are the hero.
+        Applied app-wide via App.xaml's MergedDictionaries — this replaces the default WPF
+        light chrome everywhere, not just the Dashboard. Real hex values from the approved
+        design direction (Shane, 2026-09-04).
+    -->
+
+    <!-- Colors -->
+    <Color x:Key="WindowBackgroundColor">#FF1B2430</Color>
+    <Color x:Key="PanelBackgroundColor">#FF252F3D</Color>
+    <Color x:Key="PrimaryTextColor">#FFEDEEF0</Color>
+    <Color x:Key="SecondaryTextColor">#FF8B96A5</Color>
+    <Color x:Key="DividerColor">#FF3A4351</Color>
+    <Color x:Key="CoveredAccentColor">#FF4FA88F</Color>
+    <Color x:Key="DangerAccentColor">#FFD9534F</Color>
+
+    <!-- Brushes -->
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{StaticResource WindowBackgroundColor}"/>
+    <SolidColorBrush x:Key="PanelBackgroundBrush" Color="{StaticResource PanelBackgroundColor}"/>
+    <SolidColorBrush x:Key="PrimaryTextBrush" Color="{StaticResource PrimaryTextColor}"/>
+    <SolidColorBrush x:Key="SecondaryTextBrush" Color="{StaticResource SecondaryTextColor}"/>
+    <SolidColorBrush x:Key="DividerBrush" Color="{StaticResource DividerColor}"/>
+    <!-- Covered/safe accent — ONLY for genuinely covered/positive real states, never decorative. -->
+    <SolidColorBrush x:Key="CoveredAccentBrush" Color="{StaticResource CoveredAccentColor}"/>
+    <!-- Danger/critical/short accent — ONLY for genuinely short/critical/delinquent real states, never decorative. -->
+    <SolidColorBrush x:Key="DangerAccentBrush" Color="{StaticResource DangerAccentColor}"/>
+
+    <FontFamily x:Key="UiFontFamily">Segoe UI</FontFamily>
+    <!-- Consolas is the real fixed-pitch face bundled with Windows — used only for dollar
+         figures so amounts scan tabular/aligned like a real ledger, never for labels/copy. -->
+    <FontFamily x:Key="TabularNumeralFontFamily">Consolas</FontFamily>
+
+    <!-- Base control theming, applied implicitly app-wide. Elements with a locally-set
+         Background/Foreground/BorderBrush keep that local value — WPF only falls back to a
+         Style setter when the property isn't set on the element itself. -->
+
+    <Style TargetType="Window">
+        <Setter Property="Background" Value="{StaticResource WindowBackgroundBrush}"/>
+        <Setter Property="TextElement.Foreground" Value="{StaticResource PrimaryTextBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}"/>
+    </Style>
+
+    <Style TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}"/>
+    </Style>
+
+    <Style TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}"/>
+    </Style>
+
+    <Style TargetType="Border">
+        <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+    </Style>
+
+    <Style TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource PanelBackgroundBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}"/>
+        <Setter Property="Padding" Value="8,4"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="ButtonBorder"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="3">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Margin="{TemplateBinding Padding}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource SecondaryTextBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
+                            <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource WindowBackgroundBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="TextBox">
+        <Setter Property="Background" Value="{StaticResource WindowBackgroundBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+        <Setter Property="CaretBrush" Value="{StaticResource PrimaryTextBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}"/>
+        <Setter Property="Padding" Value="4"/>
+    </Style>
+
+    <Style TargetType="PasswordBox">
+        <Setter Property="Background" Value="{StaticResource WindowBackgroundBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+        <Setter Property="CaretBrush" Value="{StaticResource PrimaryTextBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}"/>
+        <Setter Property="Padding" Value="4"/>
+    </Style>
+
+    <!-- Secondary/muted supporting text (e.g. status lines, sub-labels). -->
+    <Style x:Key="MutedTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}"/>
+    </Style>
+
+    <!-- Every dollar figure on screen uses this so amounts line up like a real ledger. -->
+    <Style x:Key="AmountTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource TabularNumeralFontFamily}"/>
+    </Style>
+
+</ResourceDictionary>

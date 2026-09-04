@@ -17,16 +17,16 @@
 
         <TextBlock Grid.Row="0" FontSize="16" FontWeight="Bold" Margin="0,0,0,4"
                    Text="Assign Account Roles"/>
-        <TextBlock Grid.Row="1" Foreground="Gray" TextWrapping="Wrap" Margin="0,0,0,12"
+        <TextBlock Grid.Row="1" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" Margin="0,0,0,12"
                    Text="Assign every synced account a role explicitly — role is never inferred from the account's name or type. Exactly one Income Gate account, one row per real bill (with its real monthly target), and the 2 household spend accounts. Mark the two GATE-tier bills (mortgage, Tesla) with the GATE checkbox."/>
 
-        <Border Grid.Row="2" BorderThickness="1" BorderBrush="LightGray">
+        <Border Grid.Row="2" BorderThickness="1">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel x:Name="RowsPanel" Margin="8"/>
             </ScrollViewer>
         </Border>
 
-        <TextBlock Grid.Row="3" x:Name="StatusText" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="Gray"/>
+        <TextBlock Grid.Row="3" x:Name="StatusText" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}"/>
 
         <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
             <Button x:Name="SaveButton" Content="Save" Width="90" Height="28" Margin="0,0,8,0"

@@ -5,47 +5,53 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using ShanesSurvival.App.Plaid;
 using ShanesSurvival.Core.Dashboard;
+using ShanesSurvival.Core.Debts;
 using ShanesSurvival.Core.PayPeriodPlans;
 using ShanesSurvival.Core.Settings;
 
 namespace ShanesSurvival.App.Dashboard;
 
 /// <summary>
-/// Real BuildConsole-style-clarity dashboard: one glance, no digging. Every number here comes
-/// from <see cref="DashboardService"/>, which computes live off real Plaid balances/transactions
-/// already in Postgres — nothing here is fixture/hardcoded data.
+/// Real instrument-panel dashboard (#2919): one glance, no digging, no gamification. Top to
+/// bottom — real GATE readout (gate_status), real critical debts strip (#2915's is_critical),
+/// real This cycle/Next cycle forecast panels (#2918's pay_period_forecast) — then the
+/// existing real spend-bleed/warnings/current-plan panels below. Every number here comes from
+/// <see cref="DashboardService"/>, <see cref="DebtRepository"/>, and
+/// <see cref="PayPeriodForecastService"/>, which compute live off real Plaid/Postgres data
+/// already stored — nothing here is fixture/hardcoded data. Colors are only ever applied to
+/// genuinely covered/short/critical real states, never decoratively.
 /// </summary>
 public partial class DashboardWindow : Window
 {
-    private static readonly Brush CoveredBrush = new SolidColorBrush(Color.FromRgb(0x1E, 0x7E, 0x34));
-    private static readonly Brush ShortBrush = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B));
-    private static readonly Brush UnknownBrush = Brushes.Gray;
-    private static readonly Brush CoveredBackground = new SolidColorBrush(Color.FromRgb(0xE8, 0xF5, 0xE9));
-    private static readonly Brush ShortBackground = new SolidColorBrush(Color.FromRgb(0xFD, 0xEC, 0xEA));
-    private static readonly Brush UnknownBackground = new SolidColorBrush(Color.FromRgb(0xF2, 0xF2, 0xF2));
-
     private readonly SettingsService _settingsService;
     private readonly PlaidSyncService _plaidSyncService;
     private readonly DashboardService _dashboardService;
     private readonly PayPeriodPlanRepository _planRepository;
+    private readonly DebtRepository _debtRepository;
+    private readonly PayPeriodForecastService _payPeriodForecastService;
 
     public DashboardWindow(
         SettingsService settingsService, PlaidSyncService plaidSyncService, DashboardService dashboardService,
-        PayPeriodPlanRepository planRepository)
+        PayPeriodPlanRepository planRepository, DebtRepository debtRepository,
+        PayPeriodForecastService payPeriodForecastService)
     {
         InitializeComponent();
         _settingsService = settingsService;
         _plaidSyncService = plaidSyncService;
         _dashboardService = dashboardService;
         _planRepository = planRepository;
+        _debtRepository = debtRepository;
+        _payPeriodForecastService = payPeriodForecastService;
         Loaded += async (_, _) => await RecomputeAsync();
     }
+
+    private static Brush ThemeBrush(string key) => (Brush)Application.Current.Resources[key];
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
         RefreshButton.IsEnabled = false;
         RefreshStatusText.Text = "Syncing accounts and transactions…";
-        RefreshStatusText.Foreground = Brushes.Gray;
+        RefreshStatusText.Foreground = ThemeBrush("SecondaryTextBrush");
 
         try
         {
@@ -58,23 +64,23 @@ public partial class DashboardWindow : Window
                 if (!syncResult.Success)
                 {
                     RefreshStatusText.Text = $"Sync failed: {syncResult.ErrorMessage}. Showing last-known data.";
-                    RefreshStatusText.Foreground = Brushes.DarkRed;
+                    RefreshStatusText.Foreground = ThemeBrush("DangerAccentBrush");
                 }
                 else if (syncResult.Items.Any(i => !i.Success))
                 {
                     RefreshStatusText.Text = "Sync completed with some errors. Showing latest available data.";
-                    RefreshStatusText.Foreground = Brushes.DarkRed;
+                    RefreshStatusText.Foreground = ThemeBrush("DangerAccentBrush");
                 }
                 else
                 {
                     RefreshStatusText.Text = $"Synced. Last refreshed {DateTime.Now:t}.";
-                    RefreshStatusText.Foreground = Brushes.Green;
+                    RefreshStatusText.Foreground = ThemeBrush("CoveredAccentBrush");
                 }
             }
             else
             {
                 RefreshStatusText.Text = "Plaid not configured — showing last-known data from Postgres.";
-                RefreshStatusText.Foreground = Brushes.Gray;
+                RefreshStatusText.Foreground = ThemeBrush("SecondaryTextBrush");
             }
 
             await RecomputeAsync();
@@ -84,7 +90,7 @@ public partial class DashboardWindow : Window
             // This is an async void event handler — nothing above it can catch an escaped
             // exception, so letting one through here would take down the whole process.
             RefreshStatusText.Text = $"Unexpected error refreshing: {ex.Message}";
-            RefreshStatusText.Foreground = Brushes.DarkRed;
+            RefreshStatusText.Foreground = ThemeBrush("DangerAccentBrush");
         }
         finally
         {
@@ -97,17 +103,25 @@ public partial class DashboardWindow : Window
         try
         {
             var settings = _settingsService.Load();
+
             var result = await _dashboardService.ComputeAsync(settings.PostgresConnectionString);
             Render(result);
+
+            var debtsResult = await _debtRepository.ListAsync(settings.PostgresConnectionString);
+            RenderCriticalDebts(debtsResult);
+
+            var forecastResult = await _payPeriodForecastService.ComputeAsync(
+                settings.PostgresConnectionString, DateOnly.FromDateTime(DateTime.Today));
+            RenderForecast(forecastResult);
 
             var planResult = await _planRepository.GetActiveAsync(settings.PostgresConnectionString);
             RenderCurrentPlan(planResult);
         }
         catch (Exception ex)
         {
-            // Belt-and-suspenders: DashboardService.ComputeAsync already turns every real
-            // failure into a Result, but Loaded is effectively async void — never let an
-            // escaped exception crash the whole process.
+            // Belt-and-suspenders: every service above already turns a real failure into a
+            // Result, but Loaded is effectively async void — never let an escaped exception
+            // crash the whole process.
             RenderError($"Unexpected error computing dashboard: {ex.Message}");
         }
     }
@@ -120,154 +134,301 @@ public partial class DashboardWindow : Window
             return;
         }
 
-        RenderTopLine(result);
-        RenderGateCards(result.GateBills);
-        RenderOtherBills(result.OtherBills);
+        RenderGateReadout(result);
         RenderSpendBleed(result.SpendBleed);
         RenderWarnings(result.Warnings);
     }
 
     private void RenderError(string message)
     {
-        TopLineBorder.BorderBrush = ShortBrush;
-        TopLineBorder.Background = UnknownBackground;
-        TopLineText.Text = "Could not load dashboard";
-        TopLineText.Foreground = ShortBrush;
-        TopLineSubText.Text = message;
-        GateCardsPanel.Children.Clear();
-        OtherBillsPanel.Children.Clear();
+        GateReadoutBorder.BorderBrush = ThemeBrush("DangerAccentBrush");
+        GateVerdictText.Text = "Could not load dashboard";
+        GateVerdictText.Foreground = ThemeBrush("DangerAccentBrush");
+        GateSupportingText.Text = message;
+        CriticalDebtsPanel.Children.Clear();
+        Cycle1Panel.Children.Clear();
+        Cycle2Panel.Children.Clear();
+        ForecastErrorText.Visibility = Visibility.Collapsed;
         SpendBleedPanel.Children.Clear();
         WarningsBorder.Visibility = Visibility.Collapsed;
     }
 
-    private void RenderTopLine(DashboardResult result)
+    /// <summary>
+    /// The single biggest, most prominent element on screen — real covered/short verdict in
+    /// large type, with the real Income Gate balance vs. total shortfall as supporting text,
+    /// same as gate_status's real output.
+    /// </summary>
+    private void RenderGateReadout(DashboardResult result)
     {
         if (result.TopLineAmount is null)
         {
-            TopLineText.Text = "Unknown";
-            TopLineText.Foreground = UnknownBrush;
-            TopLineBorder.BorderBrush = UnknownBrush;
-            TopLineBorder.Background = UnknownBackground;
-            TopLineSubText.Text = "Assign an Income Gate account (and Sync Now) to compute this.";
+            GateVerdictText.Text = "Unknown";
+            GateVerdictText.Foreground = ThemeBrush("SecondaryTextBrush");
+            GateReadoutBorder.BorderBrush = ThemeBrush("DividerBrush");
+            GateSupportingText.Text = "Assign an Income Gate account (and Sync Now) to compute this.";
             return;
         }
 
         var amount = result.TopLineAmount.Value;
         if (result.IsCovered)
         {
-            TopLineText.Text = $"Covered — {amount:C2} to spare";
-            TopLineText.Foreground = CoveredBrush;
-            TopLineBorder.BorderBrush = CoveredBrush;
-            TopLineBorder.Background = CoveredBackground;
+            GateVerdictText.Text = $"COVERED — {Money(amount)} to spare";
+            GateVerdictText.Foreground = ThemeBrush("CoveredAccentBrush");
+            GateReadoutBorder.BorderBrush = ThemeBrush("CoveredAccentBrush");
         }
         else
         {
-            TopLineText.Text = $"Short by {Math.Abs(amount):C2}";
-            TopLineText.Foreground = ShortBrush;
-            TopLineBorder.BorderBrush = ShortBrush;
-            TopLineBorder.Background = ShortBackground;
+            GateVerdictText.Text = $"SHORT by {Money(Math.Abs(amount))}";
+            GateVerdictText.Foreground = ThemeBrush("DangerAccentBrush");
+            GateReadoutBorder.BorderBrush = ThemeBrush("DangerAccentBrush");
         }
 
         var reserveSuffix = result.ReserveAccounts.Count > 0
-            ? $"  +  Reserve ({string.Join(", ", result.ReserveAccounts.Select(r => r.Name))}): {result.ReserveTotal:C2}"
+            ? $"  +  Reserve ({string.Join(", ", result.ReserveAccounts.Select(r => r.Name))}): {Money(result.ReserveTotal)}"
             : string.Empty;
 
-        TopLineSubText.Text =
-            $"{result.IncomeGateAccountName} balance: {result.IncomeGateBalance:C2}{reserveSuffix}  −  " +
-            $"Total shortfall across bills: {result.TotalShortfall:C2}";
+        GateSupportingText.Text =
+            $"{result.IncomeGateAccountName} balance: {Money(result.IncomeGateBalance ?? 0m)}{reserveSuffix}  −  " +
+            $"Total shortfall across bills: {Money(result.TotalShortfall)}";
     }
 
-    private void RenderGateCards(IReadOnlyList<BillStatus> gateBills)
+    /// <summary>
+    /// Real is_critical debts (#2915) — always surfaced in their own strip, each its own
+    /// distinctly bordered row with a left border accent in danger color. Never empty-state
+    /// silently: an honest "no critical debts flagged" muted line when there are none.
+    /// </summary>
+    private void RenderCriticalDebts(DebtListResult result)
     {
-        GateCardsPanel.Children.Clear();
-        if (gateBills.Count == 0)
+        CriticalDebtsPanel.Children.Clear();
+
+        if (!result.Success)
         {
-            GateCardsPanel.Children.Add(new TextBlock
+            CriticalDebtsPanel.Children.Add(new TextBlock
             {
-                Text = "No bill accounts are marked GATE yet — check the GATE box for mortgage/Tesla in \"Assign Account Roles…\".",
-                Foreground = Brushes.Gray,
+                Text = $"Could not load critical debts: {result.ErrorMessage}",
+                Foreground = ThemeBrush("DangerAccentBrush"),
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 8),
             });
             return;
         }
 
-        foreach (var bill in gateBills)
+        var criticalDebts = result.Debts.Where(d => d.IsCritical).ToList();
+        if (criticalDebts.Count == 0)
         {
-            GateCardsPanel.Children.Add(BuildBillCard(bill, isCard: true));
-        }
-    }
-
-    private void RenderOtherBills(IReadOnlyList<BillStatus> otherBills)
-    {
-        OtherBillsPanel.Children.Clear();
-        if (otherBills.Count == 0)
-        {
-            OtherBillsPanel.Children.Add(new TextBlock
+            CriticalDebtsPanel.Children.Add(new TextBlock
             {
-                Text = "No non-GATE bill accounts assigned yet.",
-                Foreground = Brushes.Gray,
+                Text = "No debts flagged critical right now.",
+                Style = (Style)Application.Current.Resources["MutedTextStyle"],
             });
             return;
         }
 
-        foreach (var bill in otherBills)
+        foreach (var debt in criticalDebts)
         {
-            OtherBillsPanel.Children.Add(BuildBillCard(bill, isCard: false));
+            CriticalDebtsPanel.Children.Add(BuildCriticalDebtRow(debt));
         }
     }
 
-    private Border BuildBillCard(BillStatus bill, bool isCard)
+    private Border BuildCriticalDebtRow(DebtRow debt)
     {
-        var (brush, background, statusText) = ClassifyBill(bill);
-
-        var nameBlock = new TextBlock { Text = bill.Name, FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap };
-        var detailBlock = new TextBlock
-        {
-            Foreground = Brushes.Gray,
-            FontSize = 12,
-            Margin = new Thickness(0, 2, 0, 0),
-            Text = $"Target {(bill.TargetAmount.HasValue ? bill.TargetAmount.Value.ToString("C2", CultureInfo.CurrentCulture) : "—")} · " +
-                   $"Balance {(bill.CurrentBalance.HasValue ? bill.CurrentBalance.Value.ToString("C2", CultureInfo.CurrentCulture) : "—")}",
-        };
+        var nameBlock = new TextBlock { Text = debt.CreditorName, FontWeight = FontWeights.Bold, FontSize = 16 };
         var statusBlock = new TextBlock
         {
-            Text = statusText,
-            Foreground = brush,
-            FontWeight = FontWeights.Bold,
-            FontSize = isCard ? 18 : 14,
+            Text = FormatDebtStatus(debt),
+            Foreground = ThemeBrush("DangerAccentBrush"),
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 4, 0, 0),
+        };
+        var balanceBlock = new TextBlock
+        {
+            Text = $"Balance {Money(debt.Balance)}" + (debt.MinimumPayment is null ? "" : $" · min payment {Money(debt.MinimumPayment.Value)}"),
+            Style = (Style)Application.Current.Resources["AmountTextStyle"],
+            FontSize = 12,
             Margin = new Thickness(0, 4, 0, 0),
         };
 
         var stack = new StackPanel();
         stack.Children.Add(nameBlock);
-        stack.Children.Add(detailBlock);
         stack.Children.Add(statusBlock);
+        stack.Children.Add(balanceBlock);
+        if (!string.IsNullOrWhiteSpace(debt.Notes))
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = debt.Notes,
+                Style = (Style)Application.Current.Resources["MutedTextStyle"],
+                FontSize = 12,
+                Margin = new Thickness(0, 2, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+            });
+        }
 
         return new Border
         {
-            BorderBrush = brush,
-            BorderThickness = new Thickness(1),
-            Background = background,
-            CornerRadius = new CornerRadius(4),
+            Background = ThemeBrush("PanelBackgroundBrush"),
+            BorderBrush = ThemeBrush("DangerAccentBrush"),
+            BorderThickness = new Thickness(4, 1, 1, 1),
             Padding = new Thickness(12),
-            Margin = isCard ? new Thickness(0, 0, 12, 12) : new Thickness(0, 0, 0, 8),
-            Width = isCard ? 240 : double.NaN,
+            Margin = new Thickness(0, 0, 0, 8),
             Child = stack,
         };
     }
 
-    private static (Brush Brush, Brush Background, string StatusText) ClassifyBill(BillStatus bill)
+    /// <summary>Real, honest delinquency status — same convention as DebtTools.FormatDelinquency (Mcp).</summary>
+    private static string FormatDebtStatus(DebtRow debt) =>
+        debt.IsDelinquent
+            ? $"Delinquent — {debt.DaysPastDue} day(s) past due"
+            : debt.DaysPastDue > 0
+                ? $"{debt.DaysPastDue} day(s) past due"
+                : "Current";
+
+    /// <summary>
+    /// This cycle / Next cycle panels, side by side, from real pay_period_forecast (#2918).
+    /// </summary>
+    private void RenderForecast(PayPeriodForecastResult result)
     {
-        if (bill.Warning is not null)
+        Cycle1Panel.Children.Clear();
+        Cycle2Panel.Children.Clear();
+
+        if (!result.Success)
         {
-            return (UnknownBrush, UnknownBackground, bill.Warning);
+            ForecastErrorText.Text = result.ErrorMessage ?? "Could not compute pay-period forecast.";
+            ForecastErrorText.Visibility = Visibility.Visible;
+            ForecastGrid.Visibility = Visibility.Collapsed;
+            return;
         }
-        if (bill.Shortfall is > 0)
+
+        ForecastErrorText.Visibility = Visibility.Collapsed;
+        ForecastGrid.Visibility = Visibility.Visible;
+
+        if (result.Cycle1 is not null)
         {
-            return (ShortBrush, ShortBackground, $"Short {bill.Shortfall.Value:C2}");
+            BuildCyclePanel(Cycle1Panel, $"This Cycle — {result.PrimarySourceName}", result.Cycle1, isCycle1: true);
         }
-        return (CoveredBrush, CoveredBackground, "Covered");
+
+        if (result.Cycle2 is not null)
+        {
+            BuildCyclePanel(Cycle2Panel, "Next Cycle", result.Cycle2, isCycle1: false);
+        }
+    }
+
+    /// <summary>
+    /// Cycle 1's short verdict names the real deadline ("must find this before [next pay
+    /// date]"), matching Shane's own framing on #2918; Cycle 2's is forward-looking ("will be
+    /// short") since its window hasn't started yet.
+    /// </summary>
+    private void BuildCyclePanel(StackPanel panel, string label, PayPeriodForecastCycle cycle, bool isCycle1)
+    {
+        panel.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontWeight = FontWeights.Bold,
+            FontSize = 14,
+            Margin = new Thickness(0, 0, 0, 2),
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"{cycle.WindowStart:yyyy-MM-dd} → {cycle.WindowEnd:yyyy-MM-dd}",
+            Style = (Style)Application.Current.Resources["MutedTextStyle"],
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 0, 12),
+        });
+
+        var verdictText = new TextBlock { FontSize = 24, FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) };
+        if (cycle.IsCovered is null)
+        {
+            verdictText.Text = "Unknown — " + (cycle.AvailableAmount is null
+                ? "no expected income figure set for this cycle."
+                : "cannot compute a verdict yet.");
+            verdictText.Foreground = ThemeBrush("SecondaryTextBrush");
+        }
+        else if (cycle.IsCovered.Value)
+        {
+            verdictText.Text = $"Covered, {Money(cycle.Delta!.Value)} left over";
+            verdictText.Foreground = ThemeBrush("CoveredAccentBrush");
+        }
+        else
+        {
+            var shortAmount = Math.Abs(cycle.Delta!.Value);
+            verdictText.Text = isCycle1
+                ? $"Short {Money(shortAmount)} — must find this before {cycle.WindowEnd:yyyy-MM-dd}"
+                : $"Will be short {Money(shortAmount)}";
+            verdictText.Foreground = ThemeBrush("DangerAccentBrush");
+        }
+        panel.Children.Add(verdictText);
+
+        if (cycle.DueBills.Count == 0)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "No bills due in this window.",
+                Style = (Style)Application.Current.Resources["MutedTextStyle"],
+                Margin = new Thickness(0, 0, 0, 4),
+            });
+        }
+        else
+        {
+            foreach (var bill in cycle.DueBills.OrderBy(b => b.DueDate))
+            {
+                var row = new Grid { Margin = new Thickness(0, 1, 0, 1) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                var nameBlock = new TextBlock { Text = bill.Name, TextWrapping = TextWrapping.Wrap };
+                Grid.SetColumn(nameBlock, 0);
+
+                var dueBlock = new TextBlock
+                {
+                    Text = bill.DueDate.ToString("MMM d"),
+                    Style = (Style)Application.Current.Resources["MutedTextStyle"],
+                };
+                Grid.SetColumn(dueBlock, 1);
+
+                var amountBlock = new TextBlock
+                {
+                    Text = bill.TargetAmount is not null ? Money(bill.TargetAmount.Value) : (bill.Warning ?? "—"),
+                    Style = (Style)Application.Current.Resources["AmountTextStyle"],
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                };
+                Grid.SetColumn(amountBlock, 2);
+
+                row.Children.Add(nameBlock);
+                row.Children.Add(dueBlock);
+                row.Children.Add(amountBlock);
+                panel.Children.Add(row);
+            }
+        }
+
+        panel.Children.Add(new Border { BorderThickness = new Thickness(0, 1, 0, 0), Margin = new Thickness(0, 8, 0, 8) });
+
+        var totalRow = new Grid();
+        totalRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        totalRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var totalLabel = new TextBlock { Text = "Total due", FontWeight = FontWeights.SemiBold };
+        Grid.SetColumn(totalLabel, 0);
+        var totalAmount = new TextBlock
+        {
+            Text = Money(cycle.TotalDue),
+            Style = (Style)Application.Current.Resources["AmountTextStyle"],
+            FontWeight = FontWeights.SemiBold,
+        };
+        Grid.SetColumn(totalAmount, 1);
+        totalRow.Children.Add(totalLabel);
+        totalRow.Children.Add(totalAmount);
+        panel.Children.Add(totalRow);
+
+        foreach (var warning in cycle.Warnings)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"• {warning}",
+                Style = (Style)Application.Current.Resources["MutedTextStyle"],
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 6, 0, 0),
+            });
+        }
     }
 
     private void RenderSpendBleed(IReadOnlyList<SpendAccountBleed> spendBleed)
@@ -278,7 +439,7 @@ public partial class DashboardWindow : Window
             SpendBleedPanel.Children.Add(new TextBlock
             {
                 Text = "No spend accounts assigned yet.",
-                Foreground = Brushes.Gray,
+                Style = (Style)Application.Current.Resources["MutedTextStyle"],
             });
             return;
         }
@@ -287,7 +448,7 @@ public partial class DashboardWindow : Window
         {
             var header = new TextBlock
             {
-                Text = $"{account.Name} — {account.TotalSpent:C2} over last 30 days",
+                Text = $"{account.Name} — {Money(account.TotalSpent)} over last 30 days",
                 FontWeight = FontWeights.Bold,
                 Margin = new Thickness(0, 8, 0, 4),
             };
@@ -298,7 +459,7 @@ public partial class DashboardWindow : Window
                 SpendBleedPanel.Children.Add(new TextBlock
                 {
                     Text = "No transactions in the last 30 days.",
-                    Foreground = Brushes.Gray,
+                    Style = (Style)Application.Current.Resources["MutedTextStyle"],
                     Margin = new Thickness(8, 0, 0, 4),
                 });
                 continue;
@@ -314,10 +475,10 @@ public partial class DashboardWindow : Window
                 var nameBlock = new TextBlock { Text = merchant.Merchant };
                 Grid.SetColumn(nameBlock, 0);
 
-                var countBlock = new TextBlock { Text = $"{merchant.TransactionCount} tx", Foreground = Brushes.Gray };
+                var countBlock = new TextBlock { Text = $"{merchant.TransactionCount} tx", Style = (Style)Application.Current.Resources["MutedTextStyle"] };
                 Grid.SetColumn(countBlock, 1);
 
-                var totalBlock = new TextBlock { Text = merchant.TotalAmount.ToString("C2", CultureInfo.CurrentCulture), FontWeight = FontWeights.SemiBold };
+                var totalBlock = new TextBlock { Text = Money(merchant.TotalAmount), Style = (Style)Application.Current.Resources["AmountTextStyle"], FontWeight = FontWeights.SemiBold };
                 Grid.SetColumn(totalBlock, 2);
 
                 row.Children.Add(nameBlock);
@@ -357,7 +518,7 @@ public partial class DashboardWindow : Window
         if (!result.Success)
         {
             CurrentPlanHeaderText.Text = "Could not load the current plan";
-            CurrentPlanHeaderText.Foreground = ShortBrush;
+            CurrentPlanHeaderText.Foreground = ThemeBrush("DangerAccentBrush");
             CurrentPlanSubText.Text = result.ErrorMessage;
             return;
         }
@@ -365,22 +526,22 @@ public partial class DashboardWindow : Window
         if (result.Plan is null)
         {
             CurrentPlanHeaderText.Text = "No active pay-period plan right now";
-            CurrentPlanHeaderText.Foreground = Brushes.Black;
+            CurrentPlanHeaderText.Foreground = ThemeBrush("PrimaryTextBrush");
             CurrentPlanSubText.Text = "Ask Claude Desktop to create one via create_pay_period_plan when you get paid.";
             return;
         }
 
         var plan = result.Plan;
-        CurrentPlanHeaderText.Foreground = Brushes.Black;
+        CurrentPlanHeaderText.Foreground = ThemeBrush("PrimaryTextBrush");
         CurrentPlanHeaderText.Text =
-            $"Pay date {plan.PayDate:yyyy-MM-dd} — income {plan.IncomeAmount:C2} ({plan.Status})";
+            $"Pay date {plan.PayDate:yyyy-MM-dd} — income {Money(plan.IncomeAmount)} ({plan.Status})";
         CurrentPlanSubText.Text = string.IsNullOrWhiteSpace(plan.Notes) ? "" : plan.Notes;
 
         foreach (var allocation in plan.Allocations)
         {
             var balanceText = allocation.CurrentBalance is null
                 ? "balance unknown"
-                : $"current balance {allocation.CurrentBalance.Value.ToString("C2", CultureInfo.CurrentCulture)}";
+                : $"current balance {Money(allocation.CurrentBalance.Value)}";
             var reasonText = string.IsNullOrWhiteSpace(allocation.Reason) ? "" : $" — {allocation.Reason}";
 
             var checkBox = new CheckBox
@@ -392,7 +553,7 @@ public partial class DashboardWindow : Window
                 Content = new TextBlock
                 {
                     TextWrapping = TextWrapping.Wrap,
-                    Text = $"{allocation.AccountName}: {allocation.Amount:C2}{reasonText} ({balanceText})",
+                    Text = $"{allocation.AccountName}: {Money(allocation.Amount)}{reasonText} ({balanceText})",
                 },
             };
             checkBox.Checked += CurrentPlanAllocationCheckBox_Checked;
@@ -404,7 +565,7 @@ public partial class DashboardWindow : Window
             CurrentPlanAllocationsPanel.Children.Add(new TextBlock
             {
                 Text = "This plan has no allocations.",
-                Foreground = Brushes.Gray,
+                Style = (Style)Application.Current.Resources["MutedTextStyle"],
             });
         }
     }
@@ -444,4 +605,6 @@ public partial class DashboardWindow : Window
             checkBox.IsEnabled = true;
         }
     }
+
+    private static string Money(decimal amount) => amount.ToString("C2", CultureInfo.CurrentCulture);
 }
