@@ -438,6 +438,11 @@ export default defineConfig({
       // coverage gap, read out of the shipped migration and driven through
       // the real applyMapping/classifySeverity.
       "src/lib/__tests__/directory-surface-coverage-2763.test.ts",
+      // #2835 — real follow-up from #2763: 1 new directory-surface check
+      // (identity:transitive-role-assignments) closing a real config_resources
+      // coverage gap, read out of the shipped migration and driven through
+      // the real applyMapping/classifySeverity.
+      "src/lib/__tests__/directory-surface-coverage-2835.test.ts",
       // #1310 — the generalized purchase-session account-creation core (paid
       // gate, hash-at-rest codes, count-before-judge attempt budget,
       // verified-address pinning, provision-if-missing, never-overwrite),
