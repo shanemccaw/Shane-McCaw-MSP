@@ -134,6 +134,23 @@ export interface RemediationDeclineResult {
   readonly alreadyDeclined: boolean;
 }
 
+export interface RemediationChecklistDeclineInput {
+  /** The finding's own stable identity — same string this row's `step_id` already holds (#1538). */
+  readonly checkKey: string;
+  /** remediation_tracker_steps.id for this (customerId, checkKey) row — must already exist. */
+  readonly trackerStepRowId: number;
+  readonly scope: TenantScope;
+  /** The tenant-specific fact straight from the finding — `RemediationChecklistItem.title` (#1538), never invented. */
+  readonly findingTitle: string;
+  /** `RemediationChecklistItem.severity` — this checklist's only two adverse severities. */
+  readonly severity: "critical" | "warning";
+  /** Real evidence, in the same summary→description→title fallback order `resolveRemediationChecklist` already applies — never fabricated prose. */
+  readonly hazardCore: string;
+  readonly approverName: string;
+  readonly approverEmail?: string;
+  readonly statement: string;
+}
+
 /**
  * Declines one remediation-tracker step to the risk register: creates a
  * SIGNED, active `msp_risk_decisions` row (the decline IS the acceptance,
@@ -283,6 +300,111 @@ export async function declineRemediationStepToRisk(input: RemediationDeclineInpu
   log.info(
     { customerId: scope.customerId, stepId, riskDecisionId: inserted.id, rbdId, checkKey: primaryCheckKey, additionalCheckKeys },
     "remediation step declined to risk register — accepted risk created (#1542)",
+  );
+
+  return { riskDecisionId: inserted.id, rbdId, alreadyDeclined: false };
+}
+
+/**
+ * Declines one FINDINGS-DERIVED checklist item (#1538, checkKey-addressed) to
+ * the risk register — the same signed `msp_risk_decisions` row
+ * `declineRemediationStepToRisk` creates for the s1–s30 world, above (#2869).
+ *
+ * Simpler than the s1–s30 path by construction: a checklist item's identity
+ * IS a real, currently-open finding (`resolveRemediationChecklistItem`,
+ * `remediation-checklist.ts`) rather than a hand-authored step that may or may
+ * not map to one — so the caller passes the finding's own already-resolved
+ * title/severity/summary straight through instead of this function
+ * re-deriving them via `REMEDIATION_TRACKER_STEP_CHECK_KEYS`. Same
+ * NOT-NULL-field discipline as the s1–s30 path: `liabilityValueUsd` always 0,
+ * `graphEndpoint` always "" — never an invented figure.
+ */
+export async function declineRemediationChecklistItemToRisk(
+  input: RemediationChecklistDeclineInput,
+): Promise<RemediationDeclineResult> {
+  const { checkKey, trackerStepRowId, scope, findingTitle, severity, hazardCore, statement } = input;
+  const approverName = (input.approverName ?? "").trim() || "Customer";
+  const approverEmail = (input.approverEmail ?? "").trim();
+  const rbdId = `RR-RT-${scope.customerId}-${checkKey}`;
+
+  const [existing] = await db
+    .select({ id: mspRiskDecisionsTable.id, acceptedAt: mspRiskDecisionsTable.acceptedAt })
+    .from(mspRiskDecisionsTable)
+    .where(and(eq(mspRiskDecisionsTable.mspId, scope.mspId), eq(mspRiskDecisionsTable.rbdId, rbdId)))
+    .limit(1);
+
+  if (existing?.acceptedAt) {
+    return { riskDecisionId: existing.id, rbdId, alreadyDeclined: true };
+  }
+
+  const acceptedAt = new Date();
+  const riskLevel = SEVERITY_TO_RISK_LEVEL[severity] || "medium";
+  const riskScore = riskScoreForLevel(riskLevel);
+
+  const reviewDueAt = new Date(acceptedAt.getTime() + RISK_REVIEW_DAYS * 86_400_000);
+  const reviewDisplay = formatReviewDate(reviewDueAt);
+  const signedAtDisplay = acceptedAt.toISOString().substring(0, 19).replace("T", " ") + " UTC";
+  const signatureHash = createHash("sha256")
+    .update([rbdId, approverName, acceptedAt.toISOString(), statement].join(" "))
+    .digest("hex");
+
+  const mspAssessor: MspAssessor = { name: "Remediation Tracker", upn: "system@remediation-tracker", timestamp: acceptedAt.toISOString() };
+  const clientApprover: ClientApprover = {
+    name: approverName,
+    title: "",
+    email: approverEmail,
+    signedAt: signedAtDisplay,
+    ipAddress: null,
+    signatureHash,
+  };
+
+  const hazardDescription = `${hazardCore} The customer declined this remediation item; the residual risk is accepted until a future fix supersedes it.`;
+
+  const [inserted] = await db
+    .insert(mspRiskDecisionsTable)
+    .values({
+      mspId: scope.mspId,
+      rbdId,
+      tenantId: scope.tenantId,
+      tenantName: scope.tenantName,
+      primaryDomain: scope.primaryDomain,
+      title: findingTitle,
+      controlViolated: "Remediation Checklist",
+      framework: "Remediation Checklist",
+      checkKey,
+      rawRiskLevel: riskLevel,
+      residualRiskLevel: riskLevel, // declining accepts the risk whole — no mitigation applied
+      rawRiskScore: riskScore,
+      residualRiskScore: riskScore,
+      liabilityValueUsd: 0, // not quantified here — never an invented dollar figure
+      hazardDescription,
+      graphEndpoint: "",
+      compensatingControls: [],
+      mspAssessor,
+      clientApprover,
+      expirationDate: reviewDisplay,
+      status: "active",
+      riskStatus: "Accepted",
+      reviewDate: reviewDisplay,
+      reviewDueAt,
+      reviewState: "on_track",
+      acceptedAt,
+      acceptedStatement: statement,
+      // #2869 back-pointer: this risk was spawned by the checklist item the customer declined.
+      spawnedByRemediationStepId: trackerStepRowId,
+    })
+    .onConflictDoUpdate({
+      // (mspId, rbdId) unique — a repeated decline of the same item returns the same risk.
+      target: [mspRiskDecisionsTable.mspId, mspRiskDecisionsTable.rbdId],
+      set: { updatedAt: acceptedAt },
+    })
+    .returning({ id: mspRiskDecisionsTable.id });
+
+  await assignRegisterRef(inserted.id);
+
+  log.info(
+    { customerId: scope.customerId, checkKey, riskDecisionId: inserted.id, rbdId },
+    "remediation checklist item declined to risk register — accepted risk created (#2869)",
   );
 
   return { riskDecisionId: inserted.id, rbdId, alreadyDeclined: false };

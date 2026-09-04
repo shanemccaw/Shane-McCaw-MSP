@@ -44,6 +44,8 @@ import { resolveRemediationChecklist, resolveRemediationChecklistItem, isKnownCh
 import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger";
 import { buildRaiseChangeRequestInputForChecklistItem } from "../lib/remediation-raise-change";
 import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise";
+import { resolveTenantScope } from "../lib/portal-customer-scope";
+import { declineRemediationChecklistItemToRisk } from "../lib/remediation-tracker-risk-decline";
 
 /** Roles that represent SHANE / the MSP acting — see portal-remediation-tracker.ts's own note on why the retainer hook is scoped to these only. */
 const RETAINER_MSP_ACTOR_ROLES = new Set(["admin", "PlatformAdmin", "MSPOperator", "MSPAdmin"]);
@@ -54,6 +56,18 @@ const router: IRouter = Router();
 
 const putItemSchema = z.object({
   status: z.enum(REMEDIATION_TRACKER_STEP_STATUS),
+});
+
+// Same shape as portal-remediation-tracker.ts's own decline-to-risk schema —
+// a typed full name + explicit confirmation, because this creates a signed
+// liability record. `fullName` is not checked against the account's own name
+// for the same reason that route documents: the person signing may
+// legitimately be signing in a role, and the JWT-derived actor (logged below)
+// is the separately-recorded real identity claim.
+const declineToRiskSchema = z.object({
+  fullName: z.string().trim().min(2, "Type your full name to accept this risk").max(200),
+  confirmed: z.literal(true),
+  statement: z.string().trim().min(1).max(2000),
 });
 
 /** tenants.id off the JWT's `customerId` claim — same resolution as the rest of this journey. */
@@ -107,6 +121,18 @@ router.put(
     }
 
     const { status } = parsed.data;
+
+    // #2827 — same signed-fact rule as portal-remediation-tracker.ts's s1–s30
+    // PUT: `accepted_risk` is ONLY ever set alongside a real, SIGNED
+    // `msp_risk_decisions` row (see that route's own header). #2869 gives this
+    // route its own decline flow, so reject a bare PUT and point at it rather
+    // than letting a bare write fabricate the same unsigned "accepted" state
+    // the s1–s30 route already guards against on this identical table.
+    if (status === "accepted_risk") {
+      res.status(400).json({ error: "accepted_risk cannot be set directly — use POST .../decline-to-risk" });
+      return;
+    }
+
     const now = new Date();
     const completedAt = status === "completed" ? now : null;
     const userId = typeof req.user?.id === "number" ? req.user.id : null;
@@ -234,6 +260,143 @@ router.post(
       }
       log.error({ err, customerId, checkKey }, "POST /portal/remediation/checklist/:checkKey/raise-change failed");
       res.status(500).json({ error: "Failed to raise the change request" });
+    }
+  },
+);
+
+// ── Decline this checklist item to the risk register (#2869) ────────────────
+//
+// The findings-derived checklist's own counterpart to `POST
+// .../remediation-tracker/steps/:stepId/decline-to-risk` (#1542) — same
+// signed fields, same real `msp_risk_decisions` row, same idempotency-on-
+// repeat-decline rule (409), just addressed by `checkKey` instead of an s-id.
+// Role floor: `CustomerUser`, matching the s1–s30 route's own floor for the
+// same reason — this creates a signed liability record, a higher bar than
+// the `Assessment` floor the rest of this journey (including this route's own
+// GET/PUT) uses.
+router.post(
+  "/portal/remediation/checklist/:checkKey/decline-to-risk",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const checkKey = String(req.params.checkKey ?? "");
+    const parsed = declineToRiskSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+      return;
+    }
+
+    try {
+      // Same fail-closed gate `raise-change` above uses: only a currently
+      // OPEN finding for this tenant's latest scan can be declined — a
+      // resolved or never-real item has nothing left to accept the risk of.
+      const item = await resolveRemediationChecklistItem(customerId, checkKey);
+      if (!item) {
+        res.status(404).json({ error: "Unknown or already-resolved checklist item" });
+        return;
+      }
+
+      const scope = await resolveTenantScope(customerId);
+      if (!scope) {
+        res.status(403).json({ error: "No customer identity on token" });
+        return;
+      }
+
+      const now = new Date();
+      const userId = typeof req.user?.id === "number" ? req.user.id : null;
+
+      // Same upsert idiom as the PUT handler and the s1–s30 decline route:
+      // ensure a tracker row exists so there is an id for the risk decision's
+      // back-pointer, touching only `updatedAt` on an existing row so this
+      // step never clobbers a real status before the conflict check below.
+      const [row] = await db
+        .insert(remediationTrackerStepsTable)
+        .values({ customerId, stepId: checkKey, status: "not_started", updatedByUserId: userId, updatedAt: now })
+        .onConflictDoUpdate({
+          target: [remediationTrackerStepsTable.customerId, remediationTrackerStepsTable.stepId],
+          set: { updatedAt: now },
+        })
+        .returning({ id: remediationTrackerStepsTable.id, status: remediationTrackerStepsTable.status });
+
+      if (!row) {
+        res.status(500).json({ error: "Failed to resolve remediation checklist item" });
+        return;
+      }
+
+      // PERMANENT, same guarantee as the Risk Register's own accept endpoint.
+      if (row.status === "accepted_risk") {
+        res.status(409).json({ error: "This item has already been declined to the risk register" });
+        return;
+      }
+
+      const result = await declineRemediationChecklistItemToRisk({
+        checkKey,
+        trackerStepRowId: row.id,
+        scope,
+        findingTitle: item.title,
+        severity: item.severity,
+        hazardCore: item.summary?.trim() || item.description?.trim() || item.title,
+        approverName: parsed.data.fullName,
+        statement: parsed.data.statement,
+      });
+
+      // Second upsert to flip the now-real state — same verification-reset
+      // rule every claim write on this table follows.
+      await db
+        .insert(remediationTrackerStepsTable)
+        .values({
+          customerId,
+          stepId: checkKey,
+          status: "accepted_risk",
+          completedAt: null,
+          updatedByUserId: userId,
+          verificationState: "unverified",
+          verifiedAt: null,
+          verifiedByRunId: null,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [remediationTrackerStepsTable.customerId, remediationTrackerStepsTable.stepId],
+          set: {
+            status: "accepted_risk",
+            completedAt: null,
+            updatedByUserId: userId,
+            verificationState: "unverified",
+            verifiedAt: null,
+            verifiedByRunId: null,
+            updatedAt: now,
+          },
+        });
+
+      log.info(
+        { customerId, checkKey, rbdId: result.rbdId, riskDecisionId: result.riskDecisionId, userId },
+        "remediation checklist item declined to risk register",
+      );
+
+      res.status(201).json({
+        item: {
+          checkKey,
+          status: "accepted_risk",
+          completedAt: null,
+          updatedAt: now.toISOString(),
+          verificationState: "unverified",
+          verifiedAt: null,
+        },
+        rbdId: result.rbdId,
+        accepted: {
+          by: parsed.data.fullName,
+          on: now.toISOString(),
+          statement: parsed.data.statement,
+        },
+      });
+    } catch (err) {
+      log.error({ err, customerId, checkKey }, "POST /portal/remediation/checklist/:checkKey/decline-to-risk failed");
+      res.status(500).json({ error: "Failed to decline this item to the risk register" });
     }
   },
 );
