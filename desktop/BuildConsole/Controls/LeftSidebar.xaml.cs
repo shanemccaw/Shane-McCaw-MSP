@@ -5746,7 +5746,12 @@ namespace BuildConsole.Controls
             {
                 Text = issue.Title,
                 FontSize = 11,
-                Foreground = isActiveEpic ? GetBrush("GreenBrush") : issue.Status == "CLOSED" ? GetBrush("Subtext0Brush") : GetBrush("TextBrush"),
+                // Git #2789 — Feature-titled rows get their own soft lavender so they read
+                // distinct from plain issues/epics at a glance; isActiveEpic/CLOSED still win.
+                Foreground = isActiveEpic ? GetBrush("GreenBrush")
+                           : issue.Status == "CLOSED" ? GetBrush("Subtext0Brush")
+                           : issue.Title != null && issue.Title.StartsWith("Feature:", StringComparison.Ordinal) ? GetBrush("LavenderBrush")
+                           : GetBrush("TextBrush"),
                 FontWeight = (issue.IsEpic || isActiveEpic) ? FontWeights.Bold : FontWeights.Normal,
                 TextDecorations = issue.Status == "CLOSED" ? TextDecorations.Strikethrough : null,
                 TextTrimming = TextTrimming.CharacterEllipsis
