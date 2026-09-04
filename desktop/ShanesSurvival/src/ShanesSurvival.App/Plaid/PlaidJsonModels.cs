@@ -96,6 +96,7 @@ internal sealed class PlaidTransactionJson
     [JsonPropertyName("account_id")] public string AccountId { get; init; } = "";
     [JsonPropertyName("amount")] public decimal Amount { get; init; }
     [JsonPropertyName("date")] public string Date { get; init; } = "";
+    [JsonPropertyName("name")] public string? Name { get; init; }
     [JsonPropertyName("merchant_name")] public string? MerchantName { get; init; }
     [JsonPropertyName("category")] public List<string>? Category { get; init; }
     [JsonPropertyName("personal_finance_category")] public PlaidPersonalFinanceCategoryJson? PersonalFinanceCategory { get; init; }

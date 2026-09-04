@@ -92,6 +92,7 @@ public sealed class PlaidClient : IPlaidClient
         t.AccountId,
         t.Amount,
         t.Date,
+        t.Name,
         t.MerchantName,
         t.PersonalFinanceCategory?.Detailed
             ?? t.PersonalFinanceCategory?.Primary

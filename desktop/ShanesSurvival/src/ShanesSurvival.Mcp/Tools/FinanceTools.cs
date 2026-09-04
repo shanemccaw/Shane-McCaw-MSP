@@ -247,7 +247,14 @@ public sealed class FinanceTools(
         sb.AppendLine($"Most recent {transactions.Transactions.Count} transaction(s) on \"{account.Name}\":");
         foreach (var tx in transactions.Transactions)
         {
-            var merchant = string.IsNullOrWhiteSpace(tx.MerchantName) ? "Unknown merchant" : tx.MerchantName;
+            // merchant_name is genuinely null for many real transaction types (ACH transfers,
+            // direct-deposit payroll, etc.) — fall back to Plaid's raw `name`/description
+            // (e.g. "COM2 TREAS 310 DEPOSIT") before giving up and saying "Unknown merchant".
+            var merchant = !string.IsNullOrWhiteSpace(tx.MerchantName)
+                ? tx.MerchantName
+                : !string.IsNullOrWhiteSpace(tx.Name)
+                    ? tx.Name
+                    : "Unknown merchant";
             var pending = tx.Pending ? " (pending)" : "";
             var category = string.IsNullOrWhiteSpace(tx.Category) ? "" : $" [{tx.Category}]";
             sb.AppendLine($"  - {tx.Date:yyyy-MM-dd}  {Money(tx.Amount)}  {merchant}{category}{pending}");

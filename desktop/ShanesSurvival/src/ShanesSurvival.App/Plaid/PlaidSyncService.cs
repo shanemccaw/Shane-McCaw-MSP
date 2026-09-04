@@ -142,12 +142,13 @@ public sealed class PlaidSyncService(IPlaidClient? plaidClient = null)
 
                     await using var upsertTx = new NpgsqlCommand(
                         """
-                        INSERT INTO transactions (account_id, plaid_transaction_id, amount, date, merchant_name, category, pending)
-                        VALUES (@accountId, @plaidTransactionId, @amount, @date, @merchantName, @category, @pending)
+                        INSERT INTO transactions (account_id, plaid_transaction_id, amount, date, name, merchant_name, category, pending)
+                        VALUES (@accountId, @plaidTransactionId, @amount, @date, @name, @merchantName, @category, @pending)
                         ON CONFLICT (plaid_transaction_id) DO UPDATE SET
                             account_id = excluded.account_id,
                             amount = excluded.amount,
                             date = excluded.date,
+                            name = excluded.name,
                             merchant_name = excluded.merchant_name,
                             category = excluded.category,
                             pending = excluded.pending
@@ -156,6 +157,7 @@ public sealed class PlaidSyncService(IPlaidClient? plaidClient = null)
                     upsertTx.Parameters.AddWithValue("plaidTransactionId", transaction.TransactionId);
                     upsertTx.Parameters.AddWithValue("amount", transaction.Amount);
                     upsertTx.Parameters.AddWithValue("date", DateOnly.ParseExact(transaction.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture));
+                    upsertTx.Parameters.AddWithValue("name", (object?)transaction.Name ?? DBNull.Value);
                     upsertTx.Parameters.AddWithValue("merchantName", (object?)transaction.MerchantName ?? DBNull.Value);
                     upsertTx.Parameters.AddWithValue("category", (object?)transaction.CategoryLabel ?? DBNull.Value);
                     upsertTx.Parameters.AddWithValue("pending", transaction.Pending);

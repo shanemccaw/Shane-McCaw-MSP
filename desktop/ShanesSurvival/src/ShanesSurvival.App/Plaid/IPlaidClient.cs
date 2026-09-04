@@ -15,6 +15,7 @@ public sealed record PlaidTransactionInfo(
     string AccountId,
     decimal Amount,
     string Date,
+    string? Name,
     string? MerchantName,
     string? CategoryLabel,
     bool Pending);
