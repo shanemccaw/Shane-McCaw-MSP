@@ -117,6 +117,19 @@ vi.mock("./web-push", () => ({
 vi.mock("./sse-channels", () => ({
   broadcastAdminWorkflowEvent: () => {},
   broadcastAdminEvent:         () => {},
+  broadcastPresentationPhaseGenProgress: () => {},
+  broadcastPresentationPhaseGenComplete: () => {},
+  broadcastPresentationPhaseGenError:    () => {},
+  clearPresentationPhaseGenSSEState:     () => {},
+  broadcastPresentationDocsChange:       () => {},
+  broadcastPresentationProjectReady:     () => {},
+  broadcastPresentationEvent:            () => {},
+  broadcastProjectEvent:                 () => {},
+  broadcastWorkflowRunProgress:          () => {},
+  broadcastWorkflowRunComplete:          () => {},
+  broadcastWorkflowRunError:             () => {},
+  broadcastNotification:                 () => {},
+  broadcastUnreadCount:                  () => {},
 }));
 
 // ── Mock anthropic ────────────────────────────────────────────────────────────
