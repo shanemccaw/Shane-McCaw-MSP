@@ -149,6 +149,7 @@ router.post("/admin/monitor-checks", requireAdmin, async (req: Request, res: Res
         engines: (body.engines as string[]) ?? [],
         frequency: (body.frequency ? String(body.frequency) : "daily") as "hourly" | "daily" | "live",
         requiresCustomerScript: Boolean(body.requiresCustomerScript),
+        scriptPackageId: body.scriptPackageId ? String(body.scriptPackageId) : null,
         schemaVersion: 1,
         status: "active" as const,
         createdByAdminId: adminId ?? null,
@@ -192,10 +193,12 @@ router.patch("/admin/monitor-checks/:key", requireAdmin, async (req: Request, re
     };
 
     const allowedFields = ["label", "description", "endpoint", "method", "requestBody", "selectParams", "filterParams",
-      "properties", "mapping", "severityRules", "outputSchema", "engines", "frequency", "requiresCustomerScript", "status"];
+      "properties", "mapping", "severityRules", "outputSchema", "engines", "frequency", "requiresCustomerScript",
+      "scriptPackageId", "status"];
     for (const f of allowedFields) {
       if (body[f] !== undefined) updates[f] = body[f];
     }
+    if (updates.scriptPackageId === "") updates.scriptPackageId = null;
 
     const [updated] = await db
       .update(monitorChecksTable)

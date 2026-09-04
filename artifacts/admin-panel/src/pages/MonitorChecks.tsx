@@ -34,10 +34,16 @@ interface MonitorCheck {
   engines: string[];
   frequency: "hourly" | "daily" | "live";
   requiresCustomerScript: boolean;
+  scriptPackageId: string | null;
   schemaVersion: number;
   status: "active" | "archived";
   createdAt: string;
   updatedAt: string;
+}
+
+interface ScriptPackageOption {
+  id: string;
+  title: string;
 }
 
 const EMPTY_CHECK: Partial<MonitorCheck> = {
@@ -52,6 +58,7 @@ const EMPTY_CHECK: Partial<MonitorCheck> = {
   engines: [],
   frequency: "daily",
   requiresCustomerScript: false,
+  scriptPackageId: null,
 };
 
 const MONITOR_CHECK_TEMPLATE = {
@@ -113,6 +120,7 @@ export default function MonitorChecksPage() {
   const { toast } = useToast();
   const { exportJson, downloadTemplate, openImportDialog, importDialogOpen, closeImportDialog } = useJsonImportExport();
   const [checks, setChecks] = useState<MonitorCheck[]>([]);
+  const [scriptPackages, setScriptPackages] = useState<ScriptPackageOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [editingCheck, setEditingCheck] = useState<Partial<MonitorCheck> | null>(null);
@@ -136,6 +144,18 @@ export default function MonitorChecksPage() {
   }, [fetchWithAuth, toast]);
 
   useEffect(() => { void loadChecks(); }, [loadChecks]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetchWithAuth("/api/admin/ps-scripts/packages");
+        const data = await res.json() as ScriptPackageOption[];
+        setScriptPackages(Array.isArray(data) ? data.map(p => ({ id: p.id, title: p.title })) : []);
+      } catch {
+        // Non-fatal — the picker just shows no options if this fails
+      }
+    })();
+  }, [fetchWithAuth]);
 
   const handleImportConfirm = async (records: unknown[]) => {
     let created = 0, updated = 0, failed = 0;
@@ -485,6 +505,32 @@ export default function MonitorChecksPage() {
                   </label>
                 </div>
               </div>
+
+              {editingCheck.requiresCustomerScript && (
+                <div>
+                  <Label className="text-gray-400 text-xs">Script package</Label>
+                  <Select
+                    value={editingCheck.scriptPackageId ?? ""}
+                    onValueChange={v => updateField("scriptPackageId", v === "__none__" ? null : v)}
+                  >
+                    <SelectTrigger className="bg-background border-border text-white mt-1">
+                      <SelectValue placeholder="No package assigned — download route is unreachable" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border">
+                      <SelectItem value="__none__">No package assigned</SelectItem>
+                      {scriptPackages.map(pkg => (
+                        <SelectItem key={pkg.id} value={pkg.id}>{pkg.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!editingCheck.scriptPackageId && (
+                    <p className="text-xs text-amber-400 mt-1">
+                      No script package assigned — the customer download route (GET /api/portal/scripts/:checkKey/download)
+                      will 404 for this check until one is picked.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div>
                 <Label className="text-gray-400 text-xs">Properties to extract (comma-separated or JSON array)</Label>

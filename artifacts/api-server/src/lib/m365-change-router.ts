@@ -74,6 +74,7 @@ import {
   type ChangeClass,
 } from "./portal-change-control";
 import { materializeApprovalsForChange } from "./portal-change-approvals-store";
+import { assignRegisterRef } from "./risk-register-ref";
 import { recordCrEvent } from "./portal-change-timeline-store";
 import { logger } from "./logger";
 
@@ -787,6 +788,7 @@ async function createAcceptedRiskFromDecline(
     })
     .returning({ id: mspRiskDecisionsTable.id });
 
+  await assignRegisterRef(inserted.id);
   return inserted.id;
 }
 

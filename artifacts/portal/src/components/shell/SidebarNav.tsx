@@ -31,7 +31,7 @@ export function SidebarNav({ footerSlot }: { footerSlot?: ReactNode }) {
               key={item.key}
               href={item.builtPath ?? comingSoonHref(item.label, "module")}
               data-testid={`sidebar-nav-${item.key}`}
-              className="flex items-center gap-[10px] rounded-md px-[10px] py-[5.5px] transition-colors hover:bg-white/[.04]"
+              className="flex items-center gap-[10px] rounded-md px-[10px] py-[5.5px] transition-colors hover:bg-white/[.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
               style={{ background: active ? "rgba(255,255,255,.06)" : "transparent" }}
             >
               <Icon size={15} strokeWidth={1.75} color={active ? "#f8fafc" : "#94a3b8"} />

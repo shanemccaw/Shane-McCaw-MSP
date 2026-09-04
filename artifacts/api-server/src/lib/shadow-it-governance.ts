@@ -40,6 +40,7 @@ import { db, tenantsTable, mspRiskDecisionsTable, type DriftEventVerdict } from 
 import { and, eq } from "drizzle-orm";
 import { addRiskInstance, listActiveRiskInstancesByDriftEventId, listRiskInstancesByRbdId } from "./rbd-instances.ts";
 import { createRbdVersion } from "./rbd-versioning.ts";
+import { assignRegisterRef } from "./risk-register-ref.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -156,16 +157,21 @@ export async function findOrCreateShadowItRbd(
     .onConflictDoNothing({ target: [mspRiskDecisionsTable.mspId, mspRiskDecisionsTable.rbdId] })
     .returning({ id: mspRiskDecisionsTable.id });
 
-  if (inserted) return { id: inserted.id, rbdId };
+  if (inserted) {
+    await assignRegisterRef(inserted.id);
+    return { id: inserted.id, rbdId };
+  }
 
   // Lost the create race to a concurrent caller (two domains drifting in the
-  // same scan cycle) — the row now exists, re-select it.
+  // same scan cycle) — the row now exists, re-select it. Its own inserter
+  // already assigned the register ref; assignRegisterRef is a no-op here.
   const [row] = await db
     .select({ id: mspRiskDecisionsTable.id })
     .from(mspRiskDecisionsTable)
     .where(and(eq(mspRiskDecisionsTable.mspId, mspId), eq(mspRiskDecisionsTable.rbdId, rbdId)))
     .limit(1);
   if (!row) throw new Error(`shadow-it-governance: failed to find-or-create ${rbdId} for msp ${mspId}`);
+  await assignRegisterRef(row.id);
   return { id: row.id, rbdId };
 }
 

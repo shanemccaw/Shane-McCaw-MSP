@@ -6082,17 +6082,15 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   /**
    * The register entry number an acceptance was recorded under, e.g. RR-2026-014.
    *
-   * #1505 investigation — live-checked: this column has NO writer anywhere in
-   * the codebase (grep for `registerRef\s*[:=]` in artifacts/api-server turns up
-   * nothing but the read side, `portal-risk-register.ts`'s `register: row.registerRef
-   * ?? null`) and the local DB's one `msp_risk_decisions` row carries it NULL. It
-   * does not point at another table — it reads as this row's OWN generated
-   * display code, the Risk Register's counterpart to `rbdId` ("RBD-2026-575",
-   * populated) and `formatChangeRequestCode` ("CR-2026-101") — not a
-   * cross-table edge, so it is out of scope for this issue's FK work (there is
-   * nothing to FK it to) and left exactly as found. Filed as its own finding
-   * rather than guessed at here: which numbering scheme to generate it under is
-   * a product decision, not a missing column.
+   * #1505 filed this as a real finding (no writer anywhere), settled by #2529:
+   * assigned right after insert via `assignRegisterRef()`
+   * (`artifacts/api-server/src/lib/risk-register-ref.ts`) — the row's own
+   * sequential id isn't known until the insert returns, so it can't be set
+   * inline in `.values(...)`. Format is `RR-2026-<zero-padded id>`, the same
+   * per-row-code convention as `rbdId` / `formatChangeRequestCode`. Every
+   * `msp_risk_decisions` writer calls it: `m365-change-router.ts`,
+   * `portal-change-rejection.ts`, `remediation-tracker-risk-decline.ts`,
+   * `shadow-it-governance.ts`, `admin-rbd.ts`, `msp-rbd.ts`.
    */
   registerRef: text("register_ref"),
   /** Why the decision was taken — the reasoning, shown on both pages. */
