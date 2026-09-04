@@ -5687,6 +5687,20 @@ namespace BuildConsole.Controls
                 if (filter == "Done" && issue.Status != "CLOSED") continue;
                 if (filter == "Priority" && issue.Priority != "HIGH") continue;
 
+                // Git #2780 — "Hide Completed" toggle: mirror the same real check #2771
+                // already applies at the top-level Epic loop, but for Feature-tier nodes
+                // rendered anywhere inside this recursive hierarchy. A still-open Epic
+                // correctly stays visible, but a 100%-complete Feature underneath it
+                // should still collapse out — and since this method is recursive, its
+                // own now-closed subtree comes along for free. Leaf-tier (non-Feature)
+                // issues are unaffected; their CLOSED-state filtering is already handled
+                // by the `filter` checks above.
+                if (_hideCompletedEpics && issue.Title != null && issue.Title.StartsWith("Feature:", StringComparison.Ordinal)
+                    && issue.SubIssueCount > 0 && issue.SubIssueCompleted >= issue.SubIssueCount)
+                {
+                    continue;
+                }
+
                 if (!await YieldIssuesTreeChunkAsync(pacing)) return false;
                 var tvi = CreateIssueHeader(issue, depth);
                 if (!await PopulateIssueTreeHierarchyAsync(tvi.Items, allMilestoneIssues, issue.IssueNumber, filter, depth + 1, pacing)) return false;

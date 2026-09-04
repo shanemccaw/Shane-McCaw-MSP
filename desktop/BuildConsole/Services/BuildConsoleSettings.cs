@@ -524,8 +524,11 @@ namespace BuildConsole.Services
         /// whose real transitive leaf-issue rollup (<see cref="GitBoardIssueFilters.ComputeTransitiveLeafRollup"/>,
         /// #2739) is 100% closed is skipped from the tree entirely, along with its whole subtree.
         /// Independent of (composes with) <c>_currentFilter</c>'s mutually-exclusive chip. Persisted
-        /// across sessions, same convention as the other UI-toggle bools in this file.</summary>
-        public bool HideCompletedEpics { get; set; } = false;
+        /// across sessions, same convention as the other UI-toggle bools in this file.
+        /// Git #2780 — defaults to ON now. Only affects a fresh/never-set install; an existing
+        /// user who already toggled this has a real persisted value in their settings.json and
+        /// keeps whatever they last set.</summary>
+        public bool HideCompletedEpics { get; set; } = true;
 
         /// <summary>
         /// Git #2130 — KILL SWITCH for #1887's background chat-tab auto-reopen preload
