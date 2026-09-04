@@ -61,6 +61,7 @@ import { getPortalBaseUrl, getMspPortalBaseUrl, buildAccountSetupUrl } from "../
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 import { ensureClientSetupToken } from "../lib/client-setup-token";
 import { logger } from "../lib/logger.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -122,7 +123,7 @@ router.get("/msp/customers/:customerId/team", requireRole("MSPOperator"), async 
     }
 
     if (!(await assertCustomerAccess(req.user!, customerId))) {
-      res.status(403).json({ error: "Access to this customer is not permitted" });
+      apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this customer is not permitted");
       return;
     }
 
@@ -226,7 +227,7 @@ router.post("/msp/customers/:customerId/team/invite", requireRole("MSPOperator")
     }
 
     if (!(await assertCustomerAccess(req.user!, customerId))) {
-      res.status(403).json({ error: "Access to this customer is not permitted" });
+      apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this customer is not permitted");
       return;
     }
 

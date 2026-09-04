@@ -17,6 +17,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
 import { getOrGenerateExecutiveSummary } from "../lib/dashboard-executive-summary.ts";
 import { logger } from "../lib/logger";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -47,7 +48,7 @@ router.get(
       }
       const owns = await assertCustomerAccess(user, requested);
       if (!owns) {
-        res.status(403).json({ error: "Access to this customer is not permitted" });
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this customer is not permitted");
         return;
       }
       customerId = requested;
