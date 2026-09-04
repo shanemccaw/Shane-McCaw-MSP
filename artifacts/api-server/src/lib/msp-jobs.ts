@@ -105,11 +105,20 @@ export async function processJobs(batchSize = 5): Promise<void> {
       //
       // Zoho and EngageBay jobs are excluded: they belong to the
       // zoho_batch_drain / engagebay_batch_drain nodes (#82, #105), whose
-      // handlers register on those drains' own registries, not on this
+      // handlers register on those drains' own registries
+      // (registerZohoJobHandler / registerEngageBayJobHandler), not on this
       // worker's `handlers` map. Without the exclusion this worker would
       // claim every CRM/marketing write, find no handler, and park it
-      // straight in the DLQ. Dormant today only because startJobWorker() has
-      // no callers.
+      // straight in the DLQ.
+      //
+      // startJobWorker() IS called — see index.ts's server startup — and this
+      // loop polls live in every running api-server process. The `handlers`
+      // map above is genuinely empty today only because every real
+      // enqueueJob() caller so far is Zoho/EngageBay (excluded above by
+      // design); the first non-Zoho/EngageBay job type wired up needs its
+      // handler registered via registerJobHandler() before it's enqueued, or
+      // it will be claimed within one poll interval and parked straight in
+      // the DLQ by the no-handler branch below (see #2860).
       const jobs = await tx.execute<{
         id: number;
         job_id: string;
