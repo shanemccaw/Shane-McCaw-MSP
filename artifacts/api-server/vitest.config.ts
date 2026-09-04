@@ -412,6 +412,10 @@ export default defineConfig({
       // (mirrors identity:ca-policy-count), read out of the shipped migration
       // and driven through the real applyMapping/classifySeverity/buildFindingTitle.
       "src/lib/__tests__/zero-dlp-policies-check-1301.test.ts",
+      // #2762 — 10 new compliance-surface checks closing a real
+      // config_resources coverage gap, read out of the shipped migration and
+      // driven through the real applyMapping/classifySeverity.
+      "src/lib/__tests__/compliance-surface-coverage-2762.test.ts",
       // #1310 — the generalized purchase-session account-creation core (paid
       // gate, hash-at-rest codes, count-before-judge attempt budget,
       // verified-address pinning, provision-if-missing, never-overwrite),

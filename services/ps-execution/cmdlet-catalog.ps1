@@ -554,6 +554,61 @@ $script:CmdletCatalog = @{
         AllowedParams = @("Skip", "Take", "BudgetSeconds")
         Session       = "teams"
     }
+
+    # #2762: compliance-surface coverage gap. Ten new UNFILTERED (no
+    # PostFilter) read entries backing ten `monitor_checks` rows that close
+    # real `config_resources` gaps (surface='compliance',
+    # availability='available_now', check_coverage_count=0). Unfiltered on
+    # purpose — the scoring lives entirely in the check's own
+    # mapping/severity_rules (countWhere against real observed field names),
+    # so the same catalog entry is also snapshot-usable per #1961's own
+    # "unfiltered, added alongside the check-shaped entries" convention,
+    # not just check-usable. All ten cmdlets are confirmed working app-only
+    # against the real testbed tenant by #1793's own live capability survey
+    # (`ps_capability_survey_results`, session_type='compliance', multiple
+    # independent runs, status='ok') — see build-journal/2762.md for the
+    # exact query and observed item counts. No parameters are required to
+    # list the full set for any of the ten.
+    "get-retention-compliance-policies" = @{
+        Cmdlet         = "Get-RetentionCompliancePolicy"
+        AllowedParams  = @()
+    }
+    "get-retention-compliance-rules" = @{
+        Cmdlet         = "Get-RetentionComplianceRule"
+        AllowedParams  = @()
+    }
+    "get-dlp-compliance-rules" = @{
+        Cmdlet         = "Get-DlpComplianceRule"
+        AllowedParams  = @()
+    }
+    "get-device-conditional-access-policies" = @{
+        Cmdlet         = "Get-DeviceConditionalAccessPolicy"
+        AllowedParams  = @()
+    }
+    "get-device-configuration-policies" = @{
+        Cmdlet         = "Get-DeviceConfigurationPolicy"
+        AllowedParams  = @()
+    }
+    "get-dlp-sensitive-info-types" = @{
+        Cmdlet         = "Get-DlpSensitiveInformationType"
+        AllowedParams  = @()
+    }
+    "get-protection-alerts" = @{
+        Cmdlet         = "Get-ProtectionAlert"
+        AllowedParams  = @()
+    }
+    "get-compliance-role-groups" = @{
+        Cmdlet         = "Get-RoleGroup"
+        AllowedParams  = @()
+    }
+    "get-compliance-tags" = @{
+        Cmdlet         = "Get-ComplianceTag"
+        AllowedParams  = @()
+    }
+    "get-retention-event-types" = @{
+        Cmdlet         = "Get-ComplianceRetentionEventType"
+        AllowedParams  = @()
+    }
 }
 
 # Resolves cmdletKey against the allowlist and merges request params into
