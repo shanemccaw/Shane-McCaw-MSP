@@ -418,13 +418,32 @@ namespace BuildConsole.Services
                 // (--notGit sentinel or null github_number, and unblocked.) Ready as before.
                 if (blockers.Count == 0 && !hasOwnIssue) { ready.Add(item); continue; }
 
-                // Fail-closed (Git #1600 / #1904): any candidate that needs a live GitHub
-                // check is held when we couldn't get a trustworthy open-issue snapshot.
+                // Git #2815 — a blocker-FREE build must NOT be gated on general GitHub health.
+                // The only reason a blocker-free candidate reaches this live check at all is the
+                // Git #1904 own-issue self-check (is this row's own github_number still open?),
+                // which Shane explicitly designated best-effort: "the agent will catch itself"
+                // once it's running, so the LAUNCH decision must not depend on GitHub being
+                // reachable for a build that has no real declared blocker. When GitHub is
+                // unreachable we therefore FAIL OPEN on the self-check and launch a blocker-free
+                // build anyway.
+                //
+                // A build WITH real declared blockers stays FAIL-CLOSED (Git #1600 / §4 —
+                // safety-critical, deliberately unchanged): an undischarged blocker must keep
+                // holding when GitHub can't be reached to verify it's actually closed.
                 if (live == null || !live.Success)
                 {
+                    if (blockers.Count == 0)
+                    {
+                        ActivityLog.Log("watcher",
+                            $"Git #2815: launching blocker-free queue #{item.Id} despite GitHub being unreachable " +
+                            $"({(live == null ? "open-issue set not evaluated" : live.Error)}) — the #1904 own-issue " +
+                            "self-check is best-effort; only a real declared blocker holds on GitHub-unreachable (§4 unchanged).");
+                        ready.Add(item);
+                        continue;
+                    }
                     heldReasons[item.Id] = live == null
                         ? "internal error — GitHub open-issue set not evaluated"
-                        : $"GitHub unreachable ({live.Error}) — holding until it can be re-checked";
+                        : $"GitHub unreachable ({live.Error}) — holding: has real declared blocker(s) to verify (§4 fail-closed)";
                     continue;
                 }
 

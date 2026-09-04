@@ -136,6 +136,16 @@ namespace BuildConsole.Services
             return false;
         }
 
+        /// <summary>Git #2815 — true when this spawn is the GitHub CLI (`gh` / `gh.exe`, with or
+        /// without a directory prefix), the only transport the rate-limit circuit applies to. `git`
+        /// is local and never rate-limited, so it is deliberately excluded.</summary>
+        private static bool IsGhCall(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return false;
+            var leaf = System.IO.Path.GetFileNameWithoutExtension(fileName);
+            return string.Equals(leaf, "gh", StringComparison.OrdinalIgnoreCase);
+        }
+
         // ── public entry points ─────────────────────────────────────────────────
 
         /// <summary>Run <paramref name="fileName"/> with a single pre-joined <paramref name="arguments"/>
@@ -173,6 +183,19 @@ namespace BuildConsole.Services
         {
             var effectiveTimeout = timeout ?? DefaultTimeout;
             string display = fileName + (arguments != null ? " " + arguments : "");
+
+            // Git #2815 — every `gh` call consults the shared GitHub rate-limit circuit breaker
+            // before it spawns. When GitHub has rate-limited us, the breaker is OPEN and we
+            // short-circuit here — returning the SAME non-zero-exit failure shape a real
+            // rate-limited `gh` call returns, without spawning a process or taking a gate slot.
+            // This is what stops the every-tick retry storm from compounding the exhaustion
+            // (Shane's #2815 evidence: the limit "never cleared" because the app kept hammering).
+            // Scoped to `gh` only — `git` is local and never rate-limited.
+            bool isGh = IsGhCall(fileName);
+            if (isGh && GitHubRateLimitCircuit.ShouldShortCircuit(out var circuitReason))
+            {
+                return new SubprocessResult(1, "", circuitReason, null, false, 0);
+            }
 
             await Gate.WaitAsync().ConfigureAwait(false);
             try
@@ -235,6 +258,17 @@ namespace BuildConsole.Services
                             {
                                 // Normal completion: 0, or a legitimate non-zero git/gh answer.
                                 // Either way it's a real result — return it, no retry.
+                                // Git #2815 — report the real outcome to the shared rate-limit
+                                // circuit for `gh` calls: a rate-limited failure trips it (so the
+                                // NEXT tick's calls short-circuit instead of hammering); any clean
+                                // result closes it and resets the backoff ladder.
+                                if (isGh)
+                                {
+                                    if (lastExit != 0 && GitHubRateLimitCircuit.LooksLikeRateLimit(lastErr))
+                                        GitHubRateLimitCircuit.RecordRateLimited("gh CLI");
+                                    else if (lastExit == 0)
+                                        GitHubRateLimitCircuit.RecordSuccess();
+                                }
                                 return new SubprocessResult(lastExit, lastOut, lastErr, null, false, attempt);
                             }
                             crashed = true;

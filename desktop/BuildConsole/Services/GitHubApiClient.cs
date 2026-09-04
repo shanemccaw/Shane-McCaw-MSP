@@ -251,7 +251,12 @@ namespace BuildConsole.Services
             // HttpClient.Timeout ... elapsing"). 60s is a meaningful per-request ceiling; the
             // Batter Up scans additionally retry individual pages with backoff (see
             // PostProjectItemsQueryWithRetryAsync) so one slow page no longer kills the walk.
-            _http = new HttpClient { BaseAddress = new Uri("https://api.github.com/"), Timeout = TimeSpan.FromSeconds(60) };
+            // Git #2815 — route every request this client makes through the shared GitHub
+            // rate-limit circuit breaker (GitHubRateLimitHandler), so the HTTP+PAT path and the
+            // `gh` CLI path back off together instead of each hammering GitHub every tick once it
+            // has rate-limited us. Wraps a real HttpClientHandler as the network transport.
+            _http = new HttpClient(new GitHubRateLimitHandler(new HttpClientHandler()))
+            { BaseAddress = new Uri("https://api.github.com/"), Timeout = TimeSpan.FromSeconds(60) };
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", pat);
             _http.DefaultRequestHeaders.UserAgent.ParseAdd("BuildConsole");
             _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
