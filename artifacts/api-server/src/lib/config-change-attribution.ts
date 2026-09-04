@@ -187,17 +187,24 @@ export async function resolveEndpointToResource(rawEndpoint: string): Promise<Re
     // registry registers `Get-Mailbox`, and Set-/New-/Remove- act on the same resource.
     const noun = cmdlet.includes("-") ? cmdlet.slice(cmdlet.indexOf("-") + 1) : cmdlet;
     if (!noun) return null;
+    const hits: { resourceKey: string; via: string }[] = [];
     for (const r of registry) {
       const cmdlets = Array.isArray(r.readCmdlets) ? r.readCmdlets : [];
       for (const c of cmdlets) {
         if (typeof c !== "string") continue;
         const cNoun = c.includes("-") ? c.slice(c.indexOf("-") + 1) : c;
-        if (cNoun.toLowerCase() === noun.toLowerCase()) {
-          return { resourceKey: r.resourceKey, objectIdentity: null, matchedGraphPath: c };
-        }
+        if (cNoun.toLowerCase() === noun.toLowerCase()) hits.push({ resourceKey: r.resourceKey, via: c });
       }
     }
-    return null;
+    // AMBIGUOUS RESOLVES TO NOTHING. One cmdlet noun legitimately feeds many registered
+    // resource types — `Get-Mailbox` is a read cmdlet for a long list of `m365dsc:EXO*`
+    // types — and taking the first row back is picking one of them at random. Measured
+    // live on 2026-09-04: `exchange-online://Set-Mailbox` resolved to
+    // `m365dsc:EXOCalendarProcessing` purely on registry order. A scope pointing at the
+    // wrong resource is worse than no scope, because it attributes real unexplained
+    // drift to a change request that never touched it.
+    if (hits.length !== 1) return null;
+    return { resourceKey: hits[0]!.resourceKey, objectIdentity: null, matchedGraphPath: hits[0]!.via };
   }
 
   let path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
@@ -219,8 +226,14 @@ export async function resolveEndpointToResource(rawEndpoint: string): Promise<Re
       r.graphPath === candidate && (version === null || r.graphVersion === version));
     if (hits.length === 0) continue;
     // Prefer v1.0 when the endpoint did not state a version: an unversioned action
-    // template targets the production surface, not the preview one.
-    const hit = hits.find((r) => r.graphVersion === (version ?? "v1.0")) ?? hits[0]!;
+    // template targets the production surface, not the preview one. If that STILL
+    // leaves more than one registered type on the same path and version, the endpoint
+    // does not identify a resource and nothing is resolved — same rule as the cmdlet
+    // branch above, and for the same reason.
+    const atVersion = hits.filter((r) => r.graphVersion === (version ?? "v1.0"));
+    const narrowed = atVersion.length > 0 ? atVersion : hits;
+    if (narrowed.length !== 1) return null;
+    const hit = narrowed[0]!;
 
     const rest = segments.slice(take);
     let objectIdentity: string | null = null;
@@ -594,8 +607,21 @@ export async function attributeDiff(diffRowId: number): Promise<AttributionResul
   const [headSnap] = await db.select({ capturedAt: tenantConfigSnapshotsTable.capturedAt })
     .from(tenantConfigSnapshotsTable).where(eq(tenantConfigSnapshotsTable.id, diff.headSnapshotRowId)).limit(1);
 
-  const windowFrom = baseSnap ? new Date(baseSnap.capturedAt.getTime() - WINDOW_TOLERANCE_MS) : null;
-  const windowTo = headSnap ? new Date(headSnap.capturedAt.getTime() + WINDOW_TOLERANCE_MS) : null;
+  /**
+   * The interval the change could have happened in. Ordered by TIME, not by which side
+   * is called `base` — for a `drift` diff base is always the earlier snapshot, but
+   * `baseline_assessment` compares against a reference snapshot that is frequently
+   * NEWER than the subject (live on the testbed: diff row 11's base was captured
+   * 11 hours after its head), and an inverted interval matches nothing at all, silently
+   * turning every change in it into `unattributed`.
+   */
+  const bounds = [baseSnap?.capturedAt, headSnap?.capturedAt]
+    .filter((d): d is Date => d instanceof Date)
+    .sort((a, b) => a.getTime() - b.getTime());
+  const windowFrom = bounds[0] ? new Date(bounds[0].getTime() - WINDOW_TOLERANCE_MS) : null;
+  const windowTo = bounds[bounds.length - 1]
+    ? new Date(bounds[bounds.length - 1]!.getTime() + WINDOW_TOLERANCE_MS)
+    : null;
   /** When the head state was observed — the honest timestamp for a lifecycle event. */
   const observedAt = headSnap?.capturedAt ?? new Date();
 
@@ -735,11 +761,16 @@ export async function attributeDiff(diffRowId: number): Promise<AttributionResul
     }
     verdicts[verdict] += 1;
 
-    // ── Lifecycle. Ignored rows are excluded: a path a noise rule suppresses is
-    // volatility, and opening a lifecycle row for it would fill the table with the
-    // very churn the ruleset exists to keep out of a human's view.
+    // ── Lifecycle. Two exclusions, both deliberate:
+    //  - Ignored rows: a path a noise rule suppresses is volatility, and opening a
+    //    lifecycle row for it would fill the table with the very churn the ruleset
+    //    exists to keep out of a human's view.
+    //  - Non-`drift` modes: a lifecycle is a claim about one tenant over TIME, and a
+    //    baseline assessment or a cross-tenant comparison is not a time series. See the
+    //    `config_change_lifecycle` table comment. Verdicts are still computed for every
+    //    mode; only the lifecycle is restricted.
     let lifecycleId: number | null = null;
-    if (!c.isIgnored) {
+    if (!c.isIgnored && diff.mode === "drift") {
       const r = await advanceLifecycle({
         tenantId,
         change: c,
@@ -846,13 +877,15 @@ async function advanceLifecycle(opts: {
   observedAt: Date;
 }): Promise<{ id: number | null; transition: "opened" | "resolved" | "reopened" | "unchanged" }> {
   const { tenantId, change: c, diffRowId, observedAt } = opts;
-  const pathKey = c.propertyPathNormalized ?? "";
+  // The RAW path is the setting's identity — see the table comment for the measurement.
+  const pathKey = c.propertyPath ?? "";
+  const normalizedKey = c.propertyPathNormalized ?? "";
 
   const [existing] = await db.select().from(configChangeLifecycleTable).where(and(
     eq(configChangeLifecycleTable.tenantId, tenantId),
     eq(configChangeLifecycleTable.resourceKey, c.resourceKey),
     eq(configChangeLifecycleTable.objectIdentity, c.objectIdentity),
-    eq(configChangeLifecycleTable.propertyPathNormalized, pathKey),
+    eq(configChangeLifecycleTable.propertyPath, pathKey),
   )).limit(1);
 
   if (!existing) {
@@ -860,7 +893,8 @@ async function advanceLifecycle(opts: {
       tenantId,
       resourceKey: c.resourceKey,
       objectIdentity: c.objectIdentity,
-      propertyPathNormalized: pathKey,
+      propertyPath: pathKey,
+      propertyPathNormalized: normalizedKey,
       status: "open",
       baselineValue: c.oldValue,
       baselineValuePresent: c.oldValuePresent ? "true" : "false",

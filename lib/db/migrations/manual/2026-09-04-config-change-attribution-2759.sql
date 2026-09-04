@@ -89,8 +89,15 @@ CREATE TABLE IF NOT EXISTS config_change_lifecycle (
   tenant_id                 integer     NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   resource_key              text        NOT NULL,
   object_identity           text        NOT NULL,
+  -- The RAW path (controlScores[3].description) is the setting's identity, NOT the
+  -- normalised one. Measured on the testbed's real diff row 9: 340 change rows, 340
+  -- distinct (resource_key, object_identity, property_path) triples but only 72 distinct
+  -- normalised ones — keying on the normalised path collapsed 126 different array
+  -- members onto one row and made them overwrite each other inside a single pass.
   -- Empty string (never NULL) for object-level change kinds, which have no property
   -- path: this column is part of the unique key and NULLs do not compare equal.
+  property_path             text        NOT NULL,
+  -- Carried for filtering and rule joins only. Never part of the identity.
   property_path_normalized  text        NOT NULL,
   status                    text        NOT NULL DEFAULT 'open',
   baseline_value            jsonb,
@@ -122,7 +129,9 @@ CREATE TABLE IF NOT EXISTS config_change_lifecycle (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS config_change_lifecycle_key_uidx
-  ON config_change_lifecycle (tenant_id, resource_key, object_identity, property_path_normalized);
+  ON config_change_lifecycle (tenant_id, resource_key, object_identity, property_path);
+CREATE INDEX IF NOT EXISTS config_change_lifecycle_normalized_idx
+  ON config_change_lifecycle (tenant_id, resource_key, property_path_normalized);
 CREATE INDEX IF NOT EXISTS config_change_lifecycle_tenant_status_idx
   ON config_change_lifecycle (tenant_id, status, last_detected_at);
 CREATE INDEX IF NOT EXISTS config_change_lifecycle_reopened_idx
@@ -153,14 +162,29 @@ CREATE TABLE IF NOT EXISTS config_change_attributions (
     CHECK (verdict IN ('attributed_change', 'accepted_risk', 'contested', 'unattributed', 'ignored')),
   CONSTRAINT config_change_attributions_match_scope_valid
     CHECK (match_scope IS NULL OR match_scope IN ('property', 'object', 'resource')),
-  -- The verdict and its edges must agree. A row claiming `attributed_change` with no
-  -- change request is not a weaker claim, it is an unfalsifiable one.
+  -- The verdict and its edges must agree. A row claiming `attributed_change` that names
+  -- no change request is not a weaker claim, it is an unfalsifiable one.
+  --
+  -- "Names one" is the FK OR the preserved display ref, and that disjunction is
+  -- load-bearing. The edge FKs are ON DELETE SET NULL so an attribution survives a
+  -- pruned source; written as `change_request_id IS NOT NULL`, this check turned that
+  -- cascade into a hard failure — the SET NULL runs as an UPDATE, the UPDATE violates
+  -- the check, and the whole DELETE aborts, so a change request that had ever
+  -- attributed a diff row could never be deleted again. Caught live on 2026-09-04.
   CONSTRAINT config_change_attributions_verdict_edges
     CHECK (
-      (verdict = 'attributed_change' AND change_request_id IS NOT NULL AND risk_decision_id IS NULL)
-      OR (verdict = 'accepted_risk' AND risk_decision_id IS NOT NULL AND change_request_id IS NULL)
-      OR (verdict = 'contested' AND change_request_id IS NOT NULL AND risk_decision_id IS NOT NULL)
-      OR (verdict IN ('unattributed', 'ignored') AND change_request_id IS NULL AND risk_decision_id IS NULL)
+      (verdict = 'attributed_change'
+        AND (change_request_id IS NOT NULL OR cr_ref IS NOT NULL)
+        AND risk_decision_id IS NULL AND rbd_ref IS NULL)
+      OR (verdict = 'accepted_risk'
+        AND (risk_decision_id IS NOT NULL OR rbd_ref IS NOT NULL)
+        AND change_request_id IS NULL AND cr_ref IS NULL)
+      OR (verdict = 'contested'
+        AND (change_request_id IS NOT NULL OR cr_ref IS NOT NULL)
+        AND (risk_decision_id IS NOT NULL OR rbd_ref IS NOT NULL))
+      OR (verdict IN ('unattributed', 'ignored')
+        AND change_request_id IS NULL AND cr_ref IS NULL
+        AND risk_decision_id IS NULL AND rbd_ref IS NULL)
     ),
   CONSTRAINT config_change_attributions_scope_matches_verdict
     CHECK (

@@ -311,6 +311,25 @@ export type InsertConfigChangeScope = typeof configChangeScopesTable.$inferInser
  * `baseline_value` is therefore never overwritten while a row is open; only a real
  * resolve-then-reopen cycle rebases it, and the reopen keeps the original so the round
  * trip stays visible.
+ *
+ * ─── The key is the RAW property path, and that is measured, not assumed ───────
+ * `config_diff_changes` carries two paths: `property_path` (`controlScores[3].description`)
+ * and `property_path_normalized` (`controlScores[].description`). The normalised one
+ * exists so a noise RULE can match a whole array in one pattern; it is not an identity.
+ * Measured on the testbed's real diff (row 9, 2026-09-04): 340 change rows, 340 distinct
+ * `(resource_key, object_identity, property_path)` triples — and only 72 distinct
+ * normalised ones. Keying the lifecycle on the normalised path collapsed 126 genuinely
+ * different array members onto one row, and each of them then overwrote the last within
+ * a single pass: the first live run reported 83 resolutions and 19 reopenings on a diff
+ * where nothing had returned to anything. The raw path is the setting; the normalised
+ * one rides along as a plain column for filtering and rule joins.
+ *
+ * ─── Only `drift` comparisons advance it ───────────────────────────────────────
+ * A lifecycle is a statement about one tenant over TIME. `baseline_assessment` compares
+ * a tenant against a reference, and `tenant_compare` / `promotion` compare two different
+ * tenants — none of those is a time series, and feeding them in here would mix "differs
+ * from the known-good template" into the same row as "moved since last week". The
+ * attribution VERDICT is computed for every mode; only the lifecycle is restricted.
  */
 export const configChangeLifecycleTable = pgTable("config_change_lifecycle", {
   id: serial("id").primaryKey(),
@@ -319,11 +338,18 @@ export const configChangeLifecycleTable = pgTable("config_change_lifecycle", {
   resourceKey: text("resource_key").notNull(),
   objectIdentity: text("object_identity").notNull(),
   /**
-   * The normalised property path, or the empty string for object-level change kinds
-   * (`object_added` / `object_removed` / …), which have no property path at all.
-   * Empty string rather than NULL because this participates in the unique key and
-   * NULLs do not compare equal in a Postgres unique index — two object-level rows for
-   * the same object would both insert.
+   * The RAW property path (`controlScores[3].description`), or the empty string for
+   * object-level change kinds (`object_added` / `object_removed` / …), which have no
+   * property path at all. Empty string rather than NULL because this participates in
+   * the unique key and NULLs do not compare equal in a Postgres unique index — two
+   * object-level rows for the same object would both insert.
+   *
+   * See the table comment for the measurement behind using the raw path here.
+   */
+  propertyPath: text("property_path").notNull(),
+  /**
+   * The normalised form of the path above, carried for filtering and for joining to
+   * `config_diff_property_rules`. NOT part of the identity — see the table comment.
    */
   propertyPathNormalized: text("property_path_normalized").notNull(),
 
@@ -356,7 +382,9 @@ export const configChangeLifecycleTable = pgTable("config_change_lifecycle", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex("config_change_lifecycle_key_uidx")
-    .on(t.tenantId, t.resourceKey, t.objectIdentity, t.propertyPathNormalized),
+    .on(t.tenantId, t.resourceKey, t.objectIdentity, t.propertyPath),
+  index("config_change_lifecycle_normalized_idx")
+    .on(t.tenantId, t.resourceKey, t.propertyPathNormalized),
   index("config_change_lifecycle_tenant_status_idx").on(t.tenantId, t.status, t.lastDetectedAt),
   index("config_change_lifecycle_reopened_idx").on(t.tenantId, t.reopenedAt),
   check("config_change_lifecycle_reopen_count_nonneg", sql`reopen_count >= 0`),
@@ -450,15 +478,40 @@ export const configChangeAttributionsTable = pgTable("config_change_attributions
   index("config_change_attributions_rbd_idx").on(t.riskDecisionId),
   index("config_change_attributions_lifecycle_idx").on(t.lifecycleId),
   /**
-   * The verdict and its edges must agree. A row claiming `attributed_change` with no
-   * change request is not a weaker claim, it is an unfalsifiable one.
+   * The verdict and its edges must agree. A row claiming `attributed_change` that names
+   * no change request is not a weaker claim, it is an unfalsifiable one.
+   *
+   * "Names one" means the FK **or** the preserved display ref, and that disjunction is
+   * load-bearing rather than lenient. The FKs above are `ON DELETE SET NULL` so an
+   * attribution survives a pruned change request; written as `change_request_id IS NOT
+   * NULL`, this check turned that cascade into a hard failure — Postgres runs the
+   * `SET NULL` as an UPDATE, the UPDATE violates the check, and the whole DELETE aborts.
+   * Caught live on 2026-09-04 by this layer's own test teardown: deleting the risk
+   * decision it had created failed with
+   * `new row for relation "config_change_attributions" violates check constraint`.
+   * Left as it was, a change request that had ever attributed a diff row could never be
+   * deleted again.
+   *
+   * `cr_ref` / `rbd_ref` are exactly what makes the relaxed form still strict: they are
+   * written on the same pass as the FK and are never cleared, so a pruned source leaves
+   * a row that still says WHICH record it attributed to. Same split `drift_events` uses
+   * — the ref is the durable display string, the id is the real edge while the source
+   * exists.
    */
   check(
     "config_change_attributions_verdict_edges",
-    sql`(verdict = 'attributed_change' AND change_request_id IS NOT NULL AND risk_decision_id IS NULL)
-        OR (verdict = 'accepted_risk' AND risk_decision_id IS NOT NULL AND change_request_id IS NULL)
-        OR (verdict = 'contested' AND change_request_id IS NOT NULL AND risk_decision_id IS NOT NULL)
-        OR (verdict IN ('unattributed', 'ignored') AND change_request_id IS NULL AND risk_decision_id IS NULL)`,
+    sql`(verdict = 'attributed_change'
+          AND (change_request_id IS NOT NULL OR cr_ref IS NOT NULL)
+          AND risk_decision_id IS NULL AND rbd_ref IS NULL)
+        OR (verdict = 'accepted_risk'
+          AND (risk_decision_id IS NOT NULL OR rbd_ref IS NOT NULL)
+          AND change_request_id IS NULL AND cr_ref IS NULL)
+        OR (verdict = 'contested'
+          AND (change_request_id IS NOT NULL OR cr_ref IS NOT NULL)
+          AND (risk_decision_id IS NOT NULL OR rbd_ref IS NOT NULL))
+        OR (verdict IN ('unattributed', 'ignored')
+          AND change_request_id IS NULL AND cr_ref IS NULL
+          AND risk_decision_id IS NULL AND rbd_ref IS NULL)`,
   ),
   /** A verdict that names an edge must also say how precisely it matched. */
   check(
