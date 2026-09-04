@@ -7,6 +7,7 @@ using ShanesSurvival.App.Plaid;
 using ShanesSurvival.App.Settings;
 using ShanesSurvival.Core.Accounts;
 using ShanesSurvival.Core.Dashboard;
+using ShanesSurvival.Core.PayPeriodPlans;
 using ShanesSurvival.Core.Settings;
 
 namespace ShanesSurvival.App;
@@ -23,6 +24,7 @@ public partial class MainWindow : Window
     private readonly PlaidSyncService _plaidSyncService = new();
     private readonly AccountRepository _accountRepository = new();
     private readonly DashboardService _dashboardService = new();
+    private readonly PayPeriodPlanRepository _planRepository = new();
 
     public MainWindow()
     {
@@ -361,7 +363,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var window = new DashboardWindow(_settingsService, _plaidSyncService, _dashboardService) { Owner = this };
+            var window = new DashboardWindow(_settingsService, _plaidSyncService, _dashboardService, _planRepository) { Owner = this };
             window.Show();
         }
         catch (Exception ex)

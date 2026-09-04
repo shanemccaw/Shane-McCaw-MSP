@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using ShanesSurvival.App.Plaid;
 using ShanesSurvival.Core.Dashboard;
+using ShanesSurvival.Core.PayPeriodPlans;
 using ShanesSurvival.Core.Settings;
 
 namespace ShanesSurvival.App.Dashboard;
@@ -25,13 +26,17 @@ public partial class DashboardWindow : Window
     private readonly SettingsService _settingsService;
     private readonly PlaidSyncService _plaidSyncService;
     private readonly DashboardService _dashboardService;
+    private readonly PayPeriodPlanRepository _planRepository;
 
-    public DashboardWindow(SettingsService settingsService, PlaidSyncService plaidSyncService, DashboardService dashboardService)
+    public DashboardWindow(
+        SettingsService settingsService, PlaidSyncService plaidSyncService, DashboardService dashboardService,
+        PayPeriodPlanRepository planRepository)
     {
         InitializeComponent();
         _settingsService = settingsService;
         _plaidSyncService = plaidSyncService;
         _dashboardService = dashboardService;
+        _planRepository = planRepository;
         Loaded += async (_, _) => await RecomputeAsync();
     }
 
@@ -93,6 +98,9 @@ public partial class DashboardWindow : Window
             var settings = _settingsService.Load();
             var result = await _dashboardService.ComputeAsync(settings.PostgresConnectionString);
             Render(result);
+
+            var planResult = await _planRepository.GetActiveAsync(settings.PostgresConnectionString);
+            RenderCurrentPlan(planResult);
         }
         catch (Exception ex)
         {
@@ -329,5 +337,106 @@ public partial class DashboardWindow : Window
             WarningsPanel.Children.Add(new TextBlock { Text = $"• {warning}", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 1) });
         }
         WarningsBorder.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Real "Current Plan" checklist — one real GFM-style checkbox row per allocation on the
+    /// real active pay-period plan (see #2892). Checking a box calls
+    /// <see cref="PayPeriodPlanRepository.MarkAllocationExecutedAsync"/>, recording that Shane
+    /// made the real transfer himself in his own bank app; nothing here moves any money.
+    /// </summary>
+    private void RenderCurrentPlan(PlanResult result)
+    {
+        CurrentPlanAllocationsPanel.Children.Clear();
+
+        if (!result.Success)
+        {
+            CurrentPlanHeaderText.Text = "Could not load the current plan";
+            CurrentPlanHeaderText.Foreground = ShortBrush;
+            CurrentPlanSubText.Text = result.ErrorMessage;
+            return;
+        }
+
+        if (result.Plan is null)
+        {
+            CurrentPlanHeaderText.Text = "No active pay-period plan right now";
+            CurrentPlanHeaderText.Foreground = Brushes.Black;
+            CurrentPlanSubText.Text = "Ask Claude Desktop to create one via create_pay_period_plan when you get paid.";
+            return;
+        }
+
+        var plan = result.Plan;
+        CurrentPlanHeaderText.Foreground = Brushes.Black;
+        CurrentPlanHeaderText.Text =
+            $"Pay date {plan.PayDate:yyyy-MM-dd} — income {plan.IncomeAmount:C2} ({plan.Status})";
+        CurrentPlanSubText.Text = string.IsNullOrWhiteSpace(plan.Notes) ? "" : plan.Notes;
+
+        foreach (var allocation in plan.Allocations)
+        {
+            var balanceText = allocation.CurrentBalance is null
+                ? "balance unknown"
+                : $"current balance {allocation.CurrentBalance.Value.ToString("C2", CultureInfo.CurrentCulture)}";
+            var reasonText = string.IsNullOrWhiteSpace(allocation.Reason) ? "" : $" — {allocation.Reason}";
+
+            var checkBox = new CheckBox
+            {
+                IsChecked = allocation.Executed,
+                IsEnabled = !allocation.Executed,
+                Margin = new Thickness(0, 2, 0, 2),
+                Tag = allocation.Id,
+                Content = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    Text = $"{allocation.AccountName}: {allocation.Amount:C2}{reasonText} ({balanceText})",
+                },
+            };
+            checkBox.Checked += CurrentPlanAllocationCheckBox_Checked;
+            CurrentPlanAllocationsPanel.Children.Add(checkBox);
+        }
+
+        if (plan.Allocations.Count == 0)
+        {
+            CurrentPlanAllocationsPanel.Children.Add(new TextBlock
+            {
+                Text = "This plan has no allocations.",
+                Foreground = Brushes.Gray,
+            });
+        }
+    }
+
+    private async void CurrentPlanAllocationCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox { Tag: Guid allocationId } checkBox)
+        {
+            return;
+        }
+
+        checkBox.IsEnabled = false;
+        try
+        {
+            var settings = _settingsService.Load();
+            var result = await _planRepository.MarkAllocationExecutedAsync(settings.PostgresConnectionString, allocationId);
+            if (!result.Success)
+            {
+                MessageBox.Show(this, $"Could not mark this allocation executed: {result.ErrorMessage}", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                checkBox.IsChecked = false;
+                checkBox.IsEnabled = true;
+                return;
+            }
+
+            // Re-render from the real database so a plan that just completed (every allocation
+            // now executed) shows its real new status instead of a stale "active" checklist.
+            var planResult = await _planRepository.GetActiveAsync(settings.PostgresConnectionString);
+            RenderCurrentPlan(planResult);
+        }
+        catch (Exception ex)
+        {
+            // async void event handler — nothing above it can catch an escaped exception.
+            MessageBox.Show(this, $"Unexpected error marking allocation executed: {ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            checkBox.IsChecked = false;
+            checkBox.IsEnabled = true;
+        }
     }
 }

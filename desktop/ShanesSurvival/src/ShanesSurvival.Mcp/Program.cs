@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ShanesSurvival.Core.Accounts;
 using ShanesSurvival.Core.Dashboard;
+using ShanesSurvival.Core.PayPeriodPlans;
 using ShanesSurvival.Core.Settings;
 using ShanesSurvival.Core.Transactions;
 
@@ -24,6 +25,7 @@ builder.Services.AddSingleton<SettingsService>();
 builder.Services.AddSingleton<DashboardService>();
 builder.Services.AddSingleton<AccountRepository>();
 builder.Services.AddSingleton<TransactionRepository>();
+builder.Services.AddSingleton<PayPeriodPlanRepository>();
 
 builder.Services
     .AddMcpServer(options =>

@@ -113,6 +113,8 @@ Defined in [`migrations/001_init.sql`](migrations/001_init.sql),
 | `transactions` | Transactions under an account — amount, date, merchant, category, pending flag. |
 | `debts` | **Manually entered by Shane, not sourced from Plaid.** Real debts, collections, and garnishments often don't show up cleanly in Plaid transaction data — creditor, balance, minimum payment, delinquency status, days past due, notes. |
 | `survival_snapshots` | A point-in-time manual snapshot Shane can save of his overall position — total cash, total debt, monthly income, monthly fixed costs, notes. |
+| `pay_period_plans` | (added in 004, #2892) One real allocation plan per paycheck — pay date, income amount, status (`proposed`/`active`/`completed`), notes. |
+| `pay_period_plan_allocations` | (added in 004, #2892) One real allocation line per plan — the target account, amount, reason, and whether Shane has actually executed the real transfer (`executed`/`executed_at`). |
 
 All tables use `UUID` primary keys (`gen_random_uuid()`, built into Postgres 13+ core — no
 extension required) and `TIMESTAMPTZ` for timestamps. Foreign keys cascade on delete
@@ -134,11 +136,12 @@ migrations/
   001_init.sql
   002_plaid_sync.sql
   003_account_roles.sql
+  004_pay_period_plans.sql
 src/
   ShanesSurvival.App/            — WPF (net8.0-windows) desktop shell, see below
   ShanesSurvival.Core/           — net8.0 class library: settings + Dashboard shortfall math +
-                                    account/transaction reads, shared by App and Mcp so neither
-                                    reimplements the other's queries
+                                    account/transaction/pay-period-plan reads+writes, shared by
+                                    App and Mcp so neither reimplements the other's queries
   ShanesSurvival.Mcp/            — net8.0 console app: the real local MCP server, see below
 
   ShanesSurvival.App/
@@ -179,10 +182,17 @@ src/
                               never reimplemented a second time)
     Transactions/
       TransactionRepository.cs — real, bounded, most-recent-first transaction reads per account
+    PayPeriodPlans/                 — (#2892)
+      PayPeriodPlanModels.cs        — real result/input shapes (PlanStatus, AllocationInput,
+                                       PayPeriodPlanRow, PlanAllocationRow)
+      PayPeriodPlanRepository.cs    — real create/revise/mark-executed/read-active, shared by
+                                       the WPF Dashboard's "Current Plan" panel and the MCP
+                                       write tools below — never reimplemented a second time
 
   ShanesSurvival.Mcp/
-    Program.cs             — real local MCP server entry point (stdio transport)
-    Tools/FinanceTools.cs  — the 4 real read-only MCP tools, see below
+    Program.cs                   — real local MCP server entry point (stdio transport)
+    Tools/FinanceTools.cs        — the 4 real read-only MCP tools, see below
+    Tools/PayPeriodPlanTools.cs  — the 4 real Pay-Period Plan MCP tools (#2892), see below
 ```
 
 ## MCP server (Claude Desktop)
@@ -202,6 +212,20 @@ Real tools exposed:
 | `bill_status` | Every Bill-role account: real target vs. real current Plaid balance and the real shortfall, GATE-tier called out separately, sorted worst-shortfall-first. |
 | `spend_bleed` | The 2 spend accounts' real transactions from the last 30 days, grouped and summed by merchant. |
 | `recent_transactions` | Bounded, most-recent-first real transactions for one named account (`accountName`, `limit` up to 100). |
+
+**Write tools (added in #2892), on top of the same server** — real Pay-Period Plan
+create/revise/execute-tracking. No programmatic money movement of any kind: every tool here
+only ever writes a plan/allocation row to this app's own Postgres database
+(`pay_period_plans`/`pay_period_plan_allocations`, migration 004) — Shane still makes each real
+transfer himself in his own bank's app (Navy Federal — no programmatic transfer capability
+exists via Plaid, confirmed 2026-09-04) and reports it back via `mark_allocation_executed`.
+
+| Tool | What it does |
+|---|---|
+| `create_pay_period_plan` | Creates a new plan (immediately `active`) allocating a real paycheck across named bill/spend accounts. All-or-nothing: an unrecognized account name fails the whole call, nothing is written. |
+| `revise_pay_period_plan` | Mid-cycle adjustment — replaces every not-yet-executed allocation on a plan with a new list. Already-executed allocations are left untouched. |
+| `mark_allocation_executed` | Records that Shane made a real transfer himself; idempotent. Once every allocation on a plan is executed, the plan flips to `completed` automatically. |
+| `get_active_pay_period_plan` | The current non-completed plan, every allocation alongside its account's real current Plaid balance, so progress checks are grounded in what's actually landed. |
 
 Build it:
 
@@ -272,6 +296,21 @@ signal):
 recomputes off the fresh balances. Opening the dashboard itself does not trigger a sync — it
 renders current Postgres state; click Refresh to pull fresh Plaid data first.
 
+## Current Plan (#2892)
+
+Below the dashboard's usual sections, a **"Current Plan"** panel renders the real active
+pay-period plan (if any) as a real GFM-style checklist — one checkbox row per allocation,
+labeled with the real account name, amount, reason, and that account's real current Plaid
+balance. This is the same real `PayPeriodPlanRepository` the MCP write tools above use — no
+math or query is reimplemented a second time between the two.
+
+Checking a box calls `MarkAllocationExecutedAsync` and re-renders from the real database
+afterward — nothing here moves any money; it only records that Shane already made the real
+transfer himself in his bank's app. An executed row's checkbox is shown checked and disabled
+(the record is final). Once every allocation on the plan is executed, the plan flips to
+`completed` and the panel shows "No active pay-period plan right now" until a new one is
+created (normally via Claude Desktop's `create_pay_period_plan`).
+
 ## What's NOT built yet (later dispatches)
 
 Deliberately out of scope for this build:
@@ -325,6 +364,27 @@ Dashboard (account roles + shortfall math, added on top of the above):
   against real, currently-synced Shane data end-to-end. Link a real account, Sync Now, assign
   roles/targets in "Assign Account Roles…", then open the dashboard to complete that path for
   real.
+
+Pay-Period Plan (#2892), added on top of the above:
+
+- **Live-verified, for real:** `dotnet build` clean; migration 004 applied for real against the
+  real local database (confirmed via `schema_migrations` — `004_pay_period_plans.sql` now
+  recorded); and a full real MCP session (`initialize` → `tools/list` → `tools/call`, actual
+  stdin/stdout pipes) confirmed all 8 tools now register (the original 4 read tools plus the 4
+  new write tools). Because no real account has been linked/synced yet (`accounts` is still
+  genuinely empty — same real state noted above), a temporary real account/plaid_item row was
+  inserted for one end-to-end pass — `create_pay_period_plan` (all-or-nothing account-name
+  resolution confirmed by first proving an unrecognized name fails with nothing written) →
+  `get_active_pay_period_plan` (returned the real plan) → `revise_pay_period_plan`
+  (not-yet-executed allocation correctly replaced) → `mark_allocation_executed` (plan correctly
+  flipped to `completed` and dropped out of `get_active_pay_period_plan`) →
+  `mark_allocation_executed` again (confirmed idempotent, no error) — then the temporary
+  account/plaid_item/plan rows were fully deleted, leaving the real database exactly as found.
+- **Not live-verified:** the WPF Dashboard's "Current Plan" checklist panel itself has not been
+  clicked through in a running app window (no bank account is linked yet for it to render
+  against) — the repository logic it calls is the same one proven end-to-end above. Link a real
+  account, create a real plan via Claude Desktop, then open the dashboard to complete that path
+  for real.
 
 ## Data policy
 
