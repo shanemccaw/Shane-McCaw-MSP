@@ -674,6 +674,56 @@ async function collectGraphResource(
   return { objects, pageCount, requestRef, truncated };
 }
 
+
+/**
+ * Pick WHICH of a resource's mapped read cmdlets actually reads THAT resource.
+ *
+ * Microsoft365DSC records every cmdlet a resource's `Get-TargetResource` touches,
+ * not just the one that fetches the objects, and the order is the order they appear
+ * in that function — not an order of importance. So "first mapped wins" silently
+ * reads the wrong object type whenever a rule-shaped resource happens to call its
+ * policy-shaped sibling first. That is not hypothetical and it is not new:
+ * `m365dsc:EXOHostedContentFilterRule` lists `Get-HostedContentFilterPolicy` ahead
+ * of `Get-HostedContentFilterRule`, and snapshot row 8 duly recorded 2 CONTENT
+ * FILTER POLICIES against the resource type named "…Rule". #1961 mapping 81 keys
+ * instead of 5 would have turned that one latent case into seven
+ * (`EXOHostedOutboundSpamFilterRule`, `SCDeviceConditionalAccessRule`,
+ * `SCDeviceConfigurationRule`, `SCFilePlanPropertySubCategory`, `SCLabelPolicy`,
+ * `SCSupervisoryReviewRule` and the pre-existing one), so the selection rule is
+ * fixed here rather than worked around per-resource.
+ *
+ * The rule: prefer the mapped cmdlet whose NOUN is a suffix of the resource's own
+ * DSC name, longest noun first — `EXOHostedContentFilterRule` ends with
+ * "HostedContentFilterRule", so `Get-HostedContentFilterRule` beats
+ * `Get-HostedContentFilterPolicy`, which is not a suffix of it at all. When no
+ * mapped cmdlet's noun matches, the registry's own first-listed mapped cmdlet is
+ * kept, which is the right answer for the resources that genuinely read a
+ * differently-named object (`EXODnssecForVerifiedDomain` really is read via
+ * `Get-AcceptedDomain`; `EXOAuthenticationPolicyAssignment` really is read via
+ * `Get-AuthenticationPolicy`).
+ *
+ * Comparison is case-insensitive because `read_cmdlets` genuinely carries case
+ * variants of one cmdlet (`Get-DLPCompliancePolicy` / `Get-DlpCompliancePolicy`).
+ */
+export function selectReadCmdlet(resourceKey: string, cmdlets: string[]): string | undefined {
+  const mappedCmdlets = cmdlets.filter((c) => PS_CATALOG_BY_CMDLET[c] !== undefined);
+  if (mappedCmdlets.length <= 1) return mappedCmdlets[0];
+
+  // "m365dsc:EXOHostedContentFilterRule" -> "exohostedcontentfilterrule"
+  const localName = (resourceKey.split(":").pop() ?? resourceKey).toLowerCase();
+
+  let best: string | undefined;
+  let bestNounLength = 0;
+  for (const cmdlet of mappedCmdlets) {
+    const noun = cmdlet.replace(/^Get-/i, "").toLowerCase();
+    if (!localName.endsWith(noun)) continue;
+    if (noun.length > bestNounLength) {
+      best = cmdlet;
+      bestNounLength = noun.length;
+    }
+  }
+  return best ?? mappedCmdlets[0];
+}
 /**
  * Read one PowerShell resource through the ps-execution container.
  *
@@ -688,7 +738,7 @@ async function collectPowerShellResource(
   rt: ConfigSnapshotResourceType,
 ): Promise<RawCollection | { unreachable: string }> {
   const cmdlets = (rt.readCmdlets ?? []).filter((c) => !PS_NON_READ_HELPER_CMDLETS.has(c));
-  const mapped = cmdlets.find((c) => PS_CATALOG_BY_CMDLET[c] !== undefined);
+  const mapped = selectReadCmdlet(rt.resourceKey, cmdlets);
   if (!mapped) {
     const named = cmdlets.length > 0 ? cmdlets.join(", ") : "(no read cmdlet recorded)";
     return {

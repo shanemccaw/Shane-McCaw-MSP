@@ -10,7 +10,7 @@
  * before this fix). See build-journal/2115.md for the queries that pulled them.
  */
 import { describe, expect, it } from "vitest";
-import { classifySnapshotFailure } from "./config-snapshot-collector";
+import { classifySnapshotFailure, selectReadCmdlet } from "./config-snapshot-collector";
 import { LicenseGapError } from "./graph";
 
 describe("classifySnapshotFailure — #2115 real-literal branches", () => {
@@ -112,5 +112,65 @@ describe("classifySnapshotFailure — #2115 real-literal branches", () => {
   it("a LicenseGapError built without an httpStatus (pre-#2115 call shape) still defaults safely to null", () => {
     const err = new LicenseGapError("tenant-1", "feature", "code", "body");
     expect(err.httpStatus).toBeNull();
+  });
+});
+
+/**
+ * Git #1961 — selectReadCmdlet() picks the cmdlet that reads THIS resource.
+ *
+ * Every `read_cmdlets` array below is copied verbatim out of the real
+ * `config_snapshot_resource_types` rows (local Postgres, read 2026-09-04),
+ * including their real ORDER and their real case variants — the order is what
+ * makes the naive "first mapped wins" pick the wrong object type, so a
+ * hand-tidied array would test nothing.
+ */
+describe("selectReadCmdlet — #1961 real registry read_cmdlets orders", () => {
+  it("prefers the Rule cmdlet over the Policy cmdlet listed ahead of it (the pre-existing EXOHostedContentFilterRule miscollection)", () => {
+    expect(
+      selectReadCmdlet("m365dsc:EXOHostedContentFilterRule", [
+        "Get-HostedContentFilterPolicy",
+        "Get-HostedContentFilterRule",
+      ]),
+    ).toBe("Get-HostedContentFilterRule");
+  });
+
+  it("prefers Get-LabelPolicy over the Get-Label listed first for SCLabelPolicy", () => {
+    expect(selectReadCmdlet("m365dsc:SCLabelPolicy", ["Get-Label", "Get-LabelPolicy"])).toBe(
+      "Get-LabelPolicy",
+    );
+  });
+
+  it("prefers the longer, more specific noun for SCFilePlanPropertySubCategory", () => {
+    expect(
+      selectReadCmdlet("m365dsc:SCFilePlanPropertySubCategory", [
+        "Get-FilePlanPropertyCategory",
+        "Get-FilePlanPropertySubCategory",
+      ]),
+    ).toBe("Get-FilePlanPropertySubCategory");
+  });
+
+  it("keeps the first mapped cmdlet when no noun matches the resource name (EXODnssecForVerifiedDomain really is read via Get-AcceptedDomain)", () => {
+    expect(
+      selectReadCmdlet("m365dsc:EXODnssecForVerifiedDomain", ["Get-AcceptedDomain"]),
+    ).toBe("Get-AcceptedDomain");
+  });
+
+  it("keeps Get-AuthenticationPolicy for EXOAuthenticationPolicyAssignment — the noun is not a suffix, and the registry's own choice is correct", () => {
+    expect(
+      selectReadCmdlet("m365dsc:EXOAuthenticationPolicyAssignment", ["Get-AuthenticationPolicy"]),
+    ).toBe("Get-AuthenticationPolicy");
+  });
+
+  it("matches case-insensitively, so a real Get-DLPCompliancePolicy/Get-DlpCompliancePolicy variant pair resolves", () => {
+    expect(
+      selectReadCmdlet("m365dsc:SCDLPCompliancePolicy", [
+        "Get-DLPCompliancePolicy",
+        "Get-DlpCompliancePolicy",
+      ]),
+    ).toBe("Get-DLPCompliancePolicy");
+  });
+
+  it("returns undefined when the resource names no cmdlet this container can invoke", () => {
+    expect(selectReadCmdlet("m365dsc:EXOPlace", ["Get-Place"])).toBeUndefined();
   });
 });
