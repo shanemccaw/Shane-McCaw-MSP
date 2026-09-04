@@ -773,6 +773,51 @@ async function collectGraphResource(
  * Comparison is case-insensitive because `read_cmdlets` genuinely carries case
  * variants of one cmdlet (`Get-DLPCompliancePolicy` / `Get-DlpCompliancePolicy`).
  */
+/**
+ * The ps-execution catalog key a read cmdlet routes to, or `undefined` when the
+ * container has no unfiltered entry for it. Exported so a test can assert the routing
+ * itself — e.g. that `Get-CsOnlineUser` resolves to the unfiltered `get-all-cs-online-user`
+ * twin and never to the check-shaped `get-cs-online-user` (Git #2850).
+ */
+export function psCatalogKeyForCmdlet(cmdlet: string): string | undefined {
+  return PS_CATALOG_BY_CMDLET[cmdlet];
+}
+
+/**
+ * The forms of a cmdlet noun that may legitimately be compared against a DSC resource
+ * name, longest first.
+ *
+ * Git #2850 — Exchange and Purview cmdlet nouns and their DSC resource names share a
+ * spelling (`EXOHostedContentFilterRule` / `Get-HostedContentFilterRule`), which is why
+ * the plain suffix test above worked for pass 1. Teams cmdlets do not: every one carries
+ * a `Cs` / `CsOnline` / `CsTeams` / `CsTenant` module prefix that the DSC name never
+ * has, so `teamsvoiceroute`.endsWith(`csonlinevoiceroute`) is false for EVERY Teams
+ * resource. The suffix rule therefore never fired for Teams and every multi-cmdlet Teams
+ * resource silently fell back to whichever cmdlet Microsoft365DSC happened to list first
+ * — the exact failure #1961 fixed for Exchange, re-appearing in a shape its rule could
+ * not see.
+ *
+ * Observed live, not hypothesised: in snapshot 59 `m365dsc:TeamsVoiceRoutingPolicy`
+ * resolved to `Get-CsOnlinePstnUsage` and stored a PSTN USAGE against a resource type
+ * named "…VoiceRoutingPolicy", and `m365dsc:TeamsVoiceRoute` resolved to
+ * `Get-CsOnlinePSTNGateway`. Stripping the module prefix makes the noun comparable
+ * again (`csonlinevoiceroutingpolicy` -> `voiceroutingpolicy`, a real suffix of
+ * `teamsvoiceroutingpolicy`).
+ *
+ * Prefixes are stripped only from the FRONT and only when the remainder is non-empty;
+ * no Exchange/Purview noun in the catalog starts with `cs`, so pass 1's behaviour is
+ * unchanged.
+ */
+function comparableNounForms(noun: string): string[] {
+  const forms = [noun];
+  for (const prefix of ["csteams", "csonline", "cstenant", "cs"]) {
+    if (noun.startsWith(prefix) && noun.length > prefix.length) {
+      forms.push(noun.slice(prefix.length));
+    }
+  }
+  return forms;
+}
+
 export function selectReadCmdlet(resourceKey: string, cmdlets: string[]): string | undefined {
   const mappedCmdlets = cmdlets.filter((c) => PS_CATALOG_BY_CMDLET[c] !== undefined);
   if (mappedCmdlets.length <= 1) return mappedCmdlets[0];
@@ -784,10 +829,12 @@ export function selectReadCmdlet(resourceKey: string, cmdlets: string[]): string
   let bestNounLength = 0;
   for (const cmdlet of mappedCmdlets) {
     const noun = cmdlet.replace(/^Get-/i, "").toLowerCase();
-    if (!localName.endsWith(noun)) continue;
-    if (noun.length > bestNounLength) {
-      best = cmdlet;
-      bestNounLength = noun.length;
+    for (const form of comparableNounForms(noun)) {
+      if (!localName.endsWith(form)) continue;
+      if (form.length > bestNounLength) {
+        best = cmdlet;
+        bestNounLength = form.length;
+      }
     }
   }
   return best ?? mappedCmdlets[0];

@@ -10,7 +10,11 @@
  * before this fix). See build-journal/2115.md for the queries that pulled them.
  */
 import { describe, expect, it } from "vitest";
-import { classifySnapshotFailure, selectReadCmdlet } from "./config-snapshot-collector";
+import {
+  classifySnapshotFailure,
+  psCatalogKeyForCmdlet,
+  selectReadCmdlet,
+} from "./config-snapshot-collector";
 import { LicenseGapError } from "./graph";
 
 describe("classifySnapshotFailure — #2115 real-literal branches", () => {
@@ -172,5 +176,72 @@ describe("selectReadCmdlet — #1961 real registry read_cmdlets orders", () => {
 
   it("returns undefined when the resource names no cmdlet this container can invoke", () => {
     expect(selectReadCmdlet("m365dsc:EXOPlace", ["Get-Place"])).toBeUndefined();
+  });
+});
+
+/**
+ * Git #2850 — the same selection rule, on the Teams shape pass 1 never exercised.
+ *
+ * Teams cmdlet nouns carry a `Cs`/`CsOnline`/`CsTeams`/`CsTenant` module prefix that the
+ * DSC resource name never has, so the plain suffix test matched NOTHING for Teams and
+ * every multi-cmdlet Teams resource fell back to the registry's first-listed cmdlet.
+ * Every `read_cmdlets` array below is copied verbatim from the real
+ * `config_snapshot_resource_types` rows (local Postgres, read 2026-09-04), in their real
+ * order; the first two are the mis-selections actually observed in live snapshot 59.
+ */
+describe("selectReadCmdlet — #2850 real Teams read_cmdlets orders", () => {
+  it("prefers Get-CsOnlineVoiceRoutingPolicy over the Get-CsOnlinePstnUsage listed first (observed storing a PSTN usage under …VoiceRoutingPolicy in snapshot 59)", () => {
+    expect(
+      selectReadCmdlet("m365dsc:TeamsVoiceRoutingPolicy", [
+        "Get-CsOnlinePstnUsage",
+        "Get-CsOnlineVoiceRoutingPolicy",
+      ]),
+    ).toBe("Get-CsOnlineVoiceRoutingPolicy");
+  });
+
+  it("prefers Get-CsOnlineVoiceRoute over the Get-CsOnlinePSTNGateway listed first for TeamsVoiceRoute", () => {
+    expect(
+      selectReadCmdlet("m365dsc:TeamsVoiceRoute", [
+        "Get-CsOnlinePSTNGateway",
+        "Get-CsOnlinePstnUsage",
+        "Get-CsOnlineVoiceRoute",
+      ]),
+    ).toBe("Get-CsOnlineVoiceRoute");
+  });
+
+  it("prefers the Policy cmdlet over the Application cmdlet listed ahead of it for TeamsComplianceRecordingPolicy", () => {
+    expect(
+      selectReadCmdlet("m365dsc:TeamsComplianceRecordingPolicy", [
+        "Get-CsTeamsComplianceRecordingApplication",
+        "Get-CsTeamsComplianceRecordingPolicy",
+      ]),
+    ).toBe("Get-CsTeamsComplianceRecordingPolicy");
+  });
+
+  it("keeps Get-CsCallQueue for TeamsCallQueue rather than the Get-CsOnlineUser also listed", () => {
+    expect(
+      selectReadCmdlet("m365dsc:TeamsCallQueue", ["Get-CsCallQueue", "Get-CsOnlineUser"]),
+    ).toBe("Get-CsCallQueue");
+  });
+
+  it("maps Get-CsOnlineUser to the unfiltered twin, never the check-shaped key", () => {
+    // TeamsOnlineVoiceUser's own read cmdlet (Get-CsOnlineVoicemailUserSettings) is
+    // unmapped, so Get-CsOnlineUser is the only mapped choice — and it must resolve to
+    // get-all-cs-online-user, not the PostFilter'd get-cs-online-user.
+    const picked = selectReadCmdlet("m365dsc:TeamsOnlineVoiceUser", [
+      "Get-CsOnlineUser",
+      "Get-CsPhoneNumberAssignment",
+    ]);
+    expect(picked).toBe("Get-CsOnlineUser");
+    expect(psCatalogKeyForCmdlet(picked!)).toBe("get-all-cs-online-user");
+  });
+
+  it("still keeps the first mapped cmdlet when no Teams noun matches (TeamsTemplatesPolicy really is read via Get-CsTeamsTemplatePermissionPolicy)", () => {
+    expect(
+      selectReadCmdlet("m365dsc:TeamsTemplatesPolicy", [
+        "Get-CsTeamsTemplatePermissionPolicy",
+        "Get-CsTeamTemplateList",
+      ]),
+    ).toBe("Get-CsTeamsTemplatePermissionPolicy");
   });
 });
