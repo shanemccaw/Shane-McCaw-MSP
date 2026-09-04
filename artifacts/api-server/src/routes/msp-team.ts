@@ -44,6 +44,7 @@ import bcrypt from "bcryptjs";
 import {
   db,
   usersTable,
+  tenantsTable,
   mfaEnrollmentsTable,
   webauthnCredentialsTable,
   userSessionsTable,
@@ -53,13 +54,13 @@ import {
   mfaBypassCodesTable,
 } from "@workspace/db";
 import { eq, and, inArray, gte, isNull, sql, count } from "drizzle-orm";
-import { requireRole, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth";
+import { requireRole, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { getPortalBaseUrl, getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
-import { ensureClientSetupToken } from "../lib/client-setup-token";
+import { ensureClientSetupToken } from "../lib/client-setup-token.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -230,6 +231,24 @@ router.post("/msp/customers/:customerId/team/invite", requireRole("MSPOperator")
       return;
     }
 
+    // The new user's `mspId` must be the target tenant's own real owning MSP
+    // (`tenantsTable.mspId`), not the caller's own session `mspId` claim above.
+    // For an MSPAdmin/MSPOperator caller these are always the same value —
+    // `assertCustomerAccess` only lets that tier reach a customerId whose
+    // `tenantsTable.mspId` already equals their own `mspId`. For a PlatformAdmin
+    // caller (cross-MSP access, `assertCustomerAccess` returns true unconditionally)
+    // they can genuinely differ, and writing the caller's own mspId would attribute
+    // the new row to the wrong MSP (Git #2822).
+    const [targetTenant] = await db
+      .select({ mspId: tenantsTable.mspId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customerId))
+      .limit(1);
+    if (!targetTenant) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+
     const { email, name, department, jobTitle } = req.body as {
       email?: string;
       name?: string;
@@ -254,7 +273,7 @@ router.post("/msp/customers/:customerId/team/invite", requireRole("MSPOperator")
       passwordHash: null,
       role: "client",
       name: name?.trim() || null,
-      mspId,
+      mspId: targetTenant.mspId,
       tenantId: customerId,
       mspRole: "CustomerUser",
       isActive: true,
