@@ -141,7 +141,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   }
 
   logger.error({ err }, "Unhandled error");
-  res.status(500).json({ error: "Internal server error" });
+  apiError(res, 500, ApiErrorCode.INTERNAL, "Internal server error");
 });
 
 export default app;
