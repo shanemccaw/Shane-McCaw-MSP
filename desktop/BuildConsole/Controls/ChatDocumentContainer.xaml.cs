@@ -688,11 +688,11 @@ namespace BuildConsole.Controls
             }
             else if (_chatToolOpen == "gitdoctor")
             {
-                // Git #2799 — README §6.2 maximize-2 → the full Git Doctor document, which in
-                // BuildConsole is #2798's ActivityBar GitDoctorView (activated the same way clicking
-                // its rail icon does: expand the sidebar, switch the view, run its checks).
+                // Git #2799 / #2809 — README §6.2 maximize-2 → the full Git Doctor document,
+                // which now opens as its own full-width Editor tab (same real pattern as the
+                // "logs" case above), not the old narrow ActivityBar sidebar panel.
                 CloseRail();
-                _owner.OpenGitDoctorView();
+                _owner.OpenGitDoctorTab();
             }
         }
 

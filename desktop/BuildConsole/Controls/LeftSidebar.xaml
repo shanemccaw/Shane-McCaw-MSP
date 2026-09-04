@@ -981,14 +981,6 @@
                 </DockPanel>
             </Grid>
 
-            <!-- ══════════════════════════════════
-                 GIT DOCTOR VIEW (Git #2798 — full-capability port of ShaneBuilder's
-                 GitDoctorDock/#2194: real repo status, RunChecksAsync findings, remedies,
-                 branch management, commit lookup, PAT-paste auth fix, Claude bridge, run
-                 log). Placed LAST so LastChildFill gives it the full panel height.
-                 ══════════════════════════════════ -->
-            <controls:GitDoctorView x:Name="GitDoctorView" Visibility="Collapsed"/>
-
         </DockPanel>
     </Border>
 </UserControl>

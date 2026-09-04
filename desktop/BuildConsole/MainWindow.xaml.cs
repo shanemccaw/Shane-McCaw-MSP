@@ -1201,6 +1201,9 @@ namespace BuildConsole
             ActivityBar.VisualTestTrackerToggleRequested += (s, e) => ToggleVisualTestTracker();
             // Git #2110 — floaty live Build Queue Map window toggle.
             ActivityBar.BuildChainMapRequested += (s, e) => OpenBuildChainMap();
+            // Git #2809 — Git Doctor opens as a full-width Editor tab, not a LeftSidebar
+            // ActivityBar view; plain-Button click like Sticky Notes/LinkedIn Composer above.
+            ActivityBar.GitDoctorRequested += (s, e) => OpenGitDoctorTab();
             _activeEditorPane = EditorTabs;
             // Clicking into any pane's WebView2 to type moves WPF keyboard focus
             // there without changing tab selection — walk up from the newly
@@ -5604,6 +5607,58 @@ namespace BuildConsole
         // port). Same open-as-tab pattern as OpenSqlRunnerTab above.
         private void OpenLogViewer_Click(object sender, RoutedEventArgs e) => OpenLogViewerTab();
 
+        // Git #2809 — Git Doctor moves from #2798's narrow LeftSidebar ActivityBar
+        // panel to a full-width Editor tab, same real open-as-tab pattern as
+        // OpenLogViewerTab/OpenSqlRunnerTab above. Same real GitDoctorView control,
+        // no content changes.
+        public Controls.GitDoctorView OpenGitDoctorTab()
+        {
+            foreach (TabItem item in EditorTabs.Items)
+            {
+                if (item.Tag is string tagPath && tagPath == "git_doctor")
+                {
+                    EditorTabs.SelectedItem = item;
+                    return (Controls.GitDoctorView)item.Content;
+                }
+            }
+
+            var headerPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var iconBlock = new TextBlock { Text = "🩺", FontSize = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+            var titleBlock = new TextBlock { Text = "Git Doctor", FontSize = 13, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextBrush") };
+            var closeBtn = new Button { Content = "✕", Style = (Style)FindResource("IconButton"), FontSize = 10, Padding = new Thickness(3, 1, 3, 1), Margin = new Thickness(4, 0, 0, 0), ToolTip = "Close Tab", VerticalAlignment = VerticalAlignment.Center };
+
+            headerPanel.Children.Add(iconBlock);
+            headerPanel.Children.Add(titleBlock);
+            headerPanel.Children.Add(closeBtn);
+
+            var gitDoctorView = new Controls.GitDoctorView();
+
+            var newTab = new TabItem
+            {
+                Header = headerPanel,
+                Content = gitDoctorView,
+                Tag = "git_doctor"
+            };
+
+            AttachTabContextMenu(newTab, EditorTabs);
+            AttachTabDragHandlers(newTab);
+
+            closeBtn.Click += (s, e) => CloseTab(newTab);
+
+            EditorTabs.Items.Add(newTab);
+            EditorTabs.SelectedItem = newTab;
+
+            // Git #2798 — kick the real checks off the first time the tab opens
+            // (idempotent; re-runs are via the view's own "Re-run checks" button).
+            gitDoctorView.EnsureLoaded();
+
+            return gitDoctorView;
+        }
+
         public Controls.LogViewerDocumentView OpenLogViewerTab()
         {
             foreach (TabItem item in EditorTabs.Items)
@@ -6432,24 +6487,6 @@ namespace BuildConsole
         {
             ActivityBar.SelectSettings();
             OpenSettingsTab();
-        }
-
-        /// <summary>Git #2799 — opens the full Git Doctor ActivityBar view (#2798), the maximize-2
-        /// target of the chat tool-rail's mini Git Doctor panel (README-ClaudeChat.md §6.2). Selects
-        /// the rail icon for the highlight, then forces the sidebar open + switches the view
-        /// directly, so it works even when Git Doctor is already the active view (a re-check of an
-        /// already-checked RadioButton fires no Checked event — same caveat as File > Settings above)
-        /// or the sidebar was collapsed.</summary>
-        public void OpenGitDoctorView()
-        {
-            ActivityBar.SelectGitDoctor();
-            if (ColSidebar.Width.Value == 0)
-            {
-                ColSidebar.Width = new GridLength(DefaultSidebarWidth);
-                SidebarSplitter.Visibility = Visibility.Visible;
-                LeftSidebar.ExpandPanel();
-            }
-            LeftSidebar.SwitchView("GitDoctor");
         }
 
         // ── ActivityBar → LeftSidebar ─────────────────────────────────────────
