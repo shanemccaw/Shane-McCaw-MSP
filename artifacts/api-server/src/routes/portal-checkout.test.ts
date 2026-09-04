@@ -21,10 +21,27 @@
  * Run: pnpm --filter @workspace/api-server run test
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import express from "express";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import express, { type IRouter } from "express";
 import request from "supertest";
 import jwt from "jsonwebtoken";
+
+// #2876 — the one `await import("./portal-checkout")` this file needs is paid
+// for exactly once, in the beforeAll below, NOT inside a test body. When it sat
+// inside makeApp() (called per test) the route module's cold Vite transform was
+// billed against the first test's 5000ms budget; on a loaded machine that
+// transform takes 15-40s, so the first several tests all timed out waiting on
+// the same in-flight import — and then the first test to run AFTER it resolved
+// got a 500, because the timed-out tests' handlers resumed and consumed the
+// mockReturnValueOnce() chains that test had just queued in beforeEach. That
+// cascade is what #2876 saw as "expected 500 to be 200" — a consequence of the
+// import timeout, not a checkout defect (full analysis on the issue).
+// Hoisting the import into a hook removes the cascade entirely: a slow
+// transform can now only make one hook slow, never corrupt a test's mock queue.
+// The raised budgets are the backstop for that hook on a saturated box, scoped
+// to this file only rather than a global vitest.config.ts change (same
+// precedent as #2865).
+vi.setConfig({ testTimeout: 20_000, hookTimeout: 120_000 });
 
 // ── Env setup ─────────────────────────────────────────────────────────────────
 
@@ -149,6 +166,33 @@ vi.mock("../lib/logger", () => {
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
+// #2876 — verifyCaptchaToken() makes a REAL outbound HTTPS POST to
+// challenges.cloudflare.com whenever TURNSTILE_SECRET_KEY is set in the
+// environment the tests run in; it only short-circuits because that variable
+// happens to be unset locally. Every test below except the 401 guard reaches
+// this call, so leaving it unmocked makes the whole file depend on an env var
+// being absent and on Cloudflare being reachable. Mocked to the same
+// bypassed-success shape the real function returns when the key is missing.
+vi.mock("../lib/captcha", () => ({
+  verifyCaptchaToken: vi.fn().mockResolvedValue({ success: true, bypassed: true }),
+}));
+
+// #2876 — portal-checkout.ts imports provisionDirectMarketingPurchase and
+// DIRECT_MARKETING_CHECKOUT_KIND from ./portal-checkout-direct, whose own
+// import graph pulls in mailer.ts -> graph.ts, tenant-signals.ts (1,864 lines)
+// -> sla-engine.ts, and crm-pipeline.ts -> zoho-lead-sync/zoho-client. That is
+// the entire outbound-email + Microsoft Graph + Zoho stack being transformed
+// for a checkout unit test that mocks Stripe and the database, and it was the
+// bulk of the cold-transform cost behind #2876's timeouts. Neither export is
+// exercised by the ten tests here (both are reached only from the Stripe
+// webhook's direct-marketing branch), so the module is stubbed out.
+// DIRECT_MARKETING_CHECKOUT_KIND mirrors the real literal at
+// portal-checkout-direct.ts:69.
+vi.mock("./portal-checkout-direct", () => ({
+  DIRECT_MARKETING_CHECKOUT_KIND: "direct_marketing",
+  provisionDirectMarketingPurchase: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../lib/stripe", () => ({
   getStripeKey: vi.fn().mockReturnValue("sk_test_xxx"),
   getMspDefaultPaymentMethod: vi.fn().mockResolvedValue("pm_test"),
@@ -257,8 +301,15 @@ function updateChain() {
 
 // ── App factory ───────────────────────────────────────────────────────────────
 
-async function makeApp() {
-  const { default: checkoutRouter } = await import("./portal-checkout");
+// Resolved once by the beforeAll below — see the #2876 note at the top of the
+// file for why this must not happen inside a test body.
+let checkoutRouter: IRouter;
+
+beforeAll(async () => {
+  ({ default: checkoutRouter } = await import("./portal-checkout"));
+});
+
+function makeApp() {
   const app = express();
   app.use(express.json());
   app.use("/api", checkoutRouter);
