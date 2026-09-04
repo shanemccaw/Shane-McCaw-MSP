@@ -22,6 +22,21 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 let anthropicPrompts: string[] = [];
 let nextResponses: string[] = [];
 
+/**
+ * Minimal stand-in for the SDK's `MessageStream` (mirrors
+ * document-engine-cost.test.ts's `fakeMessageStream`): `on()` registers
+ * listeners without consuming, `finalMessage()` resolves to the complete
+ * Message. persona-generation-engine.ts's #283 streaming conversion calls
+ * `anthropic.messages.stream(...).finalMessage()`, not `.create()`.
+ */
+function fakeMessageStream(message: Record<string, unknown>): Record<string, unknown> {
+  const stream: Record<string, unknown> = {
+    on: () => stream,
+    finalMessage: async () => message,
+  };
+  return stream;
+}
+
 vi.mock("@workspace/integrations-anthropic-ai", () => ({
   anthropic: {
     messages: {
@@ -29,6 +44,11 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({
         anthropicPrompts.push(params.messages[0].content);
         const text = nextResponses.shift() ?? "";
         return { content: [{ type: "text", text }], stop_reason: "end_turn" };
+      },
+      stream: (params: { messages: { content: string }[] }) => {
+        anthropicPrompts.push(params.messages[0].content);
+        const text = nextResponses.shift() ?? "";
+        return fakeMessageStream({ content: [{ type: "text", text }], stop_reason: "end_turn" });
       },
     },
   },

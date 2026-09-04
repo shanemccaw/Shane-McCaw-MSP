@@ -401,9 +401,11 @@ describe("DELETE /admin/active-directory/user/:id — successful full wipe (acce
     // Every table's row count is present: all 30 explicit tables…
     const explicitCounts = preState!.payload.explicitDeleteCounts as Record<string, number>;
     expect(Object.keys(explicitCounts).sort()).toEqual(EXPLICIT_DELETE_ORDER.filter((t) => t !== "users").sort());
-    // …all 15 cascade tables and all 14 set-null reference columns.
+    // …all 15 cascade tables and all 13 set-null reference columns
+    // (sales_offers.customer_id was repointed users -> tenants by #2730 and
+    // is no longer part of this census — see the route's own comment).
     expect(Object.keys(preState!.payload.dbCascadeCounts as object)).toHaveLength(15);
-    expect(Object.keys(preState!.payload.dbSetNullCounts as object)).toHaveLength(14);
+    expect(Object.keys(preState!.payload.dbSetNullCounts as object)).toHaveLength(13);
     expect(preState!.payload.targetUserId).toBe(42);
     expect(preState!.payload.tenantGuid).toBe("aad-guid-123");
 

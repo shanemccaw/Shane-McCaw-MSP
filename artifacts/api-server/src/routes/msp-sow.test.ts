@@ -88,6 +88,20 @@ vi.mock("drizzle-orm", () => ({
   count: vi.fn(() => ({ as: vi.fn() })),
 }));
 
+// The private sign route (unlike the public share-token one) fires a real
+// "sow.signed" workflow event after signing. Left unmocked, `msp-sow.ts`'s
+// `await import("../lib/workflow-executor")` pulls in the REAL module, which
+// transitively imports lib/ps-script-gen.ts -> lib/integrations-anthropic-ai,
+// and that throws at import time when AI_INTEGRATIONS_ANTHROPIC_BASE_URL
+// isn't set — turning a non-fatal, fire-and-forget event emission into a
+// route-crashing 500. Every other route test file with this same lazy import
+// (admin-write-actions, consent, msp-remediation-tracker, portal-checkout,
+// portal-delivery-kanban, portal-remediation-tracker) mocks this module for
+// exactly this reason; this file was just missing it.
+vi.mock("../lib/workflow-executor", () => ({
+  emitWorkflowEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../middlewares/requireAuth.ts", () => ({
   requireRole: () => (_req: Request, _res: Response, next: NextFunction) => next(),
   requireAuth:  (_req: Request, _res: Response, next: NextFunction) => next(),

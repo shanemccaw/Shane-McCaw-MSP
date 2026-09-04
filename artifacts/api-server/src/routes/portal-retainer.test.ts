@@ -20,7 +20,7 @@
  * (empty users.id set) does no status_reports DB read at all and returns `[]`.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
@@ -102,9 +102,19 @@ function makeApp(user: Record<string, unknown> | null) {
 }
 
 beforeEach(() => {
+  // The ledger fixtures below are all written against "now" being inside
+  // August 2026 (periodMonth: "2026-08") — pin the clock there so
+  // portal-retainer.ts's `periodMonthOf(new Date())` "current month" bucket
+  // doesn't silently drift as real wall-clock time moves past that month.
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
   mockSelectResultsQueue = [];
   mockResolveCustomerUserIds.mockClear();
   mockResolveCustomerUserIds.mockImplementation(async (customerId: number) => [customerId]);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("GET /api/portal/retainer", () => {

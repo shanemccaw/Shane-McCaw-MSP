@@ -60,7 +60,13 @@ function findMigration(): string {
   throw new Error(`#558 migration not found walking up from ${process.cwd()}`);
 }
 
-const MIGRATION_SQL = readFileSync(findMigration(), "utf8");
+// Migration files in this repo are checked in with CRLF line endings (every
+// file under lib/db/migrations/manual/ is CRLF, consistently). Normalized to
+// LF here so the `\n`-anchored `toContain(...)` assertions below (written
+// against the block's logical line breaks) match regardless of the file's
+// real on-disk line ending — otherwise every assertion whose expected string
+// spans a line break would silently never match a "\r\n" in the real file.
+const MIGRATION_SQL = readFileSync(findMigration(), "utf8").replace(/\r\n/g, "\n");
 
 /**
  * The dollar-quoted block the migration appends to the live style guide.

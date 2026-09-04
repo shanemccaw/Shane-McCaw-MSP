@@ -98,6 +98,7 @@ vi.mock("@workspace/db", () => ({
     mspId: "msp_id", customerAgreementTemplate: "customer_agreement_template",
   },
   tenantsTable: { id: "id", mspId: "msp_id" },
+  mspsTable: { id: "id", customCustomerAgreement: "custom_customer_agreement" },
   mspEventStoreTable: { id: "id" },
   freeCheckoutAttemptsTable: {
     id: "id", offerId: "offer_id", customerEmail: "customer_email",
@@ -268,9 +269,19 @@ async function makeApp() {
 
 describe("POST /api/portal/offers/:id/checkout", () => {
   beforeEach(() => {
-    // clearAllMocks clears call history and one-time queues but preserves
-    // permanent mock implementations (mockReturnValue, mockImplementation).
+    // clearAllMocks() only clears call history — per @vitest/spy's own
+    // mockClear() (called for every mock by clearAllMocks()), the queued
+    // mockReturnValueOnce()/mockImplementationOnce() implementations are
+    // untouched; only mockReset() drops them (config.onceMockImplementations
+    // = []). mockDbSelect/mockDbInsert/mockDbUpdate get fresh .mockReturnValueOnce()
+    // chains built per-test below, so any left over from a prior test that
+    // exited before consuming its full chain (e.g. via an early guard
+    // response) would otherwise leak into this test's query order — reset
+    // them explicitly so each test starts with an empty once-queue.
     vi.clearAllMocks();
+    mockDbSelect.mockReset();
+    mockDbInsert.mockReset();
+    mockDbUpdate.mockReset();
     mockStripeSessionCreate.mockResolvedValue({
       id: "cs_test_001",
       url: "https://checkout.stripe.com/pay/cs_test_001",
@@ -291,7 +302,8 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     const app = await makeApp();
     const res = await request(app)
       .post("/api/portal/offers/999/checkout")
-      .set("Authorization", `Bearer ${customerToken}`);
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({ captchaToken: "test-turnstile-token" });
     expect(res.status).toBe(404);
   });
 
@@ -300,7 +312,8 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     const app = await makeApp();
     const res = await request(app)
       .post("/api/portal/offers/5/checkout")
-      .set("Authorization", `Bearer ${customerToken}`);
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({ captchaToken: "test-turnstile-token" });
     expect(res.status).toBe(422);
     expect(res.body.error).toMatch(/accepted/);
   });
@@ -311,6 +324,7 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     mockDbSelect
       .mockReturnValueOnce(selectChain([baseSentOffer])) // offer
       .mockReturnValueOnce(selectChain([addOnService])) // service
+      .mockReturnValueOnce(selectChain([{ customCustomerAgreement: null }])) // parent MSP custom agreement
       .mockReturnValueOnce(selectChain([]))             // platform agreements
       .mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // msp subscription
     mockDbUpdate.mockReturnValueOnce(updateChain());
@@ -318,7 +332,8 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     const app = await makeApp();
     const res = await request(app)
       .post("/api/portal/offers/1/checkout")
-      .set("Authorization", `Bearer ${customerToken}`);
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({ captchaToken: "test-turnstile-token" });
 
     expect(res.status).toBe(200);
     expect(res.body.outcome).toBe("payment_processed");
@@ -336,6 +351,7 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     mockDbSelect
       .mockReturnValueOnce(selectChain([subscriptionOffer]))   // offer (trialPeriodDays: 14)
       .mockReturnValueOnce(selectChain([subscriptionService])) // service (trialPeriodDays: 7)
+      .mockReturnValueOnce(selectChain([{ customCustomerAgreement: null }])) // parent MSP custom agreement
       .mockReturnValueOnce(selectChain([]))                    // platform agreements
       .mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // msp subscription
     mockDbUpdate.mockReturnValueOnce(updateChain());
@@ -343,7 +359,8 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     const app = await makeApp();
     const res = await request(app)
       .post("/api/portal/offers/4/checkout")
-      .set("Authorization", `Bearer ${customerToken}`);
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({ captchaToken: "test-turnstile-token" });
 
     expect(res.status).toBe(200);
     expect(res.body.outcome).toBe("payment_processed");
@@ -358,6 +375,7 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     mockDbSelect
       .mockReturnValueOnce(selectChain([offerNoTrial]))
       .mockReturnValueOnce(selectChain([subscriptionService]))  // service has trialPeriodDays: 7
+      .mockReturnValueOnce(selectChain([{ customCustomerAgreement: null }])) // parent MSP custom agreement
       .mockReturnValueOnce(selectChain([]))                     // platform agreements
       .mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // msp subscription
     mockDbUpdate.mockReturnValueOnce(updateChain());
@@ -365,7 +383,8 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     const app = await makeApp();
     const res = await request(app)
       .post("/api/portal/offers/4/checkout")
-      .set("Authorization", `Bearer ${customerToken}`);
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({ captchaToken: "test-turnstile-token" });
 
     expect(res.status).toBe(200);
     expect(res.body.outcome).toBe("payment_processed");
@@ -380,6 +399,8 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     mockDbSelect
       .mockReturnValueOnce(selectChain([freeOffer]))    // offer
       .mockReturnValueOnce(selectChain([freeService]))  // service
+      .mockReturnValueOnce(selectChain([{ customCustomerAgreement: null }])) // parent MSP custom agreement
+      .mockReturnValueOnce(selectChain([]))             // platform agreements
       .mockReturnValueOnce(selectChain([{ n: 0 }]))     // email rate-limit (0 prior)
       .mockReturnValueOnce(selectChain([{ n: 0 }]))     // IP rate-limit (0 prior)
       .mockReturnValueOnce(selectChain([{ n: 0 }]));    // MSP daily count (below threshold)
@@ -389,7 +410,8 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     const app = await makeApp();
     const res = await request(app)
       .post("/api/portal/offers/2/checkout")
-      .set("Authorization", `Bearer ${customerToken}`);
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({ captchaToken: "test-turnstile-token" });
 
     expect(res.status).toBe(200);
     expect(res.body.outcome).toBe("free_activated");
@@ -410,13 +432,16 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     mockDbSelect
       .mockReturnValueOnce(selectChain([freeOffer]))
       .mockReturnValueOnce(selectChain([freeService]))
+      .mockReturnValueOnce(selectChain([{ customCustomerAgreement: null }])) // parent MSP custom agreement
+      .mockReturnValueOnce(selectChain([]))             // platform agreements
       .mockReturnValueOnce(selectChain([{ n: 1 }])); // email: 1 prior → blocked
     mockDbUpdate.mockReturnValueOnce(updateChain());
 
     const app = await makeApp();
     const res = await request(app)
       .post("/api/portal/offers/2/checkout")
-      .set("Authorization", `Bearer ${customerToken}`);
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({ captchaToken: "test-turnstile-token" });
 
     expect(res.status).toBe(429);
     expect(res.body.error).toMatch(/90 days/);
@@ -428,6 +453,8 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     mockDbSelect
       .mockReturnValueOnce(selectChain([freeOffer]))
       .mockReturnValueOnce(selectChain([freeService]))
+      .mockReturnValueOnce(selectChain([{ customCustomerAgreement: null }])) // parent MSP custom agreement
+      .mockReturnValueOnce(selectChain([]))             // platform agreements
       .mockReturnValueOnce(selectChain([{ n: 0 }]))   // email: ok
       .mockReturnValueOnce(selectChain([{ n: 3 }]));  // IP: 3 → blocked
     mockDbUpdate.mockReturnValueOnce(updateChain());
@@ -435,7 +462,8 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     const app = await makeApp();
     const res = await request(app)
       .post("/api/portal/offers/2/checkout")
-      .set("Authorization", `Bearer ${customerToken}`);
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({ captchaToken: "test-turnstile-token" });
 
     expect(res.status).toBe(429);
     expect(res.body.error).toMatch(/IP/i);
@@ -448,6 +476,7 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     mockDbSelect
       .mockReturnValueOnce(selectChain([projectOffer]))    // offer
       .mockReturnValueOnce(selectChain([projectService]))  // service
+      .mockReturnValueOnce(selectChain([{ customCustomerAgreement: null }])) // parent MSP custom agreement
       .mockReturnValueOnce(selectChain([]))                // platform agreements
       .mockReturnValueOnce(selectChain([{ id: 99 }]))      // msp customer lookup
       .mockReturnValueOnce(selectChain([{ customerAgreementTemplate: null }])); // conn config
@@ -460,7 +489,8 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     const app = await makeApp();
     const res = await request(app)
       .post("/api/portal/offers/3/checkout")
-      .set("Authorization", `Bearer ${customerToken}`);
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({ captchaToken: "test-turnstile-token" });
 
     expect(res.status).toBe(201);
     expect(res.body.outcome).toBe("sow_created");

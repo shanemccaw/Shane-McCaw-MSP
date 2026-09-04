@@ -8,7 +8,8 @@
  *   - top risks ranked worst-health-first (highest raw score), with the 100−raw
  *     goodness inversion the portal renders
  *   - at-risk count + average goodness roll-up
- *   - opportunity aggregation: sales_offers bridged users.id → msp_customers.id,
+ *   - opportunity aggregation: sales_offers.customerId filtered directly against
+ *     the book's tenant ids (Git #2730 — no more users.id bridge indirection),
  *     summed by adjusted (customer-facing) price with base-price fallback,
  *     ranked by total value, topOfferTitle = the biggest single offer
  *   - offers whose customer isn't in the (scoped) book are excluded
@@ -79,30 +80,23 @@ const healthRows = [
   { customerId: 999, score: 99, capturedAt: new Date("2026-07-19T10:00:00Z") }, // NOT in book — must be ignored
 ];
 
-const bridgeRows = [
-  { userId: 101, customerId: 1 },
-  { userId: 102, customerId: 2 },
-  { userId: 103, customerId: 3 },
-];
-
+// sales_offers.customerId is a tenants.id (#2730) — no users.id bridge indirection.
 const offerRows = [
-  { customerUserId: 101, title: "Backup", adjustedPriceCents: 50000, basePriceCents: 60000, score: 80 },
-  { customerUserId: 101, title: "Email Security", adjustedPriceCents: 0, basePriceCents: 30000, score: 40 }, // adjusted 0 → base fallback
-  { customerUserId: 102, title: "SIEM", adjustedPriceCents: 100000, basePriceCents: 0, score: 90 },
-  { customerUserId: 999, title: "Ghost", adjustedPriceCents: 999999, basePriceCents: 0, score: 10 }, // no bridge → excluded
+  { customerId: 1, title: "Backup", adjustedPriceCents: 50000, basePriceCents: 60000, score: 80 },
+  { customerId: 1, title: "Email Security", adjustedPriceCents: 0, basePriceCents: 30000, score: 40 }, // adjusted 0 → base fallback
+  { customerId: 2, title: "SIEM", adjustedPriceCents: 100000, basePriceCents: 0, score: 90 },
+  { customerId: 999, title: "Ghost", adjustedPriceCents: 999999, basePriceCents: 0, score: 10 }, // customer not in book → excluded
 ];
 
-/** Queue the four sequential queries gatherExecutiveBook makes. */
+/** Queue the three sequential queries gatherExecutiveBook makes. */
 function queueFullBook(opts: {
   customers?: unknown[];
   health?: unknown[];
-  bridge?: unknown[];
   offers?: unknown[];
 } = {}) {
   mockSelect.mockReturnValueOnce(buildChain(opts.customers ?? customers));          // 1. customers
   mockSelectDistinctOn.mockReturnValueOnce(buildChain(opts.health ?? healthRows));  // 2. health snapshots
-  mockSelect.mockReturnValueOnce(buildChain(opts.bridge ?? bridgeRows));            // 3. msp_users bridge
-  mockSelect.mockReturnValueOnce(buildChain(opts.offers ?? offerRows));             // 4. offers
+  mockSelect.mockReturnValueOnce(buildChain(opts.offers ?? offerRows));             // 3. offers
 }
 
 beforeEach(() => {
@@ -152,7 +146,7 @@ describe("gatherExecutiveBook", () => {
     queueFullBook();
     const book = await gatherExecutiveBook(MSP_ID, null);
 
-    // The user-999 "Ghost" offer (999999) has no bridge row → never counted.
+    // The customer-999 "Ghost" offer (999999) isn't in the book → never counted.
     expect(book.rollup.totalOpenOpportunityCents).toBe(180000);
     expect(book.rollup.openOfferCount).toBe(3);
     expect(book.topOpportunities.some((o) => o.topOfferTitle === "Ghost")).toBe(false);

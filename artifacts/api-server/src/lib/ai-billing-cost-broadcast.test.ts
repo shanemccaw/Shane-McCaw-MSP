@@ -204,9 +204,13 @@ describe("recordAiUsage → broadcast must not change existing behaviour", () =>
       throw new Error("hub exploded");
     });
 
+    // recordAiUsage resolves with the persisted row's costCents/eventId (never
+    // undefined) since Jul 2026's "Document Engine cost return value" — the
+    // broadcast throwing must not turn that into a rejection OR a null (null
+    // means the USAGE ROW never landed, which isn't what happened here).
     await expect(
       recordAiUsage({ mspId: 42, nodeType: "generate_document", costCents: 134, costOwner: "msp" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ costCents: 134, eventId: "event-uuid-1" });
 
     // The whole reason the broadcast has its own try/catch: an unreachable
     // status bar must never cost an MSP its debit or look like a failed record.
@@ -219,9 +223,12 @@ describe("recordAiUsage → broadcast must not change existing behaviour", () =>
   it("does NOT broadcast when the usage insert itself fails", async () => {
     insertShouldThrow = true;
 
+    // Null, not undefined: the usage row never landed, so the caller has no
+    // real costCents to report (see recordAiUsage's own "null, not a cost"
+    // doc comment) — recording remains non-fatal (never rejects) either way.
     await expect(
       recordAiUsage({ mspId: 42, nodeType: "generate_document", costCents: 134, costOwner: "msp" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBeNull();
 
     // Broadcasting a cost whose row never landed would put money on the status
     // bar that no ledger query can ever account for.

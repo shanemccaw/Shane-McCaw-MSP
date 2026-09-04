@@ -144,6 +144,14 @@ const hasRoadmapFeatureIdsColumn = Boolean(hasRoadmapFeatureIdsColumnRows[0]?.ex
 
 describe.skipIf(!hasRoadmapFeatureIdsColumn)("the real join (DB-backed)", () => {
   const RUN_TAG = randomBytes(4).toString("hex");
+  // Synthetic feature IDs below are parsed back out of a post body by
+  // extractRoadmapFeatureIds(), which — matching a real Microsoft roadmap ID's
+  // own digit-only shape — only recognizes contiguous \d{3,8} runs (see
+  // ID_TOKEN in m365-roadmap-mc-link.ts). RUN_TAG itself is hex (may contain
+  // a-f letters), so slicing it directly into a featureId intermittently broke
+  // the digit run and made extraction silently find nothing. RUN_DIGITS is a
+  // digits-only derivation of the same random bytes, still collision-safe.
+  const RUN_DIGITS = String(parseInt(RUN_TAG, 16)).padStart(10, "0").slice(-6);
   const createdIds: number[] = [];
 
   afterAll(async () => {
@@ -160,7 +168,7 @@ describe.skipIf(!hasRoadmapFeatureIdsColumn)("the real join (DB-backed)", () => 
 
   it("finds a Message Center post by the roadmap feature ID its own body named, and nothing else", async () => {
     const mspId = await anyMspId();
-    const featureId = `9${RUN_TAG.slice(0, 6)}`; // synthetic, collision-safe against real Microsoft IDs
+    const featureId = `9${RUN_DIGITS}`; // synthetic, collision-safe against real Microsoft IDs
     const [inserted] = await db
       .insert(mspMessageCenterItemsTable)
       .values({
@@ -187,7 +195,7 @@ describe.skipIf(!hasRoadmapFeatureIdsColumn)("the real join (DB-backed)", () => 
 
   it("reports the feature ID as crossed over once a post names it, scoped to the right MSP", async () => {
     const mspId = await anyMspId();
-    const featureId = `7${RUN_TAG.slice(0, 6)}`;
+    const featureId = `7${RUN_DIGITS}`;
     const [inserted] = await db
       .insert(mspMessageCenterItemsTable)
       .values({
@@ -212,7 +220,7 @@ describe.skipIf(!hasRoadmapFeatureIdsColumn)("the real join (DB-backed)", () => 
 
   it("backfills a row whose body was stored before this column existed", async () => {
     const mspId = await anyMspId();
-    const featureId = `8${RUN_TAG.slice(0, 6)}`;
+    const featureId = `8${RUN_DIGITS}`;
     const [inserted] = await db
       .insert(mspMessageCenterItemsTable)
       .values({

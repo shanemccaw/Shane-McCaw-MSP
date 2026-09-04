@@ -206,7 +206,16 @@ describe("licensing.wasteEstimateBreakdown resolver (cost-engine wiring)", () =>
    *   3. tenant_monitor_profiles, once per candidate key, alphabetically —
    *      EVERY candidate is read, because the winner is the most recently
    *      collected page rather than the first usable one (#441)
-   *   4. cost-engine price lookup, once per distinct SKU with unused seats
+   *   4. cost-engine price lookup, once per distinct SKU with unused seats —
+   *      dashboard-resolvers.ts's own upfront pass (#333/#1104, paid-only SKU
+   *      filtering, commit eba935da4), to decide which SKUs count as "paid"
+   *      before pricing anything
+   *   5. cost-engine price lookup AGAIN, once per distinct SKU that SURVIVED
+   *      step 4's filter — computeSkuCostBreakdown() re-derives price/
+   *      displayName itself rather than reusing step 4's already-resolved
+   *      map, so every priced SKU is queried twice per resolve. Real,
+   *      confirmed double work, not a mocking artifact — see the commit's own
+   *      diff.
    */
   const SUBSCRIBED_SKU_CHECKS = [
     { key: "cost:entra-license-tier-distribution", endpoint: "/subscribedSkus" },
@@ -226,6 +235,11 @@ describe("licensing.wasteEstimateBreakdown resolver (cost-engine wiring)", () =>
       { rawResponse: skuPage([sku("SPE_E3", 40, 30), sku("SPE_E5", 5, 3)]), collectedAt: new Date() },
     ]);
     mockResultQueue.push([]); // cost:unused-unassigned-licenses — no stored page
+    // Each priced SKU is queried twice (see the query-order note above): once
+    // by dashboard-resolvers.ts's own paid-only filtering pass, once again by
+    // computeSkuCostBreakdown() itself.
+    mockResultQueue.push([{ displayName: "Microsoft 365 E3", monthlyPriceCents: 3600 }]);
+    mockResultQueue.push([{ displayName: "Microsoft 365 E5", monthlyPriceCents: 5700 }]);
     mockResultQueue.push([{ displayName: "Microsoft 365 E3", monthlyPriceCents: 3600 }]);
     mockResultQueue.push([{ displayName: "Microsoft 365 E5", monthlyPriceCents: 5700 }]);
 
@@ -268,7 +282,14 @@ describe("licensing.wasteEstimateBreakdown resolver (cost-engine wiring)", () =>
     expect(res.reason).toBe("no_data");
   });
 
-  it("surfaces unpriced SKUs via meta.unknownSkus instead of guessing a dollar figure", async () => {
+  it("surfaces unpriced SKUs via meta.excludedUnpricedSkus instead of guessing a dollar figure", async () => {
+    // #333/#1104 (commit eba935da4): an unpriced SKU is filtered out BEFORE
+    // computeSkuCostBreakdown ever sees it — it does not reach the breakdown
+    // as a $0 bucket, and it is not what meta.unknownSkus (computeSkuCostBreakdown's
+    // OWN "priced SKU that lost its price between the two lookups" signal,
+    // see the describe-level query-order note) reports. It is reported via
+    // meta.excludedUnpricedSkus instead, which is what paidSeatFiguresFromLines
+    // populates for exactly this reason.
     mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
     mockResultQueue.push(SUBSCRIBED_SKU_CHECKS);
     mockResultQueue.push([
@@ -278,14 +299,22 @@ describe("licensing.wasteEstimateBreakdown resolver (cost-engine wiring)", () =>
       },
     ]);
     mockResultQueue.push([]); // cost:unused-unassigned-licenses — no stored page
-    mockResultQueue.push([]); // no sku_price_reference row for NOT_A_REAL_SKU
-    mockResultQueue.push([{ displayName: "Microsoft 365 E3", monthlyPriceCents: 3600 }]);
+    mockResultQueue.push([]); // filtering pass: no sku_price_reference row for NOT_A_REAL_SKU
+    mockResultQueue.push([{ displayName: "Microsoft 365 E3", monthlyPriceCents: 3600 }]); // filtering pass: SPE_E3
+    mockResultQueue.push([{ displayName: "Microsoft 365 E3", monthlyPriceCents: 3600 }]); // computeSkuCostBreakdown pass: SPE_E3 (only priced SKU reaches it)
 
     const res = await resolveMetric(wasteDef, { customerId: 10, mspId: 1 });
     expect(res.status).toBe("ok");
     if (res.status !== "ok") return;
-    expect(res.meta?.unknownSkus).toEqual(["NOT_A_REAL_SKU"]);
-    expect((res.data.buckets as any[])[0].value).toBe(0);
+    // NOT_A_REAL_SKU never reached computeSkuCostBreakdown, so its own
+    // unknownSkus list is empty — the unpriced SKU shows up here instead.
+    expect(res.meta?.unknownSkus).toEqual([]);
+    expect(res.meta?.excludedUnpricedSkus).toEqual([
+      { skuPartNumber: "NOT_A_REAL_SKU", enabled: 8, reason: "no_price_on_file" },
+    ]);
+    // Only the priced SKU (SPE_E3, 1 unused seat x $36) produces a bucket.
+    const buckets = res.data.buckets as { label: string; value: number }[];
+    expect(buckets).toEqual([{ label: "Microsoft 365 E3", value: 36 }]);
   });
 });
 

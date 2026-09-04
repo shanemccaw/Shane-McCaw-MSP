@@ -144,6 +144,12 @@ function buildApp(): Express {
 const admin = (r: request.Test) => r.set("x-test-admin", "1");
 
 beforeEach(() => {
+  // Every fixture below (chargedAt/monthTrunc/manual-sale timestamps) is
+  // written against "now" being inside August 2026 — pin the clock there so
+  // the "this month" arithmetic in admin-money.ts doesn't silently drift as
+  // real wall-clock time moves past the month the fixtures were authored for.
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
   selectQueue = [];
   insertCalls.length = 0;
   whereCalls.length = 0;
@@ -151,6 +157,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
 });
 

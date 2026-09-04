@@ -783,7 +783,11 @@ describe("delay — dry-run happy path", () => {
 });
 
 // =============================================================================
-// check_script_output — live path (AI says passed)
+// check_script_output — live path (deterministic heuristic — no AI call, no
+// token cost; see the "Fully deterministic" comment on the check_script_output
+// case in workflow-executor.ts). The anthropic mock below is queued but never
+// consumed by this node type — left in place only so an unrelated accidental
+// call wouldn't silently pass against a stale queued value.
 // =============================================================================
 
 describe("check_script_output — output accepted (no errors)", () => {
@@ -804,8 +808,8 @@ describe("check_script_output — output accepted (no errors)", () => {
     expect(capturedOutput().passed).toBe(true);
   });
 
-  it("output.outcome is the AI sentence", () => {
-    expect(capturedOutput().outcome).toBe("Script completed successfully with no errors.");
+  it("output.outcome is the deterministic balanced-mode success sentence", () => {
+    expect(capturedOutput().outcome).toBe("Output looks acceptable");
   });
 
   it("node status is ok", () => {
@@ -814,7 +818,7 @@ describe("check_script_output — output accepted (no errors)", () => {
 });
 
 // =============================================================================
-// check_script_output — live path (AI says failed)
+// check_script_output — live path (deterministic heuristic — strict mode)
 // =============================================================================
 
 describe("check_script_output — output rejected (many errors)", () => {
@@ -836,7 +840,7 @@ describe("check_script_output — output rejected (many errors)", () => {
   });
 
   it("output.outcome describes the failure", () => {
-    expect(capturedOutput().outcome).toContain("critical error");
+    expect(capturedOutput().outcome).toBe("Errors found (strict mode)");
   });
 
   it("node status is ok", () => {
@@ -909,6 +913,10 @@ describe("get_project_tasks — happy path (live)", () => {
       singleNodeGraph("get_project_tasks", { projectId: "42" }),
       {},
       [
+        // Query 0: fetch ALL phases for the project (so empty phases still surface)
+        [
+          { id: 10, title: "Discovery", status: "in_progress", order: 0, workflowTemplateStepId: 5 },
+        ],
         // Query 1: kanban_tasks left-joined to workflow_steps
         [
           {

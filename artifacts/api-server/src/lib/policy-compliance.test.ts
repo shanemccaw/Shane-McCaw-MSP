@@ -68,10 +68,10 @@ describe("evaluateMailboxAttributeCompliance", () => {
 });
 
 describe("isEvaluableTargetKind", () => {
-  it("mailbox_attribute is the only real evaluator today", () => {
-    expect(EVALUABLE_TARGET_KINDS).toEqual(["mailbox_attribute"]);
+  it("mailbox_attribute and group_membership (#1953) are the real evaluators today", () => {
+    expect(EVALUABLE_TARGET_KINDS).toEqual(["mailbox_attribute", "group_membership"]);
     expect(isEvaluableTargetKind("mailbox_attribute")).toBe(true);
-    expect(isEvaluableTargetKind("group_membership")).toBe(false);
+    expect(isEvaluableTargetKind("group_membership")).toBe(true);
     expect(isEvaluableTargetKind("service_policy")).toBe(false);
   });
 });

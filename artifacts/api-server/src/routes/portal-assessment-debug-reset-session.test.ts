@@ -16,6 +16,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+// portal-assessment.ts statically imports copilot-readiness-narrative-generator,
+// which pulls in the Anthropic AI integration client — that throws at module
+// load if these are unset (see consent.test.ts for the same precedent).
+process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL = "https://anthropic.test";
+process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY = "test-anthropic-key";
+
 const state = vi.hoisted(() => ({
   testbedCustomerRow: {
     isTestbed: true,
@@ -129,7 +135,18 @@ vi.mock("../lib/tenant-signals", () => ({
   resolveSiblingUserIds: vi.fn().mockResolvedValue([99, 199]),
 }));
 vi.mock("../lib/graph", () => ({ REQUIRED_MT_SCOPES: [] }));
-vi.mock("../lib/sharepoint-admin", () => ({ REQUIRED_SHAREPOINT_APP_PERMISSIONS: [] }));
+vi.mock("../lib/sharepoint-admin", () => ({
+  REQUIRED_SHAREPOINT_APP_PERMISSIONS: [],
+  // monitor-executor.ts (pulled in transitively via portal-assessment.ts)
+  // indexes SHARING_CAPABILITY_NAMES by this enum's members at module load
+  // time — real numeric values, not just the export existing.
+  SharingCapability: {
+    Disabled: 0,
+    ExternalUserSharingOnly: 1,
+    ExternalUserAndGuestSharing: 2,
+    ExistingExternalUserSharingOnly: 3,
+  },
+}));
 
 describe("POST /portal/diagnostics/debug-reset-session (#284)", () => {
   beforeEach(() => {

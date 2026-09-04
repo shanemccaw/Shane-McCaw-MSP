@@ -34,6 +34,7 @@ vi.mock("@workspace/db", () => {
   const makeSelectChain = () => {
     const chain: any = {
       from: () => chain,
+      innerJoin: () => chain,
       where: () => chain,
       orderBy: () => chain,
       limit: () => chain,
@@ -79,6 +80,16 @@ vi.mock("@workspace/db", () => {
       tenantId: col("tenant_id"),
       clearanceResolvedAt: col("clearance_resolved_at"),
     },
+    // #1525 — loadObligationTypes()'s cited-authority join. This mock predates
+    // that addition and was never extended.
+    complianceObligationsTable: {
+      id: col("id"),
+      frameworkId: col("framework_id"),
+    },
+    complianceFrameworksTable: {
+      id: col("id"),
+      authorityType: col("authority_type"),
+    },
     CLEARANCE_TRIGGER_TYPES: ["license_sku", "manual"] as const,
     REVIEW_CADENCES: ["Monthly", "Quarterly", "Semi-Annual", "Annual", "Biennial"] as const,
   };
@@ -105,6 +116,11 @@ vi.mock("drizzle-orm", () => ({
   eq: (l: unknown, r: unknown) => ({ eq: [l, r] }),
   desc: (c: unknown) => ({ desc: c }),
   isNull: (c: unknown) => ({ isNull: c }),
+  // #1525 added loadObligationTypes()'s inArray() lookup (cited-authority
+  // resolution) and an `or` import alongside it — this mock predates that
+  // and was never extended.
+  inArray: (c: unknown, v: unknown) => ({ inArray: [c, v] }),
+  or: (...a: unknown[]) => ({ or: a }),
 }));
 
 import router from "./portal-policy-decisions";

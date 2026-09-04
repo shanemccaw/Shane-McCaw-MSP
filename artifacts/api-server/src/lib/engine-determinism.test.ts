@@ -181,8 +181,13 @@ describe("engine determinism — same fixture run twice produces identical outpu
     const second = computeHealthEngine(profile, findings, rules, groups, disabled);
     expect(second.score).toBe(first.score);
     expect(second.breakdown).toEqual(first.breakdown);
-    // governance(3+1) + security(4+2) + compliance(1+3) + adoption(2+0) + copilot(0+1) + architecture(0+2) = 19
-    expect(first.score).toBe(19);
+    // securityImpact is deliberately excluded from computeHealthEngine (see
+    // health-engine.ts's own header + commit dc9e8b7dc, "Fix stale
+    // computeHealthEngine test expectations re: security scope") — security is
+    // a standalone engine combined in one level up by
+    // calculateArchitectureHealthScore, not part of this sum.
+    // governance(3+1) + compliance(1+3) + adoption(2+0) + copilot(0+1) + architecture(0+2) + licensing(0+0) = 13
+    expect(first.score).toBe(13);
   });
 
   it("drift engine", () => {
@@ -225,8 +230,9 @@ describe("engine determinism — same fixture run twice produces identical outpu
     const first = computeTenantEngineScores(1, "Fixture Tenant", profile, findings, rules, groups, disabled);
     const second = computeTenantEngineScores(1, "Fixture Tenant", profile, findings, rules, groups, disabled);
     expect(second).toEqual(first);
-    // combinedScore = health(19) + drift(14) + priority(17) = 50
-    expect(first.combinedScore).toBe(50);
+    // combinedScore = health(13, security excluded — see the health engine
+    // test above) + drift(14) + priority(17) = 44
+    expect(first.combinedScore).toBe(44);
   });
 });
 
@@ -254,14 +260,14 @@ describe("engine sensitivity — mutating one contribution field changes score b
     expect(after - before).toBe(10);
   });
 
-  it("health engine — bumping hasFlagA securityImpact by +7 raises score by exactly 7", () => {
+  it("health engine — bumping hasFlagA securityImpact by +7 does NOT change the score (security is scored by the separate Security Engine, not computeHealthEngine)", () => {
     const { profile, findings, rules, groups, disabled } = buildFixture();
     const before = computeHealthEngine(profile, findings, rules, groups, disabled).score;
 
     const mutatedRules = rules.map(r => r.signalKey === "hasFlagA" ? { ...r, securityImpact: r.securityImpact + 7 } : r);
     const after = computeHealthEngine(profile, findings, mutatedRules, groups, disabled).score;
 
-    expect(after - before).toBe(7);
+    expect(after - before).toBe(0);
   });
 
   it("drift engine — bumping hasFlagB trendValue by +3 raises score by exactly 3", () => {

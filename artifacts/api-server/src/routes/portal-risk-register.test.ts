@@ -40,6 +40,7 @@ vi.mock("@workspace/db", () => {
   const makeSelectChain = () => {
     const chain: any = {
       from: () => chain,
+      innerJoin: () => chain,
       where: () => chain,
       orderBy: () => chain,
       limit: () => chain,
@@ -75,6 +76,41 @@ vi.mock("@workspace/db", () => {
       acceptedAt: col("accepted_at"),
       status: col("status"),
     },
+    // #1525 — loadObligationTypes()'s cited-authority join. This mock predates
+    // that addition and was never extended.
+    complianceObligationsTable: {
+      id: col("id"),
+      frameworkId: col("framework_id"),
+    },
+    complianceFrameworksTable: {
+      id: col("id"),
+      authorityType: col("authority_type"),
+    },
+    // risk-authority.ts (imported for currentAHolderPersonIds/
+    // resolveRiskAuthoritiesBatch) — this mock predates that dependency too.
+    portalOwnershipAssignmentsTable: {
+      id: col("id"),
+      customerId: col("customer_id"),
+      objectId: col("object_id"),
+      roleKey: col("role_key"),
+      ownerPersonId: col("owner_person_id"),
+      orderRank: col("order_rank"),
+    },
+    portalOwnershipEventsTable: {
+      id: col("id"),
+      customerId: col("customer_id"),
+      objectId: col("object_id"),
+      roleKey: col("role_key"),
+      ownerPersonId: col("owner_person_id"),
+      occurredAt: col("occurred_at"),
+    },
+    usersTable: {
+      id: col("id"),
+      email: col("email"),
+      name: col("name"),
+      tenantId: col("tenant_id"),
+      mspId: col("msp_id"),
+    },
   };
 });
 
@@ -99,6 +135,11 @@ vi.mock("drizzle-orm", () => ({
   eq: (l: unknown, r: unknown) => ({ eq: [l, r] }),
   desc: (c: unknown) => ({ desc: c }),
   isNull: (c: unknown) => ({ isNull: c }),
+  // #1525 added loadObligationTypes()'s inArray() lookup — this mock predates
+  // that addition and was never extended.
+  inArray: (c: unknown, v: unknown) => ({ inArray: [c, v] }),
+  asc: (c: unknown) => ({ asc: c }),
+  lte: (l: unknown, r: unknown) => ({ lte: [l, r] }),
 }));
 
 import router from "./portal-risk-register";

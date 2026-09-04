@@ -352,7 +352,7 @@ describe("customer_entitlements grounding (#362): buildCustomerContext", () => {
       .mockResolvedValueOnce([]) // latest run
       .mockResolvedValueOnce([]) // last completed run
       .mockResolvedValueOnce([{
-        invoiceNumber: "INV-1001", description: "Monthly monitoring", amount: "199.00", currency: "usd",
+        invoiceNumber: "INV-1001", description: "Monthly monitoring", amount: "19900", currency: "usd", // amount is integer cents (Git #1610)
         status: "paid", dueDate: new Date("2026-08-01T00:00:00Z"), paidAt: new Date("2026-08-01T00:00:00Z"),
       }]) // invoices
       .mockResolvedValueOnce([{

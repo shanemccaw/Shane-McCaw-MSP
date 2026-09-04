@@ -53,6 +53,7 @@ describe("resolveHoldingsForCustomer()", () => {
         holderPersonId: "u1",
         acceptance: "accepted",
         order: 0,
+        declineReason: "",
       },
     ]);
   });

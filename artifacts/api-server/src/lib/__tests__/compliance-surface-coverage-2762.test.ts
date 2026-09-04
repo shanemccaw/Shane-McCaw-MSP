@@ -53,7 +53,13 @@ const MIGRATION_PATH = fileURLToPath(
  *  rows in one statement, so each row's own three jsonb blocks (properties,
  *  mapping, severity_rules, in that column order) are isolated by key first. */
 function readShippedConfig(checkKey: string): { mapping: MappingRule[]; severityRules: SeverityRule[] } {
-  const sql = readFileSync(MIGRATION_PATH, "utf8");
+  // Migration files in this repo are checked in with CRLF line endings (every
+  // file under lib/db/migrations/manual/ is CRLF, consistently — confirmed
+  // across the batch, not just this file). Normalize to LF before the
+  // row-boundary string search below, which looks for a literal "\n),\n("
+  // and would otherwise never match a "\r\n),\r\n(" boundary and silently
+  // fall through to the end of the whole INSERT statement.
+  const sql = readFileSync(MIGRATION_PATH, "utf8").replace(/\r\n/g, "\n");
   const keyIdx = sql.indexOf(`'${checkKey}',`);
   expect(keyIdx, `check key ${checkKey} not found in migration`).toBeGreaterThan(-1);
   // Each VALUES row ends with "),\n(" or ");" — take the row's own text window.

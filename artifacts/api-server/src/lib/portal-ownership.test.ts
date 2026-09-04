@@ -371,6 +371,9 @@ describe("toWireAssignment", () => {
       setAt: "",
       setWhy: "",
       order: 0,
+      respondedBy: "",
+      respondedAt: "",
+      declineReason: "",
     });
   });
 
@@ -395,6 +398,9 @@ describe("toWireAssignment", () => {
       setAt: "1 October 2026",
       setWhy: "Changed on the ownership page",
       order: 2,
+      respondedBy: "",
+      respondedAt: "",
+      declineReason: "",
     });
   });
 });

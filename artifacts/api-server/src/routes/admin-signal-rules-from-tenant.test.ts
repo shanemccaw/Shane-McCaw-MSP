@@ -112,7 +112,7 @@ beforeEach(async () => {
 
 const authHeader = { Authorization: `Bearer ${ADMIN_PASS}` };
 
-describe("GET /api/admin/signal-rules/clients-with-runs (rebuilt onto tenant_consent)", () => {
+describe("GET /api/admin/signal-rules/clients-with-runs (rebuilt onto tenants.consent)", () => {
   it("selects only granted-consent customers and excludes pending/declined/revoked", async () => {
     let capturedSql = "";
     mockExecute.mockImplementation(async (q: unknown) => {
@@ -129,11 +129,14 @@ describe("GET /api/admin/signal-rules/clients-with-runs (rebuilt onto tenant_con
     const res = await request(app).get("/admin/signal-rules/clients-with-runs").set(authHeader);
 
     expect(res.status).toBe(200);
-    // The query itself must filter to granted consent and join the real tables —
-    // this is what structurally excludes pending/declined/revoked rows.
-    expect(capturedSql).toContain("FROM msp_customers");
-    expect(capturedSql).toContain("tenant_consent");
-    expect(capturedSql).toContain("tc.consent_status = 'granted'");
+    // The query itself must filter to granted consent read directly off
+    // tenants.consent jsonb (msp_customers/tenant_consent were dropped —
+    // #688 / a51c5644f) — this is what structurally excludes
+    // pending/declined/revoked rows.
+    expect(capturedSql).toContain("FROM tenants");
+    expect(capturedSql).toContain("t.consent->'graph'->>'status' = 'granted'");
+    expect(capturedSql).not.toContain("msp_customers");
+    expect(capturedSql).not.toContain("tenant_consent");
     expect(capturedSql).not.toContain("script_run_results");
     expect(capturedSql).not.toContain("role = 'client'");
 

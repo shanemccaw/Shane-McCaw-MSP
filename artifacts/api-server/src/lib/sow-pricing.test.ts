@@ -825,14 +825,19 @@ describe("injectMissingWorkstreams()", () => {
     expect(result).toBe(html);
   });
 
-  it("returns the injected list even when no workstream table can be located, so callers can fail loudly", () => {
+  it("synthesizes and injects a complete workstream table when none can be located, rather than failing (avoids the infinite-regenerate loop a deterministic AI-output failure would otherwise cause)", () => {
     const html = `<p>No table here at all.</p>`;
     const workstreamLines: SowPricingLine[] = [];
     const catalogProjects = [{ title: "Governance Modernization", priceRange: "$8,000–$25,000" }];
     const { html: result, injected } = injectMissingWorkstreams(html, workstreamLines, catalogProjects);
 
     expect(injected).toHaveLength(1);
-    expect(result).toBe(html);
+    expect(injected[0]!.title).toBe("Governance Modernization");
+    // Original content is preserved, and a synthesized table is appended after it.
+    expect(result.startsWith(html)).toBe(true);
+    expect(result).toContain("<table>");
+    expect(result).toContain("Governance Modernization");
+    expect(result).toContain("$16,500");
   });
 });
 

@@ -289,13 +289,17 @@ describe("payment-intent — packs", () => {
     const sessionId = await createSession({ productSlug: PACK_SESSION_SLUG });
     const app = await buildApp();
 
+    // "mfa-enforcement-pack-v1" was this test's original not-yet-real slug,
+    // but #1182 (lib/db/migrations/manual/2026-08-26-mfa-enforcement-pack-1182.sql)
+    // built it as a genuine config_pack row, so it no longer proves the
+    // fail-closed path. Swapped for a slug guaranteed to never be real.
     const res = await request(app)
       .post("/api/public/purchase/payment-intent")
-      .send({ sessionId, packSlugs: [PACK_EXTRA_TAGGED, "mfa-enforcement-pack-v1"] });
+      .send({ sessionId, packSlugs: [PACK_EXTRA_TAGGED, "definitely-not-a-real-pack-v1"] });
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("pack_not_found");
-    expect(res.body.packSlugs).toEqual(["mfa-enforcement-pack-v1"]);
+    expect(res.body.packSlugs).toEqual(["definitely-not-a-real-pack-v1"]);
     expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
   });
 

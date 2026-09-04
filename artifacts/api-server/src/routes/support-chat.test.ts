@@ -431,7 +431,8 @@ describe("POST /api/msp/support/chat", () => {
       .mockResolvedValueOnce([]) // latest run
       .mockResolvedValueOnce([]) // last completed run
       .mockResolvedValueOnce([{
-        invoiceNumber: "INV-2002", description: "Monthly monitoring", amount: "349.00", currency: "usd",
+        // amount is integer cents (Git #1610, aa2bb3768) — 34900 = $349.00.
+        invoiceNumber: "INV-2002", description: "Monthly monitoring", amount: 34900, currency: "usd",
         status: "paid", dueDate: new Date("2026-08-01T00:00:00Z"), paidAt: new Date("2026-08-01T00:00:00Z"),
       }]) // invoices
       .mockResolvedValueOnce([]); // score

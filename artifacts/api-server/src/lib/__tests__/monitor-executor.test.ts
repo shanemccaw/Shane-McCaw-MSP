@@ -123,6 +123,20 @@ vi.mock("../power-platform-admin", () => ({
   listEnvironments: vi.fn(),
   getTenantSettings: vi.fn(),
   powerPlatformCredentialsPresent: vi.fn().mockReturnValue(true),
+  // Real class (not a vi.fn()) so `instanceof PowerPlatformNotRegisteredError`
+  // checks in monitor-executor.ts's catch handling still work against this mock.
+  PowerPlatformNotRegisteredError: class PowerPlatformNotRegisteredError extends Error {
+    aadTenantId: string;
+    clientId: string;
+    detail: string;
+    constructor(aadTenantId: string, clientId: string, detail: string) {
+      super(`The Power Platform admin API rejected application ${clientId} in tenant ${aadTenantId}: ${detail}`);
+      this.name = "PowerPlatformNotRegisteredError";
+      this.aadTenantId = aadTenantId;
+      this.clientId = clientId;
+      this.detail = detail;
+    }
+  },
 }));
 // #1871 — only the two network-facing functions are replaced. The operation
 // registry, its per-scope outcome recording and resolveAzureRmOperation stay
