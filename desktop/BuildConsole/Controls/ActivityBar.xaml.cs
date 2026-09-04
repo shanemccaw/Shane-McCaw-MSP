@@ -39,15 +39,15 @@ namespace BuildConsole.Controls
         /// with the current entries' rows.</summary>
         public event EventHandler? ShelfOpenRequested;
 
+        /// <summary>Git #2809 — raised when the Git Doctor icon is clicked; MainWindow opens
+        /// the full-width Git Doctor Editor tab (OpenGitDoctorTab), not a LeftSidebar view.</summary>
+        public event EventHandler? GitDoctorRequested;
+
         public ActivityBar() => InitializeComponent();
 
         /// <summary>Git #834 — File > Settings menu item routes here so it lands on the SAME SettingsView the cog icon already opens, instead of being a second, divergent path.</summary>
         public void SelectSettings() => BtnSettings.IsChecked = true;
         public void SelectGitBoard() => BtnIssues.IsChecked = true;
-        /// <summary>Git #2799 — checks the Git Doctor rail icon (raises ActiveViewChanged the same as
-        /// a real click, so MainWindow expands the sidebar + switches to the full #2798 view). The
-        /// chat tool-rail mini panel's Maximize routes here.</summary>
-        public void SelectGitDoctor() => BtnGitDoctor.IsChecked = true;
 
         private void Btn_Checked(object sender, RoutedEventArgs e)
         {
@@ -79,6 +79,12 @@ namespace BuildConsole.Controls
         /// to populate + open the popout via <see cref="ShowShelf"/>.</summary>
         private void BtnShelf_Click(object sender, RoutedEventArgs e) =>
             ShelfOpenRequested?.Invoke(this, EventArgs.Empty);
+
+        /// <summary>Git #2809 — opens Git Doctor as a full-width Editor tab (a plain Button,
+        /// not a workspace RadioButton, since it opens a separate tab rather than switching
+        /// the sidebar's content — same shape as Sticky Notes/LinkedIn Composer above).</summary>
+        private void BtnGitDoctor_Click(object sender, RoutedEventArgs e) =>
+            GitDoctorRequested?.Invoke(this, EventArgs.Empty);
 
         /// <summary>Host the given shelf entry rows in the anchored popout and open it.
         /// MainWindow builds each row (real icon + title + restore-on-click); the
