@@ -801,6 +801,36 @@ export async function attributeDiff(diffRowId: number): Promise<AttributionResul
 }
 
 /**
+ * Attribute a diff if — and only if — it has not already been attributed at the current
+ * {@link ATTRIBUTION_VERSION}. Non-fatal by contract: it returns `null` on any failure
+ * rather than throwing, so a read path can call it without a bookkeeping problem being
+ * able to take down the answer the caller actually asked for. Same discipline
+ * `monitor-executor.ts` applies to drift collection, and for the same reason.
+ *
+ * This is the lazy, once-per-diff entry point a READ path uses. It deliberately does
+ * not re-run on an already-attributed diff: a verdict does move as change requests and
+ * risk acceptances move, but refreshing it on every page view would put hundreds of
+ * writes behind a GET. Re-running is an explicit operator action
+ * (`POST …/diffs/:diffId/attribution`).
+ */
+export async function ensureDiffAttributed(diffRowId: number): Promise<AttributionResult | null> {
+  try {
+    const [existing] = await db.select({ n: sql<number>`count(*)::int` })
+      .from(configChangeAttributionsTable)
+      .where(and(
+        eq(configChangeAttributionsTable.diffRowId, diffRowId),
+        eq(configChangeAttributionsTable.attributionVersion, ATTRIBUTION_VERSION),
+      ));
+    if ((existing?.n ?? 0) > 0) return null;
+    return await attributeDiff(diffRowId);
+  } catch (err) {
+    log.warn({ err, diffRowId },
+      "config-change-attribution: lazy attribution failed (non-fatal) (#2759)");
+    return null;
+  }
+}
+
+/**
  * Advance the open/resolved/reopened record for one changed setting.
  *
  * The resolution rule and what it refuses to infer are documented on

@@ -100,6 +100,10 @@ import {
   SnapshotNotDiffableError,
   diffDrift,
 } from "../lib/config-snapshot-differ.ts";
+import {
+  ensureDiffAttributed,
+  readDiffVerdictRollup,
+} from "../lib/config-change-attribution.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -432,6 +436,12 @@ router.get("/portal/config-state/changes", requireRole("CustomerUser"),
         offset: 0,
       });
 
+      // #2759 — same reasoning as `notComparable` below: a change count read without
+      // "how many of these did anyone authorise" is a summary that invites the wrong
+      // conclusion. Attribution is lazy and non-fatal, so this never fails the report.
+      await ensureDiffAttributed(diff.id);
+      const attribution = await readDiffVerdictRollup(diff.id);
+
       res.json({
         comparison: {
           diffId: diff.diffId,
@@ -457,6 +467,7 @@ router.get("/portal/config-state/changes", requireRole("CustomerUser"),
           paging: report.paging,
         },
         byWorkload: report.byWorkload,
+        attribution,
       });
     } catch (err) {
       if (err instanceof SnapshotNotDiffableError) {
@@ -529,6 +540,12 @@ router.get("/portal/config-state/changes/:diffId", requireRole("CustomerUser"),
           `changeKind must be one of: ${CONFIG_DIFF_CHANGE_KINDS.join(", ")}`);
       }
 
+      // Attribute lazily, once per comparison, before the page is read — so the first
+      // customer to open a fresh comparison sees verdicts rather than a column of
+      // nulls. Non-fatal by contract: a failure leaves `attribution: null` on every
+      // row, which is the honest "not attributed yet" state, and never fails the read.
+      await ensureDiffAttributed(diff.id);
+
       const result = await readDiffChanges({
         diffRowId: diff.id,
         resourceKey: str(req.query.resourceKey),
@@ -539,7 +556,13 @@ router.get("/portal/config-state/changes/:diffId", requireRole("CustomerUser"),
         offset: clampOffset(req.query.offset),
       });
 
-      res.json({ ...shared, ...result });
+      // #2759 — the verdict roll-up. A customer reading "340 things changed" needs to
+      // know which of them their MSP did on purpose, which they themselves accepted as
+      // a risk, and which nobody can account for. `attributed: false` means the pass
+      // has not run over this comparison yet, and reads differently from all of those.
+      const attribution = await readDiffVerdictRollup(diff.id);
+
+      res.json({ ...shared, ...result, attribution });
     } catch (err) {
       log.error({ err, customerId }, "portal-config-state: comparison detail failed");
       return apiError(res, 500, ApiErrorCode.INTERNAL, "Failed to read that configuration comparison");

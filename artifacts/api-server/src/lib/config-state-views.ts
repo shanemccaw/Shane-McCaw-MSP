@@ -60,6 +60,8 @@ import {
   configDiffsTable,
   configDiffResourceStatusTable,
   configDiffChangesTable,
+  configChangeAttributionsTable,
+  configChangeLifecycleTable,
   tenantsTable,
   SNAPSHOT_RESOURCE_STATUSES,
   type TenantConfigSnapshot,
@@ -688,9 +690,19 @@ export async function readDiffChanges(opts: {
     change: configDiffChangesTable,
     displayName: configSnapshotResourceTypesTable.displayName,
     workload: configSnapshotResourceTypesTable.workload,
+    // #2759 — the verdict, LEFT joined on purpose. A diff the attribution pass has not
+    // run over yields NULL here and the row reports `verdict: null`, which is a
+    // different statement from `unattributed` ("the pass ran and found nothing
+    // explains this") and must never be flattened into it.
+    attribution: configChangeAttributionsTable,
+    lifecycle: configChangeLifecycleTable,
   }).from(configDiffChangesTable)
     .leftJoin(configSnapshotResourceTypesTable,
       eq(configSnapshotResourceTypesTable.resourceKey, configDiffChangesTable.resourceKey))
+    .leftJoin(configChangeAttributionsTable,
+      eq(configChangeAttributionsTable.changeId, configDiffChangesTable.id))
+    .leftJoin(configChangeLifecycleTable,
+      eq(configChangeLifecycleTable.id, configChangeAttributionsTable.lifecycleId))
     .where(and(...where))
     // The stored sequence, always. The total order IS the result (#1797 rule 3), so
     // re-sorting here would discard the property being guaranteed.
@@ -728,6 +740,35 @@ export async function readDiffChanges(opts: {
       newValuePresent: r.change.newValuePresent,
       isIgnored: r.change.isIgnored,
       ignoredByRuleId: r.change.ignoredByRuleId,
+      // #2759 — WHY this change happened, from the real Change Control / Risk Register
+      // records. `null` means the attribution pass has not run over this diff.
+      attribution: r.attribution
+        ? {
+          verdict: r.attribution.verdict,
+          changeRequestId: r.attribution.changeRequestId,
+          crRef: r.attribution.crRef,
+          riskDecisionId: r.attribution.riskDecisionId,
+          rbdRef: r.attribution.rbdRef,
+          /** property | object | resource — how precisely the covering claim matched. */
+          matchScope: r.attribution.matchScope,
+          /** > 1 means more than one recorded decision claims this row. */
+          matchCount: r.attribution.matchCount,
+          attributionVersion: r.attribution.attributionVersion,
+          attributedAt: r.attribution.attributedAt,
+        }
+        : null,
+      // The open / resolved / reopened question, answered from real observed values
+      // across successive comparisons rather than invented per-diff.
+      lifecycle: r.lifecycle
+        ? {
+          status: r.lifecycle.status,
+          firstDetectedAt: r.lifecycle.firstDetectedAt,
+          lastDetectedAt: r.lifecycle.lastDetectedAt,
+          resolvedAt: r.lifecycle.resolvedAt,
+          reopenedAt: r.lifecycle.reopenedAt,
+          reopenCount: r.lifecycle.reopenCount,
+        }
+        : null,
     })),
     byKind,
     paging: paging(total, opts.limit, opts.offset),

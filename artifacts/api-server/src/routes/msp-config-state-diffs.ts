@@ -14,7 +14,12 @@
  *   GET   /api/msp/config-state/diffs/rules
  *     The noise ruleset, with the measurement behind every `observed_volatile` rule.
  *   GET   /api/msp/config-state/diffs/:diffId
- *     One comparison: the changes, or (view=resources) the comparability report.
+ *     One comparison: the changes, or (view=resources) the comparability report. Each
+ *     change carries its VERDICT (#2759) — which real change request or accepted risk
+ *     explains it, or nothing — plus a roll-up of those verdicts for the whole diff.
+ *   POST  /api/msp/config-state/diffs/:diffId/attribution
+ *     Run or re-run that attribution pass. Reads Change Control and the Risk Register;
+ *     writes only its own tables, never a CR, a risk decision or the sealed diff.
  *   GET   /api/msp/config-state/baselines
  *   POST  /api/msp/config-state/baselines
  *   PATCH /api/msp/config-state/baselines/:baselineId
@@ -110,6 +115,12 @@ import {
   diffTenants,
   type DiffSnapshotsResult,
 } from "../lib/config-snapshot-differ.ts";
+import {
+  DiffNotAttributableError,
+  attributeDiff,
+  ensureDiffAttributed,
+  readDiffVerdictRollup,
+} from "../lib/config-change-attribution.ts";
 
 const log = logger.child({ channel: "tenant.config-state" });
 
@@ -460,6 +471,9 @@ router.get("/msp/config-state/diffs/:diffId", requireRole("MSPOperator"),
           `changeKind must be one of: ${CONFIG_DIFF_CHANGE_KINDS.join(", ")}`);
       }
 
+      // Lazy, once per comparison — see `ensureDiffAttributed`. Non-fatal.
+      await ensureDiffAttributed(diff.id);
+
       const result = await readDiffChanges({
         diffRowId: diff.id,
         resourceKey: str(req.query.resourceKey),
@@ -470,10 +484,50 @@ router.get("/msp/config-state/diffs/:diffId", requireRole("MSPOperator"),
         offset: clampOffset(req.query.offset),
       });
 
-      res.json({ ...shared, ...result });
+      // #2759 — the verdict roll-up travels with the change page for the same reason
+      // `notComparable` travels with the portal's: "340 changes" read without "312 of
+      // them are unexplained" is a confidently incomplete summary.
+      const attribution = await readDiffVerdictRollup(diff.id);
+
+      res.json({ ...shared, ...result, attribution });
     } catch (err) {
       log.error({ err }, "msp-config-state: comparison detail failed");
       return apiError(res, 500, ApiErrorCode.INTERNAL, "Failed to read that configuration comparison");
+    }
+  });
+
+// ── POST /api/msp/config-state/diffs/:diffId/attribution ─────────────────────
+//
+// Run (or re-run) the attribution pass over one sealed comparison: refresh the
+// CR/risk-decision scope bridge for the tenant, write a verdict for every change row,
+// and advance the open/resolved/reopened lifecycle.
+//
+// A POST, not a GET, because it WRITES — and it is explicitly re-runnable rather than
+// once-only, because its inputs move underneath it: a change request approved after the
+// diff was computed legitimately turns unattributed rows into attributed ones, and a
+// revoked risk acceptance legitimately turns them back. The pass is idempotent; a second
+// run over an unchanged world produces the same verdicts and cannot manufacture a
+// lifecycle transition (see `advanceLifecycle`).
+//
+// No apply path is added here, and none may be: this reads Change Control and the Risk
+// Register and writes only its own tables. It never modifies a change request, never
+// modifies a risk decision, and never touches the sealed diff.
+
+router.post("/msp/config-state/diffs/:diffId/attribution", requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const book = await resolveConfigStateBook(req);
+      const diff = await loadScopedDiff(String(req.params.diffId), book.tenantIds);
+      if (!diff) return apiError(res, 404, ApiErrorCode.NOT_FOUND, "Configuration comparison not found");
+
+      const result = await attributeDiff(diff.id);
+      res.json({ diffId: diff.diffId, ...result });
+    } catch (err) {
+      if (err instanceof DiffNotAttributableError) {
+        return apiError(res, 409, ApiErrorCode.VALIDATION, err.message);
+      }
+      log.error({ err }, "msp-config-state: attribution pass failed");
+      return apiError(res, 500, ApiErrorCode.INTERNAL, "Failed to attribute that configuration comparison");
     }
   });
 
