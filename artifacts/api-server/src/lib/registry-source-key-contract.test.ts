@@ -140,10 +140,23 @@ describe("#441 — the Copilot Readiness Report's grounding survives every hop",
     ).toEqual([]);
   });
 
-  it("grounds no document row in the four phantom adoption stats", () => {
-    for (const id of ["adoption.teamsActive", "adoption.sharePointActive", "adoption.oneDriveActive", "adoption.emailActive"]) {
-      expect(READINESS_REPORT_STAT_IDS as readonly string[], `${id} is back in the document`).not.toContain(id);
-      expect(ALL_SPECS.map((s) => s.id), `${id} is back in the specs`).not.toContain(id);
+  it("grounds the four real #1105 adoption stats in a resolvable metric, not the old #441 usage: phantoms", () => {
+    // #441's four `usage:*` stat ids never existed as `adoption.*` specs — they
+    // named nothing, and were removed outright rather than replaced. #1105 later
+    // added real `adoption.*` specs (`adoption.teamsActive`, `.sharePointActive`,
+    // `.oneDriveActive`, `.exchangeActive`) backed by genuine, live-verified
+    // `usage.*Count` metrics (see the `adoption:` block above). Asserting these
+    // stay OUT of `ALL_SPECS` was checking against a shape that never matched
+    // #1105's real fix, so this asserts what #1105 actually shipped: each one
+    // resolves to a real, non-sentinel metric.
+    for (const id of ["adoption.teamsActive", "adoption.sharePointActive", "adoption.oneDriveActive", "adoption.exchangeActive"]) {
+      const spec = ALL_SPECS.find((s) => s.id === id);
+      expect(spec, `${id} is missing from the adoption specs`).toBeDefined();
+      if (spec!.source.kind !== "metric") throw new Error(`${id} is not metric-backed`);
+      const def = getMetric(spec!.source.metricKey);
+      expect(def, `${id} -> ${spec!.source.metricKey} does not resolve to a real MetricDef`).toBeDefined();
+      const verdict = classifySourceKey(def!.sourceKey);
+      expect(verdict.ok, `${id} -> ${def!.sourceKey}: ${!verdict.ok ? verdict.reason : ""}`).toBe(true);
     }
   });
 
