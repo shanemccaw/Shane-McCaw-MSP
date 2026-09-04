@@ -215,6 +215,47 @@ public sealed class IncomeRepository
         }
     }
 
+    /// <summary>
+    /// Real active income sources (is_active = true), ordered by real next_pay_date (nulls
+    /// last) then name — deterministic so callers picking "the primary source" (e.g.
+    /// pay_period_forecast, #2918) always land on the same one without a dedicated is_primary
+    /// flag, which this table genuinely doesn't have.
+    /// </summary>
+    public async Task<IncomeSourceListResult> ListActiveAsync(string? connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return new IncomeSourceListResult(false, [], "No Postgres connection string configured. Open Settings to add one.");
+        }
+
+        try
+        {
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            await using var command = new NpgsqlCommand(
+                """
+                SELECT id, name, person, pay_frequency_days, expected_per_cycle, next_pay_date, is_active
+                FROM income_sources
+                WHERE is_active = true
+                ORDER BY next_pay_date NULLS LAST, name
+                """, connection);
+
+            var sources = new List<IncomeSourceRow>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                sources.Add(ReadSourceRow(reader));
+            }
+
+            return new IncomeSourceListResult(true, sources, null);
+        }
+        catch (Exception ex)
+        {
+            return new IncomeSourceListResult(false, [], $"Could not read income sources: {ex.Message}");
+        }
+    }
+
     private static IncomeSourceRow ReadSourceRow(NpgsqlDataReader reader) => new(
         reader.GetGuid(0),
         reader.GetString(1),

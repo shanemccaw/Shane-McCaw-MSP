@@ -23,3 +23,4 @@ public sealed record IncomeEntryRow(
 public sealed record IncomeSourceWriteResult(bool Success, IncomeSourceRow? Source, string? ErrorMessage);
 public sealed record IncomeEntryWriteResult(bool Success, IncomeEntryRow? Entry, DateOnly? NewNextPayDate, string? ErrorMessage);
 public sealed record IncomeHistoryResult(bool Success, IReadOnlyList<IncomeEntryRow> Entries, string? ErrorMessage);
+public sealed record IncomeSourceListResult(bool Success, IReadOnlyList<IncomeSourceRow> Sources, string? ErrorMessage);

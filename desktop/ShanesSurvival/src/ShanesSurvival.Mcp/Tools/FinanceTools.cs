@@ -25,7 +25,8 @@ public sealed class FinanceTools(
     DashboardService dashboardService,
     AccountRepository accountRepository,
     TransactionRepository transactionRepository,
-    PayPeriodDueService payPeriodDueService)
+    PayPeriodDueService payPeriodDueService,
+    PayPeriodForecastService payPeriodForecastService)
 {
     private static readonly CultureInfo Usd = CultureInfo.GetCultureInfo("en-US");
 
@@ -450,6 +451,74 @@ public sealed class FinanceTools(
 
         AppendWarnings(sb, result.Warnings);
         return sb.ToString().TrimEnd();
+    }
+
+    [McpServerTool(Name = "pay_period_forecast")]
+    [Description(
+        "Real two-cycle covered/short forecast (#2918) — no parameters needed. Cycle 1 is " +
+        "today through the real next_pay_date already stored on your primary real income " +
+        "source (#2905), compared against real total available funds (gate_status's Income " +
+        "Gate + reserve total). Cycle 2 is that next_pay_date through the pay date after it " +
+        "(next_pay_date + pay_frequency_days), compared against the real summed " +
+        "expected_per_cycle across every active income source that has it set. Reuses " +
+        "pay_period_due_status's exact due-window + already-paid-this-cycle logic for both " +
+        "windows — nothing is re-derived. If no active income source has both a real " +
+        "pay_frequency_days and next_pay_date set, says so plainly instead of guessing at a " +
+        "cycle length.")]
+    public async Task<string> GetPayPeriodForecastAsync()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var result = await payPeriodForecastService.ComputeAsync(ConnectionString, today);
+        if (!result.Success || result.Cycle1 is null || result.Cycle2 is null)
+        {
+            return $"Could not compute pay-period forecast: {result.ErrorMessage}";
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Two-cycle forecast, anchored on \"{result.PrimarySourceName}\"'s real pay schedule:");
+        sb.AppendLine();
+        AppendCycle(sb, "Cycle 1", result.Cycle1, "must save", "must find this before");
+        sb.AppendLine();
+        AppendCycle(sb, "Cycle 2", result.Cycle2, "on track to save", "will be short");
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static void AppendCycle(
+        StringBuilder sb, string label, PayPeriodForecastCycle cycle, string coveredVerb, string shortVerb)
+    {
+        sb.AppendLine($"{label}: {cycle.WindowStart:yyyy-MM-dd} → {cycle.WindowEnd:yyyy-MM-dd}");
+
+        if (cycle.DueBills.Count == 0)
+        {
+            sb.AppendLine("  Bills due in this window: (none)");
+        }
+        else
+        {
+            sb.AppendLine("  Bills due in this window:");
+            foreach (var bill in cycle.DueBills)
+            {
+                var target = bill.TargetAmount is null ? (bill.Warning ?? "no target") : Money(bill.TargetAmount);
+                sb.AppendLine($"    - {bill.Name}: due {bill.DueDate:yyyy-MM-dd} — {target}");
+            }
+        }
+        sb.AppendLine($"  Total real due: {Money(cycle.TotalDue)}");
+        sb.AppendLine($"  Measured against: {Money(cycle.AvailableAmount)}");
+
+        if (cycle.IsCovered is null)
+        {
+            sb.AppendLine("  Covered/short cannot be computed — see warnings below.");
+        }
+        else if (cycle.IsCovered.Value)
+        {
+            sb.AppendLine($"  Covered, {Money(cycle.Delta)} left over ({coveredVerb} to cover the next cycle).");
+        }
+        else
+        {
+            sb.AppendLine($"  Short {Money(-cycle.Delta)} — {shortVerb} {cycle.WindowEnd:yyyy-MM-dd}.");
+        }
+
+        AppendWarnings(sb, cycle.Warnings);
     }
 
     [McpServerTool(Name = "emergency_fund_status")]

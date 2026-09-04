@@ -33,6 +33,7 @@ builder.Services.AddSingleton<DebtRepository>();
 builder.Services.AddSingleton<IncomeRepository>();
 builder.Services.AddSingleton<ExpectedEventRepository>();
 builder.Services.AddSingleton<PayPeriodDueService>();
+builder.Services.AddSingleton<PayPeriodForecastService>();
 
 builder.Services
     .AddMcpServer(options =>
