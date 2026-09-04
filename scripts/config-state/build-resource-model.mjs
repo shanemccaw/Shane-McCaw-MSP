@@ -333,6 +333,29 @@ async function main() {
       return { availability: "unknown", missing: [], source: "none", reason: "no source states a read permission for this resource" };
     }
 
+    /**
+     * Git #2816 — resource_keys where a live probe against the testbed tenant proved
+     * the published `graph_path` itself is not independently GET-able the way the
+     * model implies, even though the path is real and its data is real and reachable
+     * some other way. This is a fact about the SHAPE of the Graph surface (a model-
+     * correctness gap), not per-tenant permission or license state, so it belongs here
+     * at build time rather than in the live-evidence reconciliation pipeline that
+     * `resolveAvailability`/`applyLiveEvidence` own for tenant-specific facts.
+     */
+    const MODEL_CORRECTNESS_UNAVAILABLE = new Map([
+      [
+        "/policies/authenticationMethodsPolicy/authenticationMethodConfigurations",
+        "Git #2816: this child path 400s (\"Resource not found for segment ...\") as a " +
+          "standalone GET, confirmed live in both v1.0 and beta against the testbed tenant " +
+          "on 2026-09-04. The collection is real and reachable, but only embedded inline in " +
+          "the PARENT resource's own response (GET /policies/authenticationMethodsPolicy " +
+          "returns authenticationMethodConfigurations: [...]) or per-item at " +
+          ".../authenticationMethodConfigurations/{id} — not independently GET-able at this " +
+          "bare collection path. policy:authentication-methods-policy already reads the real " +
+          "signal off the parent's response.",
+      ],
+    ]);
+
     const resourceRows = [];
     const propertyPlans = []; // { resourceKey, props: [...] }
 
@@ -355,7 +378,7 @@ async function main() {
         const entityTypeId = p.entityType ? typeIdByKey.get(`${v}|${p.entityType}`) ?? null : null;
         const appPerms = dsc?.applicationRead ?? [];
         const perm = graphPerms.forPathOrAncestor(p.path);
-        const avail = resolveAvailability({
+        let avail = resolveAvailability({
           transport: "graph",
           appPerms,
           delegatedPerms: dsc?.delegatedRead ?? [],
@@ -365,6 +388,10 @@ async function main() {
           anyOfMatchedPath: perm.matchedPath,
           anyOfExact: perm.exact,
         });
+        const modelCorrectnessReason = MODEL_CORRECTNESS_UNAVAILABLE.get(p.path);
+        if (modelCorrectnessReason) {
+          avail = { availability: "unavailable", missing: [], source: "model-correctness", reason: modelCorrectnessReason };
+        }
 
         resourceRows.push({
           resource_key: resourceKey,
@@ -510,6 +537,9 @@ async function main() {
     console.log(`  ${evidence.verifiedCount} verified_live, ${evidence.failedCount} failed_live restored from the latest sample per resource`);
     if (evidence.licenseGapKeys.length) {
       console.log(`  ${evidence.licenseGapKeys.length} resources restored to needs_license from live evidence: ${evidence.licenseGapKeys.join(", ")}`);
+    }
+    if (evidence.tenantMismatchKeys.length) {
+      console.log(`  ${evidence.tenantMismatchKeys.length} resources restored to unavailable (tenant-type mismatch) from live evidence: ${evidence.tenantMismatchKeys.join(", ")}`);
     }
 
     const propRowsOut = [];
