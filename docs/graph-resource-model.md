@@ -102,8 +102,17 @@ Key columns:
 - `availability` — see below.
 - `verification_status` — `verified_live` · `failed_live` · `not_attempted` ·
   `derived_not_verified`.
-- `check_coverage_count` — how many `monitor_checks` rows touch this resource. `0` means
-  entirely uncovered.
+- `check_coverage_count` — how many `monitor_checks` rows are credited to **this row**.
+  On its own this does **not** answer "is this resource covered" — see
+  `effective_check_coverage_count` below and the #2821 section.
+- `canonical_resource_id` / `canonical_basis` / `canonical_matched_on` /
+  `canonical_gap_reason` (#2821) — the link from a duplicate row to the row that is the
+  real resource, the rule that established it, the exact string it matched on, and — where
+  a Graph-backed Microsoft365DSC row could *not* be resolved — the stated reason why.
+  `canonical_resource_id IS NULL` means this row **is** the canonical record.
+- `effective_check_coverage_count` (#2821) — coverage of the whole canonical group (the
+  canonical row plus every duplicate linked onto it), stamped on every member. **This is
+  the count that means "covered".** `0` here means entirely uncovered.
 - **Coverage state** (computed, not stored — `coverageStateFor()` in
   `lib/db/src/schema/config-state.ts`, #1869) — `covered` · `uncovered` · `no_executor`.
   Computed rather than persisted so it cannot go stale when a new executor ships.
@@ -553,11 +562,22 @@ Steps 1 and 2 need no tenant credentials at all. Step 3 uses the read app
 Useful queries:
 
 ```sql
--- Readable today, asked about by nothing — the actionable coverage gap
+-- Readable today, asked about by nothing — the actionable coverage gap.
+-- #2821: read effective_check_coverage_count, and exclude duplicate rows. Using
+-- check_coverage_count here instead returns ~24 rows that are another row's object
+-- seen through the second extraction pipeline — gaps no check could ever close.
 SELECT surface, workload, display_name, property_count
   FROM config_resources
- WHERE availability = 'available_now' AND check_coverage_count = 0
+ WHERE availability = 'available_now'
+   AND canonical_resource_id IS NULL
+   AND effective_check_coverage_count = 0
  ORDER BY surface, display_name;
+
+-- What did NOT resolve, and why — the reviewable residue of #2821's resolution
+SELECT resource_key, surface, canonical_gap_reason
+  FROM config_resources
+ WHERE canonical_gap_reason IS NOT NULL
+ ORDER BY surface, resource_key;
 
 -- What a snapshot of one resource has to be able to hold
 SELECT property_name, data_type, is_collection, allowed_values
@@ -787,3 +807,187 @@ accordingly rather than presented as verified.
 scope question is genuinely open — it is a different resource (ARM), a different token
 audience, and different RBAC roles (`Billing Reader` and siblings). It stays
 `no_executor` in the coverage measurement, which is the accurate state.
+
+---
+
+## Git #2821 — the model described some real objects twice, and one half could never be covered
+
+### The defect
+
+`config_resources` is fed by two independent extraction pipelines. Some of the rows they
+produce describe **the same real tenant object**:
+
+| Graph `$metadata` pipeline | Microsoft365DSC pipeline |
+|---|---|
+| `graph:v1.0:/policies/authenticationFlowsPolicy` | `m365dsc:AADAuthenticationFlowPolicy` |
+| `graph:v1.0:/policies/identitySecurityDefaultsEnforcementPolicy` | `m365dsc:AADSecurityDefaults` |
+| `graph:v1.0:/identity/conditionalAccess/namedLocations` | `m365dsc:AADNamedLocationPolicy` |
+
+Nothing linked them. `matchEndpointToResource` credits a check to **exactly one**
+`config_resources` id, so only one row of a pair could ever carry a non-zero
+`check_coverage_count`. The other was **structurally un-closable by writing more checks**,
+however correct the check — and `config_model_extractions.resources_uncovered` counted it
+as an independent gap that does not exist.
+
+#1848/#2761 hit this directly: of 20 `surface='identity' AND availability='available_now'
+AND check_coverage_count = 0` rows, 10 turned out to be a duplicate of something the Graph
+extraction had already modelled, 8 of them already covered. Closing those "gaps" was
+impossible; the only way to see it was to hand-check each row for a same-`graph_path`
+sibling elsewhere in the table.
+
+### The resolution: LINK, never MERGE
+
+`scripts/config-state/resolve-canonical-resources.mjs` resolves an `origin='m365dsc'` row
+onto the graph-origin row that models the same object, via a self-referencing
+`config_resources.canonical_resource_id`. It does **not** merge the two rows.
+
+That distinction settles the design question the issue left open — *which pipeline's row is
+canonical when the two disagree on shape?* Neither has to win, because shape never moves.
+The m365dsc row keeps its own MOF property model, `read_cmdlets` and DSC ALL-OF permission
+set, all three of which `derive-ps-shapes-from-dsc.mjs` and `build-snapshot-registry.mjs`
+read and a merge would destroy. Only **coverage credit** is unified.
+
+The **graph row is canonical** because coverage is a statement about what a check can
+actually call: a `monitor_checks` row addresses a REST path, and the graph-origin row is
+keyed by that path. The m365dsc row's value is its shape, not its addressability.
+
+### Two evidence rules, behind two precision gates
+
+Rules — what could be true:
+
+1. **`same-graph-path`** — the DSC module's own `.psm1` issues a literal REST URI equal to
+   a graph-origin row's `graph_path`. Nothing is inferred.
+2. **`dsc-cmdlet-path-walk`** — the row's `read_cmdlets` names a Microsoft Graph PowerShell
+   SDK cmdlet (`Get-Mg…`/`Get-MgBeta…`), whose name is a mechanical encoding of the REST
+   path the SDK calls. The noun is spent by a backtracking walk over the **real modelled
+   path tree**: `Get-MgBetaIdentityGovernanceAccessReviewDefinition` resolves to
+   `/identityGovernance/accessReviews/definitions` only because all three segments already
+   exist in the model. A noun that cannot be spent entirely on real segments resolves to
+   nothing — `Get-MgBetaDirectorySetting` names no modelled path (`/groupSettings` is the
+   legacy REST name for it) and the walk correctly returns empty rather than reaching.
+
+Gates — what makes it safe to assert:
+
+3. **Name correspondence.** Every word of the DSC resource name (minus its workload prefix)
+   must appear somewhere in the resolved path; only a trailing `Policy` is treated as noise.
+   This is what separates a duplicate from a **specialisation**: 46 DSC resources invoke
+   `Get-MgBetaDeviceManagementDeviceConfiguration` and 15 `IntuneMobileApps*` resources GET
+   `/deviceAppManagement/mobileApps` — distinct objects sharing one polymorphic collection,
+   not duplicates of it. `IntuneDeviceConfigurationPolicyMacOS` fails here on `mac`/`os`.
+4. **Target uniqueness.** If two DSC resources would claim the same path, neither is
+   asserted. On the model extracted 2026-09-04 nothing reaches this gate — gate 3 already
+   refuses every shared-collection case — so it is a backstop for a future release that
+   ships two names both legitimately accounting for one path.
+
+**Erring toward not linking is deliberate.** A false link credits a genuinely uncovered
+resource with another row's coverage and *hides a real gap*; a missed link leaves the row
+exactly as it is today plus a stated reason. An earlier draft of gate 3 proved this is not
+theoretical: treating `Settings` as a noise word alongside `Policy` mislinked
+`AADGroupsSettings` onto `/groups` and `TeamsUserCallingSettings` onto `/users`, both
+through the incidental `Get-MgGroup` / `Get-MgUser` helper calls those modules make to turn
+a display name into an id (184 and 28 resources invoke those two respectively).
+
+Anything unresolved is **labelled, not dropped**: an `origin='m365dsc'` row that names a
+Graph SDK read cmdlet — so it genuinely is Graph-backed and ought to have resolved — gets a
+`canonical_gap_reason`, the same discipline `derive-ps-shapes-from-dsc.mjs` applies with
+`derivation_gap_reason`.
+
+### Two coverage counts, on purpose
+
+| Column | Means |
+|---|---|
+| `check_coverage_count` | checks credited to **this row**. Unchanged meaning. |
+| `effective_check_coverage_count` | checks covering this row's whole canonical **group**, stamped on every member. **This is the count that answers "is it covered".** |
+
+`effective_check_coverage_count = 0` genuinely means uncovered, with no need to go hunting
+the table for a same-`graph_path` sibling first — which is the property the duplication
+broke. Coverage **ratios** must still count canonical rows only (`canonical_resource_id IS
+NULL`), or a group is counted once per member.
+
+`coverageStateFor()` gained a sixth state, `duplicate`, evaluated second — after
+`operation`, ahead of `no_executor`/`unavailable`. A duplicate link is a statement about the
+row's *identity*; those two are statements about *this row's own reachability*, which a
+duplicate does not independently have. `operation` still outranks it: a bound Function is
+not configuration state at all, so it cannot be another resource's duplicate.
+
+`config_model_extractions` keeps `resources_covered`/`resources_uncovered` with their
+original raw-row meaning so pre-#2821 runs stay comparable, and adds `canonical_resources`,
+`duplicate_resources`, `canonical_resources_covered` and `canonical_resources_uncovered` as
+the real, de-duplicated measurement.
+
+### Measured, live, 2026-09-04
+
+Resolution over the extracted model, run against local Postgres:
+
+```
+481 origin='m365dsc' rows examined
+ 24 resolved to a canonical resource (0 same-graph-path, 24 dsc-cmdlet-path-walk)
+204 name a Graph SDK read cmdlet but could not be resolved — labelled, not dropped
+      183  no cmdlet noun resolves to a path the DSC name accounts for
+       21  the module GETs a collection it is only a SUBTYPE or CHILD of
+```
+
+Rule 1 (`same-graph-path`) yields **zero** links on this model, and that is the correct
+answer rather than a failure: every `origin='m365dsc'` row carrying a `graph_path` today
+issues a *collection* URI it is one subtype of (`IntuneMobileApps*` →
+`/deviceAppManagement/mobileApps`, `Intune*PolicySetting` →
+`/deviceManagement/reusablePolicySettings`), or a *parent* of the child it really reads
+(`AADCrossTenantIdentitySyncPolicyPartner` enumerates
+`/policies/crossTenantAccessPolicy/partners` in order to read each partner's
+`identitySynchronization`). None of those is the same object as the path it names.
+
+Of the 24 links, **7 were phantom gaps** — a duplicate reading `check_coverage_count = 0`
+whose canonical row was already covered, so no check could ever have closed them. All 7 are
+on `surface='identity'`, matching the issue's own evidence:
+
+| duplicate (was reading uncovered) | canonical | its coverage |
+|---|---|---|
+| `m365dsc:AADAccessReviewDefinition` | `graph:v1.0:/identityGovernance/accessReviews/definitions` | 3 |
+| `m365dsc:AADAuthenticationFlowPolicy` | `graph:v1.0:/policies/authenticationFlowsPolicy` | 1 |
+| `m365dsc:AADAuthenticationMethodPolicy` | `graph:v1.0:/policies/authenticationMethodsPolicy` | 1 |
+| `m365dsc:AADExternalIdentityPolicy` | `graph:beta:/policies/externalIdentitiesPolicy` | 1 |
+| `m365dsc:AADGroupEligibilitySchedule` | `graph:v1.0:/identityGovernance/privilegedAccess/group/eligibilitySchedules` | 1 |
+| `m365dsc:AADNamedLocationPolicy` | `graph:v1.0:/identity/conditionalAccess/namedLocations` | 1 |
+| `m365dsc:AADSecurityDefaults` | `graph:v1.0:/policies/identitySecurityDefaultsEnforcementPolicy` | 1 |
+
+The corrected six-way split (`canonical_resource_id IS NULL` and
+`effective_check_coverage_count` in the coverage buckets):
+
+```
+ total_resources | operations | duplicates | covered | uncovered | no_executor | unavailable
+-----------------+------------+------------+---------+-----------+-------------+-------------
+            1539 |        129 |         24 |     101 |      1253 |           6 |          26
+```
+
+101 + 1,253 + 6 + 26 + 129 + 24 = 1,539 — every row still lands in exactly one bucket. The
+duplicates are `identity` 13, `device-management` 9, `collaboration` 1, `directory` 1.
+
+**These figures move.** The `covered`/`uncovered` split in particular is a live function of
+the `monitor_checks` catalog, which several concurrent builds were adding to on the same
+day (raw `check_coverage_count > 0` moved 98 → 109 during this session). If this section and
+the database disagree, **the database is right** — re-run
+`node scripts/config-state/resolve-canonical-resources.mjs --dry-run --verbose`, which needs
+no credentials and no source cache.
+
+### Known residue
+
+Four of the ten duplicates #2761 identified by hand are deliberately **not** linked, each
+carrying a `canonical_gap_reason` on the row saying so:
+
+- `AADGroupsNamingPolicy`, `AADPasswordRuleSettings` — both read `/groupSettings` through
+  `Get-MgBetaDirectorySetting`, whose noun names no modelled path. Not derivable from any
+  published source this pipeline holds; linking them would mean asserting a mapping no
+  evidence supports.
+- `AADCrossTenantIdentitySyncPolicyPartner` — enumerates
+  `/policies/crossTenantAccessPolicy/partners` but reads each partner's
+  `identitySynchronization` child. A check on `partners` does not read that child, so
+  crediting it would have been wrong.
+- `AADRoleEligibilityScheduleRequest` — reads
+  `/roleManagement/directory/roleEligibilitySchedules`, but `Request` is a real
+  distinguishing word (Graph has a separate `roleEligibilityScheduleRequests` collection),
+  so gate 3 refuses it.
+
+The 21 `SUBTYPE or CHILD` rows are the other real residue: they are genuine specialisations
+sharing a Graph collection. A `contained_in` / `specialisation_of` relationship — distinct
+from `canonical_resource_id`, which asserts *identity* — would be a real follow-up.
+Conflating the two is exactly what would hide gaps, so it is not done here.

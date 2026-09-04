@@ -118,6 +118,33 @@ describe("coverageStateFor", () => {
     expect(coverageStateFor("graph", 0, null, null)).toBe("uncovered");
     expect(coverageStateFor("graph", 0, null, undefined)).toBe("uncovered");
   });
+
+  // Git #2821 — a row resolved onto another row is not an independent resource:
+  // both extraction pipelines modelled the same real tenant object. It has no
+  // coverage question of its own, and counting it as one reported that object
+  // twice — once covered, once as a gap no check could ever close.
+  it("is 'duplicate' whenever the row resolves onto a canonical resource", () => {
+    expect(coverageStateFor("graph", 0, "available_now", "entitySet", 42)).toBe("duplicate");
+    expect(coverageStateFor("powershell", 3, "available_now", null, 42)).toBe("duplicate");
+  });
+
+  it("'duplicate' wins over 'no_executor' and 'unavailable', but 'operation' wins over it", () => {
+    // The duplicate link is a statement about the row's IDENTITY; no_executor and
+    // unavailable are statements about THIS row's own reachability, which a
+    // duplicate does not independently have. An operation still outranks it: a
+    // bound Function is not config state at all, so it can never be some other
+    // resource's duplicate in the first place.
+    expect(coverageStateFor("unknown", 0, null, null, 42)).toBe("duplicate");
+    expect(coverageStateFor("azure-rm", 0, "unavailable", null, 42)).toBe("duplicate");
+    expect(coverageStateFor("graph", 0, null, "function", 42)).toBe("operation");
+  });
+
+  it("is unaffected when the row IS its own canonical record", () => {
+    // Null and undefined both mean "this row is canonical" — undefined is what a
+    // caller that predates #2821's column passes, and it must not read as a link.
+    expect(coverageStateFor("graph", 0, "available_now", "entitySet", null)).toBe("uncovered");
+    expect(coverageStateFor("graph", 1, "available_now", "entitySet", undefined)).toBe("covered");
+  });
 });
 
 describe("isOperationResource", () => {

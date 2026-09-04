@@ -34,6 +34,7 @@ import { connect, insertRows } from "./db.mjs";
 import {
   normalizeGraphEndpoint, matchEndpointToResource, resolvePsCmdletCatalog,
 } from "./map-monitor-checks.mjs";
+import { applyCanonicalResolution, recomputeEffectiveCoverage } from "./resolve-canonical-resources.mjs";
 import { reconcilePowershellAgainstSurvey } from "./reconcile-ps-survey.mjs";
 import { refreshSampleResourceLinks, applyLiveEvidence } from "./reconcile-live-evidence.mjs";
 
@@ -575,6 +576,19 @@ async function main() {
       console.log(`  ${psReconciliation.total} powershell resources: ${psReconciliation.upgraded} upgraded to available_now, ${psReconciliation.confirmed} confirmed already-available_now, ${psReconciliation.negative} downgraded to unavailable, ${psReconciliation.inconclusive} inconclusive (left as derived), ${psReconciliation.unmatched} not reconciled (no cmdlet in survey catalog)`);
     }
 
+    // ── 3d. Resolve duplicate rows onto their canonical record (Git #2821) ───
+    // Both pipelines describe some of the same real tenant objects, and until they are
+    // linked a check can only ever credit one of the pair — leaving the other a gap no
+    // check could close, and inflating the platform's uncovered count with resources that
+    // do not independently exist. Runs BEFORE the check mapping below so the matcher can
+    // prefer the canonical row when two rows carry the same graph_path.
+    console.log("── Resolving duplicate rows onto their canonical record ──────");
+    const canonical = await applyCanonicalResolution(client);
+    console.log(`  ${canonical.stats.candidates} origin='m365dsc' rows examined`);
+    console.log(`  ${canonical.links.length} resolved to a canonical resource `
+      + `(${canonical.stats.sameGraphPath} same-graph-path, ${canonical.stats.cmdletWalk} dsc-cmdlet-path-walk)`);
+    console.log(`  ${canonical.gaps.length} name a Graph SDK read cmdlet but could not be resolved — labelled, not dropped`);
+
     // ── 4. Map the existing monitor_checks catalog onto the model ────────────
     console.log("── Mapping monitor_checks onto the resource model ────────────");
     const checks = (await client.query(
@@ -583,7 +597,7 @@ async function main() {
     const psCatalog = await resolvePsCmdletCatalog();
     const resources = (await client.query(
       `SELECT id, resource_key, graph_version, graph_path, read_cmdlets, read_transport,
-              m365dsc_resource, display_name
+              m365dsc_resource, display_name, canonical_resource_id
          FROM config_resources`)).rows;
 
     const coverageRows = [];
@@ -610,20 +624,37 @@ async function main() {
             WHERE config_resource_id IS NOT NULL GROUP BY 1) c
       WHERE c.config_resource_id = r.id`);
 
+    // Coverage credit rolls up to the canonical group now that the raw per-row counts are
+    // in (Git #2821) — `effective_check_coverage_count = 0` is the number that genuinely
+    // means uncovered, and the canonical_* tallies are the de-duplicated measurement.
+    const effectiveRows = await recomputeEffectiveCoverage(client);
+    const dedup = (await client.query(`
+      SELECT count(*) FILTER (WHERE canonical_resource_id IS NULL)::int AS canonical,
+             count(*) FILTER (WHERE canonical_resource_id IS NOT NULL)::int AS duplicates,
+             count(*) FILTER (WHERE canonical_resource_id IS NULL AND effective_check_coverage_count > 0)::int AS canonical_covered,
+             count(*) FILTER (WHERE canonical_resource_id IS NULL AND effective_check_coverage_count = 0)::int AS canonical_uncovered
+        FROM config_resources`)).rows[0];
+
     const covered = Number((await client.query(
       "SELECT count(*) n FROM config_resources WHERE check_coverage_count > 0")).rows[0].n);
     const totalResources = resourceRows.length;
     console.log(`  ${checks.length} checks -> ${checks.length - unmatched} mapped, ${unmatched} unmatched`);
-    console.log(`  ${covered} of ${totalResources} resources covered by at least one check; ${totalResources - covered} entirely uncovered`);
+    console.log(`  ${covered} of ${totalResources} rows covered by at least one check; ${totalResources - covered} entirely uncovered (RAW row counts)`);
+    console.log(`  effective_check_coverage_count written to ${effectiveRows} rows`);
+    console.log(`  de-duplicated: ${dedup.canonical_covered} of ${dedup.canonical} canonical resources covered, `
+      + `${dedup.canonical_uncovered} uncovered, ${dedup.duplicates} rows resolved onto another resource`);
 
     await client.query(
       `UPDATE config_model_extractions
           SET config_resource_count=$2, property_count=$3, checks_mapped=$4, checks_unmatched=$5,
               resources_covered=$6, resources_uncovered=$7, granted_scopes=$8,
+              canonical_resources=$9, duplicate_resources=$10,
+              canonical_resources_covered=$11, canonical_resources_uncovered=$12,
               status='complete', finished_at=now()
         WHERE id=$1`,
       [runId, totalResources, propRowsOut.length, checks.length - unmatched, unmatched,
-       covered, totalResources - covered, JSON.stringify([...granted].sort())],
+       covered, totalResources - covered, JSON.stringify([...granted].sort()),
+       dedup.canonical, dedup.duplicates, dedup.canonical_covered, dedup.canonical_uncovered],
     );
 
     console.log("\nExcluded Graph container roots (recorded, not silently dropped):");

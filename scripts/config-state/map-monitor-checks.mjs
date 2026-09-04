@@ -94,6 +94,18 @@ export async function resolvePsCmdletCatalog() {
 }
 
 /**
+ * Sort comparators used to break ties between equally-matching resource rows.
+ *
+ * `preferCanonical` is Git #2821: a row with a non-null `canonical_resource_id` is a
+ * duplicate of another row, so it must never win a tie against the record it resolves to.
+ * Rows loaded before #2821's columns existed simply have `undefined` here and tie.
+ */
+const preferCanonical = (a, b) =>
+  (a.canonical_resource_id == null ? 0 : 1) - (b.canonical_resource_id == null ? 0 : 1);
+const preferV1 = (a, b) =>
+  (a.graph_version === "v1.0" ? 0 : 1) - (b.graph_version === "v1.0" ? 0 : 1);
+
+/**
  * Match one `monitor_checks` row to a `config_resources` row.
  *
  * Order is strongest-evidence-first, and the basis is recorded so nothing is asserted
@@ -110,10 +122,17 @@ export function matchEndpointToResource(check, resources, psCatalog) {
     const collapsed = collapseItemSegments(normalized);
 
     const graphRows = resources.filter((r) => r.read_transport === "graph" && r.graph_path);
-    // Exact path, preferring v1.0 when both versions carry it.
+    // Exact path, preferring the CANONICAL row and then v1.0.
+    //
+    // Git #2821: two rows can carry the same graph_path — one from the Graph `$metadata`
+    // extraction, one from Microsoft365DSC — and a check credits exactly one id. Sorting
+    // canonical-first means the credit lands on the row the whole duplicate group resolves
+    // to, rather than on whichever row the query happened to return first. (Coverage still
+    // rolls up to the group afterwards via `effective_check_coverage_count`, so this
+    // ordering decides where the raw count lands, not whether the group counts as covered.)
     const exact = graphRows
       .filter((r) => r.graph_path === normalized || r.graph_path === collapsed)
-      .sort((a, b) => (a.graph_version === "v1.0" ? -1 : 1));
+      .sort((a, b) => preferCanonical(a, b) || preferV1(a, b));
     if (exact.length) {
       return { configResourceId: exact[0].id, basis: "graph-path-exact", confidence: "high", matchedOn: normalized };
     }
@@ -122,7 +141,7 @@ export function matchEndpointToResource(check, resources, psCatalog) {
     const prefixed = graphRows
       .filter((r) => collapsed === r.graph_path || collapsed.startsWith(`${r.graph_path}/`))
       .sort((a, b) => b.graph_path.length - a.graph_path.length ||
-        (a.graph_version === "v1.0" ? -1 : 1));
+        preferCanonical(a, b) || preferV1(a, b));
     if (prefixed.length) {
       const depth = prefixed[0].graph_path.split("/").length;
       return {
@@ -160,7 +179,7 @@ export function matchEndpointToResource(check, resources, psCatalog) {
       const bare = stripPrefix(name);
       const rank = nouns.includes(bare) ? 0 : nouns.some((n) => name.endsWith(n)) ? 1 : 2;
       return { r, rank, breadth: (r.read_cmdlets ?? []).length };
-    }).sort((a, b) => a.rank - b.rank || a.breadth - b.breadth);
+    }).sort((a, b) => a.rank - b.rank || a.breadth - b.breadth || preferCanonical(a.r, b.r));
 
     const best = scored[0];
     return {

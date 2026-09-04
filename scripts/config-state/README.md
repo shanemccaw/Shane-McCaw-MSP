@@ -12,7 +12,7 @@ out of scope — see the issue.
 
 ```bash
 node scripts/config-state/fetch-sources.mjs          # cache the 3 published sources
-node scripts/config-state/build-resource-model.mjs   # build + reconcile + map checks
+node scripts/config-state/build-resource-model.mjs   # build + reconcile + resolve duplicates + map checks
 node scripts/config-state/derive-ps-shapes-from-dsc.mjs # #1853 — derive shapes for shapeless PS survey cmdlets
 node scripts/config-state/verify-sample.mjs          # live READ-ONLY sample (testbed only)
 node scripts/config-state/build-snapshot-registry.mjs # #1795 — populate the snapshot registry
@@ -48,7 +48,8 @@ rebuilt model.
 | `parse-graph-metadata.mjs` | CSDL parser: types, properties, EntityContainer, bound Functions; walks containment navigation into real addressable configuration paths |
 | `parse-graph-permissions.mjs` | Inverts Microsoft's permission→paths dataset into path→**any-of** app-only GET permissions |
 | `parse-m365dsc.mjs` | Reads each DSC resource's `settings.json` (permissions, cmdlets, mode), `.schema.mof` (property model with allowed values) and `.psm1` (literal Graph URIs, invoked read cmdlets) |
-| `map-monitor-checks.mjs` | Maps every `monitor_checks` row onto the model, recording the match basis, confidence and the exact string matched on |
+| `map-monitor-checks.mjs` | Maps every `monitor_checks` row onto the model, recording the match basis, confidence and the exact string matched on. Prefers the CANONICAL row when two rows carry the same `graph_path` (#2821) |
+| `resolve-canonical-resources.mjs` | Git #2821 — resolves `origin='m365dsc'` rows onto the `origin='graph-metadata'`/`'both'` row that models the same real tenant object, so a duplicate stops counting as an independent, permanently-uncoverable resource. Two evidence rules (`same-graph-path`, `dsc-cmdlet-path-walk`) behind two precision gates (name correspondence, target uniqueness); anything unresolved gets a `canonical_gap_reason` rather than being dropped. LINKS, never merges — the m365dsc row keeps its own MOF shape, cmdlets and permission set. Runs inside `build-resource-model.mjs` and is also runnable standalone (`--dry-run`, `--verbose`) against the current model, needing no credentials or source cache |
 | `build-resource-model.mjs` | The pipeline: parse → load the reachable Graph entity model → link DSC to Graph → emit `config_resources` + properties → reconcile availability against real grants → map the check catalog |
 | `verify-sample.mjs` | Live read-only sample against the testbed. `GET` only, no templated paths, no bound Functions, `$top=1`, serialised. Stores **shape only** — property names and JSON types, never values. Calls `detect-property-divergence.mjs` at the end of every run |
 | `detect-property-divergence.mjs` | Git #1846 — recomputes `config_resource_property_divergence` from whatever is currently in `config_resource_samples`: properties Graph returned live with no matching `graph-metadata` property row, classified `version_gap` (declared in the other Graph version) vs `undeclared_anywhere` (declared in neither). Keyed on the stable `resource_key`, not the volatile `config_resources.id`, so a model rebuild can't cascade-delete it (see #1895) |
@@ -77,3 +78,17 @@ rebuilt model.
 - **`services/ps-execution/cmdlet-catalog.ps1` is parsed with real brace matching.** Some
   entries are `Script = { … }` blocks several levels deep; a non-greedy regex truncates at the
   first inner `}` and loses the cmdlet entirely.
+- **Canonical resolution LINKS; it must never MERGE (#2821).** A duplicate `m365dsc` row's
+  MOF property model, `read_cmdlets` and DSC ALL-OF permission set are real and are read by
+  `derive-ps-shapes-from-dsc.mjs` and `build-snapshot-registry.mjs`. Folding it into the
+  graph row would destroy all three and force a decision about whose shape wins — a decision
+  nothing needs to make, because only coverage CREDIT has to be unified.
+- **Erring toward NOT linking is deliberate, and the two gates are why.** A false link
+  credits a genuinely uncovered resource with another row's coverage and *hides a real gap* —
+  strictly worse than leaving it unlinked, which is just the status quo plus a stated reason.
+  So a cmdlet noun resolving to a real path is not sufficient on its own: 184 DSC resources
+  invoke `Get-MgGroup` and 46 invoke `Get-MgBetaDeviceManagementDeviceConfiguration` to
+  resolve an id or read a shared polymorphic collection. The DSC resource's own name must
+  also account for the path word-for-word (only a trailing `Policy` is treated as noise —
+  adding `Settings` to that list immediately mislinked `AADGroupsSettings` onto `/groups`),
+  and no other DSC resource may claim the same path.

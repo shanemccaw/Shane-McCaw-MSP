@@ -159,6 +159,7 @@ export default defineConfig({
       "src/routes/admin-public-chat.test.ts",
       "src/lib/__tests__/monitor-executor.test.ts",
       "src/lib/__tests__/service-availability.test.ts",
+      "src/lib/__tests__/canonical-resource-resolution-2821.test.ts",
       "src/lib/__tests__/mfa-gap-monitor-check-1288.test.ts",
       "src/lib/sensitivity-label-severity-rules-470.test.ts",
       "src/lib/cert-secret-expiration-541.test.ts",

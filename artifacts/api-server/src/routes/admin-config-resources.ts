@@ -47,7 +47,7 @@ import {
   coverageStateFor,
   TENANT_SERVICE_KEYS,
 } from "@workspace/db";
-import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
@@ -69,6 +69,21 @@ const EXECUTOR_BACKED_SQL = sql`(${sql.join(
   EXECUTOR_BACKED_TRANSPORTS.map((t) => sql`${t}`),
   sql`, `,
 )})`;
+
+/**
+ * Git #2821 — a row resolved onto another row is not an independent resource, so it must
+ * not appear in ANY coverage bucket: two extraction pipelines describe some of the same
+ * real tenant objects, and counting both halves reports one object as two (and, before the
+ * link existed, as one covered resource and one permanently un-closable gap).
+ */
+const NOT_DUPLICATE_SQL = sql`${configResourcesTable.canonicalResourceId} is null`;
+
+/**
+ * The rows a coverage question applies to at all: real configuration state (not a bound
+ * Function), on a transport this platform can execute, whose own scope is reachable, and
+ * that is its own canonical record.
+ */
+const COVERAGE_ELIGIBLE_SQL = sql`${configResourcesTable.graphContainerKind} is distinct from 'function' and ${NOT_DUPLICATE_SQL} and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable'`;
 
 /**
  * Git #1847 — the per-tenant SERVICE-availability half of the model, and the number
@@ -174,10 +189,18 @@ async function loadSummary() {
       // either as ordinary "uncovered" is the exact conflation #1849 asked to
       // end, restated for #1917.
       operations: sql<number>`count(*) filter (where ${configResourcesTable.graphContainerKind} = 'function')::int`,
-      covered: sql<number>`count(*) filter (where ${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} > 0)::int`,
-      uncovered: sql<number>`count(*) filter (where ${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} = 0)::int`,
-      noExecutor: sql<number>`count(*) filter (where ${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} not in ${EXECUTOR_BACKED_SQL})::int`,
-      unavailable: sql<number>`count(*) filter (where ${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} = 'unavailable')::int`,
+      // Git #2821 — `duplicates` is evaluated right after `operations` and before every
+      // reachability bucket, matching `coverageStateFor`'s precedence: a row that is
+      // another row's object seen through the second extraction pipeline has no coverage
+      // question of its own, whatever its transport or scope says.
+      duplicates: sql<number>`count(*) filter (where ${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.canonicalResourceId} is not null)::int`,
+      // Coverage reads `effective_check_coverage_count` — the canonical GROUP's count —
+      // not the per-row one, so a canonical resource whose duplicate half a check happened
+      // to be credited to still reads as covered (#2821).
+      covered: sql<number>`count(*) filter (where ${COVERAGE_ELIGIBLE_SQL} and ${configResourcesTable.effectiveCheckCoverageCount} > 0)::int`,
+      uncovered: sql<number>`count(*) filter (where ${COVERAGE_ELIGIBLE_SQL} and ${configResourcesTable.effectiveCheckCoverageCount} = 0)::int`,
+      noExecutor: sql<number>`count(*) filter (where ${configResourcesTable.graphContainerKind} is distinct from 'function' and ${NOT_DUPLICATE_SQL} and ${configResourcesTable.readTransport} not in ${EXECUTOR_BACKED_SQL})::int`,
+      unavailable: sql<number>`count(*) filter (where ${configResourcesTable.graphContainerKind} is distinct from 'function' and ${NOT_DUPLICATE_SQL} and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} = 'unavailable')::int`,
       // Git #1929 — the property-count roll-up excludes bound-Function rows:
       // 44 of them carry zero property rows at all (an operation has no
       // property SHAPE to model), so folding them in quietly averaged the
@@ -196,6 +219,7 @@ async function loadSummary() {
   const c = coverage[0] ?? {
     totalResources: 0,
     operations: 0,
+    duplicates: 0,
     covered: 0,
     uncovered: 0,
     noExecutor: 0,
@@ -223,8 +247,20 @@ async function loadSummary() {
        */
       resourcesOperations: c.operations,
       operationProperties: c.operationProperties,
-      /** The honest coverage denominator: total resources minus operations (#1929). */
-      resourcesCoverageEligible: c.totalResources - c.operations,
+      /**
+       * Rows that are not independent resources at all: the same real tenant
+       * object as another row, seen through the second extraction pipeline and
+       * resolved onto it via `canonicalResourceId` (#2821). Excluded from every
+       * coverage bucket and from the denominator, because counting a duplicate
+       * separately reported one object as two — and, before the link existed,
+       * as one covered resource plus one gap no check could ever close.
+       */
+      resourcesDuplicates: c.duplicates,
+      /**
+       * The honest coverage denominator: total resources minus operations
+       * (#1929) minus duplicate rows (#2821).
+       */
+      resourcesCoverageEligible: c.totalResources - c.operations - c.duplicates,
       // The coverage measurement this issue exists to replace a guess with.
       resourcesCoveredByAtLeastOneCheck: c.covered,
       // NOTE: as of #1869 this counts only resources on a transport that HAS an
@@ -328,25 +364,31 @@ router.get("/admin/config-resources", requireAdmin, async (req: Request, res: Re
       conditions.push(eq(configResourcesTable.serviceKey, serviceKey as (typeof TENANT_SERVICE_KEYS)[number]));
     }
 
-    // coverage=covered | uncovered | no_executor | unavailable | operation —
-    // the five states of the measurement (#1849 point 3, built in #1869;
-    // `unavailable` added in #1917; `operation` added in #1929). `uncovered`
-    // excludes resources whose transport has no executor, whose own scope is
-    // out of reach on an executor-backed transport, AND bound-Function rows
-    // (an operation, not config state): each is a separate, separately-
-    // filterable state, not an ordinary check-authoring gap.
+    // coverage=covered | uncovered | no_executor | unavailable | operation |
+    // duplicate — the six states of the measurement (#1849 point 3, built in
+    // #1869; `unavailable` added in #1917; `operation` added in #1929;
+    // `duplicate` added in #2821). `uncovered` excludes resources whose
+    // transport has no executor, whose own scope is out of reach on an
+    // executor-backed transport, bound-Function rows (an operation, not config
+    // state), AND rows resolved onto another row as the same real object: each
+    // is a separate, separately-filterable state, not an ordinary
+    // check-authoring gap. The branch order mirrors `coverageStateFor`'s
+    // precedence exactly, so a filter always returns the rows that render with
+    // that badge.
     const coverage = String(q["coverage"] ?? "").trim();
     if ((CONFIG_COVERAGE_STATES as readonly string[]).includes(coverage)) {
       if (coverage === "operation") {
         conditions.push(sql`${configResourcesTable.graphContainerKind} = 'function'`);
+      } else if (coverage === "duplicate") {
+        conditions.push(sql`${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.canonicalResourceId} is not null`);
       } else if (coverage === "covered") {
-        conditions.push(sql`${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} > 0`);
+        conditions.push(sql`${COVERAGE_ELIGIBLE_SQL} and ${configResourcesTable.effectiveCheckCoverageCount} > 0`);
       } else if (coverage === "uncovered") {
-        conditions.push(sql`${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} = 0`);
+        conditions.push(sql`${COVERAGE_ELIGIBLE_SQL} and ${configResourcesTable.effectiveCheckCoverageCount} = 0`);
       } else if (coverage === "unavailable") {
-        conditions.push(sql`${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} = 'unavailable'`);
+        conditions.push(sql`${configResourcesTable.graphContainerKind} is distinct from 'function' and ${NOT_DUPLICATE_SQL} and ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} = 'unavailable'`);
       } else {
-        conditions.push(sql`${configResourcesTable.graphContainerKind} is distinct from 'function' and ${configResourcesTable.readTransport} not in ${EXECUTOR_BACKED_SQL}`);
+        conditions.push(sql`${configResourcesTable.graphContainerKind} is distinct from 'function' and ${NOT_DUPLICATE_SQL} and ${configResourcesTable.readTransport} not in ${EXECUTOR_BACKED_SQL}`);
       }
     }
 
@@ -411,20 +453,40 @@ router.get("/admin/config-resources", requireAdmin, async (req: Request, res: Re
         missingPermissions: r.missingPermissions,
         verificationStatus: r.verificationStatus,
         propertyCount: r.propertyCount,
+        /** Checks credited to THIS row. See `effectiveCheckCoverageCount` for the real answer. */
         checkCoverageCount: r.checkCoverageCount,
+        // ── Canonical-record resolution (#2821) ──────────────────────────────
+        /** Non-null when this row duplicates another; that row is the real resource. */
+        canonicalResourceId: r.canonicalResourceId,
+        canonicalBasis: r.canonicalBasis,
+        /** The exact string the resolution matched on — evidence, not assertion. */
+        canonicalMatchedOn: r.canonicalMatchedOn,
+        /** Why a Graph-backed Microsoft365DSC row could NOT be resolved, when it could not. */
+        canonicalGapReason: r.canonicalGapReason,
         /**
-         * covered | uncovered | no_executor | unavailable | operation (#1849
-         * point 3, built in #1869; `unavailable` added in #1917 for resources
-         * whose transport has an executor but whose own scope — e.g.
-         * billing-account or tenant-root `microsoft.aadiam` — sits above
-         * anything this platform's principal can ever be granted;
-         * `operation` added in #1929 for bound Graph Functions). Computed
-         * rather than stored: it is a function of the row's transport, its
-         * own availability, its container kind, and the executors that exist
+         * Coverage of this row's whole canonical group. This is the number that
+         * answers "is this covered": a duplicate row's own `checkCoverageCount`
+         * is structurally 0 no matter how correct a check is, because a check is
+         * credited to exactly one resource id (#2821).
+         */
+        effectiveCheckCoverageCount: r.effectiveCheckCoverageCount,
+        /**
+         * covered | uncovered | no_executor | unavailable | operation |
+         * duplicate (#1849 point 3, built in #1869; `unavailable` added in
+         * #1917 for resources whose transport has an executor but whose own
+         * scope — e.g. billing-account or tenant-root `microsoft.aadiam` —
+         * sits above anything this platform's principal can ever be granted;
+         * `operation` added in #1929 for bound Graph Functions; `duplicate`
+         * added in #2821 for rows that are another row's object seen through
+         * the second extraction pipeline). Computed rather than stored: it is
+         * a function of the row's transport, its own availability, its
+         * container kind, its canonical link, and the executors that exist
          * right now, so it cannot go stale the way a persisted copy would
          * when a new executor ships.
          */
-        coverageState: coverageStateFor(r.readTransport, r.checkCoverageCount, r.availability, r.graphContainerKind),
+        coverageState: coverageStateFor(
+          r.readTransport, r.effectiveCheckCoverageCount, r.availability,
+          r.graphContainerKind, r.canonicalResourceId),
         sourceRef: r.sourceRef,
         notes: r.notes,
       })),
@@ -451,12 +513,37 @@ router.get("/admin/config-resources/:id", requireAdmin, async (req: Request, res
       return;
     }
 
+    /**
+     * Git #2821 — the canonical GROUP this row belongs to: the row that is the real
+     * resource, plus every row resolved onto it. Checks are read across the whole group,
+     * because a check credited to the canonical row is exactly what covers a duplicate,
+     * and showing an empty check list on a duplicate is the misreading this issue exists
+     * to end. The group is at most a handful of rows, so it is one small extra query.
+     */
+    const canonicalId = resource.canonicalResourceId ?? resource.id;
+    const groupRows = await db.select({
+      id: configResourcesTable.id,
+      resourceKey: configResourcesTable.resourceKey,
+      displayName: configResourcesTable.displayName,
+      origin: configResourcesTable.origin,
+      surface: configResourcesTable.surface,
+      graphPath: configResourcesTable.graphPath,
+      canonicalResourceId: configResourcesTable.canonicalResourceId,
+      canonicalBasis: configResourcesTable.canonicalBasis,
+      canonicalMatchedOn: configResourcesTable.canonicalMatchedOn,
+      checkCoverageCount: configResourcesTable.checkCoverageCount,
+    }).from(configResourcesTable).where(or(
+      eq(configResourcesTable.id, canonicalId),
+      eq(configResourcesTable.canonicalResourceId, canonicalId),
+    ));
+    const groupIds = groupRows.map((g) => g.id);
+
     const [properties, checks, samples] = await Promise.all([
       db.select().from(configResourcePropertiesTable)
         .where(eq(configResourcePropertiesTable.configResourceId, id))
         .orderBy(asc(configResourcePropertiesTable.source), asc(configResourcePropertiesTable.ordinal)),
       db.select().from(configResourceCheckCoverageTable)
-        .where(eq(configResourceCheckCoverageTable.configResourceId, id))
+        .where(inArray(configResourceCheckCoverageTable.configResourceId, groupIds))
         .orderBy(asc(configResourceCheckCoverageTable.checkKey)),
       db.select().from(configResourceSamplesTable)
         .where(eq(configResourceSamplesTable.configResourceId, id))
@@ -467,11 +554,22 @@ router.get("/admin/config-resources/:id", requireAdmin, async (req: Request, res
       resource: {
         ...resource,
         // Same computed coverage the list endpoint returns, so the detail
-        // view cannot disagree with the row the operator clicked (#1869, #1917, #1929).
-        coverageState: coverageStateFor(resource.readTransport, resource.checkCoverageCount, resource.availability, resource.graphContainerKind),
+        // view cannot disagree with the row the operator clicked (#1869, #1917, #1929, #2821).
+        coverageState: coverageStateFor(
+          resource.readTransport, resource.effectiveCheckCoverageCount, resource.availability,
+          resource.graphContainerKind, resource.canonicalResourceId),
         createdAt: resource.createdAt instanceof Date ? resource.createdAt.toISOString() : resource.createdAt,
         updatedAt: resource.updatedAt instanceof Date ? resource.updatedAt.toISOString() : resource.updatedAt,
       },
+      /**
+       * Git #2821 — when this row is a duplicate, the real resource it resolves to; null
+       * when this row IS the canonical record.
+       */
+      canonical: resource.canonicalResourceId
+        ? groupRows.find((g) => g.id === canonicalId) ?? null
+        : null,
+      /** The rows that resolve onto THIS one, when it is the canonical record. */
+      duplicates: groupRows.filter((g) => g.id !== canonicalId),
       properties: properties.map((p) => ({
         name: p.name,
         source: p.source,

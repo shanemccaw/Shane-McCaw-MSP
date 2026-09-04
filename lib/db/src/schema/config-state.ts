@@ -36,6 +36,7 @@ import {
   uuid,
   uniqueIndex,
   index,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { monitorChecksTable, tenantsTable, MONITOR_CHECK_EXECUTOR_TYPES } from "./msp";
 
@@ -143,29 +144,45 @@ export function isOperationResource(graphContainerKind: string | null | undefine
  *  - operation    the resource is a bound Function — an operation, not config
  *                 state, so "coverage" does not apply to it at all (#1929). Not
  *                 a gap of any kind; excluded from the coverage denominator.
+ *  - duplicate    the row is not an independent resource at all: it describes the
+ *                 same real tenant object as another row, resolved onto it via
+ *                 `canonicalResourceId` (#2821). Its coverage is whatever the
+ *                 canonical row's is, so counting it separately would report one
+ *                 object as two — and, before it was linked, as one covered and
+ *                 one permanently un-closable gap.
  */
-export const CONFIG_COVERAGE_STATES = ["covered", "uncovered", "no_executor", "unavailable", "operation"] as const;
+export const CONFIG_COVERAGE_STATES = ["covered", "uncovered", "no_executor", "unavailable", "operation", "duplicate"] as const;
 export type ConfigCoverageState = typeof CONFIG_COVERAGE_STATES[number];
 
 /**
  * Classify one resource's coverage. Precedence, most-fundamental-exclusion first:
  *   1. `operation` — not configuration state at all; nothing else about the
  *      row (transport, availability, check count) can change that (#1929).
- *   2. `no_executor` — no code path exists for this transport at all.
- *   3. `unavailable` — a code path exists for the transport, but this specific
+ *   2. `duplicate` — not a separate resource at all; it is another row's object
+ *      seen through the second extraction pipeline (#2821). This outranks the
+ *      reachability states below because those describe THIS row's own transport
+ *      and scope, and a duplicate has no coverage question of its own to answer.
+ *   3. `no_executor` — no code path exists for this transport at all.
+ *   4. `unavailable` — a code path exists for the transport, but this specific
  *      resource's own `availability` says no read of it is possible (#1917).
- *   4. `covered` / `uncovered` — ordinary check-authoring coverage.
- * All of 1–3 win over check count: a resource that isn't config state, or that
- * nobody can reach, is not merely "uncovered" regardless of how many checks
- * happen to be mapped onto it.
+ *   5. `covered` / `uncovered` — ordinary check-authoring coverage.
+ * All of 1–4 win over check count: a resource that isn't config state, isn't its
+ * own resource, or that nobody can reach, is not merely "uncovered" regardless of
+ * how many checks happen to be mapped onto it.
+ *
+ * `checkCoverageCount` should be passed as `effectiveCheckCoverageCount` (the
+ * canonical group's coverage) wherever the caller has it — see that column's own
+ * comment for why the per-row count alone cannot answer "is this covered".
  */
 export function coverageStateFor(
   transport: string | null | undefined,
   checkCoverageCount: number,
   availability?: string | null,
   graphContainerKind?: string | null,
+  canonicalResourceId?: number | null,
 ): ConfigCoverageState {
   if (isOperationResource(graphContainerKind)) return "operation";
+  if (canonicalResourceId != null) return "duplicate";
   if (!transportHasExecutor(transport)) return "no_executor";
   if (availability === "unavailable") return "unavailable";
   return checkCoverageCount > 0 ? "covered" : "uncovered";
@@ -468,8 +485,57 @@ export const configResourcesTable = pgTable("config_resources", {
     .notNull().default("derived_not_verified"),
   /** Count of properties held in config_resource_properties, excluding DSC connection params. */
   propertyCount: integer("property_count").notNull().default(0),
-  /** Number of monitor_checks rows mapped onto this resource. 0 == entirely uncovered. */
+  /**
+   * Number of monitor_checks rows mapped onto THIS ROW.
+   *
+   * Not the same thing as "is this resource covered" — see
+   * `effectiveCheckCoverageCount` below. `matchEndpointToResource` credits a check to
+   * exactly one resource id, so when two rows describe the same real object only one of
+   * them can carry a non-zero count here (#2821).
+   */
   checkCoverageCount: integer("check_coverage_count").notNull().default(0),
+
+  // ── Canonical-record resolution (#2821) ────────────────────────────────────
+  /**
+   * The row that is the REAL resource this one duplicates, or NULL when this row IS the
+   * canonical record.
+   *
+   * Two extraction pipelines feed this table and both describe some of the same real
+   * tenant objects: `graph:v1.0:/policies/authenticationFlowsPolicy` (parsed from Graph
+   * `$metadata`) and `m365dsc:AADAuthenticationFlowPolicy` (parsed from Microsoft365DSC)
+   * are one policy, not two. Left unlinked, the second row could never show coverage no
+   * matter how correct a check was — the credit always went to the first — and the
+   * platform counted it as an independent uncovered resource that does not exist.
+   *
+   * The link is deliberately a LINK, not a merge: the duplicate keeps its own MOF
+   * property model, `readCmdlets` and DSC permission set, which
+   * `derive-ps-shapes-from-dsc.mjs` and `build-snapshot-registry.mjs` both read. Only
+   * coverage credit is unified, so the two pipelines never have to fight over shape.
+   */
+  canonicalResourceId: integer("canonical_resource_id")
+    .references((): AnyPgColumn => configResourcesTable.id, { onDelete: "set null" }),
+  /** How the canonical link was established: `same-graph-path` | `dsc-cmdlet-path-walk`. */
+  canonicalBasis: text("canonical_basis"),
+  /** The exact string the resolution matched on, so a coverage number traces to evidence. */
+  canonicalMatchedOn: text("canonical_matched_on"),
+  /**
+   * Why an `origin='m365dsc'` row that names a Microsoft Graph SDK read cmdlet — and so
+   * genuinely IS Graph-backed and ought to have resolved — did not get a canonical link.
+   * Labelling the miss rather than dropping it silently is what makes the residue
+   * reviewable; same discipline as `psCapabilitySurveyResults.derivationGapReason`.
+   */
+  canonicalGapReason: text("canonical_gap_reason"),
+  /**
+   * Coverage of this row's whole canonical GROUP — the canonical row plus every duplicate
+   * linked to it — stamped on every member.
+   *
+   * This is the number a coverage surface should read. It restores the property the
+   * duplication broke: zero here genuinely means uncovered, with no need to go hunting
+   * the table for a same-`graphPath` sibling first (#2821). Coverage RATIOS must still
+   * count canonical rows only, or a group is counted once per member.
+   */
+  effectiveCheckCoverageCount: integer("effective_check_coverage_count").notNull().default(0),
+
   /** Human-readable provenance, e.g. the DSC resource directory the row was read from. */
   sourceRef: text("source_ref"),
   notes: text("notes"),
@@ -486,6 +552,8 @@ export const configResourcesTable = pgTable("config_resources", {
   index("config_resources_m365dsc_idx").on(t.m365dscResource),
   index("config_resources_coverage_idx").on(t.checkCoverageCount),
   index("config_resources_service_key_idx").on(t.serviceKey),
+  index("config_resources_canonical_idx").on(t.canonicalResourceId),
+  index("config_resources_effective_coverage_idx").on(t.effectiveCheckCoverageCount),
 ]);
 
 export type ConfigResource = typeof configResourcesTable.$inferSelect;
@@ -636,8 +704,23 @@ export const configModelExtractionsTable = pgTable("config_model_extractions", {
   propertyCount: integer("property_count").notNull().default(0),
   checksMapped: integer("checks_mapped").notNull().default(0),
   checksUnmatched: integer("checks_unmatched").notNull().default(0),
+  /**
+   * RAW row counts — every `config_resources` row, duplicates included. Kept with their
+   * original meaning so runs recorded before #2821 stay comparable with runs after it.
+   * For the real, de-duplicated measurement read the `canonical*` fields below.
+   */
   resourcesCovered: integer("resources_covered").notNull().default(0),
   resourcesUncovered: integer("resources_uncovered").notNull().default(0),
+  /**
+   * The de-duplicated coverage measurement (#2821). `canonicalResources` counts rows that
+   * are their own canonical record; `duplicateResources` counts rows resolved onto
+   * another. `resourcesUncovered` minus `canonicalResourcesUncovered` is the size of the
+   * overstatement the duplication was causing.
+   */
+  canonicalResources: integer("canonical_resources").notNull().default(0),
+  duplicateResources: integer("duplicate_resources").notNull().default(0),
+  canonicalResourcesCovered: integer("canonical_resources_covered").notNull().default(0),
+  canonicalResourcesUncovered: integer("canonical_resources_uncovered").notNull().default(0),
   /** Granted app-only scopes the availability reconciliation was resolved against. */
   reconciledAgainstTenantId: integer("reconciled_against_tenant_id")
     .references(() => tenantsTable.id, { onDelete: "set null" }),

@@ -55,16 +55,51 @@ interface ConfigResource {
   missingPermissions: string[];
   verificationStatus: string;
   propertyCount: number;
+  /** Checks credited to THIS row. `effectiveCheckCoverageCount` is the real answer. */
   checkCoverageCount: number;
   /**
-   * covered | uncovered | no_executor | unavailable | operation — computed
-   * server-side from the row's transport (#1869), its own `availability`
-   * (#1917), and its container kind (#1929). `operation` marks a bound Graph
-   * Function — an operation, not config state, so coverage does not apply.
+   * #2821 — non-null when this row is not an independent resource: it describes the
+   * same real tenant object as another row (both extraction pipelines model it) and
+   * resolves onto that row for coverage.
    */
-  coverageState: "covered" | "uncovered" | "no_executor" | "unavailable" | "operation";
+  canonicalResourceId: number | null;
+  canonicalBasis: string | null;
+  canonicalMatchedOn: string | null;
+  /** Why a Graph-backed Microsoft365DSC row could NOT be resolved, when it could not. */
+  canonicalGapReason: string | null;
+  /**
+   * #2821 — coverage of this row's whole canonical group. A duplicate row's own
+   * `checkCoverageCount` is structurally 0 however correct a check is, because a check
+   * is credited to exactly one resource id; this is the count that answers "covered?".
+   */
+  effectiveCheckCoverageCount: number;
+  /**
+   * covered | uncovered | no_executor | unavailable | operation | duplicate —
+   * computed server-side from the row's transport (#1869), its own `availability`
+   * (#1917), its container kind (#1929), and its canonical link (#2821).
+   * `operation` marks a bound Graph Function — an operation, not config state, so
+   * coverage does not apply. `duplicate` marks a row that is another row's object.
+   */
+  coverageState: "covered" | "uncovered" | "no_executor" | "unavailable" | "operation" | "duplicate";
   sourceRef: string | null;
   notes: string | null;
+}
+
+/**
+ * #2821 — one end of a canonical link: either the real resource a duplicate row resolves
+ * onto, or one of the rows that resolve onto a canonical row.
+ */
+interface CanonicalRef {
+  id: number;
+  resourceKey: string;
+  displayName: string;
+  origin: string;
+  surface: string;
+  graphPath: string | null;
+  canonicalResourceId: number | null;
+  canonicalBasis: string | null;
+  canonicalMatchedOn: string | null;
+  checkCoverageCount: number;
 }
 
 interface ResourceProperty {
@@ -147,7 +182,16 @@ interface ModelSummary {
      */
     resourcesOperations: number;
     operationProperties: number;
-    /** `resources` minus `resourcesOperations` — the honest coverage denominator (#1929). */
+    /**
+     * #2821 — rows that are not independent resources: the same real tenant
+     * object as another row, seen through the second extraction pipeline.
+     * Excluded from every coverage bucket and from the denominator.
+     */
+    resourcesDuplicates: number;
+    /**
+     * `resources` minus `resourcesOperations` (#1929) minus
+     * `resourcesDuplicates` (#2821) — the honest coverage denominator.
+     */
     resourcesCoverageEligible: number;
     resourcesCoveredByAtLeastOneCheck: number;
     resourcesEntirelyUncovered: number;
@@ -233,6 +277,10 @@ export default function ConfigResourceModel() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<{
     properties: ResourceProperty[]; checks: MappedCheck[]; samples: ResourceSample[];
+    /** #2821 — the real resource this row resolves onto, when it is a duplicate. */
+    canonical: CanonicalRef | null;
+    /** #2821 — the rows that resolve onto THIS one, when it is the canonical record. */
+    duplicates: CanonicalRef[];
   } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
@@ -291,8 +339,15 @@ export default function ConfigResourceModel() {
       const res = await fetchWithAuth(`/api/admin/config-resources/${r.id}`);
       const data = await res.json() as {
         properties: ResourceProperty[]; checks: MappedCheck[]; samples: ResourceSample[];
+        canonical: CanonicalRef | null; duplicates: CanonicalRef[];
       };
-      setDetail({ properties: data.properties ?? [], checks: data.checks ?? [], samples: data.samples ?? [] });
+      setDetail({
+        properties: data.properties ?? [],
+        checks: data.checks ?? [],
+        samples: data.samples ?? [],
+        canonical: data.canonical ?? null,
+        duplicates: data.duplicates ?? [],
+      });
     } catch {
       toast({ title: "Error", description: "Failed to load the resource detail", variant: "destructive" });
     } finally {
@@ -310,7 +365,10 @@ export default function ConfigResourceModel() {
   // by any check — counting them in the denominator would permanently
   // understate coverage and blame check authors for a transport/scope gap.
   // Bound-Function rows are an operation, not config state, so "coverage"
-  // does not apply to them at all and they are excluded the same way.
+  // does not apply to them at all and they are excluded the same way. #2821
+  // excludes duplicate rows for the same reason from the other direction: a row
+  // that IS another row's object is not a second resource to cover, and counting
+  // it once per pipeline made the denominator — and the gap — larger than reality.
   const reachableResources = summary
     ? summary.totals.resourcesCoverageEligible
       - summary.totals.resourcesWithNoExecutor
@@ -345,7 +403,7 @@ export default function ConfigResourceModel() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-7" data-testid="config-model-totals">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-8" data-testid="config-model-totals">
             <StatTile label="Resources modelled" value={summary.totals.resources} />
             <StatTile label="Properties modelled" value={summary.totals.properties} />
             <StatTile
@@ -376,6 +434,11 @@ export default function ConfigResourceModel() {
               label="Operations (excluded)"
               value={summary.totals.resourcesOperations}
               sub="bound Graph Functions — an operation, not config state; kept as reachable read endpoints, excluded from coverage and property counts"
+            />
+            <StatTile
+              label="Duplicates (excluded)"
+              value={summary.totals.resourcesDuplicates}
+              sub="the same real tenant object as another row, seen through the second extraction pipeline and resolved onto it; not a second resource to cover"
             />
           </div>
 
@@ -456,7 +519,7 @@ export default function ConfigResourceModel() {
             <FilterSelect label="Surface" value={surface} onChange={setSurface} options={surfaces} testId="config-model-surface" />
             <FilterSelect label="Transport" value={transport} onChange={setTransport} options={transports} testId="config-model-transport" />
             <FilterSelect label="Availability" value={availability} onChange={setAvailability} options={availabilities} testId="config-model-availability" />
-            <FilterSelect label="Coverage" value={coverage} onChange={setCoverage} options={["covered", "uncovered", "no_executor", "unavailable", "operation"]} testId="config-model-coverage" />
+            <FilterSelect label="Coverage" value={coverage} onChange={setCoverage} options={["covered", "uncovered", "no_executor", "unavailable", "operation", "duplicate"]} testId="config-model-coverage" />
             <Button variant="outline" onClick={() => { void loadResources(); void loadSummary(); }}>Refresh</Button>
           </div>
 
@@ -494,21 +557,26 @@ export default function ConfigResourceModel() {
                       <Badge variant="outline" className={VERIFICATION_TONE[r.verificationStatus] ?? ""}>{r.verificationStatus}</Badge>
                       <Badge variant="outline">{r.readTransport}</Badge>
                       <Badge variant="outline">{r.surface}</Badge>
-                      {/* Five states, not two (#1869, #1917, #1929): "operation" is a
-                          bound Graph Function — not config state, coverage does not
-                          apply; "no executor" is a red transport gap no check author
-                          can close; "unavailable" is a permission-scope gap on an
-                          executor-backed transport; both distinct from the orange
+                      {/* Six states, not two (#1869, #1917, #1929, #2821): "operation"
+                          is a bound Graph Function — not config state, coverage does
+                          not apply; "duplicate" is this row being another row's object
+                          seen through the second extraction pipeline, so it has no
+                          coverage question of its own and shows its canonical group's
+                          count instead; "no executor" is a red transport gap no check
+                          author can close; "unavailable" is a permission-scope gap on
+                          an executor-backed transport; all distinct from the orange
                           "nobody has written this check yet". */}
                       {r.coverageState === "operation"
                         ? <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-200" title="Bound Graph Function — an operation, not persistent config state. Kept as a reachable read endpoint, excluded from coverage.">operation</Badge>
-                        : r.coverageState === "no_executor"
-                          ? <Badge variant="outline" className="bg-red-50 text-red-800 border-red-200" title={`No executor exists for the "${r.readTransport}" transport — this resource is unreachable by any code path.`}>no executor</Badge>
-                          : r.coverageState === "unavailable"
-                            ? <Badge variant="outline" className="bg-rose-50 text-rose-800 border-rose-200" title="An executor exists for this transport, but this resource's own scope sits above anything this platform's principal can ever be granted.">unavailable</Badge>
-                            : r.checkCoverageCount > 0
-                              ? <Badge variant="outline">{r.checkCoverageCount} check{r.checkCoverageCount === 1 ? "" : "s"}</Badge>
-                              : <Badge variant="outline" className="bg-orange-50 text-orange-800 border-orange-200">uncovered</Badge>}
+                        : r.coverageState === "duplicate"
+                          ? <Badge variant="outline" className="bg-violet-50 text-violet-800 border-violet-200" title={`Not a separate resource — the same real tenant object as another row, resolved onto it${r.canonicalMatchedOn ? ` (${r.canonicalBasis}: ${r.canonicalMatchedOn})` : ""}. Its coverage is that row's.`}>duplicate · {r.effectiveCheckCoverageCount} check{r.effectiveCheckCoverageCount === 1 ? "" : "s"}</Badge>
+                          : r.coverageState === "no_executor"
+                            ? <Badge variant="outline" className="bg-red-50 text-red-800 border-red-200" title={`No executor exists for the "${r.readTransport}" transport — this resource is unreachable by any code path.`}>no executor</Badge>
+                            : r.coverageState === "unavailable"
+                              ? <Badge variant="outline" className="bg-rose-50 text-rose-800 border-rose-200" title="An executor exists for this transport, but this resource's own scope sits above anything this platform's principal can ever be granted.">unavailable</Badge>
+                              : r.effectiveCheckCoverageCount > 0
+                                ? <Badge variant="outline">{r.effectiveCheckCoverageCount} check{r.effectiveCheckCoverageCount === 1 ? "" : "s"}</Badge>
+                                : <Badge variant="outline" className="bg-orange-50 text-orange-800 border-orange-200">uncovered</Badge>}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {r.workload} · {r.propertyCount} propert{r.propertyCount === 1 ? "y" : "ies"}
@@ -554,6 +622,42 @@ export default function ConfigResourceModel() {
                         </dl>
                       </div>
                     </div>
+
+                    {/*
+                      #2821 — the canonical-record resolution, stated on the row rather
+                      than left for someone to reconstruct by grepping the table for a
+                      same-`graphPath` sibling, which is exactly what #2761 had to do by
+                      hand for all twenty identity-surface rows. Either half is worth
+                      showing: what this row resolved onto, or — when it did not resolve
+                      — the real reason, so an unresolved Graph-backed row is reviewable
+                      instead of silently indistinguishable from an ordinary gap.
+                    */}
+                    {(r.canonicalResourceId || r.canonicalGapReason || (detail?.duplicates?.length ?? 0) > 0) && (
+                      <div className="mt-4" data-testid={`config-resource-canonical-${r.id}`}>
+                        <h3 className="font-medium">Canonical record</h3>
+                        <dl className="mt-2 space-y-1 text-xs">
+                          {r.canonicalResourceId ? (
+                            <>
+                              <Row k="Resolves onto" v={detail?.canonical?.resourceKey ?? `config_resources #${r.canonicalResourceId}`} />
+                              {r.canonicalBasis && <Row k="Basis" v={r.canonicalBasis} />}
+                              {r.canonicalMatchedOn && <Row k="Matched on" v={r.canonicalMatchedOn} />}
+                              <Row
+                                k="Group coverage"
+                                v={`${r.effectiveCheckCoverageCount} check${r.effectiveCheckCoverageCount === 1 ? "" : "s"} read this object (credited to the canonical row, not this one)`}
+                              />
+                            </>
+                          ) : (
+                            <Row k="Not resolved" v={r.canonicalGapReason ?? ""} />
+                          )}
+                          {(detail?.duplicates?.length ?? 0) > 0 && (
+                            <Row
+                              k="Duplicates of this"
+                              v={detail!.duplicates.map((d) => d.resourceKey).join(", ")}
+                            />
+                          )}
+                        </dl>
+                      </div>
+                    )}
 
                     {detailLoading && <p className="mt-4 text-xs text-muted-foreground">Loading detail…</p>}
 
