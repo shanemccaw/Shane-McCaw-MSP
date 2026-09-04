@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import { randomUUID } from "crypto";
 import router from "./routes";
+import { subscriptionGate } from "./middlewares/subscriptionGate";
 import { logger } from "./lib/logger";
 import { ConsentRevokedError } from "./lib/graph";
 import { apiError, ApiErrorCode } from "./lib/api-helpers";
@@ -110,7 +111,20 @@ app.use("/api/msp/stripe/webhook", express.raw({ type: "application/json" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use("/api", router);
+// ── The subscription gate — ONE check point, ahead of ALL routing (#2765, #1944 part 8)
+//
+// Mounted here rather than inside the router, and ahead of it rather than beside it, so
+// that every existing and every future route is covered by sitting behind it — with no
+// route knowing it exists. It runs before `requireAuth`, and therefore before any
+// `requireRole`/`can()` evaluation: a customer whose subscription has lapsed never
+// reaches permission evaluation at all, they reach the "Come back! Download your data"
+// wall, with export the one path that stays open.
+//
+// *"A gate in front of routing cannot be bypassed by a route that forgot to check —
+// there is nothing to forget."* Do not move this into the router, and do not add
+// per-route awareness of it; the allowlist inside it is the only place that decides what
+// stays reachable.
+app.use("/api", subscriptionGate, router);
 
 // ── Global error handler ───────────────────────────────────────────────────────
 // ConsentRevokedError bubbles up from graphFetchForTenant when a live Graph call

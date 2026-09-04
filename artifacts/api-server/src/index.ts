@@ -361,6 +361,53 @@ app.listen(port, (err) => {
     logger.warn({ err }, "session-tracking: failed to load prune module (non-fatal)");
   });
 
+  // ── Retention: subscription reconciliation + the two clock sweeps (#2765) ──
+  //
+  // Three jobs from one module import, in a deliberate order, for EPIC #1944 parts 1-8.
+  //
+  //   1. SUBSCRIPTION RECONCILIATION — freezes every per-record clock for a customer
+  //      whose subscription has lapsed, and resumes them from exactly the remainder they
+  //      froze with when one returns. This is load-bearing rather than a safety net: the
+  //      gate reconciles opportunistically on live requests, but a cancelled customer
+  //      stops making requests, so without this the one customer whose clocks most need
+  //      freezing is the one whose clocks never would.
+  //
+  //   2. THE PER-RECORD SWEEP — advances soft → semi-hard → purged for deletions whose
+  //      stage has run out (#1947's `advanceDueDeletions`, unwired until now). It runs
+  //      AFTER the reconciliation on purpose: freezing first means a lapsed customer's
+  //      records are already out of the sweep's partial index by the time it looks, so a
+  //      cancellation can never race a purge.
+  //
+  //   3. THE POST-TERMINATION PURGE — the 7-year whole-dataset clock (part 7). Refuses
+  //      to mark a tenant purged if no module has registered a purger, rather than
+  //      recording an irreversible claim that is false.
+  //
+  // Hourly, not daily. The clocks are measured in days and years so the cadence is not
+  // about precision — it is that a 24-hour interval in a process that restarts often can
+  // go a long time without ever firing, and the two sweeps here are the ones whose
+  // never-firing is invisible until a record outlives its window.
+  import("./lib/retention").then(
+    ({ runRetentionSubscriptionSync, advanceDueDeletions, runPostTerminationPurgeSweep }) => {
+      const runRetentionCycle = async (): Promise<void> => {
+        await runRetentionSubscriptionSync();
+        await advanceDueDeletions();
+        await runPostTerminationPurgeSweep();
+      };
+      setTimeout(() => {
+        runRetentionCycle().catch((err: unknown) => {
+          logger.warn({ err }, "retention: initial sweep failed (non-fatal)");
+        });
+      }, 30_000);
+      setInterval(() => {
+        runRetentionCycle().catch((err: unknown) => {
+          logger.warn({ err }, "retention: scheduled sweep failed (non-fatal)");
+        });
+      }, 60 * 60 * 1000);
+    },
+  ).catch((err: unknown) => {
+    logger.warn({ err }, "retention: failed to load sweep module (non-fatal)");
+  });
+
   // ── Pending approvals table ───────────────────────────────────────────────
   pool.query(`
     CREATE TABLE IF NOT EXISTS pending_approvals (

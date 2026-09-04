@@ -36,8 +36,20 @@ vi.mock("@workspace/db", () => {
     mspSalesBundlesTable: { id: "id", bundleId: "bundle_id", mspId: "msp_id", name: "name", status: "status", createdAt: "created_at" },
     usersTable: { id: "id", mspId: "msp_id", tenantId: "tenant_id" },
     mspSalesBundleAssignmentsTable: { id: "id", customerId: "customer_id", status: "status", revokedAt: "revoked_at" },
+    // #2765 — msp-portal.ts's two `tenants.status` write sites now call
+    // `syncTenantsAfterStatusWrite()`, which pulls the retention module into this file's
+    // import graph. That module reads this real platform constant at load time, so a mock
+    // omitting it fails every test in the file at import rather than at assertion.
+    RETENTION_CLOCK_RUNNING_TENANT_STATUSES: ["active", "onboarding"],
   };
 });
+
+// #2765 — the retention reconciliation itself is exercised by
+// `src/lib/retention/subscription-gate.test.ts` and against the live database; here it is
+// stubbed so a route assertion is testing the route, not the freeze/resume clock.
+vi.mock("../lib/retention/subscription-state.ts", () => ({
+  syncTenantsAfterStatusWrite: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("../lib/ai-billing.ts", () => ({
   getAiBalance: vi.fn().mockResolvedValue({

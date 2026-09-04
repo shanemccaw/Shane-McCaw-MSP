@@ -245,3 +245,30 @@ export function stageDurations(
 export function stageSeconds(stage: RetentionStage, durations: RetentionStageDurations): number {
   return stage === "soft" ? durations.softSeconds : durations.semiHardSeconds;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The post-termination clock (#2765, #1944 part 7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * When a terminated customer's whole dataset purges: `lapsedAt` plus `years`.
+ *
+ * A DIFFERENT clock from everything above, and the distinction matters. The 90/30 clock
+ * is per-record and is FROZEN for this entire window; this one is per-customer, starts at
+ * `tenants.subscription_lapsed_at`, and is the only thing still counting after a customer
+ * leaves.
+ *
+ * Calendar arithmetic, not `years × 365 × SECONDS_PER_DAY`. Over a seven-year window that
+ * multiplication drops one day per leap year — landing up to two days early on an
+ * irreversible purge, which is two days of a customer's data destroyed before their
+ * window ended. Same discipline as the rest of this module: never approximate in the
+ * direction that loses data.
+ *
+ * Lives here, with the rest of the pure arithmetic, so it is reachable without opening a
+ * database connection.
+ */
+export function postTerminationDueAt(lapsedAt: Date, years: number): Date {
+  const due = new Date(lapsedAt.getTime());
+  due.setUTCFullYear(due.getUTCFullYear() + years);
+  return due;
+}

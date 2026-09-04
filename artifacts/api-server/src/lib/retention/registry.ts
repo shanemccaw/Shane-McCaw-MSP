@@ -125,3 +125,74 @@ export function listRetainedRecordTypes(): RetainedRecordType[] {
 export function __resetRetainedRecordTypesForTest(): void {
   types.clear();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE TENANT-DATA PURGER REGISTRY (#2765, #1944 part 7)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The registry above is per-RECORD: how one row of one class is marked deleted, unmarked
+// on restore, and destroyed at its own T-0. This one is per-TENANT: how a module destroys
+// EVERYTHING it holds for a customer, once, when the 7-year post-termination window
+// expires and the whole dataset goes.
+//
+// Two registries rather than one method on the first, because the two do not have the
+// same membership. A class can be purgeable-with-the-tenant without ever participating in
+// the soft-delete lifecycle (scan results, snapshots, telemetry — nobody soft-deletes an
+// individual scan sample, but all of it goes when the customer's window ends), and a
+// module that registers one should register the other where both apply.
+//
+// WHY A REGISTRY AND NOT A LIST OF TABLES. A hardcoded roster of every tenant-scoped table
+// is precisely the shape #1944 was filed to end, and this codebase already has the
+// evidence: the dev-only customer hard-delete in `admin-active-directory.ts` carries a
+// hand-maintained list of ~30 auxiliary tables, several of which its own comments record
+// as possibly not existing in a given database because their migrations predate a
+// refactor. A list like that silently rots, and a purge that silently misses a table is a
+// purge that did not happen. A module declaring its own purge puts that declaration where
+// the person adding a table is already looking.
+//
+// **SHIPS EMPTY**, exactly as the record-type registry does. The sweep treats an empty
+// registry as a REFUSAL rather than a completed no-op — see `purgeTerminatedTenant()`.
+
+export interface TenantDataPurger {
+  /** Registry key — conventionally the owning module, e.g. `"risk-register"`. */
+  key: string;
+  /** How this data class reads to a human, for the audit account of the purge. */
+  displayName: string;
+  /**
+   * Destroy every row this module holds for `tenantId`, inside the given transaction.
+   * Returns the number of rows destroyed, which is recorded in the audit account — a
+   * purge that reports what it actually removed is auditable; one that reports "done" is
+   * not.
+   *
+   * Throwing aborts the whole purge and leaves the tenant due for the next sweep. That is
+   * the correct failure mode: a partial purge that got marked complete is unrecoverable,
+   * whereas a retried one is merely slower.
+   */
+  purge: (tx: RetentionTx, tenantId: number) => Promise<number>;
+}
+
+const tenantPurgers = new Map<string, TenantDataPurger>();
+
+/**
+ * Register a module's whole-tenant purge. Throws on a duplicate for the same reason
+ * `registerRetainedRecordType` does: two registrations for one key would decide by import
+ * order which one actually runs at the end of a customer's retention window.
+ */
+export function registerTenantDataPurger(purger: TenantDataPurger): void {
+  if (tenantPurgers.has(purger.key)) {
+    throw new Error(
+      `registerTenantDataPurger: "${purger.key}" is already registered. Two purgers for one key ` +
+        "would decide by import order which one actually runs at the end of the retention window.",
+    );
+  }
+  tenantPurgers.set(purger.key, purger);
+}
+
+export function listTenantDataPurgers(): TenantDataPurger[] {
+  return [...tenantPurgers.values()];
+}
+
+/** Test-only. Never call this from application code. */
+export function __resetTenantDataPurgersForTest(): void {
+  tenantPurgers.clear();
+}
