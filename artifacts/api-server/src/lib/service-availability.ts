@@ -129,7 +129,7 @@ export function serviceKeyForGraphPath(graphPath: string | null | undefined): Te
 // ── Wire signatures ──────────────────────────────────────────────────────────
 
 /**
- * The three documented wire signatures a never-stood-up Intune backend produces.
+ * The four documented wire signatures a never-stood-up Intune backend produces.
  * Each is a real, reproduced observation, not a guess:
  *
  *   intune-legacy-devicefe-401
@@ -147,11 +147,33 @@ export function serviceKeyForGraphPath(graphPath: string | null | undefined): Te
  *     503 returning a raw IIS "Service Unavailable" HTML page, not a Graph JSON
  *     error at all. Reproduced twice minutes apart on 2026-08-30, including from the
  *     bare `/deviceManagement` root, so it is not a one-off blip.
+ *
+ *   intune-forbidden-envelope-401
+ *     401 wearing the SAME `"_version": 3` + `"ErrorCode":"Forbidden"` Intune
+ *     envelope as `intune-legacy-devicefe-401`, but proxied through a DIFFERENT
+ *     Intune backend service than `DeviceFE/StatelessDeviceFEService` — reproduced
+ *     live on the testbed (snapshot `30433ced-b0e5-4161-8270-97bf360ff931`, row 8,
+ *     2026-08-30) across at least `AndroidSync/StatelessAndroidSyncFEService`,
+ *     `DeviceEnrollmentFE/StatelessDeviceEnrollmentFEService`,
+ *     `StatelessCompanyTermFEService`, `StatelessCustomerDataFEService`,
+ *     `StatelessNotificationFEService`, `StatelessRoleAdministrationFEService` and
+ *     `WIPReportServices/StatelessWIPReportFEService` — every one of Intune's own
+ *     backend proxies failing the same way, not one proxy's private quirk. Git
+ *     #1963: 66 `/deviceManagement*` resources on this tenant reported
+ *     `permission_denied` instead of the licence gap #1847 already proved, because
+ *     the original matcher required the `DeviceFE` proxy name specifically.
+ *     Gated on the envelope alone, not a proxy name — deliberately broader than the
+ *     other three — because a genuine Graph permission denial does not wear this
+ *     wrapper (contrast the clean `403 authorization_error` shape a real denial
+ *     returns). `resolveIntuneServiceState` still requires the tenant's own
+ *     `/subscribedSkus` entitlement to actually resolve this to `not_licensed`; the
+ *     signature only proves Intune is not answering, same as the other three.
  */
 export const INTUNE_WIRE_SIGNATURES = [
   "intune-legacy-devicefe-401",
   "intune-segment-unresolved-400",
   "intune-backend-iis-503",
+  "intune-forbidden-envelope-401",
 ] as const;
 export type IntuneWireSignature = typeof INTUNE_WIRE_SIGNATURES[number];
 
@@ -179,8 +201,20 @@ export function matchIntuneWireSignature(
   if (status === 503 && body.includes("<!DOCTYPE HTML") && body.includes("Service Unavailable")) {
     return "intune-backend-iis-503";
   }
+  if (status === 401 && INTUNE_FORBIDDEN_ENVELOPE_RE.test(body) && body.includes("_version")) {
+    return "intune-forbidden-envelope-401";
+  }
   return null;
 }
+
+/**
+ * Matches `"ErrorCode":"Forbidden"` regardless of how many backslash-escape levels
+ * deep it sits. Real evidence (Git #1963) shows this envelope arriving at different
+ * escape depths depending on which Intune backend proxy wraps it — one backslash for
+ * the `AndroidSync` proxy, three for others carrying the same `_version: 3` body — so
+ * a fixed-count literal match would itself reproduce this issue's failure mode.
+ */
+const INTUNE_FORBIDDEN_ENVELOPE_RE = /\\*"ErrorCode\\*"\s*:\s*\\*"Forbidden\\*"/;
 
 // ── Service-plan entitlement ─────────────────────────────────────────────────
 

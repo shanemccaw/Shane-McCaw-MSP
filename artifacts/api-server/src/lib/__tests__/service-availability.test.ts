@@ -43,6 +43,12 @@ const AUTOPILOT_400 =
   '{"error":{"code":"BadRequest","message":"Resource not found for the segment \'windowsAutopilotDeploymentProfiles\'."}}';
 const IIS_503 =
   '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">\r\n<HTML><HEAD><TITLE>Service Unavailable</TITLE></HEAD></HTML>';
+// Real body from Git #1963's live evidence (snapshot 30433ced-b0e5-4161-8270-97bf360ff931,
+// row 8, resource graph:beta:/deviceManagement/androidManagedStoreAccountEnterpriseSettings) —
+// same "_version": 3 + Forbidden envelope as DEVICE_FE_401, but proxied through
+// AndroidSync/StatelessAndroidSyncFEService instead of DeviceFE/StatelessDeviceFEService.
+const FORBIDDEN_ENVELOPE_401 =
+  '{"error":{"code":"UnknownError","message":"{\\"ErrorCode\\":\\"Forbidden\\",\\"Message\\":\\"{\\r\\n  \\"_version\\": 3,\\r\\n  \\"Message\\": \\"An error has occurred - Operation ID (for customer support): 00000000-0000-0000-0000-000000000000 - Activity ID: 55e53ed1-be1f-48e9-9282-39d88e6fcb54 - Url: https://proxy.msua01.manage.microsoft.com/AndroidSync/StatelessAndroidSyncFEService/deviceManagement/androidManagedStoreAccountEnterpriseSettings?api-version=5026-05-21';
 
 function entitlement(partial: Partial<IntuneEntitlement>): IntuneEntitlement {
   return {
@@ -73,13 +79,22 @@ describe("serviceKeyForGraphPath", () => {
 });
 
 describe("matchIntuneWireSignature", () => {
-  it("recognises the three documented signatures on Intune paths", () => {
+  it("recognises the four documented signatures on Intune paths", () => {
     expect(matchIntuneWireSignature("/deviceManagement/managedDevices", 401, DEVICE_FE_401))
       .toBe("intune-legacy-devicefe-401");
     expect(matchIntuneWireSignature("/deviceManagement/windowsAutopilotDeploymentProfiles", 400, AUTOPILOT_400))
       .toBe("intune-segment-unresolved-400");
     expect(matchIntuneWireSignature("/deviceAppManagement/managedAppPolicies", 503, IIS_503))
       .toBe("intune-backend-iis-503");
+    // Git #1963: same envelope as DEVICE_FE_401, different Intune backend proxy —
+    // was falling through unmatched to permission_denied.
+    expect(
+      matchIntuneWireSignature(
+        "/deviceManagement/androidManagedStoreAccountEnterpriseSettings",
+        401,
+        FORBIDDEN_ENVELOPE_401,
+      ),
+    ).toBe("intune-forbidden-envelope-401");
   });
 
   it("is gated on the path, so a genuine outage elsewhere is never relabelled as no-MDM", () => {
