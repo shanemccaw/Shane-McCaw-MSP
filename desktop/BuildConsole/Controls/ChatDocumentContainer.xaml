@@ -283,9 +283,10 @@
                                        MouseLeftButtonDown="RailClose_Click"/>
                             <TextBlock DockPanel.Dock="Right" x:Name="RailMaximize" Text="&#xE740;" Cursor="Hand"
                                        Margin="0,0,12,0" Visibility="Collapsed"
-                                       ToolTip="Open the full tool (ships as its own Feature)"
+                                       ToolTip="Open the full Log Viewer"
                                        FontFamily="Segoe MDL2 Assets" FontSize="12"
-                                       Foreground="{StaticResource Warm.TextDim}"/>
+                                       Foreground="{StaticResource Warm.TextDim}"
+                                       MouseLeftButtonDown="RailMaximize_Click"/>
                             <TextBlock DockPanel.Dock="Right" x:Name="RailRefresh" Text="&#xE72C;" Cursor="Hand"
                                        Margin="0,0,12,0" Visibility="Collapsed"
                                        ToolTip="Refresh detections"

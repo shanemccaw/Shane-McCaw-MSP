@@ -68,6 +68,11 @@ namespace BuildConsole.Controls
         /// so a live shell session (a running `npm install`, a long `git` op) survives rail
         /// open/close instead of restarting on every reopen.</summary>
         private TerminalView? _terminalView;
+        /// <summary>Git #2787 — the real Log Peek tool's persistent instance for THIS chat tab,
+        /// same per-tab-cache precedent as <see cref="_terminalView"/> above (Git #2769): created
+        /// lazily on first "logs" OpenTool and reused after, so a running LIVE/BURST tail and
+        /// whatever's checked for send survive rail close/reopen instead of resetting.</summary>
+        private LogPeekView? _logPeekView;
         /// <summary>Git #2682 — the last fetched dock snapshot, kept so a Dismiss click can
         /// re-render instantly against the same data (filtered by <see cref="_dismissed"/>)
         /// instead of forcing a fresh GitHub round-trip.</summary>
@@ -417,18 +422,30 @@ namespace BuildConsole.Controls
             RailGlyph.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(colour));
             RailTitle.Text = label;
             RailRefresh.Visibility = Visibility.Collapsed;
-            RailMaximize.Visibility = Visibility.Visible;
+            // Git #2787 — Maximize only does something real for "logs" today (opens the full Log
+            // Viewer tab, MainWindow.OpenLogViewerTab). Showing it for every other still-stub tool
+            // would be a dead icon with zero wired behavior — collapse it there rather than leave a
+            // second honest-empty affordance next to ToolStubBody's own.
+            RailMaximize.Visibility = id == "logs" ? Visibility.Visible : Visibility.Collapsed;
             DetectedScroller.Visibility = Visibility.Collapsed;
 
-            // Git #2769 — Terminal is the first real tool internal; every other id still gets the
-            // honest ToolStubBody. _terminalView is created once per chat tab and reused on every
-            // later open, so the shell (cwd, running command, output history) persists across
-            // rail close/reopen instead of a fresh terminal each time.
+            // Git #2769/#2787 — Terminal and Log Peek are the real tool internals so far; every
+            // other id still gets the honest ToolStubBody. Each real tool's instance is created
+            // once per chat tab and reused on every later open (_terminalView / _logPeekView), so
+            // real in-progress state (a running shell command, a LIVE tail, checked log lines)
+            // persists across rail close/reopen instead of resetting each time.
             if (id == "terminal")
             {
                 ToolStubBody.Visibility = Visibility.Collapsed;
                 _terminalView ??= new TerminalView();
                 ToolHost.Content = _terminalView;
+                ToolHost.Visibility = Visibility.Visible;
+            }
+            else if (id == "logs")
+            {
+                ToolStubBody.Visibility = Visibility.Collapsed;
+                _logPeekView ??= new LogPeekView();
+                ToolHost.Content = _logPeekView;
                 ToolHost.Visibility = Visibility.Visible;
             }
             else
@@ -529,6 +546,17 @@ namespace BuildConsole.Controls
             UpdateDetectedGlyph();
             UpdateSendToChatAffordance();
             if (!_detectedLoadedOnce) { _detectedLoadedOnce = true; await RefreshDetectedAsync(); }
+        }
+
+        /// <summary>Git #2787 — the real bridge back to the full Log Viewer tab
+        /// (MainWindow.OpenLogViewerTab, #2786), the same real destination ShaneBuilder's own
+        /// LogPeekMaximize_Click opened. Only wired for "logs" today — see the Visibility gate in
+        /// OpenTool above.</summary>
+        private void RailMaximize_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (_chatToolOpen != "logs") return;
+            CloseRail();
+            _owner.OpenLogViewerTab();
         }
 
         private void RailClose_Click(object sender, MouseButtonEventArgs e) => CloseRail();

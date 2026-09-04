@@ -1,0 +1,72 @@
+<UserControl x:Class="BuildConsole.Controls.LogPeekView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        Log Peek — the chat document's tool-rail flyout (Git #2787, sub-issue of
+        #2784, Feature: Log Viewer). Port of ShaneBuilder's LogPeekPanel
+        (MainWindow.xaml:1284-1340, code-behind MainWindow.xaml.cs:8425-8520),
+        built on #2785's real LogService/LogSource/LogLine contract and
+        #2783's generic rail-header IChatSendableTool "Send to Chat" contract.
+
+        ShaneBuilder's LogPeekPanel shared live state directly with the full
+        LogViewerDock — one MainWindow.xaml.cs field block, "two surfaces, one
+        state" — because both lived in the same window. BuildConsole has no
+        such single-window state to share; LogViewerDocumentView.xaml.cs's own
+        header comment (#2786) already named this a structural difference, not
+        a missed requirement: each surface here is its own real UserControl
+        instance reading the SAME real LogService contract (#2785), not a
+        second copy of it. The rail header's Maximize icon
+        (ChatDocumentContainer.RailMaximize, wired for the "logs" tool id) is
+        the real bridge between the two surfaces — it opens the full Log
+        Viewer tab (MainWindow.OpenLogViewerTab) exactly where ShaneBuilder's
+        own LogPeekMaximize_Click did.
+
+        No own header here — ChatDocumentContainer.xaml's rail header already
+        owns title/close/refresh/send-to-chat/maximize chrome for every tool it
+        hosts (README §6). This control is body-only.
+
+        Resource keys are BuildConsole's real Catppuccin palette
+        (Themes/DarkTheme.xaml), the same convention LogViewerDocumentView.xaml
+        already uses — not ShaneBuilder's "Brush.*"/"FontFamily.*" keys, which
+        don't exist here.
+    -->
+    <Grid Background="{StaticResource CrustBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- source chips -->
+            <RowDefinition Height="Auto"/>  <!-- stream switch + status pill -->
+            <RowDefinition Height="Auto"/>  <!-- search box -->
+            <RowDefinition Height="*"/>     <!-- lines -->
+            <RowDefinition Height="Auto"/>  <!-- selection status -->
+        </Grid.RowDefinitions>
+
+        <WrapPanel x:Name="LogPeekSourceChips" Grid.Row="0" Orientation="Horizontal" Margin="10,10,10,0"/>
+
+        <DockPanel Grid.Row="1" Margin="10,8,10,0" LastChildFill="False">
+            <StackPanel x:Name="LogPeekStreamSwitch" DockPanel.Dock="Left" Orientation="Horizontal"/>
+            <TextBlock x:Name="LogPeekStatusPill" DockPanel.Dock="Right" VerticalAlignment="Center"
+                       Padding="6,2" FontSize="9" FontWeight="ExtraBold"
+                       Foreground="{StaticResource Subtext0Brush}"/>
+        </DockPanel>
+
+        <Grid Grid.Row="2" Margin="10,8,10,8">
+            <TextBox x:Name="LogPeekSearchBox" Height="26"
+                     FontFamily="Cascadia Code, Consolas, Courier New" FontSize="10.5"
+                     TextChanged="LogPeekSearchBox_TextChanged"/>
+            <TextBlock x:Name="LogPeekSearchPlaceholder" Text="Search…" Margin="9,0,0,0"
+                       VerticalAlignment="Center" IsHitTestVisible="False"
+                       FontFamily="Cascadia Code, Consolas, Courier New" FontSize="10.5"
+                       Foreground="{StaticResource Subtext0Brush}"/>
+        </Grid>
+
+        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="LogPeekLinesPanel" Margin="8,0,8,8"/>
+        </ScrollViewer>
+
+        <Border Grid.Row="4" Padding="10,7" BorderThickness="0,1,0,0"
+                Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}">
+            <TextBlock x:Name="LogPeekSelectionStatus" Text="Check lines below to send them to chat."
+                       FontSize="10" TextWrapping="Wrap"
+                       Foreground="{StaticResource Subtext0Brush}"/>
+        </Border>
+    </Grid>
+</UserControl>
