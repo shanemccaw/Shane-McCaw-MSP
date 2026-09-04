@@ -45,8 +45,19 @@ vi.mock("../lib/ai-billing.ts", () => ({
   getAiBalance: vi.fn().mockResolvedValue({ alertThreshold: 80, periodUsagePct: 10, balanceCents: 5000, periodKey: "2026-07" }),
 }));
 
+// Route code takes its own child logger off the shared `logger` singleton, so the mock
+// must support `.child()` returning another logger-shaped object, not just info/warn/error.
+function makeLoggerMock(): { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn>; child: ReturnType<typeof vi.fn> } {
+  return {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    child: vi.fn(() => makeLoggerMock()),
+  };
+}
+
 vi.mock("../lib/logger.ts", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: makeLoggerMock(),
 }));
 
 vi.mock("../lib/resolve-msp-id.ts", () => ({
