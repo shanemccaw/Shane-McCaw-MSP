@@ -3201,8 +3201,8 @@ export type SalesOfferRuleType = typeof SALES_OFFER_RULE_TYPES[number];
 /** One generated offer — scoped to a tenant/MSP pair, backed by a catalog product. */
 export const salesOffersTable = pgTable("sales_offers", {
   id: serial("id").primaryKey(),
-  /** The MSP customer (user) this offer is addressed to. Despite the historical column name, this is NOT the M365 tenant GUID — it's a numeric FK to usersTable.id. */
-  customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
+  /** The MSP customer (tenant) this offer is addressed to — a numeric FK to tenantsTable.id, NOT the M365 tenant GUID and NOT a specific users.id login row. (Git #2730 — this FK previously targeted usersTable.id, which contradicted every real writer/reader of the column; repointed to match how it's actually written and read.) */
+  customerId: integer("customer_id").references(() => tenantsTable.id, { onDelete: "set null" }),
   /** FK to servicesTable — the product this offer is for. Pricing reads from there. */
   serviceId: integer("service_id").references(() => servicesTable.id, { onDelete: "set null" }),
   /** Which MSP generated this offer (null = platform admin). */

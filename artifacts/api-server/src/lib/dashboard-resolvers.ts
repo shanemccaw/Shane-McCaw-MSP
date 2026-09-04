@@ -1348,7 +1348,7 @@ async function platformRemediationOffers(def: MetricDef, ctx: ResolveContext): P
   // Remediation offers are the customer's sales_offers whose product is a
   // micro-remediation service. The offer type lives on the joined service's
   // `category` column ('micro_remediation'), NOT a phantom msp_sales_offers table.
-  // sales_offers.customerId is user-keyed; scope by ctx.customerId directly.
+  // sales_offers.customerId is a tenants.id (#2730); scope by ctx.customerId directly.
   if (ctx.customerId == null) return notAvailable(def, "missing_customer_scope", "requires customer context");
   const rows = await db
     .select({

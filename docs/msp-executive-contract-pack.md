@@ -203,6 +203,12 @@ adjusted is zero/unset.
 
 ## 4. CONFIRMED BUG — the opportunity bridge resolves the wrong table (filed as #2722)
 
+**Fixed by #2730** — `gatherExecutiveBook()` now filters `salesOffersTable.customerId` directly
+against `bookCustomerIds` (already tenant-scoped), same as `dashboard-resolvers.ts` and
+`project-sow-fulfillment.ts` always did; the `users.id` bridge described below is gone. Left in
+place as the historical record of the bug — see also #2730 (`sales_offers.customer_id`'s FK itself
+also targeted `users.id`, the same wrong premise this bridge acted on).
+
 **`gatherExecutiveBook()`'s own comment is wrong, and the code it justifies silently zeroes the
 opportunity side of every real book.**
 

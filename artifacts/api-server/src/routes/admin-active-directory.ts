@@ -80,7 +80,6 @@ import {
   scriptRunResultsTable,
   scriptDownloadTokensTable,
   insightsAutomationsTable,
-  salesOffersTable,
   salesOfferEventsTable,
   // ── Customer hard-delete (Issue #<pending>) — tenant-only tables with a
   // loose customerId/tenantId column pointing at `tenants.id`/`tenants.tenantId`
@@ -2214,7 +2213,10 @@ async function hardDeleteUserWithinTx(
         { name: "script_download_tokens.customer_id", table: scriptDownloadTokensTable, where: eq(scriptDownloadTokensTable.customerId, userId) },
         { name: "script_download_tokens.client_user_id", table: scriptDownloadTokensTable, where: eq(scriptDownloadTokensTable.clientUserId, userId) },
         { name: "insights_automations.customer_id", table: insightsAutomationsTable, where: eq(insightsAutomationsTable.customerId, userId) },
-        { name: "sales_offers.customer_id", table: salesOffersTable, where: eq(salesOffersTable.customerId, userId) },
+        // sales_offers.customer_id is a tenants.id, not a users.id (#2730) — a
+        // single user's hard delete never nulls it (deleting the whole tenant
+        // does, via /admin/active-directory/customer/:id's own cascade). Not
+        // listed here; a `userId` value would filter the wrong id space.
         { name: "sales_offer_events.actor_user_id", table: salesOfferEventsTable, where: eq(salesOfferEventsTable.actorUserId, userId) },
         { name: "user_entitlement_overrides.granted_by_user_id", table: userEntitlementOverridesTable, where: eq(userEntitlementOverridesTable.grantedByUserId, userId) },
         { name: "msp_staff_customer_scopes.created_by_user_id", table: mspStaffCustomerScopesTable, where: eq(mspStaffCustomerScopesTable.createdByUserId, userId) },

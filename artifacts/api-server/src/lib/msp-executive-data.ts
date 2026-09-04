@@ -16,9 +16,10 @@
  *   - Opportunity ranking: the real Sales Offer Engine output (sales_offers) —
  *     open (draft/sent) offers, summed by their customer-facing adjusted price.
  *     We do NOT invent a new opportunity score. sales_offers.customerId is a
- *     users.id, so it's resolved back to a tenants.id through the user's own
- *     `users.tenantId` FK (the same link omg-card-extractor.ts uses for billing
- *     attribution).
+ *     tenants.id (Git #2730 — the column's FK previously targeted users.id,
+ *     which contradicted every real writer/reader of it; it's now aligned to
+ *     how it's actually written), so it filters directly against the book's
+ *     own tenant ids, no user-bridge indirection needed.
  *
  * Scoping: gatherExecutiveBook takes a pre-resolved scopedIds (from
  * resolveStaffScopedCustomerIds) and folds it into every query at the DB level,
@@ -29,7 +30,6 @@
 import {
   db,
   tenantsTable,
-  usersTable,
   salesOffersTable,
   tenantEngineSnapshotsTable,
 } from "@workspace/db";
@@ -162,28 +162,10 @@ export async function gatherExecutiveBook(
   risks.sort((a, b) => b.healthScore - a.healthScore);
   const topRisks = risks.slice(0, topN);
 
-  // ── Opportunity: open sales offers, resolved users.id → tenants.id ────────────
-  // Restricted to the already-scoped book rather than to `users.mspId`: since the
-  // Tenant/User Refactor (#92) a tenant-scoped user (CustomerUser/Free/
-  // Assessment) is required to carry `tenantId` but is NOT required to carry
-  // `mspId` — the users_role_scope_check constraint only demands one or the
-  // other — so filtering these rows on `mspId` the way the old msp_users query
-  // did would silently drop every customer login and zero out the whole
-  // opportunity side of the book. `bookCustomerIds` is already MSP- and
-  // staff-scoped, so scoping on it is both correct and no wider.
-  const bridgeRows = await db
-    .select({ userId: usersTable.id, customerId: usersTable.tenantId })
-    .from(usersTable)
-    .where(inArray(usersTable.tenantId, bookCustomerIds));
-
-  const userIdToCustomerId = new Map<number, number>();
-  for (const b of bridgeRows) {
-    if (b.customerId !== null && nameById.has(b.customerId)) {
-      userIdToCustomerId.set(b.userId, b.customerId);
-    }
-  }
-  const offerUserIds = [...userIdToCustomerId.keys()];
-
+  // ── Opportunity: open sales offers, filtered directly by tenant id ─────────
+  // sales_offers.customerId is a tenants.id (#2730), so `bookCustomerIds` —
+  // already MSP- and staff-scoped — filters it directly. No user-bridge
+  // indirection needed.
   const opportunityByCustomer = new Map<number, OpportunityTenant>();
   // Parallel tracking of the value of each tenant's most-valuable single offer,
   // so topOfferTitle reflects the biggest open offer rather than the last-seen.
@@ -191,10 +173,10 @@ export async function gatherExecutiveBook(
   let totalOpenOpportunityCents = 0;
   let totalOpenOfferCount = 0;
 
-  if (offerUserIds.length > 0) {
+  {
     const offerRows = await db
       .select({
-        customerUserId: salesOffersTable.customerId,
+        customerId: salesOffersTable.customerId,
         title: salesOffersTable.title,
         adjustedPriceCents: salesOffersTable.adjustedPriceCents,
         basePriceCents: salesOffersTable.basePriceCents,
@@ -205,14 +187,13 @@ export async function gatherExecutiveBook(
         and(
           eq(salesOffersTable.mspId, mspId),
           inArray(salesOffersTable.state, [...OPEN_OFFER_STATES]),
-          inArray(salesOffersTable.customerId, offerUserIds),
+          inArray(salesOffersTable.customerId, bookCustomerIds),
         ),
       );
 
     for (const offer of offerRows) {
-      if (offer.customerUserId === null) continue;
-      const customerId = userIdToCustomerId.get(offer.customerUserId);
-      if (customerId === undefined) continue;
+      if (offer.customerId === null) continue;
+      const customerId = offer.customerId;
       const name = nameById.get(customerId);
       if (name === undefined) continue;
       // Prefer the engine-adjusted (customer-facing) price; fall back to base.

@@ -433,6 +433,17 @@ Filed as **#2730** (schema/FK correction: repoint the FK at `tenants.id`, or cor
 comment if `users.id` was in fact the intent and every consumer is wrong instead), parented under
 #2568, labeled `bug`.
 
+**Fixed by #2730** (`lib/db/migrations/manual/2026-09-04-sales-offers-customer-id-fk-tenants-2730.sql`):
+the FK now targets `tenants(id)`, matching every write path (both `INSERT`s into `sales_offers`
+already wrote a `tenants.id`). Auditing every real consumer while fixing this turned up five more
+that had independently bridged/filtered the column as a `users.id` (the same wrong assumption the
+stale FK/comment encouraged) — `msp-executive-data.ts` (`gatherExecutiveBook()`, also filed
+separately as **#2722**), `msp-customer-timeline.ts`, `portal-customer-search.ts`,
+`portal-customer-timeline.ts` (introduced by #2499's own fix, which correctly bridged documents but
+wrongly applied the same bridge to offers), and `admin-active-directory.ts`'s user hard-delete
+census (removed — deleting one user no longer nulls a tenant-scoped column). All five now filter
+directly against the caller's already-resolved `tenants.id`, no bridge.
+
 ### 6c. `getMspIdFromRequest()` duplicates, and reproduces the wrong half of, the canonical `resolve-msp-id.ts` contract
 
 `msp-sow.ts` does not import from `resolve-msp-id.ts` at all — it has its own private

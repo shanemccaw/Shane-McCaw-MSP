@@ -91,11 +91,13 @@ router.get(
     const beforeValid = before && !isNaN(before.getTime()) ? before : undefined;
 
     try {
-      // documents/offers are stored under a users.id-shaped `customerId` FK
-      // that actually names a login, not the customer — scope across every
-      // linked login (resolveCustomerUserIds bridge), the same pattern the
-      // sibling portal/dashboard route (portal-customer-engines.ts) already
-      // uses for projects/clientServices/invoices/reports (#2499).
+      // Documents are stored under a users.id-shaped `customerId` FK that
+      // actually names a login, not the customer — scope across every linked
+      // login (resolveCustomerUserIds bridge), the same pattern the sibling
+      // portal/dashboard route (portal-customer-engines.ts) already uses for
+      // projects/clientServices/invoices/reports (#2499). Offers are NOT in
+      // this class — sales_offers.customerId is a tenants.id (#2730), so it
+      // filters directly against `customerId` below, no bridge.
       const customerUserIds = await resolveCustomerUserIds(customerId);
 
       const [runs, findings, snapshots, documents, offers] = await Promise.all([
@@ -197,7 +199,7 @@ router.get(
           .from(salesOffersTable)
           .where(
             and(
-              inArray(salesOffersTable.customerId, customerUserIds),
+              eq(salesOffersTable.customerId, customerId),
               inArray(salesOffersTable.state, ["sent", "accepted", "rejected", "expired"]),
               beforeValid ? lt(salesOffersTable.createdAt, beforeValid) : undefined,
             ),

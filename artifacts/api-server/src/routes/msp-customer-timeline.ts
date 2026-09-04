@@ -265,7 +265,10 @@ router.get("/msp/timeline", requireRole("MSPOperator"), async (req: Request, res
           and(
             eq(salesOffersTable.mspId, mspId),
             inArray(salesOffersTable.state, ["sent", "accepted", "rejected", "expired"]),
-            ...(effectiveCustomerIds === null ? [] : [inArray(salesOffersTable.customerId, eligibleUserIds)]),
+            // sales_offers.customerId is a tenants.id (#2730) — filter directly
+            // against effectiveCustomerIds, not the users.id-shaped eligibleUserIds
+            // bridge that documents (above) genuinely needs.
+            ...(effectiveCustomerIds === null ? [] : [inArray(salesOffersTable.customerId, effectiveCustomerIds)]),
             ...(beforeValid ? [lt(salesOffersTable.createdAt, beforeValid)] : []),
           ),
         )

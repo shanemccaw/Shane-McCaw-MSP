@@ -9,8 +9,8 @@
  *   - diagnostic findings (msp_diagnostic_findings)      — scoped by mspCustomerId
  *   - generated documents (insights_generated_documents) — scoped by usersTable.id,
  *     delivered/approved only (drafts/internal docs excluded)
- *   - sales offers (sales_offers)                        — scoped by usersTable.id,
- *     sent/accepted/rejected/expired only (drafts excluded)
+ *   - sales offers (sales_offers)                        — scoped by tenantsTable.id
+ *     (#2730), sent/accepted/rejected/expired only (drafts excluded)
  *   - marketplace items (services)                       — public catalog, narrowed
  *     to the caller's role-appropriate serviceType set (same convention as
  *     portal-marketplace.ts — Assessment-tier sees the narrower catalog)
@@ -152,7 +152,7 @@ router.get(
           .from(salesOffersTable)
           .where(
             and(
-              eq(salesOffersTable.customerId, userId),
+              eq(salesOffersTable.customerId, customerId),
               inArray(salesOffersTable.state, ["sent", "accepted", "rejected", "expired"]),
               ilike(salesOffersTable.title, like),
             ),
