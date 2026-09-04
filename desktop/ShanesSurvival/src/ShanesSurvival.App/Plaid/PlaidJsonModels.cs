@@ -114,6 +114,28 @@ internal sealed class PlaidRemovedTransactionJson
     [JsonPropertyName("transaction_id")] public string TransactionId { get; init; } = "";
 }
 
+internal sealed class TransactionsGetRequest
+{
+    [JsonPropertyName("client_id")] public required string ClientId { get; init; }
+    [JsonPropertyName("secret")] public required string Secret { get; init; }
+    [JsonPropertyName("access_token")] public required string AccessToken { get; init; }
+    [JsonPropertyName("start_date")] public required string StartDate { get; init; }
+    [JsonPropertyName("end_date")] public required string EndDate { get; init; }
+    [JsonPropertyName("options")] public required TransactionsGetOptions Options { get; init; }
+}
+
+internal sealed class TransactionsGetOptions
+{
+    [JsonPropertyName("count")] public int Count { get; init; } = 500;
+    [JsonPropertyName("offset")] public int Offset { get; init; }
+}
+
+internal sealed class TransactionsGetResponse
+{
+    [JsonPropertyName("transactions")] public List<PlaidTransactionJson> Transactions { get; init; } = [];
+    [JsonPropertyName("total_transactions")] public int TotalTransactions { get; init; }
+}
+
 internal sealed class PlaidErrorResponse
 {
     [JsonPropertyName("error_type")] public string? ErrorType { get; init; }

@@ -5,8 +5,10 @@ using System.Text.Json;
 namespace ShanesSurvival.App.Plaid;
 
 /// <summary>
-/// Real Plaid REST client — Link token creation, public_token exchange, account balances, and
-/// the current cursor-based /transactions/sync endpoint (not the older /transactions/get).
+/// Real Plaid REST client — Link token creation, public_token exchange, account balances, the
+/// current cursor-based /transactions/sync endpoint, and the older date-ranged
+/// /transactions/get endpoint (used only by PlaidBackfillService for a one-time historical
+/// re-fetch — ongoing sync always stays on /transactions/sync).
 /// Every method throws <see cref="PlaidApiException"/> on any real failure (Plaid error
 /// response, unreachable network, malformed response) with a message safe to show directly;
 /// callers (PlaidLinkService/PlaidSyncService) are the boundary that catches it and turns it
@@ -85,6 +87,24 @@ public sealed class PlaidClient : IPlaidClient
             response.Removed.Select(r => new PlaidRemovedTransactionInfo(r.TransactionId)).ToList(),
             response.NextCursor,
             response.HasMore);
+    }
+
+    public async Task<PlaidGetTransactionsPage> GetTransactionsAsync(
+        PlaidCredentials credentials, string accessToken, DateOnly startDate, DateOnly endDate, int offset, int count)
+    {
+        var request = new TransactionsGetRequest
+        {
+            ClientId = credentials.ClientId!,
+            Secret = credentials.Secret!,
+            AccessToken = accessToken,
+            StartDate = startDate.ToString("yyyy-MM-dd"),
+            EndDate = endDate.ToString("yyyy-MM-dd"),
+            Options = new TransactionsGetOptions { Count = count, Offset = offset },
+        };
+        var response = await PostAsync<TransactionsGetRequest, TransactionsGetResponse>(
+            credentials, "/transactions/get", request);
+
+        return new PlaidGetTransactionsPage(response.Transactions.Select(ToInfo).ToList(), response.TotalTransactions);
     }
 
     private static PlaidTransactionInfo ToInfo(PlaidTransactionJson t) => new(

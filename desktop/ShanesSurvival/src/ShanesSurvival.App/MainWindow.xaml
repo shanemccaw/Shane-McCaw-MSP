@@ -32,6 +32,8 @@
                     Padding="8,0" VerticalAlignment="Center" Click="LinkBankAccountButton_Click"/>
             <Button x:Name="SyncNowButton" Content="Sync Now" Height="28"
                     Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="SyncNowButton_Click"/>
+            <Button x:Name="BackfillNamesButton" Content="Backfill Transaction Names" Height="28"
+                    Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="BackfillNamesButton_Click"/>
             <Button x:Name="AssignRolesButton" Content="Assign Account Roles…" Height="28"
                     Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="AssignRolesButton_Click"/>
             <Button x:Name="OpenDashboardButton" Content="Open Dashboard" Height="28"

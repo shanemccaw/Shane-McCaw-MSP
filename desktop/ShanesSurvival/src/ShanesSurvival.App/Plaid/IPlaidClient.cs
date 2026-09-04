@@ -32,6 +32,14 @@ public sealed record PlaidSyncPage(
     bool HasMore);
 
 /// <summary>
+/// One page of a /transactions/get response — the older date-ranged, offset-paginated
+/// endpoint used only for the one-time historical backfill (never for ongoing sync).
+/// </summary>
+public sealed record PlaidGetTransactionsPage(
+    IReadOnlyList<PlaidTransactionInfo> Transactions,
+    int TotalTransactions);
+
+/// <summary>
 /// Thrown by <see cref="IPlaidClient"/> implementations for any real failure — a Plaid error
 /// response, an unreachable network, a malformed response. Message is safe to show directly:
 /// it never includes the client secret or an access token.
@@ -52,4 +60,12 @@ public interface IPlaidClient
     Task<IReadOnlyList<PlaidAccountInfo>> GetAccountsBalanceAsync(PlaidCredentials credentials, string accessToken);
 
     Task<PlaidSyncPage> SyncTransactionsAsync(PlaidCredentials credentials, string accessToken, string? cursor);
+
+    /// <summary>
+    /// Date-ranged, offset-paginated /transactions/get — used only by the one-time historical
+    /// backfill (see PlaidBackfillService) to re-fetch transactions synced before name/description
+    /// capture existed. Never used by ongoing sync, which stays on /transactions/sync.
+    /// </summary>
+    Task<PlaidGetTransactionsPage> GetTransactionsAsync(
+        PlaidCredentials credentials, string accessToken, DateOnly startDate, DateOnly endDate, int offset, int count);
 }

@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     private readonly MigrationRunner _migrationRunner = new();
     private readonly PlaidLinkService _plaidLinkService = new();
     private readonly PlaidSyncService _plaidSyncService = new();
+    private readonly PlaidBackfillService _plaidBackfillService = new();
     private readonly AccountRepository _accountRepository = new();
     private readonly DashboardService _dashboardService = new();
     private readonly PayPeriodPlanRepository _planRepository = new();
@@ -197,6 +198,11 @@ public partial class MainWindow : Window
         await SyncNowAsync();
     }
 
+    private async void BackfillNamesButton_Click(object sender, RoutedEventArgs e)
+    {
+        await BackfillNamesAsync();
+    }
+
     private async Task LinkBankAccountAsync()
     {
         LinkBankAccountButton.IsEnabled = false;
@@ -339,6 +345,64 @@ public partial class MainWindow : Window
         finally
         {
             SyncNowButton.IsEnabled = true;
+        }
+    }
+
+    private async Task BackfillNamesAsync()
+    {
+        BackfillNamesButton.IsEnabled = false;
+        PlaidStatusText.Text = "Backfilling transaction names for already-synced rows…";
+        PlaidStatusText.Foreground = Brushes.Gray;
+
+        try
+        {
+            var settings = _settingsService.Load();
+            var credentials = new PlaidCredentials(settings.PlaidClientId, settings.PlaidSecret, settings.PlaidEnvironment);
+
+            if (!credentials.IsConfigured)
+            {
+                PlaidStatusText.Text = "No Plaid credentials configured. Open Settings to add your Client ID and Secret.";
+                PlaidStatusText.Foreground = Brushes.Gray;
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(settings.PostgresConnectionString))
+            {
+                PlaidStatusText.Text = "No Postgres connection string configured. Open Settings first.";
+                PlaidStatusText.Foreground = Brushes.Gray;
+                return;
+            }
+
+            var result = await _plaidBackfillService.BackfillAllAsync(credentials, settings.PostgresConnectionString);
+            if (!result.Success)
+            {
+                PlaidStatusText.Text = $"Backfill failed: {result.ErrorMessage}";
+                PlaidStatusText.Foreground = Brushes.Red;
+                return;
+            }
+            if (result.Items.Count == 0)
+            {
+                PlaidStatusText.Text = "No linked bank accounts yet. Click \"Link Bank Account\" first.";
+                PlaidStatusText.Foreground = Brushes.Gray;
+                return;
+            }
+
+            var lines = result.Items.Select(item => item.Success
+                ? $"{item.InstitutionName}: {item.TransactionsUpdated} transaction name(s) backfilled."
+                : $"{item.InstitutionName}: backfill FAILED — {item.ErrorMessage}");
+            PlaidStatusText.Text = string.Join("\n", lines);
+            PlaidStatusText.Foreground = result.Items.All(item => item.Success) ? Brushes.Green : Brushes.Red;
+        }
+        catch (Exception ex)
+        {
+            // PlaidBackfillService already turns every real failure into a Result, but this is an
+            // async void event handler — anything that still escapes here has no caller left
+            // to catch it and would crash the whole process. Never let that happen.
+            PlaidStatusText.Text = $"Unexpected error backfilling: {ex.Message}";
+            PlaidStatusText.Foreground = Brushes.Red;
+        }
+        finally
+        {
+            BackfillNamesButton.IsEnabled = true;
         }
     }
 
