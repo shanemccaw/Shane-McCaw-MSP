@@ -31,8 +31,14 @@
 
 /** A Microsoft Graph application permission (appRole `value`) this platform may need. */
 export interface WritePermissionRule {
-  /** HTTP method the rule matches. */
-  method: "POST" | "PATCH" | "DELETE" | "PUT";
+  /**
+   * HTTP method the rule matches. GET is included solely for #1899's
+   * action.require-security-info-reregistration row: its stored template method is
+   * now GET (it enumerates methods before the real fan-out deletes), and needs a
+   * rule to match here so the admin-write-permissions surface doesn't report it as
+   * an unmapped step. Every other rule in this table is a genuine write.
+   */
+  method: "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
   /**
    * Normalised path pattern. `*` matches exactly one path segment. Compared
    * against the template endpoint after `{{variable}}` placeholders and literal
@@ -95,19 +101,49 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
     docUrl: "https://learn.microsoft.com/en-us/graph/api/authentication-update?view=graph-rest-beta",
   },
   {
-    method: "POST",
+    // #1899 — the old POST /users/*/authentication/methods row this rule described was
+    // never a real, writable Graph v1.0 collection (confirmed against Microsoft Learn).
+    // mfa-enforcement-v1 step 1 (action.require-security-info-reregistration) now runs as
+    // runForceMfaReregistrationAgainstTenant() in workflow-executor.ts: GET this same path
+    // to enumerate the user's current methods (read — same permission as the deletes below,
+    // ReadWrite.All covers read), then DELETE each phone/Microsoft Authenticator/software
+    // OATH method individually — the real mechanism the Entra admin center's own
+    // "Require re-register MFA" button uses. This rule now documents the GET; the three
+    // DELETE rules immediately below document the per-type deletes it drives.
+    method: "DELETE",
+    pattern: "/users/*/authentication/phoneMethods/*",
+    permissions: ["UserAuthenticationMethod.ReadWrite.All"],
+    justification:
+      "mfa-enforcement-v1 step 1 (action.require-security-info-reregistration) deletes a user's " +
+      "registered phone authentication method as part of forcing MFA re-registration.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/phoneauthenticationmethod-delete",
+  },
+  {
+    method: "DELETE",
+    pattern: "/users/*/authentication/microsoftAuthenticatorMethods/*",
+    permissions: ["UserAuthenticationMethod.ReadWrite.All"],
+    justification:
+      "mfa-enforcement-v1 step 1 (action.require-security-info-reregistration) deletes a user's " +
+      "registered Microsoft Authenticator method as part of forcing MFA re-registration.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/microsoftauthenticatorauthenticationmethod-delete",
+  },
+  {
+    method: "DELETE",
+    pattern: "/users/*/authentication/softwareOathMethods/*",
+    permissions: ["UserAuthenticationMethod.ReadWrite.All"],
+    justification:
+      "mfa-enforcement-v1 step 1 (action.require-security-info-reregistration) deletes a user's " +
+      "registered software OATH token method as part of forcing MFA re-registration.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/softwareoathauthenticationmethod-delete",
+  },
+  {
+    method: "GET",
     pattern: "/users/*/authentication/methods",
     permissions: ["UserAuthenticationMethod.ReadWrite.All"],
     justification:
-      "mfa-enforcement-v1 step 1 (action.require-security-info-reregistration) manages a user's " +
-      "authentication methods. NOTE: the template's endpoint is not a real Graph v1.0 collection — see " +
-      "the endpoint defect filed alongside #1875 — so this permission is derived from what the step is " +
-      "trying to do, not from a call that currently succeeds.",
-    docUrl: "https://learn.microsoft.com/en-us/graph/api/resources/authenticationmethod",
-    grantRecommended: false,
-    notRequestedReason:
-      "The step's endpoint does not exist in Graph v1.0, so granting this today would be granting for a " +
-      "call the platform cannot make. Request it together with the fix that corrects the endpoint.",
+      "mfa-enforcement-v1 step 1 (action.require-security-info-reregistration) lists a user's current " +
+      "authentication methods first, to know which typed per-method DELETE calls above to fire.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/authenticationmethod-list",
   },
   {
     method: "POST",

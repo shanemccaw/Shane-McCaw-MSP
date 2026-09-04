@@ -1152,6 +1152,37 @@ export async function graphWriteForTenant(
   return { success: false, status: res.status, errorType: "unexpected", data: text };
 }
 
+/**
+ * GET against a customer tenant using the WRITE app's token (getWriteAccessTokenForTenant),
+ * not the read app's. Exists for the rare case where a write flow must first ENUMERATE a
+ * resource before it can decide what to write/delete against it — e.g. "force MFA
+ * re-registration" (#1899) has to list a user's current `authentication/methods` before it
+ * knows which typed per-method endpoints to DELETE. The read app is never guaranteed to hold
+ * the same Graph permission the write app was granted for this exact purpose, so this
+ * deliberately does NOT delegate to graphFetchForTenant (the read-app transport) — using it
+ * here would silently depend on read-app scope this call was never authorized to assume.
+ *
+ * Minimal by design: no consent-revocation handling (a plain read failure here means "the
+ * caller's fan-out write can't proceed," not "flip a consent flag"), no retry-with-fresh-token.
+ * Throws on any non-2xx; callers decide what that means for the write they were about to do.
+ */
+export async function graphReadForTenantWithWriteToken(tenantId: string, path: string): Promise<any> {
+  const token = await getWriteAccessTokenForTenant(tenantId);
+  const res = await fetch(`${GRAPH_BASE}${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "Accept-Language": "en-US",
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`graphReadForTenantWithWriteToken: GET ${path} failed (${res.status}): ${text.slice(0, 300)}`);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
 // ── Live write-permission consent state (#1875) ────────────────────────────────
 
 export interface GrantedWritePermissions {
