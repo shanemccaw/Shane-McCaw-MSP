@@ -453,6 +453,13 @@ export default defineConfig({
       // measured side by side against the existing detectDrift primitive, stable
       // ordering, and the data-driven noise ruleset's matching and precedence.
       "src/lib/config-snapshot-differ.test.ts",
+      // #2115 — classifySnapshotFailure's real-literal branches, keyed off the
+      // observed shapes on snapshot rows 8 (#1962) and 10 (#2115): the
+      // not_applicable_to_account_type / endpoint_not_found / not_supported_app_only
+      // families, plus the LicenseGapError and non-JSON-body wire-evidence capture
+      // fixes so a caught failure never records with neither http_status nor
+      // error_code.
+      "src/lib/config-snapshot-collector.test.ts",
     ],
     coverage: {
       provider: "v8",

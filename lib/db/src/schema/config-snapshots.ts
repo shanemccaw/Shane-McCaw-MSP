@@ -255,7 +255,29 @@ export type SnapshotResourceStatus = typeof SNAPSHOT_RESOURCE_STATUSES[number];
  *                            a statement about the tenant, and must never be recorded
  *                            as `empty`.
  *  - cmdlet_unavailable      the cmdlet is not present in the session (3 observed).
- *  - not_supported_app_only  the cmdlet exists but refuses app-only auth (2 observed).
+ *  - not_supported_app_only  the cmdlet/API exists but refuses app-only auth. Originally
+ *                            2 observed PowerShell cmdlets; #2115 added the Graph-side
+ *                            match, literal `"Requested API is not supported in
+ *                            application-only context"` (412 PreconditionFailed).
+ *  - not_applicable_to_account_type  Git #2115/#1962: the endpoint is real, but Graph
+ *                            says it does not apply to THIS tenant/account — three
+ *                            observed literals, all the same underlying fact: `"This
+ *                            API is not supported for AAD accounts"`, `"Request not
+ *                            applicable to target tenant"`, and `AADSTS500011` ("The
+ *                            resource principal ... was not found in the tenant" — a
+ *                            backend service principal Microsoft never provisioned
+ *                            for this tenant type). 178 rows on the #2115 snapshot
+ *                            alone, previously all `unknown_error`.
+ *  - endpoint_not_found      Git #2115/#1962: the resource does not exist at this
+ *                            path/version at all — a genuine 404, the OData literal
+ *                            `"Resource not found for the segment '<x>'"`, or Graph's
+ *                            own `innerError.code: "apiNotFound"`. Distinct from
+ *                            `not_applicable_to_account_type`: that family says "this
+ *                            tenant can't use this", this one says "this URL is not a
+ *                            thing" — most likely the registry's CSDL-derived resource
+ *                            model naming an endpoint Graph never actually serves.
+ *                            173 rows on the #2115 snapshot, previously all
+ *                            `unknown_error`.
  *  - identity_unresolved     the registry has no identity strategy for this type, so
  *                            collecting it would yield unpairable objects (see
  *                            `SNAPSHOT_IDENTITY_STRATEGIES.unresolved`).
@@ -274,6 +296,8 @@ export const SNAPSHOT_SKIP_REASONS = [
   "transport_error",
   "cmdlet_unavailable",
   "not_supported_app_only",
+  "not_applicable_to_account_type",
+  "endpoint_not_found",
   "identity_unresolved",
   "not_collectable",
   "budget_exhausted",

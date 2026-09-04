@@ -409,6 +409,14 @@ export function extractErrorCode(body: string): string | null {
  * survey/resource-model tables. Anything else lands on `unknown_error` on purpose:
  * an unclassified failure filed under a guessed cause is worse than one labelled
  * unknown, because it stops looking like a question.
+ *
+ * Git #2115 sharpened this against the largest real snapshot (row 10, 778
+ * failures): `unknown_error` was 304 of them (39%) before the branches below
+ * existed, because `status`/`body` were real evidence the earlier version simply
+ * never looked past 401/403/429/5xx to read. #2115 folds in #1962's smaller,
+ * earlier dataset (snapshot row 8) too — three of its four distinguishable causes
+ * are literals matched here; the fourth, `not_supported_app_only`'s PowerShell
+ * form, was already handled above via `PsExecutionError`.
  */
 export function classifySnapshotFailure(
   err: unknown,
@@ -460,6 +468,36 @@ export function classifySnapshotFailure(
   if (status !== null && status >= 500) {
     return { reason: "transport_error", detail: `HTTP ${status}: ${body?.slice(0, 400) ?? ""}` };
   }
+
+  // ── #2115: the endpoint is real, but Graph says it doesn't apply to THIS
+  // tenant/account — three observed literal shapes, all the same underlying
+  // fact. 178 rows on snapshot row 10 alone (400/AuthenticationError,
+  // 400/BadRequest), previously all `unknown_error`.
+  if (
+    lower.includes("not supported for aad accounts") ||
+    lower.includes("not applicable to target tenant") ||
+    lower.includes("aadsts500011")
+  ) {
+    return { reason: "not_applicable_to_account_type", detail: body?.slice(0, 400) ?? text.slice(0, 400) };
+  }
+  // Graph-side app-only-context restriction (#1962 named the PowerShell form of
+  // this; this is the Graph literal — 412 PreconditionFailed).
+  if (lower.includes("not supported in application-only context")) {
+    return { reason: "not_supported_app_only", detail: body?.slice(0, 400) ?? text.slice(0, 400) };
+  }
+  // ── #2115: the resource does not exist at this path/version at all — a plain
+  // 404, the OData "segment doesn't resolve" 400, or Graph's own nested
+  // `apiNotFound` code (#1962's cause 3, e.g. the CSDL-derived resources Graph
+  // never actually serves). 173 rows on snapshot row 10, previously all
+  // `unknown_error`.
+  if (
+    status === 404 ||
+    lower.includes("resource not found for the segment") ||
+    lower.includes("apinotfound")
+  ) {
+    return { reason: "endpoint_not_found", detail: (code ?? `HTTP ${status}`) + (body ? `: ${body.slice(0, 400)}` : "") };
+  }
+
   return {
     reason: "unknown_error",
     detail: err instanceof Error ? err.message.slice(0, 800) : String(err ?? "").slice(0, 800),
@@ -866,8 +904,21 @@ export async function collectTenantConfigSnapshot(
       }
 
       const { GraphPaginatedError } = await import("./monitor-executor");
-      const status = err instanceof GraphPaginatedError ? err.status : null;
-      const body = err instanceof GraphPaginatedError ? err.body : null;
+      // Git #2115: LicenseGapError carries real wire evidence (the res.status it
+      // was thrown from, and its raw Graph body) but was never read here — every
+      // LicenseGapError catch recorded NO http_status/error_code at all (31 of the
+      // snapshot's 32 no-evidence rows). Read it the same way GraphPaginatedError
+      // already is.
+      const status = err instanceof GraphPaginatedError
+        ? err.status
+        : err instanceof LicenseGapError
+          ? err.httpStatus
+          : null;
+      const body = err instanceof GraphPaginatedError
+        ? err.body
+        : err instanceof LicenseGapError
+          ? err.rawBody
+          : null;
       const { reason, detail } = classifySnapshotFailure(err, status, body);
 
       record({

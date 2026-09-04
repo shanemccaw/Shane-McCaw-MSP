@@ -384,13 +384,30 @@ export class LicenseGapError extends Error {
   readonly feature: string;
   readonly graphErrorCode: string | null;
   readonly rawBody: string;
-  constructor(tenantId: string, feature: string, graphErrorCode: string | null, rawBody: string) {
+  /**
+   * The real HTTP status the classification was made from (e.g. 400/401/403).
+   * Optional/nullable only for backward compatibility with existing call sites
+   * that predate #2115 — every real throw site below now passes it. Git #2115:
+   * before this field existed, a caught LicenseGapError carried no wire evidence
+   * at all into `tenant_config_snapshot_resource_status` (31 of the snapshot's 32
+   * no-evidence rows), even though `res.status` was sitting right at the throw
+   * site the whole time.
+   */
+  readonly httpStatus: number | null;
+  constructor(
+    tenantId: string,
+    feature: string,
+    graphErrorCode: string | null,
+    rawBody: string,
+    httpStatus: number | null = null,
+  ) {
     super(`Microsoft 365 license/feature gap for tenant ${tenantId}: ${feature}`);
     this.name = "LicenseGapError";
     this.tenantId = tenantId;
     this.feature = feature;
     this.graphErrorCode = graphErrorCode;
     this.rawBody = rawBody;
+    this.httpStatus = httpStatus;
   }
 }
 
@@ -880,6 +897,7 @@ export async function graphFetchForTenant(
         cls.feature ?? "a required Microsoft 365 add-on license",
         cls.code ?? null,
         text,
+        res.status,
       );
     }
 

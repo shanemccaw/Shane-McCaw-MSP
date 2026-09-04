@@ -1772,7 +1772,16 @@ export async function graphFetchPaginated(
       // A non-JSON, non-CSV 200 body is a real anomaly worth surfacing verbatim
       // rather than crashing with a bare JSON.parse SyntaxError — e.g. the raw
       // IIS "Service Unavailable" HTML some Intune endpoints return.
-      throw new Error(
+      //
+      // Git #2115: this used to `throw new Error(...)` — a plain Error, not a
+      // GraphPaginatedError, so nothing downstream could pull `status`/`body`
+      // back off it. A caught config-snapshot run recorded this failure with
+      // NO http_status and NO error_code at all (a real, confirmed instance of
+      // the 32 no-wire-evidence rows). `res.status` and the body are both sitting
+      // right here, so carry them the same way the `!res.ok` branch above does.
+      throw new GraphPaginatedError(
+        res.status,
+        resolvedEndpoint,
         `Graph API returned a non-JSON body (content-type: ${res.headers.get("content-type") ?? "none"}): ${bodyText.slice(0, GRAPH_ERROR_BODY_CAPTURE_CHARS)}`,
       );
     }
