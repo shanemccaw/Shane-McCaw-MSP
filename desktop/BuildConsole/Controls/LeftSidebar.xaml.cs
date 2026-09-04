@@ -4481,6 +4481,33 @@ namespace BuildConsole.Controls
             return _chatEpicById.Values.FirstOrDefault(e => e.GithubNumber == githubNumber);
         }
 
+        /// <summary>
+        /// Git #2795 — resolves ANY raw GitHub issue number to its real top-level Epic, without
+        /// requiring a <see cref="BoardChat"/> wrapper (generalizes <see cref="GetEpicForChat"/>'s
+        /// issue-resolution step). Walks <see cref="GitBoardIssue.ParentNumber"/> all the way to
+        /// the top — the same real ancestor-climb <see cref="Services.GitBoardIssueFilters.IsUnderInternalToolingEpic"/>
+        /// already established for #2739/#2773/#2694 (visited-set guard so a cyclic mis-link can't
+        /// loop forever) — rather than GetEpicForChat's own single-hop check, so a sub-issue nested
+        /// more than one level under its Epic still resolves. Null means the issue genuinely has no
+        /// resolvable Epic ancestor (a loose/unparented issue) — callers must render an honest
+        /// fallback, never a fake/placeholder Epic name.
+        /// </summary>
+        public BuildConsole.Services.BoardEpic? GetEpicForIssueNumber(int issueNumber)
+        {
+            var epic = GetEpicByGithubNumber(issueNumber);
+            if (epic != null) return epic;
+
+            var seen = new HashSet<int> { issueNumber };
+            var cursor = _lastBoardIssues.FirstOrDefault(i => i.Number == issueNumber)?.ParentNumber;
+            while (cursor.HasValue && seen.Add(cursor.Value))
+            {
+                epic = GetEpicByGithubNumber(cursor.Value);
+                if (epic != null) return epic;
+                cursor = _lastBoardIssues.FirstOrDefault(i => i.Number == cursor.Value)?.ParentNumber;
+            }
+            return null;
+        }
+
         public BuildConsole.Services.BoardEpic? GetEpicForChat(BoardChat chat)
         {
             if (chat == null) return null;

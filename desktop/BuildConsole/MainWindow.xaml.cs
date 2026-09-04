@@ -783,6 +783,11 @@ namespace BuildConsole
                     logChannel: "build-queue.rollup-send-to-chat",
                     whatSingular: "landed list");
             BuildQueuePanel.EpicSubIssueClicked += async (s, githubNumber) => await OpenGitDetailByNumberAsync(githubNumber, sideBySide: true);
+            // Git #2795 — BuildQueuePanel has no direct issue/epic tree of its own; wire it once
+            // to LeftSidebar's real generalized ancestor-walk resolution so each card can resolve
+            // its own item.GithubNumber to its real top-level Epic on demand (always reads
+            // LeftSidebar's current live board state, not a stale synced snapshot).
+            BuildQueuePanel.ResolveEpicForIssue = LeftSidebar.GetEpicForIssueNumber;
             // Git #2691 — point 3: live queue-state changes (queued → running → verifying) recolor
             // on-screen #NNN mentions even with no chat text mutation, by reusing this same real
             // ~15s poll tick that already updates BuildQueuePanel.CurrentQueueItems — no new
