@@ -2303,6 +2303,96 @@ export const tenantAzureReachTable = pgTable("tenant_azure_reach", {
 export type TenantAzureReach = typeof tenantAzureReachTable.$inferSelect;
 export type InsertTenantAzureReach = typeof tenantAzureReachTable.$inferInsert;
 
+// ── Azure Lighthouse onboarding offers (#1915) ──────────────────────────────────
+//
+// The PROMISE/RECORD layer — deliberately separate from `tenant_azure_reach`
+// above, which is purely OBSERVATIONAL (what a live probe currently sees). This
+// table exists because #1871's reach probe cannot tell a delegation that was
+// REVOKED from one that was NEVER MADE — both look exactly like `no_rbac`, an
+// empty RBAC-filtered `/subscriptions` listing. Only a record of what the
+// platform actually asked the customer to grant closes that gap.
+//
+// One row per (tenant, delegated scope): the platform generated a Lighthouse ARM
+// template / `aka.ms/deploytoazure` deep link naming its own ARM principal
+// (`armPrincipalCredentials().clientId` in azure-rm.ts) and a built-in role
+// (Reader by default, `AZURE_BUILT_IN_ROLE_IDS.Reader`) at that scope, and handed
+// it to the customer. What happens after that is tracked in `state`.
+//
+// ABSENCE OF A ROW IS ITS OWN HONEST STATE — "never offered" — same discipline
+// `tenant_azure_reach`'s header uses for "never probed". This table does NOT
+// store a `never_offered` enum value; a reader with no row for a tenant simply
+// hasn't been onboarded yet, and that is not an error (issue #1915's own
+// requirement: a customer with no Azure at all must never show as a gap).
+export const AZURE_LIGHTHOUSE_OFFER_STATES = [
+  // The template/deep-link was generated and handed to the customer. Nothing
+  // observed yet confirms they acted on it.
+  "offered",
+  // A later `tenant_azure_reach` probe (or an explicit Lighthouse delegation
+  // listing — `list-lighthouse-delegations` in azure-rm.ts) observed the
+  // platform's principal actually holding this role at this scope.
+  "completed",
+  // A prior "completed" delegation was observed to have disappeared — this is
+  // the state that makes a genuine revocation distinguishable from a delegation
+  // that was never made, which is the entire reason this table exists.
+  "revoked",
+] as const;
+export type AzureLighthouseOfferState = typeof AZURE_LIGHTHOUSE_OFFER_STATES[number];
+
+export const AZURE_LIGHTHOUSE_SCOPE_TYPES = ["subscription", "resource_group"] as const;
+export type AzureLighthouseScopeType = typeof AZURE_LIGHTHOUSE_SCOPE_TYPES[number];
+
+export const tenantAzureLighthouseOffersTable = pgTable("tenant_azure_lighthouse_offers", {
+  id: serial("id").primaryKey(),
+  /** The Entra tenant GUID — same axis as tenant_azure_reach.tenant_id, NOT tenants.id. */
+  tenantId: text("tenant_id").notNull(),
+  scopeType: text("scope_type", { enum: AZURE_LIGHTHOUSE_SCOPE_TYPES }).notNull().default("subscription"),
+  /** The Azure subscription GUID being delegated, or the parent subscription of a resource-group scope. */
+  subscriptionId: text("subscription_id").notNull(),
+  /** Set only when scope_type = 'resource_group'. NULL for a subscription-scoped offer. */
+  resourceGroupName: text("resource_group_name"),
+  /** The full ARM scope path offered, e.g. "/subscriptions/{id}" or ".../resourceGroups/{rg}" — recorded verbatim, not reconstructed later. */
+  armScopePath: text("arm_scope_path").notNull(),
+  /** Built-in role definition GUID offered — AZURE_BUILT_IN_ROLE_IDS.Reader by default (azure-rm.ts). Never a custom role; Lighthouse doesn't support them. */
+  roleDefinitionId: text("role_definition_id").notNull(),
+  /** The role's display name at time of offer (e.g. "Reader"), kept alongside the GUID for a human reading this table directly. */
+  roleName: text("role_name").notNull(),
+  state: text("state", { enum: AZURE_LIGHTHOUSE_OFFER_STATES }).notNull().default("offered"),
+  /**
+   * The exact authorization block(s) and scope generated into the ARM
+   * template/deep-link at offer time — a real snapshot of what was actually
+   * handed to the customer, not reconstructed after the fact from current
+   * config (which principal/role a later admin changes to must not silently
+   * rewrite what THIS offer said).
+   */
+  offeredArtifact: jsonb("offered_artifact").$type<{
+    mspOfferName: string;
+    mspOfferDescription: string;
+    authorizations: { principalId: string; roleDefinitionId: string; principalIdDisplayName: string }[];
+    deepLinkUrl: string;
+  }>().notNull(),
+  /** Admin user (users.id) who triggered the offer — nullable, e.g. a script-generated offer has none. */
+  offeredByUserId: integer("offered_by_user_id"),
+  offeredAt: timestamp("offered_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Set when a reach probe / delegations listing first observed this delegation live. */
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  /** Set when a previously-completed delegation was observed to have disappeared. */
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  /** Free-text context — e.g. which observation flipped the state, or why an admin manually corrected it. */
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  // One live row per (tenant, scope) — re-offering the same scope updates this
+  // row's state/artifact/timestamps rather than accumulating duplicates, the
+  // same append-in-place discipline azure_tenant_credentials uses per client.
+  uniqueIndex("tenant_azure_lighthouse_offers_tenant_scope_idx").on(t.tenantId, t.armScopePath),
+  index("tenant_azure_lighthouse_offers_tenant_id_idx").on(t.tenantId),
+  index("tenant_azure_lighthouse_offers_state_idx").on(t.state),
+]);
+
+export type TenantAzureLighthouseOffer = typeof tenantAzureLighthouseOffersTable.$inferSelect;
+export type InsertTenantAzureLighthouseOffer = typeof tenantAzureLighthouseOffersTable.$inferInsert;
+
 // ── Full per-check item detail ─────────────────────────────────────────────────
 //
 // One row per check per full-item-detail collection run: the COMPLETE fetched

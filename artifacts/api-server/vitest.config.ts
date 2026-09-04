@@ -454,6 +454,10 @@ export default defineConfig({
       // "no Azure subscriptions" are the same empty HTTP 200 and must stay
       // distinguishable.
       "src/lib/__tests__/azure-rm.test.ts",
+      // #1915 — Azure Lighthouse onboarding template generation: pins the real
+      // documented ARM template shape (authorizations, Reader role, subscription
+      // vs resource-group scope) and the honest "unconfigured" failure mode.
+      "src/lib/__tests__/azure-lighthouse-onboarding.test.ts",
       // #1797 — the configuration snapshot differ's four rules, pure: absence vs
       // unreadability vs deletion (the false-deletion guard), property-level output
       // measured side by side against the existing detectDrift primitive, stable
