@@ -609,6 +609,42 @@ $script:CmdletCatalog = @{
         Cmdlet         = "Get-ComplianceRetentionEventType"
         AllowedParams  = @()
     }
+
+    # #2184: security:safe-links-coverage / security:safe-attachments-coverage /
+    # security:antiphishing-coverage. All three currently query
+    # /security/alerts_v2 for ANY item's existence — never the actual Defender
+    # for Office 365 policy objects the check's own label/key name. These are
+    # ExchangeOnlineManagement (EXO V2 module) cmdlets, same "Session = exchange"
+    # family as get-antispam-policies/get-transport-rules above (NOT
+    # Connect-IPPSSession-reachable — confirmed against Microsoft Learn: Get-
+    # SafeLinksPolicy/Get-SafeAttachmentPolicy/Get-AntiPhishPolicy pages
+    # (learn.microsoft.com/powershell/module/exchangepowershell/get-{safelinks,
+    # safeattachment,antiphish}policy, checked 2026-09-04) live under the same
+    # ExchangePowerShell module as Get-HostedContentFilterPolicy). No parameters
+    # required to list every policy in the org (built-in + custom).
+    #
+    # No PostFilter — raw policy list, same "count -> gap subset computed on
+    # the DB side via mapping/severity_rules" posture as get-audit-retention-
+    # policy above, since the real "coverage gap" signal (which EnableSafe*/
+    # Enabled boolean is off) is confirmed against LIVE fields returned by this
+    # container against the real testbed tenant (see build-journal/2184.md),
+    # not guessed from docs alone — Microsoft Learn's cmdlet reference pages
+    # document parameters, not output schema.
+    "get-safe-links-policies" = @{
+        Cmdlet         = "Get-SafeLinksPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-safe-attachment-policies" = @{
+        Cmdlet         = "Get-SafeAttachmentPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-antiphish-policies" = @{
+        Cmdlet         = "Get-AntiPhishPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
 }
 
 # Resolves cmdletKey against the allowlist and merges request params into
