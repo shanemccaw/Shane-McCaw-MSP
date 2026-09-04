@@ -239,6 +239,22 @@ namespace BuildConsole.Services
         private bool _ticking;
         /// <summary>Git #1371 — throttles the background worktree cleanup sweep run from TickAsync.</summary>
         private DateTime _lastWorktreeSweepUtc = DateTime.MinValue;
+        /// <summary>Git #2891 — throttles the periodic "is this `running` row's real process actually
+        /// still alive?" sweep run from TickAsync (see <see cref="SweepStuckRunningRowsAsync"/>).</summary>
+        private DateTime _lastStuckRunningSweepUtc = DateTime.MinValue;
+        /// <summary>
+        /// Git #2891 — queue ids currently INSIDE <see cref="LaunchItem"/> (claimed → running in the
+        /// DB, but not yet spawned + registered in <see cref="_running"/>). This window can be long
+        /// (worktree provisioning, prewarm) and has no in-memory <see cref="_running"/> entry yet, so
+        /// the phantom-running sweep must never mistake a build that is legitimately mid-launch for a
+        /// stuck row. Populated the instant a launch begins and cleared in a finally, so a LaunchItem
+        /// that THROWS before ever reaching <see cref="_running"/> — the exact silent-spawn-failure
+        /// class this issue is about — correctly leaves the set and becomes visible to the sweep.
+        /// Guarded by <see cref="_launchGate"/> because forced launches (<see cref="SafeLaunch"/>)
+        /// run LaunchItem on a thread-pool thread, not the UI thread.
+        /// </summary>
+        private readonly HashSet<int> _launching = new();
+        private readonly object _launchGate = new();
         private readonly List<(int Id, int ExitCode, string? SessionId)> _pendingCompletions = new();
 
         private const int MaxBufferedEvents = 4000;
@@ -704,6 +720,161 @@ namespace BuildConsole.Services
             if ((DateTime.UtcNow - _lastWorktreeSweepUtc).TotalMinutes < 5) return;
             _lastWorktreeSweepUtc = DateTime.UtcNow;
             _ = WorktreeCleanupService.SweepWorktreesAsync(force: false, dryRun: false);
+        }
+
+        /// <summary>Git #2891 — how often the phantom-running liveness sweep runs (throttled well below
+        /// the 10s tick so it isn't a per-tick full-queue fetch; a stuck row is not urgent to the
+        /// second, only that it never stays stuck indefinitely).</summary>
+        private const int StuckRunningSweepIntervalSeconds = 60;
+        /// <summary>Git #2891 — a `running` row with NO build_pid stamped yet, that this instance is not
+        /// tracking or actively launching, is only treated as a phantom once it has sat that way for
+        /// this long. build_pid is stamped within seconds of a real spawn, so a healthy build leaves
+        /// the no-pid state almost immediately; this grace is a defensive backstop for a claim whose
+        /// launch never even reached the spawn (so no pid was ever recorded) — the row's updated_at is
+        /// then frozen at claim time and ages past this window.</summary>
+        private const int StuckRunningNoPidGraceMinutes = 5;
+
+        /// <summary>
+        /// Git #2891 — throttled entry point for the phantom-running liveness sweep, called every tick
+        /// from <see cref="TickAsync"/>. Gated on the direct-DB path (the build_pid/creation-time
+        /// adoption fingerprint is a local-DB-only mechanism, exactly like <see cref="TryAdoptRunningItem"/>)
+        /// and skipped entirely when a second BuildConsole is open (a `running` row this instance isn't
+        /// tracking could be genuinely live and owned by the OTHER console — the same #943 guard the
+        /// startup sweep uses). Best-effort; a transient DB error just retries next interval.
+        /// </summary>
+        private async Task MaybeSweepStuckRunningRowsAsync()
+        {
+            if (_db == null) return; // build_pid liveness is a direct-DB mechanism (HTTP-fallback can't stamp/read it).
+            if ((DateTime.UtcNow - _lastStuckRunningSweepUtc).TotalSeconds < StuckRunningSweepIntervalSeconds) return;
+            _lastStuckRunningSweepUtc = DateTime.UtcNow;
+
+            // #943 guard — with a second console open, a `running` row not in THIS instance's _running
+            // may be legitimately live and tracked by the other one. Never fail a row we can't safely
+            // attribute; the same reason RecoverOrphanedRunningItemsAsync skips in this case.
+            if (Process.GetProcessesByName("BuildConsole").Length > 1) return;
+
+            try { await SweepStuckRunningRowsAsync(); }
+            catch (Exception ex) { ActivityLog.Log("watcher", $"Phantom-running liveness sweep failed: {ex.Message}"); }
+        }
+
+        /// <summary>
+        /// Git #2891 — the actual phantom-running detection. For every DB row still marked `running`
+        /// that this instance is NOT tracking in <see cref="_running"/> and is NOT actively launching
+        /// (<see cref="_launching"/>), decide whether its real process is genuinely gone using the
+        /// same #1839 build_pid + GetProcessTimes creation-time fingerprint as adoption:
+        ///
+        ///   • In <see cref="_running"/> → skip. The reap loop owns its liveness via the authoritative
+        ///     HasExited on a real handle; touching it here would race a double-completion.
+        ///   • In <see cref="_launching"/> → skip. Legitimately mid-launch (claimed → running, but not
+        ///     yet spawned/registered); its launch window can be long (worktree provisioning).
+        ///   • build_pid alive AND its creation time matches the stamped fingerprint → a real, live
+        ///     process this instance simply isn't tracking (e.g. a prior sweep was skipped for a
+        ///     now-closed second console). Do NOT fail a live process — log and leave it.
+        ///   • build_pid gone (OpenProcess fails / already exited) OR its creation time doesn't match
+        ///     (pid reused by a stranger) → the build's process is genuinely dead → mark failed -2,
+        ///     freeing the row and mirroring it to the Crashed board column, exactly like the startup
+        ///     orphan path. This is the case that left #2888 stuck `running` with no claude.exe.
+        ///   • No build_pid stamped at all AND the row has aged past
+        ///     <see cref="StuckRunningNoPidGraceMinutes"/> since its last update → the launch never
+        ///     reached the spawn (no pid was ever recorded) → same failed -2 treatment. A recent
+        ///     no-pid row is left for a later sweep (it may still be racing toward its pid stamp).
+        /// </summary>
+        private async Task SweepStuckRunningRowsAsync()
+        {
+            var items = await _db!.GetQueueAsync();
+            var running = items.Where(i => i.Status == "running").ToList();
+            if (running.Count == 0) return;
+
+            int failed = 0;
+            foreach (var item in running)
+            {
+                // Tracked (launched or adopted) by this instance, or actively launching → not ours to fail.
+                if (_running.ContainsKey(item.Id)) continue;
+                lock (_launchGate) { if (_launching.Contains(item.Id)) continue; }
+
+                if (item.BuildPid.HasValue)
+                {
+                    var verdict = ProcessLivenessFor(item);
+                    if (verdict == RowLiveness.Alive)
+                    {
+                        ActivityLog.Log("watcher", $"Phantom-running sweep: queue #{item.Id} ({item.Title}) is `running`, not tracked by this instance, but its build pid {item.BuildPid} is genuinely alive — leaving it. (If this is a stranded live build, Adopt happens at the next restart.)");
+                        continue;
+                    }
+                    // Dead or pid-reused → genuinely gone.
+                    await FailStuckRunningRowAsync(item, verdict == RowLiveness.Reused
+                        ? $"process gone — pid {item.BuildPid} was reused by an unrelated process (creation-time fingerprint mismatch)"
+                        : $"process gone — pid {item.BuildPid} is no longer alive");
+                    failed++;
+                }
+                else
+                {
+                    // No pid ever stamped. If the launch had genuinely spawned, a pid would have been
+                    // recorded within seconds; a row that is `running`, not tracked, not launching, AND
+                    // has no pid past the grace window is a claim whose launch died before the spawn.
+                    double ageMin = item.UpdatedAt.HasValue
+                        ? (DateTimeOffset.UtcNow - item.UpdatedAt.Value).TotalMinutes
+                        : double.MaxValue; // unknown update time → treat as old (can't have been just-claimed without one)
+                    if (ageMin < StuckRunningNoPidGraceMinutes) continue;
+                    await FailStuckRunningRowAsync(item, $"launch never reached the spawn — no build pid was ever recorded and the row has been `running` for {ageMin:F0}m with no live process");
+                    failed++;
+                }
+            }
+
+            if (failed > 0)
+                ActivityLog.Log("watcher", $"Phantom-running sweep: marked {failed} stuck `running` row(s) failed -2 (real process confirmed gone, no natural completion) — slot(s) freed automatically.");
+        }
+
+        private enum RowLiveness { Alive, Dead, Reused }
+
+        /// <summary>
+        /// Git #2891 — the #1839 liveness verdict for a `running` row with a stamped build_pid, factored
+        /// out so the periodic sweep uses the EXACT same pid-open + creation-time-fingerprint logic as
+        /// <see cref="TryAdoptRunningItem"/>. <see cref="RowLiveness.Alive"/> only when the pid opens,
+        /// has not exited, and its GetProcessTimes creation time matches the stamped one within the same
+        /// 1-second tolerance adoption uses; <see cref="RowLiveness.Reused"/> when the pid is alive but
+        /// the creation time differs (a stranger now owns the pid — never kill it); <see cref="RowLiveness.Dead"/>
+        /// when the pid can't be opened or reports already-exited.
+        /// </summary>
+        private static RowLiveness ProcessLivenessFor(QueueItem item)
+        {
+            if (!item.BuildPid.HasValue) return RowLiveness.Dead;
+            var handle = BuildProcessHandle.TryOpenExisting(item.BuildPid.Value);
+            if (handle == null) return RowLiveness.Dead;
+            try
+            {
+                if (handle.HasExited) return RowLiveness.Dead;
+                var liveCreation = handle.CreationTimeUtc;
+                if (!liveCreation.HasValue || !item.BuildPidStartedAt.HasValue) return RowLiveness.Dead;
+                double deltaSec = Math.Abs((item.BuildPidStartedAt.Value.UtcDateTime - liveCreation.Value).TotalSeconds);
+                return deltaSec > 1.0 ? RowLiveness.Reused : RowLiveness.Alive;
+            }
+            finally
+            {
+                handle.Close();
+            }
+        }
+
+        /// <summary>
+        /// Git #2891 — marks a confirmed-phantom `running` row failed (-2, the same "process gone"
+        /// exit code the startup orphan path uses) and mirrors it to the Crashed board column. Frees
+        /// the slot automatically so Shane never has to manually UPDATE the DB to unstick it.
+        /// </summary>
+        private async Task FailStuckRunningRowAsync(QueueItem item, string reason)
+        {
+            try
+            {
+                // -2 = "process gone", the same exit code the startup orphan path uses. Deliberately
+                // does NOT fire BuildFinished (the post-build deploy pipeline / build-set close) — a
+                // phantom row never produced any committed work to deploy, exactly as
+                // RecoverOrphanedRunningItemsAsync omits it for the same reason.
+                await _db!.MarkOrphanedFailedAsync(item.Id);
+                BoardStatusSync.Mirror(item.GithubNumber, GitHubApiClient.CrashedOptionId, "Crashed (phantom running)", "watcher");
+                ActivityLog.Log("watcher", $"Phantom-running: queue #{item.Id} ({item.Title}) was stuck `running` but its {reason}. Marked failed -2 and freed the slot — no manual DB fix needed. Resume Session (if a session id was captured) or Retry to re-queue.");
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("watcher", $"Couldn't fail phantom-running queue #{item.Id}: {ex.Message} — will retry next sweep.");
+            }
         }
 
         private bool _starting;
@@ -1377,6 +1548,18 @@ namespace BuildConsole.Services
                 // window; it only sweeps up agent/* worktrees whose build process is gone.
                 MaybeSweepWorktrees();
 
+                // Git #2891 — periodic phantom-running liveness sweep. The reap loop above only
+                // reaps builds tracked in this instance's in-memory _running dict (authoritative
+                // HasExited on a real handle). A DB row left `running` that this instance is NOT
+                // tracking — a LaunchItem that threw after the claim but before registering in
+                // _running, or any other launch-path desync — was only ever reconciled by the
+                // startup adoption sweep (RecoverOrphanedRunningItemsAsync), never during normal
+                // operation, so it sat `running` forever (the #2888 incident). This runs the same
+                // #1839 build_pid + creation-time liveness check on an interval so such a row is
+                // detected and failed automatically instead of needing a manual DB UPDATE. Placed
+                // before the _appReady/_paused gates so a phantom is cleared even while paused.
+                await MaybeSweepStuckRunningRowsAsync();
+
                 // Git #1883 — hard gate: never claim/launch a NEW queued item until the app
                 // itself has signaled genuine full readiness (see MarkAppReady). Checked
                 // BEFORE and independent of the pause toggle below — this must hold "no
@@ -1518,7 +1701,32 @@ namespace BuildConsole.Services
         /// stream-json, and deliver the prompt as the first stdin message
         /// instead of a positional arg — see the class doc comment.
         /// </summary>
+        /// <summary>
+        /// Git #2891 — thin wrapper around <see cref="LaunchItemCore"/> that brackets the entire
+        /// launch in the <see cref="_launching"/> set. From the moment a claim marks the DB row
+        /// `running` until the process is spawned and registered in <see cref="_running"/>, the row
+        /// has no in-memory entry, so the phantom-running sweep would otherwise be free to mistake a
+        /// legitimately-provisioning build for a stuck one. The finally guarantees the id leaves the
+        /// set on EVERY exit — normal completion of the launch, an early return (capped / launch
+        /// failed), or an unhandled throw. That last case is the whole point: a LaunchItem that throws
+        /// after the claim but before reaching <see cref="_running"/> is exactly the silent
+        /// spawn-failure that left #2888 stuck `running` forever, and it must become visible to the
+        /// sweep the instant it stops actively launching, not stay hidden in <see cref="_launching"/>.
+        /// </summary>
         private async Task LaunchItem(QueueItem item, int? buildSetExpected = null, bool isForced = false)
+        {
+            lock (_launchGate) _launching.Add(item.Id);
+            try
+            {
+                await LaunchItemCore(item, buildSetExpected, isForced);
+            }
+            finally
+            {
+                lock (_launchGate) _launching.Remove(item.Id);
+            }
+        }
+
+        private async Task LaunchItemCore(QueueItem item, int? buildSetExpected = null, bool isForced = false)
         {
             // Git #2106 — this build is (re)launching into a real slot now, so it must stop
             // counting as a reserved (limit-paused) slot: from here on it's tracked in _running.
