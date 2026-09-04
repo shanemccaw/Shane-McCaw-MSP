@@ -1,0 +1,37 @@
+<Window x:Class="ShanesSurvival.App.Accounts.AccountRoleWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        mc:Ignorable="d"
+        Title="Assign Account Roles" Height="560" Width="820"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" FontSize="16" FontWeight="Bold" Margin="0,0,0,4"
+                   Text="Assign Account Roles"/>
+        <TextBlock Grid.Row="1" Foreground="Gray" TextWrapping="Wrap" Margin="0,0,0,12"
+                   Text="Assign every synced account a role explicitly — role is never inferred from the account's name or type. Exactly one Income Gate account, one row per real bill (with its real monthly target), and the 2 household spend accounts. Mark the two GATE-tier bills (mortgage, Tesla) with the GATE checkbox."/>
+
+        <Border Grid.Row="2" BorderThickness="1" BorderBrush="LightGray">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="RowsPanel" Margin="8"/>
+            </ScrollViewer>
+        </Border>
+
+        <TextBlock Grid.Row="3" x:Name="StatusText" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="Gray"/>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button x:Name="SaveButton" Content="Save" Width="90" Height="28" Margin="0,0,8,0"
+                    Click="SaveButton_Click"/>
+            <Button x:Name="CloseButton" Content="Close" Width="90" Height="28" Click="CloseButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

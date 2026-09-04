@@ -1,0 +1,62 @@
+<Window x:Class="ShanesSurvival.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ShanesSurvival.App"
+        mc:Ignorable="d"
+        Title="Shane's Survival" Height="450" Width="800"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
+            <TextBlock Text="Shane's Survival" FontSize="22" FontWeight="Bold" VerticalAlignment="Center"/>
+            <Button x:Name="SettingsButton" Content="Settings…" Width="90" Height="28"
+                    Margin="16,0,0,0" VerticalAlignment="Center" Click="SettingsButton_Click"/>
+            <Button x:Name="RefreshButton" Content="Recheck Connection" Height="28"
+                    Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="RefreshButton_Click"/>
+            <Button x:Name="ApplyMigrationsButton" Content="Apply Migrations" Height="28"
+                    Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="ApplyMigrationsButton_Click"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+            <Button x:Name="LinkBankAccountButton" Content="Link Bank Account" Height="28"
+                    Padding="8,0" VerticalAlignment="Center" Click="LinkBankAccountButton_Click"/>
+            <Button x:Name="SyncNowButton" Content="Sync Now" Height="28"
+                    Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="SyncNowButton_Click"/>
+            <Button x:Name="AssignRolesButton" Content="Assign Account Roles…" Height="28"
+                    Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="AssignRolesButton_Click"/>
+            <Button x:Name="OpenDashboardButton" Content="Open Dashboard" Height="28"
+                    Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="OpenDashboardButton_Click"/>
+        </StackPanel>
+
+        <Border Grid.Row="2" BorderThickness="1" BorderBrush="LightGray" Padding="12" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal">
+                <Ellipse x:Name="StatusDot" Width="12" Height="12" Fill="Gray" VerticalAlignment="Center"/>
+                <TextBlock x:Name="StatusText" Text="Checking database connection…"
+                           Margin="8,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="3" BorderThickness="1" BorderBrush="LightGray" Padding="12" Margin="0,0,0,12">
+            <TextBlock x:Name="MigrationStatusText" Text="Migrations not checked yet."
+                       Foreground="Gray" TextWrapping="Wrap" VerticalAlignment="Center"/>
+        </Border>
+
+        <Border Grid.Row="4" BorderThickness="1" BorderBrush="LightGray" Padding="12" Margin="0,0,0,12">
+            <TextBlock x:Name="PlaidStatusText" Text="No bank accounts linked yet. Click &quot;Link Bank Account&quot; to connect one via Plaid."
+                       Foreground="Gray" TextWrapping="Wrap" VerticalAlignment="Center"/>
+        </Border>
+
+        <TextBlock Grid.Row="5" Foreground="Gray" TextWrapping="Wrap" VerticalAlignment="Top"
+                   Text="The MCP server is a separate, later dispatch — see README.md."/>
+    </Grid>
+</Window>

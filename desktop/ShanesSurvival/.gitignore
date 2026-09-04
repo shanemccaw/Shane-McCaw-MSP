@@ -1,0 +1,16 @@
+# Build output
+bin/
+obj/
+*.user
+
+# Rider / VS
+.vs/
+.idea/
+
+# Local settings — never committed. Real settings live at
+# %AppData%\ShanesSurvival\settings.json, outside this repo entirely.
+appsettings.Local.json
+settings.local.json
+*.env
+.env
+.env.local
