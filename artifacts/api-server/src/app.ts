@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { ConsentRevokedError } from "./lib/graph";
+import { apiError, ApiErrorCode } from "./lib/api-helpers";
 import { runWithRequestContext, getRequestContext } from "./lib/request-context.ts";
 import { captureException } from "./lib/exception-tracker.ts";
 
@@ -122,6 +123,23 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     res.status(403).json({ code: "consent_revoked", tenantId: err.tenantId, reAuthorizeRequired: true });
     return;
   }
+  // express.json()/body-parser reject a malformed body with a real SyntaxError
+  // carrying statusCode/status + expose: true — the standard body-parser
+  // contract. Respect that instead of collapsing every non-ConsentRevokedError
+  // to a hardcoded 500 (Git #2100).
+  const declared = err as { status?: unknown; statusCode?: unknown; expose?: unknown; message?: unknown };
+  const declaredStatus = typeof declared?.statusCode === "number"
+    ? declared.statusCode
+    : typeof declared?.status === "number"
+      ? declared.status
+      : undefined;
+
+  if (declared?.expose === true && declaredStatus !== undefined) {
+    logger.warn({ err, statusCode: declaredStatus }, "Client error reached top-level handler");
+    apiError(res, declaredStatus, ApiErrorCode.VALIDATION, "Malformed request body");
+    return;
+  }
+
   logger.error({ err }, "Unhandled error");
   res.status(500).json({ error: "Internal server error" });
 });
