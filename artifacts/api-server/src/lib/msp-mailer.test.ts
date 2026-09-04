@@ -40,10 +40,20 @@ vi.mock("./graph", () => ({
   },
 }));
 
-vi.mock("./logger", () => {
-  const stub = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
-  return { logger: { ...stub, child: vi.fn(() => stub) } };
-});
+// Module code takes its own child logger off the shared `logger` singleton, so the mock
+// must support `.child()` returning another logger-shaped object, not just info/warn/error.
+function makeLoggerMock(): { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn>; child: ReturnType<typeof vi.fn> } {
+  return {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    child: vi.fn(() => makeLoggerMock()),
+  };
+}
+
+vi.mock("./logger", () => ({
+  logger: makeLoggerMock(),
+}));
 
 vi.mock("./tenant-signals", () => ({
   computeTenantHealthVars: vi.fn(),
