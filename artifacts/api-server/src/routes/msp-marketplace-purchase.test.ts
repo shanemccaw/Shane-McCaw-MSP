@@ -79,6 +79,16 @@ vi.mock("drizzle-orm", () => ({
   inArray: vi.fn((c: unknown, v: unknown) => ({ inArray: [c, v] })),
 }));
 
+// #2847 — a subscription-class purchase now records a real `tenant_subscriptions` row.
+// Stubbed here for the same reason every other side effect in this file is: the
+// `@workspace/db` mock above exposes only the tables these route tests drive, and the
+// billing-state module is exercised by its own suite. The two subscription-class
+// assertions below check that this was called with the right customer/MSP/Stripe ids.
+const mockRecordTenantSubscription = vi.fn(async () => ({ id: 1 }));
+vi.mock("../lib/tenant-billing-state", () => ({
+  recordTenantSubscription: (...args: unknown[]) => mockRecordTenantSubscription(...(args as [])),
+}));
+
 vi.mock("../lib/request-context.ts", () => ({ enrichRequestContext: vi.fn() }));
 
 vi.mock("../lib/logger", () => {

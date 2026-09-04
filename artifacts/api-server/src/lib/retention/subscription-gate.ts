@@ -187,6 +187,18 @@ export interface SubscriptionGateBody {
   subscriptionActive: false;
   tenantId: number;
   status: string;
+  /**
+   * Which rule closed the portal (#2847): `"subscription"` when a real
+   * `tenant_subscriptions` row is cancelled/unpaid, `"tenant_status"` when this customer
+   * has no subscription on record and `tenants.status` alone said so. The wall needs
+   * this to be honest — telling a customer their subscription ended when the platform
+   * holds no subscription record for them would be inventing a billing fact.
+   */
+  billingSource: "subscription" | "tenant_status";
+  /** The status of the subscription that ended, or null when there is none on record. */
+  subscriptionStatus: string | null;
+  /** What they had, as it was named at purchase. Null, never a placeholder. */
+  planName: string | null;
   lapsedAt: string | null;
   /** The post-termination window this customer is inside, in years. */
   retentionYears: number;
@@ -206,6 +218,9 @@ export function subscriptionGateBody(state: TenantSubscriptionState): Subscripti
     subscriptionActive: false,
     tenantId: state.tenantId,
     status: state.status,
+    billingSource: state.billingSource,
+    subscriptionStatus: state.subscriptionStatus,
+    planName: state.planName,
     lapsedAt: state.lapsedAt?.toISOString() ?? null,
     retentionYears: state.postTerminationYears,
     retentionYearsIsDefault: state.postTerminationIsDefault,

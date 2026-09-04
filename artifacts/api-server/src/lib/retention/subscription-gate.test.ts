@@ -53,6 +53,13 @@ function state(overrides: Partial<TenantSubscriptionState> = {}): TenantSubscrip
     customerName: "Test Customer",
     status: "inactive",
     active: false,
+    // #2847 — a cancelled real subscription is the default case for a gated tenant now;
+    // `tenant_status` (no subscription on record) is asserted separately below.
+    billingSource: "subscription",
+    subscriptionCount: 1,
+    subscriptionStatus: "canceled",
+    planName: "Managed Security",
+    currentPeriodEnd: null,
     lapsedAt: LAPSED_AT,
     postTerminationYears: 7,
     postTerminationIsDefault: true,

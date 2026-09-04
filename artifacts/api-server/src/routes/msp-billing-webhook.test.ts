@@ -49,6 +49,18 @@ vi.mock("@workspace/db", () => ({
   platformAgreementsTable: {},
 }));
 
+// #2847 — the webhook now also applies customer-subscription events to
+// `tenant_subscriptions` and reconciles retention. Both are real modules that open a
+// database connection at import; this file's `@workspace/db` mock deliberately exposes
+// only what the schedule handlers under test need, so the two are stubbed rather than
+// having the mock grown to carry a subsystem these tests do not exercise.
+vi.mock("../lib/tenant-billing-state.ts", () => ({
+  syncTenantSubscriptionFromStripe: vi.fn(async () => ({ matched: false, tenantId: null, status: null })),
+}));
+vi.mock("../lib/retention/subscription-state.ts", () => ({
+  syncTenantsAfterStatusWrite: vi.fn(async () => {}),
+}));
+
 vi.mock("../lib/stripe.ts", () => ({ getStripeKey: () => "sk_test_123" }));
 vi.mock("../lib/logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },

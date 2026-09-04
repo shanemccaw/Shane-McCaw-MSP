@@ -500,6 +500,11 @@ export default defineConfig({
       // provenance bypass gate. Pure functions and in-memory registries, no database.
       "src/lib/retention/retention-clock.test.ts",
       "src/lib/retention/subscription-gate.test.ts",
+      // #2847 — the per-customer billing decision the gate, the retention clock
+      // freeze/resume and the 7-year purge all now read: tenants.status AND the real
+      // tenant_subscriptions row, with absence of a subscription explicitly NOT
+      // meaning cancellation. Pure, no database.
+      "src/lib/tenant-billing-state.test.ts",
     ],
     coverage: {
       provider: "v8",

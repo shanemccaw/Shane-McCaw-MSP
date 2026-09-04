@@ -26,7 +26,10 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspsTable, mspSubscriptionsTable, usersTable, mspEventStoreTable, mspAgreementAcceptancesTable, platformAgreementsTable, servicesTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
+import type { TenantSubscriptionStatus } from "@workspace/db";
 import { getStripeKey } from "../lib/stripe.ts";
+import { syncTenantSubscriptionFromStripe } from "../lib/tenant-billing-state.ts";
+import { syncTenantsAfterStatusWrite } from "../lib/retention/subscription-state.ts";
 import { enqueueZohoBooksInvoiceSync } from "../lib/zoho-books.ts";
 import { fireEventRule } from "../lib/alert-engine.ts";
 import { logger } from "../lib/logger.ts";
@@ -514,6 +517,78 @@ async function provisionMspAdminUser(
 
 // ── customer.subscription.updated ─────────────────────────────────────────────
 
+/**
+ * A `customer.subscription.*` event may be for a CUSTOMER's subscription rather than the
+ * MSP's own platform one (Git #2847): in the wholesale channel both hang off the same
+ * Stripe customer, so both arrive here. Before #2847 the customer ones were silently
+ * dropped by the `msp_subscriptions` lookup missing, which meant a cancelled customer
+ * subscription never reached the platform at all.
+ *
+ * Returns true when the event was a customer subscription and has been applied.
+ * Reconciling retention is done here rather than inside the billing module so billing
+ * keeps no dependency on retention — this is the one seam where they meet.
+ */
+/**
+ * Stripe's subscription status vocabulary is wider than the column's. The five values
+ * both share map straight across; `incomplete_expired` is a subscription that never
+ * started and is recorded as `canceled`, which is what it is.
+ *
+ * `incomplete` and `paused` return null and the event is left unapplied with a warning
+ * rather than being squeezed into a neighbouring value. `incomplete` cannot correspond
+ * to a row here (a purchase that does not reach active/trialing is rejected at the point
+ * of sale and no row is written), and `paused` has no write path in this codebase —
+ * mapping it to `unpaid` would record a payment failure that did not happen.
+ */
+function toTenantSubscriptionStatus(status: string): TenantSubscriptionStatus | null {
+  switch (status) {
+    case "trialing":
+    case "active":
+    case "past_due":
+    case "canceled":
+    case "unpaid":
+      return status;
+    case "incomplete_expired":
+      return "canceled";
+    default:
+      return null;
+  }
+}
+
+async function applyToTenantSubscription(
+  subscription: import("stripe").Stripe.Subscription,
+  status: TenantSubscriptionStatus,
+): Promise<boolean> {
+  const raw = subscription as unknown as {
+    current_period_start?: number;
+    current_period_end?: number;
+    canceled_at?: number | null;
+    ended_at?: number | null;
+  };
+
+  const result = await syncTenantSubscriptionFromStripe({
+    stripeSubscriptionId: subscription.id,
+    status,
+    currentPeriodStart: raw.current_period_start ? new Date(raw.current_period_start * 1000) : undefined,
+    currentPeriodEnd: raw.current_period_end ? new Date(raw.current_period_end * 1000) : undefined,
+    cancelAtPeriodEnd: subscription.cancel_at_period_end ?? undefined,
+    canceledAt: raw.canceled_at ? new Date(raw.canceled_at * 1000) : undefined,
+    endedAt: raw.ended_at ? new Date(raw.ended_at * 1000) : undefined,
+  });
+
+  if (!result.matched || result.tenantId === null) return false;
+
+  // The gate must not keep serving a cached "active" for a customer Stripe has just
+  // cancelled, and the retention clocks have to freeze from the real lapse instant
+  // rather than waiting for the daily sweep to notice.
+  await syncTenantsAfterStatusWrite([result.tenantId]);
+
+  log.info(
+    { subscriptionId: subscription.id, tenantId: result.tenantId, status },
+    "msp-billing-webhook: customer subscription synced and retention reconciled",
+  );
+  return true;
+}
+
 async function handleSubscriptionUpdated(subscription: import("stripe").Stripe.Subscription): Promise<void> {
   const [sub] = await db
     .select({ id: mspSubscriptionsTable.id, mspId: mspSubscriptionsTable.mspId })
@@ -521,7 +596,18 @@ async function handleSubscriptionUpdated(subscription: import("stripe").Stripe.S
     .where(eq(mspSubscriptionsTable.stripeSubscriptionId, subscription.id))
     .limit(1);
 
-  if (!sub) return;
+  if (!sub) {
+    const mapped = toTenantSubscriptionStatus(subscription.status);
+    if (mapped === null) {
+      log.warn(
+        { subscriptionId: subscription.id, status: subscription.status },
+        "msp-billing-webhook: unmapped Stripe subscription status — customer billing state left unchanged",
+      );
+      return;
+    }
+    await applyToTenantSubscription(subscription, mapped);
+    return;
+  }
 
   const now = new Date();
   const rawUpdSub = subscription as unknown as { current_period_start?: number; current_period_end?: number };
@@ -544,7 +630,14 @@ async function handleSubscriptionDeleted(subscription: import("stripe").Stripe.S
     .where(eq(mspSubscriptionsTable.stripeSubscriptionId, subscription.id))
     .limit(1);
 
-  if (!sub) return;
+  if (!sub) {
+    // #2847 — a CUSTOMER's subscription ending. This is the event that actually closes
+    // a customer's portal and starts their post-termination retention window; before
+    // #2847 it fell through this early return and nothing in the platform ever learned
+    // the customer had stopped paying.
+    await applyToTenantSubscription(subscription, "canceled");
+    return;
+  }
 
   const now = new Date();
   await db.update(mspSubscriptionsTable).set({

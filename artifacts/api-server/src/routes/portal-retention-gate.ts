@@ -56,6 +56,14 @@ router.get("/portal/retention/subscription-gate", requireAuth, async (req: Reque
         subscriptionActive: true,
         tenantId: state.tenantId,
         status: state.status,
+        // #2847 — the real per-customer subscription behind that `true`. `billingSource`
+        // is `"tenant_status"` for a customer with no subscription on record, and the
+        // three fields below it are then null: the platform genuinely does not know what
+        // that customer is paying for, and saying so is the only honest answer.
+        billingSource: state.billingSource,
+        subscriptionStatus: state.subscriptionStatus,
+        planName: state.planName,
+        currentPeriodEnd: state.currentPeriodEnd?.toISOString() ?? null,
         // An active customer has no lapse instant and no purge date. Null, not a
         // computed placeholder — the screen renders those as unavailable.
         lapsedAt: null,

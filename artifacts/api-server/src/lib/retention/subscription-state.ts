@@ -55,13 +55,14 @@
  *      most need freezing is the one whose clocks never would.
  */
 
-import { and, eq, inArray, isNotNull, isNull, notInArray, or } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, not, or } from "drizzle-orm";
+import { db, tenantsTable, type TenantSubscriptionStatus } from "@workspace/db";
 import {
-  db,
-  tenantsTable,
-  RETENTION_CLOCK_RUNNING_TENANT_STATUSES,
-  type Tenant,
-} from "@workspace/db";
+  isRunningTenantStatus,
+  resolveTenantBillingState,
+  tenantBillingActiveCondition,
+  type TenantBillingSource,
+} from "../tenant-billing-state";
 import { logger } from "../logger";
 import { postTerminationDueAt } from "./clock";
 import { freezeTenantClocks, resumeTenantClocks } from "./lifecycle";
@@ -73,22 +74,20 @@ const auditLog = logger.child({ channel: "audit" });
 /** Why a clock froze. The only real cause today; stored so a frozen row explains itself. */
 export const SUBSCRIPTION_FREEZE_REASON = "subscription_inactive";
 
-type TenantStatus = Tenant["status"];
-
 /**
- * The clock-running statuses, typed as the `tenants.status` enum union rather than
- * `string[]`, so drizzle's `inArray`/`notInArray` accept them and so the compiler
- * enforces the check that actually matters: if a status is ever added to the column's
- * enum, this list is the one place that has to decide what it means for retention.
+ * Does `tenants.status` alone say the relationship is live?
  *
- * Mutable rather than `readonly` because those two helpers reject a `readonly` array.
- * Private to this module; never handed out.
+ * **This is no longer the whole answer, and callers deciding whether a customer's clocks
+ * run must not use it (Git #2847).** Until #2847 there was no per-customer billing state
+ * in the schema at all, so `tenants.status` was the only available proxy and this
+ * function WAS the decision. `tenant_subscriptions` now exists, and the real decision —
+ * tenant status AND the subscription — lives in one place, `resolveTenantBillingState()`
+ * in `lib/tenant-billing-state.ts`.
+ *
+ * Kept as a re-export because it is genuinely one half of that rule and reads better at
+ * the two call sites that legitimately want just the operational half.
  */
-const RUNNING_STATUSES: TenantStatus[] = [...RETENTION_CLOCK_RUNNING_TENANT_STATUSES];
-
-export function isRunningStatus(status: string | null | undefined): boolean {
-  return status != null && (RUNNING_STATUSES as readonly string[]).includes(status);
-}
+export const isRunningStatus = isRunningTenantStatus;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The resolved state
@@ -98,10 +97,29 @@ export interface TenantSubscriptionState {
   tenantId: number;
   mspId: number;
   customerName: string;
-  /** Raw `tenants.status`. */
+  /** Raw `tenants.status`. The operational half of the decision, not the whole of it. */
   status: string;
   /** True when the portal is open. The one fact the gate acts on. */
   active: boolean;
+  /**
+   * Which rule decided `active` (#2847). `"subscription"` means a real
+   * `tenant_subscriptions` row settled it; `"tenant_status"` means this customer has
+   * never had a subscription recorded and `tenants.status` settled it alone. A surface
+   * reporting a customer as lapsed must be able to say which, rather than implying a
+   * billing fact the platform does not have for that tenant.
+   */
+  billingSource: TenantBillingSource;
+  /** How many subscriptions have ever been recorded for this customer. */
+  subscriptionCount: number;
+  /** The status of the subscription that decided it, or null when none exists. */
+  subscriptionStatus: TenantSubscriptionStatus | null;
+  /** The product name at purchase, from the deciding subscription. Null, never a placeholder. */
+  planName: string | null;
+  /**
+   * When the currently-active subscription's paid period ends. Null when there is no
+   * active subscription, or when Stripe has not reported a period for it.
+   */
+  currentPeriodEnd: Date | null;
   /** When the subscription stopped running. Null while active. */
   lapsedAt: Date | null;
   /** The post-termination window in years — this customer's policy, or the platform default. */
@@ -139,7 +157,11 @@ export async function readTenantSubscriptionState(tenantId: number): Promise<Ten
   if (!row) return null;
 
   const policy = await resolveRetentionPolicy(tenantId);
-  const active = isRunningStatus(row.status);
+  // #2847: the real per-customer billing fact, not `tenants.status` alone. One reader,
+  // shared with the sweep and the purge scheduler so all three cannot disagree.
+  const billing = await resolveTenantBillingState(tenantId);
+  const active = billing?.active ?? isRunningStatus(row.status);
+  const deciding = billing?.activeSubscription ?? billing?.latestSubscription ?? null;
 
   return {
     tenantId: row.id,
@@ -147,6 +169,11 @@ export async function readTenantSubscriptionState(tenantId: number): Promise<Ten
     customerName: row.customerName,
     status: row.status,
     active,
+    billingSource: billing?.source ?? "tenant_status",
+    subscriptionCount: billing?.subscriptionCount ?? 0,
+    subscriptionStatus: deciding?.status ?? null,
+    planName: deciding?.planName ?? null,
+    currentPeriodEnd: billing?.activeSubscription?.currentPeriodEnd ?? null,
     lapsedAt: row.lapsedAt,
     postTerminationYears: policy.postTermination.years,
     postTerminationIsDefault: policy.postTermination.isDefault,
@@ -243,7 +270,11 @@ export async function syncTenantRetentionState(tenantId: number): Promise<Tenant
     return { tenantId, action: "tenant_missing", clocksAffected: 0, lapsedAt: null };
   }
 
-  const active = isRunningStatus(row.status);
+  // #2847 — the real billing fact. Before this, `active` was `tenants.status` alone,
+  // which no billing event has ever written, so a customer whose subscription was
+  // cancelled kept their clocks running and never started a purge window.
+  const billing = await resolveTenantBillingState(tenantId);
+  const active = billing?.active ?? isRunningStatus(row.status);
   const now = new Date();
 
   // ── JUST LAPSED — the customer cancelled ────────────────────────────────────
@@ -270,6 +301,10 @@ export async function syncTenantRetentionState(tenantId: number): Promise<Tenant
         actionType: "retention.subscription.lapsed",
         tenantId,
         status: row.status,
+        // #2847 — which rule closed the portal, so the audit trail distinguishes a real
+        // cancelled subscription from an operator flipping `tenants.status`.
+        billingSource: billing?.source ?? "tenant_status",
+        subscriptionStatus: billing?.latestSubscription?.status ?? null,
         lapsedAt: now.toISOString(),
         clocksFrozen: clocksAffected,
         occurredAt: now.toISOString(),
@@ -356,29 +391,31 @@ export async function syncTenantsAfterStatusWrite(tenantIds: number[]): Promise<
 }
 
 /**
- * Every tenant whose `status` and `subscription_lapsed_at` disagree — i.e. every
- * customer whose clocks are in the wrong state right now.
+ * Every tenant whose real billing state and `subscription_lapsed_at` disagree — i.e.
+ * every customer whose clocks are in the wrong state right now.
  *
  * Expressed as a query rather than "read all tenants and filter in JS" so the daily
  * sweep costs one indexed pass and does nothing at all on the normal day where every
  * tenant agrees with itself.
+ *
+ * #2847 replaced the `tenants.status`-only predicate here with
+ * `tenantBillingActiveCondition()` — the SQL form of exactly the rule
+ * `syncTenantRetentionState()` applies in TypeScript. The two must stay identical: a
+ * sweep that disagreed with the reconciliation would either hand it tenants it then
+ * decides are fine, or — the direction that loses data — never hand it the cancelled
+ * customer whose purge window needs starting.
  */
 export async function findTenantsNeedingRetentionSync(): Promise<number[]> {
+  const billingActive = tenantBillingActiveCondition();
   const rows = await db
     .select({ id: tenantsTable.id })
     .from(tenantsTable)
     .where(
       or(
         // lapsed but never stamped → needs freezing
-        and(
-          notInArray(tenantsTable.status, RUNNING_STATUSES),
-          isNull(tenantsTable.subscriptionLapsedAt),
-        ),
+        and(not(billingActive), isNull(tenantsTable.subscriptionLapsedAt)),
         // running but still stamped → needs resuming
-        and(
-          inArray(tenantsTable.status, RUNNING_STATUSES),
-          isNotNull(tenantsTable.subscriptionLapsedAt),
-        ),
+        and(billingActive, isNotNull(tenantsTable.subscriptionLapsedAt)),
       ),
     );
   return rows.map((r) => r.id);

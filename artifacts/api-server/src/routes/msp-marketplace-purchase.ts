@@ -52,6 +52,7 @@ import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
 import { getStripeKey, getMspDefaultPaymentMethod } from "../lib/stripe";
 import { resolveFulfillment } from "../lib/resolve-fulfillment";
 import { resolveCatalogPricing } from "../lib/catalog-pricing";
+import { recordTenantSubscription } from "../lib/tenant-billing-state";
 import { createAuditLog } from "../lib/audit";
 import { broadcastCustomerOfferChange, broadcastMspOfferChange } from "../lib/sse-channels";
 import { logger } from "../lib/logger";
@@ -326,6 +327,52 @@ router.post(
           return;
         }
         subscriptionId = stripeSub.id;
+
+        // #2847 — RECORD IT. Until this landed, the Stripe Subscription created two
+        // lines above was returned to the caller, copied into an audit-log metadata
+        // blob, and persisted in no table at all. The platform therefore had no
+        // per-customer answer to "is this customer paying", which is precisely the fact
+        // #1944 part 8 gates the entire customer portal on and #2765's retention clock
+        // freezes on. `billingParty: "msp"` is not a guess — the subscription is created
+        // against the MSP's own `stripeCustomerId` at the wholesale price, and the MSP
+        // bills the customer retail outside this platform.
+        //
+        // Non-fatal on failure: the money has already moved and the fulfillment is about
+        // to run, so throwing here would fail a request that actually succeeded. The
+        // consequence of a miss is a customer whose portal stays open on the
+        // `tenants.status` fallback — the pre-#2847 behaviour — not a wrong charge.
+        const rawStripeSub = stripeSub as unknown as {
+          current_period_start?: number;
+          current_period_end?: number;
+        };
+        try {
+          await recordTenantSubscription({
+            tenantId: customerId,
+            mspId: targetMspId,
+            billingParty: "msp",
+            source: "msp_marketplace",
+            status: stripeSub.status === "trialing" ? "trialing" : "active",
+            serviceId: svc.id,
+            planName: svc.name,
+            stripeCustomerId,
+            stripeSubscriptionId: stripeSub.id,
+            stripePriceId: stripeSub.items.data[0]?.price?.id ?? null,
+            billingInterval: "month",
+            unitAmountCents: wholesaleCostCents,
+            currentPeriodStart: rawStripeSub.current_period_start
+              ? new Date(rawStripeSub.current_period_start * 1000)
+              : null,
+            currentPeriodEnd: rawStripeSub.current_period_end
+              ? new Date(rawStripeSub.current_period_end * 1000)
+              : null,
+            cancelAtPeriodEnd: stripeSub.cancel_at_period_end ?? false,
+          });
+        } catch (err) {
+          log.error(
+            { err, customerId, targetMspId, subscriptionId: stripeSub.id },
+            "msp-marketplace-purchase: failed to record tenant_subscriptions row (charge succeeded; billing state not updated)",
+          );
+        }
       } else {
         const pi = await stripe.paymentIntents.create({
           amount: wholesaleCostCents,

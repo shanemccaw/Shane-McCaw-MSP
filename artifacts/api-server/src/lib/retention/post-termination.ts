@@ -41,7 +41,7 @@ import { logger } from "../logger";
 import { postTerminationDueAt } from "./clock";
 import { resolveRetentionPolicy } from "./policy";
 import { listTenantDataPurgers } from "./registry";
-import { isRunningStatus } from "./subscription-state";
+import { resolveTenantBillingState } from "../tenant-billing-state";
 
 const log = logger.child({ channel: "system.core" });
 const auditLog = logger.child({ channel: "audit" });
@@ -79,7 +79,18 @@ export async function postTerminationScheduleFor(tenantId: number): Promise<Post
     .where(eq(tenantsTable.id, tenantId))
     .limit(1);
 
-  if (!row || !row.lapsedAt || isRunningStatus(row.status)) return null;
+  if (!row || !row.lapsedAt) return null;
+
+  // #2847 — "has this customer come back?" is the real billing question, not
+  // `tenants.status` alone. A tenant whose subscription is cancelled while its status
+  // still reads `active` is genuinely terminated, and checking status here would have
+  // suppressed its schedule forever: `findTenantsDueForPostTerminationPurge` filters its
+  // candidates through this function, so a null here means that customer's 7-year window
+  // silently never expires. The `lapsedAt` check above is still the primary guard — the
+  // reconciliation clears it the moment a customer returns — and this is the second half
+  // of the same rule, now asking the same question the gate asks.
+  const billing = await resolveTenantBillingState(tenantId);
+  if (billing?.active) return null;
 
   const policy = await resolveRetentionPolicy(tenantId);
   const years = policy.postTermination.years;
