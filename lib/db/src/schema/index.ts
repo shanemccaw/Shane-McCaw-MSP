@@ -4573,3 +4573,5 @@ export * from "./config-state";
 export * from "./config-snapshots";
 
 export * from "./config-diffs";
+
+export * from "./config-attribution";
