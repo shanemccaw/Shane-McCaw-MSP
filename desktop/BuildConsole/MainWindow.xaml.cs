@@ -131,8 +131,6 @@ namespace BuildConsole
             public int HeavyTurnCount;
             public double Cost;
             public double RemainingBuffer;
-            /// <summary>Guards against double-firing while a click-triggered handoff is already in flight (not an "already fired" latch — Shane can retry from the button again if one attempt fails).</summary>
-            public bool HandoffInProgress;
             /// <summary>Git #1436 — set once the injected scraper (ChatContextMeterScript) reports
             /// sustained zero-turn detection on what otherwise looks like a real populated chat page,
             /// i.e. its selectors likely no longer match claude.ai's current DOM. Latches true so the
@@ -5355,7 +5353,7 @@ namespace BuildConsole
         }
 
         /// <summary>Git #1837 — resolves a chat tab's epic, in the same order the "Hand Off
-        /// Now" flow already uses (<see cref="TriggerHandoffAsync"/>): the tab's own tracked
+        /// Now" flow already uses (<see cref="StartNewChatWithHandoffAsync"/>): the tab's own tracked
         /// GithubNumber first, then <see cref="LeftSidebar.GetEpicForChat"/> off its BoardChat
         /// tag, then <see cref="LeftSidebar.GetEpicByGithubNumber"/> off that chat's
         /// IssueGithubNumber. Null when none of those resolve — the caller falls back to
@@ -5377,7 +5375,7 @@ namespace BuildConsole
                 }
             }
 
-            // Git #1905 — same audit gap as TriggerHandoffAsync had: this resolver (used
+            // Git #1905 — same audit gap as StartNewChatWithHandoffAsync's predecessor had: this resolver (used
             // by the "Start a new chat on Epic #N" context menu, both its label and
             // StartSuccessorChat) had no title-text fallback, so a tab clearly titled
             // `[#1202]` with stale/empty tracked github fields silently fell through to
@@ -5398,8 +5396,8 @@ namespace BuildConsole
         /// Git #1837 — the chat-tab context menu's "Start a new chat on Epic #N", modelled on
         /// <see cref="MenuNewChat_Click"/> but starting from an existing tab rather than a
         /// File &gt; New Chat prompt, and always carrying a handoff pointer back to the tab
-        /// it was started from. Never touches the predecessor tab — that's the Hand Off Now
-        /// button's job (<see cref="TriggerHandoffAsync"/>), not this one's.
+        /// it was started from. Never touches the predecessor tab — that's the Band 1
+        /// "Start New Chat" handoff's job (<see cref="StartNewChatWithHandoffAsync"/>), not this one's.
         /// </summary>
         private void StartSuccessorChat(TabItem tabItem)
         {
@@ -7361,17 +7359,12 @@ namespace BuildConsole
                 BuildConsole.Services.ActivityLog.Log("system.core.chat-context", "User dismissed context warning banner.");
             };
 
-            // Git #1470 — handoff fires ONLY here, on Shane's explicit click. Never automatic,
-            // never forces navigation on its own, never blocks him from reading/opening other chats
-            // while the banner sits there waiting.
-            handoffBtn.Click += (s, e) =>
-            {
-                if (meterState.HandoffInProgress) return;
-                meterState.HandoffInProgress = true;
-                handoffBtn.IsEnabled = false;
-                BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Critical context reached ({meterState.EstimatedTokens:N0} tokens). Shane clicked Hand Off Now.");
-                _ = TriggerHandoffAsync(wv, meterState, handoffBtn);
-            };
+            // Git #2736 — this button (and the banner it lives in) has been headless since #2727
+            // retired the visible banner in favor of Band 1's own "Start New Chat" button
+            // (ChatDocumentContainer.BtnStartNewChat_Click) — never attached to the visual tree,
+            // so it was never actually clickable. Its real archive+handoff-pointer logic (the old
+            // TriggerHandoffAsync) has been ported into StartNewChatWithHandoffAsync, which Band 1
+            // now calls directly; no handler is wired here since there is nothing left to click.
 
             _contextMeters[wv] = meterState;
             return wv;
@@ -7633,116 +7626,33 @@ namespace BuildConsole
             }
         }
 
-        private async System.Threading.Tasks.Task TriggerHandoffAsync(Microsoft.Web.WebView2.Wpf.WebView2 oldWv, ChatContextMeterState meterState, Button handoffBtn)
+        /// <summary>Git #2736 — Band 1's own owning TabItem for a given chat container, so
+        /// ChatDocumentContainer.BtnStartNewChat_Click can pass a real oldTab into
+        /// StartNewChatWithHandoffAsync to archive + close. Mirrors the WebView2 lookup the old
+        /// (now-removed) TriggerHandoffAsync did against _chatTabs, just keyed on the container
+        /// instead of the WebView2.</summary>
+        public TabItem? FindTabForChatContainer(Controls.ChatDocumentContainer container)
+        {
+            foreach (var kvp in _chatTabs)
+            {
+                if (kvp.Value.Container == container) return kvp.Key;
+            }
+            return null;
+        }
+
+        /// <summary>Git #2736 — Band 1's real "Start New Chat" handoff: archives the chat being
+        /// replaced and carries a handoff-back pointer into the new one. Ported straight from the
+        /// now-removed TriggerHandoffAsync (the #2727-retired banner's "Hand Off Now" flow) —
+        /// same real ArchiveChatAsync (queue DB, falling back to the build-tracker API) +
+        /// EpicChatUrlBuilder.BuildEpicChatUrl(handoffFromChatUrl) + OpenWebTab + CloseTab
+        /// sequence. Band 1 already knows its own BoardChat/TabItem/epic number (RefreshContext
+        /// resolves EpicNumber up front), so none of TriggerHandoffAsync's epic-resolution
+        /// fallback chain (WebView2 lookup, tab-title parsing) is needed here — this is called
+        /// only with an already-resolved epic.</summary>
+        public async System.Threading.Tasks.Task StartNewChatWithHandoffAsync(BuildConsole.Services.BoardChat chat, TabItem oldTab, int epicNumber)
         {
             try
             {
-                TabItem? oldTab = null;
-                BuildConsole.Services.BoardChat? chat = null;
-
-                foreach (var kvp in _chatTabs)
-                {
-                    if (kvp.Value.WebView == oldWv)
-                    {
-                        oldTab = kvp.Key;
-                        chat = oldTab.Tag as BuildConsole.Services.BoardChat;
-                        break;
-                    }
-                }
-
-                if (oldTab == null)
-                {
-                    foreach (TabItem item in EditorTabs.Items)
-                    {
-                        if (WebViewOf(item) == oldWv)
-                        {
-                            oldTab = item;
-                            chat = item.Tag as BuildConsole.Services.BoardChat;
-                            break;
-                        }
-                    }
-                }
-
-                if (oldTab == null)
-                {
-                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", "Handoff failed: old chat tab could not be identified.");
-                    return;
-                }
-
-                int? targetIssue = null;
-                if (chat != null)
-                {
-                    var resolvedEpic = LeftSidebar.GetEpicForChat(chat);
-                    if (resolvedEpic == null)
-                    {
-                        int? tabGithubNumber = null;
-                        if (_chatTabs.TryGetValue(oldTab, out var tabState))
-                        {
-                            tabGithubNumber = tabState.GithubNumber;
-                        }
-                        if (!tabGithubNumber.HasValue)
-                        {
-                            tabGithubNumber = chat.IssueGithubNumber;
-                        }
-                        if (tabGithubNumber.HasValue)
-                        {
-                            resolvedEpic = LeftSidebar.GetEpicByGithubNumber(tabGithubNumber.Value);
-                        }
-                    }
-                    if (resolvedEpic != null)
-                    {
-                        targetIssue = resolvedEpic.GithubNumber;
-                    }
-                }
-
-                // Git #1905 — Shane: "Hand Off Now" fails with "chat has no associated
-                // epic" on a tab whose title literally shows `[#1202]`. The entire chain
-                // above is nested under `if (chat != null)` and depends on
-                // GetEpicForChat / tabState.GithubNumber / chat.IssueGithubNumber — every
-                // one of which can be null or stale — and it's skipped outright when the
-                // tab isn't a tracked BoardChat at all. The tab's visible title still
-                // carries the real issue number, so parse it out as a last resort, the
-                // SAME ExtractTabTitleIssueNumber fallback #1802 built for the Working-epic
-                // highlight. Prefer the canonical epic mapping when the number is a known
-                // epic; otherwise the number on the title is itself a valid handoff target,
-                // so a stale/empty bt_epics cache never turns a clearly-numbered tab back
-                // into "no associated epic". Covers BOTH the chat==null case and the
-                // chat!=null-but-chain-empty case the issue calls out.
-                if (!targetIssue.HasValue)
-                {
-                    var titleNumber = ExtractTabTitleIssueNumber(ExtractTabTitle(oldTab));
-                    if (titleNumber.HasValue)
-                    {
-                        var titleEpic = LeftSidebar.GetEpicByGithubNumber(titleNumber.Value);
-                        targetIssue = titleEpic?.GithubNumber ?? titleNumber.Value;
-                    }
-                }
-
-                // Git #2545 — final last resort. The anchored parse above (now including
-                // #2545's bare-leading-number branch) resolves the real reported case,
-                // `1202 Build Console`. But a manually-renamed chat can carry its number
-                // anywhere in the title, so scan the whole visible title for any real
-                // #?<n> token before giving up. This exists specifically so this exact
-                // "no associated epic" failure — which already recurred once after #1905
-                // was declared fixed — can never fire again on a tab that visibly shows an
-                // issue number, regardless of which path (or manual rename) set the title.
-                if (!targetIssue.HasValue)
-                {
-                    var anyNumber = ExtractAnyTitleIssueNumber(ExtractTabTitle(oldTab));
-                    if (anyNumber.HasValue)
-                    {
-                        var anyEpic = LeftSidebar.GetEpicByGithubNumber(anyNumber.Value);
-                        targetIssue = anyEpic?.GithubNumber ?? anyNumber.Value;
-                    }
-                }
-
-                if (!targetIssue.HasValue)
-                {
-                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", "Handoff aborted: no resolved epic associated with the current chat.");
-                    ToastEngine.Warning("Handoff", "Cannot hand off: chat has no associated epic.");
-                    return;
-                }
-
                 var settings = BuildConsole.Services.BuildConsoleSettings.Load();
                 if (settings == null || string.IsNullOrWhiteSpace(settings.EpicChatProjectUrl))
                 {
@@ -7764,57 +7674,46 @@ namespace BuildConsole
                 // successor isn't dropped into the epic with no idea a predecessor existed.
                 // A handoff that loses its pointer is still better than one that doesn't fire
                 // at all, so a URL that can't be resolved just logs it and fires without one.
-                string? handoffFromChatUrl = chat?.ClaudeUrl;
+                string? handoffFromChatUrl = chat.ClaudeUrl;
                 if (string.IsNullOrEmpty(handoffFromChatUrl))
                 {
                     handoffFromChatUrl = TryGetChatUrlForTab(oldTab);
                 }
                 if (string.IsNullOrEmpty(handoffFromChatUrl))
                 {
-                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Handoff for Epic #{targetIssue.Value} firing without a handoff pointer — old chat's conversation URL could not be resolved.");
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Handoff for Epic #{epicNumber} firing without a handoff pointer — old chat's conversation URL could not be resolved.");
                 }
 
-                var fullUrl = BuildConsole.Services.EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, targetIssue.Value, handoffFromChatUrl);
+                var fullUrl = BuildConsole.Services.EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, epicNumber, handoffFromChatUrl);
 
-                if (chat != null)
+                string convId = chat.ConversationId;
+                BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Archiving old chat '{chat.Title}' ({convId})...");
+                DateTime? archivedAtUtc = null;
+                if (_queueDb != null)
                 {
-                    string convId = chat.ConversationId;
-                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Archiving old chat '{chat.Title}' ({convId})...");
-                    DateTime? archivedAtUtc = null;
-                    if (_queueDb != null)
-                    {
-                        archivedAtUtc = await _queueDb.ArchiveChatAsync(convId);
-                    }
-                    else if (_buildTrackerApi != null && _buildTrackerApi.IsConfigured)
-                    {
-                        var res = await _buildTrackerApi.ArchiveChatAsync(convId);
-                        if (res.IsSuccessStatusCode)
-                        {
-                            archivedAtUtc = DateTime.UtcNow;
-                        }
-                    }
-                    chat.Archived = true;
-                    chat.ArchivedAt = archivedAtUtc;
-                    try { LeftSidebar.PopulateChatsTree(); } catch { }
+                    archivedAtUtc = await _queueDb.ArchiveChatAsync(convId);
                 }
+                else if (_buildTrackerApi != null && _buildTrackerApi.IsConfigured)
+                {
+                    var res = await _buildTrackerApi.ArchiveChatAsync(convId);
+                    if (res.IsSuccessStatusCode)
+                    {
+                        archivedAtUtc = DateTime.UtcNow;
+                    }
+                }
+                chat.Archived = true;
+                chat.ArchivedAt = archivedAtUtc;
+                try { LeftSidebar.PopulateChatsTree(); } catch { }
 
-                BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Firing new chat for Epic #{targetIssue.Value}...");
-                OpenWebTab(fullUrl, $"#{targetIssue.Value} New Chat", "", injectPrefillPoll: true, associateIssueNumber: targetIssue.Value, associateIssueType: "Epic", associateDefaultTitle: $"[#{targetIssue.Value}] New Chat");
+                BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Firing new chat for Epic #{epicNumber}...");
+                OpenWebTab(fullUrl, $"#{epicNumber} New Chat", "", injectPrefillPoll: true, associateIssueNumber: epicNumber, associateIssueType: "Epic", associateDefaultTitle: $"[#{epicNumber}] New Chat");
 
                 CloseTab(oldTab);
-                ToastEngine.Success("Handoff", $"Handoff fired for Epic #{targetIssue.Value}! Old chat archived.");
+                ToastEngine.Success("Handoff", $"Handoff fired for Epic #{epicNumber}! Old chat archived.");
             }
             catch (Exception ex)
             {
                 BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Handoff failed: {ex.Message}");
-            }
-            finally
-            {
-                // Git #1470 — re-arm the button so a failed/aborted attempt (missing settings,
-                // no resolved epic, etc.) can be retried by clicking again, rather than leaving
-                // it permanently disabled. Harmless no-op if the old tab/wrapper was already closed.
-                meterState.HandoffInProgress = false;
-                handoffBtn.IsEnabled = true;
             }
         }
 

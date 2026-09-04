@@ -413,10 +413,29 @@ namespace BuildConsole.Controls
             catch (Exception ex) { ActivityLog.Log("chat.container", $"epic click failed: {ex.Message}"); }
         }
 
-        private void BtnStartNewChat_Click(object sender, RoutedEventArgs e)
+        /// <summary>Git #2736 — Band 1's "Start New Chat" used to just open/create the epic's chat
+        /// (OpenOrCreateEpicChat) with no archive and no handoff-back pointer, a real regression
+        /// from what the retired (#2727) meterState banner's "Hand Off Now" button did. Now fires
+        /// the real archive + handoff-pointer flow (MainWindow.StartNewChatWithHandoffAsync, ported
+        /// from the now-removed TriggerHandoffAsync) against this container's own tab, falling back
+        /// to the old plain open only if that tab genuinely can't be resolved.</summary>
+        private async void BtnStartNewChat_Click(object sender, RoutedEventArgs e)
         {
-            if (EpicNumber.HasValue) _owner.OpenOrCreateEpicChat(EpicNumber.Value);
-            else ToastEngine.Show("Chat", "This chat has no epic to start a fresh chat on.", ToastKind.Info);
+            if (!EpicNumber.HasValue)
+            {
+                ToastEngine.Show("Chat", "This chat has no epic to start a fresh chat on.", ToastKind.Info);
+                return;
+            }
+
+            var oldTab = _owner.FindTabForChatContainer(this);
+            if (oldTab == null)
+            {
+                ActivityLog.Log("chat.container", $"Start New Chat: couldn't resolve this container's own tab for epic #{EpicNumber.Value} — falling back to plain open/create with no archive/handoff pointer.");
+                _owner.OpenOrCreateEpicChat(EpicNumber.Value);
+                return;
+            }
+
+            await _owner.StartNewChatWithHandoffAsync(_chat, oldTab, EpicNumber.Value);
         }
 
         private void BtnFloaty_Click(object sender, RoutedEventArgs e) => _owner.OpenFloatingChatWindow(_chat);
