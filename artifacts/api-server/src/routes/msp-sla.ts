@@ -507,14 +507,14 @@ router.get("/msp/operator-tasks", requireRole("MSPOperator"), async (req: Reques
                'sla_breach' AS "type",
                'SLA Breach' AS "category",
                b.customer_id AS "customerId",
-               c.name AS "customerName",
+               c.customer_name AS "customerName",
                CONCAT(b.phase, ' threshold exceeded — ', ROUND(b.elapsed_minutes::numeric, 0), ' min elapsed (limit: ', b.threshold_minutes, ' min)') AS "description",
                COALESCE(b.breach_type, 'breach') AS "severity",
                b.created_at AS "createdAt",
                NULL AS "resolvedAt",
                '/admin-panel/#/sla' AS "deepLink"
         FROM sla_breaches b
-        LEFT JOIN msp_customers c ON c.id = b.customer_id
+        LEFT JOIN tenants c ON c.id = b.customer_id
         WHERE b.msp_id = ${mspId} AND b.resolved_at IS NULL
         ORDER BY b.created_at DESC LIMIT 50
       `),
@@ -523,14 +523,14 @@ router.get("/msp/operator-tasks", requireRole("MSPOperator"), async (req: Reques
                'scope_creep_violation' AS "type",
                'Scope Creep Violation' AS "category",
                v.customer_id AS "customerId",
-               c.name AS "customerName",
+               c.customer_name AS "customerName",
                CONCAT(v.severity, ' violation — composite score ', ROUND(v.composite_score::numeric, 1), ' (threshold: ', v.threshold, ')') AS "description",
                v.severity AS "severity",
                v.created_at AS "createdAt",
                v.resolved_at AS "resolvedAt",
                '/admin-panel/#/scope-creep' AS "deepLink"
         FROM scope_creep_violations v
-        LEFT JOIN msp_customers c ON c.id = v.customer_id
+        LEFT JOIN tenants c ON c.id = v.customer_id
         WHERE v.msp_id = ${mspId} AND v.resolved_at IS NULL
         ORDER BY v.created_at DESC LIMIT 50
       `),
