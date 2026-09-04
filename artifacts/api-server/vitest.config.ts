@@ -8,6 +8,7 @@ export default defineConfig({
       "src/lib/security-plan-prose.test.ts",
       "src/lib/repo-source-nul-byte-guard.test.ts",
       "src/lib/drift-collector.test.ts",
+      "src/lib/config-change-attribution.live-db.test.ts",
       "src/lib/drift-check-specs.test.ts",
       "src/lib/retainer-hours.test.ts",
       "src/lib/remediation-catalog.test.ts",
