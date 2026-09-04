@@ -14,7 +14,14 @@ import type { ToolDef } from "./registry.ts";
  * wrapped here. Optionally filter by status and/or a single tenant.
  */
 
-const RBD_STATUSES = ["active", "pending_signature", "expired", "revoked"] as const;
+// `expired` was removed on #1507 — an acceptance is a signed fact and does not
+// expire; what lapses is the review clock. This mirrors the canonical
+// `RISK_ACCEPTANCE_STATUSES` (lib/db/src/schema/msp.ts) — kept as a local copy
+// rather than an `@workspace/db` import because mcp-server doesn't otherwise
+// depend on that package and this is a read-only filter, not a write path
+// (Git #2697). If a future change adds that dependency for another reason,
+// switch this to the real import instead.
+const RBD_STATUSES = ["active", "pending_signature", "revoked"] as const;
 
 const inputSchema = {
   status: z.enum(RBD_STATUSES).optional().describe("Narrow to a single decision status."),

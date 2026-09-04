@@ -27,7 +27,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspRiskDecisionsTable, tenantsTable } from "@workspace/db";
+import { db, mspRiskDecisionsTable, tenantsTable, RISK_ACCEPTANCE_STATUSES } from "@workspace/db";
 import { and, eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
@@ -40,7 +40,8 @@ const router: IRouter = Router();
 
 const RAW_RISK_LEVELS = ["critical", "high", "medium"] as const;
 const RESIDUAL_RISK_LEVELS = ["high", "medium", "low"] as const;
-const RBD_STATUSES = ["active", "pending_signature", "expired", "revoked"] as const;
+// `expired` was removed on #1507 — an acceptance is a signed fact and does not
+// expire; what lapses is the review clock. See RISK_ACCEPTANCE_STATUSES (Git #2697).
 
 // ── Wire mapper ─────────────────────────────────────────────────────────────
 // Only the fields the AdminV2 surface reads. The register-extension columns
@@ -174,7 +175,7 @@ const createSchema = z.object({
   residualRiskScore: z.number().int().min(0).max(100).optional(),
   liabilityValueUsd: z.number().int().min(0).optional(),
   expirationDate: z.string().max(100).optional(),
-  status: z.enum(RBD_STATUSES).optional(),
+  status: z.enum(RISK_ACCEPTANCE_STATUSES).optional(),
   rationale: z.string().max(4000).nullable().optional(),
 });
 
@@ -265,7 +266,7 @@ const patchSchema = z.object({
   residualRiskScore: z.number().int().min(0).max(100).optional(),
   liabilityValueUsd: z.number().int().min(0).optional(),
   expirationDate: z.string().max(100).optional(),
-  status: z.enum(RBD_STATUSES).optional(),
+  status: z.enum(RISK_ACCEPTANCE_STATUSES).optional(),
   rationale: z.string().max(4000).nullable().optional(),
 });
 
