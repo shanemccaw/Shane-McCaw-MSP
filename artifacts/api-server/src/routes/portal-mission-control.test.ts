@@ -243,7 +243,7 @@ describe("GET /portal/mission-control/engines", () => {
       (res.body.engines as Array<{ key: string; severity: string }>).map((e) => [e.key, e.severity]),
     );
     expect(bySeverity).toEqual({
-      health: "high", // 50 < 60
+      health: "good", // 50 <= 60 (score is higher-is-worse; see health-engine.ts)
       security: "high", // 80 > 75
       drift: "good", // 0 <= 30
       monitoring: "watch", // failures with some passing
