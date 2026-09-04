@@ -186,6 +186,9 @@
                                 <MenuItem Header="dotnet build"    Click="GitChip_Click" Tag="dotnet build --configuration Release"/>
                                 <Separator/>
                                 <MenuItem Header="Open SQL Runner" Click="OpenSql_Click"/>
+                                <!-- Git #2786 — Log Viewer full document, same
+                                     open-as-tab precedent as SQL Runner above. -->
+                                <MenuItem Header="Open Log Viewer" Click="OpenLogViewer_Click"/>
                             </MenuItem>
 
                             <MenuItem Header="_Help">

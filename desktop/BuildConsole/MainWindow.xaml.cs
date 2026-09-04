@@ -2041,6 +2041,23 @@ namespace BuildConsole
         }
 
         /// <summary>
+        /// Git #2786 — same shared #937/#940 composer-injection path as
+        /// WireSqlRunnerSendToChat above. Log Viewer has no dedicated inline
+        /// status strip, so outcomes surface as a toast instead of an
+        /// on-control status line.
+        /// </summary>
+        private void WireLogViewerSendToChat(Controls.LogViewerDocumentView view)
+        {
+            view.SendToChatRequested += async (s, text) =>
+                await SendTextToActiveClaudeChatAsync(
+                    text,
+                    showMessage: (msg, isError) => ToastEngine.Show("Log Viewer", msg, isError ? ToastKind.Warning : ToastKind.Success),
+                    onInserted: null,
+                    logChannel: "log-viewer.send-to-chat",
+                    whatSingular: "log line(s)");
+        }
+
+        /// <summary>
         /// Git #937 — replicates #922's EpicChatPrefillPollScript composer insert
         /// for an ALREADY-active tab (so no ~15s SPA-boot poll needed). Claude.ai's
         /// composer is a contenteditable ProseMirror div, so the proven write is
@@ -5454,6 +5471,56 @@ namespace BuildConsole
             EditorTabs.SelectedItem = newTab;
 
             return sqlViewer;
+        }
+
+        // Git #2786 — Log Viewer full document, ported from ShaneBuilder's
+        // LogViewerDock (sub-issue of #2784, on top of #2785's LogService core
+        // port). Same open-as-tab pattern as OpenSqlRunnerTab above.
+        private void OpenLogViewer_Click(object sender, RoutedEventArgs e) => OpenLogViewerTab();
+
+        public Controls.LogViewerDocumentView OpenLogViewerTab()
+        {
+            foreach (TabItem item in EditorTabs.Items)
+            {
+                if (item.Tag is string tagPath && tagPath == "log_viewer")
+                {
+                    EditorTabs.SelectedItem = item;
+                    return (Controls.LogViewerDocumentView)item.Content;
+                }
+            }
+
+            var headerPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var iconBlock = new TextBlock { Text = "📜", FontSize = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+            var titleBlock = new TextBlock { Text = "Log Viewer", FontSize = 13, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextBrush") };
+            var closeBtn = new Button { Content = "✕", Style = (Style)FindResource("IconButton"), FontSize = 10, Padding = new Thickness(3, 1, 3, 1), Margin = new Thickness(4, 0, 0, 0), ToolTip = "Close Tab", VerticalAlignment = VerticalAlignment.Center };
+
+            headerPanel.Children.Add(iconBlock);
+            headerPanel.Children.Add(titleBlock);
+            headerPanel.Children.Add(closeBtn);
+
+            var logViewer = new Controls.LogViewerDocumentView();
+            WireLogViewerSendToChat(logViewer);
+
+            var newTab = new TabItem
+            {
+                Header = headerPanel,
+                Content = logViewer,
+                Tag = "log_viewer"
+            };
+
+            AttachTabContextMenu(newTab, EditorTabs);
+            AttachTabDragHandlers(newTab);
+
+            closeBtn.Click += (s, e) => CloseTab(newTab);
+
+            EditorTabs.Items.Add(newTab);
+            EditorTabs.SelectedItem = newTab;
+
+            return logViewer;
         }
 
         public void OpenChatMappingsTab()
