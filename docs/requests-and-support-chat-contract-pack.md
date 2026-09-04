@@ -1,10 +1,17 @@
-# Requests and Support Chat (Portal) — contract extraction pack
+# Requests and Support Chat — contract extraction pack (Portal + MSP Console)
 
 **Issue:** #2450, part of #1659 ("Feature: Requests and Support Chat (Portal)"), part of
 #1485 (EPIC: Portal). Method per #1642. Extracted, not authored — every field below traces
 to one of the files listed, cited to file:line. This is Phase 2 of the Portal build order
 (architect → build the endpoints → regenerate the contract pack → Design → wire) — no
 page/UI-shape decisions are made here.
+
+**§16-19 addendum (2026-09-04):** Extended under #2648, part of #2570 ("Feature: Requests
+and Support Chat (MSP Console)"), same #1485 Epic, same #1642 method — regenerated from the
+real MSP-operator backend confirmed built under #2672 (`msp-support.ts` + `lib/zoho-desk.ts`
+org-scoped functions). The Portal-side sections above (§1-§15) are unchanged from the
+original #2450/#1659 extraction; §16-19 below are the new MSP-console material. Same
+discipline: no page/UI-shape decisions, this is a Feature-Phase-3 read-only pack.
 
 All 5 endpoints named in #2450's Step 1 were confirmed real and live in the current
 codebase before any of this was written, across three route files:
@@ -77,6 +84,22 @@ Sources this pack is built against, and nothing else:
   portal-archive-2026-08-29:artifacts/msp-portal/src/pages/{support-chat,customer-requests}.tsx`
   — read per #2450's own instruction, for real request/response shape and error states; not
   used as a layout/vocabulary source
+
+**§16-19 addendum sources** (MSP-console operator side, #2672):
+
+- `artifacts/api-server/src/routes/msp-support.ts` — all 3
+  `/msp/support/requests*` operator routes
+- `artifacts/api-server/src/lib/zoho-desk.ts` — `listDeskTicketsForOrg()`,
+  `getDeskTicketById()`, `getDeskTicketThreadForOperator()`, `getDeskTicket()`,
+  `enqueueZohoDeskWrite()`, `CustomerTicketSummary`, `CustomerTicketThreadEntry` (shared
+  types, first documented in the §1-§15 sources above)
+- `artifacts/api-server/src/lib/zoho-desk-nodes.ts` — `ZOHO_DESK_NODE_TYPES`,
+  `zoho_desk_add_comment` node spec
+- `artifacts/api-server/src/middlewares/requireAuth.ts` — `requireRole()`, `ROLE_ORDER`
+  (role-hierarchy semantics of `requireRole("MSPOperator")`)
+- `artifacts/api-server/src/lib/resolve-msp-id.ts` — `resolveMspIdStrict()`
+- `artifacts/api-server/src/routes/index.ts:227` — router registration
+  (`mspSupportRouter`), confirming the routes are actually mounted, not dead code
 
 ---
 
@@ -631,6 +654,190 @@ since #2450 Step 3 makes no implementation decisions.
 
 ---
 
+## 16. MSP Console — wire contract `GET /api/msp/support/requests` (operator list)
+
+`msp-support.ts:54-79`. Auth: `requireRole("MSPOperator")` (`:54`) — per `ROLE_ORDER`
+(`requireAuth.ts:80-88`) this is a **minimum**, not an exact match: MSPOperator, MSPAdmin,
+and PlatformAdmin all pass (`roleIndex(effectiveRole) < roleIndex(minimumRole)` rejects only
+strictly-lower roles, `requireAuth.ts:214`). **403** `{ error: "MSP context required" }` if
+`resolveMspIdStrict(req)` (`req.user?.mspId ?? null`) resolves `null` (`:55-59`) — unlike the
+Portal-side customer routes (§7-§10), there is no `:mspId`/`?mspId=` override anywhere in
+this file; the caller's own session `mspId` is the only source, same discipline as
+`msp-message-center.ts`.
+
+Query params `limit`/`offset` (`:61-62`), both optional, parsed via `Number(...)` with a
+`Number.isFinite` guard — a non-numeric or missing value falls through to
+`listDeskTicketsForOrg()`'s own defaults (`limit: 50`, clamped `[1, 100]`; `offset: 0`,
+clamped `>= 0`, `zoho-desk.ts:462-463`) rather than erroring; no 400 path for a bad
+`limit`/`offset` exists on this route.
+
+Every ticket under the caller's MSP's Zoho Desk org — **both** customer-opened requests
+(§7) and chat escalations (§1/§2/§3) land in the same list, since both write through the
+identical `zoho_desk_create_ticket` job into the same org/department (this file's own header
+comment, `msp-support.ts:6-14`). An escalated ticket is identifiable only by its real
+`subject` field (`"Support escalation from <name>"`, set by `escalateToAdmin()` in
+`support-chat.ts`) — **there is no separate `type`/`source` field** distinguishing an
+escalation from a customer-opened request; a client wanting to filter/badge them must match
+on `subject` text, not a structured enum.
+
+Ownership boundary — **org-scoped, not per-Contact** (real, deliberate difference from every
+Portal-side read in §7-§10): `listDeskTicketsForOrg()` queries `GET /api/v1/tickets` under
+the caller's MSP's own org header (`orgHeader(mspId)`, resolved via
+`resolveZohoDeskOrgId(mspId)`), optionally further scoped to
+`ZOHO_DESK_DEFAULT_DEPARTMENT_ID` when that env var is set (`zoho-desk.ts:465-466`) — an
+operator sees every ticket in their org, not just tickets tied to their own Contact record
+(operators generally have none). A foreign-MSP ticket id is invisible by construction: it
+was never created under this org header, so it never appears — no explicit ownership column
+check exists or is needed (`zoho-desk.ts:432-444`'s own header comment).
+
+Response (`:69`): `{ configured: true, requests: CustomerTicketSummary[], count: number }`
+on success. `count` is Zoho's own reported total (`body.count`) when present, else
+`rows.length` (`zoho-desk.ts:475`) — **not necessarily equal to `requests.length`** when a
+`limit` truncates the page; a client needs `count` for real pagination, `requests.length`
+alone undercounts.
+
+Same **honest not-configured state as §8**, not a 503: `ZohoNotConnectedError` →
+`{ configured: false, requests: [], count: 0 }`, still **200** (`:71-75`). **500**
+`{ error: "We couldn't load requests right now. Please try again shortly." }` on any other
+thrown error (`:76-78`).
+
+`CustomerTicketSummary` shape is the exact same type documented in §8/§7's sources
+(`zoho-desk.ts:363-372`) — no separate operator-only summary shape exists.
+
+---
+
+## 17. MSP Console — wire contract `GET /api/msp/support/requests/:ticketId` (operator detail
++ full thread)
+
+`msp-support.ts:85-113`. Same `requireRole("MSPOperator")` + `resolveMspIdStrict` gate as
+§16. **400** `{ error: "Missing request id" }` if `:ticketId` is empty after trim (`:91-95`).
+
+Two sequential calls, both scoped to the caller's MSP org (not a Contact): `getDeskTicketById(
+ticketId, mspId)` (`:98`) — **404** `{ error: "Request not found" }` if `null` (`:99-102`,
+covers both "doesn't exist" and "exists in a different MSP's org", same non-probeable-by-id
+property as §9's customer route, but via a structurally different mechanism — org-header
+scoping rather than a Contact-match check). Only on a confirmed hit does it then fetch
+`getDeskTicketThreadForOperator(ticketId, mspId)` (`:103`) — same call-order discipline as
+§9 (never fetch the thread before ownership is confirmed).
+
+**The real, deliberate difference from §9's customer-facing thread**: `
+getDeskTicketThreadForOperator()` does **not** filter out private agent notes
+(`zoho-desk.ts:490-495`'s own docblock) — an operator sees the full internal conversation,
+including comments with `isPublic: false`, that a customer calling §9's
+`getDeskTicketThread()` would never receive. Same `CustomerTicketThreadEntry` shape
+(`{ id, kind: "thread" | "comment", direction: "in" | "out" | null, author, isPublic,
+content, createdTime }`) — the type itself is unchanged; only the operator function's own
+filtering behavior differs. `isPublic` is present and meaningful on the operator response in
+a way it never needs to be checked on the customer response (customer only ever sees
+`isPublic: true` rows).
+
+One real inference quirk in `getDeskTicketThreadForOperator()`'s own mapping
+(`zoho-desk.ts:510-513`): `isComment` is inferred from `raw.type === "comment" ||
+raw.commenter != null || raw.commentType != null` (Zoho's conversations feed conflates
+threads and comments in one list, no clean discriminator field) — and for a row NOT
+classified as a comment (i.e. `kind: "thread"`), `isPublic` is hardcoded `true`
+unconditionally (`:513`), since a `thread` entry (the actual customer-originated
+message/reply, as opposed to an agent's added `comment`) has no private variant in Zoho's
+model. Sort order: ascending by `createdTime` string compare (`:530`) — oldest-first, the
+opposite of §16's list route's newest-first ordering.
+
+Response: `{ request: CustomerTicketSummary, thread: CustomerTicketThreadEntry[] }`
+(`:104`) — same field names as §9's customer response shape, not namespaced
+`operatorRequest`/`operatorThread` or similar; a client distinguishes purely by which route
+it called.
+
+**503** `{ error: "Ticketing is not available right now." }` on `ZohoNotConnectedError`
+(`:106-109`) — note this route does **not** share §16's list route's 200/`configured: false`
+convention; it follows §9's convention instead (503, not 200) — same real cross-route
+inconsistency documented for the Portal side in §15, now also present between §16 and §17
+on the MSP-console side (see §19). **500** on any other error (`:110-111`).
+
+---
+
+## 18. MSP Console — wire contract `POST /api/msp/support/requests/:ticketId/reply`
+(operator reply / internal note)
+
+`msp-support.ts:121-172`. Same `requireRole("MSPOperator")` + `resolveMspIdStrict` gate.
+**400** `{ error: "Missing request id" }` / `{ error: "Please enter a message." }` for an
+empty `:ticketId` / empty-or-missing `message` body field (`:132-139`).
+
+Body (`:128-130`): `{ message: string; isPublic?: boolean }` — `isPublic` defaults to `true`
+(`bodyIn.isPublic === false ? false : true`, `:130` — any value other than the literal
+boolean `false`, including `undefined`, a truthy string, or `null`, resolves to `true`; not
+Zod-validated, a loose truthy/falsy-adjacent coercion rather than a strict boolean check).
+
+Same ownership chain as §17: `getDeskTicketById(ticketId, mspId)` first, **404** on `null`
+(`:142-145`), **before** any write — the reply cannot be queued against a ticket the caller's
+org can't see.
+
+Queues `zoho_desk_add_comment` via `enqueueZohoDeskWrite()` with `{ ticketId, content:
+message.slice(0, MAX_BODY), isPublic }`, `MAX_BODY = 5000` (`:45, :148-152`) — same node
+type and same 5000-char truncation as §10's customer reply route, but **no
+display-name-prefixing** of the message body (contrast §10's real, documented
+`"${displayName} (customer) replied:\n\n${message}"` prefix, `portal-customer-requests.ts:269-270`).
+This route's own comment explains why (`msp-support.ts:116-120`): Zoho already attributes a
+public comment to the connected agent, and for this route that agent attribution **is** the
+actual operator replying — no authorship-legibility gap to work around, unlike the customer
+route where the connected agent is never the customer.
+
+**202** response, message text branches on `isPublic` (`:155-158`):
+
+| `isPublic` | Message |
+|---|---|
+| `true` (default) | `"Your reply has been added to the request."` |
+| `false` | `"Your internal note has been added."` |
+
+Three failure branches, identical shape/ordering to §10's customer reply route:
+`ZohoNotConnectedError` → **503** `{ error: "Ticketing is not available right now." }`
+(`:160-163`); `ZohoApiError` → **502** `{ error: "We couldn't add your reply right now.
+Please try again shortly." }`, logging `err.body`/`err.status` distinctly (`:164-168`); any
+other thrown error → **500**, same message text as the 502 case (`:169-171`) — note this
+route's 500 and 502 bodies are textually identical, so a client cannot distinguish "Zoho
+rejected the write" from "something else broke" by response body alone, only by status code.
+
+---
+
+## 19. MSP Console — real enum/vocabulary additions and cross-surface edges
+
+No new enum unions are introduced by the operator side — `CustomerTicketSummary` and
+`CustomerTicketThreadEntry` (§12's existing citations, `zoho-desk.ts:363-383`) are reused
+verbatim; §16-18 are pure reads/writes against the same shapes and the same real Zoho-owned
+`status`/`statusType` vocabulary already documented in §12. One real, operator-only
+distinction worth a caller's attention: on §17's response, `CustomerTicketThreadEntry.isPublic
+=== false` is a genuinely reachable, meaningful state (an internal-only note) — on every
+Portal-side (§9) response it is not (customer thread entries are pre-filtered to
+`isPublic === true` only, so the field is always `true` there in practice even though the
+type doesn't statically guarantee it).
+
+Cross-surface edges (operator side):
+
+- **§16/§17/§18 share the exact same `CustomerTicketSummary`/`CustomerTicketThreadEntry`
+  wire shapes as §8/§9/§10's customer-facing routes** — a single set of TypeScript
+  interfaces (`zoho-desk.ts:363-383`) backs both the customer's "My Requests" surface and
+  the operator's queue, so a future shape change to either type is a simultaneous
+  contract change for both Portal and MSP Console.
+- **§18's `zoho_desk_add_comment` queue is the identical job/handler §10's customer reply
+  route uses** — an operator's public reply and a customer's reply both land in the same
+  Zoho ticket thread via the same drain-cadence job (§14's existing "shared across three
+  call sites" edge for `zoho_desk_create_ticket` extends the same way to
+  `zoho_desk_add_comment`: two producers — `portal-customer-requests.ts` §10 and
+  `msp-support.ts` §18 — one consumer).
+- **The operator's list (§16) is the real escalation queue** — no separate "escalations"
+  table/view exists; §3's `escalateToAdmin()` (customer- or staff-initiated) and §7's
+  "Open a Request" both create rows that surface in §16 exactly like any other ticket,
+  distinguishable only by the `subject` text convention noted in §16, not a structured
+  field. A Design pass building an operator queue view that wants to visually separate
+  "escalations" from "requests" has no server-side field to key off — it would need to
+  parse `subject`, or a new field would need to be added (a real, filed gap — see the
+  finding below).
+- **Ownership model genuinely differs between the two sides of this Feature**: Portal reads
+  (§8-§10) are Contact-scoped (one customer sees only their own tickets); MSP-console reads
+  (§16-§18) are org-scoped (one operator sees every ticket in their MSP's Zoho org). Both are
+  real, correct, and intentional — not a gap — but a Design/QA pass should know they are
+  architecturally different scoping mechanisms, not the same check applied twice.
+
+---
+
 ## Orphaned-endpoint check
 
 ```
@@ -655,6 +862,20 @@ prior caller, via the now-archived `support-chat.tsx`/`customer-requests.tsx`) w
 test (`support-chat.test.ts`, `portal-mission-control.test.ts`), and — aside from
 `/overview` — none is exercised by any live surface today; that is the honest state Design
 should build against, not a gap this pack needs to close.
+
+**§16-19 addendum — same check, MSP-console side:**
+
+```
+grep -rn "msp/support/requests" artifacts/msp-console/src artifacts/portal/src artifacts/msp-website artifacts/shane-mccaw-consulting artifacts/admin-panel
+```
+
+Returns **zero** matches. `artifacts/msp-console` (the real MSP-operator app the §16-18
+routes are built for) exists in the tree but has no `support`-related source under `src/`
+today, and no `Design/msp-console/` export directory exists yet at all (only
+`Design/portal/` is populated — confirmed via `ls Design/`) — so, unlike Portal's `/overview`
+route, there is **no live caller anywhere** for any of §16, §17, or §18. This is the same
+honest "backend built, Design/wire not yet started" state #2672's own closing comment
+describes, not a gap this pack needs to close.
 
 ---
 
