@@ -296,6 +296,13 @@ async function main() {
 
     // Retire, never delete. A registry row whose resource_key has left the derived
     // model still gives meaning to every snapshot object that referenced it.
+    //
+    // Git #2010: `dns`-transport rows are exempt. They are not derived FROM
+    // `config_resources` at all — there is no published Graph/DSC source for
+    // "SPF/DKIM/DMARC public DNS TXT records", so they are seeded once by that
+    // issue's own migration and never appear as a row in `config_resources` to
+    // upsert against. Without this exclusion every run of this script would
+    // retire them as "no longer present in the model" the instant it runs.
     let retired = 0;
     if (!DRY_RUN) {
       const { rowCount } = await client.query(`
@@ -305,6 +312,7 @@ async function main() {
                notes = 'retired: no longer present in config_resources as of ' || now()::date,
                updated_at = now()
          WHERE NOT EXISTS (SELECT 1 FROM config_resources r WHERE r.resource_key = t.resource_key)
+           AND t.read_transport <> 'dns'
            AND (t.is_collectable = true OR t.notes IS DISTINCT FROM 'retired')
       `);
       retired = rowCount ?? 0;

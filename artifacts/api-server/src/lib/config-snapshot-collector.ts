@@ -16,8 +16,11 @@
  *    licence-gap classification, `@odata.nextLink` paging, 429 backoff and #1847's
  *    Intune service-state resolution — behaviour that survived #1400, #1614 and
  *    #1483 and must not be re-implemented. PowerShell goes through
- *    `callPsExecution` to the ps-execution container. A second transport was
- *    explicitly forbidden and none was written.
+ *    `callPsExecution` to the ps-execution container. DNS (Git #2010) goes
+ *    through `queryTxtRecords`, the same TXT lookup `monitor-executor.ts`'s
+ *    `dns` check executor (#496) already runs — no tenant credential involved,
+ *    a plain public-DNS resolution. A second transport of any of the three
+ *    kinds was explicitly forbidden and none was written.
  *
  * 2. IT IS DRIVEN BY THE REGISTRY, NEVER A HARDCODED LIST. Every target comes from
  *    `config_snapshot_resource_types WHERE is_collectable`. Adding a resource is a
@@ -444,6 +447,16 @@ export function classifySnapshotFailure(
     }
   }
 
+  // Git #2010: the `dns` transport has no HTTP status/body — a Node resolver
+  // failure carries its own `NodeJS.ErrnoException.code` instead. Anything
+  // other than "no record of this type" (which `queryTxtRecords` already
+  // resolves to an empty array, never a throw) is a real resolver/network
+  // fault, not a fact about the tenant.
+  const errnoCode = (err as NodeJS.ErrnoException)?.code;
+  if (errnoCode && ["ECONNREFUSED", "ETIMEOUT", "ESERVFAIL", "EREFUSED", "ECONNRESET"].includes(errnoCode)) {
+    return { reason: "transport_error", detail: `DNS resolver error ${errnoCode}: ${err instanceof Error ? err.message : String(err)}` };
+  }
+
   const code = body ? extractErrorCode(body) : null;
   const text = `${code ?? ""} ${body ?? ""} ${err instanceof Error ? err.message : String(err ?? "")}`;
   const lower = text.toLowerCase();
@@ -582,6 +595,72 @@ async function collectPowerShellResource(
     (i): i is Record<string, unknown> => i !== null && typeof i === "object" && !Array.isArray(i),
   );
   return { objects, pageCount: 1, requestRef: `ps:${cmdletKey} (${mapped})`, truncated: false };
+}
+
+/**
+ * Read the DNS-backed resource: SPF/DKIM/DMARC TXT records for the tenant's own
+ * verified domains (Git #2010).
+ *
+ * Reuses `monitor-executor.ts`'s `queryTxtRecords` verbatim — per #1796's own
+ * first constraint, this file introduces no transport of its own, and a second
+ * DNS client was explicitly ruled out on this issue too. Domains come from a
+ * live Graph call to `/domains` (the same transport `collectGraphResource`
+ * already uses), filtered to `isVerified`, rather than from this run's own
+ * in-progress `graph:v1.0:/domains` objects: a bounded-concurrency worker pool
+ * gives no guarantee that resource finishes before this one starts, so reading
+ * it back live is the only way to not race the collector's own domain list.
+ *
+ * One object per (domain, record type, name) — the composite key the registry
+ * declares — rather than one blob per tenant, so SPF/DKIM/DMARC on each
+ * verified domain diffs independently in #1797.
+ */
+async function collectDnsResource(entraTenantId: string): Promise<RawCollection> {
+  const { graphFetchPaginated, queryTxtRecords, DKIM_DEFAULT_SELECTORS } = await import("./monitor-executor");
+
+  const { items: domainItems } = await graphFetchPaginated(entraTenantId, "/domains", "GET");
+  const domains = domainItems
+    .filter((d): d is Record<string, unknown> => d !== null && typeof d === "object" && !Array.isArray(d))
+    .filter((d) => d.isVerified === true)
+    .map((d) => String(d.id));
+
+  const lookupsFor = (domain: string): Array<{ recordType: string; name: string }> => [
+    { recordType: "spf", name: domain },
+    { recordType: "dmarc", name: `_dmarc.${domain}` },
+    ...DKIM_DEFAULT_SELECTORS.map((selector) => ({ recordType: "dkim", name: `${selector}._domainkey.${domain}` })),
+  ];
+
+  const objects: Record<string, unknown>[] = [];
+  await Promise.all(
+    domains.flatMap((domain) =>
+      lookupsFor(domain).map(async ({ recordType, name }) => {
+        const rawTxtRecords = await queryTxtRecords(name);
+        // Same recognition rule runDnsCheck applies for the check path, kept
+        // identical so the snapshot and the live check never disagree about
+        // which of a name's TXT records is the SPF/DMARC one.
+        const recognizedRecord =
+          recordType === "spf"
+            ? rawTxtRecords.find((r) => r.startsWith("v=spf1")) ?? null
+            : recordType === "dmarc"
+              ? rawTxtRecords.find((r) => r.startsWith("v=DMARC1")) ?? null
+              : rawTxtRecords[0] ?? null;
+        objects.push({
+          domain,
+          recordType,
+          name,
+          rawTxtRecords,
+          recognizedRecord,
+          found: rawTxtRecords.length > 0,
+        });
+      }),
+    ),
+  );
+
+  return {
+    objects,
+    pageCount: 1,
+    requestRef: "dns:txt (spf/dmarc/dkim, per verified domain)",
+    truncated: false,
+  };
 }
 
 // ── The run ──────────────────────────────────────────────────────────────────
@@ -773,6 +852,8 @@ export async function collectTenantConfigSnapshot(
           return;
         }
         raw = psResult;
+      } else if (rt.readTransport === "dns") {
+        raw = await collectDnsResource(entraTenantId);
       } else {
         // #1849: `azure-rm` and `power-platform` have no executor in this platform
         // at all. The registry already marks them not collectable, so this is a
