@@ -93,8 +93,20 @@ vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAuth:  (_req: Request, _res: Response, next: NextFunction) => next(),
 }));
 
+// `logger.child(...)` chains — msp-sow.ts pulls in msp-entitlement.ts, which binds
+// its own child logger off the shared `logger` singleton, so the mock must support
+// `.child()` returning another logger-shaped object, not just info/warn/error.
+function makeLoggerMock(): { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn>; child: ReturnType<typeof vi.fn> } {
+  return {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    child: vi.fn(() => makeLoggerMock()),
+  };
+}
+
 vi.mock("../lib/logger.ts", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: makeLoggerMock(),
 }));
 
 vi.mock("../lib/stripe.ts", () => ({
@@ -599,5 +611,23 @@ describe("GET + POST /msp/customers/:customerId/clickwrap", () => {
 
     const res = await request(app).get("/msp/customers/999/clickwrap");
     expect(res.status).toBe(404);
+  });
+
+  it("GET rejects a caller from a different MSP with 403 (Access denied)", async () => {
+    const app = buildApp();
+    queueSelect([{ mspId: 99 }]); // customer belongs to a different MSP than the caller's mspId (42)
+
+    const res = await request(app).get("/msp/customers/5/clickwrap");
+    expect(res.status).toBe(403);
+  });
+
+  it("POST rejects a caller from a different MSP with 403 (Access denied) — regression for #2725", async () => {
+    const app = buildApp();
+    queueSelect([{ mspId: 99 }]); // customer belongs to a different MSP than the caller's mspId (42)
+
+    const res = await request(app).post("/msp/customers/5/clickwrap").send({});
+    expect(res.status).toBe(403);
+    // Must not have reached the insert — no unauthorized clickwrap acceptance recorded.
+    expect(mockDb.insert).not.toHaveBeenCalled();
   });
 });

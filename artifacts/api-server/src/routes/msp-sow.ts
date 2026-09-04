@@ -951,6 +951,7 @@ router.post(
     if (isNaN(customerId)) { apiErr(res, 400, "customerId must be a number"); return; }
 
     const user = req.user!;
+    const mspId = user.mspId ?? getMspIdFromRequest(req);
 
     const [customer] = await db
       .select({ mspId: tenantsTable.mspId })
@@ -959,6 +960,9 @@ router.post(
       .limit(1);
 
     if (!customer) { apiErr(res, 404, "Customer not found"); return; }
+    if (mspId && customer.mspId !== mspId && user.role !== "admin") {
+      apiErr(res, 403, "Access denied"); return;
+    }
 
     // Get the current agreement template to snapshot
     const [connConfig] = await db
