@@ -24,7 +24,6 @@ namespace BuildConsole.Controls
     /// </summary>
     public partial class AiBatterUpPanel : UserControl
     {
-        private Services.GitHubApiClient? _gh;
         private bool _refreshing;
 
         // Git #1863 — the real fetched/sorted rows from the last RefreshAsync. TxtFilter
@@ -84,11 +83,14 @@ namespace BuildConsole.Controls
             FilterBoxHost.Visibility = _allRows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
+        // Git #2737 — build a fresh client on every call, matching BatterUpPanel's convention.
+        // Caching this in a field (the old `_gh ??=` pattern) meant a GitHub PAT rotated in
+        // Settings after the first build never took effect until BuildConsole was restarted.
         private Services.GitHubApiClient? GetClient()
         {
             var settings = Services.BuildConsoleSettings.Load();
             if (!settings.HasGitHubPat) return null;
-            return _gh ??= new Services.GitHubApiClient(settings.GitHubPat);
+            return new Services.GitHubApiClient(settings.GitHubPat);
         }
 
         public async System.Threading.Tasks.Task RefreshAsync()
