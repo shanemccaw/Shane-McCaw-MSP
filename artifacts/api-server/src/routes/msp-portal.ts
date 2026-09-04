@@ -27,6 +27,7 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { calculateMspPortfolioRisk } from "../lib/msp-engine.ts";
 import { aggregateMspTelemetry } from "../lib/msp-financial-aggregator.ts";
 import { logger } from "../lib/logger.ts";
+import { syncTenantsAfterStatusWrite } from "../lib/retention/subscription-state.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -756,7 +757,7 @@ router.get(
 
 // ── POST /api/msp/customers/bulk ───────────────────────────────────────────────
 // Bulk actions on a set of customers owned by the authenticated MSP.
-// Actions: assign_bundle, tag, export, archive
+// Actions: assign_bundle, export, archive
 // Each action is applied per-customer; assign_bundle uses per-customer idempotency.
 
 router.post(
@@ -913,44 +914,11 @@ router.post(
         return;
       }
 
-      // ── tag ────────────────────────────────────────────────────────────────────
-      if (action === "tag") {
-        const rawTags = payload.tags;
-        const tags: string[] = Array.isArray(rawTags)
-          ? rawTags.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim())
-          : [];
-
-        if (tags.length === 0) {
-          res.status(400).json({ error: "payload.tags must be a non-empty string array" });
-          return;
-        }
-
-        // Merge new tags into each customer's existing tags array (deduplicating via SQL)
-        await db.execute(
-          sql`UPDATE msp_customers
-              SET tags = (
-                SELECT array_agg(DISTINCT t ORDER BY t)
-                FROM unnest(tags || ${tags}::text[]) AS t
-              ),
-              updated_at = now()
-              WHERE id IN ${ids}
-              AND msp_id = ${mspId}`,
-        );
-
-        res.json({ action: "tag", updated: ids.length, tags });
-        return;
-      }
-
       // ── export ─────────────────────────────────────────────────────────────────
       if (action === "export") {
-        const csvHeader = "id,name,domain,status,industry,tenantId,tags,createdAt\n";
+        const csvHeader = "id,name,domain,status,industry,tenantId,createdAt\n";
         const csvRows = ownedRows
           .map((r) => {
-            // Always empty now: msp_customers.tags has no successor column on
-            // `tenants`, so there is nothing left to "fetch separately" as the
-            // old note here suggested. The column is kept in the header so the
-            // CSV shape stays stable for anything already parsing it.
-            const tagsValue = "";
             const row = [
               r.id,
               `"${(r.name ?? "").replace(/"/g, '""')}"`,
@@ -958,7 +926,6 @@ router.post(
               r.status,
               `"${(r.industry ?? "").replace(/"/g, '""')}"`,
               r.tenantId ?? "",
-              tagsValue,
               r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
             ].join(",");
             return row;
@@ -977,6 +944,13 @@ router.post(
           .update(tenantsTable)
           .set({ status: "archived" as "active" | "inactive" | "onboarding" | "archived", updatedAt: new Date() })
           .where(and(inArray(tenantsTable.id, ids), eq(tenantsTable.mspId, mspId)));
+
+        // #2765 — archiving is a cancellation: it takes the tenant out of the
+        // clock-running statuses, so every per-record retention clock freezes where it
+        // stands and the post-termination window starts (#1944 part 7). Reconciled
+        // rather than assumed — a tenant already archived is a no-op, so a repeated bulk
+        // action cannot re-stamp the lapse instant and push the purge date years out.
+        await syncTenantsAfterStatusWrite(ids);
 
         req.log.info({ mspId, count: ids.length }, "msp-portal: bulk archive complete");
         res.json({ action: "archive", updated: ids.length });
@@ -1313,6 +1287,15 @@ router.patch(
           createdAt: tenantsTable.createdAt,
           updatedAt: tenantsTable.updatedAt,
         });
+
+      // #2765 — a status change here is a cancellation or a return. Freeze every
+      // per-record retention clock and start the post-termination window, or resume every
+      // clock from exactly the remainder it froze with and unlock the portal (#1944 part 7).
+      // Only when `status` was actually in the patch: reconciling on a name edit would be
+      // work with nothing to reconcile.
+      if (data.status !== undefined) {
+        await syncTenantsAfterStatusWrite([customerId]);
+      }
 
       // Audit log
       try {

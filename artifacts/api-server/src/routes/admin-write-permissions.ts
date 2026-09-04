@@ -46,6 +46,7 @@ import {
   isNonGraphEndpoint,
   DERIVED_WRITE_APP_PERMISSIONS,
   DOCUMENTED_BUT_NOT_REQUESTED,
+  APP_ONLY_UNSUPPORTED_OPERATIONS,
 } from "../lib/graph-write-permissions";
 import { resolveServiceExecutable } from "../lib/remediation-catalog";
 
@@ -83,6 +84,15 @@ interface PermissionVerdict {
    * gap in this table. The UI must show these as unverified, never as ready.
    */
   unmappedSteps: string[];
+  /**
+   * Graph write steps that ARE mapped, and whose answer is that no application
+   * permission exists for them at all (Git #1901). Distinct from `unmappedSteps`
+   * — we know exactly what these need, and the answer is "nothing will work".
+   * Distinct from `missing` — consenting to more cannot clear them. An
+   * executable holding one of these can never be fully ready on the app-only
+   * credential, and the UI must say so rather than showing it as satisfied.
+   */
+  appOnlyUnsupportedSteps: string[];
 }
 
 function verdict(
@@ -90,6 +100,7 @@ function verdict(
   notRequested: Set<string>,
   nonGraphSteps: string[],
   unmappedSteps: string[],
+  appOnlyUnsupportedSteps: string[],
   granted: Set<string>,
   grantedReadable: boolean,
 ): PermissionVerdict {
@@ -106,6 +117,7 @@ function verdict(
     notRequested: [...notRequested].sort(),
     nonGraphSteps,
     unmappedSteps,
+    appOnlyUnsupportedSteps,
   };
 }
 
@@ -204,6 +216,7 @@ router.get("/admin/write-permissions", requireAdmin, async (req: Request, res: R
       const notRequested = new Set<string>();
       const nonGraphSteps: string[] = [];
       const unmappedSteps: string[] = [];
+      const appOnlyUnsupportedSteps: string[] = [];
       for (const step of packSteps.filter((s) => s.packKey === key)) {
         if (isNonGraphEndpoint(step.endpoint)) {
           nonGraphSteps.push(`${step.templateId} (${step.method} ${step.endpoint})`);
@@ -214,10 +227,15 @@ router.get("/admin/write-permissions", requireAdmin, async (req: Request, res: R
           body: step.bodyTemplate,
         });
         if (!look.rule) unmappedSteps.push(`${step.templateId} (${step.method} ${step.endpoint})`);
+        if (look.appOnlyUnsupported) {
+          appOnlyUnsupportedSteps.push(`${step.templateId} (${step.method} ${step.endpoint})`);
+        }
         for (const p of look.required) required.add(p);
         for (const p of look.notRequested) notRequested.add(p);
       }
-      byPack[key] = verdict(required, notRequested, nonGraphSteps, unmappedSteps, granted, grantedReadable);
+      byPack[key] = verdict(
+        required, notRequested, nonGraphSteps, unmappedSteps, appOnlyUnsupportedSteps, granted, grantedReadable,
+      );
     }
 
     // ── And each micro-remediation's single template ──────────────────────────
@@ -227,6 +245,7 @@ router.get("/admin/write-permissions", requireAdmin, async (req: Request, res: R
       const notRequested = new Set<string>();
       const nonGraphSteps: string[] = [];
       const unmappedSteps: string[] = [];
+      const appOnlyUnsupportedSteps: string[] = [];
       if (isNonGraphEndpoint(tpl.endpoint)) {
         nonGraphSteps.push(`${tpl.templateId} (${tpl.method} ${tpl.endpoint})`);
       } else {
@@ -235,10 +254,15 @@ router.get("/admin/write-permissions", requireAdmin, async (req: Request, res: R
           body: tpl.bodyTemplate,
         });
         if (!look.rule) unmappedSteps.push(`${tpl.templateId} (${tpl.method} ${tpl.endpoint})`);
+        if (look.appOnlyUnsupported) {
+          appOnlyUnsupportedSteps.push(`${tpl.templateId} (${tpl.method} ${tpl.endpoint})`);
+        }
         for (const p of look.required) required.add(p);
         for (const p of look.notRequested) notRequested.add(p);
       }
-      byTemplate[tpl.templateId] = verdict(required, notRequested, nonGraphSteps, unmappedSteps, granted, grantedReadable);
+      byTemplate[tpl.templateId] = verdict(
+        required, notRequested, nonGraphSteps, unmappedSteps, appOnlyUnsupportedSteps, granted, grantedReadable,
+      );
     }
 
     res.json({
@@ -261,6 +285,9 @@ router.get("/admin/write-permissions", requireAdmin, async (req: Request, res: R
         ? DERIVED_WRITE_APP_PERMISSIONS.filter((p) => !granted.has(p))
         : [],
       documentedButNotRequested: DOCUMENTED_BUT_NOT_REQUESTED,
+      // #1901 — operations with no application permission at any tier. Not a
+      // scope we declined to request; one that does not exist to request.
+      appOnlyUnsupportedOperations: APP_ONLY_UNSUPPORTED_OPERATIONS,
       byPack,
       byTemplate,
     });

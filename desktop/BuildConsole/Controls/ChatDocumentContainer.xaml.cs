@@ -82,6 +82,12 @@ namespace BuildConsole.Controls
         /// lazily on first "logs" OpenTool and reused after, so a running LIVE/BURST tail and
         /// whatever's checked for send survive rail close/reopen instead of resetting.</summary>
         private LogPeekView? _logPeekView;
+        /// <summary>Git #2799 — the real Git Doctor mini panel's persistent instance for THIS chat
+        /// tab, same per-tab-cache precedent as <see cref="_terminalView"/> (#2769) and
+        /// <see cref="_logPeekView"/> (#2787): created lazily on first "gitdoctor" OpenTool and
+        /// reused after, so a mid-run log and an extracted-but-not-yet-run plan survive rail
+        /// close/reopen instead of resetting.</summary>
+        private GitDoctorMiniView? _gitDoctorMiniView;
         /// <summary>Git #2682 — the last fetched dock snapshot, kept so a Dismiss click can
         /// re-render instantly against the same data (filtered by <see cref="_dismissed"/>)
         /// instead of forcing a fresh GitHub round-trip.</summary>
@@ -528,7 +534,11 @@ namespace BuildConsole.Controls
             // Viewer tab, MainWindow.OpenLogViewerTab). Showing it for every other still-stub tool
             // would be a dead icon with zero wired behavior — collapse it there rather than leave a
             // second honest-empty affordance next to ToolStubBody's own.
-            RailMaximize.Visibility = id == "logs" ? Visibility.Visible : Visibility.Collapsed;
+            // Git #2787/#2799 — Maximize opens the tool's full document surface. "logs" opens the
+            // full Log Viewer tab; "gitdoctor" opens the full Git Doctor ActivityBar view (README
+            // §6.2 maximize-2). Every other id is still a stub, so its maximize is a dead icon —
+            // collapse it there.
+            RailMaximize.Visibility = (id == "logs" || id == "gitdoctor") ? Visibility.Visible : Visibility.Collapsed;
             DetectedScroller.Visibility = Visibility.Collapsed;
 
             // Git #2769/#2787 — Terminal and Log Peek are the real tool internals so far; every
@@ -549,6 +559,21 @@ namespace BuildConsole.Controls
                 _logPeekView ??= new LogPeekView();
                 ToolHost.Content = _logPeekView;
                 ToolHost.Visibility = Visibility.Visible;
+            }
+            else if (id == "gitdoctor")
+            {
+                // Git #2799 — the real Git Doctor mini panel (README §6.2), on #2798's landed
+                // GitDoctorService. Its in-panel "send findings" button writes into THIS tab's
+                // composer via AppendToComposer (the §5/§6 "never auto-send" invariant); the generic
+                // rail Send-to-Chat icon is separately wired via IChatSendableTool below.
+                ToolStubBody.Visibility = Visibility.Collapsed;
+                if (_gitDoctorMiniView == null)
+                {
+                    _gitDoctorMiniView = new GitDoctorMiniView { SendToComposer = md => AppendToComposer(md) };
+                }
+                ToolHost.Content = _gitDoctorMiniView;
+                ToolHost.Visibility = Visibility.Visible;
+                _gitDoctorMiniView.EnsureLoaded();
             }
             else
             {
@@ -656,9 +681,19 @@ namespace BuildConsole.Controls
         /// OpenTool above.</summary>
         private void RailMaximize_Click(object sender, MouseButtonEventArgs e)
         {
-            if (_chatToolOpen != "logs") return;
-            CloseRail();
-            _owner.OpenLogViewerTab();
+            if (_chatToolOpen == "logs")
+            {
+                CloseRail();
+                _owner.OpenLogViewerTab();
+            }
+            else if (_chatToolOpen == "gitdoctor")
+            {
+                // Git #2799 / #2809 — README §6.2 maximize-2 → the full Git Doctor document,
+                // which now opens as its own full-width Editor tab (same real pattern as the
+                // "logs" case above), not the old narrow ActivityBar sidebar panel.
+                CloseRail();
+                _owner.OpenGitDoctorTab();
+            }
         }
 
         private void RailClose_Click(object sender, MouseButtonEventArgs e) => CloseRail();

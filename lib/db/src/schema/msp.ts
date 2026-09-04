@@ -226,6 +226,40 @@ export const tenantsTable = pgTable("tenants", {
    */
   businessUnit: text("business_unit"),
   status: text("status", { enum: ["active", "inactive", "onboarding", "archived"] }).notNull().default("onboarding"),
+  /**
+   * When this customer's subscription last stopped running (#2765, EPIC #1944 part 7).
+   *
+   * `status` says *whether* the relationship is live; it cannot say *when* it stopped,
+   * and the post-termination retention window is a duration measured from that instant.
+   * Without this column the 7-year purge has no start point — that is the only reason
+   * it exists, and it is deliberately not a second "is this tenant locked down" flag:
+   * #1944 part 8 reversed part 7 on that point and the gate reads `status` directly.
+   *
+   * Set the first time the tenant is observed in a non-clock-running status
+   * (`RETENTION_CLOCK_RUNNING_TENANT_STATUSES`), cleared the moment it returns to one.
+   * Null therefore means exactly "running now", and null-vs-set against `status` is the
+   * whole state machine `syncTenantRetentionState()` reconciles — no third column, and
+   * nothing to keep in sync with billing.
+   *
+   * NEVER BACKFILLED (epic question E). A tenant that lapsed before this column landed
+   * has no lapse instant, and inventing one would start a 7-year purge clock from a
+   * date that never happened. Those tenants get their real instant on the first sweep
+   * after this ships, and their window runs from there.
+   */
+  subscriptionLapsedAt: timestamp("subscription_lapsed_at", { withTimezone: true }),
+  /**
+   * When the post-termination purge actually destroyed this customer's data (#2765).
+   *
+   * The tenant ROW survives its own purge as a tombstone. That is forced, not chosen:
+   * `record_deletions.tenant_id` is `ON DELETE RESTRICT` precisely so the account of
+   * every deletion outlives the records it describes (#1944 part 2), and that account
+   * cannot reference a tenant row that no longer exists. So the data goes and the shell
+   * stays, carrying the date it went.
+   *
+   * Also the idempotence guard: a stamped tenant is excluded from the purge sweep, so a
+   * re-run cannot re-purge or re-audit a tenant that is already gone.
+   */
+  postTerminationPurgedAt: timestamp("post_termination_purged_at", { withTimezone: true }),
   isTestbed: boolean("is_testbed").notNull().default(false),
   // The tenant's Stripe Customer (`cus_…`), created once and reused for every
   // charge this direct customer ever makes (#490).

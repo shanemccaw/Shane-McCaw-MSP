@@ -55,4 +55,13 @@
 
     <PathGeometry x:Key="Icon.RotateCcw" Figures="M3 12 A9 9 0 1 0 5.26 5.74 M3 3 L3 8 L8 8"/>
 
+    <!-- Git #2806 (Local Map) — Lucide "database" glyph, approximated the same way Icon.GitFork
+         combines EllipseGeometry (the cylinder's top ellipse) with arc-based PathGeometry (the
+         side walls and the two horizontal "disk" rings) rather than porting the source SVG's raw
+         cubic-Bezier path data verbatim. -->
+    <GeometryGroup x:Key="Icon.Database">
+        <EllipseGeometry Center="12,5" RadiusX="9" RadiusY="3"/>
+        <PathGeometry Figures="M3 5 L3 19 A9 3 0 0 0 21 19 L21 5 M3 12 A9 3 0 0 0 21 12"/>
+    </GeometryGroup>
+
 </ResourceDictionary>

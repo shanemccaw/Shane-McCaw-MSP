@@ -486,6 +486,58 @@ export async function notifyDriftAccountableOwners(opts: {
 }
 
 /**
+ * The real trigger for #2764 / EPIC #1944 part 5: *"Notification to the customer on
+ * restore -- real trigger, they should not discover it by noticing a row reappear."*
+ * Fired from `lib/retention/lifecycle.ts`'s `restore()`, after the record's own row
+ * and the `record_deletions` ledger row have both already committed.
+ *
+ * Fans out to every portal login on the affected tenant (`users.role = "client"`,
+ * same predicate `msp-engine.ts`'s `fetchActiveTenants` uses to find a tenant's real
+ * client logins) rather than one specific person -- unlike an Ownership/RACI
+ * assignment, a restored record is not owned by a single named holder; it is back in
+ * the shared tenant view for whoever can see it. Best-effort and never throws, same
+ * convention as every other notifier in this file: a delivery failure here must not
+ * fail, or appear to undo, the restore that already happened.
+ */
+export async function notifyRetentionRestore(opts: {
+  tenantId: number;
+  recordType: string;
+  recordLabel: string | null;
+  restoreReason: string;
+  linkPath?: string;
+}): Promise<{ notified: number }> {
+  const { tenantId, recordType, recordLabel, restoreReason, linkPath } = opts;
+  try {
+    const recipients = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.role, "client")));
+
+    const label = recordLabel ?? recordType;
+    const title = `${label} has been restored`;
+    const body = `This record was deleted and has since been restored. Reason: "${restoreReason}"`;
+
+    let notified = 0;
+    for (const recipient of recipients) {
+      const notifId = await createNotification({
+        title,
+        body,
+        category: "retention",
+        severity: "info",
+        notifType: "general",
+        linkPath,
+        recipient: { type: "customer_user", userId: recipient.id },
+      });
+      if (notifId !== null) notified++;
+    }
+    return { notified };
+  } catch (err) {
+    log.warn({ err, tenantId, recordType }, "notification-center: retention restore notification failed (non-fatal)");
+    return { notified: 0 };
+  }
+}
+
+/**
  * Create notifications for ALL platform_admin users.
  * Used by the create_notification workflow node.
  */

@@ -1722,9 +1722,8 @@ namespace BuildConsole.Controls
             SettingsView.Visibility   = view == "Settings"   ? Visibility.Visible : Visibility.Collapsed;
             AutomationView.Visibility = view == "Automation" ? Visibility.Visible : Visibility.Collapsed;
             GraphApiView.Visibility   = view == "GraphApi"   ? Visibility.Visible : Visibility.Collapsed;
-            GitDoctorView.Visibility  = view == "GitDoctor"  ? Visibility.Visible : Visibility.Collapsed;
 
-            HeaderTitle.Text = view == "Automation" ? "UI AUTOMATION" : (view == "Issues" ? "GIT BOARD" : (view == "GraphApi" ? "GRAPH API PANEL" : (view == "GitDoctor" ? "GIT DOCTOR" : view.ToUpperInvariant())));
+            HeaderTitle.Text = view == "Automation" ? "UI AUTOMATION" : (view == "Issues" ? "GIT BOARD" : (view == "GraphApi" ? "GRAPH API PANEL" : view.ToUpperInvariant()));
 
             // Adjust the New button tooltip to match the active view
             BtnNewItem.ToolTip = view switch
@@ -1735,7 +1734,6 @@ namespace BuildConsole.Controls
                 "Git"        => "Commit",
                 "Issues"     => "New Issue",
                 "Automation" => "New Test",
-                "GitDoctor"  => "Re-run checks",
                 _            => "New"
             };
 
@@ -1765,12 +1763,6 @@ namespace BuildConsole.Controls
             else if (view == "GraphApi")
             {
                 PopulateGraphApiTree();
-            }
-            else if (view == "GitDoctor")
-            {
-                // Git #2798 — kick the real checks off the first time the view is shown
-                // (idempotent; re-runs are via the view's own "Re-run checks" button).
-                GitDoctorView.EnsureLoaded();
             }
         }
 

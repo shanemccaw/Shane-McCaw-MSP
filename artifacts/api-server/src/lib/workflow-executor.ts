@@ -4329,20 +4329,16 @@ async function executeNode(
       }
 
       case "sla_warning": {
+        const { fireSlaWarning: slaFireWarning } = await import("./sla-engine.ts");
         const slaWarnTimerId = interp(node.data.timerId as string | undefined, payload) ?? "";
         if (!slaWarnTimerId) {
           nodeError = true;
           output = { error: "sla_warning requires timerId" };
         } else {
           try {
-            const { db: slaDb } = await import("@workspace/db");
-            const { sql: slaSql } = await import("drizzle-orm");
-            await slaDb.execute(slaSql`
-              UPDATE sla_timers SET warning_fired_at = NOW(), updated_at = NOW()
-              WHERE timer_id = ${slaWarnTimerId} AND warning_fired_at IS NULL
-            `);
-            output = { warningFired: true, timerId: slaWarnTimerId };
-            log.info({ runId, timerId: slaWarnTimerId }, "wf-executor: sla_warning fired");
+            const slaWarnResult = await slaFireWarning(slaWarnTimerId);
+            output = { ...slaWarnResult, timerId: slaWarnTimerId };
+            log.info({ runId, timerId: slaWarnTimerId, warningFired: slaWarnResult.warningFired }, "wf-executor: sla_warning completed");
           } catch (slaWarnErr) {
             nodeError = true;
             output = { error: slaWarnErr instanceof Error ? slaWarnErr.message : String(slaWarnErr) };

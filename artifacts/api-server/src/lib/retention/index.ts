@@ -15,3 +15,9 @@ export * from "./origin-registry";
 export * from "./reference-guard";
 export * from "./registry";
 export * from "./lifecycle";
+// #2765 — the subscription gate, the freeze/resume trigger, and the 7-year
+// post-termination purge scheduler. The foundation above built the clock; these three
+// are what start, stop and finally run it.
+export * from "./subscription-state";
+export * from "./subscription-gate";
+export * from "./post-termination";
