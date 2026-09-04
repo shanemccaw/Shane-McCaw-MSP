@@ -459,6 +459,9 @@ export default defineConfig({
       // measured side by side against the existing detectDrift primitive, stable
       // ordering, and the data-driven noise ruleset's matching and precedence.
       "src/lib/config-snapshot-differ.test.ts",
+      // #2032 — the differ's cache key includes resourceKeys, so a scoped recompute
+      // gets its own stored row instead of colliding with the full-tenant diff.
+      "src/lib/config-snapshot-differ.live-db.test.ts",
       // #2115 — classifySnapshotFailure's real-literal branches, keyed off the
       // observed shapes on snapshot rows 8 (#1962) and 10 (#2115): the
       // not_applicable_to_account_type / endpoint_not_found / not_supported_app_only

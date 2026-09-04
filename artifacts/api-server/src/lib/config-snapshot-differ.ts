@@ -242,6 +242,29 @@ export function fingerprintRuleset(rules: readonly ConfigDiffPropertyRule[]): st
   return createHash("sha256").update(parts.join("\n"), "utf8").digest("hex");
 }
 
+/**
+ * A fingerprint over the `resourceKeys` scope of a diff request (Git #2032). Part of a
+ * diff's identity for the same reason `rulesetFingerprint` is: a diff narrowed to a
+ * handful of resource keys is a DIFFERENT computed answer than the same pair's
+ * full-tenant diff, even though both share the same (base, head, mode, ruleset).
+ *
+ * Before `config_diffs.resource_keys_fingerprint` existed, `resourceKeys` was not part
+ * of the cache key at all — a scoped recompute and a full-tenant diff of the same pair
+ * collided on the identical stored row, and whichever ran second silently overwrote the
+ * other regardless of which was actually the caller's intent.
+ *
+ * `'*'` for "every resource either side targeted" (`resourceKeys` omitted) — the common
+ * case, and the sentinel `config_diffs.resource_keys_fingerprint` defaults to, so every
+ * pre-existing row reads as what it always was: a full-tenant diff. Any other value is a
+ * SHA-256 over the sorted, deduplicated scope, so two requests naming the same resource
+ * keys in a different order or with duplicates still hash identically.
+ */
+export function fingerprintResourceKeys(resourceKeys: string[] | undefined): string {
+  if (!resourceKeys) return "*";
+  const sorted = [...new Set(resourceKeys)].sort();
+  return createHash("sha256").update(sorted.join("\n"), "utf8").digest("hex");
+}
+
 // ── Comparability — rule 1 ───────────────────────────────────────────────────
 
 /** One side's collection outcome for a resource. `null` = the side never targeted it. */
@@ -718,12 +741,16 @@ export async function diffSnapshots(opts: DiffSnapshotsOptions): Promise<DiffSna
   const rules = await db.select().from(configDiffPropertyRulesTable)
     .where(eq(configDiffPropertyRulesTable.isActive, true));
   const rulesetFingerprint = fingerprintRuleset(rules);
+  // Git #2032: resourceKeys is part of the cache key, so a scoped recompute gets its own
+  // row instead of colliding with (and silently overwriting) the full-tenant diff.
+  const resourceKeysFingerprint = fingerprintResourceKeys(opts.resourceKeys);
 
   const sameKey = and(
     eq(configDiffsTable.baseSnapshotRowId, opts.baseSnapshotRowId),
     eq(configDiffsTable.headSnapshotRowId, opts.headSnapshotRowId),
     eq(configDiffsTable.mode, opts.mode),
     eq(configDiffsTable.rulesetFingerprint, rulesetFingerprint),
+    eq(configDiffsTable.resourceKeysFingerprint, resourceKeysFingerprint),
   );
 
   if (opts.useCache === false) {
@@ -766,6 +793,7 @@ export async function diffSnapshots(opts: DiffSnapshotsOptions): Promise<DiffSna
     baseTenantId: base.tenantId,
     headTenantId: head.tenantId,
     rulesetFingerprint,
+    resourceKeysFingerprint,
     rulesetSize: rules.length,
     differVersion: CONFIG_DIFFER_VERSION,
     status: "computing",
