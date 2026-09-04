@@ -122,11 +122,66 @@ namespace BuildConsole.Controls
             }
         }
 
+        /// <summary>Git #2797 — the three fixed, always-relevant local sites (not user-configurable,
+        /// so not sourced from settings.WebTools) that used to be standalone rail buttons. Prepended
+        /// to the Web Tools popup ahead of the configured entries, keeping their original distinct
+        /// glyph/color for quick visual recognition.</summary>
+        private static readonly (string Tooltip, string Glyph, string BrushKey, string Url)[] FixedWebTools =
+        {
+            ("Admin Center", "", "PeachBrush", "http://localhost:5174"),
+            ("Customer Portal", "", "MauveBrush", "http://localhost:5175"),
+            ("Marketing Site", "", "GreenBrush", "http://localhost:5173"),
+        };
+
         /// <summary>Git #864 — reloads the configured tools fresh every open, so edits made in Settings > Web Tools show up without restarting the app.</summary>
         private void BtnWebTools_Click(object sender, RoutedEventArgs e)
         {
             var settings = BuildConsole.Services.BuildConsoleSettings.Load();
             WebToolsList.Children.Clear();
+
+            foreach (var tool in FixedWebTools)
+            {
+                var entryButton = new Button
+                {
+                    Style = (Style)FindResource("IconButton"),
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Padding = new Thickness(8, 6, 8, 6),
+                    Margin = new Thickness(0, 0, 0, 2),
+                    ToolTip = tool.Tooltip,
+                    Tag = tool.Url
+                };
+
+                var row = new StackPanel { Orientation = Orientation.Horizontal };
+                row.Children.Add(new TextBlock
+                {
+                    Text = tool.Glyph,
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 14,
+                    Width = 16,
+                    Margin = new Thickness(0, 0, 8, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)FindResource(tool.BrushKey)
+                });
+                row.Children.Add(new TextBlock
+                {
+                    Text = tool.Tooltip,
+                    FontSize = 12,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)FindResource("TextBrush")
+                });
+
+                entryButton.Content = row;
+                entryButton.Click += FixedWebTool_Click;
+                WebToolsList.Children.Add(entryButton);
+            }
+
+            // Separator between the fixed always-present entries and the user-configured ones below.
+            WebToolsList.Children.Add(new Border
+            {
+                Height = 1,
+                Background = (Brush)FindResource("Surface0Brush"),
+                Margin = new Thickness(8, 6, 8, 6)
+            });
 
             if (settings.WebTools.Count == 0)
             {
@@ -235,6 +290,18 @@ namespace BuildConsole.Controls
             if (sender is Button btn && btn.Tag is BuildConsole.Services.WebToolEntry tool)
             {
                 WebToolRequested?.Invoke(this, (tool.Name, tool.Url));
+            }
+            WebToolsPopup.IsOpen = false;
+        }
+
+        /// <summary>Git #2797 — the fixed Admin Center/Customer Portal/Marketing Site rows at the
+        /// top of the Web Tools popup. Same real navigation as QuickNav_Click (Tag is the hardcoded
+        /// URL string), but also closes the popup afterward since these rows now live inside it.</summary>
+        private void FixedWebTool_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string url)
+            {
+                QuickNavRequested?.Invoke(this, url);
             }
             WebToolsPopup.IsOpen = false;
         }

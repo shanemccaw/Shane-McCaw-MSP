@@ -107,33 +107,9 @@
                 <!-- Separator -->
                 <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>
 
-                <!-- ── Quick Nav Icons ── -->
-                <Button Style="{StaticResource IconButton}"
-                        Width="48" Height="44"
-                        ToolTip="Admin Center"
-                        Click="QuickNav_Click"
-                        Tag="http://localhost:5174">
-                    <TextBlock Text="&#xE7EF;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource PeachBrush}"/>
-                </Button>
-
-                <Button Style="{StaticResource IconButton}"
-                        Width="48" Height="44"
-                        ToolTip="Customer Portal"
-                        Click="QuickNav_Click"
-                        Tag="http://localhost:5175">
-                    <TextBlock Text="&#xE77B;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource MauveBrush}"/>
-                </Button>
-
-                <Button Style="{StaticResource IconButton}"
-                        Width="48" Height="44"
-                        ToolTip="Marketing Site"
-                        Click="QuickNav_Click"
-                        Tag="http://localhost:5173">
-                    <TextBlock Text="&#xE774;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource GreenBrush}"/>
-                </Button>
-
-                <!-- Separator -->
-                <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>
+                <!-- Git #2797 — Admin Center / Customer Portal / Marketing Site moved off the
+                     rail as standalone buttons; they now live as fixed, always-present rows at
+                     the top of the Web Tools popup (see BtnWebTools_Click). -->
 
                 <!-- Git #821 - Shane: opens the Replit workspace dashboard; that tab gets a Play/Pause "keep alive" toggle (see OpenWebTab). -->
                 <Button Style="{StaticResource IconButton}"
