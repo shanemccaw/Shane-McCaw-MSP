@@ -87,35 +87,56 @@ export function transportHasExecutor(transport: string | null | undefined): bool
 }
 
 /**
- * Coverage measurement states (Git #1849 point 3, built in #1869).
+ * Coverage measurement states (Git #1849 point 3, built in #1869; `unavailable`
+ * added in #1917).
  *
- * Before this, the measurement had two states and "no check written yet" was
+ * Before #1869, the measurement had two states and "no check written yet" was
  * indistinguishable from "no code path could ever read this". That understated
  * the problem: 22 `azure-rm` resources looked like ordinary gaps a check author
  * could close, when in fact no executor exists to dispatch the read at all.
  *
+ * #1917 found a further conflation the same shape: once the azure-rm executor
+ * shipped (#1871), 7 of those resources moved onto an executor-backed transport
+ * — but 5 sit at billing-account scope and 2 at tenant-root `microsoft.aadiam`
+ * scope, both ABOVE anything Azure Lighthouse can ever delegate. The executor
+ * exists; this platform's least-privilege principal can never reach these
+ * specific resources. Reporting them `uncovered` implied a check author could
+ * close the gap, which is false — no check, however written, changes what a
+ * Lighthouse-delegated Reader can see.
+ *
  *  - covered      at least one monitor check reads this resource
- *  - uncovered    an executor exists for its transport, but no check reads it yet
- *                 — a genuine, closeable gap
+ *  - uncovered    an executor exists for its transport, this resource is not
+ *                 marked `unavailable`, but no check reads it yet — a genuine,
+ *                 closeable gap
  *  - no_executor  this platform has NO executor for the resource's transport, so
  *                 the resource is unreachable by any code path and writing a
  *                 check could not change that. Not a check-authoring gap; a
  *                 transport gap.
+ *  - unavailable  an executor exists for the transport, but the source states no
+ *                 read path this platform can hold reaches this SPECIFIC
+ *                 resource (`config_resources.availability = 'unavailable'`) —
+ *                 e.g. a scope above anything Azure Lighthouse can delegate.
+ *                 Not a check-authoring gap either; a permission-scope gap.
  */
-export const CONFIG_COVERAGE_STATES = ["covered", "uncovered", "no_executor"] as const;
+export const CONFIG_COVERAGE_STATES = ["covered", "uncovered", "no_executor", "unavailable"] as const;
 export type ConfigCoverageState = typeof CONFIG_COVERAGE_STATES[number];
 
 /**
- * Classify one resource's coverage. `no_executor` is evaluated FIRST and wins:
- * a resource whose transport has no executor is unreachable whatever its check
- * count says, and reporting it as merely "uncovered" is the exact conflation
- * #1849 asked to end.
+ * Classify one resource's coverage. Precedence, most-unreachable first:
+ *   1. `no_executor` — no code path exists for this transport at all.
+ *   2. `unavailable` — a code path exists for the transport, but this specific
+ *      resource's own `availability` says no read of it is possible (#1917).
+ *   3. `covered` / `uncovered` — ordinary check-authoring coverage.
+ * Both 1 and 2 win over check count: a resource nobody can reach is not merely
+ * "uncovered" regardless of how many checks happen to be mapped onto it.
  */
 export function coverageStateFor(
   transport: string | null | undefined,
   checkCoverageCount: number,
+  availability?: string | null,
 ): ConfigCoverageState {
   if (!transportHasExecutor(transport)) return "no_executor";
+  if (availability === "unavailable") return "unavailable";
   return checkCoverageCount > 0 ? "covered" : "uncovered";
 }
 

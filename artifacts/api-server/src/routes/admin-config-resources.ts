@@ -159,14 +159,19 @@ async function loadSummary() {
       .from(configResourcesTable).groupBy(configResourcesTable.verificationStatus),
     db.select({
       totalResources: sql<number>`count(*)::int`,
-      // Three states, not two (#1849 point 3, built in #1869). `no_executor`
-      // is evaluated first and wins: a resource whose transport this platform
-      // has no executor for is UNREACHABLE by any code path, not merely
-      // "uncovered", and reporting it as an ordinary gap a check author could
-      // close is the exact conflation #1849 asked to end.
-      covered: sql<number>`count(*) filter (where ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.checkCoverageCount} > 0)::int`,
-      uncovered: sql<number>`count(*) filter (where ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.checkCoverageCount} = 0)::int`,
+      // Four states, not two (#1849 point 3, built in #1869; `unavailable` added
+      // in #1917). `no_executor` is evaluated first and wins: a resource whose
+      // transport this platform has no executor for is UNREACHABLE by any code
+      // path. `unavailable` wins next: a resource on an executor-backed
+      // transport whose own scope this platform's principal can never be
+      // granted (billing-account, tenant-root microsoft.aadiam) is just as
+      // unreachable, even though its transport IS executor-backed — reporting
+      // either as ordinary "uncovered" is the exact conflation #1849 asked to
+      // end, restated for #1917.
+      covered: sql<number>`count(*) filter (where ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} > 0)::int`,
+      uncovered: sql<number>`count(*) filter (where ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} = 0)::int`,
       noExecutor: sql<number>`count(*) filter (where ${configResourcesTable.readTransport} not in ${EXECUTOR_BACKED_SQL})::int`,
+      unavailable: sql<number>`count(*) filter (where ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} = 'unavailable')::int`,
       totalProperties: sql<number>`coalesce(sum(${configResourcesTable.propertyCount}), 0)::int`,
     }).from(configResourcesTable),
     db.select().from(configModelExtractionsTable)
@@ -177,7 +182,7 @@ async function loadSummary() {
     Object.fromEntries(rows.filter((r) => r.key).map((r) => [r.key as string, r.n]));
 
   const latest = extraction[0] ?? null;
-  const c = coverage[0] ?? { totalResources: 0, covered: 0, uncovered: 0, noExecutor: 0, totalProperties: 0 };
+  const c = coverage[0] ?? { totalResources: 0, covered: 0, uncovered: 0, noExecutor: 0, unavailable: 0, totalProperties: 0 };
   const serviceAvailability = await loadServiceAvailability(latest?.reconciledAgainstTenantId ?? null);
 
   return {
@@ -198,6 +203,16 @@ async function loadSummary() {
        * of these would not make it readable — the transport itself is missing.
        */
       resourcesWithNoExecutor: c.noExecutor,
+      /**
+       * Resources on an executor-backed transport that are still unreachable,
+       * because the resource's OWN scope sits above anything this platform's
+       * principal can ever be granted — e.g. the 7 `azure-rm` resources #1917
+       * found at billing-account / tenant-root `microsoft.aadiam` scope, above
+       * anything Azure Lighthouse can delegate. Distinct from `resourcesWithNoExecutor`:
+       * the transport itself IS executor-backed here; it is this specific
+       * resource that is out of reach.
+       */
+      resourcesUnavailable: c.unavailable,
       /** Which transports those resources are on, so the number is actionable rather than just alarming. */
       transportsWithNoExecutor: (CONFIG_READ_TRANSPORTS as readonly string[]).filter(
         (t) => !(EXECUTOR_BACKED_TRANSPORTS as readonly string[]).includes(t),
@@ -275,16 +290,20 @@ router.get("/admin/config-resources", requireAdmin, async (req: Request, res: Re
       conditions.push(eq(configResourcesTable.serviceKey, serviceKey as (typeof TENANT_SERVICE_KEYS)[number]));
     }
 
-    // coverage=covered | uncovered | no_executor — the three states of the
-    // measurement (#1849 point 3, built in #1869). `uncovered` now excludes
-    // resources whose transport has no executor: those are a separate,
-    // separately-filterable state, not an ordinary check-authoring gap.
+    // coverage=covered | uncovered | no_executor | unavailable — the four states
+    // of the measurement (#1849 point 3, built in #1869; `unavailable` added in
+    // #1917). `uncovered` now excludes both resources whose transport has no
+    // executor AND resources whose own scope is out of reach on an
+    // executor-backed transport: those are separate, separately-filterable
+    // states, not an ordinary check-authoring gap.
     const coverage = String(q["coverage"] ?? "").trim();
     if ((CONFIG_COVERAGE_STATES as readonly string[]).includes(coverage)) {
       if (coverage === "covered") {
-        conditions.push(sql`${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.checkCoverageCount} > 0`);
+        conditions.push(sql`${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} > 0`);
       } else if (coverage === "uncovered") {
-        conditions.push(sql`${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.checkCoverageCount} = 0`);
+        conditions.push(sql`${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} != 'unavailable' and ${configResourcesTable.checkCoverageCount} = 0`);
+      } else if (coverage === "unavailable") {
+        conditions.push(sql`${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.availability} = 'unavailable'`);
       } else {
         conditions.push(sql`${configResourcesTable.readTransport} not in ${EXECUTOR_BACKED_SQL}`);
       }
@@ -353,12 +372,16 @@ router.get("/admin/config-resources", requireAdmin, async (req: Request, res: Re
         propertyCount: r.propertyCount,
         checkCoverageCount: r.checkCoverageCount,
         /**
-         * covered | uncovered | no_executor (#1849 point 3, built in #1869).
-         * Computed rather than stored: it is a function of the row's transport
-         * and the executors that exist right now, so it cannot go stale the way
-         * a persisted copy would when a new executor ships.
+         * covered | uncovered | no_executor | unavailable (#1849 point 3, built
+         * in #1869; `unavailable` added in #1917 for resources whose transport
+         * has an executor but whose own scope — e.g. billing-account or
+         * tenant-root `microsoft.aadiam` — sits above anything this platform's
+         * principal can ever be granted). Computed rather than stored: it is a
+         * function of the row's transport, its own availability, and the
+         * executors that exist right now, so it cannot go stale the way a
+         * persisted copy would when a new executor ships.
          */
-        coverageState: coverageStateFor(r.readTransport, r.checkCoverageCount),
+        coverageState: coverageStateFor(r.readTransport, r.checkCoverageCount, r.availability),
         sourceRef: r.sourceRef,
         notes: r.notes,
       })),
@@ -400,9 +423,9 @@ router.get("/admin/config-resources/:id", requireAdmin, async (req: Request, res
     res.json({
       resource: {
         ...resource,
-        // Same computed three-state coverage the list endpoint returns, so the
-        // detail view cannot disagree with the row the operator clicked (#1869).
-        coverageState: coverageStateFor(resource.readTransport, resource.checkCoverageCount),
+        // Same computed four-state coverage the list endpoint returns, so the
+        // detail view cannot disagree with the row the operator clicked (#1869, #1917).
+        coverageState: coverageStateFor(resource.readTransport, resource.checkCoverageCount, resource.availability),
         createdAt: resource.createdAt instanceof Date ? resource.createdAt.toISOString() : resource.createdAt,
         updatedAt: resource.updatedAt instanceof Date ? resource.updatedAt.toISOString() : resource.updatedAt,
       },

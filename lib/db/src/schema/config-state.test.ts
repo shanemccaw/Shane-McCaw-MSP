@@ -65,4 +65,29 @@ describe("coverageStateFor", () => {
       expect(coverageStateFor(transport, 42)).toBe("covered");
     }
   });
+
+  // #1917 — 7 azure-rm resources sit at billing-account / tenant-root
+  // microsoft.aadiam scope, above anything Azure Lighthouse can delegate. The
+  // azure-rm executor exists (#1871), but these specific resources are marked
+  // `availability = 'unavailable'`, and that must win over an ordinary
+  // covered/uncovered check-count verdict.
+  it("is 'unavailable' for an executor-backed transport whose resource is marked unavailable, regardless of check count", () => {
+    for (const transport of EXECUTOR_BACKED_TRANSPORTS) {
+      expect(coverageStateFor(transport, 0, "unavailable")).toBe("unavailable");
+      expect(coverageStateFor(transport, 5, "unavailable")).toBe("unavailable");
+    }
+  });
+
+  it("'no_executor' still wins over 'unavailable' for a transport with no executor at all", () => {
+    expect(coverageStateFor("unknown", 0, "unavailable")).toBe("no_executor");
+  });
+
+  it("falls through to covered/uncovered when availability is anything other than 'unavailable'", () => {
+    for (const transport of EXECUTOR_BACKED_TRANSPORTS) {
+      expect(coverageStateFor(transport, 0, "available_now")).toBe("uncovered");
+      expect(coverageStateFor(transport, 1, "needs_additional_scope")).toBe("covered");
+      expect(coverageStateFor(transport, 0, null)).toBe("uncovered");
+      expect(coverageStateFor(transport, 0, undefined)).toBe("uncovered");
+    }
+  });
 });
