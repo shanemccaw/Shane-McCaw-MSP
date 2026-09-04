@@ -182,6 +182,22 @@ namespace BuildConsole.Controls
         /// (a permanent condition, not a transient network/auth/rate-limit blip). Checked alongside
         /// `_issueTitleCache` so a known-bad number isn't re-queried via `gh issue view` on every refresh.</summary>
         private static readonly HashSet<int> _unresolvableIssueNumbers = new();
+        /// <summary>Git #2890 — bounds how many background `gh issue view` title fetches run concurrently.
+        /// Before this, <see cref="TriggerBackgroundIssueTitleQueries"/> fired one UNAWAITED, unbounded
+        /// `gh` subprocess per uncached number, all at once, on EVERY periodic refresh tick. A large burst
+        /// re-tripped the rate-limit circuit, which rejected every call so the cache stayed empty, so the
+        /// next tick re-fired the identical full burst — self-perpetuating. Fetches now queue on this
+        /// semaphore and run at most <see cref="MaxConcurrentTitleFetches"/> at a time.</summary>
+        private const int MaxConcurrentTitleFetches = 3;
+        private static readonly System.Threading.SemaphoreSlim _titleFetchConcurrency =
+            new(MaxConcurrentTitleFetches, MaxConcurrentTitleFetches);
+        /// <summary>Git #2890 — UTC "retry not before" time per issue number whose last title fetch failed
+        /// transiently (rate-limit circuit open, `gh` spawn error, etc.). A number here is skipped by
+        /// <see cref="TriggerBackgroundIssueTitleQueries"/> until the cooldown elapses. Bounded concurrency
+        /// alone is not enough: without this, every failing number would still be re-attempted on every
+        /// single refresh tick (just staggered), hammering `gh` for a number that keeps failing.</summary>
+        private static readonly Dictionary<int, DateTime> _titleFetchCooldownUntil = new();
+        private static readonly TimeSpan TitleFetchRetryCooldown = TimeSpan.FromSeconds(60);
 
         private const double IssueRowTitleReserve = 50;
         private const double MinIssueRowTitleWidth = 24;
@@ -5170,6 +5186,7 @@ namespace BuildConsole.Controls
                 bool alreadyCached;
                 bool alreadyPending;
                 bool knownUnresolvable;
+                bool inRetryCooldown;
                 lock (_issueTitleCache)
                 {
                     alreadyCached = _issueTitleCache.ContainsKey(num);
@@ -5182,8 +5199,15 @@ namespace BuildConsole.Controls
                 {
                     knownUnresolvable = _unresolvableIssueNumbers.Contains(num);
                 }
+                // Git #2890 — a number whose last fetch failed transiently is on cooldown; skip it so a
+                // persistently-failing number isn't re-spawned on the very next tick (and every tick after).
+                lock (_titleFetchCooldownUntil)
+                {
+                    inRetryCooldown = _titleFetchCooldownUntil.TryGetValue(num, out var retryNotBefore)
+                                      && DateTime.UtcNow < retryNotBefore;
+                }
 
-                if (!alreadyCached && !alreadyPending && !knownUnresolvable)
+                if (!alreadyCached && !alreadyPending && !knownUnresolvable && !inRetryCooldown)
                 {
                     lock (_pendingFetches)
                     {
@@ -5198,42 +5222,75 @@ namespace BuildConsole.Controls
         {
             try
             {
-                var result = await Services.GitHubIssuesService.GetIssueTitleAsync(issueNumber);
-                if (result.Title != null)
+                // Git #2890 — bound real `gh issue view` concurrency. Many uncached numbers no longer each
+                // spawn a subprocess simultaneously; they queue on this semaphore and run at most
+                // MaxConcurrentTitleFetches at a time, staggering the calls so a large queue can't burst
+                // the rate-limit circuit open (which was what kept the cache empty and re-fired the burst).
+                await _titleFetchConcurrency.WaitAsync();
+                try
                 {
-                    lock (_issueTitleCache)
+                    var result = await Services.GitHubIssuesService.GetIssueTitleAsync(issueNumber);
+                    if (result.Title != null)
                     {
-                        _issueTitleCache[issueNumber] = result.Title;
-                    }
-                    _ = Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        UpdateTooltipForIssue(issueNumber);
-                        // Git #2062 — a blocker ghost card shows "(fetching title…)" until its
-                        // real title lands in _issueTitleCache; if this fetch was for a declared
-                        // blocker, redraw the queue now so the card picks it up immediately
-                        // instead of waiting for the next poll tick.
-                        if (_lastItems != null && _lastItems.Any(i => CleanBlockers(i).Contains(issueNumber)))
+                        lock (_issueTitleCache)
                         {
-                            try { RenderQueue(ApplyFilter(_lastItems)); } catch { }
+                            _issueTitleCache[issueNumber] = result.Title;
                         }
-                    }));
-                }
-                else if (result.NotFound)
-                {
-                    // Git #1979 — `gh` confirmed this number doesn't resolve to anything in this repo.
-                    // Cache it hard so it isn't re-spawned as a `gh issue view` process on every refresh.
-                    lock (_unresolvableIssueNumbers)
+                        // Git #2890 — succeeded, so drop any prior cooldown for this number.
+                        lock (_titleFetchCooldownUntil)
+                        {
+                            _titleFetchCooldownUntil.Remove(issueNumber);
+                        }
+                        _ = Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            UpdateTooltipForIssue(issueNumber);
+                            // Git #2062 — a blocker ghost card shows "(fetching title…)" until its
+                            // real title lands in _issueTitleCache; if this fetch was for a declared
+                            // blocker, redraw the queue now so the card picks it up immediately
+                            // instead of waiting for the next poll tick.
+                            if (_lastItems != null && _lastItems.Any(i => CleanBlockers(i).Contains(issueNumber)))
+                            {
+                                try { RenderQueue(ApplyFilter(_lastItems)); } catch { }
+                            }
+                        }));
+                    }
+                    else if (result.NotFound)
                     {
-                        _unresolvableIssueNumbers.Add(issueNumber);
+                        // Git #1979 — `gh` confirmed this number doesn't resolve to anything in this repo.
+                        // Cache it hard so it isn't re-spawned as a `gh issue view` process on every refresh.
+                        lock (_unresolvableIssueNumbers)
+                        {
+                            _unresolvableIssueNumbers.Add(issueNumber);
+                        }
+                    }
+                    else
+                    {
+                        // Transient failure (couldn't start gh, non-zero exit for another reason, bad output,
+                        // rate-limit circuit open) — deliberately NOT cached, so it's retried on a later
+                        // refresh rather than permanently blanking a real title on a network/auth/rate-limit
+                        // blip. Git #2890 — but put it on a retry cooldown so it isn't re-attempted on the
+                        // very next tick; bounded concurrency alone would still re-fire every failing number
+                        // every single refresh, hammering `gh` while the circuit is open.
+                        lock (_titleFetchCooldownUntil)
+                        {
+                            _titleFetchCooldownUntil[issueNumber] = DateTime.UtcNow + TitleFetchRetryCooldown;
+                        }
                     }
                 }
-                // else: transient failure (couldn't start gh, non-zero exit for another reason, bad
-                // output) — deliberately NOT cached, so it's retried on the next refresh rather than
-                // permanently blanking a real title on a network/auth/rate-limit blip.
+                finally
+                {
+                    _titleFetchConcurrency.Release();
+                }
             }
             catch (Exception ex)
             {
                 Services.ActivityLog.Log("github", $"Failed to fetch title for issue #{issueNumber}: {ex.Message}");
+                // Git #2890 — an exception is also a transient failure; cooldown it so a broken number
+                // isn't re-spawned on every tick.
+                lock (_titleFetchCooldownUntil)
+                {
+                    _titleFetchCooldownUntil[issueNumber] = DateTime.UtcNow + TitleFetchRetryCooldown;
+                }
             }
             finally
             {
