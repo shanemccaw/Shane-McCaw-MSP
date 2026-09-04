@@ -19,6 +19,14 @@ public enum AccountRole
 
     /// <summary>One of the 2 household spend accounts (Ronnie &amp; Shane's, DJ's).</summary>
     Spend,
+
+    /// <summary>
+    /// A real savings/emergency account — not a bill (nothing's "due" on it) and not a spend
+    /// account (spend_bleed's merchant-grouping view doesn't mean anything for savings).
+    /// Reuses target_amount for the real savings goal, same convention as is_gate being
+    /// bill-only-meaningful today.
+    /// </summary>
+    EmergencyFund,
 }
 
 public static class AccountRoleExtensions
@@ -28,6 +36,7 @@ public static class AccountRoleExtensions
         AccountRole.IncomeGate => "income_gate",
         AccountRole.Bill => "bill",
         AccountRole.Spend => "spend",
+        AccountRole.EmergencyFund => "emergency_fund",
         AccountRole.Unassigned => null,
         _ => null,
     };
@@ -37,6 +46,7 @@ public static class AccountRoleExtensions
         "income_gate" => AccountRole.IncomeGate,
         "bill" => AccountRole.Bill,
         "spend" => AccountRole.Spend,
+        "emergency_fund" => AccountRole.EmergencyFund,
         _ => AccountRole.Unassigned,
     };
 
@@ -45,6 +55,7 @@ public static class AccountRoleExtensions
         AccountRole.IncomeGate => "Income Gate (Direct Deposit)",
         AccountRole.Bill => "Bill",
         AccountRole.Spend => "Spend",
+        AccountRole.EmergencyFund => "Emergency Fund",
         AccountRole.Unassigned => "Unassigned",
         _ => "Unassigned",
     };

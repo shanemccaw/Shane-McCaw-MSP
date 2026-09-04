@@ -27,6 +27,7 @@ public partial class AccountRoleWindow : Window
         new(AccountRole.IncomeGate, "Income Gate (Direct Deposit)"),
         new(AccountRole.Bill, "Bill"),
         new(AccountRole.Spend, "Spend"),
+        new(AccountRole.EmergencyFund, "Emergency Fund"),
     ];
 
     private sealed record RowControls(Guid AccountId, ComboBox RoleCombo, TextBox TargetBox, CheckBox GateCheck);
@@ -82,7 +83,7 @@ public partial class AccountRoleWindow : Window
         AddHeaderCell(grid, 1, "Institution");
         AddHeaderCell(grid, 2, "Balance");
         AddHeaderCell(grid, 3, "Role");
-        AddHeaderCell(grid, 4, "Monthly target ($)");
+        AddHeaderCell(grid, 4, "Target ($)");
         AddHeaderCell(grid, 5, "GATE");
         RowsPanel.Children.Add(grid);
         RowsPanel.Children.Add(new Separator { Margin = new Thickness(0, 2, 0, 6) });
@@ -130,7 +131,7 @@ public partial class AccountRoleWindow : Window
         {
             Text = account.TargetAmount?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
             Margin = new Thickness(0, 2, 4, 2),
-            IsEnabled = account.Role == AccountRole.Bill,
+            IsEnabled = account.Role is AccountRole.Bill or AccountRole.EmergencyFund,
         };
         Grid.SetColumn(targetBox, 4);
         grid.Children.Add(targetBox);
@@ -145,13 +146,15 @@ public partial class AccountRoleWindow : Window
         Grid.SetColumn(gateCheck, 5);
         grid.Children.Add(gateCheck);
 
-        // Target/GATE only make sense for a Bill account — keep them disabled (not hidden, so
-        // Shane can see the values a role change is about to discard) for any other role.
+        // Target amount is meaningful for a Bill (real monthly bill figure) or an Emergency
+        // Fund (real savings goal) account; GATE only ever means anything for a Bill. Keep
+        // disabled fields visible rather than hidden, so Shane can see the values a role change
+        // is about to discard.
         roleCombo.SelectionChanged += (_, _) =>
         {
-            var isBill = (roleCombo.SelectedItem as RoleOption)?.Role == AccountRole.Bill;
-            targetBox.IsEnabled = isBill;
-            gateCheck.IsEnabled = isBill;
+            var selectedRole = (roleCombo.SelectedItem as RoleOption)?.Role;
+            targetBox.IsEnabled = selectedRole is AccountRole.Bill or AccountRole.EmergencyFund;
+            gateCheck.IsEnabled = selectedRole == AccountRole.Bill;
         };
 
         RowsPanel.Children.Add(grid);
@@ -184,7 +187,7 @@ public partial class AccountRoleWindow : Window
                 var role = (row.RoleCombo.SelectedItem as RoleOption)?.Role ?? AccountRole.Unassigned;
 
                 decimal? target = null;
-                if (role == AccountRole.Bill && !string.IsNullOrWhiteSpace(row.TargetBox.Text))
+                if (role is AccountRole.Bill or AccountRole.EmergencyFund && !string.IsNullOrWhiteSpace(row.TargetBox.Text))
                 {
                     if (!decimal.TryParse(row.TargetBox.Text, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed))
                     {

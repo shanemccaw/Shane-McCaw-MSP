@@ -277,6 +277,61 @@ public sealed class FinanceTools(
         return $"Set \"{account.Name}\" target to {Money(targetAmount)}. Run bill_status to confirm the shortfall total.";
     }
 
+    [McpServerTool(Name = "emergency_fund_status")]
+    [Description(
+        "Real status for every account with the Emergency Fund role: real current Plaid " +
+        "balance against the real savings goal (target_amount, the same field bill accounts " +
+        "use for their monthly target), and whether that leaves it covered or short by $X. If " +
+        "no account is assigned the Emergency Fund role yet, says so plainly rather than " +
+        "returning an empty/confusing result.")]
+    public async Task<string> GetEmergencyFundStatusAsync()
+    {
+        var accounts = await accountRepository.ListAsync(ConnectionString);
+        if (!accounts.Success)
+        {
+            return $"Could not compute emergency fund status: {accounts.ErrorMessage}";
+        }
+
+        var emergencyFundAccounts = accounts.Accounts
+            .Where(a => a.Role == AccountRole.EmergencyFund)
+            .OrderBy(a => a.Name)
+            .ToList();
+
+        if (emergencyFundAccounts.Count == 0)
+        {
+            return "No account is assigned the Emergency Fund role yet. Assign one in " +
+                   "\"Assign Account Roles…\" in the WPF app.";
+        }
+
+        var sb = new StringBuilder();
+        foreach (var account in emergencyFundAccounts)
+        {
+            sb.AppendLine($"{account.Name}: real balance {Money(account.CurrentBalance)}");
+
+            if (account.TargetAmount is null)
+            {
+                sb.AppendLine("  No savings goal set yet.");
+            }
+            else
+            {
+                sb.AppendLine($"  Goal: {Money(account.TargetAmount)}");
+                if (account.CurrentBalance is null)
+                {
+                    sb.AppendLine("  Covered/short cannot be computed without a known real balance.");
+                }
+                else
+                {
+                    var delta = account.CurrentBalance.Value - account.TargetAmount.Value;
+                    sb.AppendLine(delta >= 0
+                        ? $"  Covered by {Money(delta)}."
+                        : $"  Short by {Money(-delta)}.");
+                }
+            }
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
     private static string FormatBill(BillStatus bill)
     {
         var target = bill.TargetAmount is null ? "no target" : Money(bill.TargetAmount);
