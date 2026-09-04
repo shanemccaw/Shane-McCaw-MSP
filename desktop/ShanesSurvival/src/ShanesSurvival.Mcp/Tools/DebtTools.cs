@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using ModelContextProtocol.Server;
 using ShanesSurvival.Core.Debts;
@@ -41,24 +42,34 @@ public sealed class DebtTools(SettingsService settingsService, DebtRepository de
         [Description("Whether this debt is currently in real delinquency, if known.")]
         bool? isDelinquent = null,
         [Description("Optional real free-text notes, e.g. \"4 months behind, landlord threatening eviction\".")]
-        string? notes = null)
+        string? notes = null,
+        [Description(
+            "Whether this debt is critical (real foreclosure/levy/garnishment-tier risk — " +
+            "Shane-assigned, never inferred), so it's always surfaced first by get_debts and " +
+            "never buried among lower-stakes debts. Left unset on an update leaves the existing " +
+            "flag unchanged.")]
+        bool? isCritical = null)
     {
         var result = await debtRepository.UpsertAsync(
-            ConnectionString, creditorName, balance, minimumPayment, isDelinquent, daysPastDue, notes);
+            ConnectionString, creditorName, balance, minimumPayment, isDelinquent, daysPastDue, notes, isCritical);
         if (!result.Success || result.Debt is null)
         {
             return $"Could not record debt for \"{creditorName}\": {result.ErrorMessage}";
         }
 
         var verb = result.WasCreated ? "Created" : "Updated";
-        return $"{verb} debt \"{result.Debt.CreditorName}\": balance {Money(result.Debt.Balance)}, " +
+        var critical = result.Debt.IsCritical ? " [CRITICAL]" : "";
+        return $"{verb} debt \"{result.Debt.CreditorName}\"{critical}: balance {Money(result.Debt.Balance)}, " +
                $"{FormatDelinquency(result.Debt)}. Run get_debts to confirm.";
     }
 
     [McpServerTool(Name = "get_debts")]
     [Description(
-        "Lists every real debt row, worst (highest days_past_due) first. Manually entered by " +
-        "Shane, never sourced from Plaid.")]
+        "Lists every real debt row. Critical debts (is_critical — real foreclosure/levy/" +
+        "garnishment-tier risk, Shane-assigned) are always listed first in their own section, " +
+        "same always-surfaced treatment GATE-tier bills get on the bill side. The rest are " +
+        "worst (highest days_past_due) first. Manually entered by Shane, never sourced from " +
+        "Plaid.")]
     public async Task<string> GetDebtsAsync()
     {
         var result = await debtRepository.ListAsync(ConnectionString);
@@ -73,20 +84,42 @@ public sealed class DebtTools(SettingsService settingsService, DebtRepository de
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"{result.Debts.Count} real debt(s), worst days-past-due first:");
+        sb.AppendLine($"{result.Debts.Count} real debt(s):");
 
-        decimal totalBalance = 0;
-        foreach (var debt in result.Debts)
+        var criticalDebts = result.Debts.Where(d => d.IsCritical).ToList();
+        var otherDebts = result.Debts.Where(d => !d.IsCritical).ToList();
+
+        if (criticalDebts.Count > 0)
         {
-            totalBalance += debt.Balance;
-            var minimumPayment = debt.MinimumPayment is null ? "" : $", min payment {Money(debt.MinimumPayment.Value)}";
-            var notes = string.IsNullOrWhiteSpace(debt.Notes) ? "" : $" — {debt.Notes}";
-            sb.AppendLine($"  - {debt.CreditorName}: balance {Money(debt.Balance)}{minimumPayment}, {FormatDelinquency(debt)}{notes}");
+            sb.AppendLine();
+            sb.AppendLine("CRITICAL debts (real foreclosure/levy/garnishment-tier risk — always tracked):");
+            foreach (var debt in criticalDebts)
+            {
+                sb.AppendLine($"  - {FormatDebt(debt)}");
+            }
         }
 
+        if (otherDebts.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Other debts (worst days-past-due first):");
+            foreach (var debt in otherDebts)
+            {
+                sb.AppendLine($"  - {FormatDebt(debt)}");
+            }
+        }
+
+        decimal totalBalance = result.Debts.Sum(d => d.Balance);
         sb.AppendLine();
         sb.AppendLine($"Total real debt balance: {Money(totalBalance)}");
         return sb.ToString().TrimEnd();
+    }
+
+    private static string FormatDebt(DebtRow debt)
+    {
+        var minimumPayment = debt.MinimumPayment is null ? "" : $", min payment {Money(debt.MinimumPayment.Value)}";
+        var notes = string.IsNullOrWhiteSpace(debt.Notes) ? "" : $" — {debt.Notes}";
+        return $"{debt.CreditorName}: balance {Money(debt.Balance)}{minimumPayment}, {FormatDelinquency(debt)}{notes}";
     }
 
     private static string FormatDelinquency(DebtRow debt) =>

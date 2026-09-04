@@ -11,7 +11,8 @@ public sealed record DebtRow(
     bool IsDelinquent,
     int DaysPastDue,
     string? Notes,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    bool IsCritical);
 
 public sealed record DebtListResult(bool Success, IReadOnlyList<DebtRow> Debts, string? ErrorMessage);
 public sealed record DebtUpsertResult(bool Success, DebtRow? Debt, bool WasCreated, string? ErrorMessage);
@@ -40,9 +41,9 @@ public sealed class DebtRepository
             var debts = new List<DebtRow>();
             await using var command = new NpgsqlCommand(
                 """
-                SELECT id, creditor_name, balance, minimum_payment, is_delinquent, days_past_due, notes, updated_at
+                SELECT id, creditor_name, balance, minimum_payment, is_delinquent, days_past_due, notes, updated_at, is_critical
                 FROM debts
-                ORDER BY days_past_due DESC, creditor_name
+                ORDER BY is_critical DESC, days_past_due DESC, creditor_name
                 """, connection);
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -72,7 +73,8 @@ public sealed class DebtRepository
         decimal? minimumPayment,
         bool? isDelinquent,
         int? daysPastDue,
-        string? notes)
+        string? notes,
+        bool? isCritical = null)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -104,8 +106,8 @@ public sealed class DebtRepository
 
                 await using var insertCommand = new NpgsqlCommand(
                     """
-                    INSERT INTO debts (id, creditor_name, balance, minimum_payment, is_delinquent, days_past_due, notes, updated_at)
-                    VALUES (@id, @creditorName, @balance, @minimumPayment, @isDelinquent, @daysPastDue, @notes, now())
+                    INSERT INTO debts (id, creditor_name, balance, minimum_payment, is_delinquent, days_past_due, notes, updated_at, is_critical)
+                    VALUES (@id, @creditorName, @balance, @minimumPayment, @isDelinquent, @daysPastDue, @notes, now(), @isCritical)
                     """, connection);
                 insertCommand.Parameters.AddWithValue("id", id);
                 insertCommand.Parameters.AddWithValue("creditorName", creditorName);
@@ -114,6 +116,7 @@ public sealed class DebtRepository
                 insertCommand.Parameters.AddWithValue("isDelinquent", isDelinquent ?? false);
                 insertCommand.Parameters.AddWithValue("daysPastDue", daysPastDue ?? 0);
                 insertCommand.Parameters.AddWithValue("notes", (object?)notes ?? DBNull.Value);
+                insertCommand.Parameters.AddWithValue("isCritical", isCritical ?? false);
                 await insertCommand.ExecuteNonQueryAsync();
             }
             else
@@ -129,6 +132,7 @@ public sealed class DebtRepository
                         is_delinquent = COALESCE(@isDelinquent, is_delinquent),
                         days_past_due = COALESCE(@daysPastDue, days_past_due),
                         notes = COALESCE(@notes, notes),
+                        is_critical = COALESCE(@isCritical, is_critical),
                         updated_at = now()
                     WHERE id = @id
                     """, connection);
@@ -138,12 +142,13 @@ public sealed class DebtRepository
                 updateCommand.Parameters.AddWithValue("isDelinquent", (object?)isDelinquent ?? DBNull.Value);
                 updateCommand.Parameters.AddWithValue("daysPastDue", (object?)daysPastDue ?? DBNull.Value);
                 updateCommand.Parameters.AddWithValue("notes", (object?)notes ?? DBNull.Value);
+                updateCommand.Parameters.AddWithValue("isCritical", (object?)isCritical ?? DBNull.Value);
                 await updateCommand.ExecuteNonQueryAsync();
             }
 
             await using var readBackCommand = new NpgsqlCommand(
                 """
-                SELECT id, creditor_name, balance, minimum_payment, is_delinquent, days_past_due, notes, updated_at
+                SELECT id, creditor_name, balance, minimum_payment, is_delinquent, days_past_due, notes, updated_at, is_critical
                 FROM debts WHERE id = @id
                 """, connection);
             readBackCommand.Parameters.AddWithValue("id", id);
@@ -169,5 +174,6 @@ public sealed class DebtRepository
         reader.GetBoolean(4),
         reader.GetInt32(5),
         reader.IsDBNull(6) ? null : reader.GetString(6),
-        reader.GetFieldValue<DateTimeOffset>(7));
+        reader.GetFieldValue<DateTimeOffset>(7),
+        reader.GetBoolean(8));
 }
