@@ -457,7 +457,7 @@ router.get("/msp/sla/summary", requireRole("MSPOperator"), async (req: Request, 
     const [timerRows, breachRows, complianceRows] = await Promise.all([
       db.execute(sql`
         SELECT
-          COUNT(*) FILTER (WHERE status = 'active') AS active_timers,
+          COUNT(*) FILTER (WHERE status = 'running') AS active_timers,
           COUNT(*) FILTER (WHERE status = 'warning') AS warning_timers,
           COUNT(*) FILTER (WHERE status = 'breached') AS breached_timers
         FROM sla_timers WHERE msp_id = ${mspId}

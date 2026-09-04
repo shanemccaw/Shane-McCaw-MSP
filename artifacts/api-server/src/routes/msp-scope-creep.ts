@@ -350,6 +350,7 @@ router.get("/msp/scope-creep/violations", requireRole("MSPOperator"), async (req
 router.get("/msp/scope-creep/escalations", requireRole("MSPOperator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
+  const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
   try {
     const rows = await db.execute(sql`
       SELECT id, escalation_id AS "escalationId", violation_id AS "violationId",
@@ -363,7 +364,10 @@ router.get("/msp/scope-creep/escalations", requireRole("MSPOperator"), async (re
       WHERE msp_id = ${mspId} AND status IN ('pending', 'in_progress')
       ORDER BY level DESC, created_at DESC LIMIT 100
     `);
-    res.json({ escalations: rows.rows });
+    const escalations = scopedIds === null
+      ? rows.rows
+      : rows.rows.filter((e) => scopedIds.includes(Number((e as { customerId?: number }).customerId)));
+    res.json({ escalations });
   } catch (err) {
     log.error({ err, mspId }, "msp-scope-creep: list escalations failed");
     res.status(500).json({ error: "Failed to list escalations" });
@@ -377,6 +381,10 @@ router.get("/msp/scope-creep/compliance", requireRole("MSPOperator"), async (req
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const customerId = req.query["customerId"] ? Number(req.query["customerId"]) : null;
+  const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
+  if (customerId != null && scopedIds !== null && !scopedIds.includes(customerId)) {
+    res.json({ records: [] }); return;
+  }
   try {
     const rows = await db.execute(
       customerId != null
@@ -397,7 +405,10 @@ router.get("/msp/scope-creep/compliance", requireRole("MSPOperator"), async (req
               WHERE msp_id = ${mspId}
               ORDER BY period_start DESC LIMIT 100`,
     );
-    res.json({ records: rows.rows });
+    const records = scopedIds === null
+      ? rows.rows
+      : rows.rows.filter((r) => scopedIds.includes(Number((r as { customerId?: number }).customerId)));
+    res.json({ records });
   } catch (err) {
     log.error({ err, mspId }, "msp-scope-creep: list compliance failed");
     res.status(500).json({ error: "Failed to list compliance records" });

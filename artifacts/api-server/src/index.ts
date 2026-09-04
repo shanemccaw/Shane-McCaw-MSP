@@ -957,7 +957,7 @@ app.listen(port, (err) => {
       policy_id           INTEGER REFERENCES sla_policies(id) ON DELETE SET NULL,
       ticket_ref          TEXT,
       ticket_type         TEXT,
-      status              TEXT NOT NULL DEFAULT 'active',
+      status              TEXT NOT NULL DEFAULT 'running',
       phase               TEXT NOT NULL DEFAULT 'response',
       started_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       warning_fired_at    TIMESTAMPTZ,

@@ -326,11 +326,11 @@ export async function startSlaTimer(opts: StartTimerOptions): Promise<{ timerId:
 
   const timerId = randomUUID();
   await db.execute(sql`
-    INSERT INTO sla_timers (timer_id, msp_id, customer_id, policy_id, ticket_ref, ticket_type, phase, idempotency_key, trace_id, metadata)
+    INSERT INTO sla_timers (timer_id, msp_id, customer_id, policy_id, ticket_ref, ticket_type, status, phase, idempotency_key, trace_id, metadata)
     VALUES (
       ${timerId}, ${opts.mspId}, ${opts.customerId}, ${opts.policyId},
       ${opts.ticketRef ?? null}, ${opts.ticketType ?? "incident"},
-      ${opts.phase ?? "response"}, ${key}, ${opts.traceId ?? null},
+      'running', ${opts.phase ?? "response"}, ${key}, ${opts.traceId ?? null},
       ${JSON.stringify(opts.metadata ?? {})}
     )
   `);
