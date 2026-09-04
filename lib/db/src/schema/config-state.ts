@@ -63,6 +63,7 @@ export const CONFIG_READ_TRANSPORTS = [
   "sharepoint-admin",
   "dns",
   "azure-rm",
+  "azure-devops",
   "power-platform",
   "unknown",
 ] as const;

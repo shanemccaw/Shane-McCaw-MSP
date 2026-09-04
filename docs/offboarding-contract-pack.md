@@ -424,8 +424,11 @@ current tree:
 grep -rn "msp/dashboard\|msp/offboarding\|portal/customer/export\|portal/customer/offboard" artifacts/portal/src artifacts/msp-website artifacts/shane-mccaw-consulting
 ```
 
-returns no matches. This is expected, current state — `artifacts/msp-portal` (the
-only prior caller, via the archived `offboarding.tsx`) was retired 2026-08-29, and
+returns no matches. This is expected, current state — `artifacts/msp-portal` was
+retired for `artifacts/portal` in `f40438cdc` (#1921), and its only prior caller,
+`offboarding.tsx`, was NOT carried over into `artifacts/portal` — it survives only in
+the `portal-archive-2026-08-29` tag cited above. So there is nothing to look for under
+`artifacts/portal` either; the grep above already covers the live tree.
 no `Design/portal/` export exists yet for Offboarding (`ls Design/portal/` has no
 offboarding `.dc.html`). All 6 routes are real, under test
 (`msp-portal.test.ts`, `portal-customer-offboard.test.ts`), and none is exercised by

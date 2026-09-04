@@ -14,7 +14,7 @@ The platform is a pnpm monorepo deployed on **Replit**. All artifacts share a si
 | API Server | `artifacts/api-server` | `/api` |
 | Admin Panel | `artifacts/admin-panel` | `/admin-panel` |
 | CRM / Client Portal | `artifacts/crm` | `/crm` |
-| MSP Portal | `artifacts/msp-portal` | `/portal` |
+| MSP Portal | `artifacts/portal` | `/portal` |
 | Shane Mobile (Expo) | `artifacts/shane-mobile` | `/shane-mobile` |
 
 ---
@@ -23,8 +23,8 @@ The platform is a pnpm monorepo deployed on **Replit**. All artifacts share a si
 
 ### Development (Replit Workspace)
 
-1. The `artifacts/msp-portal: web` workflow starts the Vite dev server.
-2. Use `restart_workflow "artifacts/msp-portal: web"` or the Replit workflow panel to start/restart it.
+1. The `artifacts/portal: web` workflow starts the Vite dev server.
+2. Use `restart_workflow "artifacts/portal: web"` or the Replit workflow panel to start/restart it.
 3. Access at `https://<replit-dev-domain>/portal/`.
 
 ### Production (Replit Deploy)

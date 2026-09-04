@@ -2465,7 +2465,12 @@ async function runPowerPlatformCheck(opts: {
 /** Node dns error codes meaning "no records of this type exist" — the honest, expected shape of an unconfigured SPF/DMARC/DKIM record, not a failure. Any other error (e.g. a real resolver/network fault) is left to propagate to the generic "error" branch below. */
 const DNS_NO_RECORD_CODES = new Set(["ENOTFOUND", "ENODATA"]);
 
-async function queryTxtRecords(hostname: string): Promise<string[]> {
+/**
+ * Exported for Git #2010: the configuration snapshot collector (#1796) reuses
+ * this exact TXT-lookup function for its `dns` transport rather than
+ * introducing a second DNS client, per #1796's own first constraint.
+ */
+export async function queryTxtRecords(hostname: string): Promise<string[]> {
   try {
     const records = await dnsPromises.resolveTxt(hostname);
     return records.map((chunks) => chunks.join(""));
@@ -2483,7 +2488,7 @@ async function queryTxtRecords(hostname: string): Promise<string[]> {
  * cannot see past, not something it claims to rule out (see
  * dkimConfiguredAtDefaultSelectors below).
  */
-const DKIM_DEFAULT_SELECTORS = ["selector1", "selector2"] as const;
+export const DKIM_DEFAULT_SELECTORS = ["selector1", "selector2"] as const;
 
 /**
  * The tenant's real mail domain, reused as-is from whatever consent.ts's

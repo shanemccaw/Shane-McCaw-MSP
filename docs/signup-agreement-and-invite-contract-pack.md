@@ -388,14 +388,15 @@ All five endpoints named in #2442 are live, mounted, and reachable — none are 
 
 | Endpoint | Mount confirmed | Consumer |
 |---|---|---|
-| `GET /api/msp/signup/tiers` | `routes/index.ts:443` | none in current `msp-portal` frontend (portal-v2 retired); real consumer TBD by Design per #1649 |
+| `GET /api/msp/signup/tiers` | `routes/index.ts:443` | none in current `artifacts/portal` frontend (portal-v2 retired; `artifacts/msp-portal` itself was renamed to `artifacts/portal` at `f40438cdc`, dropping portal-v2 in the process); real consumer TBD by Design per #1649 |
 | `POST /api/msp/signup/start` | `routes/index.ts:443` | same |
 | `POST /api/platform/agreement/accept` | `routes/index.ts:429` | same |
 | `GET /api/platform/agreement/current` | `routes/index.ts:429` | same |
 | `GET /api/public/msp-invite/:token` | `routes/index.ts:441` | same |
 
 **No frontend caller currently exists for any of the five** — a genuine, confirmed absence
-(`grep` across `artifacts/msp-portal/src` for all five path fragments returned zero hits),
-consistent with portal-v2's retirement and #1649 being the feature that will (re)build the UI
-against this pack. This is expected at this phase of the build order (§2.1: architect → build
-endpoints → **contract pack** → Design → wire) — not itself a finding.
+(`grep` across `artifacts/portal/src` — the successor to `artifacts/msp-portal`, renamed at
+`f40438cdc` — for all five path fragments returned zero hits), consistent with portal-v2's
+retirement and #1649 being the feature that will (re)build the UI against this pack. This is
+expected at this phase of the build order (§2.1: architect → build endpoints → **contract pack**
+→ Design → wire) — not itself a finding.

@@ -234,7 +234,14 @@ async function bapGet(aadTenantId: string, path: string): Promise<unknown> {
 
   const res = await fetch(url, {
     method: "GET",
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      // #393/#488/#1919 — undici injects `accept-language: *` when no header is
+      // set, which Microsoft APIs (BAP included) reject with a misleading 400
+      // CultureNotFoundException. Same fix as graph.ts/azure-rm.ts.
+      "Accept-Language": "en-US",
+    },
   });
 
   if (!res.ok) {
@@ -509,7 +516,12 @@ async function registerManagementApp(adminAccessToken: string, clientId: string)
     `https://${POWER_PLATFORM_BAP_HOST}/providers/Microsoft.BusinessAppPlatform/adminApplications/${clientId}?api-version=2020-10-01`,
     {
       method: "PUT",
-      headers: { Authorization: `Bearer ${adminAccessToken}`, Accept: "application/json" },
+      headers: {
+        Authorization: `Bearer ${adminAccessToken}`,
+        Accept: "application/json",
+        // #393/#488/#1919 — see bapGet above.
+        "Accept-Language": "en-US",
+      },
     },
   );
   if (!res.ok) {

@@ -8,9 +8,12 @@ this surface's backend already existed before this pack, so it skips #1578 steps
 (schema / honest read) and starts at step 3 (this pack) → Claude Design → wire.
 
 Backend route: `artifacts/api-server/src/routes/portal-billing.ts`
-Portal wire/model files: `artifacts/msp-portal/src/components/portal-v2/billingWire.ts`,
-`billingLive.ts`, `billingData.ts`, `billingModel.ts`, `receiptWire.ts`, `receiptLive.ts`,
-`receiptModel.ts`, `receiptData.ts`
+Portal wire/model files (path stale — `artifacts/msp-portal` was retired for
+`artifacts/portal` in `f40438cdc`; see #1921): `artifacts/portal/src/components/billingWire.ts`,
+`billingLive.ts` (both carried over, but the `portal-v2/` subdir was dropped — real current
+path is directly under `components/`); `billingData.ts`, `billingModel.ts`, `receiptWire.ts`,
+`receiptLive.ts`, `receiptModel.ts`, `receiptData.ts` (NOT carried over — retired in
+`f40438cdc`'s #1485 portal-v2 rebuild; these files do not exist in `artifacts/portal`)
 Schema: `lib/db/src/schema/index.ts` (`invoicesTable`, `clientServicesTable`, `servicesTable`)
 
 ---
@@ -406,17 +409,29 @@ comment, as swept above.
 ## Appendix — files read for this pack
 
 - `artifacts/api-server/src/routes/portal-billing.ts`
-- `artifacts/msp-portal/src/components/portal-v2/billingLive.ts`
-- `artifacts/msp-portal/src/components/portal-v2/billingWire.ts`
-- `artifacts/msp-portal/src/components/portal-v2/billingData.ts`
-- `artifacts/msp-portal/src/components/portal-v2/billingModel.ts`
-- `artifacts/msp-portal/src/pages/portal-v2-billing.tsx`
-- `artifacts/msp-portal/src/components/portal-v2/receiptLive.ts`
-- `artifacts/msp-portal/src/components/portal-v2/receiptWire.ts`
-- `artifacts/msp-portal/src/components/portal-v2/receiptModel.ts`
-- `artifacts/msp-portal/src/components/portal-v2/receiptData.ts`
-- `artifacts/msp-portal/src/pages/portal-v2-receipt.tsx`
-- `artifacts/msp-portal/src/pages/portal-v2-retainer.tsx` (boundary check only, §7)
+- `artifacts/portal/src/components/billingLive.ts` (carried over, but the `portal-v2/`
+  subdir was dropped — real current path is directly under `components/`)
+- `artifacts/portal/src/components/billingWire.ts` (carried over, but the `portal-v2/`
+  subdir was dropped — real current path is directly under `components/`)
+- `artifacts/portal/src/components/billingData.ts` (NOT carried over — retired in
+  `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in `artifacts/portal`)
+- `artifacts/portal/src/components/billingModel.ts` (NOT carried over — retired in
+  `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in `artifacts/portal`)
+- `artifacts/portal/src/pages/portal-v2-billing.tsx` (NOT carried over — retired in
+  `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in `artifacts/portal`)
+- `artifacts/portal/src/components/receiptLive.ts` (NOT carried over — retired in
+  `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in `artifacts/portal`)
+- `artifacts/portal/src/components/receiptWire.ts` (NOT carried over — retired in
+  `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in `artifacts/portal`)
+- `artifacts/portal/src/components/receiptModel.ts` (NOT carried over — retired in
+  `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in `artifacts/portal`)
+- `artifacts/portal/src/components/receiptData.ts` (NOT carried over — retired in
+  `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in `artifacts/portal`)
+- `artifacts/portal/src/pages/portal-v2-receipt.tsx` (NOT carried over — retired in
+  `f40438cdc`'s #1485 portal-v2 rebuild; this file does not exist in `artifacts/portal`)
+- `artifacts/portal/src/pages/portal-v2-retainer.tsx` (boundary check only, §7; NOT
+  carried over — retired in `f40438cdc`'s #1485 portal-v2 rebuild; this file does not
+  exist in `artifacts/portal`)
 - `artifacts/api-server/src/lib/stripe.ts`
 - `lib/db/src/schema/index.ts` (`invoicesTable`, `clientServicesTable`, `servicesTable`)
 - GitHub: #1598, #1485, #1577, #1463, #1594, #1128, #1569

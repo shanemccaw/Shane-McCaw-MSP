@@ -431,6 +431,22 @@ export const configDiffsTable = pgTable("config_diffs", {
   /** How many active rules that fingerprint covered — a cheap tripwire on an empty ruleset. */
   rulesetSize: integer("ruleset_size").notNull().default(0),
 
+  /**
+   * Fingerprint of the `resourceKeys` scope this diff was computed over (Git #2032).
+   * `'*'` means every resource either side targeted (`resourceKeys` omitted); any other
+   * value is a SHA-256 over the sorted, deduplicated scope. Part of identity for the same
+   * reason `rulesetFingerprint` is: a diff scoped to a handful of resource keys is a
+   * DIFFERENT computed answer than the same pair's full-tenant diff, even though both
+   * share the same (base, head, mode, ruleset). Before this column existed, both shared
+   * the same cache row, so a scoped recompute silently overwrote full-tenant evidence
+   * with a fragment of it — see `fingerprintResourceKeys` in `config-snapshot-differ.ts`.
+   *
+   * NOT NULL, with a `'*'` sentinel rather than NULL for "unscoped": a unique index does
+   * not treat two NULLs as equal, so a nullable column here would stop deduplicating the
+   * common full-tenant case — the exact regression this column exists to close.
+   */
+  resourceKeysFingerprint: text("resource_keys_fingerprint").notNull().default("*"),
+
   differVersion: text("differ_version").notNull(),
   status: text("status", { enum: CONFIG_DIFF_STATUSES }).notNull().default("computing"),
   sealedAt: timestamp("sealed_at", { withTimezone: true }),
@@ -481,7 +497,8 @@ export const configDiffsTable = pgTable("config_diffs", {
    * stored answer instead of walking 50,000 objects again.
    */
   uniqueIndex("config_diffs_pair_uidx")
-    .on(t.baseSnapshotRowId, t.headSnapshotRowId, t.mode, t.rulesetFingerprint),
+    .on(t.baseSnapshotRowId, t.headSnapshotRowId, t.mode, t.rulesetFingerprint,
+      t.resourceKeysFingerprint),
   /** "What has been compared for this tenant lately" — the operator read. */
   index("config_diffs_head_tenant_idx").on(t.headTenantId, t.mode, t.createdAt),
   index("config_diffs_status_idx").on(t.status),

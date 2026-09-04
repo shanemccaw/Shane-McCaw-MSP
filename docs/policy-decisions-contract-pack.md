@@ -21,7 +21,9 @@ directly against the local Postgres instance.
 
 Backend routes: `artifacts/api-server/src/routes/portal-risk-register.ts`,
 `artifacts/api-server/src/routes/portal-compliance-obligations.ts`
-Portal wire/model files: `artifacts/msp-portal/src/components/portal-v2/riskRegisterWire.ts`,
+Portal wire/model files (path stale — `artifacts/msp-portal` was retired for
+`artifacts/portal` in `f40438cdc`, #1921; none of these were carried over and none
+exist in `artifacts/portal` today): `artifacts/portal/src/components/portal-v2/riskRegisterWire.ts`,
 `riskRegisterLive.ts`, `policyDecisionsData.ts`, `policyDecisionsModel.ts`,
 `complianceObligationsWire.ts`, `complianceObligationsLive.ts`
 Schema: `lib/db/src/schema/msp.ts` (`mspRiskDecisionsTable`, `complianceFrameworksTable`,
@@ -38,7 +40,9 @@ module's backing tables. **Verified wrong, by direct schema read.** Those five a
 at `lib/db/src/schema/index.ts:3682-3763` — `conditionType: "signal" | "score_threshold"`,
 `scoreThreshold`, `cooldownMinutes`, `escalationRules` — **alert-engine machinery** (the
 customer-tenant alert engine, #1279), keyed to `mspId`/`customerId`/`ruleId`. Nothing in the
-portal reads them as a policy decision, and grepping `artifacts/msp-portal/src` for any of
+portal reads them as a policy decision, and grepping `artifacts/msp-portal/src` (the path
+at pack time; retired for `artifacts/portal` in `f40438cdc`, #1921 — re-grepping
+`artifacts/portal/src` today still returns zero matches) for any of
 those five table names returns zero matches. The name collision is coincidental. Do not
 build against these tables for this module.
 
@@ -437,16 +441,19 @@ user is intact; only the hook's internal naming is imprecise.
 - `artifacts/api-server/src/lib/active-directory.ts` (OU scaffolding, §4)
 - `artifacts/api-server/src/lib/graph.ts` (write consent, §4)
 - `artifacts/api-server/src/lib/config-pack-orchestrator.ts` (write consent, §4)
-- `artifacts/msp-portal/src/components/portal-v2/riskRegisterLive.ts`
-- `artifacts/msp-portal/src/components/portal-v2/riskRegisterWire.ts`
-- `artifacts/msp-portal/src/components/portal-v2/policyDecisionsData.ts`
-- `artifacts/msp-portal/src/components/portal-v2/policyDecisionsModel.ts`
-- `artifacts/msp-portal/src/components/portal-v2/complianceObligationsLive.ts`
-- `artifacts/msp-portal/src/components/portal-v2/complianceObligationsWire.ts`
-- `artifacts/msp-portal/src/pages/portal-v2-policy-decisions.tsx`
-- `artifacts/msp-portal/src/pages/portal-v2-compliance.tsx`
-- `artifacts/msp-portal/src/pages/portal-v2-compliance-decisions.tsx`
-- `artifacts/msp-portal/src/pages/portal-v2-compliance-obligations.tsx`
+- (paths below are as of pack time, under the retired `artifacts/msp-portal` — renamed to
+  `artifacts/portal` in `f40438cdc`, #1921; none of these files were carried over and none
+  exist in `artifacts/portal` today)
+- `artifacts/portal/src/components/portal-v2/riskRegisterLive.ts`
+- `artifacts/portal/src/components/portal-v2/riskRegisterWire.ts`
+- `artifacts/portal/src/components/portal-v2/policyDecisionsData.ts`
+- `artifacts/portal/src/components/portal-v2/policyDecisionsModel.ts`
+- `artifacts/portal/src/components/portal-v2/complianceObligationsLive.ts`
+- `artifacts/portal/src/components/portal-v2/complianceObligationsWire.ts`
+- `artifacts/portal/src/pages/portal-v2-policy-decisions.tsx`
+- `artifacts/portal/src/pages/portal-v2-compliance.tsx`
+- `artifacts/portal/src/pages/portal-v2-compliance-decisions.tsx`
+- `artifacts/portal/src/pages/portal-v2-compliance-obligations.tsx`
 - `lib/db/src/schema/msp.ts` (`mspRiskDecisionsTable`, `complianceFrameworksTable`,
   `complianceObligationsTable`, `tenantComplianceScopeTable`, `mspSopsTable`,
   `mspSopRunsTable`, `monitorChecksTable`)

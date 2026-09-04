@@ -238,6 +238,13 @@ async function defenderActionPost(
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      // #393/#488/#1919 — undici (Node's global fetch) injects `accept-language: *`
+      // on every outgoing request when no Accept-Language header is set, and
+      // Microsoft's own APIs (first proven on Graph, then ARM) reject the literal
+      // "*" with a wrapped 400 CultureNotFoundException that looks like an
+      // unrelated permission/endpoint failure. Explicit value, same fix as
+      // graph.ts and azure-rm.ts.
+      "Accept-Language": "en-US",
     },
     body: JSON.stringify(body),
   });

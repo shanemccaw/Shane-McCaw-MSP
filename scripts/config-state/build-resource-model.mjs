@@ -49,7 +49,11 @@ function readTransportFor(dsc) {
   const w = new Set(dsc.permissionWorkloads);
   if (dsc.graphPaths.length > 0) return "graph";
   if (w.has("sharepoint")) return "sharepoint-admin";
-  if (w.has("azure") || w.has("Azure Service Management") || w.has("Azure DevOps")) return "azure-rm";
+  // Git #1916: Azure DevOps is a genuinely different host, token audience
+  // (499b84ac-1321-427f-aa17-267ca6975798) and permission model than ARM — it must not
+  // fold into azure-rm just because both workloads start with "Azure".
+  if (w.has("Azure DevOps")) return "azure-devops";
+  if (w.has("azure") || w.has("Azure Service Management")) return "azure-rm";
   if (w.has("powerPlatform") || w.has("powerAppsService")) return "power-platform";
   if (w.has("exchange") || w.has("Office 365 Exchange Online") || w.has("purview")) return "powershell";
   if (dsc.readCmdlets.some((c) => /^Get-Mg/i.test(c))) return "graph";
