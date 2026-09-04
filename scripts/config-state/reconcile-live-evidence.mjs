@@ -37,8 +37,10 @@ export async function refreshSampleResourceLinks(client) {
 
 /**
  * Re-applies `verification_status` (`verified_live` / `failed_live`) and the ONLY
- * evidence that may ever set `availability = 'needs_license'` onto `config_resources`,
- * from `config_resource_samples`.
+ * evidence that may ever set `availability = 'needs_license'` (a real license/feature
+ * gap) or reconcile a `availability = 'unavailable'` tenant-type mismatch (Git #2816 —
+ * e.g. a B2C-only Graph path 403ing `AADB2C` on this platform's ordinary tenant) onto
+ * `config_resources`, from `config_resource_samples`.
  *
  * Pass `sampleRunId` to scope to one just-inserted run (what `verify-sample.mjs` wants
  * right after it samples). Omit it to reconcile from the latest sample per resource
@@ -86,9 +88,30 @@ export async function applyLiveEvidence(client, { sampleRunId = null } = {}) {
     params,
   );
 
+  // Git #2816 — a live tenant-type mismatch (e.g. a B2C-only Graph path 403ing with
+  // `AADB2C` on this platform's ordinary Azure AD tenant) is a real "no app-only read
+  // path reaches this resource on this tenant" fact, exactly what `unavailable` means
+  // — but it is NOT a license/feature gap, so it must never fall into `needs_license`.
+  // Kept as its own block (rather than folded into the licenseGap query above) so the
+  // two conditions can never silently merge: a tenant-type mismatch is not a licensing
+  // problem, and `needs_license` stays reserved for the case its own name states.
+  const tenantMismatch = await client.query(
+    `WITH latest AS (${latestCte})
+     UPDATE config_resources r
+        SET availability = 'unavailable',
+            availability_reason = 'live read returned a tenant-type mismatch, not a permission gap: ' || l.error_code || ' — ' || l.error_message,
+            updated_at = now()
+       FROM latest l
+      WHERE l.resource_key = r.resource_key AND l.ok = FALSE
+        AND l.error_code = 'AADB2C'
+      RETURNING r.resource_key`,
+    params,
+  );
+
   return {
     verifiedCount: verified.rowCount ?? 0,
     failedCount: failed.rowCount ?? 0,
     licenseGapKeys: licenseGap.rows.map((r) => r.resource_key),
+    tenantMismatchKeys: tenantMismatch.rows.map((r) => r.resource_key),
   };
 }

@@ -170,6 +170,8 @@ export function consentRow(record: TenantConsentRecord | undefined) {
     consentStatus: record.status,
     consentedAt: record.consentedAt ?? null,
     revokedAt: record.revokedAt ?? null,
+    adminEmail: record.adminEmail ?? null,
+    adminDisplayName: record.adminDisplayName ?? null,
     grants: record.grants ?? [],
   };
 }
@@ -232,7 +234,7 @@ async function triggerDlpComplianceScanIfProvisioned(
 }
 
 /** Returns the protocol+host base (e.g. "https://example.replit.app") from request headers. */
-function getHostBase(req: Request): string {
+export function getHostBase(req: Request): string {
   const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
   const host = req.headers["x-forwarded-host"] ?? req.headers.host;
   return `${proto}://${host}`;
@@ -1271,7 +1273,7 @@ function verifyConsentState(
   return { customerId, token, origin };
 }
 
-function signWriteConsentState(customerId: number, token: string, origin: ConsentUiOrigin = "portal"): string {
+export function signWriteConsentState(customerId: number, token: string, origin: ConsentUiOrigin = "portal"): string {
   const mac = createHmac("sha256", writeConsentStateSecret())
     .update(consentStatePayload("write-consent", customerId, token, origin))
     .digest("hex");
@@ -1648,7 +1650,7 @@ router.get("/admin/customers/:customerId/write-consent", requireAdmin, async (re
 // consent_invite_tokens row, with an "sp." prefix so a state minted for this flow
 // cannot be replayed against the read or write callbacks (and vice versa).
 
-function signSharePointConsentState(customerId: number, token: string, origin: ConsentUiOrigin = "portal"): string {
+export function signSharePointConsentState(customerId: number, token: string, origin: ConsentUiOrigin = "portal"): string {
   const mac = createHmac("sha256", writeConsentStateSecret())
     .update(consentStatePayload("sharepoint-consent", customerId, token, origin))
     .digest("hex");

@@ -258,6 +258,9 @@ async function main() {
     if (evidence.licenseGapKeys.length) {
       console.log(`  ${evidence.licenseGapKeys.length} marked needs_license from live evidence: ${evidence.licenseGapKeys.join(", ")}`);
     }
+    if (evidence.tenantMismatchKeys.length) {
+      console.log(`  ${evidence.tenantMismatchKeys.length} marked unavailable (tenant-type mismatch) from live evidence: ${evidence.tenantMismatchKeys.join(", ")}`);
+    }
     const breakdown = (await client.query(
       "SELECT verification_status, count(*) n FROM config_resources GROUP BY 1 ORDER BY 2 DESC")).rows;
     console.log("  verification status across the whole model:");
