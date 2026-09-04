@@ -699,14 +699,55 @@ Every cmdlet in this section was **never executed**, so its app-only behaviour i
 | Sync-* is not a read verb (survey executes Get-* only) | 1 |
 | Unregister-* is not a read verb (survey executes Get-* only) | 1 |
 
-### The one deliberate, load-bearing exclusion: `Test-*`
+### `Test-*` — resolved by a real per-cmdlet judgment pass (Git #1854)
 
-#1793 names `Test-*` a read verb. This survey excludes it anyway, and that is a judgement call worth stating plainly rather than burying: several `ExchangeOnlineManagement` `Test-*` cmdlets are not reads. `Test-Mailflow` sends a real probe message through the live transport pipeline. `Test-MigrationServerAvailability` opens an outbound connection to a third-party host. `Test-OAuthConnectivity` performs a live token exchange. Against Shane's real production tenant, the verb alone cannot separate those from a genuine read, so the whole verb fails the issue's own "read-safety establishable from the cmdlet's own help output" bar and is recorded `not_attempted`. Establishing app-only support for individual `Test-*` cmdlets needs a per-cmdlet read of Microsoft's documentation and is deliberately left as follow-up work.
+#1793 named `Test-*` a read verb, then blocked the whole verb anyway because the verb alone
+can't separate a genuine read from a real probe/mutation, and left the per-cmdlet reading of
+Microsoft's own documentation as deliberate follow-up work. #1854 is that follow-up: a real read
+of Microsoft Learn (and, where Learn had nothing, the `office-docs-powershell` source repo) for
+each of the 15 `Test-*` cmdlets the survey's `exchange`/`compliance`/`teams` sessions actually
+export. `compliance` exports none of them. The verdicts, per cmdlet, with the real documented
+reason:
 
-There are **15** such cmdlets across all session types:
+**Confirmed genuinely unsafe (7) — permanently excluded, not just unmeasured:**
 
-- **`exchange`** (9): `Test-ApplicationAccessPolicy`, `Test-ClientAccessRule`, `Test-DatabaseEvent`, `Test-DataEncryptionPolicy`, `Test-DlpPolicies`, `Test-M365DataAtRestEncryptionPolicy`, `Test-MailboxAssistant`, `Test-Message`, `Test-OrganizationRelationship`
-- **`teams`** (6): `Test-CsEffectiveTenantDialPlan`, `Test-CsInboundBlockedNumberPattern`, `Test-CsTeamsShiftsConnectionValidate`, `Test-CsTeamsTranslationRule`, `Test-CsTeamsUnassignedNumberTreatment`, `Test-CsVoiceNormalizationRule`
+| Cmdlet | Session | Real reason |
+|---|---|---|
+| `Test-Message` | `exchange` | Introduces a real message into the transport/DLP evaluation pipeline — actions such as Block or Moderate can genuinely fire on the test message, and notifications are sent to configured recipients. |
+| `Test-DlpPolicies` | `exchange` | Sends a real report email to the caller-specified report address as part of evaluating a SharePoint/OneDrive item against DLP policy. |
+| `Test-OrganizationRelationship` | `exchange` | Opens a real outbound connection to the external federated organization to retrieve a delegation token; also declares `WhatIf`/`Confirm` (`SupportsShouldProcess`). |
+| `Test-CsTeamsShiftsConnectionValidate` | `teams` | Validates the caller-provided WFM connector account/password and endpoint reachability against the live third-party Workforce Management host; also retired from the Teams PowerShell module as of 7.9.0. |
+| `Test-DatabaseEvent` | `exchange` | No public Microsoft documentation found for this cmdlet — read-safety not establishable, fail closed per #1793. |
+| `Test-DataEncryptionPolicy` | `exchange` | No public Microsoft documentation found for this exact cmdlet name (only the distinct `Test-M365DataAtRestEncryptionPolicy` is documented) — read-safety not establishable, fail closed per #1793. |
+| `Test-MailboxAssistant` | `exchange` | No public Microsoft documentation found for this cmdlet — read-safety not establishable, fail closed per #1793. |
+
+These three were already known-unsafe before #1854 and remain so, for the same reasons stated
+originally: `Test-Mailflow` sends a real probe message through the live transport pipeline,
+`Test-MigrationServerAvailability` opens an outbound connection to a third-party host, and
+`Test-OAuthConnectivity` performs a live token exchange. They are not among the 15 above — the
+survey's `exchange`/`teams` sessions don't export them — but the same real-side-effect judgment
+applies to them.
+
+**Confirmed genuine reads (8) — now fall through to the same gates 2-4 as `Get-*`, in
+`Get-SurveyEligibility` (`services/ps-execution/survey.ps1`):**
+
+| Cmdlet | Session | Real reason it's still `not_attempted` in practice |
+|---|---|---|
+| `Test-ApplicationAccessPolicy` | `exchange` | Pure app-access-policy lookup for a recipient/app pair, no mutation — but `-Identity` and `-AppId` are both mandatory, so it still falls under [Cmdlets requiring a mandatory parameter](#cmdlets-requiring-a-mandatory-parameter) below. |
+| `Test-ClientAccessRule` | `exchange` | Pure rule-match lookup for a hypothetical connection, no mutation — but declares `WhatIf`/`Confirm` (`SupportsShouldProcess`), PowerShell's own state-changing marker, so gate 2 excludes it the same as any `Get-*` would be. Also deprecated for Exchange Online since September 2025. |
+| `Test-M365DataAtRestEncryptionPolicy` | `exchange` | Pure policy-validity check, no mutation — but declares `WhatIf`/`Confirm` (`SupportsShouldProcess`), so gate 2 excludes it. |
+| `Test-CsEffectiveTenantDialPlan` | `teams` | Local dial-plan normalization calculation only, no mutation, no outbound call — but `-DialedNumber` is mandatory, so it falls under the mandatory-parameter section below. |
+| `Test-CsInboundBlockedNumberPattern` | `teams` | Local pattern match against configured blocked numbers, no mutation — but `-PhoneNumber` is mandatory. |
+| `Test-CsTeamsTranslationRule` | `teams` | Local number-translation-rule match, no mutation — but `-DialedNumber` is mandatory. |
+| `Test-CsTeamsUnassignedNumberTreatment` | `teams` | Local unassigned-number-treatment match, no mutation — but `-PhoneNumber` is mandatory. |
+| `Test-CsVoiceNormalizationRule` | `teams` | Local voice normalization calculation, no mutation — but `-DialedNumber` and `-NormalizationRule` are both mandatory. |
+
+In short: every one of the 8 confirmed-safe cmdlets requires a real invented test input (a phone
+number, a dialed number) or declares PowerShell's own state-changing marker, so none of them
+actually execute against the live tenant today — but the survey now says so for the real,
+per-cmdlet reason instead of the old blanket "Test-* is unmeasured" text, and a cmdlet whose
+metadata later changes (e.g. a parameter becomes optional) is picked up automatically rather than
+staying silently blocked.
 
 ### Cmdlets requiring a mandatory parameter
 
