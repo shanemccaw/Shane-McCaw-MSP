@@ -109,11 +109,11 @@ namespace BuildConsole.Controls
         /// WireSqlRunnerSendToChat (#940).</summary>
         public event EventHandler<SendBuildSetVerifyingEventArgs>? SendBuildSetVerifyingRequested;
         /// <summary>Git #2691 — fires at the end of every successful <see cref="RefreshAsync"/>
-        /// (the real, already-existing ~15s _pollTimer tick that updates <see cref="CurrentQueueItems"/>
-        /// — no new polling loop). MainWindow/FloatingChatWindow subscribe to re-push mention-span
-        /// colors for every currently-tracked #NNN so live queue-state changes (queued → running →
-        /// verifying) recolor on-screen mentions even with no chat text mutation to trigger the
-        /// DOM-mutation scan.</summary>
+        /// (Git #2900 — RefreshAsync no longer ticks on its own; this now fires only on a manual
+        /// refresh click or the one-time initial load, not a recurring timer). MainWindow/
+        /// FloatingChatWindow subscribe to re-push mention-span colors for every currently-tracked
+        /// #NNN so live queue-state changes (queued → running → verifying) recolor on-screen
+        /// mentions even with no chat text mutation to trigger the DOM-mutation scan.</summary>
         public event EventHandler? QueueRefreshed;
 
         /// <summary>
@@ -135,7 +135,6 @@ namespace BuildConsole.Controls
         private Services.QueueWatcherService? _watcher;
         private Services.BuildQueuePostgresClient? _db;
         private Services.SessionLimitAutoRestartService? _sessionLimitAutoRestart;
-        private DispatcherTimer? _pollTimer;
         private List<QueueItem> _lastItems = new();
         /// <summary>Git #1862 — the live open-issue set from the last Git Board refresh,
         /// forwarded by MainWindow (same free fetch Build Watch already consumes — no new
@@ -296,15 +295,12 @@ namespace BuildConsole.Controls
             // its persisted history moved to the title bar, #1864). UsageTrackingService is
             // deliberately left recording, untouched — this panel just no longer subscribes.
 
-            // Sessions presence polling
-            _sessionsPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
-            _sessionsPollTimer.Tick += async (_, _) =>
-            {
-                await RefreshActiveSessionsAsync();
-                UpdateQueueStatusCounts();
-                DevServerRollbackService.CheckForRollbacks(this);
-            };
-            _sessionsPollTimer.Start();
+            // Git #2900 — Shane's explicit real requirement: nothing refreshes/refills/re-checks
+            // automatically; everything waits for the manual refresh button. This used to be a
+            // recurring 10s DispatcherTimer (_sessionsPollTimer) re-polling active sessions +
+            // status counts + rollback state with zero user interaction. Now: one real one-time
+            // initial load on tab open, same as RefreshInFlightIssuesAsync below, and otherwise
+            // only BtnRefreshGitHubTiles_Click (manual click) re-runs this work.
             _ = RefreshActiveSessionsAsync();
             UpdateQueueStatusCounts();
             DevServerRollbackService.CheckForRollbacks(this);
@@ -319,13 +315,16 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
-            _pollTimer.Tick += async (_, _) => await RefreshAsync();
-            _pollTimer.Start();
+            // Git #2900 — real root cause: this was a recurring 15s DispatcherTimer calling the
+            // SAME RefreshAsync() the manual refresh button uses, automatically, with zero user
+            // interaction — the real structural driver of #2890's burst and of Batter Up's
+            // automatic refilling (BatterUpPanel/AiBatterUpPanel have no timer of their own; they
+            // ride RefreshAsync's QueueRefreshed/BoardRefreshCompleted cascade). Now: one real
+            // one-time initial load on tab open, and otherwise only the manual refresh button
+            // (BtnRefreshGitHubTiles_Click) invokes RefreshAsync().
             _ = RefreshAsync();
         }
 
-        private DispatcherTimer? _sessionsPollTimer;
         private string? _lastSessionsSignature;
         private bool _sessionsRefreshInFlight;
 
@@ -6235,6 +6234,12 @@ namespace BuildConsole.Controls
                 "Build Queue panel [manual Refresh click]: re-fetching GitHub components (Board + Batter Up + AI Batter Up + Issues in Epic + In-Flight + Focus Progress).");
 
             FullGitRefreshRequested?.Invoke(this, EventArgs.Empty);
+
+            // Git #2900 — Active Sessions + the dev-server rollback check used to re-run on their
+            // own recurring 10s timer; now that they're manual-only, fold them into this same
+            // manual refresh so no functionality is lost, just its trigger.
+            _ = RefreshActiveSessionsAsync();
+            DevServerRollbackService.CheckForRollbacks(this);
 
             await System.Threading.Tasks.Task.WhenAll(
                 RefreshActiveChatEpicIssuesAsync(),
