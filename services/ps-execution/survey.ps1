@@ -275,8 +275,17 @@ function Get-SurveyFailureStatus {
 
 # Probes one already-eligible command inside the live session. Never receives
 # anything from the request: $Record comes from the code-owned inventory.
+#
+# #1852: -TimeoutSeconds/-SessionModuleNames route the actual invocation
+# through Invoke-CmdletWithWallClockTimeout (common.ps1) instead of a bare
+# `& $Record.Name` — a per-cmdlet hang (Get-ScopeEntities, observed live) is
+# then abandoned and recorded as its OWN `timeout` row instead of taking the
+# whole batch (and every other cmdlet's already-collected result in it) down
+# with it when the PARENT eventually kills the child. -TimeoutSeconds 0 keeps
+# the original unguarded direct-invoke path, for any future caller that
+# doesn't want the isolated-Runspace overhead.
 function Invoke-SurveyCommandProbe {
-    param($Record)
+    param($Record, [string[]]$SessionModuleNames = @(), [int]$TimeoutSeconds = 0)
 
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
@@ -295,24 +304,53 @@ function Invoke-SurveyCommandProbe {
     $propertyNames = @()
     $typeName = $null
 
-    try {
-        $result = & $Record.Name @invokeParams -ErrorAction Stop
-        $items = @($result)
-        $itemCount = $items.Count
-        if ($itemCount -gt 0 -and $null -ne $items[0]) {
-            $first = $items[0]
-            $typeName = $first.GetType().FullName
-            try {
-                # Property NAMES only — never values. See this file's header.
-                $propertyNames = @($first.PSObject.Properties | ForEach-Object { $_.Name }) | Select-Object -First 400
+    if ($TimeoutSeconds -gt 0) {
+        $invokeParams["ErrorAction"] = "Stop"
+        $outcome = Invoke-CmdletWithWallClockTimeout -CommandName $Record.Name -Parameters $invokeParams -ModuleNames $SessionModuleNames -TimeoutSeconds $TimeoutSeconds
+
+        if ($outcome.TimedOut) {
+            $status = "timeout"
+            $errorMessage = "Cmdlet did not return within the ${TimeoutSeconds}s per-cmdlet timeout (Git #1852) — abandoned; batch continues."
+        }
+        elseif ($outcome.ErrorRecord) {
+            $status = Get-SurveyFailureStatus -ErrorRecord $outcome.ErrorRecord
+            $errorMessage = [string]$outcome.ErrorRecord.Exception.Message
+            if ($errorMessage.Length -gt 1200) { $errorMessage = $errorMessage.Substring(0, 1200) }
+        }
+        else {
+            $items = @($outcome.Result)
+            $itemCount = $items.Count
+            if ($itemCount -gt 0 -and $null -ne $items[0]) {
+                $first = $items[0]
+                $typeName = $first.GetType().FullName
+                try {
+                    # Property NAMES only — never values. See this file's header.
+                    $propertyNames = @($first.PSObject.Properties | ForEach-Object { $_.Name }) | Select-Object -First 400
+                }
+                catch { $propertyNames = @() }
             }
-            catch { $propertyNames = @() }
         }
     }
-    catch {
-        $status = Get-SurveyFailureStatus -ErrorRecord $_
-        $errorMessage = [string]$_.Exception.Message
-        if ($errorMessage.Length -gt 1200) { $errorMessage = $errorMessage.Substring(0, 1200) }
+    else {
+        try {
+            $result = & $Record.Name @invokeParams -ErrorAction Stop
+            $items = @($result)
+            $itemCount = $items.Count
+            if ($itemCount -gt 0 -and $null -ne $items[0]) {
+                $first = $items[0]
+                $typeName = $first.GetType().FullName
+                try {
+                    # Property NAMES only — never values. See this file's header.
+                    $propertyNames = @($first.PSObject.Properties | ForEach-Object { $_.Name }) | Select-Object -First 400
+                }
+                catch { $propertyNames = @() }
+            }
+        }
+        catch {
+            $status = Get-SurveyFailureStatus -ErrorRecord $_
+            $errorMessage = [string]$_.Exception.Message
+            if ($errorMessage.Length -gt 1200) { $errorMessage = $errorMessage.Substring(0, 1200) }
+        }
     }
 
     $stopwatch.Stop()
@@ -370,6 +408,34 @@ function Invoke-SurveyProbe {
     if ($budgetSeconds -lt 10) { $budgetSeconds = 10 }
     if ($budgetSeconds -gt $maxBudget) { $budgetSeconds = $maxBudget }
 
+    # #1852: per-cmdlet wall-clock guard. Default 45s — comfortably above
+    # every `ok` probe's real observed latency elsewhere in this codebase's
+    # docs, comfortably below the 200s Get-ScopeEntities was observed to hang
+    # past. Clamped BELOW the parent's own child-process kill timeout (with a
+    # 15s margin for the Connect-* handshake this survey runs after and the
+    # response write this survey runs before) so the guard always fires
+    # first — a per-cmdlet timeout that could exceed the parent's own kill
+    # window would never get the chance to record its own row.
+    $cmdletTimeoutSeconds = if ($env:PS_EXECUTION_CMDLET_TIMEOUT_SECONDS) { [int]$env:PS_EXECUTION_CMDLET_TIMEOUT_SECONDS } else { 45 }
+    $maxCmdletTimeout = [Math]::Max(5, $childTimeoutSeconds - 15)
+    if ($cmdletTimeoutSeconds -lt 5) { $cmdletTimeoutSeconds = 5 }
+    if ($cmdletTimeoutSeconds -gt $maxCmdletTimeout) { $cmdletTimeoutSeconds = $maxCmdletTimeout }
+
+    # The exact module set Invoke-CmdletWithWallClockTimeout needs to import
+    # into its isolated Runspace to see this session's already-live
+    # connection — the same modules this survey itself enumerates the
+    # inventory from (see this function's own header comment). Real full PATH,
+    # not bare name: the dynamically generated tmpEXO_* implicit-remoting
+    # module lives in a temp location that is never on $env:PSModulePath, so
+    # `Import-Module -Name tmpEXO_xxxx` from a fresh Runspace cannot resolve it
+    # by name alone (confirmed live — a throwaway test this session ran
+    # against a fake module reproduced exactly this failure). `.Path` resolves
+    # regardless of PSModulePath for both a script module (tmpEXO_*) and an
+    # installed binary module (MicrosoftTeams/ExchangeOnlineManagement);
+    # fall back to `.Name` only in the unexpected case a loaded module has no
+    # backing file.
+    $sessionModuleNames = @(Get-SurveySessionModules -SessionType $SessionType | ForEach-Object { if ($_.Path) { $_.Path } else { $_.Name } })
+
     $inventory = Get-SurveyCommandInventory -SessionType $SessionType
     $total = $inventory.Count
 
@@ -408,22 +474,28 @@ function Invoke-SurveyProbe {
             continue
         }
 
-        # Emitted BEFORE the cmdlet runs, on purpose. A cmdlet that hangs past
-        # the parent's child timeout gets its whole process killed, so its
-        # result never reaches the response — the only surviving evidence of
-        # which cmdlet it was is this line in the container's log stream (the
-        # parent relays child stderr onto its own stdout). Without it, a hang
-        # is only identifiable by bisecting the batch from the client side,
-        # which costs one full child timeout per halving.
-        Write-Log -Level "info" -Message "survey probing cmdlet" -Extra @{ session = $SessionType; cmdlet = $record.Name; index = ($skip + $processed) }
+        # Emitted BEFORE the cmdlet runs, on purpose. #1852's per-cmdlet guard
+        # below means a hang no longer needs the parent's child timeout to
+        # surface it — but this line stays: it is still the only evidence of
+        # which cmdlet was in flight if the guard's own isolated Runspace
+        # itself misbehaves in some way this session didn't anticipate.
+        Write-Log -Level "info" -Message "survey probing cmdlet" -Extra @{ session = $SessionType; cmdlet = $record.Name; index = ($skip + $processed); cmdletTimeoutSeconds = $cmdletTimeoutSeconds }
 
-        $rows += (Invoke-SurveyCommandProbe -Record $record)
+        $probeRow = Invoke-SurveyCommandProbe -Record $record -SessionModuleNames $sessionModuleNames -TimeoutSeconds $cmdletTimeoutSeconds
+        if ($probeRow.Status -eq "timeout") {
+            # #1852: this is the row Get-ScopeEntities never got to leave
+            # behind — a hung cmdlet now costs the REST of the batch nothing.
+            Write-Log -Level "warn" -Message "survey cmdlet hit its per-cmdlet timeout; abandoned, batch continues" -Extra @{ session = $SessionType; cmdlet = $record.Name; cmdletTimeoutSeconds = $cmdletTimeoutSeconds }
+        }
+        $rows += $probeRow
         $processed++
     }
 
     Write-Log -Level "info" -Message "survey probe batch complete" -Extra @{
         session = $SessionType; skip = $skip; take = $take; total = $total
         processed = $processed; stoppedEarly = $stoppedEarly; budgetElapsedMs = [int]$budget.ElapsedMilliseconds
+        cmdletTimeoutSeconds = $cmdletTimeoutSeconds
+        timedOutCount = @($rows | Where-Object { $_.Status -eq "timeout" }).Count
     }
 
     # ONE object, not a collection: the api-server normalizes a bare object to

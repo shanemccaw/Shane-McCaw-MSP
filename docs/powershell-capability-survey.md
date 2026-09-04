@@ -37,6 +37,7 @@ Outcome vocabulary, as recorded:
 | `error` | Threw for some other reason. The verbatim message is in the table. |
 | `auth_failed` | The session itself could not be established, so nothing under it was measured. |
 | `not_attempted` | Deliberately never executed. The exact gate that rejected it is recorded per row. |
+| `timeout` | Ran, but did not return within the container's per-cmdlet wall-clock guard (`PS_EXECUTION_CMDLET_TIMEOUT_SECONDS`, Git #1852) and was abandoned. Introduced after run `#4` above — `Get-ScopeEntities` (see the deny-list entry in `survey.ps1`) is the cmdlet that motivated it; it is still excluded from probing rather than exercised under the new guard, since no run has re-verified it live yet. |
 
 ## Cmdlets that work app-only (`ok`)
 

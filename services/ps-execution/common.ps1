@@ -87,3 +87,120 @@ function ConvertTo-ParamHashtable {
     }
     return $result
 }
+
+# Invoke-CmdletWithWallClockTimeout — #1852: run ONE cmdlet by name against an
+# isolated background Runspace with a real wall-clock ceiling, so a single
+# hanging cmdlet can be abandoned WITHOUT the calling code itself ever
+# blocking past $TimeoutSeconds. Built for survey.ps1's per-cmdlet probe loop
+# (a single child-worker.ps1 process runs many cmdlets in one request there),
+# but deliberately generic — it takes a bare command name/params/timeout, not
+# anything survey-specific.
+#
+# THE PROBLEM THIS SOLVES: none of the cmdlets probed here expose their own
+# -Timeout/-TimeoutSeconds parameter, and PowerShell has no built-in way for a
+# thread to abort a call it is itself synchronously blocked inside. A second,
+# independent Runspace running the SAME command asynchronously (BeginInvoke)
+# lets the calling thread poll with a real wall-clock wait and, on timeout,
+# ask that other pipeline to stop WITHOUT waiting for it — see the BeginStop
+# comment below for why that half is load-bearing.
+#
+# WHY THE ISOLATED RUNSPACE CAN STILL SEE THE LIVE APP-ONLY SESSION: this is
+# NOT a fresh, disconnected PowerShell process — it is a second Runspace in
+# THIS SAME child-worker.ps1 process, after Connect-ExchangeOnline /
+# Connect-IPPSSession / Connect-MicrosoftTeams has already run on the primary
+# Runspace. Both implicit-remoting proxy functions (the dynamically generated
+# tmpEXO_* module Connect-ExchangeOnline/Connect-IPPSSession create) and
+# MicrosoftTeams' own connection state resolve PROCESS-WIDE, not per-Runspace:
+# a PSSession lives in the process-global RunspaceRepository (what
+# `Get-PSSession` reads), and MicrosoftTeams is a binary module whose
+# connection/token state is static CLR state shared by every Runspace in the
+# process. Importing the SAME already-loaded module (by name — it is already
+# resident in this process, never a fresh install or a second Connect-* round
+# trip) into the second Runspace gives it the SAME live session for free.
+function Invoke-CmdletWithWallClockTimeout {
+    param(
+        [string]$CommandName,
+        [hashtable]$Parameters = @{},
+        [string[]]$ModuleNames = @(),
+        [int]$TimeoutSeconds
+    )
+
+    $runspace = [runspacefactory]::CreateRunspace()
+    $runspace.Open()
+    $ps = [powershell]::Create()
+    $ps.Runspace = $runspace
+
+    try {
+        foreach ($moduleName in $ModuleNames) {
+            $importPs = [powershell]::Create()
+            try {
+                $importPs.Runspace = $runspace
+                [void]$importPs.AddCommand("Import-Module").AddParameter("Name", $moduleName).AddParameter("ErrorAction", "Stop")
+                $importPs.Invoke() | Out-Null
+                if ($importPs.HadErrors) {
+                    $errText = ($importPs.Streams.Error | ForEach-Object { $_.ToString() }) -join "; "
+                    throw "failed to import module '$moduleName' into the isolated timeout runspace: $errText"
+                }
+            }
+            finally { $importPs.Dispose() }
+        }
+    }
+    catch {
+        # Setup failed (module import) before any command ever started —
+        # nothing is running yet, so it is safe to tear everything down
+        # synchronously right here rather than via the abandon-on-timeout
+        # path below.
+        try { $runspace.Close() } catch {}
+        try { $runspace.Dispose() } catch {}
+        try { $ps.Dispose() } catch {}
+        throw
+    }
+
+    [void]$ps.AddCommand($CommandName)
+    foreach ($key in $Parameters.Keys) { [void]$ps.AddParameter($key, $Parameters[$key]) }
+
+    $asyncResult = $ps.BeginInvoke()
+    $completed = $asyncResult.AsyncWaitHandle.WaitOne([TimeSpan]::FromSeconds($TimeoutSeconds))
+
+    if (-not $completed) {
+        # BeginStop, not Stop: Stop() blocks the CALLING thread until the
+        # pipeline actually finishes stopping, which for a genuinely wedged
+        # remote call (the exact failure this guard exists for — see
+        # Get-ScopeEntities in Git #1852) could itself hang indefinitely,
+        # reintroducing the very problem the timeout was meant to prevent.
+        # BeginStop only REQUESTS the stop and returns immediately, so this
+        # function can never block past $TimeoutSeconds regardless of
+        # whether the abandoned pipeline ever actually finishes stopping.
+        #
+        # The abandoned $ps/$runspace are deliberately never disposed on this
+        # path — disposing an instance that may still be mid-stop risks
+        # blocking on the same wedge. They are reclaimed when this
+        # short-lived child process exits shortly after the batch completes.
+        try { [void]$ps.BeginStop($null, $null) } catch {}
+        return @{ TimedOut = $true; Result = $null; ErrorRecord = $null }
+    }
+
+    try {
+        $result = $ps.EndInvoke($asyncResult)
+        $errorRecord = if ($ps.HadErrors -and $ps.Streams.Error.Count -gt 0) { $ps.Streams.Error[0] } else { $null }
+        return @{ TimedOut = $false; Result = $result; ErrorRecord = $errorRecord }
+    }
+    catch {
+        # EndInvoke() is a plain .NET method call from script, so PowerShell
+        # wraps whatever the pipeline actually threw in a
+        # MethodInvocationException ("Exception calling "EndInvoke"...") —
+        # unwrap to .InnerException (the real underlying exception: a
+        # RuntimeException/CommandNotFoundException/etc — confirmed by a live
+        # throwaway test this session ran before this fix) so callers see the
+        # cmdlet's real exception type/message, not the wrapper's, matching
+        # what a caught `& $Cmdlet` exception looks like on the unguarded path.
+        $realException = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
+        $errorRecord = New-Object System.Management.Automation.ErrorRecord($realException, "CmdletInvocationFailed", [System.Management.Automation.ErrorCategory]::NotSpecified, $null)
+        return @{ TimedOut = $false; Result = $null; ErrorRecord = $errorRecord }
+    }
+    finally {
+        try { $runspace.Close() } catch {}
+        try { $runspace.Dispose() } catch {}
+        try { $ps.Dispose() } catch {}
+    }
+}
