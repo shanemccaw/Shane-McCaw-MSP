@@ -56,9 +56,16 @@ function readTransportFor(dsc) {
   if (w.has("azure") || w.has("Azure Service Management")) return "azure-rm";
   if (w.has("powerPlatform") || w.has("powerAppsService")) return "power-platform";
   if (w.has("exchange") || w.has("Office 365 Exchange Online") || w.has("purview")) return "powershell";
-  if (dsc.readCmdlets.some((c) => /^Get-Mg/i.test(c))) return "graph";
+  // Git #1960: a `Get-Mg*` read cmdlet (or a bare "graph" permission workload) with no
+  // literal REST path extracted from the DSC source (dsc.graphPaths, above, already
+  // returned "graph" when one exists) is NOT a callable Graph resource — 'graph'
+  // transport builds its request from graph_path and there is nothing to build it
+  // from. The SDK wraps the REST call internally, so the only real, callable surface
+  // left is the cmdlet itself: fold it into the ordinary PowerShell-cmdlet path below
+  // instead of mislabelling it 'graph' with no graph_path (which is what produced 197
+  // permanently-unreachable rows). No cmdlets at all (e.g. the DSC meta-resources that
+  // only evaluate other resources' compliance) falls through to "unknown".
   if (dsc.readCmdlets.length > 0) return "powershell";
-  if (w.has("graph")) return "graph";
   return "unknown";
 }
 
