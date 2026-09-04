@@ -138,8 +138,11 @@ describe.skipIf(!process.env.DATABASE_URL)("config change attribution — live P
       liabilityValueUsd: 1000,
       hazardDescription: "One emergency-access account is excluded from all CA policies.",
       graphEndpoint: `GET /v1.0/identity/conditionalAccess/policies/${OTHER_OBJECT}`,
-      mspAssessor: { name: "Assessor" },
-      clientApprover: { name: "Approver" },
+      mspAssessor: { name: "Assessor", upn: `assessor@${suffix}.example.com`, timestamp: t0.toISOString() },
+      clientApprover: {
+        name: "Approver", title: "IT Director", email: `approver@${suffix}.example.com`,
+        signedAt: t0.toISOString(), ipAddress: null, signatureHash: null,
+      },
       expirationDate: "2027-01-01",
       status: "active",
       acceptedAt: t0,
