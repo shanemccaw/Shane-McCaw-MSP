@@ -726,7 +726,7 @@ router.get(
         let severity: "info" | "warning" | "critical" = "info";
         if (r.eventType.startsWith("error.") || r.eventType.startsWith("msp.cancellation")) {
           severity = "critical";
-        } else if (r.eventType.startsWith("signal.") || r.eventType.startsWith("msp.offboarding")) {
+        } else if (r.eventType.startsWith("signal.") || r.eventType.startsWith("msp.export_ready") || r.eventType.startsWith("msp.archival_flagged")) {
           severity = "warning";
         }
 
