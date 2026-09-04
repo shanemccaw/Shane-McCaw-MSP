@@ -138,38 +138,147 @@ const DEFAULT_THROTTLE_BASE_DELAY_MS = 2_000;
  *
  * Only entries with no `PostFilter` and no result-narrowing fixed parameter are
  * listed, because a snapshot must hold the real object set (see the file header).
- * Every value here was checked against `services/ps-execution/cmdlet-catalog.ps1`,
- * not assumed:
+ * Every value here is generated from, and was checked against, the real
+ * `services/ps-execution/cmdlet-catalog.ps1` — not assumed.
  *
- *   get-all-dlp-policies        Get-DlpCompliancePolicy            no PostFilter (#1301
- *                                                                  added it precisely to
- *                                                                  have an unfiltered one)
- *   get-antispam-policies       Get-HostedContentFilterPolicy      no PostFilter
- *   get-transport-rules         Get-TransportRule                  no PostFilter
- *   get-audit-retention-policy  Get-UnifiedAuditLogRetentionPolicy no PostFilter
- *   get-cs-teams-meeting-policy Get-CsTeamsMeetingPolicy           no PostFilter
+ * #1961 grew this from 5 catalog keys to 81. Before it, only five registry
+ * resource types were PowerShell-reachable and 215 were recorded `no_executor`
+ * on every snapshot: they named a real read cmdlet the container's code-owned
+ * allowlist had no entry for, and by #209's design a caller can never name a
+ * cmdlet, so the gap could only be closed inside the container. #1961 added 63
+ * unfiltered, `AllowedParams = @()`, `Get-*`-only entries there — Exchange
+ * Online + Purview/SecurityCompliance in pass 1 — each one already proven to
+ * work under app-only certificate auth by #1793's live capability survey. This
+ * map is the api-server half of that change; without it the new entries exist
+ * but nothing routes to them.
  *
- * Deliberately ABSENT, with the reason, so nobody re-adds them as an oversight:
+ * Several spellings map to one key on purpose: Microsoft365DSC's `read_cmdlets`
+ * records real case variants of the same cmdlet (`Get-DLPCompliancePolicy` and
+ * `Get-DlpCompliancePolicy`, `Get-OutBoundConnector` and `Get-OutboundConnector`),
+ * and the lookup is exact-match, so each real spelling gets its own row rather
+ * than a case-insensitive compare that would hide which spellings actually occur.
+ *
+ * Deliberately ABSENT, with the reason, so nobody re-adds them as an oversight.
+ * Note that five of these now have an unfiltered TWIN in the catalog under a
+ * `get-all-*` key, which IS mapped below — the filtered key stays out, the
+ * unfiltered twin comes in; that is #1961's whole shape:
  *   get-dlp-policies               PostFilter -> weak policies only
+ *                                  (twin: get-all-dlp-policies)
  *   get-labels                     PostFilter -> disabled labels only
+ *                                  (twin: get-all-label)
  *   get-label-policies             PostFilter -> non-Success distribution only
+ *                                  (twin: get-all-label-policy)
  *   get-auto-forward-risk-policies PostFilter -> AutoForwardingMode On only
+ *                                  (twin: get-all-hosted-outbound-spam-filter-policy)
  *   get-dkim-disabled-domains      PostFilter -> DKIM-disabled domains only
+ *                                  (twin: get-all-dkim-signing-config)
+ *   get-inbound-connector-tls-gap  PostFilter -> connectors without RequireTls
+ *                                  (twin: get-all-inbound-connector)
  *   get-cs-online-user             PostFilter -> Teams Phone users only
  *   get-litigation-hold-gap        PostFilter -> mailboxes without hold
  *   get-archive-mailbox-gap        PostFilter -> mailboxes without an active archive
  *   get-shared-mailboxes           fixed RecipientTypeDetails -> shared mailboxes only
- *   get-inbound-connector-tls-gap  PostFilter -> connectors without RequireTls
+ *   get-mailbox-quota-utilization  Script + PostFilter -> mailboxes over 90% only
  *   get-dlp-incidents              Export-ActivityExplorerData -> event data, not config
  *   add-role-group-member          IsWrite = $true. Never reachable from a read path.
+ *
+ * Still unmapped after pass 1, deliberately, and tracked as real follow-up work
+ * rather than left silent — these keep producing an honest `no_executor` row:
+ *   - Teams (`Get-Cs*`, ~54 resource types). A uniform block of its own, split
+ *     out so pass 1's live verification stayed bounded.
+ *   - Per-user / per-mailbox / directory enumerations (Get-Mailbox, Get-User,
+ *     Get-Recipient, Get-Group, Get-ManagementRoleAssignment, …). Tenant
+ *     INVENTORY, not tenant CONFIGURATION: unbounded, and not what a
+ *     Dev→Test→Prod promotion moves.
  */
 const PS_CATALOG_BY_CMDLET: Readonly<Record<string, string>> = {
+  "Get-AcceptedDomain": "get-accepted-domain",
+  "Get-ActiveSyncDeviceAccessRule": "get-active-sync-device-access-rule",
+  "Get-AddressBookPolicy": "get-address-book-policy",
+  "Get-AdminAuditLogConfig": "get-admin-audit-log-config",
+  "Get-AntiPhishPolicy": "get-antiphish-policies",
+  "Get-AntiphishRule": "get-anti-phish-rule",
+  "Get-AntiPhishRule": "get-anti-phish-rule",
+  "Get-ArcConfig": "get-arc-config",
+  "Get-ATPBuiltInProtectionRule": "get-atp-built-in-protection-rule",
+  "Get-AtpPolicyForO365": "get-atp-policy-for-o365",
+  "Get-ATPProtectionPolicyRule": "get-atp-protection-policy-rule",
+  "Get-AuthenticationPolicy": "get-authentication-policy",
+  "Get-CASMailboxPlan": "get-cas-mailbox-plan",
+  "Get-ComplianceRetentionEventType": "get-retention-event-types",
+  "Get-ComplianceTag": "get-compliance-tags",
+  "Get-CsTeamsMeetingPolicy": "get-cs-teams-meeting-policy",
+  "Get-DataClassification": "get-data-classification",
+  "Get-DeviceConditionalAccessPolicy": "get-device-conditional-access-policies",
+  "Get-DeviceConditionalAccessRule": "get-device-conditional-access-rule",
+  "Get-DeviceConfigurationPolicy": "get-device-configuration-policies",
+  "Get-DeviceConfigurationRule": "get-device-configuration-rule",
+  "Get-DkimSigningConfig": "get-all-dkim-signing-config",
   "Get-DlpCompliancePolicy": "get-all-dlp-policies",
   "Get-DLPCompliancePolicy": "get-all-dlp-policies",
+  "Get-DlpComplianceRule": "get-dlp-compliance-rules",
+  "Get-DLPComplianceRule": "get-dlp-compliance-rules",
+  "Get-DlpSensitiveInformationType": "get-dlp-sensitive-info-types",
+  "Get-DLPSensitiveInformationType": "get-dlp-sensitive-info-types",
+  "Get-DlpSensitiveInformationTypeRulePackage": "get-dlp-sensitive-information-type-rule-package",
+  "Get-DLPSensitiveInformationTypeRulePackage": "get-dlp-sensitive-information-type-rule-package",
+  "Get-EmailTenantSettings": "get-email-tenant-settings",
+  "Get-EOPProtectionPolicyRule": "get-eop-protection-policy-rule",
+  "Get-FilePlanPropertyAuthority": "get-file-plan-property-authority",
+  "Get-FilePlanPropertyCategory": "get-file-plan-property-category",
+  "Get-FilePlanPropertyCitation": "get-file-plan-property-citation",
+  "Get-FilePlanPropertyDepartment": "get-file-plan-property-department",
+  "Get-FilePlanPropertyReferenceId": "get-file-plan-property-reference-id",
+  "Get-FilePlanPropertySubCategory": "get-file-plan-property-sub-category",
+  "Get-HostedConnectionFilterPolicy": "get-hosted-connection-filter-policy",
   "Get-HostedContentFilterPolicy": "get-antispam-policies",
+  "Get-HostedContentFilterRule": "get-hosted-content-filter-rule",
+  "Get-HostedOutboundSpamFilterPolicy": "get-all-hosted-outbound-spam-filter-policy",
+  "Get-HostedOutboundSpamFilterRule": "get-hosted-outbound-spam-filter-rule",
+  "Get-InboundConnector": "get-all-inbound-connector",
+  "Get-IntraOrganizationConnector": "get-intra-organization-connector",
+  "Get-IRMConfiguration": "get-irm-configuration",
+  "Get-JournalRule": "get-journal-rule",
+  "Get-Label": "get-all-label",
+  "Get-LabelPolicy": "get-all-label-policy",
+  "Get-MailboxPlan": "get-mailbox-plan",
+  "Get-MalwareFilterPolicy": "get-malware-filter-policy",
+  "Get-MalwareFilterRule": "get-malware-filter-rule",
+  "Get-ManagementScope": "get-management-scope",
+  "Get-MigrationEndpoint": "get-migration-endpoint",
+  "Get-MobileDeviceMailboxPolicy": "get-mobile-device-mailbox-policy",
+  "Get-OnPremisesOrganization": "get-on-premises-organization",
+  "Get-OrganizationConfig": "get-organization-config",
+  "Get-OrganizationRelationship": "get-organization-relationship",
+  "Get-OutboundConnector": "get-outbound-connector",
+  "Get-OutBoundConnector": "get-outbound-connector",
+  "Get-OwaMailboxPolicy": "get-owa-mailbox-policy",
+  "Get-PartnerApplication": "get-partner-application",
+  "Get-PerimeterConfig": "get-perimeter-config",
+  "Get-PolicyConfig": "get-policy-config",
+  "Get-PolicyTipConfig": "get-policy-tip-config",
+  "Get-ProtectionAlert": "get-protection-alerts",
+  "Get-QuarantinePolicy": "get-quarantine-policy",
+  "Get-RemoteDomain": "get-remote-domain",
+  "Get-ReportSubmissionPolicy": "get-report-submission-policy",
+  "Get-ReportSubmissionRule": "get-report-submission-rule",
+  "Get-RetentionCompliancePolicy": "get-retention-compliance-policies",
+  "Get-RetentionComplianceRule": "get-retention-compliance-rules",
+  "Get-RetentionPolicy": "get-retention-policy",
+  "Get-RetentionPolicyTag": "get-retention-policy-tag",
+  "Get-RoleAssignmentPolicy": "get-role-assignment-policy",
+  "Get-RoleGroup": "get-compliance-role-groups",
+  "Get-SafeAttachmentPolicy": "get-safe-attachment-policies",
+  "Get-SafeAttachmentRule": "get-safe-attachment-rule",
+  "Get-SafeLinksPolicy": "get-safe-links-policies",
+  "Get-SafeLinksRule": "get-safe-links-rule",
+  "Get-SharingPolicy": "get-sharing-policy",
+  "Get-SupervisoryReviewPolicyV2": "get-supervisory-review-policy-v2",
+  "Get-SupervisoryReviewRule": "get-supervisory-review-rule",
+  "Get-TenantAllowBlockListSpoofItems": "get-tenant-allow-block-list-spoof-items",
+  "Get-TransportConfig": "get-transport-config",
   "Get-TransportRule": "get-transport-rules",
   "Get-UnifiedAuditLogRetentionPolicy": "get-audit-retention-policy",
-  "Get-CsTeamsMeetingPolicy": "get-cs-teams-meeting-policy",
 };
 
 /**

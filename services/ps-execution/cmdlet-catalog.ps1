@@ -645,6 +645,396 @@ $script:CmdletCatalog = @{
         AllowedParams  = @()
         Session        = "exchange"
     }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # #1961 — UNFILTERED snapshot-shaped read entries (pass 1: Exchange
+    # Online + Purview/SecurityCompliance)
+    # ═══════════════════════════════════════════════════════════════════════
+    #
+    # WHAT GAP THIS CLOSES. #1796's snapshot collector ran live against the
+    # testbed and recorded 215 registry resource types as `skipped` /
+    # `no_executor`: each names a real read cmdlet that this catalog had no
+    # entry for, so by #209's design — cmdletKey resolves ONLY to a code-owned
+    # entry here, a caller can never name a cmdlet — they were unreachable.
+    # That is the boundary working as intended, not a bug; #1961 closes the
+    # gap the only way the design allows, by widening this code-owned list.
+    #
+    # WHY THEY ARE ALL UNFILTERED. Every entry below is deliberately
+    # PostFilter-free. A snapshot's consumer is #1797's differ and the
+    # Dev→Test→Prod promotion path, which need the WHOLE set of objects; a
+    # check's consumer wants the bad subset. One entry cannot serve both, so
+    # the check-shaped entries above are untouched and these sit alongside
+    # them. See the TWINS block below for the five cmdlets that now have one
+    # of each.
+    #
+    # SECURITY POSTURE IS UNCHANGED — this widens WHICH cmdlets may run, and
+    # nothing else. Every entry is code-owned and literal here; every one is a
+    # `Get-*` read; every one declares `AllowedParams = @()`, so the request
+    # body cannot fill a single parameter value, let alone influence which
+    # cmdlet runs; none carries `IsWrite`. `Organization`/`TenantId` remain
+    # the reserved connection fields Resolve-CmdletInvocation never forwards
+    # to the cmdlet.
+    #
+    # WHY THESE CMDLETS, AND WHY WE KNOW THEY WORK. The set is not guessed
+    # from Microsoft Learn — Learn documents parameters, not app-only support
+    # or output shape. Every cmdlet below was recorded `status = 'ok'` by
+    # #1793's real capability survey (run 4) executing it under app-only
+    # certificate auth INSIDE THIS CONTAINER against the live testbed tenant,
+    # in the session named on the entry. That survey's own gates are why
+    # `AllowedParams = @()` is safe here: a cmdlet is probed only if it has a
+    # parameter set with ZERO mandatory parameters, so each of these genuinely
+    # lists org-wide with no arguments.
+    #
+    # DELIBERATELY NOT IN THIS PASS, so the omission is a decision on record
+    # rather than an oversight:
+    #   - Teams (`Get-Cs*`, ~54 resource types). A coherent, uniform block of
+    #     its own; split out to keep this pass's live verification honest and
+    #     bounded rather than rushing coverage (#1961's own instruction 5).
+    #   - Per-user / per-mailbox / directory enumerations — Get-Mailbox,
+    #     Get-User, Get-Recipient, Get-Group, Get-DistributionGroup,
+    #     Get-ManagementRoleAssignment and friends. These are tenant INVENTORY,
+    #     not tenant CONFIGURATION: unbounded in size, and not what a
+    #     Dev→Test→Prod promotion moves. A snapshot of them needs a paging
+    #     story this container does not have yet.
+    #
+    # KEY NAMING. `get-` + the cmdlet's own noun in kebab-case, singular,
+    # mechanically derived so a reader can map key↔cmdlet without a lookup.
+    # The `get-all-` prefix is reserved for the unfiltered twin of an existing
+    # check-shaped key (the #1301 `get-all-dlp-policies` precedent).
+
+    "get-accepted-domain" = @{
+        Cmdlet         = "Get-AcceptedDomain"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-active-sync-device-access-rule" = @{
+        Cmdlet         = "Get-ActiveSyncDeviceAccessRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-address-book-policy" = @{
+        Cmdlet         = "Get-AddressBookPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-admin-audit-log-config" = @{
+        Cmdlet         = "Get-AdminAuditLogConfig"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-anti-phish-rule" = @{
+        Cmdlet         = "Get-AntiPhishRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-arc-config" = @{
+        Cmdlet         = "Get-ArcConfig"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-atp-built-in-protection-rule" = @{
+        Cmdlet         = "Get-ATPBuiltInProtectionRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-atp-policy-for-o365" = @{
+        Cmdlet         = "Get-AtpPolicyForO365"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-atp-protection-policy-rule" = @{
+        Cmdlet         = "Get-ATPProtectionPolicyRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-authentication-policy" = @{
+        Cmdlet         = "Get-AuthenticationPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-cas-mailbox-plan" = @{
+        Cmdlet         = "Get-CASMailboxPlan"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-data-classification" = @{
+        Cmdlet         = "Get-DataClassification"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-device-conditional-access-rule" = @{
+        Cmdlet         = "Get-DeviceConditionalAccessRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-device-configuration-rule" = @{
+        Cmdlet         = "Get-DeviceConfigurationRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-dlp-sensitive-information-type-rule-package" = @{
+        Cmdlet         = "Get-DlpSensitiveInformationTypeRulePackage"
+        AllowedParams  = @()
+        Session        = "compliance"
+    }
+    "get-email-tenant-settings" = @{
+        Cmdlet         = "Get-EmailTenantSettings"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-eop-protection-policy-rule" = @{
+        Cmdlet         = "Get-EOPProtectionPolicyRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-file-plan-property-authority" = @{
+        Cmdlet         = "Get-FilePlanPropertyAuthority"
+        AllowedParams  = @()
+        Session        = "compliance"
+    }
+    "get-file-plan-property-category" = @{
+        Cmdlet         = "Get-FilePlanPropertyCategory"
+        AllowedParams  = @()
+        Session        = "compliance"
+    }
+    "get-file-plan-property-citation" = @{
+        Cmdlet         = "Get-FilePlanPropertyCitation"
+        AllowedParams  = @()
+        Session        = "compliance"
+    }
+    "get-file-plan-property-department" = @{
+        Cmdlet         = "Get-FilePlanPropertyDepartment"
+        AllowedParams  = @()
+        Session        = "compliance"
+    }
+    "get-file-plan-property-reference-id" = @{
+        Cmdlet         = "Get-FilePlanPropertyReferenceId"
+        AllowedParams  = @()
+        Session        = "compliance"
+    }
+    "get-file-plan-property-sub-category" = @{
+        Cmdlet         = "Get-FilePlanPropertySubCategory"
+        AllowedParams  = @()
+        Session        = "compliance"
+    }
+    "get-hosted-connection-filter-policy" = @{
+        Cmdlet         = "Get-HostedConnectionFilterPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-hosted-content-filter-rule" = @{
+        Cmdlet         = "Get-HostedContentFilterRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-hosted-outbound-spam-filter-rule" = @{
+        Cmdlet         = "Get-HostedOutboundSpamFilterRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-intra-organization-connector" = @{
+        Cmdlet         = "Get-IntraOrganizationConnector"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-irm-configuration" = @{
+        Cmdlet         = "Get-IRMConfiguration"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-journal-rule" = @{
+        Cmdlet         = "Get-JournalRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-mailbox-plan" = @{
+        Cmdlet         = "Get-MailboxPlan"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-malware-filter-policy" = @{
+        Cmdlet         = "Get-MalwareFilterPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-malware-filter-rule" = @{
+        Cmdlet         = "Get-MalwareFilterRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-management-scope" = @{
+        Cmdlet         = "Get-ManagementScope"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-migration-endpoint" = @{
+        Cmdlet         = "Get-MigrationEndpoint"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-mobile-device-mailbox-policy" = @{
+        Cmdlet         = "Get-MobileDeviceMailboxPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-on-premises-organization" = @{
+        Cmdlet         = "Get-OnPremisesOrganization"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-organization-config" = @{
+        Cmdlet         = "Get-OrganizationConfig"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-organization-relationship" = @{
+        Cmdlet         = "Get-OrganizationRelationship"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-outbound-connector" = @{
+        Cmdlet         = "Get-OutboundConnector"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-owa-mailbox-policy" = @{
+        Cmdlet         = "Get-OwaMailboxPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-partner-application" = @{
+        Cmdlet         = "Get-PartnerApplication"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-perimeter-config" = @{
+        Cmdlet         = "Get-PerimeterConfig"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-policy-config" = @{
+        Cmdlet         = "Get-PolicyConfig"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-policy-tip-config" = @{
+        Cmdlet         = "Get-PolicyTipConfig"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-quarantine-policy" = @{
+        Cmdlet         = "Get-QuarantinePolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-remote-domain" = @{
+        Cmdlet         = "Get-RemoteDomain"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-report-submission-policy" = @{
+        Cmdlet         = "Get-ReportSubmissionPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-report-submission-rule" = @{
+        Cmdlet         = "Get-ReportSubmissionRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-retention-policy" = @{
+        Cmdlet         = "Get-RetentionPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-retention-policy-tag" = @{
+        Cmdlet         = "Get-RetentionPolicyTag"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-role-assignment-policy" = @{
+        Cmdlet         = "Get-RoleAssignmentPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-safe-attachment-rule" = @{
+        Cmdlet         = "Get-SafeAttachmentRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-safe-links-rule" = @{
+        Cmdlet         = "Get-SafeLinksRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-sharing-policy" = @{
+        Cmdlet         = "Get-SharingPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-supervisory-review-policy-v2" = @{
+        Cmdlet         = "Get-SupervisoryReviewPolicyV2"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-supervisory-review-rule" = @{
+        Cmdlet         = "Get-SupervisoryReviewRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-tenant-allow-block-list-spoof-items" = @{
+        Cmdlet         = "Get-TenantAllowBlockListSpoofItems"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-transport-config" = @{
+        Cmdlet         = "Get-TransportConfig"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+
+    # ── Unfiltered TWINS of five existing check-shaped entries ──────────────
+    # Each of these five cmdlets already appears above, but ONLY behind a
+    # PostFilter that narrows it to a check's "gap" subset. A snapshot cannot
+    # use those: #1795's first constraint is full fidelity, and storing a
+    # filtered subset as if it were the whole set makes #1797's differ report
+    # every excluded object as DELETED on the very next run. So each gets a
+    # second, genuinely unfiltered entry under its own key — added ALONGSIDE
+    # the check-shaped one, never replacing it, exactly as #1961 requires and
+    # exactly the precedent `get-all-dlp-policies` (#1301) already set for
+    # `Get-DlpCompliancePolicy` vs `get-dlp-policies`.
+    #
+    #   get-all-dkim-signing-config    vs get-dkim-disabled-domains  (DKIM-disabled only)
+    #   get-all-inbound-connector      vs get-inbound-connector-tls-gap (no RequireTls only)
+    #   get-all-label                  vs get-labels                (disabled labels only)
+    #   get-all-label-policy           vs get-label-policies        (non-Success distribution only)
+    #   get-all-hosted-outbound-spam-filter-policy
+    #                                  vs get-auto-forward-risk-policies (AutoForwardingMode On only)
+    "get-all-dkim-signing-config" = @{
+        Cmdlet         = "Get-DkimSigningConfig"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-all-inbound-connector" = @{
+        Cmdlet         = "Get-InboundConnector"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-all-hosted-outbound-spam-filter-policy" = @{
+        Cmdlet         = "Get-HostedOutboundSpamFilterPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+    "get-all-label" = @{
+        Cmdlet         = "Get-Label"
+        AllowedParams  = @()
+        Session        = "compliance"
+    }
+    "get-all-label-policy" = @{
+        Cmdlet         = "Get-LabelPolicy"
+        AllowedParams  = @()
+        Session        = "compliance"
+    }
 }
 
 # Resolves cmdletKey against the allowlist and merges request params into
