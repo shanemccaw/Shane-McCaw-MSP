@@ -15,6 +15,7 @@ import {
   isNonGraphEndpoint,
   DERIVED_WRITE_APP_PERMISSIONS,
   DOCUMENTED_BUT_NOT_REQUESTED,
+  APP_ONLY_UNSUPPORTED_OPERATIONS,
   GRAPH_WRITE_PERMISSION_RULES,
 } from "./graph-write-permissions";
 
@@ -153,29 +154,77 @@ describe("adding a service principal to a group needs the body-driven extra", ()
 });
 
 describe("the derived request set", () => {
-  it("is exactly the 17 permissions #1875/#1899 derived from the packs' real steps", () => {
+  it("is exactly the 23 permissions #1875/#1899/#1901 derived from the packs' real steps", () => {
     expect([...DERIVED_WRITE_APP_PERMISSIONS]).toEqual([
       "Application.ReadWrite.All",
       "DelegatedPermissionGrant.ReadWrite.All",
+      // #1901 — device-compliance-v1 step 3 (Intune MAM app protection policy assign).
+      "DeviceManagementApps.ReadWrite.All",
+      // #1901 — device-compliance-v1 steps 1 and 2 (compliance policy + config profile assign).
+      "DeviceManagementConfiguration.ReadWrite.All",
+      // #1901 — device-compliance-v1 step 4 (managedDevice PATCH). NOT the
+      // PrivilegedOperations.All scope the syncDevice rule is refused over.
+      "DeviceManagementManagedDevices.ReadWrite.All",
       "Files.ReadWrite.All",
       "Group.Create",
       "GroupMember.ReadWrite.All",
+      // #1901 — baseline-licensing-v1 group-based licensing. The per-user
+      // assignLicense rule reuses User.ReadWrite.All; the group form cannot,
+      // because its only alternatives are Directory/Group.ReadWrite.All.
+      "LicenseAssignment.ReadWrite.All",
       "OrganizationalBranding.ReadWrite.All",
       "Policy.Read.All",
       "Policy.ReadWrite.AuthenticationMethod",
       "Policy.ReadWrite.Authorization",
       "Policy.ReadWrite.ConditionalAccess",
       "RoleManagement.ReadWrite.Directory",
+      // #1901 — security-incident-response-v1 step 5.
+      "SecurityIncident.ReadWrite.All",
       "SharePointTenantSettings.ReadWrite.All",
       "TeamSettings.ReadWrite.All",
       "User-PasswordProfile.ReadWrite.All",
+      // #1901 — identity-hygiene-v1 step 4. Narrow restore-only scope, NOT
+      // User.ReadWrite.All.
+      "User.DeleteRestore.All",
       "User.ReadWrite.All",
       "User.RevokeSessions.All",
       // #1899 — mfa-enforcement-v1 step 1 now really enumerates + deletes a user's
       // authentication methods (runForceMfaReregistrationAgainstTenant), so this
       // permission is genuinely requested now instead of documented-but-excluded.
+      // #1901 reuses it for identity-hygiene-v1 step 5's Temporary Access Pass.
       "UserAuthenticationMethod.ReadWrite.All",
     ]);
+  });
+
+  it("#1901 added exactly 6 new permissions to what #1875/#1899 already requested", () => {
+    // Guards the thing #1901's own body flagged as the real cost of this work:
+    // "the set is requested from every customer". If a future rule quietly
+    // enlarges the consent screen, this fails and someone has to justify it.
+    const beforeThisIssue = [
+      "Application.ReadWrite.All", "DelegatedPermissionGrant.ReadWrite.All", "Files.ReadWrite.All",
+      "Group.Create", "GroupMember.ReadWrite.All", "OrganizationalBranding.ReadWrite.All",
+      "Policy.Read.All", "Policy.ReadWrite.AuthenticationMethod", "Policy.ReadWrite.Authorization",
+      "Policy.ReadWrite.ConditionalAccess", "RoleManagement.ReadWrite.Directory",
+      "SharePointTenantSettings.ReadWrite.All", "TeamSettings.ReadWrite.All",
+      "User-PasswordProfile.ReadWrite.All", "User.ReadWrite.All", "User.RevokeSessions.All",
+      "UserAuthenticationMethod.ReadWrite.All",
+    ];
+    const added = DERIVED_WRITE_APP_PERMISSIONS.filter((p) => !beforeThisIssue.includes(p));
+    expect(added).toEqual([
+      "DeviceManagementApps.ReadWrite.All",
+      "DeviceManagementConfiguration.ReadWrite.All",
+      "DeviceManagementManagedDevices.ReadWrite.All",
+      "LicenseAssignment.ReadWrite.All",
+      "SecurityIncident.ReadWrite.All",
+      "User.DeleteRestore.All",
+    ]);
+    // The PIM steps enlarge the set by NOTHING, contrary to what #1901's body
+    // predicted ("Expect this to enlarge the requested permission set (PIM and
+    // Intune assignment operations in particular)"). Both PIM schedule-request
+    // endpoints list RoleManagement.ReadWrite.Directory as a documented
+    // higher-privileged alternative, and quickstart-v1 step 2 already holds it.
+    expect(added).not.toContain("RoleAssignmentSchedule.ReadWrite.Directory");
+    expect(added).not.toContain("RoleEligibilitySchedule.ReadWrite.Directory");
   });
 
   it("excludes the permissions deliberately not requested, and says why", () => {
@@ -197,7 +246,15 @@ describe("the derived request set", () => {
     for (const rule of GRAPH_WRITE_PERMISSION_RULES) {
       expect(rule.justification.length).toBeGreaterThan(40);
       expect(rule.docUrl).toMatch(/^https:\/\/learn\.microsoft\.com\//);
-      expect(rule.permissions.length).toBeGreaterThan(0);
+      // #1901 — an empty `permissions` array is legitimate for exactly one
+      // reason: Microsoft documents no application permission for the operation
+      // at any tier. Any OTHER rule with an empty array is asserting that a real
+      // write needs nothing, which is never true.
+      if (rule.appOnlyUnsupported) {
+        expect(rule.permissions).toEqual([]);
+      } else {
+        expect(rule.permissions.length).toBeGreaterThan(0);
+      }
     }
   });
 });
@@ -292,12 +349,209 @@ describe("#1975 — no rule invents a permission its own Microsoft Learn page do
   });
 
   it("Policy.Read.All is in the requested set only because those rules need it", () => {
+    // An inventory, deliberately exact: Policy.Read.All is a read permission
+    // sitting in a write app's request, and every rule that puts it there has to
+    // be one whose own Microsoft Learn page documents the "Policy.Read.All and
+    // Policy.ReadWrite.ConditionalAccess" conjunction. If a new rule appears in
+    // this list, someone has to have checked that page. #1901 added two, and both
+    // are Conditional Access family with that exact documented conjunction:
+    // namedLocations (whose higher tier is "Not available.", so the conjunction
+    // is the ONLY tier) and the PUT that action.delete-ca-policy stores.
     const owners = GRAPH_WRITE_PERMISSION_RULES.filter((r) => r.permissions.includes("Policy.Read.All"));
-    expect(owners.map((r) => r.pattern).sort()).toEqual([
-      "/identity/conditionalAccess/policies",
-      "/identity/conditionalAccess/policies/*",
-      "/policies/identitySecurityDefaultsEnforcementPolicy",
+    expect(owners.map((r) => `${r.method} ${r.pattern}`).sort()).toEqual([
+      "PATCH /identity/conditionalAccess/policies/*",
+      "PATCH /policies/identitySecurityDefaultsEnforcementPolicy",
+      "POST /identity/conditionalAccess/namedLocations",
+      "POST /identity/conditionalAccess/policies",
+      "PUT /identity/conditionalAccess/policies/*",
     ]);
+  });
+});
+
+/**
+ * Git #1901 — the other Config Packs.
+ *
+ * #1875 mapped the four packs that materialize a clean plan. Everything below is
+ * the endpoints belonging to the OTHER packs, which until now returned
+ * `rule: null` and rendered as "Write permissions not verified" forever.
+ *
+ * Every (method, endpoint) pair asserted here was read out of the live
+ * `config_pack_templates` -> `baseline_action_templates` join on 2026-09-04 by
+ * running the real derivation over every pack row, NOT copied from #1901's issue
+ * body. That matters: the body's table was captured 2026-08-30 and listed 13
+ * endpoints, but the live run returned 19 unmapped steps across 16 distinct
+ * endpoints — governance-groups-v1 had been wired in the meantime. The three
+ * extra endpoints are covered here too.
+ */
+describe("#1901 — the other Config Packs' endpoints all resolve to a documented permission", () => {
+  const packSteps: Array<[string, string, string, string[]]> = [
+    // [pack, method, endpoint (verbatim from the template row), expected required]
+    ["baseline-licensing-v1", "POST", "/groups/{{groupId}}/assignLicense", ["LicenseAssignment.ReadWrite.All"]],
+    ["conditional-access-baseline-v1", "POST", "/identity/conditionalAccess/namedLocations", ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"]],
+    ["conditional-access-baseline-v1", "PUT", "/identity/conditionalAccess/policies/{{policyId}}", ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"]],
+    ["device-compliance-v1", "POST", "/deviceManagement/deviceCompliancePolicies/{{policyId}}/assign", ["DeviceManagementConfiguration.ReadWrite.All"]],
+    ["device-compliance-v1", "POST", "/deviceManagement/deviceConfigurations/{{profileId}}/assign", ["DeviceManagementConfiguration.ReadWrite.All"]],
+    ["device-compliance-v1", "POST", "/deviceAppManagement/managedAppPolicies/{{policyId}}/assign", ["DeviceManagementApps.ReadWrite.All"]],
+    ["device-compliance-v1", "PATCH", "/deviceManagement/managedDevices/{{deviceId}}", ["DeviceManagementManagedDevices.ReadWrite.All"]],
+    ["identity-hygiene-v1", "POST", "/directory/deletedItems/{{userId}}/restore", ["User.DeleteRestore.All"]],
+    ["identity-hygiene-v1", "POST", "/users/{{userId}}/authentication/temporaryAccessPassMethods", ["UserAuthenticationMethod.ReadWrite.All"]],
+    ["privileged-access-v1", "POST", "/roleManagement/directory/roleEligibilityScheduleRequests", ["RoleManagement.ReadWrite.Directory"]],
+    ["privileged-access-v1", "POST", "/roleManagement/directory/roleAssignmentScheduleRequests", ["RoleManagement.ReadWrite.Directory"]],
+    ["security-incident-response-v1", "PATCH", "/security/incidents/{{incidentId}}", ["SecurityIncident.ReadWrite.All"]],
+    // The three governance-groups-v1 endpoints #1901's body predates. These name
+    // the permission Microsoft documents — `required` reports what the operation
+    // NEEDS, which is not the same as what this platform requests. All three are
+    // then excluded via `notRequested`; see the dedicated assertions below.
+    ["governance-groups-v1", "POST", "/groups/{{groupId}}/owners/$ref", ["Group.ReadWrite.All"]],
+    ["governance-groups-v1", "PATCH", "/groups/{{groupId}}", ["Group.ReadWrite.All"]],
+    ["governance-groups-v1", "POST", "/groupLifecyclePolicies", ["Directory.ReadWrite.All"]],
+  ];
+
+  /** The endpoints above whose permission is documented but deliberately refused. */
+  const refusedEndpoints = new Set([
+    "/groups/{{groupId}}/owners/$ref",
+    "/groups/{{groupId}}",
+    "/groupLifecyclePolicies",
+  ]);
+
+  for (const [pack, method, endpoint, expected] of packSteps) {
+    it(`${pack}: ${method} ${endpoint}`, () => {
+      const got = requiredPermissionsForWrite(method, endpoint);
+      expect(got.rule, `${method} ${endpoint} still matches no rule`).not.toBeNull();
+      expect(got.required.sort()).toEqual([...expected].sort());
+    });
+  }
+
+  it("every permission these packs need IS requested, except the ones explicitly refused", () => {
+    for (const [, method, endpoint] of packSteps) {
+      if (refusedEndpoints.has(endpoint)) continue;
+      for (const p of requiredPermissionsForWrite(method, endpoint).required) {
+        expect(DERIVED_WRITE_APP_PERMISSIONS, `${method} ${endpoint}`).toContain(p);
+      }
+    }
+  });
+
+  it("the group-write steps are REFUSED, not silently satisfied", () => {
+    // All three name a permission Microsoft really documents, and all three are
+    // excluded from the request because that permission is tenant-wide group or
+    // directory write. The pairing is what makes this honest: `required` reports
+    // the real need, `notRequested` reports that we are not asking for it, and
+    // the route subtracts the second from the first so the step reports as
+    // refused rather than as missing-a-consent the customer could go and grant.
+    const refused: Array<[string, string, string]> = [
+      ["POST", "/groups/{{groupId}}/owners/$ref", "Group.ReadWrite.All"],
+      ["PATCH", "/groups/{{groupId}}", "Group.ReadWrite.All"],
+      ["POST", "/groupLifecyclePolicies", "Directory.ReadWrite.All"],
+    ];
+    for (const [method, endpoint, permission] of refused) {
+      const got = requiredPermissionsForWrite(method, endpoint);
+      expect(got.required, `${method} ${endpoint}`).toEqual([permission]);
+      expect(got.notRequested, `${method} ${endpoint}`).toEqual([permission]);
+      expect(got.rule!.grantRecommended).toBe(false);
+      expect(got.rule!.notRequestedReason!.length).toBeGreaterThan(40);
+      expect(DERIVED_WRITE_APP_PERMISSIONS).not.toContain(permission);
+    }
+  });
+
+  it("PIM approval is app-only UNSUPPORTED — a third state, not 'needs nothing'", () => {
+    // Microsoft's approvalStep-update page reads "Not supported." in the
+    // Application row of all three of its permission tables. This is the one
+    // rule in the table with no permissions at all, and the flag is what stops
+    // required:[] being read as "this step is ready to run".
+    const got = requiredPermissionsForWrite(
+      "PATCH",
+      "/roleManagement/directory/roleAssignmentApprovals/{{approvalId}}/steps/{{stepId}}",
+    );
+    expect(got.rule).not.toBeNull();
+    expect(got.required).toEqual([]);
+    expect(got.appOnlyUnsupported).toBe(true);
+    expect(got.rule!.documentedApplicationTiers.leastPrivileged).toBe("Not supported.");
+    expect(got.rule!.documentedApplicationTiers.higherPrivileged).toBe("Not supported.");
+
+    expect(APP_ONLY_UNSUPPORTED_OPERATIONS).toHaveLength(1);
+    expect(APP_ONLY_UNSUPPORTED_OPERATIONS[0].pattern).toBe(
+      "/roleManagement/directory/roleAssignmentApprovals/*/steps/*",
+    );
+
+    // It contributes no permission to either list — there is nothing to ask for
+    // and nothing that was declined.
+    expect(DOCUMENTED_BUT_NOT_REQUESTED.map((d) => d.permission)).not.toContain(
+      "RoleAssignmentSchedule.ReadWrite.Directory",
+    );
+  });
+
+  it("a mapped-but-impossible step is distinguishable from an unmapped one", () => {
+    // The route branches on exactly this difference to pick which honest message
+    // to render, so the two must not collapse into each other.
+    const impossible = requiredPermissionsForWrite(
+      "PATCH", "/roleManagement/directory/roleAssignmentApprovals/{{a}}/steps/{{s}}",
+    );
+    const unmapped = requiredPermissionsForWrite("POST", "/some/endpoint/nobody/mapped");
+
+    expect(impossible.rule).not.toBeNull();
+    expect(impossible.appOnlyUnsupported).toBe(true);
+
+    expect(unmapped.rule).toBeNull();
+    expect(unmapped.appOnlyUnsupported).toBe(false);
+
+    // And both differ from a genuinely satisfiable step.
+    const fine = requiredPermissionsForWrite("PATCH", "/security/incidents/{{incidentId}}");
+    expect(fine.rule).not.toBeNull();
+    expect(fine.appOnlyUnsupported).toBe(false);
+    expect(fine.required).toEqual(["SecurityIncident.ReadWrite.All"]);
+  });
+
+  it("the two Intune device rules do NOT collapse into each other", () => {
+    // syncDevice's only documented permission is the PrivilegedOperations scope
+    // that also confers remote wipe/retire/lock, and is refused. The managedDevice
+    // PATCH is ordinary configuration write and is requested. Four path segments
+    // vs three keeps them apart; if the patterns ever shadow, updating a device
+    // category would silently start reporting as needing tenant-wide wipe.
+    const sync = requiredPermissionsForWrite("POST", "/deviceManagement/managedDevices/{{deviceId}}/syncDevice");
+    expect(sync.required).toEqual(["DeviceManagementManagedDevices.PrivilegedOperations.All"]);
+    expect(sync.rule!.grantRecommended).toBe(false);
+
+    const patch = requiredPermissionsForWrite("PATCH", "/deviceManagement/managedDevices/{{deviceId}}");
+    expect(patch.required).toEqual(["DeviceManagementManagedDevices.ReadWrite.All"]);
+    expect(patch.rule!.grantRecommended).not.toBe(false);
+  });
+
+  it("group licensing does not fall through to the per-user assignLicense rule", () => {
+    // POST /users/*/assignLicense reuses User.ReadWrite.All because it is held
+    // anyway. The group form must NOT inherit that reasoning: its documented
+    // alternatives are Directory.ReadWrite.All and Group.ReadWrite.All, both of
+    // which this platform refuses, so the narrow permission is mandatory here.
+    const user = requiredPermissionsForWrite("POST", "/users/{{userId}}/assignLicense");
+    const group = requiredPermissionsForWrite("POST", "/groups/{{groupId}}/assignLicense");
+    expect(user.required).toEqual(["User.ReadWrite.All"]);
+    expect(group.required).toEqual(["LicenseAssignment.ReadWrite.All"]);
+    expect(group.required).not.toContain("Group.ReadWrite.All");
+    expect(group.required).not.toContain("Directory.ReadWrite.All");
+  });
+
+  it("the Temporary Access Pass rule does not put a read-only permission on a write", () => {
+    // Microsoft's Application least-privileged cell for this POST is genuinely
+    // UserAuthMethod-TAP.Read.All. Its higher tier is a comma-separated list of
+    // ALTERNATIVES, so picking the ReadWrite one that is already held is correct
+    // — and, unlike the Conditional Access rules, there is no "and" here, so a
+    // read-only permission would NOT be defensible under the #1975 rule.
+    const got = requiredPermissionsForWrite("POST", "/users/{{u}}/authentication/temporaryAccessPassMethods");
+    expect(got.required).toEqual(["UserAuthenticationMethod.ReadWrite.All"]);
+    expect(got.rule!.documentedApplicationTiers.leastPrivileged).toBe("UserAuthMethod-TAP.Read.All");
+    expect(got.rule!.documentedApplicationTiers.higherPrivileged).not.toContain(" and ");
+  });
+
+  it("the two rules whose stored template is broken say so in their justification", () => {
+    // Neither is a permission error, and neither should be "cleaned up" by a
+    // later reader who checks the endpoint against Microsoft Learn and finds it
+    // does not exist. The permission is right; the stored template is not, and
+    // both are filed separately. Keeping the note load-bearing here means
+    // deleting it breaks a test rather than losing the finding.
+    const put = requiredPermissionsForWrite("PUT", "/identity/conditionalAccess/policies/{{policyId}}");
+    expect(put.rule!.justification).toContain("THE STORED METHOD IS WRONG");
+
+    const mam = requiredPermissionsForWrite("POST", "/deviceAppManagement/managedAppPolicies/{{policyId}}/assign");
+    expect(mam.rule!.justification).toContain("THE STORED ENDPOINT IS WRONG");
   });
 });
 
