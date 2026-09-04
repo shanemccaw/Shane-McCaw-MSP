@@ -2,6 +2,16 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // #2877 — a growing, run-to-run-unstable set of files (10+ across this
+    // build's 2 clean full-suite reproductions, up from #2865's original 4)
+    // hit the default 5000ms test / 10000ms hook timeout only under the full
+    // ~305-file parallel run (never in isolation): transform-time/CPU
+    // contention across vitest's default thread pool, not a logic defect.
+    // #2865 scoped a per-file vi.setConfig() fix to its 4 named files: with
+    // the set continuing to grow and not reproducing the same files run to
+    // run, a small global bump is the more maintainable fix going forward.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
     include: [
       "src/lib/security-plan-assembly.test.ts",
       "src/lib/security-plan-drift.test.ts",
