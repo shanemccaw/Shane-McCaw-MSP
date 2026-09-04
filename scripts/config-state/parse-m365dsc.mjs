@@ -215,8 +215,25 @@ export async function extractM365DscResources(treeRoot) {
     const settingsFile = files.find((f) => f === "settings.json");
     if (!settingsFile) continue;
     const settings = JSON.parse(await readText(path.join(dir, settingsFile)));
-    const resourceName = settings.resourceName;
+    // The resource's own directory (DscResources/MSFT_<Name>/) is Microsoft365DSC's
+    // structural identity for the resource and is authoritative. settings.json's own
+    // `resourceName` field has been observed to hold the literal, un-templated string
+    // "ResourceName" instead of a real value for at least one resource
+    // (MSFT_EXOAtpProtectionPolicyRule, Git #2007) — trusting it blindly silently
+    // corrupts that resource's identity (resource_key, display_name, m365dsc_resource
+    // all became the literal placeholder). Derive from the directory name first and
+    // only fall back to settings.json's value if the directory isn't MSFT_-prefixed
+    // (shouldn't happen in practice, but the parser must not throw over it).
+    const dirResourceName = path.basename(dir).replace(/^MSFT_/, "");
+    const settingsResourceName = settings.resourceName;
+    const resourceName = dirResourceName || settingsResourceName;
     if (!resourceName) continue;
+    if (settingsResourceName && settingsResourceName !== resourceName) {
+      console.warn(
+        `  ! settings.json resourceName ("${settingsResourceName}") disagrees with directory name ` +
+        `("${resourceName}") for ${path.basename(dir)} — using the directory name`,
+      );
+    }
 
     const mofFile = files.find((f) => f.endsWith(".schema.mof"));
     const psm1File = files.find((f) => f.endsWith(".psm1"));
