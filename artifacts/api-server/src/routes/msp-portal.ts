@@ -757,7 +757,7 @@ router.get(
 
 // ── POST /api/msp/customers/bulk ───────────────────────────────────────────────
 // Bulk actions on a set of customers owned by the authenticated MSP.
-// Actions: assign_bundle, tag, export, archive
+// Actions: assign_bundle, export, archive
 // Each action is applied per-customer; assign_bundle uses per-customer idempotency.
 
 router.post(
@@ -914,44 +914,11 @@ router.post(
         return;
       }
 
-      // ── tag ────────────────────────────────────────────────────────────────────
-      if (action === "tag") {
-        const rawTags = payload.tags;
-        const tags: string[] = Array.isArray(rawTags)
-          ? rawTags.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim())
-          : [];
-
-        if (tags.length === 0) {
-          res.status(400).json({ error: "payload.tags must be a non-empty string array" });
-          return;
-        }
-
-        // Merge new tags into each customer's existing tags array (deduplicating via SQL)
-        await db.execute(
-          sql`UPDATE msp_customers
-              SET tags = (
-                SELECT array_agg(DISTINCT t ORDER BY t)
-                FROM unnest(tags || ${tags}::text[]) AS t
-              ),
-              updated_at = now()
-              WHERE id IN ${ids}
-              AND msp_id = ${mspId}`,
-        );
-
-        res.json({ action: "tag", updated: ids.length, tags });
-        return;
-      }
-
       // ── export ─────────────────────────────────────────────────────────────────
       if (action === "export") {
-        const csvHeader = "id,name,domain,status,industry,tenantId,tags,createdAt\n";
+        const csvHeader = "id,name,domain,status,industry,tenantId,createdAt\n";
         const csvRows = ownedRows
           .map((r) => {
-            // Always empty now: msp_customers.tags has no successor column on
-            // `tenants`, so there is nothing left to "fetch separately" as the
-            // old note here suggested. The column is kept in the header so the
-            // CSV shape stays stable for anything already parsing it.
-            const tagsValue = "";
             const row = [
               r.id,
               `"${(r.name ?? "").replace(/"/g, '""')}"`,
@@ -959,7 +926,6 @@ router.post(
               r.status,
               `"${(r.industry ?? "").replace(/"/g, '""')}"`,
               r.tenantId ?? "",
-              tagsValue,
               r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
             ].join(",");
             return row;
