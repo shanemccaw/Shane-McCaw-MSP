@@ -33,6 +33,21 @@
  *     for one of their own customers — the MSP-scoped equivalent of
  *     POST /api/consent/invite-link.
  *
+ *   GET   /api/msp/customers/:customerId/write-consent/start
+ *     MSP operator mints a write-back (`writeBack`) consent invite for one of
+ *     their own customers — the MSP-scoped equivalent of
+ *     GET /api/admin/customers/:customerId/write-consent/start (#2818). Same
+ *     WRITE App Registration (MT_APP_WRITE_CLIENT_ID), same FIXED
+ *     /api/admin/write-consent/callback (customerId rides in the signed
+ *     state, not the path — the callback doesn't care who initiated it).
+ *
+ *   GET   /api/msp/customers/:customerId/sharepoint-consent/start
+ *     MSP operator mints a SharePoint (`sharepoint`) consent invite for one
+ *     of their own customers — the MSP-scoped equivalent of
+ *     GET /api/admin/customers/:customerId/sharepoint-consent/start (#2818).
+ *     Same MT app registration, same FIXED
+ *     /api/admin/sharepoint-consent/callback.
+ *
  *   PATCH /api/msp/customers/:customerId/consent/revoke
  *     Force-revoke one grant (`key` in body, default "graph") on the
  *     caller's own customer. Scoped equivalent of
@@ -46,8 +61,18 @@ import { eq, and } from "drizzle-orm";
 import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
+import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
 import { createAuditLog } from "../lib/audit.ts";
-import { getCallbackUrl, stampConsent, consentRow, CONSENT_REVOKE_KEYS, type ConsentKey } from "./consent.ts";
+import {
+  getCallbackUrl,
+  getHostBase,
+  stampConsent,
+  consentRow,
+  signWriteConsentState,
+  signSharePointConsentState,
+  CONSENT_REVOKE_KEYS,
+  type ConsentKey,
+} from "./consent.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.msp-admin" });
@@ -203,6 +228,157 @@ router.post(
       expiresAt,
       scopes: REQUIRED_MT_SCOPES,
     });
+  },
+);
+
+// ── GET /api/msp/customers/:customerId/write-consent/start ─────────────────
+// MSP-scoped equivalent of GET /api/admin/customers/:customerId/write-consent/
+// start — mints a write-back (`writeBack`) consent invite for one of the
+// caller's own customers. Same WRITE App Registration
+// (MT_APP_WRITE_CLIENT_ID) and same single-use consent_invite_tokens +
+// signWriteConsentState mechanism as the admin route; state carries the
+// customerId, so the one FIXED /api/admin/write-consent/callback URL already
+// registered in Azure serves both admin- and MSP-initiated invites.
+
+router.get(
+  "/msp/customers/:customerId/write-consent/start",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = parseInt(req.params["customerId"] as string, 10);
+    if (isNaN(customerId)) {
+      res.status(400).json({ error: "Invalid customerId" });
+      return;
+    }
+
+    if (!(await assertCustomerAccess(req.user!, customerId))) {
+      res.status(404).json({ error: "Customer not found in your book" });
+      return;
+    }
+
+    if (!process.env.MT_APP_WRITE_CLIENT_ID) {
+      res.status(503).json({ error: "Write app credentials not configured (MT_APP_WRITE_CLIENT_ID)" });
+      return;
+    }
+
+    const [customer] = await db
+      .select({ tenantId: tenantsTable.tenantId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customerId))
+      .limit(1);
+
+    if (!customer) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+    await db.insert(consentInviteTokensTable).values({
+      token,
+      tenantId: customer.tenantId?.trim() || null,
+      customerId,
+      clientUserId: null,
+      expiresAt,
+    });
+
+    const callbackUrl = `${getHostBase(req)}/api/admin/write-consent/callback`;
+    const tenantHint = customer.tenantId?.trim() || "common";
+    const consentUrl = buildAdminConsentUrl(
+      tenantHint,
+      signWriteConsentState(customerId, token),
+      callbackUrl,
+      process.env.MT_APP_WRITE_CLIENT_ID,
+    );
+
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email ?? "msp-operator",
+      actorRole: "client",
+      actionType: "write_consent_invite_created",
+      entityType: "tenant_write_consent",
+      entityId: customerId,
+      metadata: { tenantHint, customerId, expiresAt },
+    });
+
+    log.info({ customerId, mspId: req.user!.mspId }, "msp-consent: write-consent invite link generated");
+
+    res.json({ consentUrl, expiresAt });
+  },
+);
+
+// ── GET /api/msp/customers/:customerId/sharepoint-consent/start ────────────
+// MSP-scoped equivalent of GET /api/admin/customers/:customerId/sharepoint-
+// consent/start — mints a SharePoint (`sharepoint`) consent invite for one
+// of the caller's own customers. Same MT app registration
+// (MT_APP_CLIENT_ID), same single-use consent_invite_tokens +
+// signSharePointConsentState mechanism, and the one FIXED
+// /api/admin/sharepoint-consent/callback URL already registered in Azure.
+
+router.get(
+  "/msp/customers/:customerId/sharepoint-consent/start",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = parseInt(req.params["customerId"] as string, 10);
+    if (isNaN(customerId)) {
+      res.status(400).json({ error: "Invalid customerId" });
+      return;
+    }
+
+    if (!(await assertCustomerAccess(req.user!, customerId))) {
+      res.status(404).json({ error: "Customer not found in your book" });
+      return;
+    }
+
+    if (!process.env.MT_APP_CLIENT_ID) {
+      res.status(503).json({ error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID)" });
+      return;
+    }
+
+    const [customer] = await db
+      .select({ tenantId: tenantsTable.tenantId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customerId))
+      .limit(1);
+
+    if (!customer) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+    await db.insert(consentInviteTokensTable).values({
+      token,
+      tenantId: customer.tenantId?.trim() || null,
+      customerId,
+      clientUserId: null,
+      expiresAt,
+    });
+
+    const callbackUrl = `${getHostBase(req)}/api/admin/sharepoint-consent/callback`;
+    const tenantHint = customer.tenantId?.trim() || "common";
+    const consentUrl = buildAdminConsentUrl(
+      tenantHint,
+      signSharePointConsentState(customerId, token),
+      callbackUrl,
+      process.env.MT_APP_CLIENT_ID,
+    );
+
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email ?? "msp-operator",
+      actorRole: "client",
+      actionType: "sharepoint_consent_invite_created",
+      entityType: "tenant_sharepoint_consent",
+      entityId: customerId,
+      metadata: { tenantHint, customerId, expiresAt, permissions: [...REQUIRED_SHAREPOINT_APP_PERMISSIONS] },
+    });
+
+    log.info({ customerId, mspId: req.user!.mspId }, "msp-consent: sharepoint-consent invite link generated");
+
+    res.json({ consentUrl, expiresAt, permissions: REQUIRED_SHAREPOINT_APP_PERMISSIONS });
   },
 );
 
