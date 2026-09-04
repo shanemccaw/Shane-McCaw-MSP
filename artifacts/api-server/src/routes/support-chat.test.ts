@@ -171,13 +171,19 @@ describe("POST /api/msp/support/chat", () => {
     makeToken({ id: 10, email: "customer@co.com", role: "client", mspRole: "CustomerUser", mspId: 1, customerId: 42 });
 
   beforeEach(() => {
+    // vi.clearAllMocks() only clears call history, not queued
+    // mockResolvedValueOnce() implementations (only .mockReset() drops those —
+    // see Git #2864). "surfaces a data card…" below queues 8 chained
+    // .mockResolvedValueOnce() calls on mockDbAny["limit"]; without an explicit
+    // reset here, any values that test doesn't fully drain would leak into the
+    // next test's queue ahead of the default mockResolvedValue([]) set below.
     vi.clearAllMocks();
     mockDbAny["select"].mockReturnThis();
     mockDbAny["from"].mockReturnThis();
     mockDbAny["where"].mockReturnThis();
     mockDbAny["groupBy"].mockReturnThis();
     mockDbAny["orderBy"].mockReturnThis();
-    mockDbAny["limit"].mockResolvedValue([]);
+    mockDbAny["limit"].mockReset().mockResolvedValue([]);
     mockDbAny["insert"].mockReturnThis();
     mockDbAny["values"].mockReturnThis();
     mockDbAny["returning"].mockResolvedValue([{ id: 99, createdAt: new Date() }]);
@@ -602,11 +608,13 @@ describe("POST /api/msp/support/escalate", () => {
   const mockDbAny = db as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(() => {
+    // See Git #2864: vi.clearAllMocks() doesn't clear queued .Once()
+    // implementations — .mockReset() does.
     vi.clearAllMocks();
     mockDbAny["select"].mockReturnThis();
     mockDbAny["from"].mockReturnThis();
     mockDbAny["where"].mockReturnThis();
-    mockDbAny["limit"].mockResolvedValue([{ id: 1 }]);
+    mockDbAny["limit"].mockReset().mockResolvedValue([{ id: 1 }]);
     mockDbAny["insert"].mockReturnThis();
     mockDbAny["values"].mockReturnThis();
     mockDbAny["returning"].mockResolvedValue([{ id: 99, createdAt: new Date() }]);
@@ -654,12 +662,14 @@ describe("POST /api/msp/support/actions/regenerate-document", () => {
   const mockGenerate = generateDocument as ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    // See Git #2864: vi.clearAllMocks() doesn't clear queued .Once()
+    // implementations — .mockReset() does.
     vi.clearAllMocks();
     mockDbAny["select"].mockReturnThis();
     mockDbAny["from"].mockReturnThis();
     mockDbAny["where"].mockReturnThis();
     mockDbAny["orderBy"].mockReturnThis();
-    mockDbAny["limit"].mockResolvedValue([]);
+    mockDbAny["limit"].mockReset().mockResolvedValue([]);
   });
 
   it("returns 403 for a non-CustomerUser", async () => {
@@ -708,13 +718,15 @@ describe("POST /api/msp/support/actions/rerun-scan", () => {
   const mockRunDiagnostics = runDiagnostics as ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    // See Git #2864: vi.clearAllMocks() doesn't clear queued .Once()
+    // implementations — .mockReset() does.
     vi.clearAllMocks();
     mockDbAny["select"].mockReturnThis();
     mockDbAny["from"].mockReturnThis();
     mockDbAny["where"].mockReturnThis();
     mockDbAny["innerJoin"].mockReturnThis();
     mockDbAny["orderBy"].mockReturnThis();
-    mockDbAny["limit"].mockResolvedValue([]);
+    mockDbAny["limit"].mockReset().mockResolvedValue([]);
     mockDbAny["insert"].mockReturnThis();
     mockDbAny["values"].mockReturnThis();
     mockRunDiagnostics.mockResolvedValue(undefined);
