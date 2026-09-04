@@ -160,6 +160,8 @@ namespace BuildConsole.Controls
                 var epic = _owner.LeftSidebar?.GetEpicForChat(_chat);
                 EpicNumber = epic?.GithubNumber;
                 CtxEpicNum.Text = EpicNumber.HasValue ? $"#{EpicNumber.Value}" : "#—";
+                CtxEpicName.Text = epic?.Title ?? "";
+                CtxEpicName.Visibility = string.IsNullOrWhiteSpace(CtxEpicName.Text) ? Visibility.Collapsed : Visibility.Visible;
 
                 if (epic?.GithubNumber != null && !string.IsNullOrWhiteSpace(epic.Title))
                 {
