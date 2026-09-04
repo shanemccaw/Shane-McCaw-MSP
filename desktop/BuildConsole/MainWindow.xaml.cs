@@ -6434,6 +6434,24 @@ namespace BuildConsole
             OpenSettingsTab();
         }
 
+        /// <summary>Git #2799 — opens the full Git Doctor ActivityBar view (#2798), the maximize-2
+        /// target of the chat tool-rail's mini Git Doctor panel (README-ClaudeChat.md §6.2). Selects
+        /// the rail icon for the highlight, then forces the sidebar open + switches the view
+        /// directly, so it works even when Git Doctor is already the active view (a re-check of an
+        /// already-checked RadioButton fires no Checked event — same caveat as File > Settings above)
+        /// or the sidebar was collapsed.</summary>
+        public void OpenGitDoctorView()
+        {
+            ActivityBar.SelectGitDoctor();
+            if (ColSidebar.Width.Value == 0)
+            {
+                ColSidebar.Width = new GridLength(DefaultSidebarWidth);
+                SidebarSplitter.Visibility = Visibility.Visible;
+                LeftSidebar.ExpandPanel();
+            }
+            LeftSidebar.SwitchView("GitDoctor");
+        }
+
         // ── ActivityBar → LeftSidebar ─────────────────────────────────────────
         private void ActivityBar_ActiveViewChanged(object? sender, string view)
         {

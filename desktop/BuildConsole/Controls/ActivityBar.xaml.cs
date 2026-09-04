@@ -44,6 +44,10 @@ namespace BuildConsole.Controls
         /// <summary>Git #834 — File > Settings menu item routes here so it lands on the SAME SettingsView the cog icon already opens, instead of being a second, divergent path.</summary>
         public void SelectSettings() => BtnSettings.IsChecked = true;
         public void SelectGitBoard() => BtnIssues.IsChecked = true;
+        /// <summary>Git #2799 — checks the Git Doctor rail icon (raises ActiveViewChanged the same as
+        /// a real click, so MainWindow expands the sidebar + switches to the full #2798 view). The
+        /// chat tool-rail mini panel's Maximize routes here.</summary>
+        public void SelectGitDoctor() => BtnGitDoctor.IsChecked = true;
 
         private void Btn_Checked(object sender, RoutedEventArgs e)
         {
