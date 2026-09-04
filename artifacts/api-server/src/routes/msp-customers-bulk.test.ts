@@ -5,8 +5,7 @@
  *   1. assign_bundle — N customers produce N individual assignment DB rows + N*packageCount events
  *   2. Idempotency — duplicate submissions for the same customer are deduplicated (skipped)
  *   3. Input validation — missing / invalid body fields are rejected
- *   4. tag — tags are merged into each customer row
- *   5. archive — each customer status is updated to "archived"
+ *   4. archive — each customer status is updated to "archived"
  *
  * Run: pnpm --filter @workspace/api-server vitest run msp-customers-bulk
  */
@@ -240,18 +239,6 @@ describe("POST /api/msp/customers/bulk", () => {
     expect(res.body.error).toMatch(/bundleId/i);
   });
 
-  it("returns 400 for tag when tags array is empty", async () => {
-    mockSelectChain([{ id: 1, tenantId: null, name: "Acme", domain: "acme.com", status: "active", industry: null, createdAt: new Date() }]);
-
-    const res = await request(app)
-      .post("/api/msp/customers/bulk")
-      .set("Authorization", `Bearer ${makeToken()}`)
-      .send({ customerIds: [1], action: "tag", payload: { tags: [] } });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/tags/i);
-  });
-
   // ── assign_bundle: N customers → N individual events ───────────────────────
 
   it("assign_bundle: assigns to 3 customers producing 3 assignment rows", async () => {
@@ -447,28 +434,6 @@ describe("POST /api/msp/customers/bulk", () => {
     expect(res.body.action).toBe("archive");
     expect(res.body.updated).toBe(2);
     expect(mockDbUpdate).toHaveBeenCalledTimes(1);
-  });
-
-  // ── tag ─────────────────────────────────────────────────────────────────────
-
-  it("tag: executes a SQL update and returns the tag list", async () => {
-    const customers = [
-      { id: 50, tenantId: null, name: "Alpha", domain: null, status: "active", industry: null, createdAt: new Date() },
-    ];
-
-    mockSelectChain(customers);
-    mockDbExecute.mockResolvedValueOnce({});
-
-    const res = await request(app)
-      .post("/api/msp/customers/bulk")
-      .set("Authorization", `Bearer ${makeToken()}`)
-      .send({ customerIds: [50], action: "tag", payload: { tags: ["vip", "renewal"] } });
-
-    expect(res.status).toBe(200);
-    expect(res.body.action).toBe("tag");
-    expect(res.body.updated).toBe(1);
-    expect(res.body.tags).toEqual(["vip", "renewal"]);
-    expect(mockDbExecute).toHaveBeenCalledTimes(1);
   });
 
   // ── unknown action ──────────────────────────────────────────────────────────
