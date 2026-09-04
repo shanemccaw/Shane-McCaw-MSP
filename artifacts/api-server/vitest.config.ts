@@ -249,6 +249,7 @@ export default defineConfig({
       "src/routes/msp-settings-portal-links.test.ts",
       "src/routes/portal-customer-search.test.ts",
       "src/routes/msp-alerts.test.ts",
+      "src/routes/msp-retention-queue.test.ts",
       "src/routes/msp-executive.test.ts",
       "src/lib/msp-executive-data.test.ts",
       "src/lib/partner-qbr-generator.test.ts",

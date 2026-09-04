@@ -15,11 +15,15 @@
  * the referential guard.
  *
  * NOT here, on purpose:
- *   * **No notification firing.** #1944 part 1 routes the boundary alerts through the
- *     existing POA&M escalation machinery *"rather than a second scheduler"*, and the
- *     rules are recorded on #1942. This module makes the boundaries observable —
+ *   * **No SWEEP-BOUNDARY notification firing.** #1944 part 1 routes the boundary
+ *     alerts (soft → semi_hard, semi_hard → purged) through the existing POA&M
+ *     escalation machinery *"rather than a second scheduler"*, and the rules are
+ *     recorded on #1942. This module makes those boundaries observable —
  *     `advanceDueDeletions()` returns every transition it made — and #1942's rules
- *     consume them.
+ *     consume them. `restore()` is a one-shot operator action, not a scheduled
+ *     boundary crossing, so it is exempt from that split: it fires its own real
+ *     trigger directly (#2764, EPIC #1944 part 5 — *"they should not discover it by
+ *     noticing a row reappear"*), via `notifyRetentionRestore()`.
  *   * **No audit table.** #1946 owns the trail; this consumes it through the existing
  *     `createAuditLog`.
  *   * **No permission check.** Which principal may recover from which tier is #1704's
@@ -28,17 +32,19 @@
  *     evaluate `can()` and then call in here.
  */
 
-import { and, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import {
   db,
   recordDeletionsTable,
   type RecordDeletion,
   type RetentionAccelerationReason,
+  type RetentionAccelerationState,
   type RetentionDeleteSide,
   type RetentionStage,
 } from "@workspace/db";
 import { logger } from "../logger";
 import { createAuditLog } from "../audit";
+import { notifyRetentionRestore } from "../notification-center";
 import {
   advanceStageClock,
   freezeClock,
@@ -367,6 +373,16 @@ export async function restore(input: {
     entityLabel: row.recordLabel,
     clientId: row.tenantId,
     metadata: { reason, restoredFromStage: row.stage },
+  });
+
+  // The real trigger #2764 asks for. Best-effort and never throws (see
+  // notifyRetentionRestore's own doc comment) -- a delivery failure must not make
+  // this function report the restore itself as having failed.
+  await notifyRetentionRestore({
+    tenantId: row.tenantId,
+    recordType: row.recordType,
+    recordLabel: row.recordLabel,
+    restoreReason: reason,
   });
 
   return updated;
@@ -734,6 +750,12 @@ export async function advanceDueDeletions(options?: { limit?: number; actor?: Re
 // Reads
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** A single ledger row by its own id. Used by a caller that already has a `deletionId` — the operator queue's own actions, in particular. */
+export async function getDeletionById(deletionId: number): Promise<RecordDeletion | null> {
+  const [row] = await db.select().from(recordDeletionsTable).where(eq(recordDeletionsTable.id, deletionId)).limit(1);
+  return row ?? null;
+}
+
 /** The open deletion for a record, if it has one. Used by a module's own read path. */
 export async function findOpenDeletion(recordType: string, recordId: string): Promise<RecordDeletion | null> {
   const [row] = await db
@@ -782,4 +804,85 @@ export function ghostStateOf(row: RecordDeletion, now = new Date()): GhostState 
     remainingSeconds: frozen ? null : remainingSeconds(clock, now),
     underReview: row.accelerationState === "pending",
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The #1571 operator review queue (#2764, EPIC #1944 parts 2, 4-5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One row of the accelerated-delete review queue, shaped for an operator to triage
+ * without opening each record individually. `deleteReason` is the ORIGINAL reason
+ * captured at delete time — #1944's own example is the reason this needs to be its
+ * own field alongside the acceleration reason: *"'superseded by the new CA policy'
+ * and 'we don't agree with this finding' need completely different responses"* —
+ * that is what tells an operator a supersession apart from a disagreement without
+ * opening the record (#2764 item 4).
+ */
+export interface AccelerationQueueItem {
+  deletionId: number;
+  recordType: string;
+  recordId: string;
+  recordLabel: string | null;
+  tenantId: number;
+  stage: RetentionStage;
+  deletedAt: Date;
+  deletedBy: string;
+  deletedBySide: RetentionDeleteSide;
+  deleteReason: string;
+  accelerationState: RetentionAccelerationState;
+  accelerationRequestedAt: Date;
+  accelerationRequestedBy: string;
+  accelerationReasonKind: RetentionAccelerationReason;
+  accelerationReason: string;
+  supersededByRecordType: string | null;
+  supersededByRecordId: string | null;
+}
+
+/**
+ * Every pending acceleration request across an MSP's book, newest request first —
+ * uses `record_deletions_acceleration_queue_idx` (#1947), the index built for
+ * exactly this read. `tenantIds`, when given, restricts to that set — the caller's
+ * own per-staff scoping (`resolveStaffScopedCustomerIds`), since cross-customer
+ * visibility for a scoped operator is a hard boundary (#1949's own standing
+ * constraint, which this backend honours even though that issue's UI was reset).
+ */
+export async function listAccelerationQueue(
+  mspId: number,
+  options?: { tenantIds?: number[] | null },
+): Promise<AccelerationQueueItem[]> {
+  const rows = await db
+    .select()
+    .from(recordDeletionsTable)
+    .where(
+      and(
+        eq(recordDeletionsTable.mspId, mspId),
+        eq(recordDeletionsTable.accelerationState, "pending"),
+        ...(options?.tenantIds ? [inArray(recordDeletionsTable.tenantId, options.tenantIds)] : []),
+      ),
+    )
+    .orderBy(desc(recordDeletionsTable.accelerationRequestedAt));
+
+  return rows.map((row): AccelerationQueueItem => ({
+    deletionId: row.id,
+    recordType: row.recordType,
+    recordId: row.recordId,
+    recordLabel: row.recordLabel,
+    tenantId: row.tenantId,
+    stage: row.stage as RetentionStage,
+    deletedAt: row.deletedAt,
+    deletedBy: row.deletedBy,
+    deletedBySide: row.deletedBySide as RetentionDeleteSide,
+    deleteReason: row.deleteReason,
+    accelerationState: row.accelerationState as RetentionAccelerationState,
+    // Non-null by construction: the WHERE clause above restricts to
+    // accelerationState = "pending", and requestAcceleration() never sets that
+    // state without also setting these four columns in the same write.
+    accelerationRequestedAt: row.accelerationRequestedAt as Date,
+    accelerationRequestedBy: row.accelerationRequestedBy as string,
+    accelerationReasonKind: row.accelerationReasonKind as RetentionAccelerationReason,
+    accelerationReason: row.accelerationReason as string,
+    supersededByRecordType: row.supersededByRecordType,
+    supersededByRecordId: row.supersededByRecordId,
+  }));
 }
