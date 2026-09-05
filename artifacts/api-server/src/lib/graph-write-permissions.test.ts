@@ -578,3 +578,123 @@ describe("rule ordering", () => {
     expect(got.required).toEqual([]);
   });
 });
+
+/**
+ * Git #2858 — the catalogue outside the Config Packs.
+ *
+ * #1901 finished the pack-wired set (0 unmapped of 64). This is the remainder:
+ * `baseline_action_templates` rows no Config Pack wires. Every (method, endpoint)
+ * pair below was read out of the live local `baseline_action_templates` table on
+ * 2026-09-04 by running the real derivation over all 102 rows — NOT copied from
+ * #2858's issue body, which listed 42 unmapped and was stale: #2855's PUT->DELETE
+ * sweep and #1901's own later rules had already closed 22 of them, and the live
+ * run returned 20.
+ */
+describe("#2858 — the unwired catalogue resolves to a documented permission", () => {
+  // [templateId, method, endpoint (verbatim from the live row), required, runnable today?]
+  const catalogue: Array<[string, string, string, string[], boolean]> = [
+    // Already-held permissions — these steps are runnable today.
+    ["action.delete-user", "DELETE", "/users/{{userId}}", ["User.ReadWrite.All"], true],
+    ["action.update-manager", "PUT", "/users/{{userId}}/manager/$ref", ["User.ReadWrite.All"], true],
+    ["action.remove-auth-method", "GET", "/users/{{userId}}/authentication/methods/{{methodId}}", ["UserAuthenticationMethod.ReadWrite.All"], true],
+    ["action.unenroll-device", "DELETE", "/deviceManagement/managedDevices/{{deviceId}}", ["DeviceManagementManagedDevices.ReadWrite.All"], true],
+    ["action.disable-risky-app", "PATCH", "/servicePrincipals/{{spId}}", ["Application.ReadWrite.All"], true],
+    ["action.rotate-app-secret", "POST", "/applications/{{appId}}/addPassword", ["Application.ReadWrite.All"], true],
+    ["action.grant-admin-consent", "POST", "/oauth2PermissionGrants", ["DelegatedPermissionGrant.ReadWrite.All"], true],
+    // Would need a NEW permission for a step nothing ships — documented, refused.
+    ["action.reassign-app-owner", "POST", "/applications/{{appId}}/owners/$ref", ["Application.ReadWrite.All", "Directory.Read.All"], false],
+    ["action.add-custom-domain", "POST", "/domains", ["Domain.ReadWrite.All"], false],
+    ["action.delete-group", "DELETE", "/groups/{{groupId}}", ["Group.ReadWrite.All"], false],
+    ["action.restart-device", "POST", "/deviceManagement/managedDevices/{{deviceId}}/rebootNow", ["DeviceManagementManagedDevices.PrivilegedOperations.All"], false],
+    ["action.remote-lock-device", "POST", "/deviceManagement/managedDevices/{{deviceId}}/remoteLock", ["DeviceManagementManagedDevices.PrivilegedOperations.All"], false],
+    ["action.retire-device", "POST", "/deviceManagement/managedDevices/{{deviceId}}/retire", ["DeviceManagementManagedDevices.PrivilegedOperations.All"], false],
+    ["action.fresh-start-device", "POST", "/deviceManagement/managedDevices/{{deviceId}}/windowsDefenderScan", ["DeviceManagementManagedDevices.PrivilegedOperations.All"], false],
+    ["action.remote-wipe-device", "POST", "/deviceManagement/managedDevices/{{deviceId}}/wipe", ["DeviceManagementManagedDevices.PrivilegedOperations.All"], false],
+    ["action.assign-autopilot-profile", "POST", "/deviceManagement/windowsAutopilotDeploymentProfiles/{{profileId}}/assign", ["DeviceManagementServiceConfig.ReadWrite.All"], false],
+    ["action.resolve-alert", "PATCH", "/security/alerts_v2/{{alertId}}", ["SecurityAlert.ReadWrite.All"], false],
+    ["action.set-out-of-office", "PATCH", "/users/{{userId}}/mailboxSettings", ["MailboxSettings.ReadWrite"], false],
+    ["action.update-org-contact-info", "PATCH", "/organization/{{tenantId}}", ["Organization.ReadWrite.All"], false],
+  ];
+
+  for (const [templateId, method, endpoint, expected, runnable] of catalogue) {
+    it(`${templateId} — ${method} ${endpoint}`, () => {
+      const got = requiredPermissionsForWrite(method, endpoint, { templateId });
+      expect(got.rule, `${method} ${endpoint} matched no rule`).not.toBeNull();
+      expect(got.required.sort()).toEqual([...expected].sort());
+      // A step is runnable only if EVERY permission it needs is actually requested.
+      const held = got.required.every((p) => DERIVED_WRITE_APP_PERMISSIONS.includes(p));
+      expect(held).toBe(runnable);
+    });
+  }
+
+  it("mapping the whole remainder added ZERO permissions to the consent request", () => {
+    // The headline property of #2858, and the reason every refused rule says so
+    // in its own notRequestedReason: a step no Config Pack ships must never
+    // enlarge what every customer is asked to consent to. If a future rule here
+    // needs a new permission, this fails and someone has to justify it against a
+    // real shipped product step.
+    expect(DERIVED_WRITE_APP_PERMISSIONS).toHaveLength(23);
+    for (const forbidden of [
+      "Domain.ReadWrite.All",
+      "DeviceManagementManagedDevices.PrivilegedOperations.All",
+      "DeviceManagementServiceConfig.ReadWrite.All",
+      "SecurityAlert.ReadWrite.All",
+      "MailboxSettings.ReadWrite",
+      "Organization.ReadWrite.All",
+      "Directory.Read.All",
+    ]) {
+      expect(DERIVED_WRITE_APP_PERMISSIONS).not.toContain(forbidden);
+      expect(DOCUMENTED_BUT_NOT_REQUESTED.map((d) => d.permission)).toContain(forbidden);
+    }
+  });
+
+  it("a refused rule reports only the permissions the platform actually lacks", () => {
+    // POST /applications/*/owners/$ref needs a documented CONJUNCTION of two
+    // permissions, and the platform holds one of them already. Naming the held
+    // one as "not requested" would contradict DERIVED_WRITE_APP_PERMISSIONS; the
+    // step is still blocked, by the one that really is missing.
+    const got = requiredPermissionsForWrite("POST", "/applications/{{appId}}/owners/$ref");
+    expect(got.required.sort()).toEqual(["Application.ReadWrite.All", "Directory.Read.All"]);
+    expect(got.notRequested).toEqual(["Directory.Read.All"]);
+    expect(DERIVED_WRITE_APP_PERMISSIONS).toContain("Application.ReadWrite.All");
+  });
+
+  it("action.submit-file-detonation stays unmapped, because its endpoint does not exist", () => {
+    // The ONE template in the whole 102-row catalogue still returning rule: null
+    // after #2858. It is not an oversight and must not be given a rule to make the
+    // count look better: the v1.0 microsoft.graph.security.alert resource's Methods
+    // table documents List, Get, Update, Create comment and Move alerts — there is
+    // no create/POST on /security/alerts_v2 at all, so there is no Microsoft Learn
+    // Permissions table to quote. Filed as its own issue; see #2858's DONE bookend.
+    // rule: null is the honest answer for an endpoint Microsoft does not expose.
+    const got = requiredPermissionsForWrite("POST", "/security/alerts_v2", {
+      templateId: "action.submit-file-detonation",
+    });
+    expect(got.rule).toBeNull();
+    expect(got.required).toEqual([]);
+    expect(got.nonGraph).toBe(false);
+  });
+
+  it("the new rules do not shadow, and are not shadowed by, the rules they sit near", () => {
+    // Every pair here differs only by method or by segment count, which is the
+    // whole basis on which patternMatches() keeps them apart.
+    expect(requiredPermissionsForWrite("PATCH", "/deviceManagement/managedDevices/{{id}}").required)
+      .toEqual(["DeviceManagementManagedDevices.ReadWrite.All"]);
+    expect(requiredPermissionsForWrite("POST", "/deviceManagement/managedDevices/{{id}}/syncDevice").required)
+      .toEqual(["DeviceManagementManagedDevices.PrivilegedOperations.All"]);
+    // Four-segment branding PATCH is not the two-segment organization PATCH.
+    expect(requiredPermissionsForWrite("PATCH", "/organization/{{t}}/branding/localizations/0").required)
+      .toEqual(["OrganizationalBranding.ReadWrite.All"]);
+    // #1899's enumerate-all GET (4 segments) vs #2875's single-method GET (5).
+    expect(requiredPermissionsForWrite("GET", "/users/{{u}}/authentication/methods").rule!.pattern)
+      .toBe("/users/*/authentication/methods");
+    expect(requiredPermissionsForWrite("GET", "/users/{{u}}/authentication/methods/{{m}}").rule!.pattern)
+      .toBe("/users/*/authentication/methods/*");
+    // Group member writes still win over the new two-segment group DELETE.
+    expect(requiredPermissionsForWrite("DELETE", "/groups/{{g}}/members/{{u}}/$ref").required)
+      .toEqual(["GroupMember.ReadWrite.All"]);
+    // Creating a grant and deleting one are separate rules on the same permission.
+    expect(requiredPermissionsForWrite("POST", "/oauth2PermissionGrants").rule!.pattern).toBe("/oauth2PermissionGrants");
+    expect(requiredPermissionsForWrite("DELETE", "/oauth2PermissionGrants/{{id}}").rule!.pattern).toBe("/oauth2PermissionGrants/*");
+  });
+});

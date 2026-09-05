@@ -900,6 +900,492 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
       "L5 clouds this platform targets all support it.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/security-incident-update",
   },
+
+  // ── Git #2858 — the catalogue OUTSIDE the Config Packs ─────────────────────
+  //
+  // Everything above exists because a Config Pack ships it. The rules below are
+  // `baseline_action_templates` rows that no pack wires yet — 20 of 102 on the
+  // live table (the issue body's "42 of 102" was captured before #2855's
+  // PUT->DELETE sweep and #1901's later rules; the real derivation on 2026-09-04
+  // returned 20). They are mapped here so that the moment one IS added to a pack,
+  // whoever adds it inherits a researched answer instead of hitting the same wall
+  // #1901 cleared, and so the catalogue's real cost is visible BEFORE a product
+  // decision is made on it.
+  //
+  // THE RULE APPLIED TO EVERY ONE OF THEM, stated once so it is not re-litigated
+  // per entry: an unwired step never enlarges the consent screen.
+  //
+  //   - If the operation's documented permission is one the platform ALREADY
+  //     requests for a shipped step, the rule requests it too — that costs a
+  //     customer nothing, and it makes the step genuinely runnable today.
+  //   - If it would add a NEW permission, `grantRecommended: false`. The reason
+  //     names the real scope AND states plainly that no pack ships the step, so
+  //     the trade is not "give up the product" — it is "flip this the day a pack
+  //     needs it". That flip is one line plus a test update.
+  //
+  // The measurable consequence, asserted by a test: mapping the whole remainder
+  // added ZERO permissions to what every customer is asked to consent to.
+
+  // -- Already-held permissions: requested, runnable today ---------------------
+  {
+    // #2858 — action.delete-user. #2855's sweep corrected the stored method from
+    // PUT to DELETE; this rule matches the corrected row.
+    method: "DELETE",
+    pattern: "/users/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "User.ReadWrite.All",
+      higherPrivileged: "Not available.",
+    },
+    permissions: ["User.ReadWrite.All"],
+    justification:
+      "action.delete-user deletes a user object (Microsoft moves it to the 30-day soft-delete container, " +
+      "which is what action.restore-deleted-user then restores from). Microsoft documents exactly one " +
+      "application permission and no higher-privileged alternative, and it is User.ReadWrite.All — already " +
+      "requested for the user create/update steps, so this rule adds nothing to the consent request. " +
+      "NOTE a limit consent alone does not clear, quoted from the same page: \"In app-only scenarios, the " +
+      "User.ReadWrite.All application permission isn't enough privilege to delete users with privileged " +
+      "administrative roles. The app must be assigned a higher privileged administrator role\" — the same " +
+      "directory-role-not-consent gap already documented on the restore rule above and on " +
+      "PASSWORD_PROFILE_JUSTIFICATION below. Ordinary users delete fine; a Global Admin will not.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/user-delete",
+  },
+  {
+    // #2858 — action.update-manager. PUT is genuinely correct here (a
+    // single-valued navigation-property reference), NOT the #2855 PUT-where-
+    // DELETE-was-meant class; #2855's own body says so explicitly.
+    method: "PUT",
+    pattern: "/users/*/manager/$ref",
+    documentedApplicationTiers: {
+      leastPrivileged: "User.ReadWrite.All",
+      higherPrivileged: "AgentIdUser.ReadWrite.All, AgentIdUser.ReadWrite.IdentityParentedBy, Directory.ReadWrite.All",
+    },
+    permissions: ["User.ReadWrite.All"],
+    justification:
+      "action.update-manager assigns a user's manager — the org-chart write an onboarding or a " +
+      "reorganisation needs. Microsoft's least-privileged application permission is User.ReadWrite.All, " +
+      "already held; every higher-privileged alternative is broader (Directory.ReadWrite.All) or scoped to " +
+      "agent identities, so there is nothing narrower to take.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/user-post-manager",
+  },
+  {
+    // #2858 — action.remove-auth-method's FIRST call. Five path segments, so it
+    // cannot shadow the four-segment GET /users/*/authentication/methods rule
+    // above (#1899's enumerate-all), and vice versa.
+    method: "GET",
+    pattern: "/users/*/authentication/methods/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "UserAuthenticationMethod.Read.All",
+      higherPrivileged: "UserAuthenticationMethod.ReadWrite.All",
+    },
+    permissions: ["UserAuthenticationMethod.ReadWrite.All"],
+    justification:
+      "action.remove-auth-method removes ONE already-identified authentication method, and runs as " +
+      "runRemoveAuthMethodAgainstTenant() in workflow-executor.ts (#2875, the same class of gap #1899 " +
+      "fixed for MFA re-registration): Graph has no DELETE on the generic " +
+      "/users/{id}/authentication/methods/{id} path, so the real mechanism is GET that path to read the " +
+      "method's polymorphic @odata.type, then DELETE through its typed collection. This rule documents the " +
+      "GET; the three typed DELETE rules above (phoneMethods, microsoftAuthenticatorMethods, " +
+      "softwareOathMethods) already document the second call, which is why the stored template method is a " +
+      "GET rather than the PUT #2855 found. Microsoft's least-privileged Application permission for the " +
+      "GET is UserAuthenticationMethod.Read.All, but UserAuthenticationMethod.ReadWrite.All is the listed " +
+      "higher-privileged alternative and is already required by the DELETEs this GET exists to drive — " +
+      "requesting the read-only one as well would enlarge the request without reducing real privilege. " +
+      "The quoted tiers are the page's \"Permissions acting on other users\" table, which is the one that " +
+      "applies to an app-only daemon; its \"acting on self\" table has an identical Application row. Note " +
+      "this endpoint is unavailable in the China (21Vianet) national cloud per the same page.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/authenticationmethod-get",
+  },
+  {
+    // #2858 — action.unenroll-device. #2855's sweep corrected the stored method
+    // from PUT to DELETE. Three path segments; the four-segment remote-action
+    // rules below cannot shadow it, and it is method-distinct from the PATCH
+    // /deviceManagement/managedDevices/* rule above.
+    method: "DELETE",
+    pattern: "/deviceManagement/managedDevices/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementManagedDevices.ReadWrite.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementManagedDevices.ReadWrite.All"],
+    justification:
+      "action.unenroll-device deletes the managedDevice RECORD, removing the device from Intune " +
+      "management. Read this against the four refused remote-action rules below, because the difference is " +
+      "the whole point: deleting the Intune record is an ordinary management-data write and Microsoft " +
+      "scopes it under DeviceManagementManagedDevices.ReadWrite.All — the permission device-compliance-v1 " +
+      "step 4 already holds. It sends nothing to the device and cannot wipe, retire, lock or reboot " +
+      "anything. It is genuinely requestable and is requested.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-devices-manageddevice-delete",
+  },
+  {
+    // #2858 — action.disable-risky-app.
+    method: "PATCH",
+    pattern: "/servicePrincipals/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "Application.ReadWrite.OwnedBy",
+      higherPrivileged: "Application.ReadWrite.All, Directory.ReadWrite.All",
+    },
+    permissions: ["Application.ReadWrite.All"],
+    justification:
+      "action.disable-risky-app sets accountEnabled=false on a service principal, killing sign-in to an " +
+      "enterprise application found to be risky (confirmed against the live template body). Microsoft's " +
+      "least-privileged Application cell is Application.ReadWrite.OwnedBy, and it CANNOT be used for this " +
+      "step by definition: OwnedBy authorises only applications the calling app itself owns, and a risky " +
+      "third-party app in a customer's tenant is precisely one this platform does not own. The " +
+      "higher-privileged cell lists two ALTERNATIVES (`,`, not `and`): Application.ReadWrite.All and " +
+      "Directory.ReadWrite.All. The narrower of the two, Application.ReadWrite.All, is already required by " +
+      "groups.add_service_principal_member (see TEMPLATE_EXTRA_PERMISSIONS), so this rule adds nothing to " +
+      "the request; Directory.ReadWrite.All is never taken.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/serviceprincipal-update",
+  },
+  {
+    // #2858 — action.rotate-app-secret.
+    method: "POST",
+    pattern: "/applications/*/addPassword",
+    documentedApplicationTiers: {
+      leastPrivileged: "Application.ReadWrite.OwnedBy",
+      higherPrivileged: "Application.ReadWrite.All, Directory.ReadWrite.All",
+    },
+    permissions: ["Application.ReadWrite.All"],
+    justification:
+      "action.rotate-app-secret adds a new client secret to an app registration — the write half of a " +
+      "credential rotation. Same tier reasoning as the servicePrincipal PATCH above: " +
+      "Application.ReadWrite.OwnedBy covers only apps this platform owns, so rotating a customer's own app " +
+      "registration falls to the higher-privileged alternative Application.ReadWrite.All, which is already " +
+      "held. READ THIS BEFORE WIRING THIS STEP INTO ANYTHING: the permission being available is not the " +
+      "same as the action being allowed. Git #1913 draws the production boundary at the app registration, " +
+      "not the tenant — an agent may read the state of PROD app registration " +
+      "3308b280-e41e-42ba-9f73-73aac2ad3dee but never writes a credential against it, and " +
+      "app-registration credentials are named there as out of agent reach. This rule records what Graph " +
+      "requires; it does not authorise the write.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/application-addpassword",
+  },
+  {
+    // #2858 — action.grant-admin-consent. Single segment, so the DELETE
+    // /oauth2PermissionGrants/* rule above (two segments) cannot shadow it.
+    method: "POST",
+    pattern: "/oauth2PermissionGrants",
+    documentedApplicationTiers: {
+      leastPrivileged: "DelegatedPermissionGrant.ReadWrite.All",
+      higherPrivileged: "Directory.ReadWrite.All",
+    },
+    permissions: ["DelegatedPermissionGrant.ReadWrite.All"],
+    justification:
+      "action.grant-admin-consent creates a delegated permission grant with consentType AllPrincipals — " +
+      "admin consent on behalf of every user in the tenant (confirmed against the live template body). " +
+      "Microsoft documents the same least-privileged permission as the revoke half, " +
+      "DelegatedPermissionGrant.ReadWrite.All, with Directory.ReadWrite.All as the broader alternative " +
+      "this platform never takes. WORTH KNOWING AND NOT COMFORTABLE: the platform therefore ALREADY holds " +
+      "the permission to grant consent, because Microsoft ships create and delete on this resource under " +
+      "one ReadWrite scope and micro-remediation remediate-remove-risky-app-consent needs the delete. " +
+      "There is no narrower Graph permission that permits revoking a grant without also permitting " +
+      "creating one, so this is Microsoft's design and not a scope this rule newly opened. #2858's own " +
+      "issue body flags this endpoint as one to think about deliberately before a product ships it; that " +
+      "remains true, and the thinking is about the PRODUCT step, not about the consent request.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/oauth2permissiongrant-post",
+  },
+
+  // -- Would need a NEW permission for a step nothing ships: documented, refused --
+  {
+    // #2858 — action.reassign-app-owner. The ONE rule here whose permissions
+    // array mixes a held permission with a refused one; see the note on
+    // DOCUMENTED_BUT_NOT_REQUESTED about why that distinction is computed rather
+    // than assumed per-rule.
+    method: "POST",
+    pattern: "/applications/*/owners/$ref",
+    documentedApplicationTiers: {
+      leastPrivileged: "Application.ReadWrite.OwnedBy and Directory.Read.All",
+      higherPrivileged: "Directory.Read.All and Application.ReadWrite.All, Directory.ReadWrite.All",
+    },
+    permissions: ["Directory.Read.All", "Application.ReadWrite.All"],
+    justification:
+      "action.reassign-app-owner adds a user as owner of an app registration. THIS IS A #1975 CONJUNCTION " +
+      "CELL, READ IT CAREFULLY: both Application tiers join names with the word `and`, so each tier is a " +
+      "single requirement of TWO permissions, not a menu. Microsoft is explicit on the same page: " +
+      "\"Application.ReadWrite.OwnedBy isn't sufficient to add another owner. Consent also to " +
+      "Application.ReadWrite.All.\" Reassigning the owner of an app this platform does not itself own " +
+      "therefore lands on the higher tier and needs Directory.Read.All AND Application.ReadWrite.All " +
+      "together. Application.ReadWrite.All is already held; Directory.Read.All is not, and would be a new " +
+      "one. Directory.Read.All on a write is exactly the shape #1975 exists to protect — it is legitimate " +
+      "here because Microsoft documents it as a conjunction, and it would be a bug to \"tidy\" it away.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/application-post-owners",
+    grantRecommended: false,
+    notRequestedReason:
+      "Directory.Read.All is a directory-wide READ across users, groups, devices, service principals and " +
+      "app registrations, and this platform deliberately keeps that surface on its separate READ " +
+      "application rather than on the write app. Taking it onto the write app to ship one " +
+      "owner-reassignment step that no Config Pack wires is the wrong order of operations. Nothing about " +
+      "the step is impossible — flip this to requested the day a pack needs it, and the only new thing a " +
+      "customer is asked for is a read permission.",
+  },
+  {
+    // #2858 — action.add-custom-domain.
+    method: "POST",
+    pattern: "/domains",
+    documentedApplicationTiers: {
+      leastPrivileged: "Domain.ReadWrite.All",
+      higherPrivileged: "Not available.",
+    },
+    permissions: ["Domain.ReadWrite.All"],
+    justification:
+      "action.add-custom-domain adds a domain to the customer's tenant. Microsoft documents one " +
+      "application permission and no alternative at any tier. Note the domain is unusable until DNS " +
+      "ownership is verified, which is a real brake on what the permission alone can accomplish.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/domain-post-domains",
+    grantRecommended: false,
+    notRequestedReason:
+      "Domain.ReadWrite.All would be a new tenant-wide permission over the customer's domain list, and " +
+      "domain manipulation is a recognised tenant-takeover path (a domain the attacker controls, added " +
+      "and then federated, mints tokens). No Config Pack ships a domain-add step, so requesting it today " +
+      "would enlarge every customer's consent screen for a capability nothing uses. Shane's call the day " +
+      "a pack genuinely needs it.",
+  },
+  {
+    // #2858 — action.delete-group. #2855's sweep corrected the stored method from
+    // PUT to DELETE. Two path segments, so the members/owners rules above cannot
+    // shadow it.
+    method: "DELETE",
+    pattern: "/groups/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "Group.ReadWrite.All",
+      higherPrivileged: "Not available.",
+    },
+    permissions: ["Group.ReadWrite.All"],
+    justification:
+      "action.delete-group deletes a group. Microsoft documents exactly one application permission and no " +
+      "alternative. The same page adds a second gate for role-assignable groups, quoted verbatim: \"For " +
+      "app-only scenarios, the calling app must be the owner of the group or be assigned the " +
+      "RoleManagement.ReadWrite.Directory application permission or be assigned at least the Privileged " +
+      "Role Administrator Microsoft Entra role\" — so even with Group.ReadWrite.All a role-assignable " +
+      "group would not delete without that, and the platform does hold " +
+      "RoleManagement.ReadWrite.Directory for quickstart-v1 step 2.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/group-delete",
+    grantRecommended: false,
+    notRequestedReason:
+      "Group.ReadWrite.All is the same tenant-wide group-write scope already refused on the group-owner " +
+      "and group-visibility rules above, and #2856 tracks the product consequence. It is refused harder " +
+      "here, not less: this rule's operation is the destructive one that objection is actually about — " +
+      "the grant would let the app DELETE any group in the customer's directory. quickstart-v1's whole " +
+      "group posture (Group.Create for creation, GroupMember.ReadWrite.All for membership) exists to avoid " +
+      "holding it, and no pack wires a group delete.",
+  },
+  {
+    // #2858 — action.restart-device. Four path segments, matching the syncDevice
+    // rule's shape; the three-segment PATCH/DELETE managedDevices rules are
+    // unaffected.
+    method: "POST",
+    pattern: "/deviceManagement/managedDevices/*/rebootNow",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementManagedDevices.PrivilegedOperations.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementManagedDevices.PrivilegedOperations.All"],
+    justification:
+      "action.restart-device reboots a managed device remotely. One of the four Intune user-impacting " +
+      "remote actions in this catalogue, all of which Microsoft permissions identically to the syncDevice " +
+      "rule above.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-devices-manageddevice-rebootnow",
+    grantRecommended: false,
+    notRequestedReason:
+      "DeviceManagementManagedDevices.PrivilegedOperations.All is the Intune 'user-impacting remote " +
+      "actions' scope, already refused on remediate-device-compliance-gap's syncDevice for the reason " +
+      "that applies with more force here: the single grant also confers remote WIPE, RETIRE and lock " +
+      "across every managed device in the tenant. Refusing one $29 sync action over it and then taking it " +
+      "for an unwired reboot step would make the earlier refusal meaningless.",
+  },
+  {
+    // #2858 — action.remote-lock-device.
+    method: "POST",
+    pattern: "/deviceManagement/managedDevices/*/remoteLock",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementManagedDevices.PrivilegedOperations.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementManagedDevices.PrivilegedOperations.All"],
+    justification:
+      "action.remote-lock-device locks a managed device remotely — the containment step an incident " +
+      "responder wants on a lost or compromised endpoint. Same single documented permission as every " +
+      "other Intune remote action.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-devices-manageddevice-remotelock",
+    grantRecommended: false,
+    notRequestedReason:
+      "Same permission and same objection as the reboot rule above: this grant is tenant-wide remote " +
+      "wipe/retire/lock, and no Config Pack ships a remote-lock step.",
+  },
+  {
+    // #2858 — action.retire-device.
+    method: "POST",
+    pattern: "/deviceManagement/managedDevices/*/retire",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementManagedDevices.PrivilegedOperations.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementManagedDevices.PrivilegedOperations.All"],
+    justification:
+      "action.retire-device retires a managed device, removing company data and the management profile " +
+      "while leaving personal data. Note the contrast with action.unenroll-device above, which is mapped " +
+      "and requested: that one DELETEs the Intune record and needs only the ordinary " +
+      "DeviceManagementManagedDevices.ReadWrite.All, while retire sends a real command to the device and " +
+      "Microsoft scopes it under the privileged operations permission.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-devices-manageddevice-retire",
+    grantRecommended: false,
+    notRequestedReason:
+      "Same permission and same objection as the reboot and lock rules above. Retire is itself one of the " +
+      "three destructive capabilities that grant confers, which is the clearest possible statement of why " +
+      "the scope is refused.",
+  },
+  {
+    // #2858 — action.fresh-start-device. NOTE the template id says "fresh start"
+    // but the stored endpoint is windowsDefenderScan, which is an antivirus scan,
+    // not Windows Autopilot Reset. The permission is the same either way (the real
+    // beta wipe/fresh-start actions are all PrivilegedOperations.All too), so the
+    // derivation is correct regardless of which the step is eventually meant to be.
+    method: "POST",
+    pattern: "/deviceManagement/managedDevices/*/windowsDefenderScan",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementManagedDevices.PrivilegedOperations.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementManagedDevices.PrivilegedOperations.All"],
+    justification:
+      "action.fresh-start-device stores POST /deviceManagement/managedDevices/{id}/windowsDefenderScan, " +
+      "which triggers a Microsoft Defender antivirus scan on a managed device. Microsoft permissions it " +
+      "identically to the wipe/retire/lock/reboot family even though a scan is not itself destructive.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-devices-manageddevice-windowsdefenderscan",
+    grantRecommended: false,
+    notRequestedReason:
+      "Same permission and same objection as the other three Intune remote actions. This one is the " +
+      "sharpest illustration of why the refusal is about the GRANT and not about the action: an antivirus " +
+      "scan is harmless, and Microsoft still charges tenant-wide wipe/retire/lock for the privilege of " +
+      "asking for it.",
+  },
+  {
+    // #2858 — action.remote-wipe-device.
+    method: "POST",
+    pattern: "/deviceManagement/managedDevices/*/wipe",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementManagedDevices.PrivilegedOperations.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementManagedDevices.PrivilegedOperations.All"],
+    justification:
+      "action.remote-wipe-device factory-resets a managed device. The most destructive operation in the " +
+      "entire baseline_action_templates catalogue.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-devices-manageddevice-wipe",
+    grantRecommended: false,
+    notRequestedReason:
+      "Same permission and same objection as the other Intune remote actions, and here the objection is " +
+      "literal rather than by implication: the grant IS tenant-wide remote wipe. If this step is ever " +
+      "wired into a product, the consent conversation is not a line item — it is the whole conversation, " +
+      "and it needs a confirmation gate in the product on top of the grant.",
+  },
+  {
+    // #2858 — action.assign-autopilot-profile.
+    method: "POST",
+    pattern: "/deviceManagement/windowsAutopilotDeploymentProfiles/*/assign",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementServiceConfig.ReadWrite.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementServiceConfig.ReadWrite.All"],
+    justification:
+      "action.assign-autopilot-profile targets a Windows Autopilot deployment profile. THE STORED " +
+      "ENDPOINT CANNOT RUN AS THIS PLATFORM CALLS IT, for two separate reasons, both filed (see #2858's " +
+      "DONE bookend for the issue number). (1) The entire windowsAutopilotDeploymentProfile resource is " +
+      "documented ONLY in the beta Microsoft Graph endpoint — requesting the v1.0 URL redirects to the " +
+      "beta moniker, and its Methods table lists just Get and assign — while lib/graph.ts pins " +
+      "GRAPH_BASE to https://graph.microsoft.com/v1.0, so this call 404s at the transport before any " +
+      "permission is checked. (2) The assign action's only documented parameter is `deviceIds` (String " +
+      "collection), but the stored body is a groupAssignmentTarget shape, which belongs to the profile's " +
+      "`assignments` relationship, not to this action. The permission is recorded here anyway because it " +
+      "is DeviceManagementServiceConfig.ReadWrite.All whichever of the two mechanisms the step is fixed " +
+      "to use — Microsoft scopes the whole Autopilot enrolment surface under it.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-enrollment-windowsautopilotdeploymentprofile-assign",
+    grantRecommended: false,
+    notRequestedReason:
+      "DeviceManagementServiceConfig.ReadWrite.All would be a new permission covering Intune's whole " +
+      "service-configuration surface (enrolment restrictions, Autopilot, Apple/Android enrolment " +
+      "profiles), and it is being asked for on behalf of a step that cannot execute at all until the " +
+      "endpoint and body are corrected. Requesting it now would enlarge every customer's consent for " +
+      "something that is broken independently of consent.",
+  },
+  {
+    // #2858 — action.resolve-alert. Sibling of the PATCH /security/incidents/*
+    // rule above; deliberately NOT collapsed into it, because SecurityAlert and
+    // SecurityIncident are separate Microsoft permissions.
+    method: "PATCH",
+    pattern: "/security/alerts_v2/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "SecurityAlert.ReadWrite.All",
+      higherPrivileged: "Not available.",
+    },
+    permissions: ["SecurityAlert.ReadWrite.All"],
+    justification:
+      "action.resolve-alert sets a Microsoft 365 Defender alert's status to resolved (confirmed against " +
+      "the live template body). Microsoft documents one application permission with no higher-privileged " +
+      "alternative. SecurityIncident.ReadWrite.All — which security-incident-response-v1 step 5 already " +
+      "holds — does NOT cover alerts: incidents and alerts are separately permissioned resources, so this " +
+      "is a genuinely new permission rather than a reuse. Note this endpoint is unavailable in the China " +
+      "(21Vianet) national cloud per the same page; Global, GCC L4 and GCC High L5 all support it.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/security-alert-update",
+    grantRecommended: false,
+    notRequestedReason:
+      "SecurityAlert.ReadWrite.All is narrow and well-scoped — this refusal is about ORDER, not about the " +
+      "scope being objectionable. No Config Pack wires an alert-resolution step today, and the standing " +
+      "rule for this section is that an unwired step does not enlarge the consent screen. This is the " +
+      "most likely of the refused permissions to be flipped: the moment a pack resolves alerts alongside " +
+      "incidents, request it.",
+  },
+  {
+    // #2858 — action.set-out-of-office.
+    method: "PATCH",
+    pattern: "/users/*/mailboxSettings",
+    documentedApplicationTiers: {
+      leastPrivileged: "MailboxSettings.ReadWrite",
+      higherPrivileged: "Not available.",
+    },
+    permissions: ["MailboxSettings.ReadWrite"],
+    justification:
+      "action.set-out-of-office turns on a departing or absent user's automatic replies (the live template " +
+      "body sets automaticRepliesSetting.status to AlwaysEnabled) — the mailbox half of an offboarding. " +
+      "Microsoft documents one application permission and no alternative. Note the name has no `.All` " +
+      "suffix but is still tenant-wide in app-only mode: as an application permission MailboxSettings." +
+      "ReadWrite reaches every mailbox in the tenant unless the tenant scopes it down with an Exchange " +
+      "application access policy, which is an Exchange-side control this platform does not set.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/user-update-mailboxsettings",
+    grantRecommended: false,
+    notRequestedReason:
+      "MailboxSettings.ReadWrite would be the write app's first mailbox-data permission, reaching every " +
+      "mailbox in the tenant, and no Config Pack ships an out-of-office step. Worth noting for whoever " +
+      "picks this up: offboarding-v1's other mailbox work goes through Exchange Online rather than Graph " +
+      "(the exchange-online:// endpoints isNonGraphEndpoint() excludes), so wiring this step is a " +
+      "decision about which transport owns mailbox writes, not just a consent question.",
+  },
+  {
+    // #2858 — action.update-org-contact-info. Two path segments; the four-segment
+    // PATCH /organization/*/branding/localizations/* rule above is unaffected.
+    method: "PATCH",
+    pattern: "/organization/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "Organization.ReadWrite.All",
+      higherPrivileged: "Not available.",
+    },
+    permissions: ["Organization.ReadWrite.All"],
+    justification:
+      "action.update-org-contact-info sets the tenant's technicalNotificationMails (confirmed against the " +
+      "live template body) — the address Microsoft sends service and security notifications to. Microsoft " +
+      "documents one application permission with no alternative. It is NOT covered by " +
+      "OrganizationalBranding.ReadWrite.All, which quickstart-v1 already holds: that permission is scoped " +
+      "to the branding sub-resource only, which is why the branding localisation rule above sits at a " +
+      "different path.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/organization-update",
+    grantRecommended: false,
+    notRequestedReason:
+      "Organization.ReadWrite.All is tenant-object write — the same class as Directory.ReadWrite.All in " +
+      "blast radius even though it is narrower in surface, and a test in this suite already asserts it is " +
+      "never in the requested set. Redirecting where a tenant's security notifications land is exactly " +
+      "the kind of change a customer's security review would want to see justified, and no Config Pack " +
+      "ships the step.",
+  },
 ];
 
 /**
@@ -1012,8 +1498,19 @@ export function requiredPermissionsForWrite(
     ) ?? null;
 
   const required = new Set<string>(rule?.permissions ?? []);
+  // A refused rule reports back only the permissions the platform genuinely does
+  // NOT hold. Git #2858: `grantRecommended` is a property of the RULE, but a rule
+  // can require two permissions of which one is already requested for a shipped
+  // step — POST /applications/*/owners/$ref needs Directory.Read.All (refused) and
+  // Application.ReadWrite.All (held, for the service-principal member add). Naming
+  // the held one as "not requested" would tell a reader the platform lacks a
+  // permission it demonstrably has, and would contradict DERIVED_WRITE_APP_PERMISSIONS.
+  // The step is still blocked, because `required` is unchanged and the refused
+  // permission is still missing from it.
   const notRequested = new Set<string>(
-    rule && rule.grantRecommended === false ? rule.permissions : [],
+    rule && rule.grantRecommended === false
+      ? rule.permissions.filter((p) => !DERIVED_WRITE_APP_PERMISSIONS.includes(p))
+      : [],
   );
 
   const extra = opts.templateId ? TEMPLATE_EXTRA_PERMISSIONS[opts.templateId] : undefined;
@@ -1059,13 +1556,22 @@ export const DERIVED_WRITE_APP_PERMISSIONS: readonly string[] = (() => {
  * `appOnlyUnsupported` rules contribute nothing here by construction — they carry
  * no permissions, because Microsoft documents none. They are not a permission this
  * platform declined to ask for; see APP_ONLY_UNSUPPORTED_OPERATIONS below.
+ *
+ * Git #2858 — a permission another rule genuinely requests is filtered out here
+ * even if a refused rule also lists it. `grantRecommended` marks a RULE, and a
+ * rule can need one permission the platform holds plus one it doesn't (see
+ * POST /applications/*​/owners/$ref). This list means "permissions the platform
+ * does not hold, and why", so a held permission must never appear in it — the
+ * same filter `requiredPermissionsForWrite` applies to its `notRequested`.
  */
 export const DOCUMENTED_BUT_NOT_REQUESTED: readonly { permission: string; reason: string }[] =
   GRAPH_WRITE_PERMISSION_RULES.filter((r) => r.grantRecommended === false).flatMap((r) =>
-    r.permissions.map((permission) => ({
-      permission,
-      reason: r.notRequestedReason ?? "not requested",
-    })),
+    r.permissions
+      .filter((permission) => !DERIVED_WRITE_APP_PERMISSIONS.includes(permission))
+      .map((permission) => ({
+        permission,
+        reason: r.notRequestedReason ?? "not requested",
+      })),
   );
 
 /**
