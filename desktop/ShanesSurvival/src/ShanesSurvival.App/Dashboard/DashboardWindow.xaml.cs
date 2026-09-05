@@ -253,13 +253,25 @@ public partial class DashboardWindow : Window
         stack.Children.Add(balanceBlock);
         if (!string.IsNullOrWhiteSpace(debt.Notes))
         {
-            stack.Children.Add(new TextBlock
+            // #2924: the full notes field is real audit/servicer documentation, not designed
+            // card copy — the card body above already surfaces the real short status
+            // (FormatDebtStatus) and balance/minimum-payment. Keep the full text reachable,
+            // collapsed by default, instead of dumping it verbatim into the card.
+            stack.Children.Add(new Expander
             {
-                Text = debt.Notes,
-                Style = (Style)Application.Current.Resources["MutedTextStyle"],
+                Header = "Details",
+                Foreground = ThemeBrush("SecondaryTextBrush"),
                 FontSize = 12,
-                Margin = new Thickness(0, 2, 0, 0),
-                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 6, 0, 0),
+                IsExpanded = false,
+                Content = new TextBlock
+                {
+                    Text = debt.Notes,
+                    Style = (Style)Application.Current.Resources["MutedTextStyle"],
+                    FontSize = 12,
+                    Margin = new Thickness(0, 6, 0, 0),
+                    TextWrapping = TextWrapping.Wrap,
+                },
             });
         }
 

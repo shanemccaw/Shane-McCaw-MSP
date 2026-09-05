@@ -6,7 +6,8 @@
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
         Title="Connect a bank account" Height="640" Width="480"
-        WindowStartupLocation="CenterOwner">
+        WindowStartupLocation="CenterOwner"
+        Style="{StaticResource {x:Type Window}}">
     <Grid>
         <wv2:WebView2 x:Name="LinkWebView"/>
         <TextBlock x:Name="ErrorText" Foreground="DarkRed" Margin="20" TextWrapping="Wrap"

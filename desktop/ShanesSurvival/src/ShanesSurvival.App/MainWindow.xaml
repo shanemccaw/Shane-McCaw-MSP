@@ -6,7 +6,8 @@
         xmlns:local="clr-namespace:ShanesSurvival.App"
         mc:Ignorable="d"
         Title="Shane's Survival" Height="450" Width="800"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Style="{StaticResource {x:Type Window}}">
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>

@@ -6,7 +6,8 @@
         mc:Ignorable="d"
         Title="Settings" Height="420" Width="520"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        Style="{StaticResource {x:Type Window}}">
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
