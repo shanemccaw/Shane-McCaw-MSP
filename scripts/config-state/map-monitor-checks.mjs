@@ -23,12 +23,22 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
  *   "/reports/getEmailActivityUserDetail(period='D7')"
  *   "/groups/{itemId}/planner/plans"                 (fan-out placeholder)
  *   "/servicePrincipals?$expand=appRoleAssignedTo(...)&$select=id,displayName"
+ *   "https://graph.microsoft.com/beta/roleManagement/directory/transitiveRoleAssignments?$filter=..."
+ *
+ * Git #2929: an absolute `https://graph.microsoft.com/{version}/...` URL is a real,
+ * intentional way to target `beta` (per Git #1796's `graphFetchForTenant` — the only
+ * way, since `graphFetchPaginated`'s default `GRAPH_BASE` is `v1.0`-only), so that
+ * host+scheme+version prefix must be stripped before comparing to a bare `graph_path`,
+ * the same way the query string already is.
  */
+const GRAPH_ABSOLUTE_URL_PREFIX = /^https:\/\/graph\.microsoft\.com\/(?:v1\.0|beta)(?=\/|$)/i;
+
 export function normalizeGraphEndpoint(endpoint) {
   if (!endpoint) return null;
   let p = endpoint.trim();
   if (p.startsWith("(unused")) return null; // placeholder on non-Graph executors
   p = p.split("?")[0];
+  p = p.replace(GRAPH_ABSOLUTE_URL_PREFIX, ""); // absolute beta/v1.0 host+scheme prefix
   p = p.replace(/\([^)]*\)/g, "");           // OData function arguments
   if (!p.startsWith("/")) p = `/${p}`;
   p = p.replace(/\/+$/, "");
