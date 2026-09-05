@@ -68,6 +68,16 @@ export interface CreateNotificationOptions {
   recipient: NotificationRecipient;
   channels?: NotificationChannel[];
   mspId?: number;
+  /**
+   * Set true when the caller already sends its own branded/templated email for
+   * this event (e.g. `sendEmailFromTemplate` in portal-messages.ts /
+   * admin-status-reports.ts). Suppresses this function's own
+   * `deliverPreferenceEmail` so an opted-in customer never gets both (#2933 —
+   * the double-email risk #2849's migration to `createNotification()` left
+   * masked as long as no customer had `emailEnabled: true` for the category).
+   * In-app notification, unread count, and webhook fan-out are unaffected.
+   */
+  suppressPreferenceEmail?: boolean;
 }
 
 /**
@@ -143,6 +153,7 @@ export async function createNotification(opts: CreateNotificationOptions): Promi
     notifType = "general",
     recipient,
     mspId,
+    suppressPreferenceEmail = false,
   } = opts;
 
   try {
@@ -217,7 +228,7 @@ export async function createNotification(opts: CreateNotificationOptions): Promi
       // Customer-preference-gated side channels — email and outbound webhook.
       // Fire-and-forget: never block or fail the in-app notification on these.
       if (recipient.type === "customer_user") {
-        if (customerPref.emailEnabled) {
+        if (customerPref.emailEnabled && !suppressPreferenceEmail) {
           void deliverPreferenceEmail(userId, title, body);
         }
         void fanOutToCustomerWebhook(userId, { notifId, title, body, category, severity, linkPath });
