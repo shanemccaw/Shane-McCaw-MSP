@@ -35,6 +35,15 @@ describe("normaliseEndpoint", () => {
   it("drops the query string and leaves $ref alone", () => {
     expect(normaliseEndpoint("/groups/{{g}}/members/{{u}}/$ref?x=1")).toBe("/groups/*/members/*/$ref");
   });
+
+  it("strips an absolute graph.microsoft.com v1.0/beta host prefix (Git #2939), so a stored absolute-URL endpoint matches the same relative rule pattern", () => {
+    expect(
+      normaliseEndpoint("https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{{profileId}}/assign"),
+    ).toBe("/deviceManagement/windowsAutopilotDeploymentProfiles/*/assign");
+    expect(normaliseEndpoint("https://graph.microsoft.com/v1.0/users/{{userId}}/assignLicense")).toBe(
+      "/users/*/assignLicense",
+    );
+  });
 });
 
 describe("isNonGraphEndpoint", () => {
@@ -610,7 +619,7 @@ describe("#2858 — the unwired catalogue resolves to a documented permission", 
     ["action.retire-device", "POST", "/deviceManagement/managedDevices/{{deviceId}}/retire", ["DeviceManagementManagedDevices.PrivilegedOperations.All"], false],
     ["action.fresh-start-device", "POST", "/deviceManagement/managedDevices/{{deviceId}}/windowsDefenderScan", ["DeviceManagementManagedDevices.PrivilegedOperations.All"], false],
     ["action.remote-wipe-device", "POST", "/deviceManagement/managedDevices/{{deviceId}}/wipe", ["DeviceManagementManagedDevices.PrivilegedOperations.All"], false],
-    ["action.assign-autopilot-profile", "POST", "/deviceManagement/windowsAutopilotDeploymentProfiles/{{profileId}}/assign", ["DeviceManagementServiceConfig.ReadWrite.All"], false],
+    ["action.assign-autopilot-profile", "POST", "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{{profileId}}/assign", ["DeviceManagementServiceConfig.ReadWrite.All"], false],
     ["action.resolve-alert", "PATCH", "/security/alerts_v2/{{alertId}}", ["SecurityAlert.ReadWrite.All"], false],
     ["action.set-out-of-office", "PATCH", "/users/{{userId}}/mailboxSettings", ["MailboxSettings.ReadWrite"], false],
     ["action.update-org-contact-info", "PATCH", "/organization/{{tenantId}}", ["Organization.ReadWrite.All"], false],
