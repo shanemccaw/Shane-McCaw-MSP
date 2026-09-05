@@ -12,6 +12,7 @@ import {
   findMaintenanceCoverage,
   matchesMaintenanceScope,
   spanWithinMaintenanceWindow,
+  windowOverlapsRange,
   type MaintenanceWindowCandidate,
 } from "./portal-change-maintenance";
 
@@ -82,6 +83,43 @@ describe("spanWithinMaintenanceWindow", () => {
       recurrenceUntil: new Date("2026-08-08T00:00:00Z"),
     });
     expect(spanWithinMaintenanceWindow(w, new Date("2026-08-15T03:00:00Z"), new Date("2026-08-15T04:00:00Z"))).toBe(false);
+  });
+});
+
+describe("windowOverlapsRange", () => {
+  it("a one-off window overlapping the range is found", () => {
+    const w = windowFixture();
+    expect(windowOverlapsRange(w, new Date("2026-09-04T00:00:00Z"), new Date("2026-09-11T00:00:00Z"))).toBe(true);
+  });
+
+  it("a one-off window entirely outside the range is not found", () => {
+    const w = windowFixture();
+    expect(windowOverlapsRange(w, new Date("2026-09-11T00:00:00Z"), new Date("2026-09-18T00:00:00Z"))).toBe(false);
+  });
+
+  it("a weekly window anchored months ago still overlaps this week's range", () => {
+    const w = windowFixture({
+      startsAt: new Date("2026-01-03T02:00:00Z"), // a Saturday, months before the range checked
+      endsAt: new Date("2026-01-03T06:00:00Z"),
+      recurrence: "weekly",
+    });
+    // The Saturday that falls inside 2026-09-04 .. 2026-09-11.
+    expect(windowOverlapsRange(w, new Date("2026-09-04T00:00:00Z"), new Date("2026-09-11T00:00:00Z"))).toBe(true);
+  });
+
+  it("recurrenceUntil bounds how far the range check reaches", () => {
+    const w = windowFixture({
+      startsAt: new Date("2026-01-03T02:00:00Z"),
+      endsAt: new Date("2026-01-03T06:00:00Z"),
+      recurrence: "weekly",
+      recurrenceUntil: new Date("2026-02-01T00:00:00Z"),
+    });
+    expect(windowOverlapsRange(w, new Date("2026-09-04T00:00:00Z"), new Date("2026-09-11T00:00:00Z"))).toBe(false);
+  });
+
+  it("an inactive window never overlaps", () => {
+    const w = windowFixture({ active: false });
+    expect(windowOverlapsRange(w, new Date("2026-09-04T00:00:00Z"), new Date("2026-09-11T00:00:00Z"))).toBe(false);
   });
 });
 

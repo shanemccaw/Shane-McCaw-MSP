@@ -98,6 +98,12 @@ export default defineConfig({
       // matching (weekly/monthly/quarterly/annually cadence, global/tenant/
       // workload scoping) — pure, no database.
       "src/lib/portal-change-freeze.test.ts",
+      // #1504 — the maintenance calendar's own recurrence/scope math (same
+      // shape as the freeze module above). Pre-existing test file found
+      // missing from this allowlist entirely (#2922) — added here rather
+      // than filed as a standalone finding since it's this build's own
+      // change under test (windowOverlapsRange).
+      "src/lib/portal-change-maintenance.test.ts",
       "src/lib/portal-cab.test.ts",
       "src/lib/portal-cab-store.test.ts",
       // #1499 — Change Control execution record: pure plan-diff / outcome /

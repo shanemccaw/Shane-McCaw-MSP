@@ -6,6 +6,15 @@ to one of the files listed, cited to file:line. This is Phase 2 of the Portal bu
 (architect → build the endpoints → regenerate the contract pack → Design → wire) — no
 page/UI-shape decisions are made here.
 
+**Regenerated 2026-09-05 for #2922** (also under #1655): `GET /api/portal/dashboard`
+gained a real `overviewCounts` object — six cross-Feature roll-up counts (RBD waiting/
+active, Microsoft Changes this week, change schedule this week, remediation steps in
+progress, policies expiring soon) pulled from Risk Register, Message Center, Change
+Control's maintenance calendar, Remediation Tracker and Policy Decisions, none of which
+had a queryable aggregate before. Section 2's field table, source list, enum list and
+honest-empty notes below are updated for it; the timeline endpoint (§1) is unchanged by
+this pass.
+
 Both cited endpoints were confirmed real and live in the current codebase before any of
 this was written (Step 1 of #2446's own body):
 
@@ -24,13 +33,24 @@ Sources this pack is built against, and nothing else:
 
 - `artifacts/api-server/src/routes/portal-customer-timeline.ts` — the timeline endpoint
 - `artifacts/api-server/src/routes/portal-customer-engines.ts` — the dashboard endpoint
-  (`GET /api/portal/dashboard`, lines 383-660)
+  (`GET /api/portal/dashboard`, lines 413-882)
 - `artifacts/api-server/src/lib/doc-gate-coverage.ts` — `evaluateDocGateCoverage()`
 - `artifacts/api-server/src/lib/engine-registry.ts` — `ENGINE_DEFS` (engine key → label)
 - `artifacts/api-server/src/lib/tenant-signals.ts` — `resolveCustomerUserIds()` /
   `resolveSiblingUserIds()`, the multi-login scoping bridge
+- `artifacts/api-server/src/lib/portal-customer-scope.ts` — `resolveTenantScope()`, the
+  `(mspId, tenantId)` scoping pair `overviewCounts` (#2922) reads against
+- `artifacts/api-server/src/lib/portal-addon-entitlements.ts` — `hasAddOnEntitlement()`,
+  gating `changeScheduleThisWeek`
+- `artifacts/api-server/src/lib/portal-change-maintenance.ts` — `windowOverlapsRange()`,
+  the recurrence-cadence walk behind `changeScheduleThisWeek`
+- `artifacts/api-server/src/lib/portal-message-center.ts` — `effectiveDate()`, behind
+  `microsoftChangesThisWeek`
+- `artifacts/api-server/src/lib/remediation-tracker-terminal-state.ts` —
+  `remediationTerminalState()`, behind `remediationInProgress`
 - `lib/db/src/schema/msp.ts` — `msp_diagnostic_runs`, `msp_diagnostic_findings` (real
-  enum sources)
+  enum sources), plus `msp_risk_decisions` (`RISK_ACCEPTANCE_STATUSES`) and
+  `policy_decisions` (`reviewState`) for `overviewCounts`
 - `lib/db/src/schema/index.ts` — `tenant_engine_snapshots`, `insights_generated_documents`,
   `sales_offers`, `projects`, `client_services`, `kanban_tasks`, `invoices`, `reports`,
   `notifications`, `messages`, `services`, `tenants` (real column/enum sources)
@@ -107,59 +127,83 @@ All 5 are merged into one array, sorted descending by `timestamp` string compari
 ## 2. Wire contract — `GET /api/portal/dashboard`
 
 Auth: `requireAuth` (not `requireRole("CustomerUser")`) — deliberate, per the route's own
-header comment (`portal-customer-engines.ts:396-406`): the Assessment role sits below
+header comment (`portal-customer-engines.ts:402-411`): the Assessment role sits below
 CustomerUser in `ROLE_ORDER`, and both the War Room and the free Copilot Assessment
 dashboard (Assessment-tier surfaces) call this route, so gating one tier higher 403'd
 them. Consequence: Assessment/Free-tier customers now receive the full engine payload
 (`scores`, `results.summary.compositeScore`, per-pillar `score`, `telemetryStatus`,
 `type_attributes`) — the #164 paywall below still redacts findings/recommendation TEXT
 for unpaid customers, keyed on SOW agreement status, never on role. Same 400 shape as
-§1 if the JWT carries no `customerId` claim (`:412-415`).
+§1 if the JWT carries no `customerId` claim (`:417-420`).
 
-**This is THE single handler for this path** (`:385-394`) — a second, now-deleted
+**This is THE single handler for this path** (`:391-400`) — a second, now-deleted
 `portal-dashboard.ts` handler registered the identical path until #327; Express matches
 registration order and this router mounts first, so the deleted handler never executed
 for any real request. Nothing was lost deleting it; it was a strict subset of this
 route's payload, one field short (`customerName`).
 
-Response shape (`:620-657`):
+**#2922 adds one more resolved value before the try block**: `tenantScope` —
+`resolveTenantScope(customerId)` (`:440`), the `(mspId, tenantId)` pair every one of the
+six `overviewCounts` reads below is scoped by. `null` for an account whose tenant row
+carries no resolvable M365 identifier, in which case every `overviewCounts` field reads
+as a true `0` rather than erroring — the same "unresolvable scope is an honest empty
+register" contract `portal-risk-register.ts` / `portal-change-control.ts` /
+`portal-message-center.ts` already follow for their own reads of these same tables.
+
+Response shape (`:829-875`):
 
 | Field | Type | Nullability | Source |
 |---|---|---|---|
-| `scores` | `Record<string, number>` | not null | 6 named keys (`security`, `health`, `governance`, `drift`, `sla`, `scope_creep`) defaulted to `0`, spread with every other real `engineKey` from `tenant_engine_snapshots` (`:621-629`) |
-| `telemetryStatus` | `"in_progress" \| "completed"` | not null | `"in_progress"` iff `tenants.status === "onboarding"` (`:540`) |
-| `type_attributes` | `string[]` | not null | union of `dashboardModules`/`enabledModules` JSON arrays off active `client_services` → `services.typeAttributes` (`:498-528`); falls back to `["priority-health", "security", "copilot", "cost"]` if the tenant has no active service carrying either array |
-| `results.status` | `"running" \| "complete"` | not null | mirrors `telemetryStatus` (`:633`) |
-| `results.runId` | `string \| null` | nullable | first snapshot's `runId` (`:471`) |
-| `results.generatedAt` | `string \| null` (ISO) | nullable | first snapshot's `capturedAt` (`:472`) |
-| `results.summary.compositeScore` | `number \| null` | nullable | mean of one score per distinct `engineKey`, rounded; `null` if zero snapshots exist (`:637`) |
-| `results.summary.priorityItems` | `[]` | not null, **always empty** | `:638` — hardcoded literal, no data source. Flagged, see §5. |
+| `scores` | `Record<string, number>` | not null | 6 named keys (`security`, `health`, `governance`, `drift`, `sla`, `scope_creep`) defaulted to `0`, spread with every other real `engineKey` from `tenant_engine_snapshots` (`:831-839`) |
+| `telemetryStatus` | `"in_progress" \| "completed"` | not null | `"in_progress"` iff `tenants.status === "onboarding"` (`:616`) |
+| `type_attributes` | `string[]` | not null | union of `dashboardModules`/`enabledModules` JSON arrays off active `client_services` → `services.typeAttributes` (`:574-604`); falls back to `["priority-health", "security", "copilot", "cost"]` if the tenant has no active service carrying either array |
+| `results.status` | `"running" \| "complete"` | not null | mirrors `telemetryStatus` (`:843`) |
+| `results.runId` | `string \| null` | nullable | first snapshot's `runId` (`:488`) |
+| `results.generatedAt` | `string \| null` (ISO) | nullable | first snapshot's `capturedAt` (`:489`) |
+| `results.summary.compositeScore` | `number \| null` | nullable | mean of one score per distinct `engineKey`, rounded; `null` if zero snapshots exist (`:847`) |
+| `results.summary.priorityItems` | `PriorityItem[]` | not null (`[]` if none) | real query (#2500) over the customer's most recent `msp_diagnostic_findings` run, critical/warning only, worst-severity-first, top 5; title/description null for an unpaid customer (`:517-565`) — see §5 for this row's correction to the pack's original #2446 text |
 | `results.pillars` | `Record<string, PillarEntry>` | not null (`{}` if no snapshots) | one entry per distinct `engineKey`, see below |
 | `projects` | `EnrichedProject[]` | not null (`[]`) | active `projects` rows across the customer's linked logins (`resolveCustomerUserIds`), top 5 by `updatedAt`, each enriched with `currentTask` (the row in its `kanban_tasks.column === "in_progress"`, plus 1-based step number and total task count) or `null` |
 | `clientServices` | `{ cs: ClientService, service: { name, billingType, price } }[]` | not null (`[]`) | active or paused `client_services` joined to `services`, top 6 by `purchasedAt` |
 | `invoices` | `Invoice[]` (full row) | not null (`[]`) | top 5 by `createdAt`; `amount` is integer cents (Git #1610) — no consumer renders it as money in this payload, rides through as cents |
 | `reports` | `Report[]` (full row) | not null (`[]`) | top 3 by `createdAt` |
-| `unreadNotifications` | `number` | not null | count of `notifications` where `userId = req.user.id` (this one login, NOT bridged — deliberate per `:609-611`, notifications are genuinely per-login) and `read = false` |
+| `unreadNotifications` | `number` | not null | count of `notifications` where `userId = req.user.id` (this one login, NOT bridged — deliberate, notifications are genuinely per-login) and `read = false` |
 | `unreadMessages` | `number` | not null | count of `messages` where `readByClient = false`, bridged across the customer's linked logins |
 | `customerStatus` | `string \| null` | nullable, explicit | `tenants.status`, coalesced to `null` (not `undefined`) so the key never vanishes from the JSON payload |
 | `customerName` | `string \| null` | nullable, explicit | `tenants.customerName`, same `?? null` treatment |
 | `mspId` | `number \| null` | nullable | `req.user.mspId` from the JWT |
+| `overviewCounts` | `OverviewCounts` | not null | #2922 — six cross-Feature roll-up counts, see below (`:865-872`) |
 
-Each `results.pillars[engineKey]` entry (`:491-493`):
+Each `results.pillars[engineKey]` entry (`:508-510`):
 
-- Paid tier (`isPaidTier`, see below): `{ score, status: "complete", findings: string[], recommendations: string[] }` — real text extracted from the snapshot's `breakdown` JSONB (`finding`/`message`/`label` → findings; `recommendation`/`action` → recommendations, `:479-489`).
+- Paid tier (`isPaidTier`, see below): `{ score, status: "complete", findings: string[], recommendations: string[] }` — real text extracted from the snapshot's `breakdown` JSONB (`finding`/`message`/`label` → findings; `recommendation`/`action` → recommendations, `:496-506`).
 - Unpaid tier: `{ score, status: "complete", findingsCount, recommendationsCount }` — counts only, no text.
 
-`isPaidTier` (`:446-456`, the #164 paywall): true iff the customer (across
+`isPaidTier` (`:463-473`, the #164 paywall): true iff the customer (across
 `resolveCustomerUserIds`) has any `assessment_sow_agreements` row with
 `status in ("paid", "free_activated")`. **Scores/status are never gated by this — only
 the finding/recommendation strings themselves.**
 
-`EnrichedProject.currentTask` (`:547-581`): `{ stepNumber, totalSteps, title } | null`,
+`EnrichedProject.currentTask` (`:623-657`): `{ stepNumber, totalSteps, title } | null`,
 computed from that project's `kanban_tasks` ordered by `order` — `stepNumber` is the
 1-based index of the first task whose `column === "in_progress"` within that ordered
 list, `totalSteps` is the project's total task count. `null` if no task is
 `in_progress`.
+
+### `overviewCounts` (#2922) — cross-Feature roll-up counts
+
+All six are `0` when `tenantScope` (`:440`) is null — no resolvable tenant identifier is
+an honest, real `0` for every count, not an error. None of these five source tables had
+a queryable aggregate before this build.
+
+| Field | Type | Source |
+|---|---|---|
+| `rbdWaiting` | `number` | `msp_risk_decisions` rows scoped `(mspId, tenantId)` with `status = "pending_signature"` (`:715-731`) |
+| `rbdActive` | `number` | same table/scope, `status = "active"` (`:715-731`) — the third `RISK_ACCEPTANCE_STATUSES` value, `"revoked"`, counts toward neither |
+| `microsoftChangesThisWeek` | `number` | `msp_message_center_items` rows scoped `(customerId, mspId)`, filtered by the same `effectiveDate()` (`actionRequiredByDateTime ?? endDateTime ?? startDateTime ?? lastModifiedDateTime`, `portal-message-center.ts:171-172`) the Microsoft Changes page itself uses, falling in `[now, now + 7 days)` (`:738-755`) |
+| `changeScheduleThisWeek` | `number` | `change_maintenance_windows` rows scoped identically to `portal-change-control.ts`'s own `GET /change-control/maintenance-windows` read (global scope, matching-tenant scope, or any workload scope), gated on the same `change_control` add-on entitlement that route requires (`hasAddOnEntitlement`, `0` and no query at all when unentitled) — then `windowOverlapsRange()` (`portal-change-maintenance.ts`) walks each window's own recurrence cadence to find whether an occurrence falls in `[now, now + 7 days)`, so a recurring window anchored months ago still counts (`:764-787`) |
+| `remediationInProgress` | `number` | `remediation_tracker_steps` rows scoped `customerId`, counted where `remediationTerminalState(status, verificationState) === "outstanding"` (`remediation-tracker-terminal-state.ts`) — a customer claim (`completed` / `already_handled` / `deferred` / `shane_handles`) neither re-verified by a scan nor exited to the risk register. Reuses the tracker route's own three-state model rather than re-deriving it, so the two can never disagree (`:796-805`) |
+| `policiesExpiringSoon` | `number` | `policy_decisions` rows scoped `(mspId, tenantId)`, counted where `reviewState` (#2518) is `"due"` or `"overdue"` — the same operational review clock `alert-engine.ts`'s `advancePolicyReviewClock` already advances on a schedule (`RISK_REVIEW_DUE_LEAD_DAYS = 14`-day lead window for `"due"`). A dependency-based decision (#1526) has a null `reviewState` and is correctly excluded — there is no "soon" for a condition with no date (`:814-826`) |
 
 ---
 
@@ -201,6 +245,16 @@ list, `totalSteps` is the project's total task count. `null` if no task is
 - **Kanban column** — `kanban_tasks.column`: `"backlog" | "in_progress" |
   "waiting_on_customer" | "review" | "completed"` (`index.ts:681`). Only `"in_progress"`
   is consumed (for `currentTask`).
+- **Risk acceptance status** (#2922) — `msp_risk_decisions.status`: `"pending_signature" |
+  "active" | "revoked"` (`RISK_ACCEPTANCE_STATUSES`, `msp.ts:6204`). `overviewCounts`
+  reads `"pending_signature"` as `rbdWaiting` and `"active"` as `rbdActive`; `"revoked"`
+  counts toward neither.
+- **Review clock state** (#2922) — `msp_risk_decisions.reviewState` /
+  `policy_decisions.reviewState`: `"on_track" | "due" | "overdue"`, or `null` for a
+  dependency-based policy decision (#1526) with no date clock at all. `overviewCounts`'
+  `policiesExpiringSoon` reads `policy_decisions.reviewState in ("due", "overdue")`,
+  advanced on a schedule by `alert-engine.ts`'s `advancePolicyReviewClock`
+  (`RISK_REVIEW_DUE_LEAD_DAYS = 14` days).
 
 ---
 
@@ -210,7 +264,7 @@ list, `totalSteps` is the project's total task count. `null` if no task is
 by `eq(..., userId)` — the single logged-in user's own `users.id` (`:172, 193`) — instead
 of `resolveCustomerUserIds()`/`resolveSiblingUserIds()`, the multi-login bridge this
 exact file's sibling `GET /api/portal/dashboard` route already uses four times in the
-same file (`portal-customer-engines.ts:423, 544, 596, 602, 606`) for `projects`,
+same file (`portal-customer-engines.ts:429, 580, 620, 671, 678, 682`) for `projects`,
 `clientServices`, `invoices`, and `reports`.**
 
 This is not a style inconsistency — `insights_generated_documents.customerId`'s own
@@ -248,23 +302,31 @@ Filed as #2499 (sibling of this issue's own parent #1655), labeled `bug`.
   `snapshots` at `limit * 2`, `:306-307`) — i.e. it is a genuine "there may be more,"
   never a blind "always offer a next page." A tenant with fewer than `limit` total real
   events across all 5 sources gets `nextCursor: null` even on a full first page.
-- **Dashboard `results.summary.priorityItems`**: **hardcoded `[]`, no backing query at
-  all** (`portal-customer-engines.ts:638`). This is not an honest-empty state (a real
-  "no priority items exist for this tenant") — it is a field that can never be anything
-  but `[]` regardless of tenant data, because nothing populates it. If Design intends to
-  draw a "priority items" list on Customer Home, this field needs a real backing query
-  before it can be wired — flagged here as **BUILD IT**, not decided in this pack. Filed
-  as #2500 (sibling of #1655), labeled `bug`.
+- **Dashboard `results.summary.priorityItems`**: **UPDATE (this pass) — no longer
+  hardcoded.** #2500 (filed by the original #2446 extraction below) shipped since this
+  pack was first written: `priorityItems` is now a real query over the customer's most
+  recent `msp_diagnostic_findings` run, worst-severity-first, gated by the same #164
+  paywall as `results.pillars` (title/description null for an unpaid customer; severity/
+  checkKey always visible) — see `portal-customer-engines.ts:517-565`. A genuinely empty
+  array now means "no critical/warning findings on the latest run," a real honest-empty
+  state, not the always-`[]` literal this line originally flagged. #2500 is closed.
 - **Dashboard `results.pillars`**: `{}` when the tenant has zero `tenant_engine_snapshots`
   rows — a genuinely never-scanned tenant, not a read failure. There is no separate
   read-failed branch in this route; a DB error 500s the whole request
-  (`portal-customer-engines.ts:658-660`, generic `catch`), same two-state contract as the
+  (`portal-customer-engines.ts:876-879`, generic `catch`), same two-state contract as the
   timeline route above.
-- **Dashboard `customerStatus`/`customerName`**: both explicitly `?? null` (`:654-655`)
+- **Dashboard `customerStatus`/`customerName`**: both explicitly `?? null` (`:863-864`)
   rather than left `undefined`, specifically so the keys never vanish from the JSON
   payload for a customer with no `tenants` row match — called out in the route's own
   comment as a deliberate shape guarantee for `app-shell`'s inactive banner and
   `CustomerDashboardExtras`' promo gate.
+- **Dashboard `overviewCounts`** (#2922): every one of the six fields is a real `0`, not
+  an omitted key or an error, in two distinct honest-empty cases — (1) `tenantScope` is
+  null (no resolvable M365 tenant identifier: all six read `0`), and (2)
+  `changeScheduleThisWeek` specifically when the tenant has no active `change_control`
+  add-on entitlement (`0`, no query issued at all — the same 402 that route gives a
+  direct caller, just folded into an honest `0` here rather than surfaced as an error on
+  a payload with five other real fields).
 
 ---
 

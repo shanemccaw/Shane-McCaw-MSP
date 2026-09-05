@@ -28,6 +28,8 @@
  *
  * The DB is mocked with a FIFO queue mirroring the route's exact query order —
  * same harness as portal-customer-engines-assessment-redaction.test.ts:
+ *   0. tenantsTable (#2922: resolveTenantScope's own lookup, now the very
+ *      first DB call the route makes, before the try block — see beforeEach)
  *   1. tenantEngineSnapshotsTable   (engine snapshots)
  *   2. assessmentSowAgreementsTable (#164 paid/free_activated gate)
  *   3. mspDiagnosticFindingsTable   (#2500: latest run id for priorityItems)
@@ -183,6 +185,12 @@ function queueFullDashboard({ paid = false }: { paid?: boolean } = {}) {
 
 beforeEach(() => {
   mockResultQueue = [];
+  // #2922 — resolveTenantScope's own tenantsTable lookup, now the very first
+  // DB call the route makes (before the try block). Empty result -> no
+  // resolvable tenant -> tenantScope null -> the 5 cross-Feature roll-up
+  // queries that build added are skipped entirely, leaving every push below
+  // (which predates that build) in its original order and meaning.
+  mockResultQueue.push([]);
 });
 
 describe("GET /api/portal/dashboard — #327 route collision fix", () => {

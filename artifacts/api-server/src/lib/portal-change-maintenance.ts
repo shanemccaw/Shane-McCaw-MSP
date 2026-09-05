@@ -112,6 +112,41 @@ export function spanWithinMaintenanceWindow(window: MaintenanceWindowSpan, spanS
   return false;
 }
 
+/**
+ * Whether ANY occurrence of this window — walking its recurrence cadence
+ * forward from `startsAt` — overlaps `[rangeStart, rangeEnd)`. A different
+ * question from `spanWithinMaintenanceWindow` above: that asks "is this one
+ * booked change fully inside an occurrence"; this asks "does this standing
+ * rule apply at all during this stretch of calendar" — what the dashboard
+ * roll-up (#2922, "change schedule for the week") needs to count a recurring
+ * window (e.g. "every Saturday") that was created months ago and whose raw
+ * `startsAt` column is long past, but which still fires every week.
+ *
+ * Same cadence walk as `spanWithinMaintenanceWindow`, bounded by the same
+ * `MAX_OCCURRENCES` safety cap and by stopping as soon as an occurrence starts
+ * at or after `rangeEnd` — occurrences only move forward in time, so nothing
+ * past that point can still land inside the range.
+ */
+export function windowOverlapsRange(window: MaintenanceWindowSpan, rangeStart: Date, rangeEnd: Date): boolean {
+  if (!window.active) return false;
+  const durationMs = window.endsAt.getTime() - window.startsAt.getTime();
+  if (durationMs <= 0) return false;
+  if (rangeEnd.getTime() <= rangeStart.getTime()) return false;
+
+  if (window.recurrence === "none") {
+    return window.startsAt.getTime() < rangeEnd.getTime() && window.endsAt.getTime() > rangeStart.getTime();
+  }
+
+  for (let i = 0; i < MAX_OCCURRENCES; i++) {
+    const occStart = addPeriod(window.startsAt, window.recurrence, i);
+    if (window.recurrenceUntil && occStart.getTime() > window.recurrenceUntil.getTime()) break;
+    if (occStart.getTime() >= rangeEnd.getTime()) break;
+    const occEnd = occStart.getTime() + durationMs;
+    if (occEnd > rangeStart.getTime()) return true;
+  }
+  return false;
+}
+
 /** The (mspId, tenantId, workload) a submitted change is evaluated against. */
 export interface MaintenanceMatchContext {
   readonly mspId: number;
