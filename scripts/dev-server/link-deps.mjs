@@ -243,7 +243,25 @@ export function linkDeps(repoRoot, worktreePath) {
     const rel = path.posix.join(host, "node_modules");
     const target = path.join(repoRoot, rel);
     const link = path.join(worktreePath, rel);
-    if (existsSync(link)) continue; // already linked / present
+
+    // Branch on what the EXISTING link actually IS, not just this host's CURRENT
+    // hostHasWorkspaceScope() classification (Git #2927) -- a host can flip
+    // categories over time (e.g. lib/db held an @workspace dep when a long-lived
+    // worktree like the dev-server coordinator's own at C:\dev-server was first
+    // linked, then stopped; hostHasWorkspaceScope now reads false, but the link it
+    // left behind is still the real per-package dir from back then, not a wholesale
+    // junction). A reparse point is a live view of target and is always current, so
+    // only that short-circuits. A real directory -- whichever path produced it --
+    // is NOT a live view and must be re-synced, since it can be missing entries
+    // added to target's node_modules after it was built (Git #2927: lib/db's
+    // `vitest` devDependency, added weeks after this worktree's node_modules was
+    // created, silently never synced in). linkHostPerPackage is idempotent per
+    // entry (skips one that already exists), so re-running it is always safe.
+    if (existsSync(link)) {
+      if (isReparsePoint(link)) continue;
+      linkHostPerPackage(repoRoot, worktreePath, host, target, link, created);
+      continue;
+    }
 
     if (!hostHasWorkspaceScope(repoRoot, host)) {
       mkdirSync(path.dirname(link), { recursive: true });
