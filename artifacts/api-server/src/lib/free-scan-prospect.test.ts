@@ -97,11 +97,12 @@ afterAll(async () => {
 });
 
 describe("Free Scan product mapping (Git #1355)", () => {
-  it("license-waste-audit-free is a public, free assessment → role resolves to Assessment", async () => {
+  it("license-waste-audit-free is a landing-page-only, free assessment → role resolves to Assessment", async () => {
     const [svc] = await db
       .select({
         serviceType: servicesTable.serviceType,
         isPublic: servicesTable.isPublic,
+        visibility: servicesTable.visibility,
         priceCents: servicesTable.priceCents,
       })
       .from(servicesTable)
@@ -112,7 +113,13 @@ describe("Free Scan product mapping (Git #1355)", () => {
     // service_type "assessment" is what routes the consent-time Prospect to the
     // low-privilege "Assessment" role instead of "CustomerUser".
     expect(svc.serviceType).toBe("assessment");
-    expect(svc.isPublic).toBe(true);
+    // Git #1169: this product is reached only through the marketing /scan
+    // consent funnel, never the general public catalog. GET
+    // /api/catalog/assessments filters on isPublic (not visibility), so both
+    // must be set for it to actually stay off the general pricing page —
+    // isPublic=true here was a real gap (#1169's migration fixed it).
+    expect(svc.isPublic).toBe(false);
+    expect(svc.visibility).toBe("landing_page_only");
     // A Free Scan carries no payment gate.
     expect(svc.priceCents).toBe(0);
     expect(roleForServiceType(svc.serviceType)).toBe("Assessment");
