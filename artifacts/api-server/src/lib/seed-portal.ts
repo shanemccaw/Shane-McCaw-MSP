@@ -765,7 +765,14 @@ export async function seedPortalDemo(): Promise<void> {
     },
   ]);
 
-  // Notifications
+  // Notifications — deliberately a direct db.insert(notificationsTable), not
+  // createNotification() (Git #2932's open question on this exact site). This is
+  // demo-tenant seed data replaying a fixed historical timeline (hardcoded 2026
+  // dates, one row pre-marked `read: true`) for the seeded demo client, never a
+  // real user action — createNotification() has no way to seed `read: true`
+  // directly, and its preference-gated email/webhook fan-out exists to notify a
+  // real recipient of something that just happened, which is wrong for backfilled
+  // demo history. Left as-is on purpose.
   await db.insert(notificationsTable).values([
     {
       userId: client.id,

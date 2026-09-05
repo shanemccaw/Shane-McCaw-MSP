@@ -665,8 +665,29 @@ describe("#2858 — the unwired catalogue resolves to a documented permission", 
     // count look better: the v1.0 microsoft.graph.security.alert resource's Methods
     // table documents List, Get, Update, Create comment and Move alerts — there is
     // no create/POST on /security/alerts_v2 at all, so there is no Microsoft Learn
-    // Permissions table to quote. Filed as its own issue; see #2858's DONE bookend.
-    // rule: null is the honest answer for an endpoint Microsoft does not expose.
+    // Permissions table to quote. rule: null is the honest answer for an endpoint
+    // Microsoft does not expose.
+    //
+    // #2937 RESOLVED the row itself, and this assertion survives that on purpose.
+    // #2937 asked which of two fixes the row was meant to be, and the row's own
+    // provenance answered: write_action_catalog id 204 — written three hours
+    // BEFORE the template row — records domain 'Security (Defender)', surface
+    // 'defender', required_permission 'TBD - Defender Application permission'. The
+    // intent is genuinely file/URL detonation, NOT the alert-comment operation the
+    // stored {"comment": "..."} body was lifted from, so repointing the row at
+    // POST /security/alerts_v2/{alertId}/comments would have substituted a
+    // different capability rather than corrected a defect (and alert writing is
+    // already covered by action.resolve-alert and action.manage-incident).
+    // Detonation has no Graph transport and no documented Defender for Endpoint
+    // machine action either, so no plausible /api/... path could be stored without
+    // fabricating one. Migration 2026-09-05-retire-submit-file-detonation-2937.sql
+    // therefore archived the template (status 'archived') and returned catalog id
+    // 204 to 'endpoint_design_pending' with template_id NULL — the same honest
+    // state its sibling id 203 "Release from quarantine" already sits in.
+    //
+    // The archived row deliberately KEEPS its stored endpoint/method/body as the
+    // record of the defect, which is exactly why this test still matters: the
+    // mapper must keep refusing to invent a rule for that pair.
     const got = requiredPermissionsForWrite("POST", "/security/alerts_v2", {
       templateId: "action.submit-file-detonation",
     });

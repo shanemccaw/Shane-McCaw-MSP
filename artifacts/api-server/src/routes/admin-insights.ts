@@ -52,7 +52,6 @@ import {
   powershellScriptsTable,
   insightsGeneratedDocumentsTable,
   insightsAutomationsTable,
-  notificationsTable,
   engagementProjectsTable,
   quickWinPresentationsTable,
   wfDefinitionsTable,
@@ -76,6 +75,7 @@ import {
   isAzureConfigured,
 } from "../lib/azure-automation";
 import { sendWebPushToAdmins } from "../lib/web-push";
+import { createNotificationForAllAdmins } from "../lib/notification-center";
 import { extractAiHtml, parseSowAllPricing, patchSowGrandTotal, purgeSowAdjustments, purgeAdjustmentsByTitle, validateSowPricing, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
 import { resolveWorkstreamKeys, buildWorkstreamContextBlock, type WorkstreamKey } from "../lib/workstream-normalizer";
 import { computeTenantSignals, projectMatchesSignals, getProjectSignalDefinitions, getDisabledSignalKeys } from "../lib/tenant-signals";
@@ -2715,22 +2715,15 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
       const notifLink  = "/command/insights?tab=documents";
 
       try {
-        const admins = await db
-          .select({ id: usersTable.id })
-          .from(usersTable)
-          .where(eq(usersTable.role, "admin"));
-
-        if (admins.length > 0) {
-          await db.insert(notificationsTable).values(
-            admins.map(a => ({
-              userId:   a.id,
-              title:    notifTitle,
-              body:     notifBody,
-              type:     "document" as const,
-              linkPath: notifLink,
-            })),
-          );
-          recordRunLog("info", `Admin notification sent to ${admins.length} admin(s)`);
+        const notifiedCount = await createNotificationForAllAdmins({
+          title: notifTitle,
+          body: notifBody,
+          notifType: "document",
+          category: "report",
+          linkPath: notifLink,
+        });
+        if (notifiedCount > 0) {
+          recordRunLog("info", `Admin notification sent to ${notifiedCount} admin(s)`);
         }
       } catch (notifErr) {
         log.warn({ notifErr, automationId }, "insights: failed to insert report-ready notifications (non-fatal)");

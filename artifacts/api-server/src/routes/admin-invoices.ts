@@ -1,9 +1,10 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, invoicesTable, usersTable, notificationsTable } from "@workspace/db";
+import { db, invoicesTable, usersTable } from "@workspace/db";
 import { eq, and, asc, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { createAuditLog } from "../lib/audit";
+import { createNotification } from "../lib/notification-center";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint";
 import multer from "multer";
 import path from "path";
@@ -111,12 +112,13 @@ router.post("/admin/invoices", requireAdmin, uploadInvoice.single("pdf"), async 
   }).returning();
   void uploadInvoiceToSharePoint(invoice.id);
 
-  await db.insert(notificationsTable).values({
-    userId: parseInt(clientUserId, 10),
+  await createNotification({
     title: `New invoice: ${invoiceNumber}`,
     body: `Amount: $${amount}`,
-    type: "invoice",
+    notifType: "invoice",
+    category: "invoice",
     linkPath: "/portal/billing",
+    recipient: { type: "customer_user", userId: parseInt(clientUserId, 10) },
   });
 
   void createAuditLog({
