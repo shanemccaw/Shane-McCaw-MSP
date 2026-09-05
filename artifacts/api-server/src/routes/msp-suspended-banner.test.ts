@@ -39,6 +39,7 @@ vi.mock("@workspace/db", () => ({
   mspAuditLogsTable: { id: "id" },
   salesOffersTable: { id: "id" },
   mspSalesBundlesTable: { id: "id" },
+  RETENTION_CLOCK_RUNNING_TENANT_STATUSES: ["active", "onboarding"] as const,
 }));
 
 vi.mock("../lib/ai-billing.ts", () => ({
@@ -111,7 +112,7 @@ describe("GET /api/portal/msp-suspension", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     app = await buildApp();
-  });
+  }, 60_000); // dynamic import of msp-portal.ts is transform-heavy; default 20s hook timeout is too tight under load
 
   it("returns suspended=true with daysSuspended≥7 when MSP was suspended 8 days ago", async () => {
     // First call: users->tenants lookup skipped (mspId on token)
