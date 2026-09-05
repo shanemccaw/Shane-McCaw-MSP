@@ -137,6 +137,29 @@ export async function getLastSignedSecurityPlanVersion(
   return row ?? null;
 }
 
+/** One specific version by its own uid, current or superseded — #2949's customer-facing
+ * sign flow needs this the same way `rbd-versioning.ts`'s `getRbdVersionByUid` does: a
+ * scoped-read-first lookup so a versionUid belonging to another tenant 404s exactly like
+ * one that does not exist, rather than leaking existence via the update's own guard. */
+export async function getSecurityPlanVersionByUid(
+  mspId: number,
+  customerId: number,
+  versionUid: string,
+): Promise<MspSecurityPlanVersion | null> {
+  const [row] = await db
+    .select()
+    .from(mspSecurityPlanVersionsTable)
+    .where(
+      and(
+        eq(mspSecurityPlanVersionsTable.mspId, mspId),
+        eq(mspSecurityPlanVersionsTable.customerId, customerId),
+        eq(mspSecurityPlanVersionsTable.versionUid, versionUid),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
 /** Every version of a customer's plan, newest first — the full supersession chain. */
 export async function listSecurityPlanVersions(
   mspId: number,
