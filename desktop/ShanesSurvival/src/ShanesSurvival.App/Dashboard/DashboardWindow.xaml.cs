@@ -466,7 +466,7 @@ public partial class DashboardWindow : Window
             };
             SpendBleedPanel.Children.Add(header);
 
-            if (account.Merchants.Count == 0)
+            if (account.Merchants.Count == 0 && account.TaggedSpend.Count == 0)
             {
                 SpendBleedPanel.Children.Add(new TextBlock
                 {
@@ -475,6 +475,30 @@ public partial class DashboardWindow : Window
                     Margin = new Thickness(8, 0, 0, 4),
                 });
                 continue;
+            }
+
+            // Tagged spend (#2931) — transactions matched by a real transaction_tags rule, pulled
+            // out of their merchant's total and shown here under the rule's own real tag instead.
+            foreach (var tagged in account.TaggedSpend)
+            {
+                var row = new Grid { Margin = new Thickness(8, 1, 0, 1) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                var nameBlock = new TextBlock { Text = tagged.Tag, FontStyle = FontStyles.Italic };
+                Grid.SetColumn(nameBlock, 0);
+
+                var countBlock = new TextBlock { Text = $"{tagged.TransactionCount} tx", Style = (Style)Application.Current.Resources["MutedTextStyle"] };
+                Grid.SetColumn(countBlock, 1);
+
+                var totalBlock = new TextBlock { Text = Money(tagged.TotalAmount), Style = (Style)Application.Current.Resources["AmountTextStyle"], FontWeight = FontWeights.SemiBold };
+                Grid.SetColumn(totalBlock, 2);
+
+                row.Children.Add(nameBlock);
+                row.Children.Add(countBlock);
+                row.Children.Add(totalBlock);
+                SpendBleedPanel.Children.Add(row);
             }
 
             foreach (var merchant in account.Merchants)

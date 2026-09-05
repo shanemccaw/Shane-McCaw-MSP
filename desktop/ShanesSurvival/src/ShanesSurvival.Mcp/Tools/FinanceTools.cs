@@ -25,6 +25,7 @@ public sealed class FinanceTools(
     DashboardService dashboardService,
     AccountRepository accountRepository,
     TransactionRepository transactionRepository,
+    TransactionTagRepository transactionTagRepository,
     PayPeriodDueService payPeriodDueService,
     PayPeriodForecastService payPeriodForecastService)
 {
@@ -167,7 +168,11 @@ public sealed class FinanceTools(
         "Real spend-account bleed view, scoped to the 2 spend accounts only: real transactions " +
         "from the last 30 days, grouped and summed by merchant so a bleed pattern (many small " +
         "charges at one merchant) is visible. Only real outflows count — refunds/inflows are " +
-        "excluded, same as the WPF dashboard.")]
+        "excluded, same as the WPF dashboard. Transactions matching a real transaction_tags " +
+        "rule (see create_transaction_rule, #2931) are pulled out of their merchant's total and " +
+        "shown as their own \"Tagged spend\" line instead — e.g. a recurring cash withdrawal " +
+        "tagged \"Ronnie's medication (cash)\" shows separately from the rest of that merchant's " +
+        "real spend, applied retroactively against this same 30-day window.")]
     public async Task<string> GetSpendBleedAsync()
     {
         var result = await dashboardService.ComputeAsync(ConnectionString);
@@ -187,11 +192,22 @@ public sealed class FinanceTools(
             foreach (var account in result.SpendBleed)
             {
                 sb.AppendLine($"{account.Name} — total spend last 30 days: {Money(account.TotalSpent)}");
-                if (account.Merchants.Count == 0)
+
+                if (account.TaggedSpend.Count > 0)
+                {
+                    sb.AppendLine("  Tagged spend:");
+                    foreach (var tagged in account.TaggedSpend)
+                    {
+                        sb.AppendLine(
+                            $"    - {tagged.Tag}: {Money(tagged.TotalAmount)} across {tagged.TransactionCount} transaction(s)");
+                    }
+                }
+
+                if (account.Merchants.Count == 0 && account.TaggedSpend.Count == 0)
                 {
                     sb.AppendLine("  (no transactions in the last 30 days)");
                 }
-                else
+                else if (account.Merchants.Count > 0)
                 {
                     foreach (var merchant in account.Merchants)
                     {
@@ -205,6 +221,43 @@ public sealed class FinanceTools(
 
         AppendWarnings(sb, result.Warnings);
         return sb.ToString().TrimEnd();
+    }
+
+    [McpServerTool(Name = "create_transaction_rule")]
+    [Description(
+        "Creates a real transaction tagging rule (#2931) — a real merchant substring match " +
+        "(case-insensitive, matched against either transactions.merchant_name or the raw " +
+        "Plaid name field) plus an optional real amount range, mapped to a real human meaning " +
+        "(tag). No regex, no generic rule engine — this is a simple pattern match. Applies " +
+        "immediately and retroactively: the next spend_bleed call reflects it against the " +
+        "existing 30-day window, no separate backfill step needed. If two rules would both " +
+        "match the same real transaction, the one created first wins.")]
+    public async Task<string> CreateTransactionRuleAsync(
+        [Description("Case-insensitive substring to match against a transaction's real merchant name or raw name, e.g. \"7-Eleven\".")]
+        string merchantPattern,
+        [Description("The real human meaning for transactions this rule matches, e.g. \"Ronnie's medication (cash)\".")]
+        string tag,
+        [Description("Optional real minimum amount (inclusive) this rule requires to match. Omit for no lower bound.")]
+        decimal? minAmount = null,
+        [Description("Optional real maximum amount (inclusive) this rule requires to match. Omit for no upper bound.")]
+        decimal? maxAmount = null)
+    {
+        var result = await transactionTagRepository.CreateAsync(ConnectionString, merchantPattern, tag, minAmount, maxAmount);
+        if (!result.Success || result.Rule is null)
+        {
+            return $"Could not create transaction rule: {result.ErrorMessage}";
+        }
+
+        var range = (minAmount, maxAmount) switch
+        {
+            (null, null) => "any amount",
+            (not null, null) => $"{Money(minAmount)} or more",
+            (null, not null) => $"{Money(maxAmount)} or less",
+            (not null, not null) => $"{Money(minAmount)}–{Money(maxAmount)}",
+        };
+
+        return $"Created rule: merchant contains \"{result.Rule.MerchantPattern}\" ({range}) → tagged " +
+               $"\"{result.Rule.Tag}\". Run spend_bleed to confirm it now shows as its own tagged line.";
     }
 
     [McpServerTool(Name = "recent_transactions")]

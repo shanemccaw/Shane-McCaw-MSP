@@ -1,4 +1,5 @@
 using Npgsql;
+using ShanesSurvival.Core.Transactions;
 
 namespace ShanesSurvival.Core.Dashboard;
 
@@ -20,7 +21,7 @@ namespace ShanesSurvival.Core.Dashboard;
 ///   Total available  = Income Gate account's current_balance + reserve total
 ///   Top-line         = total available - total shortfall
 /// </summary>
-public sealed class DashboardService
+public sealed class DashboardService(TransactionTagRepository transactionTagRepository)
 {
     private const int BleedLookbackDays = 30;
 
@@ -114,11 +115,17 @@ public sealed class DashboardService
                 .OrderByDescending(b => b.Shortfall ?? -1m)
                 .ToList();
 
+            var tagRules = await transactionTagRepository.ListAsync(connectionString);
+            if (!tagRules.Success)
+            {
+                warnings.Add($"Could not load transaction tag rules — spend bleed will not reflect tagging: {tagRules.ErrorMessage}");
+            }
+
             var spendAccounts = await LoadRoleAccountsAsync(connection, "spend");
             var spendBleed = new List<SpendAccountBleed>();
             foreach (var account in spendAccounts)
             {
-                spendBleed.Add(await LoadMerchantBleedAsync(connection, account.Id, account.Name));
+                spendBleed.Add(await LoadMerchantBleedAsync(connection, account.Id, account.Name, tagRules.Rules));
             }
             if (spendAccounts.Count == 0)
             {
@@ -163,35 +170,69 @@ public sealed class DashboardService
 
     /// <summary>
     /// Real transactions for one spend account, over the last <see cref="BleedLookbackDays"/>
-    /// days, grouped/summed by merchant so a pattern (many small charges at one merchant) is
-    /// visible at a glance. Only positive amounts count as spend — Plaid's sign convention has
-    /// outflows positive and inflows (refunds, transfers in) negative, so including negatives
-    /// here would understate real spend.
+    /// days. Only positive amounts count as spend — Plaid's sign convention has outflows
+    /// positive and inflows (refunds, transfers in) negative, so including negatives here would
+    /// understate real spend.
+    ///
+    /// Every transaction is first checked against every real transaction_tags rule (#2931) — a
+    /// match (first rule wins, ties broken by rule creation order) pulls that transaction out of
+    /// the merchant grouping entirely and into TaggedSpend instead, grouped/summed by the rule's
+    /// own Tag, so a real recurring meaning (e.g. "Ronnie's medication (cash)") doesn't get
+    /// buried inside its merchant's raw total. Untagged transactions are grouped/summed by
+    /// merchant exactly as before.
     /// </summary>
-    private static async Task<SpendAccountBleed> LoadMerchantBleedAsync(NpgsqlConnection connection, Guid accountId, string accountName)
+    private static async Task<SpendAccountBleed> LoadMerchantBleedAsync(
+        NpgsqlConnection connection, Guid accountId, string accountName, IReadOnlyList<TransactionTagRule> tagRules)
     {
-        var merchants = new List<MerchantBleed>();
         await using var command = new NpgsqlCommand(
             """
             SELECT COALESCE(NULLIF(merchant_name, ''), 'Unknown merchant') AS merchant,
-                   COUNT(*) AS tx_count,
-                   SUM(amount) AS total_amount
+                   name,
+                   amount
             FROM transactions
             WHERE account_id = @accountId
               AND amount > 0
               AND date >= CURRENT_DATE - (@lookbackDays || ' days')::interval
-            GROUP BY merchant
-            ORDER BY total_amount DESC
             """, connection);
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("lookbackDays", BleedLookbackDays);
+
+        var merchantTotals = new Dictionary<string, (int Count, decimal Total)>();
+        var tagTotals = new Dictionary<string, (int Count, decimal Total)>();
+        (int Count, decimal Total) EmptyTally() => (0, 0m);
+        decimal totalSpent = 0m;
+
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            merchants.Add(new MerchantBleed(reader.GetString(0), (int)reader.GetInt64(1), reader.GetDecimal(2)));
+            var merchant = reader.GetString(0);
+            var name = reader.IsDBNull(1) ? null : reader.GetString(1);
+            var amount = reader.GetDecimal(2);
+            totalSpent += amount;
+
+            var matchedRule = tagRules.FirstOrDefault(rule => rule.Matches(merchant, name, amount));
+            if (matchedRule is not null)
+            {
+                var existing = tagTotals.TryGetValue(matchedRule.Tag, out var found) ? found : EmptyTally();
+                tagTotals[matchedRule.Tag] = (existing.Count + 1, existing.Total + amount);
+            }
+            else
+            {
+                var existing = merchantTotals.TryGetValue(merchant, out var found) ? found : EmptyTally();
+                merchantTotals[merchant] = (existing.Count + 1, existing.Total + amount);
+            }
         }
 
-        return new SpendAccountBleed(accountId, accountName, merchants, merchants.Sum(m => m.TotalAmount));
+        var merchants = merchantTotals
+            .Select(kv => new MerchantBleed(kv.Key, kv.Value.Count, kv.Value.Total))
+            .OrderByDescending(m => m.TotalAmount)
+            .ToList();
+        var taggedSpend = tagTotals
+            .Select(kv => new TaggedBleed(kv.Key, kv.Value.Count, kv.Value.Total))
+            .OrderByDescending(t => t.TotalAmount)
+            .ToList();
+
+        return new SpendAccountBleed(accountId, accountName, merchants, taggedSpend, totalSpent);
     }
 
     private static DashboardResult Failure(string message) =>

@@ -21,7 +21,25 @@ public sealed record BillStatus(
 
 public sealed record MerchantBleed(string Merchant, int TransactionCount, decimal TotalAmount);
 
-public sealed record SpendAccountBleed(Guid AccountId, string Name, IReadOnlyList<MerchantBleed> Merchants, decimal TotalSpent);
+/// <summary>
+/// Real transactions matched by a transaction_tags rule (#2931), grouped/summed by the rule's
+/// own Tag rather than by raw merchant — e.g. "Ronnie's medication (cash): $360.00" surfaced
+/// as its own line instead of being buried inside "7-Eleven: $1,310.12."
+/// </summary>
+public sealed record TaggedBleed(string Tag, int TransactionCount, decimal TotalAmount);
+
+/// <summary>
+/// Merchants excludes any transaction that matched a real transaction_tags rule — those are
+/// pulled out into TaggedSpend instead, so a merchant's remaining total reflects only its
+/// genuinely untagged spend. TotalSpent still covers everything (tagged + untagged) so the
+/// account-level "total spend last 30 days" figure doesn't silently drop real spend.
+/// </summary>
+public sealed record SpendAccountBleed(
+    Guid AccountId,
+    string Name,
+    IReadOnlyList<MerchantBleed> Merchants,
+    IReadOnlyList<TaggedBleed> TaggedSpend,
+    decimal TotalSpent);
 
 /// <summary>
 /// One real role = 'reserve' account's real current Plaid balance (#2909) — usable reserve

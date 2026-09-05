@@ -28,6 +28,7 @@ builder.Services.AddSingleton<SettingsService>();
 builder.Services.AddSingleton<DashboardService>();
 builder.Services.AddSingleton<AccountRepository>();
 builder.Services.AddSingleton<TransactionRepository>();
+builder.Services.AddSingleton<TransactionTagRepository>();
 builder.Services.AddSingleton<PayPeriodPlanRepository>();
 builder.Services.AddSingleton<DebtRepository>();
 builder.Services.AddSingleton<IncomeRepository>();

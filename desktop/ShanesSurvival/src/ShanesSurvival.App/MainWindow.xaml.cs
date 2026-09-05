@@ -11,6 +11,7 @@ using ShanesSurvival.Core.Debts;
 using ShanesSurvival.Core.Income;
 using ShanesSurvival.Core.PayPeriodPlans;
 using ShanesSurvival.Core.Settings;
+using ShanesSurvival.Core.Transactions;
 
 namespace ShanesSurvival.App;
 
@@ -26,7 +27,8 @@ public partial class MainWindow : Window
     private readonly PlaidSyncService _plaidSyncService = new();
     private readonly PlaidBackfillService _plaidBackfillService = new();
     private readonly AccountRepository _accountRepository = new();
-    private readonly DashboardService _dashboardService = new();
+    private readonly TransactionTagRepository _transactionTagRepository = new();
+    private readonly DashboardService _dashboardService;
     private readonly PayPeriodPlanRepository _planRepository = new();
     private readonly DebtRepository _debtRepository = new();
     private readonly IncomeRepository _incomeRepository = new();
@@ -39,6 +41,7 @@ public partial class MainWindow : Window
         // Reuses the already-real AccountRepository/DashboardService instances above — no
         // shortfall/due-window math is re-derived here, same discipline PayPeriodForecastService
         // itself follows (#2918).
+        _dashboardService = new DashboardService(_transactionTagRepository);
         _payPeriodDueService = new PayPeriodDueService(_accountRepository);
         _payPeriodForecastService = new PayPeriodForecastService(_incomeRepository, _payPeriodDueService, _dashboardService);
         Loaded += async (_, _) => await CheckConnectionAsync();
