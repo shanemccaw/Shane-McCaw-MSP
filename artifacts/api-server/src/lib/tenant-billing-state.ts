@@ -69,13 +69,21 @@ import {
   db,
   tenantsTable,
   tenantSubscriptionsTable,
-  RETENTION_CLOCK_RUNNING_TENANT_STATUSES,
-  TENANT_SUBSCRIPTION_ACTIVE_STATUSES,
   type Tenant,
   type TenantSubscriptionBillingParty,
   type TenantSubscriptionSource,
   type TenantSubscriptionStatus,
 } from "@workspace/db";
+// The two vocabularies come from `@workspace/db/schema`, not the package root, for the
+// same reason `retention/clock.ts` does it: the root also constructs the connection
+// pool, and a route test that mocks `@workspace/db` mocks the whole module — so a
+// constant imported from the root resolves to `undefined` in every such test, whereas the
+// schema subpath is a plain module those mocks do not intercept. Values, not tables:
+// tables above stay on the root precisely so a test CAN mock them.
+import {
+  RETENTION_CLOCK_RUNNING_TENANT_STATUSES,
+  TENANT_SUBSCRIPTION_ACTIVE_STATUSES,
+} from "@workspace/db/schema";
 import {
   decideTenantBillingActive,
   isActiveSubscriptionStatus,

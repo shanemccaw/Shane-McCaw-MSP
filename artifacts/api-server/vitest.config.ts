@@ -505,6 +505,10 @@ export default defineConfig({
       // tenant_subscriptions row, with absence of a subscription explicitly NOT
       // meaning cancellation. Pure, no database.
       "src/lib/tenant-billing-state.test.ts",
+      // #2847 — the same rule applied by the resolver (one customer, on request) and
+      // by the sweep's SQL (every customer, one pass), proved to agree against the real
+      // local Postgres. Skips cleanly with no DATABASE_URL.
+      "src/lib/tenant-billing-state.live-db.test.ts",
     ],
     coverage: {
       provider: "v8",
