@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, Children, isValidElement, type ReactElement } from "react";
 import { useParams, Link } from "wouter";
-import { ArrowLeft, Calendar, Tag, Link2, Check, Clock } from "lucide-react";
+import { ArrowLeft, Calendar, Tag, Link2, Check, Clock, FileText, Quote } from "lucide-react";
 import { FaLinkedin } from "react-icons/fa";
 import { FaXTwitter } from "react-icons/fa6";
 import ReactMarkdown from "react-markdown";
@@ -9,44 +9,74 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { AuthorBio } from "@/components/AuthorBio";
-import { ArticleAssessmentCTA } from "@/components/ArticleAssessmentCTA";
-import { ArticlePersonalizedNudge } from "@/components/ArticlePersonalizedNudge";
 import { articles } from "@/data/articles";
 import NotFound from "@/pages/not-found";
 
+// Article body markdown styling — Design/fractional_architecture/README.md §6.
 const markdownComponents: Components = {
   h2: ({ children }) => (
-    <h2 className="font-display text-2xl font-bold text-text-primary mt-10 mb-4 leading-snug">
+    <h2 className="mt-11 mb-3.5 text-[clamp(22px,3vw,27px)] font-bold leading-[1.25] tracking-[-0.02em] text-[#f8fafc] text-pretty">
       {children}
     </h2>
   ),
   h3: ({ children }) => (
-    <h3 className="font-display text-lg font-bold text-text-primary mt-8 mb-3 leading-snug">
+    <h3 className="mt-8 mb-2.5 text-[19px] font-bold leading-[1.3] tracking-[-0.012em] text-[#f8fafc] text-pretty">
       {children}
     </h3>
   ),
-  p: ({ children }) => (
-    <p className="text-text-secondary leading-relaxed mb-5">{children}</p>
+  p: ({ children }) => {
+    // A closing italic line (markdown "*...*") renders as <p><em>...</em></p> —
+    // spec calls for a distinct, smaller italic treatment for it.
+    const kids = Children.toArray(children);
+    const isClosingLine =
+      kids.length === 1 &&
+      isValidElement(kids[0]) &&
+      (kids[0] as ReactElement).type === "em";
+
+    if (isClosingLine) {
+      return (
+        <p className="mb-5 text-[14.5px] italic leading-[1.65] text-[#94a3b8]">
+          {children}
+        </p>
+      );
+    }
+
+    return (
+      <p className="mb-5 text-[17px] leading-[1.75] text-[#cbd5e1] text-pretty">
+        {children}
+      </p>
+    );
+  },
+  strong: ({ children }) => (
+    <strong className="font-semibold text-[#f8fafc]">{children}</strong>
   ),
   ul: ({ children }) => (
-    <ul className="mb-6 space-y-2 pl-0">{children}</ul>
+    <ul className="m-0 mb-6 flex list-none flex-col gap-2.5 pl-0">{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="article-ol m-0 mb-6 flex list-none flex-col gap-2.5 pl-0">
+      {children}
+    </ol>
   ),
   li: ({ children }) => (
-    <li className="flex gap-3 text-text-secondary leading-relaxed">
-      <span className="mt-2 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-accent-blue" />
+    <li className="flex items-start gap-3.5 text-[17px] leading-[1.65] text-[#cbd5e1]">
+      <span className="article-li-dot mt-[11px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#00B4D8]" />
       <span>{children}</span>
     </li>
   ),
   blockquote: ({ children }) => (
-    <div className="my-8 border-l-4 border-accent-blue bg-white/[0.04] rounded-r-xl px-6 py-5">
-      <div className="text-text-primary font-medium leading-relaxed [&>p]:mb-0">
+    <div className="my-[30px] flex items-start gap-4 rounded-2xl border border-[rgba(0,180,216,0.3)] bg-[rgba(0,180,216,0.06)] px-[26px] py-[22px]">
+      <Quote
+        className="mt-1 h-[22px] w-[22px] flex-shrink-0 text-[#00B4D8]/60"
+        fill="currentColor"
+        strokeWidth={0}
+      />
+      <div className="text-[16.5px] font-medium leading-[1.65] text-[#f1f5f9] [&>p]:mb-0 [&>p]:mt-0">
         {children}
       </div>
     </div>
   ),
-  strong: ({ children }) => (
-    <strong className="font-semibold text-text-primary">{children}</strong>
-  ),
+  hr: () => <hr className="my-9 border-0 border-t border-[rgba(30,41,59,0.9)]" />,
 };
 
 function ShareButtons({ title }: { title: string }) {
@@ -63,16 +93,18 @@ function ShareButtons({ title }: { title: string }) {
   }
 
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">Share</span>
+    <div className="flex flex-wrap items-center gap-2.5">
+      <span className="mr-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#94a3b8]">
+        Share
+      </span>
       <a
         href={linkedInUrl}
         target="_blank"
         rel="noopener noreferrer"
         aria-label="Share on LinkedIn"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-text-primary text-xs font-semibold hover:border-accent-blue/30 hover:text-accent-blue transition-colors"
+        className="inline-flex items-center gap-[7px] rounded-[9px] border border-[rgba(148,163,184,0.2)] bg-white/[0.05] px-3.5 py-2.5 text-[12.5px] font-semibold text-[#f1f5f9] transition-colors hover:border-[rgba(0,120,212,0.5)] hover:text-[#00B4D8]"
       >
-        <FaLinkedin className="w-3.5 h-3.5" />
+        <FaLinkedin className="h-3.5 w-3.5" />
         LinkedIn
       </a>
       <a
@@ -80,28 +112,26 @@ function ShareButtons({ title }: { title: string }) {
         target="_blank"
         rel="noopener noreferrer"
         aria-label="Share on X"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-text-primary text-xs font-semibold hover:border-accent-blue/30 hover:text-accent-blue transition-colors"
+        className="inline-flex items-center gap-[7px] rounded-[9px] border border-[rgba(148,163,184,0.2)] bg-white/[0.05] px-3.5 py-2.5 text-[12.5px] font-semibold text-[#f1f5f9] transition-colors hover:border-[rgba(0,120,212,0.5)] hover:text-[#00B4D8]"
       >
-        <FaXTwitter className="w-3.5 h-3.5" />
+        <FaXTwitter className="h-[13px] w-[13px]" />
         X
       </a>
-      <button
-        onClick={handleCopy}
-        aria-label="Copy link to clipboard"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] text-text-primary text-xs font-semibold hover:border-accent-blue/30 transition-colors"
-      >
-        {copied ? (
-          <>
-            <Check className="w-3.5 h-3.5 text-green-500" />
-            <span className="text-green-500">Copied!</span>
-          </>
-        ) : (
-          <>
-            <Link2 className="w-3.5 h-3.5" />
-            Copy link
-          </>
-        )}
-      </button>
+      {copied ? (
+        <span className="inline-flex items-center gap-[7px] rounded-[9px] border border-[rgba(74,222,128,0.3)] bg-[rgba(74,222,128,0.08)] px-3.5 py-2.5 text-[12.5px] font-semibold text-[#4ADE80]">
+          <Check className="h-3.5 w-3.5" />
+          Copied!
+        </span>
+      ) : (
+        <button
+          onClick={handleCopy}
+          aria-label="Copy link to clipboard"
+          className="inline-flex items-center gap-[7px] rounded-[9px] border border-[rgba(148,163,184,0.2)] bg-white/[0.04] px-3.5 py-2.5 text-[12.5px] font-semibold text-[#f1f5f9] transition-colors hover:border-[rgba(0,120,212,0.5)]"
+        >
+          <Link2 className="h-3.5 w-3.5" />
+          Copy link
+        </button>
+      )}
     </div>
   );
 }
@@ -153,64 +183,102 @@ export default function ArticlePage() {
         jsonLd={articleJsonLd}
       />
 
-      <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 border-b border-white/[0.06]">
-        <div className="max-w-[800px] mx-auto">
+      {/* Header — Design/fractional_architecture/README.md §6 "Article" */}
+      <section
+        className="relative overflow-hidden border-b border-[rgba(30,41,59,0.8)]"
+        style={{
+          background:
+            "radial-gradient(circle 1100px at 76% -20%, rgba(139,92,246,.12), transparent 62%), radial-gradient(circle 800px at 6% 12%, rgba(0,120,212,.06), transparent 66%)",
+        }}
+      >
+        <FileText
+          aria-hidden="true"
+          width={440}
+          height={440}
+          strokeWidth={0.7}
+          className="pointer-events-none absolute right-[-60px] top-1/2 hidden -translate-y-1/2 text-[#a78bfa] opacity-10 sm:block"
+          style={{ filter: "drop-shadow(0 0 26px rgba(139,92,246,.3))" }}
+        />
+        <div
+          className="relative mx-auto max-w-[800px] px-[clamp(16px,4vw,32px)]"
+          style={{
+            paddingTop: "calc(72px + clamp(40px, 7vw, 72px))",
+            paddingBottom: "clamp(40px, 6vw, 56px)",
+          }}
+        >
           <Link
             href="/resources"
-            className="inline-flex items-center gap-2 text-accent-blue text-sm font-semibold hover:underline mb-8"
+            className="inline-flex items-center gap-2 text-[13px] font-semibold text-[#00B4D8] transition-colors hover:text-[#5ed2ea]"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="h-[15px] w-[15px]" strokeWidth={2.2} />
             Back to Resources
           </Link>
 
-          <div className="flex flex-wrap items-center gap-4 mb-6">
-            <span className="inline-flex items-center gap-1.5 bg-white/[0.06] border border-white/[0.08] text-accent-blue text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wide">
-              <Tag className="w-3 h-3" />
+          <div className="mt-[30px] mb-[22px] flex flex-wrap items-center gap-x-[18px] gap-y-2.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(96,165,250,0.2)] bg-[rgba(96,165,250,0.1)] px-[11px] py-[5px] text-[10.5px] font-bold uppercase tracking-[0.1em] text-[#60a5fa]">
+              <Tag className="h-[11px] w-[11px]" strokeWidth={2.4} />
               {article.category}
             </span>
-            <span className="inline-flex items-center gap-1.5 text-text-secondary text-xs">
-              <Calendar className="w-3 h-3" />
+            <span className="inline-flex items-center gap-1.5 text-[12.5px] text-[#94a3b8]">
+              <Calendar className="h-[13px] w-[13px]" />
               {article.date}
             </span>
-            <span className="inline-flex items-center gap-1.5 text-text-secondary text-xs">
-              <Clock className="w-3 h-3" />
+            <span className="inline-flex items-center gap-1.5 text-[12.5px] text-[#94a3b8]">
+              <Clock className="h-[13px] w-[13px]" />
               {article.readingTime}
             </span>
           </div>
 
-          <h1 className="font-display text-3xl md:text-4xl lg:text-5xl font-bold text-text-primary leading-tight">
+          <h1 className="text-[clamp(28px,4.2vw,46px)] font-extrabold leading-[1.1] tracking-[-0.025em] text-[#f8fafc] text-pretty">
             {article.title}
           </h1>
 
-          <p className="mt-6 text-text-secondary text-lg leading-relaxed max-w-2xl">
+          <p className="mt-[22px] max-w-[680px] text-[clamp(16px,2.2vw,19px)] leading-[1.6] text-[#94a3b8] text-pretty">
             {article.summary}
           </p>
+
+          <div className="mt-[30px] flex items-center gap-3 border-t border-[rgba(30,41,59,0.9)] pt-[22px]">
+            <span
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px] text-[12.5px] font-extrabold tracking-[-0.5px] text-white"
+              style={{ background: "linear-gradient(135deg,#0078D4,#00B4D8)" }}
+            >
+              SM
+            </span>
+            <div className="leading-[1.35]">
+              <div className="text-sm font-bold text-[#f8fafc]">Shane McCaw</div>
+              <div className="text-[12.5px] text-[#94a3b8]">
+                Lead M365 Architect at NASA · 30 years in the Microsoft ecosystem
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-[800px] mx-auto">
-          <div className="prose-custom">
+      {/* Body */}
+      <section
+        className="px-4 sm:px-6 lg:px-8"
+        style={{
+          paddingTop: "clamp(36px, 5vw, 56px)",
+          paddingBottom: "clamp(56px, 8vw, 88px)",
+        }}
+      >
+        <div className="mx-auto max-w-[800px]">
+          <div className="article-body text-[17px] leading-[1.75] text-[#cbd5e1]">
             <ReactMarkdown components={markdownComponents}>
               {article.content}
             </ReactMarkdown>
           </div>
 
-          <ArticleAssessmentCTA category={article.category} title={article.title} />
-          <ArticlePersonalizedNudge category={article.category} title={article.title} />
-
           <AuthorBio />
 
-          <div className="mt-10 pt-8 border-t border-white/[0.06]">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-              <Link
-                href="/resources"
-                className="inline-flex items-center gap-2 text-accent-blue text-sm font-semibold hover:underline"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                More articles
-              </Link>
-            </div>
+          <div className="mt-9 flex flex-wrap items-center justify-between gap-x-6 gap-y-4 border-t border-[rgba(30,41,59,0.9)] pt-[26px]">
+            <Link
+              href="/resources"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-[#00B4D8] hover:text-[#5ed2ea]"
+            >
+              <ArrowLeft className="h-4 w-4" strokeWidth={2.2} />
+              More articles
+            </Link>
             <ShareButtons title={article.title} />
           </div>
         </div>

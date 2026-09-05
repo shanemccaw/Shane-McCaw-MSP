@@ -1,46 +1,45 @@
-import { Link } from "wouter";
 import { CalendarDays } from "lucide-react";
 import { ChatCTA } from "@/components/ChatCTA";
 
+// Author bio card — Design/fractional_architecture/README.md §6 "Article".
+// Bio paragraph copy is verbatim; only the visual treatment changes here.
 export function AuthorBio() {
   return (
-    <div className="mt-16 rounded-2xl border border-white/[0.08] bg-white/[0.04] overflow-hidden">
-      <div className="flex flex-col sm:flex-row items-start gap-6 p-8">
-        <div
-          className="flex-shrink-0 w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl font-extrabold select-none"
-          style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
+    <div className="mt-14 flex flex-wrap items-start gap-[26px] rounded-[20px] border border-[rgba(30,41,59,0.9)] bg-[rgba(15,23,42,0.5)] p-[clamp(22px,4vw,32px)]">
+      <span
+        className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-[18px] text-[22px] font-extrabold tracking-[-1px] text-white"
+        style={{ background: "linear-gradient(135deg,#0078D4,#00B4D8)" }}
+      >
+        SM
+      </span>
+
+      <div className="min-w-0 flex-1 basis-80">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#00B4D8]">
+          About the Author
+        </div>
+        <h3 className="mt-2 mb-0.5 text-[21px] font-extrabold leading-[1.25] tracking-[-0.018em] text-[#f8fafc]">
+          Shane McCaw
+        </h3>
+        <div className="mb-3 text-sm font-semibold text-[#00B4D8]">
+          Lead Microsoft 365 Architect · NASA
+        </div>
+        <p className="mb-5 text-[14.5px] leading-[1.65] text-[#94a3b8] text-pretty">
+          Shane McCaw is a 30-year Microsoft ecosystem veteran and the Lead
+          M365 Architect at NASA, where he designs and governs enterprise-scale
+          Microsoft 365 environments trusted by thousands of engineers and
+          scientists. He brings that same depth of expertise to private-sector
+          clients — cutting through complexity to deliver clear, actionable
+          Microsoft 365, Copilot AI, and SharePoint guidance without junior
+          hand-offs or account-manager layers.
+        </p>
+
+        <ChatCTA
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl px-5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+          style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}
         >
-          SM
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-accent-blue uppercase tracking-widest mb-1">
-            About the Author
-          </p>
-          <h3 className="text-xl font-extrabold text-text-primary leading-snug">
-            Shane McCaw
-          </h3>
-          <p className="text-sm font-medium text-accent-blue mb-3">
-            Lead Microsoft 365 Architect · NASA
-          </p>
-          <p className="text-text-secondary leading-relaxed text-sm mb-5">
-            Shane McCaw is a 30-year Microsoft ecosystem veteran and the Lead
-            M365 Architect at NASA, where he designs and governs enterprise-scale
-            Microsoft 365 environments trusted by thousands of engineers and
-            scientists. He brings that same depth of expertise to private-sector
-            clients — cutting through complexity to deliver clear, actionable
-            Microsoft 365, Copilot AI, and SharePoint guidance without junior
-            hand-offs or account-manager layers.
-          </p>
-
-          <ChatCTA
-            className="inline-flex items-center gap-2 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-opacity hover:opacity-90"
-            style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
-          >
-            <CalendarDays className="w-4 h-4" />
-            Book a Free Discovery Call
-          </ChatCTA>
-        </div>
+          <CalendarDays className="h-4 w-4" />
+          Book a Free Discovery Call
+        </ChatCTA>
       </div>
     </div>
   );

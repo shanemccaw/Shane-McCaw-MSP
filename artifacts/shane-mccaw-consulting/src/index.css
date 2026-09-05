@@ -385,3 +385,27 @@ input:-webkit-autofill {
   88% { opacity: 1; }
   100% { left: calc(100% - 6px); opacity: 0; }
 }
+
+/* Article body ordered lists (ArticlePage.tsx) — Design/fractional_architecture/
+   README.md §6: numbered items get a Menlo two-digit teal number instead of the
+   unordered-list teal dot. The li marker itself is shared (article-li-dot); this
+   just swaps it out via a counter when the list is an <ol>. */
+.article-ol {
+  counter-reset: article-ol-counter;
+}
+.article-ol > li {
+  counter-increment: article-ol-counter;
+}
+.article-ol > li > .article-li-dot {
+  display: none;
+}
+.article-ol > li::before {
+  content: counter(article-ol-counter, decimal-leading-zero);
+  flex-shrink: 0;
+  min-width: 26px;
+  padding-top: 5px;
+  font-family: Menlo, ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: #00B4D8;
+}
