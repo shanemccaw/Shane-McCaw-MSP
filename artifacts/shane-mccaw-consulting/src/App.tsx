@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { Switch, Route, useLocation } from "wouter";
+import WorkWithMe from "./pages/WorkWithMe";
 import Home from "./pages/Home";
 import About from "./pages/About";
 import Status from "./pages/Status";
@@ -67,7 +68,11 @@ export default function App() {
       <AnalyticsBoundary />
       <Switch>
       {/* Primary Routes */}
-      <Route path="/" component={Home} />
+      {/* #2955 — Work With Me (retainer tiers + embedded Stripe) is the new home.
+          The former home content (the Assessment scroll experience) moves to
+          /assessment unchanged; its visual redesign is #2956, blocked on this. */}
+      <Route path="/" component={WorkWithMe} />
+      <Route path="/assessment" component={Home} />
       <Route path="/about" component={About} />
       <Route path="/status" component={Status} />
       <Route path="/resources" component={Resources} />
