@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap">
+  <script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#020617;color:#cbd5e1;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    a{color:#00B4D8}a:hover{color:#5ed2ea}
+    @media (max-width:1023px){input,textarea,select{font-size:16px!important}}
+  </style>
+</helmet>
+
+<header style="position:fixed;top:0;left:0;right:0;z-index:50">
+  <div style="position:absolute;inset:0;background:rgba(2,6,23,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid rgba(30,41,59,.8)"></div>
+  <div style="position:relative;max-width:1280px;margin:0 auto;padding:0 clamp(16px,4vw,32px);height:72px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+    <a href="Work With Me.dc.html" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:#F5F5F7">
+      <span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+      <span style="font-family:'Space Grotesk',Inter,sans-serif;font-weight:700;font-size:16px;letter-spacing:-.02em;line-height:1">Shane McCaw</span>
+    </a>
+    <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+      <nav style="display:flex;align-items:center;gap:4px">
+        <a href="Assessment.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Assessment</a>
+        <div style="position:relative">
+          <button onClick="{{ toggleSolutions }}" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;background:transparent;border:0;cursor:pointer;font-family:inherit" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Solutions<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <sc-if value="{{ solOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:100%;left:0;width:400px;margin-top:6px;background:rgba(5,12,29,.97);border:1px solid rgba(30,41,59,.9);border-radius:16px;padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:2px;backdrop-filter:blur(24px)">
+              <a href="Solution - Copilot AI.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Copilot &amp; AI</a>
+              <a href="Solution - Security Compliance.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Security &amp; Compliance</a>
+              <a href="Solution - Governance.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Governance</a>
+              <a href="Solution - SharePoint.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">SharePoint</a>
+              <a href="Solution - Power Platform.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Power Platform</a>
+              <a href="Solution - Teams.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Teams</a>
+              <a href="Solution - Migration.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Migration</a>
+              <a href="Solution - M365 Health.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">M365 Health</a>
+            </div>
+          </sc-if>
+        </div>
+        <a href="Work With Me.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Fractional Architecture</a>
+        <a href="About Shane.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">About Shane</a>
+        <a href="Resources.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#00B4D8;background:rgba(255,255,255,.06);text-decoration:none">Resources</a>
+        <a href="Contact.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Contact</a>
+      </nav>
+      <a href="Contact.dc.html" style="display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;background:#0078D4;text-decoration:none" style-hover="background:#005A9E">Talk to Shane<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></a>
+    </sc-if>
+    <sc-if value="{{ narrow }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ toggleMenu }}" aria-label="Toggle navigation menu" style="padding:10px;border-radius:8px;color:#B5B5BC;background:transparent;border:0;cursor:pointer;display:flex"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg></button>
+    </sc-if>
+  </div>
+  <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:relative;border-top:1px solid rgba(30,41,59,.8);padding:8px 16px 20px;display:flex;flex-direction:column;gap:2px">
+      <a href="Assessment.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Assessment</a>
+      <a href="Solutions.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Solutions</a>
+      <a href="Work With Me.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Fractional Architecture</a>
+      <a href="About Shane.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">About Shane</a>
+      <a href="Resources.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#00B4D8;background:rgba(255,255,255,.06);text-decoration:none">Resources</a>
+      <a href="Contact.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Contact</a>
+      <a href="Contact.dc.html" style="display:block;margin-top:12px;padding:12px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;text-align:center;background:#0078D4;text-decoration:none">Talk to Shane</a>
+    </div>
+  </sc-if>
+</header>
+
+<main style="padding-top:72px">
+
+  <section id="top" data-screen-label="Article header" style="position:relative;overflow:hidden;border-bottom:1px solid rgba(30,41,59,.8);background:radial-gradient(circle 1100px at 76% -20%, rgba(139,92,246,.12), rgba(2,6,23,0) 62%), radial-gradient(circle 800px at 6% 12%, rgba(0,120,212,.06), rgba(2,6,23,0) 66%)">
+    <span style="position:absolute;right:-60px;top:50%;transform:translateY(-50%);opacity:.1;pointer-events:none;line-height:0;filter:drop-shadow(0 0 26px rgba(139,92,246,.3))"><svg width="440" height="440" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><line x1="10" y1="9" x2="8" y2="9"></line></svg></span>
+    <div style="position:relative;max-width:800px;margin:0 auto;padding:clamp(40px,7vw,72px) clamp(16px,4vw,32px) clamp(40px,6vw,56px)">
+      <a href="Resources.dc.html" style="display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#00B4D8;text-decoration:none" style-hover="color:#5ed2ea"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>Back to Resources</a>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin:30px 0 22px">
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2);border-radius:999px;padding:5px 11px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle></svg>{{ article.category }}</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#94a3b8"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M3 10h18"></path></svg>{{ article.date }}</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#94a3b8"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>{{ article.readingTime }}</span>
+      </div>
+      <h1 style="font-size:clamp(28px,4.2vw,46px);line-height:1.1;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:0;text-wrap:pretty">{{ article.title }}</h1>
+      <p style="font-size:clamp(16px,2.2vw,19px);line-height:1.6;color:#94a3b8;margin:22px 0 0;max-width:680px;text-wrap:pretty">{{ article.summary }}</p>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:30px;padding-top:22px;border-top:1px solid rgba(30,41,59,.9)">
+        <span style="flex-shrink:0;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12.5px;font-weight:800;letter-spacing:-.5px">SM</span>
+        <div style="line-height:1.35"><div style="font-size:14px;font-weight:700;color:#f8fafc">Shane McCaw</div><div style="font-size:12.5px;color:#94a3b8">Lead M365 Architect at NASA · 30 years in the Microsoft ecosystem</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Article body" style="max-width:800px;margin:0 auto;padding:clamp(36px,5vw,56px) clamp(16px,4vw,32px) clamp(56px,8vw,88px)">
+    <div style="font-size:17px;line-height:1.75;color:#cbd5e1">
+      <sc-for list="{{ blocks }}" as="b" hint-placeholder-count="10">
+        <sc-if value="{{ b.isH2 }}" hint-placeholder-val="{{ false }}"><h2 style="font-size:clamp(22px,3vw,27px);line-height:1.25;letter-spacing:-.02em;font-weight:700;color:#f8fafc;margin:44px 0 14px;text-wrap:pretty">{{ b.text }}</h2></sc-if>
+        <sc-if value="{{ b.isH3 }}" hint-placeholder-val="{{ false }}"><h3 style="font-size:19px;line-height:1.3;letter-spacing:-.012em;font-weight:700;color:#f8fafc;margin:32px 0 10px;text-wrap:pretty">{{ b.text }}</h3></sc-if>
+        <sc-if value="{{ b.isP }}" hint-placeholder-val="{{ true }}"><p style="margin:0 0 20px;text-wrap:pretty"><sc-for list="{{ b.runs }}" as="r" hint-placeholder-count="1"><sc-if value="{{ r.b }}" hint-placeholder-val="{{ false }}"><strong style="font-weight:600;color:#f8fafc">{{ r.t }}</strong></sc-if><sc-if value="{{ r.i }}" hint-placeholder-val="{{ false }}"><em>{{ r.t }}</em></sc-if><sc-if value="{{ r.n }}" hint-placeholder-val="{{ true }}">{{ r.t }}</sc-if></sc-for></p></sc-if>
+        <sc-if value="{{ b.isUl }}" hint-placeholder-val="{{ false }}">
+          <ul style="list-style:none;margin:0 0 24px;padding:0;display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ b.items }}" as="li" hint-placeholder-count="3">
+              <li style="display:flex;gap:14px;align-items:flex-start;line-height:1.65">
+                <sc-if value="{{ li.isDot }}" hint-placeholder-val="{{ true }}"><span style="flex-shrink:0;width:6px;height:6px;border-radius:50%;background:#00B4D8;margin-top:11px"></span></sc-if>
+                <sc-if value="{{ li.isNum }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink:0;min-width:26px;font-family:Menlo,ui-monospace,monospace;font-size:12px;letter-spacing:.06em;color:#00B4D8;padding-top:5px">{{ li.num }}</span></sc-if>
+                <span><sc-for list="{{ li.runs }}" as="r" hint-placeholder-count="1"><sc-if value="{{ r.b }}" hint-placeholder-val="{{ false }}"><strong style="font-weight:600;color:#f8fafc">{{ r.t }}</strong></sc-if><sc-if value="{{ r.i }}" hint-placeholder-val="{{ false }}"><em>{{ r.t }}</em></sc-if><sc-if value="{{ r.n }}" hint-placeholder-val="{{ true }}">{{ r.t }}</sc-if></sc-for></span>
+              </li>
+            </sc-for>
+          </ul>
+        </sc-if>
+        <sc-if value="{{ b.isQuote }}" hint-placeholder-val="{{ false }}">
+          <div style="margin:30px 0;border:1px solid rgba(0,180,216,.3);border-radius:16px;background:rgba(0,180,216,.06);padding:22px 26px;display:flex;gap:16px;align-items:flex-start">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="rgba(0,180,216,.6)" style="flex-shrink:0;margin-top:3px"><path d="M9.5 4C6.5 4 4 6.5 4 9.5c0 2.6 1.9 4.8 4.4 5.3-.4 1.6-1.4 3-3 4.2l1.2 1.5C10 18.3 12 15 12 11V9.5C12 6.5 11 4 9.5 4zm10 0C16.5 4 14 6.5 14 9.5c0 2.6 1.9 4.8 4.4 5.3-.4 1.6-1.4 3-3 4.2l1.2 1.5C20 18.3 22 15 22 11V9.5C22 6.5 21 4 19.5 4z"></path></svg>
+            <p style="margin:0;font-size:16.5px;line-height:1.65;font-weight:500;color:#f1f5f9;text-wrap:pretty"><sc-for list="{{ b.runs }}" as="r" hint-placeholder-count="1"><sc-if value="{{ r.b }}" hint-placeholder-val="{{ false }}"><strong style="font-weight:700;color:#f8fafc">{{ r.t }}</strong></sc-if><sc-if value="{{ r.i }}" hint-placeholder-val="{{ false }}"><em>{{ r.t }}</em></sc-if><sc-if value="{{ r.n }}" hint-placeholder-val="{{ true }}">{{ r.t }}</sc-if></sc-for></p>
+          </div>
+        </sc-if>
+        <sc-if value="{{ b.isHr }}" hint-placeholder-val="{{ false }}"><hr style="border:0;border-top:1px solid rgba(30,41,59,.9);margin:36px 0 24px"></sc-if>
+        <sc-if value="{{ b.isNote }}" hint-placeholder-val="{{ false }}"><p style="margin:0 0 20px;font-size:14.5px;line-height:1.65;font-style:italic;color:#94a3b8">{{ b.text }}</p></sc-if>
+      </sc-for>
+    </div>
+
+
+    <div data-screen-label="Author bio" style="margin-top:56px;border:1px solid rgba(30,41,59,.9);border-radius:20px;background:rgba(15,23,42,.5);padding:clamp(22px,4vw,32px);display:flex;flex-wrap:wrap;gap:22px 26px;align-items:flex-start">
+      <span style="flex-shrink:0;width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:800;letter-spacing:-1px">SM</span>
+      <div style="flex:1 1 320px;min-width:0">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">About the Author</div>
+        <h3 style="font-size:21px;font-weight:800;letter-spacing:-.018em;color:#f8fafc;margin:8px 0 2px;line-height:1.25">Shane McCaw</h3>
+        <div style="font-size:14px;font-weight:600;color:#00B4D8;margin-bottom:12px">Lead Microsoft 365 Architect · NASA</div>
+        <p style="margin:0 0 20px;font-size:14.5px;line-height:1.65;color:#94a3b8;text-wrap:pretty">Shane McCaw is a 30-year Microsoft ecosystem veteran and the Lead M365 Architect at NASA, where he designs and governs enterprise-scale Microsoft 365 environments trusted by thousands of engineers and scientists. He brings that same depth of expertise to private-sector clients — cutting through complexity to deliver clear, actionable Microsoft 365, Copilot AI, and SharePoint guidance without junior hand-offs or account-manager layers.</p>
+        <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" as="a" href="Contact.dc.html" dc-props="{{ ctaMd }}" hint-size="230px,44px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M3 10h18"></path><path d="M8 14h.01"></path><path d="M12 14h.01"></path><path d="M16 14h.01"></path><path d="M8 18h.01"></path><path d="M12 18h.01"></path><path d="M16 18h.01"></path></svg>Book a Free Discovery Call</x-import>
+      </div>
+    </div>
+
+    <div style="margin-top:36px;padding-top:26px;border-top:1px solid rgba(30,41,59,.9);display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px 24px">
+      <a href="Resources.dc.html" style="display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:#00B4D8;text-decoration:none" style-hover="color:#5ed2ea"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>More articles</a>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+        <span style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#94a3b8;margin-right:2px">Share</span>
+        <a href="{{ share.linkedin }}" target="_blank" rel="noopener noreferrer" aria-label="Share on LinkedIn" style="display:inline-flex;align-items:center;gap:7px;padding:10px 14px;border-radius:9px;font-size:12.5px;font-weight:600;color:#f1f5f9;background:rgba(255,255,255,.05);border:1px solid rgba(148,163,184,.2);text-decoration:none" style-hover="border-color:rgba(0,120,212,.5);color:#00B4D8"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.36V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0z"></path></svg>LinkedIn</a>
+        <a href="{{ share.x }}" target="_blank" rel="noopener noreferrer" aria-label="Share on X" style="display:inline-flex;align-items:center;gap:7px;padding:10px 14px;border-radius:9px;font-size:12.5px;font-weight:600;color:#f1f5f9;background:rgba(255,255,255,.05);border:1px solid rgba(148,163,184,.2);text-decoration:none" style-hover="border-color:rgba(0,120,212,.5);color:#00B4D8"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18.9 1.15h3.68l-8.04 9.19L24 22.85h-7.4l-5.8-7.58-6.64 7.58H.47l8.6-9.83L0 1.15h7.6l5.24 6.93 6.06-6.93zm-1.29 19.5h2.04L6.49 3.24H4.3l13.31 17.41z"></path></svg>X</a>
+        <sc-if value="{{ notCopied }}" hint-placeholder-val="{{ true }}"><button onClick="{{ copyLink }}" aria-label="Copy link to clipboard" style="display:inline-flex;align-items:center;gap:7px;padding:10px 14px;border-radius:9px;font-size:12.5px;font-weight:600;color:#f1f5f9;background:rgba(255,255,255,.04);border:1px solid rgba(148,163,184,.2);cursor:pointer;font-family:inherit" style-hover="border-color:rgba(0,120,212,.5)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 1 1 0 10h-2"></path><line x1="8" x2="16" y1="12" y2="12"></line></svg>Copy link</button></sc-if>
+        <sc-if value="{{ copied }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;gap:7px;padding:10px 14px;border-radius:9px;font-size:12.5px;font-weight:600;color:#4ADE80;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.3)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Copied!</span></sc-if>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Consultation CTA" style="position:relative;overflow:hidden;border-top:1px solid rgba(30,41,59,.8);background:#020617">
+    <div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 70% 60% at 50% 50%, rgba(0,120,212,.16) 0%, transparent 75%)"></div>
+    <div style="position:absolute;inset:0;pointer-events:none;opacity:.04;background-image:linear-gradient(rgba(255,255,255,.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.6) 1px, transparent 1px);background-size:40px 40px"></div>
+    <div style="position:relative;max-width:860px;margin:0 auto;padding:clamp(64px,9vw,112px) clamp(16px,4vw,32px);text-align:center">
+      <div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Free 30-Minute Discovery Call</div>
+      <h2 style="font-size:clamp(28px,4.6vw,44px);line-height:1.1;letter-spacing:-.028em;font-weight:800;color:#f8fafc;margin:16px 0 18px;text-wrap:pretty">Your Microsoft 365 Environment Deserves Senior Expertise</h2>
+      <p style="font-size:clamp(16px,2.2vw,19px);line-height:1.65;color:#94a3b8;margin:0 auto 34px;max-width:640px;text-wrap:pretty">Work directly with Shane — a 30-year Microsoft veteran and Lead M365 Architect at NASA. No account managers, no junior staff. Just clear, actionable guidance from day one.</p>
+      <div style="display:flex;justify-content:center"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" size="lg" as="a" href="Contact.dc.html" dc-props="{{ ctaLg }}" hint-size="230px,56px">Book a Consultation</x-import></div>
+      <p style="margin:20px 0 0;font-size:13px;letter-spacing:.02em;color:#94a3b8">No pitch. No obligation. Just clarity.</p>
+    </div>
+  </section>
+</main>
+
+<footer style="position:relative">
+  <div style="position:absolute;inset:0;background:#020617;border-top:1px solid rgba(30,41,59,.8)"></div>
+  <div style="position:relative;max-width:1280px;margin:0 auto;padding:64px clamp(16px,4vw,32px) 40px">
+    <div style="display:flex;flex-wrap:wrap;gap:40px;margin-bottom:48px">
+      <div style="flex:1 1 260px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+          <span style="font-family:'Space Grotesk',Inter,sans-serif;font-weight:600;font-size:16px;color:#F5F5F7">Shane McCaw Consulting</span>
+        </div>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#B5B5BC;max-width:320px">Vero Beach, FL — M365 · Copilot AI · SharePoint · Power Platform</p>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Get Started</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="Assessment.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Assessment</a></li>
+          <li><a href="Work With Me.dc.html#tiers" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Fractional Architecture</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Solutions</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="Solution - Copilot AI.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Copilot &amp; AI</a></li>
+          <li><a href="Solution - Security Compliance.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Security &amp; Compliance</a></li>
+          <li><a href="Solution - Governance.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Governance</a></li>
+          <li><a href="Solution - SharePoint.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">SharePoint</a></li>
+          <li><a href="Solution - Power Platform.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Power Platform</a></li>
+          <li><a href="Solution - Teams.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Teams</a></li>
+          <li><a href="Solution - Migration.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Migration</a></li>
+          <li><a href="Solution - M365 Health.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">M365 Health</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Company</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="About Shane.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">About Shane</a></li>
+          <li><a href="Resources.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Resources</a></li>
+          <li><a href="Contact.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Contact</a></li>
+          <li><a href="Contact.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Ask a Question</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Legal</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="/terms" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Terms of Service</a></li>
+          <li><a href="/privacy" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Privacy Policy</a></li>
+        </ul>
+      </div>
+    </div>
+    <div style="padding-top:28px;border-top:1px solid rgba(30,41,59,.8);display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;font-size:12px;color:#B5B5BC">
+      <span>© 2026 Shane McCaw Consulting. All rights reserved. Shane's role at NASA is a personal credential; this practice is independent of NASA.</span>
+      <a href="/privacy" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Privacy Policy</a>
+    </div>
+  </div>
+</footer>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;article&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;from-url&quot;,&quot;m365-tenant-management-best-practices-modern-teams&quot;,&quot;copilot-rollout-failing&quot;,&quot;m365-tenant-health-check&quot;,&quot;sharepoint-intranet-architecture&quot;,&quot;power-automate-approval-workflows&quot;,&quot;dlp-sensitivity-labels&quot;,&quot;m365-migration-checklist&quot;],&quot;default&quot;:&quot;from-url&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Article&quot;,&quot;description&quot;:&quot;from-url follows the ?slug= link you clicked on Resources (newest article if none); pick a slug to preview another article&quot;}}">
+// The 7 published articles from src/content/articles/*.md — frontmatter and body verbatim, newest first.
+const ARTICLES = [
+{ slug: "m365-tenant-management-best-practices-modern-teams", category: "M365 Best Practices", title: "Microsoft 365 Tenant Management: Best Practices for Modern Teams", summary: "Unlock productivity across your organization with proven Microsoft 365 tenant management strategies. Learn essential best practices that help distributed teams collaborate effectively while maintaining security and governance.", date: "July 6, 2026", readingTime: "6 min read", body: `## Introduction
+
+After three decades working with Microsoft technologies—and the last several years architecting enterprise solutions at NASA—I've learned that Microsoft 365 success isn't about implementing features; it's about intentional strategy. The difference between organizations that get 40% value from M365 and those achieving 85%+ adoption often comes down to foundational tenant management and adoption practices.
+
+This article shares practical guidance that has helped distributed teams—from Fortune 500 companies to government agencies managing complex workflows—transform how they work together.
+
+## Why Tenant Management Matters
+
+Your Microsoft 365 tenant is the backbone of digital collaboration. It's where governance happens, security controls live, and user experiences either flourish or frustrate. Poor tenant setup cascades downstream: unclear permission structures, shadow IT adoption, security gaps, and frustrated teams.
+
+Think of tenant management as infrastructure planning before building a city. You wouldn't construct buildings without roads, utilities, and zoning guidelines. The same principle applies to M365.
+
+## Best Practice #1: Establish Clear Governance from Day One
+
+Governed environments aren't restrictive—they're *liberating*. Teams know the rules, adopt sanctioned tools, and spend less time troubleshooting shadow solutions.
+
+**Key governance elements:**
+
+- **Naming conventions** – Standardize how teams, sites, and applications are labeled. At NASA, we use a taxonomy that includes project code, function, and sensitivity level. This makes discovery intuitive and auditing manageable.
+- **Permission models** – Define whether your organization uses broad group-based access or granular role-based controls. Document and communicate the model clearly.
+- **Retention and lifecycle policies** – Teams and sites need clear ownership and lifecycle plans. Orphaned resources become security liabilities and storage drains.
+- **Sensitivity labels** – Implement Microsoft Information Protection (MIP) labels aligned to your organization's classification scheme. This ensures data finds the right protection level automatically.
+
+## Best Practice #2: Optimize Your Site and Team Architecture
+
+Many organizations create Teams and SharePoint sites reactively—one per project, meeting, or initiative. This leads to sprawl and poor discoverability.
+
+**Consider this architecture instead:**
+
+- **Department-level sites** – Serve as information hubs with news, resources, and approved templates
+- **Project-based Teams** – Created from templates with pre-configured channels, security, and governance rules
+- **Community sites** – Enable cross-functional collaboration around specific topics or competencies
+- **Archive sites** – Store completed projects with limited permissions and retention policies
+
+Using templates dramatically improves consistency. We've seen template adoption reduce setup time by 70% while improving security compliance.
+
+## Best Practice #3: Master User Onboarding and Licensing
+
+User onboarding is often overlooked, yet it determines adoption velocity.
+
+**Streamline onboarding through:**
+
+- **Provisioning automation** – Use Power Automate and Microsoft Entra ID to automatically create Teams, add users to groups, and deploy personalized resources
+- **First-day experiences** – Ensure new users receive a curated welcome email with quick-start resources, their team information, and key support contacts
+- **Licensing optimization** – Right-size licenses to user roles. Not every role needs E5 licensing. Identify which users need advanced security, analytics, or advanced compliance features.
+- **Role-based training** – Develop training tailored to how specific roles use M365 (not generic "Microsoft 365 101" sessions)
+
+## Best Practice #4: Implement Intelligent Information Management
+
+Data sprawl is the silent productivity killer. Users can't find information, creating redundant content and inconsistent single sources of truth.
+
+**Establish information management practices:**
+
+- **Content standards** – Define where different types of information live: team documents in Teams Files, departmental resources in SharePoint, organization-wide news in Viva Connections
+- **Search optimization** – Ensure metadata is rich enough for users to discover content without browsing. Implement managed properties and search result refiners.
+- **Records management** – Identify what constitutes a record in your organization and implement retention policies accordingly. This is non-negotiable in regulated environments.
+- **Archive strategy** – Use Purview to manage litigation holds and compliance requirements while cleaning active workspaces.
+
+## Best Practice #5: Monitor Adoption and Adjust Continuously
+
+Deployment isn't the finish line—adoption is. Use Microsoft 365 analytics to understand how teams are actually using the platform.
+
+**Track these metrics:**
+
+- **Adoption rates** – What percentage of licensed users are active monthly?
+- **Feature utilization** – Are teams using Teams chat, or defaulting to email?
+- **Site health** – How many sites are inactive? Which ones have governance issues?
+- **Sentiment** – Conduct quarterly pulse surveys to understand friction points
+
+Use insights to refine training, adjust policies, and celebrate wins. We schedule monthly adoption reviews, treating it as seriously as IT security.
+
+## Conclusion
+
+Microsoft 365 is incredibly powerful. The ceiling for team collaboration, information management, and organizational alignment is high. But getting there requires intentional tenant management, clear governance, thoughtful architecture, and continuous improvement.
+
+Start with these foundational best practices. Establish governance, optimize your structure, streamline onboarding, manage information intelligently, and measure adoption. Build from there.
+
+The teams that win with Microsoft 365 aren't those with the most features—they're those with the clearest strategy and most disciplined execution.
+
+---
+
+*Shane McCaw is Lead Architect at NASA and a Microsoft 365 veteran with 30 years of experience architecting enterprise solutions. He works with large distributed organizations to unlock productivity through intentional technology strategy.*` },
+{ slug: "copilot-rollout-failing", category: "Copilot AI Tips", title: "5 Reasons Your Copilot Rollout Is Failing (And How to Fix It)", summary: "Most Copilot deployments underperform not because of the AI, but because of data governance gaps and lack of adoption strategy. Here are the five most common failure points and exactly how to address each one.", date: "June 5, 2025", readingTime: "4 min read", body: `Microsoft 365 Copilot is the most powerful productivity tool Microsoft has shipped in a generation. But in my work helping organizations deploy it — including managing enterprise M365 environments at NASA — I keep seeing the same failure patterns play out. The problem is almost never the AI itself. It's the environment around it.
+
+If your Copilot rollout is delivering disappointing results, here are the five most common reasons — and exactly what to do about each one.
+
+## 1. Your Data Governance Foundation Is Broken
+
+Copilot surfaces content from across your Microsoft 365 tenant — SharePoint, Teams, Outlook, OneDrive — based on the permissions of the user asking. If your permissions are overly broad (which is true in most tenants), Copilot will eagerly surface sensitive content that users shouldn't be seeing at all.
+
+Before any Copilot rollout, you need a permission audit. Map which SharePoint sites, Teams channels, and document libraries have 'Everyone' or 'Everyone except external users' access. Tighten those permissions before Copilot gets turned on. This is non-negotiable.
+
+> Fix: Run a SharePoint permission report using the SharePoint Admin Center or PnP PowerShell. Remediate sites with overly broad access before enabling Copilot for any users.
+
+## 2. Sensitivity Labels Are Either Missing or Not Enforced
+
+Sensitivity labels are the control plane for Copilot. Without them, the AI has no way to understand the classification of the content it's working with. Organizations that deploy Copilot without a mature sensitivity labeling scheme end up with an AI that treats a confidential contract the same as a cafeteria menu.
+
+You need a label taxonomy that maps to your actual data classifications, auto-labeling policies for high-value content, and DLP rules that restrict what Copilot can do with labeled content. This takes time to get right, but it's the only way to deploy responsibly.
+
+## 3. No Adoption Strategy — Just License Assignment
+
+I see this constantly. An IT team gets Copilot licenses approved, assigns them to users, sends a single 'Copilot is now available!' email, and wonders why adoption is flat six months later.
+
+Copilot requires habit change. Users need to understand what it can do for their specific job role, see it demonstrated in workflows they care about, and have a place to ask questions and share wins. A dedicated Copilot Champions program — even a small one — dramatically accelerates adoption.
+
+- Identify 5–10 power users as Copilot Champions in each department
+- Create a shared Teams channel for Copilot tips, questions, and success stories
+- Run role-specific training sessions, not generic 'here's what Copilot can do' demos
+- Publish a monthly digest of the best Copilot prompts discovered by the team
+
+## 4. Prompting Skills Are Not Being Developed
+
+Copilot's output quality is directly proportional to the quality of the prompts it receives. 'Summarize this meeting' gets a very different result from 'Summarize this meeting, highlighting action items assigned to me and any decisions that need leadership approval.' The second prompt is what great Copilot users write naturally. The first is what most users start with.
+
+Build a prompt library for your organization. Collect the most effective prompts for your team's common workflows — meeting preparation, document drafting, data analysis, email composition — and make them easily accessible in a SharePoint page or Teams tab.
+
+## 5. You Deployed to the Wrong Users First
+
+Copilot license costs are significant. Many organizations try to maximize ROI by giving licenses to senior executives and knowledge workers first. This seems logical, but it often backfires: executives have high-complexity workflows and limited patience for iterating on prompts, while their assistants — who manage their calendars and communications — would unlock massive value immediately.
+
+The best Copilot rollouts start with highly motivated, tech-comfortable users in roles with clear, repeatable workflows: project managers, content creators, analysts, and team leads. They'll generate the success stories that build momentum for broader adoption.
+
+> The organizations that succeed with Copilot treat it as a change management initiative first, and a technology deployment second. The technology works. The hard part is the human side.
+
+If your Copilot rollout is struggling, I offer a focused Copilot Readiness Assessment that diagnoses exactly where the gaps are and gives you a prioritized remediation plan. Reach out to discuss what that looks like for your organization.` },
+{ slug: "m365-tenant-health-check", category: "M365 Best Practices", title: "The M365 Tenant Health Check: What We Look For at NASA Scale", summary: "After years of managing Microsoft 365 for one of the world's most security-sensitive organizations, I've developed a systematic audit methodology. This is what we check — and why each item matters.", date: "May 22, 2025", readingTime: "4 min read", body: `Managing Microsoft 365 at NASA means operating under constraints most organizations never encounter: strict federal compliance requirements, national security considerations, a user base of scientists and engineers with specialized workflows, and zero tolerance for data exposure. Over the years, I've developed a systematic health check methodology that I now apply to every M365 consulting engagement.
+
+Here's what a thorough M365 tenant health check covers — and why each area matters.
+
+## Identity and Access Management
+
+Everything starts with identity. A compromised account in a poorly-governed tenant can cascade into a catastrophic breach. We look at MFA enrollment rates (the target is 100% — no exceptions), Conditional Access policy coverage, privileged identity management for admin accounts, and sign-in risk policies.
+
+- MFA enrollment: Is it enforced via Conditional Access (not just 'enabled' in legacy per-user settings)?
+- Admin accounts: Do global admins have separate cloud-only admin accounts?
+- Privileged Identity Management: Are admin roles just-in-time rather than permanently assigned?
+- Guest accounts: Are there stale guests with broad access? When were they last reviewed?
+- Break-glass accounts: Are emergency access accounts configured, monitored, and tested?
+
+## Exchange Online and Email Security
+
+Email remains the primary attack vector for most organizations. A healthy Exchange Online configuration has defense-in-depth: DMARC, DKIM, and SPF properly configured to prevent spoofing; Defender for Office 365 anti-phishing, anti-malware, and Safe Links policies active; and mailbox audit logging enabled.
+
+> One finding I see in nearly every audit: organizations that have SPF and DKIM configured but no DMARC enforcement policy. DMARC without a 'reject' or 'quarantine' policy is not protecting you from spoofing.
+
+## SharePoint and OneDrive Sharing Policies
+
+SharePoint's default sharing settings are far too permissive for most organizations. We audit tenant-level and site-level sharing policies, check for anonymous sharing links (a significant risk that's often overlooked), review external sharing domains, and verify that site access request workflows route to the right owners.
+
+## Teams Governance
+
+Teams sprawl is real. In tenants that have been running Teams for several years without governance, we routinely find hundreds of Teams that have no owners, are completely inactive, and contain files that no one has looked at in years — but that are still accessible to members who left the organization.
+
+- Active Teams with no owners: high risk, needs immediate remediation
+- Teams not active in 90+ days: candidate for archival
+- External users in Teams: are all of them still valid partners?
+- Teams creation policy: who can create Teams and is there an approval workflow?
+- Private channel governance: are private channels being used appropriately?
+
+## Compliance and Data Governance
+
+This is often where the most significant gaps appear. We check retention policy coverage (is every critical workload covered?), eDiscovery readiness, sensitivity labeling deployment and enforcement, DLP policy coverage, and audit log retention. Most organizations have some policies in place but have gaps in coverage they aren't aware of.
+
+## Licensing and Cost Optimization
+
+The final piece is license hygiene. In large tenants, license waste is significant. Unassigned licenses, users assigned to licenses above what their role requires, and redundant third-party tools that M365 already provides natively — these are all common findings. A thorough license audit typically identifies meaningful cost savings.
+
+If you'd like a systematic health check of your M365 tenant, my M365 Tenant Audit is a fixed-price engagement that delivers a complete findings report with a prioritized remediation roadmap. Get in touch to discuss whether it's the right fit for your organization.` },
+{ slug: "sharepoint-intranet-architecture", category: "M365 Best Practices", title: "SharePoint Intranet Architecture: The Blueprint That Actually Works", summary: "Most SharePoint intranets fail because they were built without a coherent information architecture. Here's the planning framework I use for every modern intranet engagement — from hub structure to taxonomy design.", date: "May 8, 2025", readingTime: "4 min read", body: `I've seen a lot of SharePoint intranets. I've seen ones built in 2008 that are still somehow running, ones that cost millions in consulting fees and were abandoned within two years, and ones that genuinely transformed how an organization communicates and collaborates. The difference between the successful ones and the failures almost always comes down to information architecture.
+
+This is the planning framework I use for every modern SharePoint intranet engagement. It's developed from real deployments, including managing a complex M365 environment at one of the world's most information-intensive organizations.
+
+## Start With User Research, Not IT Requirements
+
+The first and most important step is understanding how your users actually work — not how IT thinks they work, and not how leadership wishes they worked. This means interviews, surveys, card sorting exercises, and observation. What information do people need to do their jobs? Where do they currently go to find it? What's frustrating about the current state?
+
+The outputs of this research should drive everything: your navigation structure, your content types, your hub organization, and your governance model. Skip this step and you're building an intranet for an imaginary user.
+
+## Hub and Site Architecture
+
+The modern SharePoint architecture centers on hub sites. Hubs are the organizing structure that groups related sites together, enables cross-site search and navigation, and provides consistent branding and security across a portfolio of sites.
+
+A typical mid-size organization might have hubs organized around: functional departments (HR, Finance, IT, Legal), major business units or regions, and a root intranet hub that serves as the top-level landing experience. The key is that hub structure should reflect how users think about information, not how the org chart is drawn.
+
+> One of the most common mistakes: building hub structure that mirrors the organizational hierarchy. Users don't look for information by thinking 'which department owns this?' They think 'I need to find the expense reporting form.' Design for the task, not the org chart.
+
+## Taxonomy and Managed Metadata
+
+SharePoint's Managed Metadata Service gives you a controlled vocabulary for tagging content across the intranet. Used well, it's powerful: users can find content by topic, not just by navigating to a specific site. Used poorly — or ignored — it becomes a maintenance nightmare or an abandoned feature.
+
+- Start with a small, purposeful taxonomy. Five well-chosen term sets are better than fifty abandoned ones.
+- Assign a term set owner for each set who is responsible for governance.
+- Use managed metadata for cross-site navigation menus, not just document tagging.
+- Build a review cadence — taxonomy needs maintenance as the organization evolves.
+
+## Navigation Design
+
+Navigation is where intranet projects most often fail usability. The temptation is to create a navigation that's comprehensive — a place for everything, everything in its place. The result is navigation so deep and complex that users give up and use search instead.
+
+Modern SharePoint supports three navigation layers: global (tenant-level app bar), hub navigation, and local site navigation. Each should serve a different purpose. Global is for universal tools — the directory, IT help desk, HR portal. Hub navigation is for departmental resources. Local is for within-site wayfinding.
+
+## Governance Before Launch
+
+Content governance is what separates intranets that stay current from intranets that become digital graveyards. Before launch, you need clear answers to: Who owns each section of the intranet? How often must content be reviewed? What's the process for requesting new pages or sections? What happens to orphaned content when people change roles?
+
+The governance model doesn't have to be complex — but it must exist and be enforced. I recommend building a content ownership matrix as part of every intranet project, assigning a named owner and a review cadence to every major content area.
+
+Building a SharePoint intranet the right way is one of the highest-impact things an organization can do for its internal communications and knowledge management. If you're planning an intranet project and want to get the architecture right from the start, let's talk.` },
+{ slug: "power-automate-approval-workflows", category: "Power Platform How-Tos", title: "Power Automate Approval Workflows: Build Once, Scale Forever", summary: "Approval workflows are one of the highest-ROI automations in Power Automate. Learn the design patterns that keep workflows maintainable as your organization's processes evolve.", date: "April 24, 2025", readingTime: "4 min read", body: `Approval workflows are among the most impactful automations you can build with Power Automate. They replace email chains, ad hoc Teams messages, and spreadsheet trackers with structured, auditable, repeatable processes. Done right, they transform how an organization handles procurement approvals, content publishing, IT change requests, HR processes, and dozens of other high-friction workflows.
+
+Done wrong, they become brittle nightmares that break every time someone changes roles, get bypassed by frustrated users, and generate more maintenance burden than the manual process they replaced.
+
+Here are the design patterns that make the difference.
+
+## Use SharePoint Lists as Your Data Layer
+
+Every approval workflow needs a persistent record of requests and their outcomes. Don't store this state inside the flow itself — flows can fail, be updated, or be deleted. Store request data in a SharePoint list. This gives you a permanent audit trail, a source of truth for reporting, and a data source you can query and report on independently of the flow.
+
+Design your SharePoint list schema first, before building the flow. Think about what data you'll need for reporting: who requested it, when, what approval stage it's at, who approved or rejected it, and why. These columns are easy to add upfront and painful to add after the fact.
+
+## Decouple Approver Identity from the Workflow
+
+The most brittle approval workflows have approver email addresses hardcoded into the flow. Every time someone changes roles, a flow breaks. Instead, drive approver identity from configuration — a SharePoint list, a Microsoft 365 Group, or a custom lookup.
+
+> Best practice: Store approval routing in a SharePoint 'Workflow Configuration' list. The flow looks up the current approver for each approval type at runtime. When approvers change, update the list — no flow modifications needed.
+
+## Build Delegation and Escalation In From the Start
+
+Every approval workflow eventually encounters the same problems: the approver is on vacation, the approver doesn't respond within the required SLA, or the request needs to go to a backup approver. Build these scenarios into the workflow from the beginning, not as an afterthought.
+
+- Set a timeout on every approval action — never wait indefinitely
+- When a timeout occurs, escalate to the approver's manager or a defined backup
+- Send reminder notifications before the timeout, not just when it expires
+- Log every timeout and escalation to the SharePoint list for reporting
+
+## Adaptive Cards Over Email Notifications
+
+The default Power Automate approval sends an email with approve/reject buttons. This works, but Adaptive Cards in Teams are significantly better for most organizational contexts: they surface where users already spend their time, support richer formatting, and allow inline action without leaving Teams.
+
+Use the 'Post an Adaptive Card and wait for a response' action in Teams instead of the generic approval action when you want full control over the approval experience. You can include request details, attachments, a required comments field, and custom buttons.
+
+## Version Your Flows
+
+Power Automate flows don't have native version control in the traditional sense, but you can build your own versioning discipline. Before making significant changes to a production flow, export it to a JSON file and store it in a SharePoint document library. Document what changed and why in a change log list. This creates the audit trail you'll need when something goes wrong — and something always eventually goes wrong.
+
+## Monitor With Flow Analytics
+
+Once a workflow is in production, don't just assume it's working. Use the Power Automate analytics dashboard to monitor run history, failure rates, and performance. Set up a separate alert flow that notifies the IT team when a critical approval workflow fails more than a defined number of times in a rolling window.
+
+If your organization has approval processes that are still being handled manually or through ad hoc email chains, Power Automate can transform them — but the architecture decisions matter. I'm happy to discuss what an automation assessment for your workflows would look like.` },
+{ slug: "dlp-sensitivity-labels", category: "Governance & Compliance", title: "DLP and Sensitivity Labels: The Governance Stack Every Organization Needs", summary: "Data loss prevention and sensitivity labeling are the foundation of a secure Microsoft 365 environment — especially with Copilot in the picture. Here's how to build and govern them correctly.", date: "April 10, 2025", readingTime: "4 min read", body: `Copilot changes the stakes for data governance fundamentally. In a traditional M365 environment, a user can only access content they navigate to. With Copilot, the AI can surface and summarize content from across the tenant — limited only by the user's permissions. If your permissions are sloppy and your data classification is nonexistent, Copilot will eagerly expose things that should never be surfaced.
+
+This is why I tell every organization: before you turn on Copilot, get your sensitivity labels and DLP policies right. Here's how.
+
+## Start With a Data Classification Framework
+
+Sensitivity labels are only as good as the classification framework behind them. Before you configure anything in the Microsoft Purview compliance portal, spend time defining your data classification taxonomy. Most organizations need four to five levels: something like Public, Internal, Confidential, Highly Confidential, and Restricted.
+
+Each level should have a clear definition that any employee can understand. 'Confidential' means something specific about who can access it, how it can be shared, and what controls apply. That definition drives the label configuration — it's not the other way around.
+
+> Critical: Your classification framework must be built with your Legal, HR, and Information Security teams — not just IT. The definitions of 'Confidential' and 'Restricted' have legal implications that IT cannot define unilaterally.
+
+## Sensitivity Label Configuration
+
+Once the framework is defined, configure the labels in Microsoft Purview. Key decisions for each label include: Does it apply encryption? Does it add visual markings (headers, footers, watermarks)? Does it restrict copying, printing, or forwarding? Does it prevent sharing outside the organization?
+
+- Start with labels that apply markings only, before adding encryption — this builds the habit without disrupting workflows
+- Use sublabels for use-case-specific variants (e.g., Confidential > HR Only, Confidential > Legal Only)
+- Configure label inheritance for Teams and SharePoint sites — container labels apply to all content within
+- Test encryption labels thoroughly with cross-tenant and external sharing scenarios before rolling out broadly
+
+## Auto-Labeling Policies
+
+Manual labeling by users is valuable but insufficient. Users are busy and inconsistent. Auto-labeling policies in Microsoft Purview can automatically apply or recommend labels based on content detected in documents and emails — credit card numbers, Social Security numbers, medical record numbers, passport numbers, and hundreds of other sensitive information types.
+
+Run auto-labeling in simulation mode first. Before you turn on automatic enforcement, run policies in 'simulation' mode for at least two weeks. The simulation report shows you how many items would be labeled and lets you tune the policies to reduce false positives before enforcement begins.
+
+## Data Loss Prevention Policies
+
+DLP policies are the enforcement layer. They detect sensitive content in SharePoint, OneDrive, Exchange, Teams, and endpoint devices, and take action — blocking sharing, generating alerts, requiring user justification — based on rules you configure.
+
+The most important DLP policies to get right are those governing external sharing of sensitive content. A policy that prevents a user from emailing a document labeled 'Highly Confidential' to an external address is one of the highest-impact controls you can put in place.
+
+- Block external sharing of Highly Confidential and Restricted labeled content
+- Require business justification for sharing Confidential content externally
+- Alert the compliance team when labeled content is accessed from unmanaged devices
+- Configure endpoint DLP to control copying sensitive content to USB drives or personal cloud storage
+
+## Governing the Governance
+
+The final piece is often the most neglected: label and DLP policy governance. Your taxonomy needs a review cadence. New data types, regulatory changes, and business evolution all require updates to your classification framework. Assign a data governance committee that meets at least annually to review and update the framework. Without this, labels become stale and users stop trusting them.
+
+Building a mature sensitivity labeling and DLP posture is one of the most complex compliance initiatives an M365 organization can undertake — and one of the most important. If you're starting from scratch or trying to remediate a messy existing implementation, a structured Governance & Compliance Sprint is usually the right starting point.` },
+{ slug: "m365-migration-checklist", category: "Digital Transformation", title: "Microsoft 365 Migration Checklist: 30 Things to Do Before You Move", summary: "M365 migrations fail when teams skip the discovery and planning phase. This checklist covers every critical item — from license mapping to identity readiness — that you should verify before migrating a single mailbox.", date: "March 27, 2025", readingTime: "4 min read", body: `In my experience overseeing M365 migrations for large organizations, the failures almost always trace back to one cause: insufficient discovery and planning. Teams move too fast to get to the 'exciting' parts — the cutover, the new features, the clean new environment — and skip the hard, unglamorous work of understanding the current state.
+
+This checklist covers the 30 critical items I verify before any M365 migration begins. Use it as a pre-migration gate — don't proceed until every item is addressed.
+
+## Identity Readiness (Items 1–7)
+
+- 1. Directory is clean: no stale accounts, service accounts documented, guest accounts reviewed
+- 2. UPN suffix matches the primary SMTP domain users will use in M365
+- 3. Azure AD Connect (or Entra Connect) is scoped, tested, and validated in staging
+- 4. MFA rollout plan is complete before first user migrations begin
+- 5. Conditional Access baseline policies are configured in the target tenant
+- 6. Privileged Identity Management is configured for admin roles
+- 7. Break-glass emergency access accounts are created and documented
+
+## Licensing (Items 8–12)
+
+- 8. License requirements are mapped by user role, not assumed to be one-size-fits-all
+- 9. License count includes a buffer for the overlap period during migration
+- 10. Licensing for hybrid coexistence features (Exchange hybrid, Teams interop) is confirmed
+- 11. Any third-party tools with M365 dependencies have compatible licensing
+- 12. License assignment strategy is defined — direct assignment, group-based, or via automation
+
+## Exchange Online Readiness (Items 13–17)
+
+> Email is the migration item users feel most immediately. Problems here generate the most support tickets and erode confidence in the entire project. Get it right.
+
+- 13. DNS records (MX, SPF, DKIM, DMARC) are planned, tested, and staged for cutover
+- 14. Mailbox size distribution is understood — large mailboxes need migration priority planning
+- 15. Shared mailboxes, room mailboxes, and equipment mailboxes are inventoried
+- 16. Shared calendar and resource booking workflows are documented
+- 17. Mail flow rules and connectors in the source environment are inventoried for re-creation
+
+## SharePoint and OneDrive (Items 18–22)
+
+- 18. Content inventory is complete: sites, document libraries, list items, and estimated data volume
+- 19. Customizations (classic web parts, InfoPath forms, custom workflows) are documented and have a modernization plan
+- 20. External sharing and permissions are audited before migration (don't migrate broken permissions)
+- 21. OneDrive sync client version is confirmed compatible with the target tenant
+- 22. Large file exclusions are configured in the migration tool — files over the M365 size limit will fail
+
+## Teams and Collaboration (Items 23–26)
+
+- 23. Teams creation policy is defined before users get access — governance later is harder
+- 24. Guest access policy is configured based on your security requirements
+- 25. Phone System / Direct Routing dependencies are identified if voice is in scope
+- 26. Third-party integrations (connectors, bots, apps) are inventoried and validated for M365 compatibility
+
+## Governance and Compliance (Items 27–30)
+
+- 27. Retention policies are designed for the target environment before any content moves
+- 28. eDiscovery holds in the source environment are documented and preserved
+- 29. Audit log settings are configured in the target tenant before migration begins
+- 30. Data residency requirements are confirmed and the correct M365 geography is provisioned
+
+Thirty items is a lot — but each one represents a category of migration failure I've seen happen. The organizations that move fast and skip this checklist often end up spending more time on remediation than they saved on planning.
+
+If you're planning an M365 migration and want an experienced architect to validate your readiness before you move, a migration readiness assessment is the right first step. Get in touch to discuss your timeline and current state.` },
+];
+
+
+function inline(s) {
+  const runs = [], re = /(\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  let last = 0, m;
+  while ((m = re.exec(s))) {
+    if (m.index > last) runs.push({ t: s.slice(last, m.index), b: false, i: false, n: true });
+    const tok = m[0];
+    if (tok.startsWith("**")) runs.push({ t: tok.slice(2, -2), b: true, i: false, n: false });
+    else runs.push({ t: tok.slice(1, -1), b: false, i: true, n: false });
+    last = m.index + tok.length;
+  }
+  if (last < s.length) runs.push({ t: s.slice(last), b: false, i: false, n: true });
+  return runs;
+}
+function parseBody(md) {
+  const lines = md.split("\n"), out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const t = lines[i].trim();
+    if (!t) { i++; continue; }
+    if (t.startsWith("## ")) { out.push({ type: "h2", text: t.slice(3) }); i++; continue; }
+    if (t.startsWith("### ")) { out.push({ type: "h3", text: t.slice(4) }); i++; continue; }
+    if (t === "---") { out.push({ type: "hr" }); i++; continue; }
+    if (t.startsWith("> ")) { out.push({ type: "quote", runs: inline(t.slice(2)) }); i++; continue; }
+    if (t.startsWith("- ")) {
+      const items = [];
+      while (i < lines.length && lines[i].trim().startsWith("- ")) {
+        let body = lines[i].trim().slice(2);
+        const num = body.match(/^(\d+)\.\s+/);
+        if (num) body = body.slice(num[0].length);
+        items.push({ runs: inline(body), isNum: !!num, isDot: !num, num: num ? num[1].padStart(2, "0") : "" });
+        i++;
+      }
+      out.push({ type: "ul", items }); continue;
+    }
+    if (/^\*[^*].*[^*]\*$/.test(t)) { out.push({ type: "note", text: t.slice(1, -1) }); i++; continue; }
+    out.push({ type: "p", runs: inline(t) }); i++;
+  }
+  return out.map((b) => ({ ...b, isH2: b.type === "h2", isH3: b.type === "h3", isP: b.type === "p", isUl: b.type === "ul", isQuote: b.type === "quote", isHr: b.type === "hr", isNote: b.type === "note" }));
+}
+
+const ORIGIN = "https://shanemccaw.com";
+
+class Component extends DCLogic {
+  state = { narrow: false, menuOpen: false, solOpen: false, copied: false };
+
+  componentDidMount() {
+    this._onResize = () => {
+      const narrow = window.innerWidth < 1024;
+      if (narrow !== this.state.narrow) this.setState({ narrow, menuOpen: false, solOpen: false });
+    };
+    this._onResize();
+    window.addEventListener("resize", this._onResize);
+    this._onNav = () => this.forceUpdate();
+    window.addEventListener("hashchange", this._onNav);
+    window.addEventListener("popstate", this._onNav);
+  }
+  componentWillUnmount() {
+    window.removeEventListener("resize", this._onResize);
+    window.removeEventListener("hashchange", this._onNav);
+    window.removeEventListener("popstate", this._onNav);
+    clearTimeout(this._t);
+  }
+
+  currentArticle() {
+    const pick = this.props.article ?? "from-url";
+    if (pick !== "from-url") return ARTICLES.find((a) => a.slug === pick) || ARTICLES[0];
+    let slug = "";
+    try {
+      slug = new URLSearchParams(window.location.search).get("slug") || (window.location.hash || "").replace(/^#/, "");
+    } catch (e) {}
+    return ARTICLES.find((a) => a.slug === slug) || ARTICLES[0];
+  }
+
+  renderVals() {
+    const { narrow, menuOpen, solOpen, copied } = this.state;
+    const article = this.currentArticle();
+    if (this._slug !== article.slug) { this._slug = article.slug; this._blocks = parseBody(article.body); }
+    const url = ORIGIN + "/resources/" + article.slug;
+    return {
+      narrow, wide: !narrow, menuOpen, solOpen,
+      toggleMenu: () => this.setState((s) => ({ menuOpen: !s.menuOpen, solOpen: false })),
+      toggleSolutions: () => this.setState((s) => ({ solOpen: !s.solOpen })),
+      article,
+      blocks: this._blocks,
+      share: {
+        linkedin: "https://www.linkedin.com/sharing/share-offsite/?url=" + encodeURIComponent(url),
+        x: "https://twitter.com/intent/tweet?text=" + encodeURIComponent(article.title) + "&url=" + encodeURIComponent(url),
+      },
+      copied, notCopied: !copied,
+      copyLink: () => {
+        const done = () => { this.setState({ copied: true }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ copied: false }), 2000); };
+        try { navigator.clipboard.writeText(url).then(done, done); } catch (e) { done(); }
+      },
+      ctaLg: { style: { minHeight: 56, padding: "0 40px", fontSize: 17, fontWeight: 600, borderRadius: 12, background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", border: "none" } },
+      ctaMd: { style: { minHeight: 44, padding: "0 20px", fontSize: 14, fontWeight: 600, borderRadius: 10, background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", border: "none" } },
+    };
+  }
+}
+</script>
+</body>
+</html>

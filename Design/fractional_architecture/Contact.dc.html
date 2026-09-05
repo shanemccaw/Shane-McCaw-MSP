@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap">
+  <script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#020617;color:#cbd5e1;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    a{color:#00B4D8}a:hover{color:#5ed2ea}
+    input::placeholder,textarea::placeholder{color:#64748b}
+    @keyframes smcSpin{to{transform:rotate(360deg)}}
+    @media (max-width:1023px){input,textarea,select{font-size:16px!important}}
+  </style>
+</helmet>
+
+<header style="position:fixed;top:0;left:0;right:0;z-index:50">
+  <div style="position:absolute;inset:0;background:rgba(2,6,23,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid rgba(30,41,59,.8)"></div>
+  <div style="position:relative;max-width:1280px;margin:0 auto;padding:0 clamp(16px,4vw,32px);height:72px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+    <a href="Work With Me.dc.html" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:#F5F5F7">
+      <span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+      <span style="font-family:'Space Grotesk',Inter,sans-serif;font-weight:700;font-size:16px;letter-spacing:-.02em;line-height:1">Shane McCaw</span>
+    </a>
+    <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+      <nav style="display:flex;align-items:center;gap:4px">
+        <a href="Assessment.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Assessment</a>
+        <div style="position:relative">
+          <button onClick="{{ toggleSolutions }}" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;background:transparent;border:0;cursor:pointer;font-family:inherit" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Solutions<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <sc-if value="{{ solOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:100%;left:0;width:400px;margin-top:6px;background:rgba(5,12,29,.97);border:1px solid rgba(30,41,59,.9);border-radius:16px;padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:2px;backdrop-filter:blur(24px)">
+              <a href="Solution - Copilot AI.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Copilot &amp; AI</a>
+              <a href="Solution - Security Compliance.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Security &amp; Compliance</a>
+              <a href="Solution - Governance.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Governance</a>
+              <a href="Solution - SharePoint.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">SharePoint</a>
+              <a href="Solution - Power Platform.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Power Platform</a>
+              <a href="Solution - Teams.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Teams</a>
+              <a href="Solution - Migration.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Migration</a>
+              <a href="Solution - M365 Health.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">M365 Health</a>
+            </div>
+          </sc-if>
+        </div>
+        <a href="Work With Me.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Fractional Architecture</a>
+        <a href="About Shane.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">About Shane</a>
+        <a href="Resources.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Resources</a>
+        <a href="#top" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#00B4D8;background:rgba(255,255,255,.06);text-decoration:none">Contact</a>
+      </nav>
+      <a href="#form" style="display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;background:#0078D4;text-decoration:none" style-hover="background:#005A9E">Talk to Shane<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></a>
+    </sc-if>
+    <sc-if value="{{ narrow }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ toggleMenu }}" aria-label="Toggle navigation menu" style="padding:10px;border-radius:8px;color:#B5B5BC;background:transparent;border:0;cursor:pointer;display:flex"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg></button>
+    </sc-if>
+  </div>
+  <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:relative;border-top:1px solid rgba(30,41,59,.8);padding:8px 16px 20px;display:flex;flex-direction:column;gap:2px">
+      <a href="Assessment.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Assessment</a>
+      <a href="Solutions.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Solutions</a>
+      <a href="Work With Me.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Fractional Architecture</a>
+      <a href="About Shane.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">About Shane</a>
+      <a href="Resources.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Resources</a>
+      <a href="#top" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#00B4D8;background:rgba(255,255,255,.06);text-decoration:none">Contact</a>
+      <a href="#form" style="display:block;margin-top:12px;padding:12px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;text-align:center;background:#0078D4;text-decoration:none">Talk to Shane</a>
+    </div>
+  </sc-if>
+</header>
+
+<main style="padding-top:72px">
+
+  <section id="top" data-screen-label="Contact hero + form" style="position:relative;overflow:hidden;scroll-margin-top:72px;background:radial-gradient(circle 1100px at 76% -20%, rgba(139,92,246,.12), rgba(2,6,23,0) 62%), radial-gradient(circle 800px at 6% 12%, rgba(0,120,212,.06), rgba(2,6,23,0) 66%)">
+    <span style="position:absolute;right:-50px;top:-30px;opacity:.1;pointer-events:none;line-height:0;filter:drop-shadow(0 0 26px rgba(139,92,246,.3))"><svg width="440" height="440" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path><path d="m21.854 2.147-10.94 10.939"></path></svg></span>
+    <div style="position:relative;max-width:1160px;margin:0 auto;padding:clamp(56px,9vw,104px) clamp(16px,4vw,32px) clamp(56px,8vw,96px)">
+      <div style="max-width:760px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Contact · Direct to Shane</span></div>
+        <h1 style="font-size:clamp(28px,4vw,44px);line-height:1.08;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:22px 0 20px;text-wrap:pretty">Send the Problem. <span style="color:#a78bfa">Shane Replies Within 24 Hours.</span></h1>
+        <p style="font-size:clamp(16px,2.2vw,18px);line-height:1.6;color:#94a3b8;margin:0;max-width:640px;text-wrap:pretty">Two sentences is plenty: the decision, the migration, the Copilot question. Every message goes to Shane's own inbox, and every reply is his. No intake team, no ticket queue.</p>
+      </div>
+
+      <div style="margin-top:clamp(36px,5vw,56px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:clamp(32px,5vw,64px);align-items:start">
+
+        <div id="form" style="scroll-margin-top:96px;border:1px solid rgba(0,120,212,.3);border-radius:20px;background:radial-gradient(700px 300px at 8% -10%,rgba(0,120,212,.18),transparent 60%),linear-gradient(168deg,rgba(10,37,64,.5),#070d1e 64%);padding:clamp(22px,3.5vw,32px)">
+          <sc-if value="{{ contactIdle }}" hint-placeholder-val="{{ true }}">
+            <form onSubmit="{{ sendContact }}" style="display:flex;flex-direction:column;gap:16px">
+              <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Send Shane a Message</span></div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px">
+                <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:#cbd5e1">Name<input id="c-name" placeholder="Your name" autocomplete="name" style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.28);background:rgba(2,6,23,.55);color:#f1f5f9;font-family:inherit;font-size:14px;outline:none" style-focus="border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.25)"></label>
+                <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:#cbd5e1">Work email<input id="c-email" type="email" placeholder="you@yourcompany.com" autocomplete="email" style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.28);background:rgba(2,6,23,.55);color:#f1f5f9;font-family:inherit;font-size:14px;outline:none" style-focus="border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.25)"></label>
+              </div>
+              <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:#cbd5e1">Company<input id="c-company" placeholder="Company" autocomplete="organization" style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.28);background:rgba(2,6,23,.55);color:#f1f5f9;font-family:inherit;font-size:14px;outline:none" style-focus="border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.25)"></label>
+              <sc-if value="{{ showChips }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <span style="font-size:13px;font-weight:500;color:#cbd5e1">What you're considering <span style="color:#64748b;font-weight:400">(optional)</span></span>
+                  <div style="display:flex;flex-wrap:wrap;gap:8px">
+                    <sc-for list="{{ chips }}" as="c" hint-placeholder-count="3">
+                      <sc-if value="{{ c.on }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ c.pick }}" style="display:flex;align-items:center;gap:6px;padding:10px 16px;border-radius:999px;font-size:13px;font-weight:600;color:#f8fafc;background:rgba(0,120,212,.18);border:1px solid #0078D4;cursor:pointer;font-family:inherit"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>{{ c.label }}</button></sc-if>
+                      <sc-if value="{{ c.off }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ c.pick }}" style="padding:10px 16px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;background:rgba(2,6,23,.55);border:1px solid rgba(148,163,184,.28);cursor:pointer;font-family:inherit" style-hover="border-color:rgba(0,120,212,.6);color:#f8fafc">{{ c.label }}</button></sc-if>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+              <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:#cbd5e1">What's stuck<textarea id="c-msg" rows="5" placeholder="The decision, the migration, the Copilot question. Two sentences is plenty." style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.28);background:rgba(2,6,23,.55);color:#f1f5f9;font-family:inherit;font-size:14px;line-height:1.5;outline:none;resize:vertical" style-focus="border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.25)"></textarea></label>
+              <sc-if value="{{ hasError }}" hint-placeholder-val="{{ false }}"><p style="margin:-4px 0 0;font-size:13px;line-height:1.5;color:#fca5a5">Add your name, a work email and a sentence about what's stuck.</p></sc-if>
+              <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" size="lg" onClick="{{ sendContact }}" dc-props="{{ payBtn }}" hint-size="100%,50px">Send to Shane<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></x-import>
+              <p style="margin:0;font-size:12.5px;line-height:1.55;color:#94a3b8">Goes to Shane directly. He cannot take on organizations that work with, contract to, or partner with NASA.</p>
+            </form>
+          </sc-if>
+          <sc-if value="{{ contactSending }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;min-height:520px;text-align:center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0078D4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:smcSpin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+              <div style="font-size:15px;color:#e2e8f0">Sending to Shane…</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ contactSent }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;justify-content:center;gap:14px;min-height:520px">
+              <span style="width:44px;height:44px;border-radius:12px;background:rgba(0,180,216,.1);border:1px solid rgba(0,180,216,.3);color:#00B4D8;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg></span>
+              <div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Sent</div>
+              <div style="font-size:24px;font-weight:800;letter-spacing:-.02em;color:#f8fafc;line-height:1.2">Shane has it.</div>
+              <p style="margin:0;font-size:15px;line-height:1.65;color:#cbd5e1;max-width:460px;text-wrap:pretty">He reads these himself and replies from his own inbox within 24 hours on the next business day. If the answer is short, you get it there. If it needs a conversation, his reply includes a time for the free 30-minute consultation.</p>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding-top:16px;border-top:1px solid rgba(30,41,59,.9);font-size:13px;line-height:1.5;color:#94a3b8"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>Sent on a weekend or holiday? The 24 hours start the next business day.</div>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="padding-top:6px">
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">What Happens Next</span></div>
+          <h2 style="font-size:clamp(24px,3.4vw,32px);line-height:1.15;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:14px 0 28px;text-wrap:pretty">Four Steps, All of Them With Shane.</h2>
+          <div style="display:flex;flex-direction:column">
+            <div style="display:grid;grid-template-columns:40px minmax(0,1fr);gap:0 18px">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:8px"><span style="width:40px;height:40px;border-radius:12px;border:1px solid rgba(0,180,216,.35);background:rgba(0,180,216,.08);color:#00B4D8;display:flex;align-items:center;justify-content:center;font-family:Menlo,ui-monospace,monospace;font-size:12px;letter-spacing:.08em;flex-shrink:0">01</span><span style="flex:1;width:1px;background:rgba(30,41,59,.9)"></span></div>
+              <div style="padding:0 0 30px">
+                <div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#00B4D8;padding-top:3px">Within 24 hours</div>
+                <h3 style="font-size:17px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;margin:8px 0 6px;line-height:1.3">Shane replies himself</h3>
+                <p style="margin:0;font-size:14.5px;line-height:1.6;color:#94a3b8;text-wrap:pretty">Your message goes to his inbox, not a queue. He answers it within 24 hours on the next business day.</p>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:40px minmax(0,1fr);gap:0 18px">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:8px"><span style="width:40px;height:40px;border-radius:12px;border:1px solid rgba(0,180,216,.35);background:rgba(0,180,216,.08);color:#00B4D8;display:flex;align-items:center;justify-content:center;font-family:Menlo,ui-monospace,monospace;font-size:12px;letter-spacing:.08em;flex-shrink:0">02</span><span style="flex:1;width:1px;background:rgba(30,41,59,.9)"></span></div>
+              <div style="padding:0 0 30px">
+                <div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#00B4D8;padding-top:3px">30 minutes · Free</div>
+                <h3 style="font-size:17px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;margin:8px 0 6px;line-height:1.3">A free consultation</h3>
+                <p style="margin:0;font-size:14.5px;line-height:1.6;color:#94a3b8;text-wrap:pretty">You pick a time. Thirty minutes on the issues you're facing and how Shane can help. No pitch.</p>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:40px minmax(0,1fr);gap:0 18px">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:8px"><span style="width:40px;height:40px;border-radius:12px;border:1px solid rgba(0,180,216,.35);background:rgba(0,180,216,.08);color:#00B4D8;display:flex;align-items:center;justify-content:center;font-family:Menlo,ui-monospace,monospace;font-size:12px;letter-spacing:.08em;flex-shrink:0">03</span><span style="flex:1;width:1px;background:rgba(30,41,59,.9)"></span></div>
+              <div style="padding:0 0 30px">
+                <div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#00B4D8;padding-top:3px">Your decision</div>
+                <h3 style="font-size:17px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;margin:8px 0 6px;line-height:1.3">You decide</h3>
+                <p style="margin:0;font-size:14.5px;line-height:1.6;color:#94a3b8;text-wrap:pretty">If it fits, you choose the engagement: a retainer tier or the Copilot Readiness Assessment. If it doesn't, you leave with a clearer picture and no obligation.</p>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:40px minmax(0,1fr);gap:0 18px">
+              <div style="display:flex;flex-direction:column;align-items:center"><span style="width:40px;height:40px;border-radius:12px;border:1px solid rgba(0,180,216,.35);background:rgba(0,180,216,.08);color:#00B4D8;display:flex;align-items:center;justify-content:center;font-family:Menlo,ui-monospace,monospace;font-size:12px;letter-spacing:.08em;flex-shrink:0">04</span></div>
+              <div>
+                <div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#00B4D8;padding-top:3px">From $900 a month</div>
+                <h3 style="font-size:17px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;margin:8px 0 6px;line-height:1.3">Purchase the hours. Work starts.</h3>
+                <p style="margin:0;font-size:14.5px;line-height:1.6;color:#94a3b8;text-wrap:pretty">Hours are purchased up front by card through Stripe. Shane schedules the first session and the engagement begins.</p>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:30px;display:flex;flex-wrap:wrap;gap:10px 22px;font-size:13px;color:#94a3b8">
+            <span style="display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>No proposal cycle</span>
+            <span style="display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>No SOW</span>
+            <span style="display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>No minimum term</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Contact details" style="border-top:1px solid rgba(30,41,59,.8);background:rgba(15,23,42,.4)">
+    <div style="max-width:1160px;margin:0 auto;padding:clamp(32px,5vw,48px) clamp(16px,4vw,32px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:clamp(20px,3vw,32px)">
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <span style="width:40px;height:40px;border-radius:12px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2);color:#60A5FA;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg></span>
+        <div><div style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Based in Vero Beach, FL</div><p style="margin:6px 0 0;font-size:14px;line-height:1.55;color:#94a3b8">Working with clients nationwide, on Eastern time.</p></div>
+      </div>
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <span style="width:40px;height:40px;border-radius:12px;background:rgba(0,180,216,.1);border:1px solid rgba(0,180,216,.2);color:#00B4D8;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg></span>
+        <div><div style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">The form is the front door</div><p style="margin:6px 0 0;font-size:14px;line-height:1.55;color:#94a3b8">No public inbox. Messages sent here reach Shane directly, and his reply comes from his own address.</p></div>
+      </div>
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <span style="width:40px;height:40px;border-radius:12px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);color:#FBBF24;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span>
+        <div><div style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">One exclusion</div><p style="margin:6px 0 0;font-size:14px;line-height:1.55;color:#94a3b8">Shane's NASA role is a personal credential, not an endorsement. He cannot take on organizations that work with, contract to, or partner with NASA.</p></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer style="position:relative">
+  <div style="position:absolute;inset:0;background:#020617;border-top:1px solid rgba(30,41,59,.8)"></div>
+  <div style="position:relative;max-width:1280px;margin:0 auto;padding:64px clamp(16px,4vw,32px) 40px">
+    <div style="display:flex;flex-wrap:wrap;gap:40px;margin-bottom:48px">
+      <div style="flex:1 1 260px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+          <span style="font-family:'Space Grotesk',Inter,sans-serif;font-weight:600;font-size:16px;color:#F5F5F7">Shane McCaw Consulting</span>
+        </div>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#B5B5BC;max-width:320px">Vero Beach, FL — M365 · Copilot AI · SharePoint · Power Platform</p>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Get Started</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="Assessment.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Assessment</a></li>
+          <li><a href="Work With Me.dc.html#tiers" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Fractional Architecture</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Solutions</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="Solution - Copilot AI.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Copilot &amp; AI</a></li>
+          <li><a href="Solution - Security Compliance.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Security &amp; Compliance</a></li>
+          <li><a href="Solution - Governance.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Governance</a></li>
+          <li><a href="Solution - SharePoint.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">SharePoint</a></li>
+          <li><a href="Solution - Power Platform.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Power Platform</a></li>
+          <li><a href="Solution - Teams.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Teams</a></li>
+          <li><a href="Solution - Migration.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Migration</a></li>
+          <li><a href="Solution - M365 Health.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">M365 Health</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Company</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="About Shane.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">About Shane</a></li>
+          <li><a href="Resources.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Resources</a></li>
+          <li><a href="#top" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Contact</a></li>
+          <li><a href="#form" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Ask a Question</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Legal</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="/terms" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Terms of Service</a></li>
+          <li><a href="/privacy" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Privacy Policy</a></li>
+        </ul>
+      </div>
+    </div>
+    <div style="padding-top:28px;border-top:1px solid rgba(30,41,59,.8);display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;font-size:12px;color:#B5B5BC">
+      <span>© 2026 Shane McCaw Consulting. All rights reserved. Shane's role at NASA is a personal credential; this practice is independent of NASA.</span>
+      <a href="/privacy" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Privacy Policy</a>
+    </div>
+  </div>
+</footer>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;previewState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;sending&quot;,&quot;sent&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;'live' | 'sending' | 'sent'&quot;,&quot;section&quot;:&quot;Form&quot;,&quot;description&quot;:&quot;live = follows what you do in the form; sending / sent force those states so they can be reviewed&quot;},&quot;showInterestChips&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Form&quot;,&quot;description&quot;:&quot;Show the optional 'What you're considering' picker (Architect Retainer / Copilot Readiness Assessment / Not sure yet)&quot;}}">
+const INTERESTS = ["Architect Retainer", "Copilot Readiness Assessment", "Not sure yet"];
+
+class Component extends DCLogic {
+  state = { narrow: false, menuOpen: false, solOpen: false, contact: "idle", interest: null, error: false };
+
+  componentDidMount() {
+    this._onResize = () => {
+      const narrow = window.innerWidth < 1024;
+      if (narrow !== this.state.narrow) this.setState({ narrow, menuOpen: false, solOpen: false });
+    };
+    this._onResize();
+    window.addEventListener("resize", this._onResize);
+  }
+  componentWillUnmount() {
+    window.removeEventListener("resize", this._onResize);
+    clearTimeout(this._c);
+  }
+
+  send = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (this._busy) return;
+    const v = (id) => (((document.getElementById(id) || {}).value) || "").trim();
+    if (!v("c-name") || !v("c-email") || !v("c-msg")) { this.setState({ error: true }); return; }
+    this._busy = true;
+    this.setState({ contact: "sending", error: false });
+    clearTimeout(this._c);
+    this._c = setTimeout(() => this.setState({ contact: "sent" }), 1300);
+  };
+
+  renderVals() {
+    const { narrow, menuOpen, solOpen, interest, error } = this.state;
+    const forced = this.props.previewState ?? "live";
+    const st = forced === "live" ? this.state.contact : forced;
+    const chips = INTERESTS.map((label) => ({
+      label,
+      on: interest === label,
+      off: interest !== label,
+      pick: () => this.setState((s) => ({ interest: s.interest === label ? null : label })),
+    }));
+    return {
+      narrow, wide: !narrow, menuOpen, solOpen,
+      toggleMenu: () => this.setState((s) => ({ menuOpen: !s.menuOpen, solOpen: false })),
+      toggleSolutions: () => this.setState((s) => ({ solOpen: !s.solOpen })),
+      contactIdle: st === "idle",
+      contactSending: st === "sending",
+      contactSent: st === "sent",
+      hasError: error,
+      showChips: this.props.showInterestChips ?? true,
+      chips,
+      sendContact: this.send,
+      payBtn: { style: { minHeight: 50, width: "100%", fontSize: 15, fontWeight: 600, borderRadius: 10, background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", border: "none" } },
+    };
+  }
+}
+</script>
+</body>
+</html>

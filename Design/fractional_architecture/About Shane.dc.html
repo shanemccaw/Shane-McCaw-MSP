@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap">
+  <script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#020617;color:#cbd5e1;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    a{color:#00B4D8}a:hover{color:#5ed2ea}
+    @media (max-width:1023px){input,textarea,select{font-size:16px!important}}
+  </style>
+</helmet>
+
+<header style="position:fixed;top:0;left:0;right:0;z-index:50">
+  <div style="position:absolute;inset:0;background:rgba(2,6,23,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid rgba(30,41,59,.8)"></div>
+  <div style="position:relative;max-width:1280px;margin:0 auto;padding:0 clamp(16px,4vw,32px);height:72px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+    <a href="Work With Me.dc.html" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:#F5F5F7">
+      <span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+      <span style="font-family:'Space Grotesk',Inter,sans-serif;font-weight:700;font-size:16px;letter-spacing:-.02em;line-height:1">Shane McCaw</span>
+    </a>
+    <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+      <nav style="display:flex;align-items:center;gap:4px">
+        <a href="Assessment.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Assessment</a>
+        <div style="position:relative">
+          <button onClick="{{ toggleSolutions }}" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;background:transparent;border:0;cursor:pointer;font-family:inherit" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Solutions<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <sc-if value="{{ solOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:100%;left:0;width:400px;margin-top:6px;background:rgba(5,12,29,.97);border:1px solid rgba(30,41,59,.9);border-radius:16px;padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:2px;backdrop-filter:blur(24px)">
+              <a href="Solution - Copilot AI.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Copilot &amp; AI</a>
+              <a href="Solution - Security Compliance.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Security &amp; Compliance</a>
+              <a href="Solution - Governance.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Governance</a>
+              <a href="Solution - SharePoint.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">SharePoint</a>
+              <a href="Solution - Power Platform.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Power Platform</a>
+              <a href="Solution - Teams.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Teams</a>
+              <a href="Solution - Migration.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Migration</a>
+              <a href="Solution - M365 Health.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">M365 Health</a>
+            </div>
+          </sc-if>
+        </div>
+        <a href="Work With Me.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Fractional Architecture</a>
+        <a href="#top" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#00B4D8;background:rgba(255,255,255,.06);text-decoration:none">About Shane</a>
+        <a href="Resources.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Resources</a>
+        <a href="Contact.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Contact</a>
+      </nav>
+      <a href="Contact.dc.html" style="display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;background:#0078D4;text-decoration:none" style-hover="background:#005A9E">Talk to Shane<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></a>
+    </sc-if>
+    <sc-if value="{{ narrow }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ toggleMenu }}" aria-label="Toggle navigation menu" style="padding:10px;border-radius:8px;color:#B5B5BC;background:transparent;border:0;cursor:pointer;display:flex"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg></button>
+    </sc-if>
+  </div>
+  <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:relative;border-top:1px solid rgba(30,41,59,.8);padding:8px 16px 20px;display:flex;flex-direction:column;gap:2px">
+      <a href="Assessment.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Assessment</a>
+      <a href="Solutions.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Solutions</a>
+      <a href="Work With Me.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Fractional Architecture</a>
+      <a href="#top" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#00B4D8;background:rgba(255,255,255,.06);text-decoration:none">About Shane</a>
+      <a href="Resources.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Resources</a>
+      <a href="Contact.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Contact</a>
+      <a href="Contact.dc.html" style="display:block;margin-top:12px;padding:12px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;text-align:center;background:#0078D4;text-decoration:none">Talk to Shane</a>
+    </div>
+  </sc-if>
+</header>
+
+<main style="padding-top:72px">
+
+  <section id="top" data-screen-label="About hero" style="position:relative;overflow:hidden;background:radial-gradient(circle 1100px at 76% -20%, rgba(139,92,246,.12), rgba(2,6,23,0) 62%), radial-gradient(circle 800px at 6% 12%, rgba(0,120,212,.06), rgba(2,6,23,0) 66%)">
+    <span style="position:absolute;right:-60px;top:50%;transform:translateY(-50%);opacity:.11;pointer-events:none;line-height:0;filter:drop-shadow(0 0 26px rgba(139,92,246,.3))"><svg width="470" height="470" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+    <div style="position:relative;max-width:1160px;margin:0 auto;padding:clamp(56px,9vw,104px) clamp(16px,4vw,32px) clamp(48px,7vw,80px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:clamp(40px,6vw,80px);align-items:center">
+    <div style="max-width:640px">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">About Shane McCaw</span></div>
+      <h1 style="font-size:clamp(26px,3.8vw,40px);line-height:1.1;letter-spacing:-.022em;font-weight:800;color:#f8fafc;margin:22px 0 20px;text-wrap:pretty">30 Years in the Microsoft Ecosystem. Currently NASA's Lead M365 Architect. <span style="color:#a78bfa">Still Doing the Work.</span></h1>
+      <p style="font-size:clamp(16px,2.2vw,18px);line-height:1.6;color:#94a3b8;margin:0 0 32px;max-width:580px;text-wrap:pretty">Shane McCaw is not a former Microsoft executive turned consultant, or a generalist who took a few certifications. He is a working architect who has spent three decades inside this platform — and is actively doing at NASA today what he can do for your organization tomorrow.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+        <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" size="lg" as="a" href="Work With Me.dc.html#tiers" dc-props="{{ ctaLg }}" hint-size="auto,52px">Work with Shane<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></x-import>
+        <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="outline" size="lg" as="a" href="#timeline" dc-props="{{ ctaLgGhost }}" hint-size="auto,52px">30 years, one ecosystem</x-import>
+      </div>
+    </div>
+    <div style="justify-self:end;width:100%;max-width:520px;border:1px solid rgba(139,92,246,.22);border-radius:18px;background:linear-gradient(160deg,rgba(139,92,246,.10),rgba(11,21,36,.52) 55%,rgba(11,21,36,.34));backdrop-filter:blur(3px);box-shadow:0 0 60px rgba(139,92,246,.13), inset 0 1px 0 rgba(148,163,184,.08);padding:20px 22px">
+      <div style="display:grid;grid-template-columns:minmax(110px,auto) 1fr;gap:0 clamp(16px,3vw,28px);align-items:start;padding:18px 0">
+        <span style="font-size:clamp(40px,5vw,60px);font-weight:800;letter-spacing:-.045em;line-height:.9;color:#f8fafc">30+</span>
+        <div style="padding-top:6px"><div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Years in Microsoft ecosystem</div><p style="margin:6px 0 0;font-size:14px;line-height:1.5;color:#94a3b8">Since 1994. Writing code first, architecture second, strategy decks never.</p></div>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(110px,auto) 1fr;gap:0 clamp(16px,3vw,28px);align-items:start;padding:18px 0;border-top:1px solid rgba(30,41,59,.9)">
+        <span style="font-size:clamp(40px,5vw,60px);font-weight:800;letter-spacing:-.045em;line-height:.9;color:#f8fafc">NASA</span>
+        <div style="padding-top:6px"><div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Current role</div><p style="margin:6px 0 0;font-size:14px;line-height:1.5;color:#94a3b8">Lead M365 Architect and Copilot for M365 SME. His primary day job, since 2018.</p></div>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(110px,auto) 1fr;gap:0 clamp(16px,3vw,28px);align-items:start;padding:18px 0;border-top:1px solid rgba(30,41,59,.9)">
+        <span style="font-size:clamp(40px,5vw,60px);font-weight:800;letter-spacing:-.045em;line-height:.9;color:#f8fafc">20+</span>
+        <div style="padding-top:6px"><div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Microsoft certifications</div><p style="margin:6px 0 0;font-size:14px;line-height:1.5;color:#94a3b8">Earned over decades of real-world practice, not exam preparation.</p></div>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(110px,auto) 1fr;gap:0 clamp(16px,3vw,28px);align-items:start;padding:18px 0;border-top:1px solid rgba(30,41,59,.9);border-bottom:1px solid rgba(30,41,59,.9)">
+        <span style="font-size:clamp(40px,5vw,60px);font-weight:800;letter-spacing:-.045em;line-height:.9;color:#f8fafc">2026</span>
+        <div style="padding-top:6px"><div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Innovation Forum Award</div><p style="margin:6px 0 0;font-size:14px;line-height:1.5;color:#94a3b8">For deploying Copilot to the first large federal agency to do so.</p></div>
+      </div>
+    </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Available for engagements" style="border-top:1px solid rgba(30,41,59,.8);border-bottom:1px solid rgba(30,41,59,.8);background:rgba(15,23,42,.4)">
+    <div style="max-width:1160px;margin:0 auto;padding:clamp(48px,7vw,80px) clamp(16px,4vw,32px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:clamp(32px,5vw,64px);align-items:start">
+      <div style="position:relative;overflow:hidden;border:1px solid rgba(0,120,212,.3);border-radius:20px;background:radial-gradient(700px 300px at 8% -10%,rgba(0,120,212,.18),transparent 60%),linear-gradient(168deg,rgba(10,37,64,.5),#070d1e 64%);padding:clamp(24px,4vw,40px)">
+        <span style="display:inline-flex;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#00B4D8;background:rgba(0,180,216,.1);border:1px solid rgba(0,180,216,.3);border-radius:999px;padding:5px 11px">Available for Engagements</span>
+        <h2 style="font-size:clamp(24px,3.6vw,34px);line-height:1.14;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:18px 0 16px;text-wrap:pretty">The Architect Who Built at NASA Scale — Available to You.</h2>
+        <p style="font-size:15.5px;line-height:1.65;color:#cbd5e1;margin:0;text-wrap:pretty">The governance rigor, security-first architecture, and hands-on Copilot deployment experience that Shane has developed running one of the most scrutinized Microsoft 365 environments in the federal government don't stay at NASA. Every private engagement draws directly from what he is solving in production today — at a compliance level and operational scale that most enterprise consultants have never operated at. You are not getting a consultant who studied NASA. You are getting the architect who works there.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:18px;font-size:16px;line-height:1.7;color:#94a3b8">
+        <p style="margin:0;text-wrap:pretty">Most organizations running Microsoft 365 are using a fraction of what they're paying for — and carrying governance, security, and compliance risk they don't fully see yet. Shane's consulting practice exists to fix that, personally. He brings the same structured thinking he applies at NASA to mid-market and regulated organizations that can't afford to get it wrong — and delivers it without the overhead of a large firm.</p>
+        <p style="margin:0;text-wrap:pretty">Engagements are direct: you work with Shane, not a project manager or a junior consultant who escalates to him. Every piece of advice comes from current production experience, not from conference playbooks. And every engagement is designed to leave your organization more capable — not more dependent on a retainer.</p>
+        <p style="margin:0;text-wrap:pretty">Whether you're facing an upcoming audit, a Copilot deployment you're not sure your tenant is ready for, or an M365 environment that has grown beyond your team's ability to govern it — this is exactly the kind of problem Shane solves every day at NASA.</p>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Who I help" style="max-width:1160px;margin:0 auto;padding:clamp(56px,8vw,88px) clamp(16px,4vw,32px) 0">
+    <div style="max-width:760px;margin-bottom:28px">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Ideal Clients</span></div>
+      <h2 style="font-size:clamp(26px,4.4vw,38px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:14px 0 12px;text-wrap:pretty">Who I Help — and Why</h2>
+      <p style="font-size:16px;line-height:1.65;color:#94a3b8;margin:0;text-wrap:pretty">Three types of organizations get the most from Shane's practice. Each has a different situation, but the same underlying need: senior-level Microsoft architecture expertise, delivered without the overhead.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px">
+      <div style="display:flex;flex-direction:column;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:24px" style-hover="border-color:rgba(0,120,212,.4)">
+        <span style="align-self:flex-start;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2);border-radius:999px;padding:5px 11px">200–2,000 employees</span>
+        <h3 style="font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f8fafc;margin:16px 0 14px">Mid-Market Enterprises</h3>
+        <div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#94a3b8">Core challenge</div>
+        <p style="font-size:14px;line-height:1.6;color:#94a3b8;margin:6px 0 14px">Too large to wing their M365 setup, too lean to justify a full-time senior architect on staff. Governance debt accumulates quietly — until it surfaces as a compliance gap, an oversharing incident, or a Copilot deployment that goes sideways.</p>
+        <div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#00B4D8">Shane's angle</div>
+        <p style="font-size:14px;line-height:1.6;color:#cbd5e1;margin:6px 0 18px;flex:1">Fills the fractional architect role that mid-market organizations need but rarely have access to — bringing the same structured approach to your 800-seat environment that he applies to NASA's enterprise.</p>
+        <p style="margin:0;padding-top:14px;border-top:1px solid rgba(30,41,59,.9);font-size:15px;line-height:1.5;color:#f1f5f9;font-style:italic">"You need NASA-grade governance. You don't need NASA's headcount."</p>
+      </div>
+      <div style="display:flex;flex-direction:column;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:24px" style-hover="border-color:rgba(0,120,212,.4)">
+        <span style="align-self:flex-start;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2);border-radius:999px;padding:5px 11px">Regulated Industries</span>
+        <h3 style="font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f8fafc;margin:16px 0 14px">Healthcare, Finance &amp; Regulated Industries</h3>
+        <div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#94a3b8">Core challenge</div>
+        <p style="font-size:14px;line-height:1.6;color:#94a3b8;margin:6px 0 14px">HIPAA, SOC 2, or industry-specific compliance requirements intersecting with an M365 environment that wasn't designed to meet them. Most consultants have read the frameworks. Few have operated inside one.</p>
+        <div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#00B4D8">Shane's angle</div>
+        <p style="font-size:14px;line-height:1.6;color:#cbd5e1;margin:6px 0 18px;flex:1">Shane operates inside one of the federal government's most demanding compliance environments every day. His compliance architecture experience is not theoretical — it's the exact context in which he makes daily production decisions.</p>
+        <p style="margin:0;padding-top:14px;border-top:1px solid rgba(30,41,59,.9);font-size:15px;line-height:1.5;color:#f1f5f9;font-style:italic">"Most consultants have read the compliance frameworks. I operate inside one every day."</p>
+      </div>
+      <div style="display:flex;flex-direction:column;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:24px" style-hover="border-color:rgba(0,120,212,.4)">
+        <span style="align-self:flex-start;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2);border-radius:999px;padding:5px 11px">Growing organizations</span>
+        <h3 style="font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f8fafc;margin:16px 0 14px">Startups &amp; Scale-Ups</h3>
+        <div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#94a3b8">Core challenge</div>
+        <p style="font-size:14px;line-height:1.6;color:#94a3b8;margin:6px 0 14px">M365 was stood up fast, permissions sprawled, governance was never designed — and now the organization is large enough that fixing it is becoming a real project. The longer it's deferred, the more expensive the remediation.</p>
+        <div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#00B4D8">Shane's angle</div>
+        <p style="font-size:14px;line-height:1.6;color:#cbd5e1;margin:6px 0 18px;flex:1">Intervenes before the governance debt reaches critical mass — establishing a framework that scales with the organization instead of against it, and conducting the remediation work directly.</p>
+        <p style="margin:0;padding-top:14px;border-top:1px solid rgba(30,41,59,.9);font-size:15px;line-height:1.5;color:#f1f5f9;font-style:italic">"It's cheaper to architect it correctly at 200 seats than to remediate it at 2,000."</p>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Engagement triggers" style="max-width:1160px;margin:0 auto;padding:clamp(56px,8vw,88px) clamp(16px,4vw,32px) 0">
+    <div style="max-width:760px;margin-bottom:28px">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Engagement Triggers</span></div>
+      <h2 style="font-size:clamp(26px,4.4vw,38px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:14px 0 12px;text-wrap:pretty">Why IT Leaders Bring Me In</h2>
+      <p style="font-size:16px;line-height:1.65;color:#94a3b8;margin:0;text-wrap:pretty">There's almost always a specific trigger — a moment when the organization realizes it needs someone who has solved this problem before, at a level of complexity and risk that makes getting it wrong genuinely costly.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:clamp(24px,4vw,40px);align-items:start">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:0 28px">
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px 0;border-top:1px solid rgba(30,41,59,.9)"><span style="width:36px;height:36px;border-radius:11px;background:rgba(0,120,212,.12);border:1px solid rgba(0,120,212,.25);color:#60a5fa;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="m9 15 2 2 4-4"></path></svg></span><p style="margin:0;font-size:14.5px;line-height:1.6;color:#cbd5e1"><b style="color:#f8fafc;font-weight:600">An upcoming audit or compliance deadline</b> — and the M365 environment isn't ready.</p></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px 0;border-top:1px solid rgba(30,41,59,.9)"><span style="width:36px;height:36px;border-radius:11px;background:rgba(0,120,212,.12);border:1px solid rgba(0,120,212,.25);color:#60a5fa;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M6 21V9a9 9 0 0 0 9 9"></path></svg></span><p style="margin:0;font-size:14.5px;line-height:1.6;color:#cbd5e1"><b style="color:#f8fafc;font-weight:600">A failed or stalled migration</b> — on-premises to M365, or between M365 configurations — that needs a senior architect to diagnose and restart.</p></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px 0;border-top:1px solid rgba(30,41,59,.9)"><span style="width:36px;height:36px;border-radius:11px;background:rgba(0,120,212,.12);border:1px solid rgba(0,120,212,.25);color:#60a5fa;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg></span><p style="margin:0;font-size:14.5px;line-height:1.6;color:#cbd5e1"><b style="color:#f8fafc;font-weight:600">Copilot readiness concerns</b> — the organization has or is evaluating Microsoft 365 Copilot licenses and needs to know if the tenant is actually ready to deploy safely.</p></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px 0;border-top:1px solid rgba(30,41,59,.9)"><span style="width:36px;height:36px;border-radius:11px;background:rgba(0,120,212,.12);border:1px solid rgba(0,120,212,.25);color:#60a5fa;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="22" x2="16" y1="11" y2="11"></line></svg></span><p style="margin:0;font-size:14.5px;line-height:1.6;color:#cbd5e1"><b style="color:#f8fafc;font-weight:600">A departed IT leader or leadership gap</b> — and no one remaining has the M365 architecture depth to make the decisions in the queue.</p></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px 0;border-top:1px solid rgba(30,41,59,.9)"><span style="width:36px;height:36px;border-radius:11px;background:rgba(0,120,212,.12);border:1px solid rgba(0,120,212,.25);color:#60a5fa;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"></line><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"></line></svg></span><p style="margin:0;font-size:14.5px;line-height:1.6;color:#cbd5e1"><b style="color:#f8fafc;font-weight:600">Teams and SharePoint chaos</b> — permissions sprawl, abandoned sites, inconsistent governance, and no clear path to remediation.</p></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px 0;border-top:1px solid rgba(30,41,59,.9);border-bottom:1px solid rgba(30,41,59,.9)"><span style="width:36px;height:36px;border-radius:11px;background:rgba(0,120,212,.12);border:1px solid rgba(0,120,212,.25);color:#60a5fa;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span><p style="margin:0;font-size:14.5px;line-height:1.6;color:#cbd5e1"><b style="color:#f8fafc;font-weight:600">A security incident or near-miss</b> — an oversharing exposure, a sensitivity labeling failure, or a Conditional Access misconfiguration that surfaced before it became a headline.</p></div>
+      </div>
+      <div style="border:1px solid rgba(0,180,216,.3);border-radius:16px;background:rgba(15,23,42,.6);padding:clamp(22px,3vw,28px)">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Why It Works</div>
+        <h3 style="font-size:clamp(19px,2.6vw,23px);font-weight:700;letter-spacing:-.018em;color:#f8fafc;margin:12px 0 14px;line-height:1.25">High-Stakes Decisions. Tested Judgment. No Ramp-Up.</h3>
+        <div style="display:flex;flex-direction:column;gap:12px;font-size:14.5px;line-height:1.65;color:#94a3b8">
+          <p style="margin:0">In every one of these situations, the underlying need is the same: someone has to make high-stakes decisions about a complex Microsoft 365 environment — quickly, confidently, and without a months-long ramp-up period to get oriented.</p>
+          <p style="margin:0">Shane reduces risk because he has already solved these problems at NASA scale, under federal compliance accountability. He doesn't theorize about what might work. He applies what he has tested in production.</p>
+          <p style="margin:0">And because every engagement is direct — no account managers, no subcontractors, no junior team doing the actual work — the institutional knowledge Shane brings to your engagement doesn't get filtered or diluted before it reaches you.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Background" style="max-width:1160px;margin:0 auto;padding:clamp(56px,8vw,88px) clamp(16px,4vw,32px) 0">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:clamp(28px,5vw,64px);align-items:start">
+      <div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Background</span></div>
+        <div style="display:flex;flex-direction:column;gap:18px;font-size:16px;line-height:1.7;color:#94a3b8">
+          <p style="margin:0;text-wrap:pretty">Shane McCaw's career in the Microsoft ecosystem began in 1994. At the time, Office was still delivered on floppy disks, and the idea of enterprise software living in the cloud was science fiction. Over the three decades since, he has watched Microsoft evolve from a desktop software company into the dominant enterprise cloud platform — and he has been an architect of that transformation, not a spectator.</p>
+          <p style="margin:0;text-wrap:pretty">He started his career writing code. Not configuring platforms or presenting strategy decks — writing production software and building real architecture for real organizations. That foundation matters. It means Shane understands why the M365 platform behaves the way it does, not just how to navigate its admin portals. When a governance policy doesn't behave as expected or a Copilot deployment surfaces data it shouldn't, he knows where to look.</p>
+          <p style="margin:0;text-wrap:pretty">In 2010, Shane founded McCawSoft — a consulting practice built on the belief that enterprise Microsoft technology deserves genuine enterprise expertise. McCawSoft served clients across healthcare, financial services, manufacturing, and government: building SharePoint environments that didn't collapse under their own permissions sprawl, migrating organizations to Exchange Online without losing data, and designing governance frameworks that still hold up years later.</p>
+          <p style="margin:0;text-wrap:pretty">Today, Shane's primary role is Lead Microsoft 365 Architect and Copilot Subject Matter Expert at NASA. That is not a credential or a title from a past position. It is what he does every day — managing the governance, compliance, and platform architecture of one of the most security-constrained Microsoft 365 environments in the federal government. He consults on the side, which means every engagement benefits directly from what he is working on in production right now.</p>
+        </div>
+      </div>
+      <div style="position:sticky;top:96px;border-left:1px solid rgba(0,180,216,.35);padding-left:clamp(20px,3vw,32px)">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="rgba(0,180,216,.5)" style="display:block;margin-bottom:14px"><path d="M9.5 4C6.5 4 4 6.5 4 9.5c0 2.6 1.9 4.8 4.4 5.3-.4 1.6-1.4 3-3 4.2l1.2 1.5C10 18.3 12 15 12 11V9.5C12 6.5 11 4 9.5 4zm10 0C16.5 4 14 6.5 14 9.5c0 2.6 1.9 4.8 4.4 5.3-.4 1.6-1.4 3-3 4.2l1.2 1.5C20 18.3 22 15 22 11V9.5C22 6.5 21 4 19.5 4z"></path></svg>
+        <p style="margin:0 0 18px;font-size:clamp(18px,2.4vw,22px);line-height:1.45;letter-spacing:-.012em;color:#f1f5f9;font-weight:500;text-wrap:pretty">"I got into this field because I love what Microsoft technology can actually do when it's properly architected and governed. Too many organizations are running M365 at 20% of its capability — not because the platform is limited, but because it was stood up incorrectly and never fixed. That's the problem I spend my career solving."</p>
+        <div style="display:flex;gap:12px;align-items:center">
+          <span style="flex-shrink:0;width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800;letter-spacing:-.5px">SM</span>
+          <div><div style="font-size:14px;font-weight:700;color:#f8fafc">Shane McCaw</div><div style="font-size:12.5px;color:#94a3b8">Lead M365 Architect &amp; Copilot SME, NASA · Founder, Shane McCaw Consulting</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="The NASA advantage" style="max-width:1160px;margin:0 auto;padding:clamp(56px,8vw,88px) clamp(16px,4vw,32px) 0">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:clamp(28px,5vw,64px);align-items:start">
+      <div>
+        <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">The NASA Advantage</span></div>
+        <h2 style="font-size:clamp(26px,4.4vw,38px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:14px 0 18px;text-wrap:pretty">What Working at NASA Every Day Means for You</h2>
+        <div style="display:flex;flex-direction:column;gap:16px;font-size:16px;line-height:1.7;color:#94a3b8">
+          <p style="margin:0;text-wrap:pretty">NASA's Microsoft 365 environment operates under constraints that most enterprise IT teams will never encounter — top-tier federal security compliance requirements, sensitive research data, multi-agency collaboration needs, and zero tolerance for misconfiguration.</p>
+          <p style="margin:0;text-wrap:pretty">Working inside that environment since 2018 has fundamentally shaped how Shane thinks about architecture, governance, and deployment risk. He is not applying theoretical best practices. He is applying what he learned yesterday, in production, under real stakes.</p>
+          <p style="margin:0;text-wrap:pretty">Most consultants talk about best practices learned from whitepapers and conference sessions. Shane applies what he validated last week in one of the most scrutinized M365 environments on earth. That is not a marginal difference — it is the difference between repeating advice and delivering tested judgment.</p>
+          <p style="margin:0;text-wrap:pretty">For your organization, that means access to a level of governance discipline and platform depth that even most large consulting firms cannot offer — delivered directly, without layers of overhead.</p>
+        </div>
+        <div style="margin-top:26px;border:1px solid rgba(0,180,216,.3);border-radius:14px;background:rgba(0,180,216,.06);padding:20px 22px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">The difference that matters</div>
+          <p style="margin:10px 0 0;font-size:15px;line-height:1.6;color:#f1f5f9">Most enterprise consultants apply best practices learned from documentation, whitepapers, and other client engagements. Shane applies what he validated last week, in a live production environment, under federal compliance requirements. That's not a marginal difference in quality — it's a fundamentally different basis for advice.</p>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:14px">
+        <div style="border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:22px"><span style="width:36px;height:36px;border-radius:11px;background:rgba(0,120,212,.12);border:1px solid rgba(0,120,212,.25);color:#60a5fa;display:flex;align-items:center;justify-content:center;margin-bottom:14px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span><h3 style="font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;margin:0 0 8px">Security-first by default</h3><p style="margin:0;font-size:13.5px;line-height:1.6;color:#94a3b8">At NASA, there is no acceptable error rate for misconfiguration. Every architecture decision starts with a failure-mode analysis — a discipline Shane applies to every client engagement.</p></div>
+        <div style="border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:22px"><span style="width:36px;height:36px;border-radius:11px;background:rgba(0,120,212,.12);border:1px solid rgba(0,120,212,.25);color:#60a5fa;display:flex;align-items:center;justify-content:center;margin-bottom:14px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"></path><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"></path><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"></path></svg></span><h3 style="font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;margin:0 0 8px">Governance before deployment</h3><p style="margin:0;font-size:13.5px;line-height:1.6;color:#94a3b8">Federal compliance requirements mean governance frameworks aren't optional or retrofittable. They're foundational. Shane designs governance into the architecture from day one.</p></div>
+        <div style="border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:22px"><span style="width:36px;height:36px;border-radius:11px;background:rgba(0,120,212,.12);border:1px solid rgba(0,120,212,.25);color:#60a5fa;display:flex;align-items:center;justify-content:center;margin-bottom:14px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="m9 15 2 2 4-4"></path></svg></span><h3 style="font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;margin:0 0 8px">Compliance at the highest tier</h3><p style="margin:0;font-size:13.5px;line-height:1.6;color:#94a3b8">Operating under one of the strictest security-compliance regimes in the federal government has given Shane instincts for compliance discipline that translate directly to regulated private-sector clients.</p></div>
+        <div style="border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:22px"><span style="width:36px;height:36px;border-radius:11px;background:rgba(0,120,212,.12);border:1px solid rgba(0,120,212,.25);color:#60a5fa;display:flex;align-items:center;justify-content:center;margin-bottom:14px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg></span><h3 style="font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;margin:0 0 8px">Real Copilot deployment experience</h3><p style="margin:0;font-size:13.5px;line-height:1.6;color:#94a3b8">Shane has navigated Copilot deployment in one of the most constrained M365 environments in existence — working through the actual governance, labeling, and rollout challenges that other consultants are still theorizing about.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="timeline" data-screen-label="Timeline" style="border-top:1px solid rgba(30,41,59,.8);background:linear-gradient(180deg,#020617,#040b1e 40%,#020617);margin-top:clamp(56px,8vw,88px)">
+    <div style="max-width:1160px;margin:0 auto;padding:clamp(56px,8vw,88px) clamp(16px,4vw,32px)">
+      <div style="max-width:760px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Career Timeline</span></div>
+        <h2 style="font-size:clamp(26px,4.4vw,38px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:14px 0 28px">30 Years. One Ecosystem.</h2>
+      </div>
+      <div style="border-top:1px solid rgba(30,41,59,.9)">
+        <div style="display:flex;flex-wrap:wrap;gap:12px clamp(20px,4vw,48px);padding:26px 0;border-bottom:1px solid rgba(30,41,59,.9)">
+          <div style="flex:0 0 clamp(120px,15vw,180px)"><div style="font-family:Menlo,ui-monospace,monospace;font-size:13px;letter-spacing:.08em;color:#00B4D8">1994–2010</div><div style="font-size:12.5px;color:#94a3b8;margin-top:6px">Microsoft ecosystem</div></div>
+          <div style="flex:1 1 380px;min-width:0"><h3 style="font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f8fafc;margin:0 0 8px">Software Developer &amp; Architect</h3><p style="margin:0;font-size:15px;line-height:1.65;color:#94a3b8;max-width:760px">Shane's career started when Microsoft was still figuring out what the internet meant for enterprise software. He spent the early years writing production code, building architecture for enterprise clients, and developing a deep intuition for the way Microsoft platforms actually work under the hood — not just how they're documented to work.</p></div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px clamp(20px,4vw,48px);padding:26px 0;border-bottom:1px solid rgba(30,41,59,.9)">
+          <div style="flex:0 0 clamp(120px,15vw,180px)"><div style="font-family:Menlo,ui-monospace,monospace;font-size:13px;letter-spacing:.08em;color:#00B4D8">2010–2018</div><div style="font-size:12.5px;color:#94a3b8;margin-top:6px">McCawSoft</div></div>
+          <div style="flex:1 1 380px;min-width:0"><h3 style="font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f8fafc;margin:0 0 8px">Founder &amp; Principal Architect</h3><p style="margin:0;font-size:15px;line-height:1.65;color:#94a3b8;max-width:760px">Shane founded McCawSoft to build the kind of Microsoft consulting practice that didn't exist at the time: one where a senior architect with real platform knowledge handled engagements personally. McCawSoft served clients across healthcare, financial services, and the public sector — building SharePoint environments, Office 365 migrations, and governance frameworks that actually held up over time.</p></div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px clamp(20px,4vw,48px);padding:26px 0;border-bottom:1px solid rgba(30,41,59,.9)">
+          <div style="flex:0 0 clamp(120px,15vw,180px)"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-family:Menlo,ui-monospace,monospace;font-size:13px;letter-spacing:.08em;color:#00B4D8">2018–Present</span><span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#020617;background:#00B4D8;border-radius:999px;padding:3px 8px">Current</span></div><div style="font-size:12.5px;color:#94a3b8;margin-top:6px">NASA</div></div>
+          <div style="flex:1 1 380px;min-width:0"><h3 style="font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f8fafc;margin:0 0 8px">Lead Microsoft 365 Architect &amp; Copilot SME</h3><p style="margin:0;font-size:15px;line-height:1.65;color:#94a3b8;max-width:760px">Shane currently serves as Lead M365 Architect and Copilot for Microsoft 365 Subject Matter Expert at NASA. He is responsible for platform governance, compliance architecture, Copilot deployment strategy, and enterprise cloud modernization across one of the most security-sensitive M365 environments in the federal government. This is not a retired role. It is his primary day job.</p></div>
+        </div>
+      </div>
+      <div style="margin-top:28px;display:flex;flex-wrap:wrap;align-items:center;gap:16px 32px;border:1px solid rgba(0,120,212,.3);border-radius:16px;background:rgba(15,23,42,.6);padding:clamp(20px,3vw,28px)">
+        <div style="flex:1 1 320px">
+          <div style="font-size:18px;font-weight:700;letter-spacing:-.015em;color:#f8fafc">2026 Innovation Forum Award Winner · 20+ Microsoft Certifications</div>
+          <p style="margin:8px 0 0;font-size:14.5px;line-height:1.6;color:#94a3b8">Shane won the 2026 Innovation Forum Award for deploying Copilot to the first large federal agency to do so. He holds more than 20 Microsoft certifications — earned over decades of real-world practice, not exam preparation.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Philosophy" style="max-width:1160px;margin:0 auto;padding:clamp(56px,8vw,88px) clamp(16px,4vw,32px) 0">
+    <div style="max-width:760px;margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">How Shane Works</span></div>
+      <h2 style="font-size:clamp(26px,4.4vw,38px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:14px 0 0;text-wrap:pretty">Hands-On. Direct. No Shortcuts.</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:0 32px">
+      <div style="padding:20px 0;border-top:1px solid rgba(0,180,216,.35)"><div style="font-family:Menlo,ui-monospace,monospace;font-size:11px;letter-spacing:.12em;color:#00B4D8">01</div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;margin:10px 0 8px;line-height:1.3">Every engagement is personal.</h3><p style="margin:0;font-size:14px;line-height:1.6;color:#94a3b8">Shane handles his engagements directly. No project managers, no junior consultants, no offshore team. When you hire Shane McCaw Consulting, you get Shane.</p></div>
+      <div style="padding:20px 0;border-top:1px solid rgba(0,180,216,.35)"><div style="font-family:Menlo,ui-monospace,monospace;font-size:11px;letter-spacing:.12em;color:#00B4D8">02</div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;margin:10px 0 8px;line-height:1.3">Governance is not a phase. It's a foundation.</h3><p style="margin:0;font-size:14px;line-height:1.6;color:#94a3b8">Most M365 problems — oversharing, compliance gaps, Copilot risk — trace back to governance that was never properly designed. Shane builds it in from the start.</p></div>
+      <div style="padding:20px 0;border-top:1px solid rgba(0,180,216,.35)"><div style="font-family:Menlo,ui-monospace,monospace;font-size:11px;letter-spacing:.12em;color:#00B4D8">03</div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;margin:10px 0 8px;line-height:1.3">The goal is your independence.</h3><p style="margin:0;font-size:14px;line-height:1.6;color:#94a3b8">Shane's engagements are structured to leave organizations more capable, not more dependent. Documentation and knowledge transfer are non-negotiable deliverables.</p></div>
+      <div style="padding:20px 0;border-top:1px solid rgba(0,180,216,.35)"><div style="font-family:Menlo,ui-monospace,monospace;font-size:11px;letter-spacing:.12em;color:#00B4D8">04</div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;margin:10px 0 8px;line-height:1.3">Recommendations are specific to your environment.</h3><p style="margin:0;font-size:14px;line-height:1.6;color:#94a3b8">No templated playbooks. Shane's advice is based on a real assessment of your tenant, your data, and your organizational context.</p></div>
+    </div>
+  </section>
+
+  <section data-screen-label="Core competencies" style="max-width:1160px;margin:0 auto;padding:clamp(56px,8vw,88px) clamp(16px,4vw,32px) 0">
+    <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Technical Expertise</span></div>
+    <h2 style="font-size:clamp(26px,4.4vw,38px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:14px 0 22px">Core Competencies</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Microsoft 365 Architecture</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Microsoft Copilot for M365</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Copilot Governance &amp; Readiness</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">SharePoint Online</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Microsoft Teams</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">OneDrive for Business</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Exchange Online</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Entra ID (Azure AD)</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Power Platform</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Power Automate</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Power Apps</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Microsoft Purview</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Sensitivity Labels</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">DLP Policy Design</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Retention &amp; Records Management</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Conditional Access</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Information Architecture</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Enterprise Governance Frameworks</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">Cloud Migration Strategy</span>
+      <span style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.5)">M365 Tenant Health &amp; Optimization</span>
+    </div>
+  </section>
+
+  <section data-screen-label="Engagements" style="max-width:1160px;margin:0 auto;padding:clamp(56px,8vw,88px) clamp(16px,4vw,32px) 0">
+    <div style="max-width:760px;margin-bottom:28px">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Engagements</span></div>
+      <h2 style="font-size:clamp(26px,4.4vw,38px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:14px 0 12px;text-wrap:pretty">How You Can Work With Me</h2>
+      <p style="font-size:16px;line-height:1.65;color:#94a3b8;margin:0;text-wrap:pretty">The governance discipline, compliance depth, and hands-on Microsoft 365 experience Shane has built at NASA translate directly into six structured ways to engage — each scoped to a specific organizational need, with clear deliverables and no open-ended surprises.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px">
+      <a href="Work With Me.dc.html#tiers" style="display:flex;flex-direction:column;gap:8px;border:1px solid rgba(0,120,212,.4);border-radius:16px;background:linear-gradient(160deg,rgba(10,37,64,.55),rgba(15,23,42,.5) 70%);padding:22px;text-decoration:none" style-hover="border-color:rgba(0,180,216,.6)"><span style="font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#00B4D8">Start here · from $900/mo</span><span style="font-size:17px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;line-height:1.3">Fractional Architect Retainer</span><span style="font-size:14px;line-height:1.6;color:#94a3b8;flex:1">Ongoing senior M365 architecture support on a monthly basis — strategy calls, ad-hoc guidance, and architecture reviews. The fractional architect model, without the enterprise overhead.</span><span style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:#00B4D8;margin-top:6px">See the four tiers<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></span></a>
+      <a href="Assessment.dc.html" style="display:flex;flex-direction:column;gap:8px;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:22px;text-decoration:none" style-hover="border-color:rgba(0,120,212,.45)"><span style="font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#00B4D8">$5,000 flat</span><span style="font-size:17px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;line-height:1.3">Copilot Readiness Assessment</span><span style="font-size:14px;line-height:1.6;color:#94a3b8;flex:1">A six-dimension evaluation of your tenant's readiness for Microsoft 365 Copilot — licensing, identity, permissions, governance, sensitivity labeling, and oversharing risk. Tells you exactly what to fix before Copilot goes live.</span><span style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:#00B4D8;margin-top:6px">See the assessment<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></span></a>
+      <a href="Solution - M365 Health.dc.html" style="display:flex;flex-direction:column;gap:8px;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:22px;text-decoration:none" style-hover="border-color:rgba(0,120,212,.45)"><span style="font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#00B4D8">Scoped after the review</span><span style="font-size:17px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;line-height:1.3">Tenant Health Audit</span><span style="font-size:14px;line-height:1.6;color:#94a3b8;flex:1">A structured assessment of your M365 environment — governance gaps, permissions sprawl, security posture, and configuration risk — with a prioritized remediation roadmap. The right starting point for any serious engagement.</span><span style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:#00B4D8;margin-top:6px">M365 Health deep dive<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></span></a>
+      <a href="Solution - Governance.dc.html" style="display:flex;flex-direction:column;gap:8px;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:22px;text-decoration:none" style-hover="border-color:rgba(0,120,212,.45)"><span style="font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#00B4D8">Scoped after the review</span><span style="font-size:17px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;line-height:1.3">Governance Foundations</span><span style="font-size:14px;line-height:1.6;color:#94a3b8;flex:1">A complete governance framework designed for your organization: data classification, access controls, retention policy, DLP, and Copilot guardrails. Built from the same principles Shane applies at NASA.</span><span style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:#00B4D8;margin-top:6px">Governance deep dive<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></span></a>
+      <a href="Solution - Migration.dc.html" style="display:flex;flex-direction:column;gap:8px;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:22px;text-decoration:none" style-hover="border-color:rgba(0,120,212,.45)"><span style="font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#00B4D8">Scoped after the review</span><span style="font-size:17px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;line-height:1.3">Migration Readiness</span><span style="font-size:14px;line-height:1.6;color:#94a3b8;flex:1">A focused planning engagement to map your path from on-premises or legacy environments to M365 — sequencing, risk mitigation, and a clear migration architecture. Avoids the stalls and surprises that plague unplanned migrations.</span><span style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:#00B4D8;margin-top:6px">Migration deep dive<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></span></a>
+      <a href="Solution - Power Platform.dc.html" style="display:flex;flex-direction:column;gap:8px;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:22px;text-decoration:none" style-hover="border-color:rgba(0,120,212,.45)"><span style="font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#00B4D8">Scoped after the review</span><span style="font-size:17px;font-weight:700;letter-spacing:-.01em;color:#f8fafc;line-height:1.3">Power Platform Quick-Start</span><span style="font-size:14px;line-height:1.6;color:#94a3b8;flex:1">Structured guidance to deploy Power Automate or Power Apps in a governed, secure way — including environment strategy, DLP policy design, and a working proof-of-concept tailored to your use case.</span><span style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:#00B4D8;margin-top:6px">Power Platform deep dive<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></span></a>
+    </div>
+  </section>
+
+  <section data-screen-label="Final CTA" style="max-width:940px;margin:0 auto;padding:clamp(56px,8vw,88px) clamp(16px,4vw,32px) clamp(72px,10vw,120px)">
+    <div style="position:relative;overflow:hidden;text-align:center;border:1px solid rgba(0,120,212,.3);border-radius:24px;background:radial-gradient(800px 340px at 50% -20%,rgba(0,120,212,.18),transparent 60%),linear-gradient(168deg,rgba(10,37,64,.5),#070d1e 64%);padding:clamp(32px,6vw,60px) clamp(20px,5vw,52px)">
+      <h2 style="font-size:clamp(26px,4.4vw,40px);line-height:1.1;letter-spacing:-.028em;font-weight:800;color:#f8fafc;margin:0 0 14px;text-wrap:pretty">Your Microsoft 365 environment deserves senior expertise.</h2>
+      <p style="font-size:16px;line-height:1.65;color:#94a3b8;margin:0 auto 26px;max-width:560px">Work directly with Shane — a 30-year Microsoft veteran and Lead M365 Architect at NASA. No account managers, no junior staff. Just clear, actionable guidance from day one.</p>
+      <div style="display:flex;justify-content:center;flex-wrap:wrap;gap:12px">
+        <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" size="lg" as="a" href="Contact.dc.html" dc-props="{{ ctaLg }}" hint-size="220px,52px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Book a Consultation</x-import>
+        <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="outline" size="lg" as="a" href="Work With Me.dc.html#tiers" dc-props="{{ ctaLgGhost }}" hint-size="200px,52px">Start at $900/mo</x-import>
+      </div>
+      <p style="margin:18px 0 0;font-size:13px;letter-spacing:.02em;color:#94a3b8">No pitch. No obligation. Just clarity.</p>
+      <p style="margin:22px auto 0;padding-top:18px;border-top:1px solid rgba(30,41,59,.9);font-size:12.5px;line-height:1.55;color:#94a3b8;max-width:620px">Shane's role at NASA is a personal credential, not an endorsement. The practice is independent of NASA and cannot take on organizations that work with, contract to, or partner with NASA.</p>
+    </div>
+  </section>
+</main>
+
+<footer style="position:relative">
+  <div style="position:absolute;inset:0;background:#020617;border-top:1px solid rgba(30,41,59,.8)"></div>
+  <div style="position:relative;max-width:1280px;margin:0 auto;padding:64px clamp(16px,4vw,32px) 40px">
+    <div style="display:flex;flex-wrap:wrap;gap:40px;margin-bottom:48px">
+      <div style="flex:1 1 260px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+          <span style="font-family:'Space Grotesk',Inter,sans-serif;font-weight:600;font-size:16px;color:#F5F5F7">Shane McCaw Consulting</span>
+        </div>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#B5B5BC;max-width:320px">Vero Beach, FL — M365 · Copilot AI · SharePoint · Power Platform</p>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Get Started</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="Assessment.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Assessment</a></li>
+          <li><a href="Work With Me.dc.html#tiers" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Fractional Architecture</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Solutions</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="Solution - Copilot AI.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Copilot &amp; AI</a></li>
+          <li><a href="Solution - Security Compliance.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Security &amp; Compliance</a></li>
+          <li><a href="Solution - Governance.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Governance</a></li>
+          <li><a href="Solution - SharePoint.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">SharePoint</a></li>
+          <li><a href="Solution - Power Platform.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Power Platform</a></li>
+          <li><a href="Solution - Teams.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Teams</a></li>
+          <li><a href="Solution - Migration.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Migration</a></li>
+          <li><a href="Solution - M365 Health.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">M365 Health</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Company</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="#top" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">About Shane</a></li>
+          <li><a href="Resources.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Resources</a></li>
+          <li><a href="Contact.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Contact</a></li>
+          <li><a href="Contact.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Ask a Question</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Legal</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="/terms" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Terms of Service</a></li>
+          <li><a href="/privacy" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Privacy Policy</a></li>
+        </ul>
+      </div>
+    </div>
+    <div style="padding-top:28px;border-top:1px solid rgba(30,41,59,.8);display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;font-size:12px;color:#B5B5BC">
+      <span>© 2026 Shane McCaw Consulting. All rights reserved. Shane's role at NASA is a personal credential; this practice is independent of NASA.</span>
+      <a href="/privacy" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Privacy Policy</a>
+    </div>
+  </div>
+</footer>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { narrow: false, menuOpen: false, solOpen: false };
+  componentDidMount() {
+    this._onResize = () => {
+      const narrow = window.innerWidth < 1024;
+      if (narrow !== this.state.narrow) this.setState({ narrow, menuOpen: false, solOpen: false });
+    };
+    this._onResize();
+    window.addEventListener("resize", this._onResize);
+  }
+  componentWillUnmount() { window.removeEventListener("resize", this._onResize); }
+  renderVals() {
+    const { narrow, menuOpen, solOpen } = this.state;
+    return {
+      narrow, wide: !narrow, menuOpen, solOpen,
+      toggleMenu: () => this.setState((s) => ({ menuOpen: !s.menuOpen, solOpen: false })),
+      toggleSolutions: () => this.setState((s) => ({ solOpen: !s.solOpen })),
+      ctaLg: { style: { minHeight: 52, padding: "0 26px", fontSize: 16, fontWeight: 600, borderRadius: 12, background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", border: "none" } },
+      ctaLgGhost: { style: { minHeight: 52, padding: "0 22px", fontSize: 16, fontWeight: 600, borderRadius: 12, color: "#e2e8f0", borderColor: "rgba(148,163,184,.3)", boxShadow: "none" } },
+    };
+  }
+}
+</script>
+</body>
+</html>

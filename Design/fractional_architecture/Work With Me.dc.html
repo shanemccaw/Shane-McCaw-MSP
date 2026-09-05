@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap">
+  <script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#020617;color:#cbd5e1;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    a{color:#00B4D8}a:hover{color:#5ed2ea}
+    input::placeholder{color:#64748b}
+    @keyframes smcSpin{to{transform:rotate(360deg)}}
+    @media (max-width:1023px){input,textarea,select{font-size:16px!important}}
+  </style>
+</helmet>
+
+<header style="position:fixed;top:0;left:0;right:0;z-index:50">
+  <sc-if value="{{ headerLive }}" hint-placeholder-val="{{ true }}"><div style="position:absolute;inset:0;background:rgba(26,26,28,.85);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid rgba(255,255,255,.08)"></div></sc-if>
+  <sc-if value="{{ headerLocked }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;background:rgba(2,6,23,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid rgba(30,41,59,.8)"></div></sc-if>
+  <div style="position:relative;max-width:1280px;margin:0 auto;padding:0 clamp(16px,4vw,32px);height:72px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+    <a href="#top" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:#F5F5F7">
+      <sc-if value="{{ headerLive }}" hint-placeholder-val="{{ true }}"><span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span></sc-if>
+      <sc-if value="{{ headerLocked }}" hint-placeholder-val="{{ false }}"><span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span></sc-if>
+      <span style="font-family:'Space Grotesk',Inter,sans-serif;font-weight:700;font-size:16px;letter-spacing:-.02em;line-height:1">Shane McCaw</span>
+    </a>
+    <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+      <nav style="display:flex;align-items:center;gap:4px">
+        <a href="Assessment.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Assessment</a>
+        <div style="position:relative">
+          <button onClick="{{ toggleSolutions }}" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;background:transparent;border:0;cursor:pointer;font-family:inherit" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Solutions<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <sc-if value="{{ solOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:100%;left:0;width:400px;margin-top:6px;background:rgba(35,35,38,.97);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:2px;backdrop-filter:blur(24px)">
+              <a href="Solution - Copilot AI.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#5B8DEF">Copilot &amp; AI</a>
+              <a href="Solution - Security Compliance.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#5B8DEF">Security &amp; Compliance</a>
+              <a href="Solution - Governance.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#5B8DEF">Governance</a>
+              <a href="Solution - SharePoint.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#5B8DEF">SharePoint</a>
+              <a href="Solution - Power Platform.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#5B8DEF">Power Platform</a>
+              <a href="Solution - Teams.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#5B8DEF">Teams</a>
+              <a href="Solution - Migration.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#5B8DEF">Migration</a>
+              <a href="Solution - M365 Health.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#5B8DEF">M365 Health</a>
+            </div>
+          </sc-if>
+        </div>
+        <sc-if value="{{ headerLive }}" hint-placeholder-val="{{ true }}"><a href="#top" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#5B8DEF;background:rgba(255,255,255,.06);text-decoration:none">Fractional Architecture</a></sc-if>
+        <sc-if value="{{ headerLocked }}" hint-placeholder-val="{{ false }}"><a href="#top" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#00B4D8;background:rgba(255,255,255,.06);text-decoration:none">Fractional Architecture</a></sc-if>
+        <a href="About Shane.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">About Shane</a>
+        <a href="Resources.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Resources</a>
+        <a href="Contact.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Contact</a>
+      </nav>
+      <div style="display:flex;align-items:center;gap:8px">
+        <sc-if value="{{ headerLive }}" hint-placeholder-val="{{ true }}"><a href="Contact.dc.html" style="display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;background:linear-gradient(90deg,#5B8DEF,#9B7CFF);text-decoration:none" style-hover="opacity:.9">Talk to Shane<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></a></sc-if>
+        <sc-if value="{{ headerLocked }}" hint-placeholder-val="{{ false }}"><a href="Contact.dc.html" style="display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;background:#0078D4;text-decoration:none" style-hover="background:#005A9E">Talk to Shane<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></a></sc-if>
+      </div>
+    </sc-if>
+    <sc-if value="{{ narrow }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ toggleMenu }}" aria-label="Toggle navigation menu" style="padding:10px;border-radius:8px;color:#B5B5BC;background:transparent;border:0;cursor:pointer;display:flex"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg></button>
+    </sc-if>
+  </div>
+  <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:relative;border-top:1px solid rgba(255,255,255,.08);padding:8px 16px 20px;display:flex;flex-direction:column;gap:2px">
+      <a href="Assessment.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Assessment</a>
+      <a href="#top" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#5B8DEF;background:rgba(255,255,255,.06);text-decoration:none">Fractional Architecture</a>
+      <a href="About Shane.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">About Shane</a>
+      <a href="Resources.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Resources</a>
+      <a href="Contact.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Contact</a>
+      <a href="Contact.dc.html" style="display:block;margin-top:12px;padding:12px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;text-align:center;background:linear-gradient(90deg,#5B8DEF,#9B7CFF);text-decoration:none">Talk to Shane</a>
+    </div>
+  </sc-if>
+</header>
+
+<main style="padding-top:72px">
+
+  <section id="top" data-screen-label="Hero" style="position:relative;overflow:hidden;background:radial-gradient(circle 1100px at 76% -20%, rgba(139,92,246,.12), rgba(2,6,23,0) 62%), radial-gradient(circle 800px at 6% 12%, rgba(0,120,212,.06), rgba(2,6,23,0) 66%)">
+    <span style="position:absolute;right:-60px;top:50%;transform:translateY(-50%);opacity:.11;pointer-events:none;line-height:0;filter:drop-shadow(0 0 26px rgba(139,92,246,.3))"><svg width="470" height="470" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9.5" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span>
+    <div style="position:relative;max-width:1280px;margin:0 auto;padding:clamp(56px,9vw,104px) clamp(16px,4vw,32px) clamp(48px,7vw,80px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:clamp(40px,6vw,80px);align-items:start">
+    <div style="max-width:620px">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Fractional Microsoft 365 Architecture</span></div>
+      <h1 style="font-size:clamp(28px,4vw,44px);line-height:1.08;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:22px 0 20px;text-wrap:pretty">The Architect Behind NASA's Microsoft 365 — <span style="color:#a78bfa">Retainers From $900/Month.</span></h1>
+      <p style="font-size:clamp(16px,2.2vw,18px);line-height:1.6;color:#94a3b8;margin:0 0 12px;max-width:580px;text-wrap:pretty">From redesigning NASA's email infrastructure and modernizing its security posture, to leading a full transition off legacy conferencing tools, to architecting NASA's Copilot rollout — Shane owns the roadmap.</p>
+      <p style="font-size:clamp(16px,2.2vw,18px);line-height:1.6;color:#94a3b8;margin:0 0 32px;max-width:580px;text-wrap:pretty">Thirty years in the Microsoft ecosystem. Every hour on retainer is his.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+        <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" size="lg" onClick="{{ startAdvisory }}" dc-props="{{ ctaLg }}" hint-size="auto,52px">Start at $900/mo<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></x-import>
+        <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="outline" size="lg" onClick="{{ goTiers }}" dc-props="{{ ctaLgGhost }}" hint-size="auto,52px">Compare the four tiers</x-import>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px 22px;margin-top:26px;font-size:13px;color:#94a3b8">
+        <span style="display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>No proposal cycle</span>
+        <span style="display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>No SOW</span>
+        <span style="display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>No minimum term</span>
+      </div>
+    </div>
+    <div style="justify-self:end;width:100%;max-width:520px;border:1px solid rgba(139,92,246,.22);border-radius:18px;background:linear-gradient(160deg,rgba(139,92,246,.10),rgba(11,21,36,.52) 55%,rgba(11,21,36,.34));backdrop-filter:blur(3px);box-shadow:0 0 60px rgba(139,92,246,.13), inset 0 1px 0 rgba(148,163,184,.08);padding:20px 22px">
+      <div style="display:grid;grid-template-columns:minmax(120px,auto) 1fr;gap:0 clamp(16px,3vw,28px);align-items:start;padding:22px 0">
+        <span style="font-size:clamp(52px,6.5vw,80px);font-weight:800;letter-spacing:-.045em;line-height:.9;color:#f8fafc">2026</span>
+        <div style="padding-top:8px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Innovation Forum Award</div>
+          <p style="margin:8px 0 0;font-size:14px;line-height:1.55;color:#94a3b8">For deploying Copilot to the first large federal agency to do so: NASA.</p>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(120px,auto) 1fr;gap:0 clamp(16px,3vw,28px);align-items:start;padding:22px 0;border-top:1px solid rgba(30,41,59,.9)">
+        <span style="font-size:clamp(52px,6.5vw,80px);font-weight:800;letter-spacing:-.045em;line-height:.9;color:#f8fafc">30</span>
+        <div style="padding-top:8px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Years in the Microsoft ecosystem</div>
+          <p style="margin:8px 0 0;font-size:14px;line-height:1.55;color:#94a3b8">The whole suite, on-prem Exchange to Copilot. Not a generalist who added M365 to the services list.</p>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(120px,auto) 1fr;gap:0 clamp(16px,3vw,28px);align-items:start;padding:22px 0;border-top:1px solid rgba(30,41,59,.9);border-bottom:1px solid rgba(30,41,59,.9)">
+        <span style="font-size:clamp(52px,6.5vw,80px);font-weight:800;letter-spacing:-.045em;line-height:.9;color:#f8fafc">6</span>
+        <div style="padding-top:8px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Pillars scanned from live Graph telemetry</div>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 12px;margin-top:10px">
+            <span style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>Governance</span>
+            <span style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>Security</span>
+            <span style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="m9 15 2 2 4-4"></path></svg>Compliance</span>
+            <span style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path><path d="M12 18V6"></path></svg>Licensing</span>
+            <span style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Adoption</span>
+            <span style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ADE80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Health</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Credibility strip" style="border-top:1px solid rgba(30,41,59,.8);border-bottom:1px solid rgba(30,41,59,.8);background:rgba(15,23,42,.4)">
+    <div style="max-width:1280px;margin:0 auto;padding:clamp(28px,4vw,40px) clamp(16px,4vw,32px) clamp(36px,5vw,56px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:clamp(24px,4vw,40px)">
+      <div style="border-top:1px solid rgba(0,180,216,.4);padding-top:16px">
+        <div style="font-family:Menlo,ui-monospace,monospace;font-size:11px;letter-spacing:.12em;color:#00B4D8">01</div>
+        <div style="font-size:17px;font-weight:700;color:#f8fafc;margin:10px 0 6px;letter-spacing:-.01em">Lead Microsoft 365 Architect, NASA</div>
+        <p style="margin:0;font-size:14px;line-height:1.55;color:#94a3b8">Current role, across the entire suite. A personal credential, not an institutional endorsement, and the reason organizations that work with NASA cannot be clients.</p>
+      </div>
+      <div style="border-top:1px solid rgba(0,180,216,.4);padding-top:16px">
+        <div style="font-family:Menlo,ui-monospace,monospace;font-size:11px;letter-spacing:.12em;color:#00B4D8">02</div>
+        <div style="font-size:17px;font-weight:700;color:#f8fafc;margin:10px 0 6px;letter-spacing:-.01em">30 years in the Microsoft ecosystem</div>
+        <p style="margin:0;font-size:14px;line-height:1.55;color:#94a3b8">Moved NASA from on-prem Exchange to Microsoft 365 and from Skype for Business to Teams. Doing the work now, not describing it from years ago.</p>
+      </div>
+      <div style="border-top:1px solid rgba(0,180,216,.4);padding-top:16px">
+        <div style="font-family:Menlo,ui-monospace,monospace;font-size:11px;letter-spacing:.12em;color:#00B4D8">03</div>
+        <div style="font-size:17px;font-weight:700;color:#f8fafc;margin:10px 0 6px;letter-spacing:-.01em">2026 Innovation Forum Award</div>
+        <p style="margin:0;font-size:14px;line-height:1.55;color:#94a3b8">For deploying Copilot to the first large federal agency to do so. Named, dated, on the record.</p>
+      </div>
+      <div style="border-top:1px solid rgba(0,180,216,.4);padding-top:16px">
+        <div style="font-family:Menlo,ui-monospace,monospace;font-size:11px;letter-spacing:.12em;color:#00B4D8">04</div>
+        <div style="font-size:17px;font-weight:700;color:#f8fafc;margin:10px 0 6px;letter-spacing:-.01em">A working diagnostic platform</div>
+        <p style="margin:0;font-size:14px;line-height:1.55;color:#94a3b8">The Copilot Readiness Assessment reads six pillars from Graph telemetry. Not a self-report checklist.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="tiers" data-screen-label="Retainer tiers" style="max-width:1280px;margin:0 auto;padding:clamp(56px,9vw,96px) clamp(16px,4vw,32px) clamp(24px,4vw,40px)">
+    <div style="max-width:720px">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Architect Retainers · Four Tiers</span></div>
+      <h2 style="font-size:clamp(28px,5.6vw,42px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:16px 0 18px;text-wrap:pretty">Every Hour Is Shane's. Choose How Many.</h2>
+      <p style="font-size:17px;line-height:1.65;color:#94a3b8;margin:0;text-wrap:pretty">Reserved time each month with no proposal cycle and no SOW. Hours reset monthly. Cancel with 30 days' notice. One exclusion: organizations that work with NASA as a contractor, subcontractor or partner cannot be taken on.</p>
+    </div>
+    <div style="margin-top:clamp(28px,4vw,44px);border-top:1px solid rgba(30,41,59,.9)">
+      <sc-for list="{{ tiers }}" as="t" hint-placeholder-count="4">
+        <div id="tier-{{ t.id }}" style="border-bottom:1px solid rgba(30,41,59,.9)">
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:18px 28px;padding:26px 0">
+            <div style="flex:1 1 300px;display:flex;gap:18px;align-items:flex-start">
+              <span style="font-family:Menlo,ui-monospace,monospace;font-size:11px;letter-spacing:.12em;color:#00B4D8;padding-top:7px;flex-shrink:0">{{ t.index }}</span>
+              <div>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <span style="font-size:19px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{ t.name }}</span>
+                  <sc-if value="{{ t.hasTag }}" hint-placeholder-val="{{ false }}"><span style="font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#00B4D8;background:rgba(0,180,216,.1);border:1px solid rgba(0,180,216,.3);border-radius:999px;padding:4px 10px">{{ t.tag }}</span></sc-if>
+                </div>
+                <p style="margin:6px 0 0;font-size:14px;line-height:1.55;color:#94a3b8;max-width:460px">{{ t.fit }}</p>
+              </div>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:6px;min-width:120px">
+              <span style="font-size:30px;font-weight:800;letter-spacing:-.03em;color:#f8fafc">{{ t.hoursText }}</span><span style="font-size:13px;color:#94a3b8">hrs / month</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:6px;min-width:130px">
+              <span style="font-size:30px;font-weight:800;letter-spacing:-.03em;color:#f8fafc">{{ t.priceText }}</span><span style="font-size:13px;color:#94a3b8">/ mo</span>
+            </div>
+            <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" onClick="{{ t.toggle }}" dc-props="{{ ctaMd }}" hint-size="150px,44px">{{ t.buttonLabel }}</x-import>
+          </div>
+          <sc-if value="{{ t.open }}" hint-placeholder-val="{{ false }}">
+            <div style="margin:0 0 28px;border:1px solid rgba(0,120,212,.35);border-radius:16px;background:linear-gradient(160deg,rgba(10,37,64,.55),rgba(2,6,23,.6) 70%);padding:clamp(20px,4vw,32px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(24px,4vw,44px)">
+              <div>
+                <div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">You're starting</div>
+                <div style="font-size:22px;font-weight:700;color:#f8fafc;margin:12px 0 6px;letter-spacing:-.01em">{{ t.name }}</div>
+                <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><span style="font-size:36px;font-weight:800;letter-spacing:-.03em;color:#f8fafc">{{ t.priceText }}</span><span style="font-size:14px;color:#94a3b8">per month · {{ t.hoursText }} hours of Shane's time</span></div>
+                <ul style="list-style:none;margin:22px 0 0;padding:0;display:flex;flex-direction:column;gap:10px">
+                  <li style="display:flex;gap:10px;font-size:14px;line-height:1.5;color:#cbd5e1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg>Live 1:1 working sessions with Shane</li>
+                  <li style="display:flex;gap:10px;font-size:14px;line-height:1.5;color:#cbd5e1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg>Written findings after each session</li>
+                  <li style="display:flex;gap:10px;font-size:14px;line-height:1.5;color:#cbd5e1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg>Architecture and roadmap review</li>
+                  <li style="display:flex;gap:10px;font-size:14px;line-height:1.5;color:#cbd5e1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg>Async questions between sessions</li>
+                  <li style="display:flex;gap:10px;font-size:14px;line-height:1.5;color:#cbd5e1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg>Time logged in a shared record you can open any time</li>
+                </ul>
+                <p style="margin:20px 0 0;font-size:13px;line-height:1.55;color:#94a3b8">Hours reset each month. Cancel with 30 days' notice. Not available to NASA contractors, subcontractors or partners.</p>
+              </div>
+              <div>
+                <sc-if value="{{ t.idle }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;flex-direction:column;gap:14px">
+                    <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:#cbd5e1">Work email<input type="email" placeholder="you@yourcompany.com" style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.28);background:rgba(2,6,23,.55);color:#f1f5f9;font-family:inherit;font-size:14px;outline:none" style-focus="border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.25)"></label>
+                    <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:#cbd5e1">Card number<input inputmode="numeric" placeholder="1234 1234 1234 1234" style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.28);background:rgba(2,6,23,.55);color:#f1f5f9;font-family:inherit;font-size:14px;outline:none" style-focus="border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.25)"></label>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,88px),1fr));gap:10px">
+                      <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:#cbd5e1">Expiry<input inputmode="numeric" placeholder="MM / YY" style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.28);background:rgba(2,6,23,.55);color:#f1f5f9;font-family:inherit;font-size:14px;outline:none" style-focus="border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.25)"></label>
+                      <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:#cbd5e1">CVC<input inputmode="numeric" placeholder="CVC" style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.28);background:rgba(2,6,23,.55);color:#f1f5f9;font-family:inherit;font-size:14px;outline:none" style-focus="border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.25)"></label>
+                      <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:#cbd5e1">ZIP<input inputmode="numeric" placeholder="ZIP" style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.28);background:rgba(2,6,23,.55);color:#f1f5f9;font-family:inherit;font-size:14px;outline:none" style-focus="border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.25)"></label>
+                    </div>
+                    <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" size="lg" onClick="{{ t.submit }}" dc-props="{{ payBtn }}" hint-size="100%,50px">{{ t.payLabel }}</x-import>
+                    <div style="display:flex;align-items:center;gap:8px;font-size:12px;line-height:1.5;color:#94a3b8"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Secured by Stripe. The same checkout as the Copilot Readiness Assessment. Billed monthly until you cancel.</div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ t.processing }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;min-height:260px;text-align:center">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0078D4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:smcSpin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+                    <div style="font-size:15px;color:#e2e8f0">Confirming with Stripe…</div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ t.done }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;justify-content:center;gap:12px;min-height:260px;border:1px solid rgba(0,180,216,.3);background:rgba(0,180,216,.06);border-radius:14px;padding:24px">
+                    <div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Retainer started</div>
+                    <div style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{ t.name }} is active.</div>
+                    <p style="margin:0;font-size:14px;line-height:1.6;color:#cbd5e1">A receipt is on its way to your inbox. Shane will reach out directly to schedule the first session and take the first set of questions.</p>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+    <p style="margin:18px 0 0;font-size:13px;line-height:1.55;color:#94a3b8">Card payment through Stripe. Prices are the live catalog rows; no quote step.</p>
+  </section>
+
+  <sc-if value="{{ showScoped }}" hint-placeholder-val="{{ true }}">
+    <section data-screen-label="Scoped retainers" style="max-width:1280px;margin:0 auto;padding:clamp(24px,4vw,40px) clamp(16px,4vw,32px) clamp(56px,9vw,96px)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Scoped Retainers · Priced in a Discovery Call</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:20px">
+        <div style="display:flex;flex-direction:column;gap:12px;padding:26px;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5)" style-hover="border-color:rgba(0,120,212,.4)">
+          <div style="display:flex;justify-content:space-between;gap:16px;align-items:baseline;flex-wrap:wrap">
+            <span style="font-size:19px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">vCISO / Governance Retainer</span>
+            <span style="font-size:14px;color:#94a3b8">from <b style="font-size:22px;font-weight:800;color:#f8fafc;letter-spacing:-.02em">$4,500</b> / mo</span>
+          </div>
+          <p style="margin:0;font-size:14px;line-height:1.55;color:#94a3b8;flex:1">Ongoing virtual CISO advisory: security strategy, board-level reporting, compliance oversight.</p>
+          <div><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="outline" dc-props="{{ ctaMdGhost }}" hint-size="auto,44px">Request scoping<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></x-import></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;padding:26px;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5)" style-hover="border-color:rgba(0,120,212,.4)">
+          <div style="display:flex;justify-content:space-between;gap:16px;align-items:baseline;flex-wrap:wrap">
+            <span style="font-size:19px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Copilot Governance Retainer</span>
+            <span style="font-size:14px;color:#94a3b8">from <b style="font-size:22px;font-weight:800;color:#f8fafc;letter-spacing:-.02em">$2,000</b> / mo</span>
+          </div>
+          <p style="margin:0;font-size:14px;line-height:1.55;color:#94a3b8;flex:1">Ongoing Copilot usage and governance oversight. Narrower scope than the full vCISO retainer.</p>
+          <div><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="outline" dc-props="{{ ctaMdGhost }}" hint-size="auto,44px">Request scoping<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></x-import></div>
+        </div>
+      </div>
+    </section>
+  </sc-if>
+
+  <section id="assessment" data-screen-label="Assessment" style="border-top:1px solid rgba(30,41,59,.8);background:linear-gradient(180deg,#020617,#040b1e 40%,#020617)">
+    <div style="max-width:1280px;margin:0 auto;padding:clamp(56px,9vw,96px) clamp(16px,4vw,32px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:clamp(32px,5vw,64px);align-items:start">
+      <div style="max-width:560px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">The Copilot Readiness Assessment · $5,000</span></div>
+        <h2 style="font-size:clamp(28px,5.6vw,42px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:16px 0 18px;text-wrap:pretty">The Same Tool Paying Customers Run Today.</h2>
+        <p style="font-size:17px;line-height:1.65;color:#94a3b8;margin:0 0 18px;text-wrap:pretty">Retainer hours work best pointed at evidence. The assessment is a read-only Microsoft Graph scan of your tenant across six pillars: real telemetry, not a self-report checklist. Eight reports generate from the findings in under thirty minutes.</p>
+        <p style="font-size:17px;line-height:1.65;color:#94a3b8;margin:0 0 30px;text-wrap:pretty">Run it first and the findings become the first month's agenda.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+          <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" size="lg" as="a" href="Assessment.dc.html" dc-props="{{ ctaLg }}" hint-size="auto,52px">Start the assessment · $5,000<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></x-import>
+          <span style="font-size:13px;color:#94a3b8">One-time. Commercial tenants only.</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:14px">
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px;border:1px solid rgba(30,41,59,.8);border-radius:16px;background:rgba(15,23,42,.5)">
+          <span style="width:40px;height:40px;border-radius:12px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2);color:#60A5FA;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg></span>
+          <div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#60A5FA">Governance</div><p style="margin:6px 0 0;font-size:13.5px;line-height:1.5;color:#94a3b8">Ownership, sharing settings, site permissions.</p></div>
+        </div>
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px;border:1px solid rgba(30,41,59,.8);border-radius:16px;background:rgba(15,23,42,.5)">
+          <span style="width:40px;height:40px;border-radius:12px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.2);color:#A78BFA;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>
+          <div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#A78BFA">Security</div><p style="margin:6px 0 0;font-size:13.5px;line-height:1.5;color:#94a3b8">Conditional Access coverage and its exclusions.</p></div>
+        </div>
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px;border:1px solid rgba(30,41,59,.8);border-radius:16px;background:rgba(15,23,42,.5)">
+          <span style="width:40px;height:40px;border-radius:12px;background:rgba(209,213,219,.1);border:1px solid rgba(209,213,219,.2);color:#D1D5DB;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="m9 15 2 2 4-4"></path></svg></span>
+          <div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#D1D5DB">Compliance</div><p style="margin:6px 0 0;font-size:13.5px;line-height:1.5;color:#94a3b8">Labels applied versus labels defined. Guest exposure.</p></div>
+        </div>
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px;border:1px solid rgba(30,41,59,.8);border-radius:16px;background:rgba(15,23,42,.5)">
+          <span style="width:40px;height:40px;border-radius:12px;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.2);color:#2DD4BF;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"></path><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"></circle></svg></span>
+          <div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#2DD4BF">Licensing</div><p style="margin:6px 0 0;font-size:13.5px;line-height:1.5;color:#94a3b8">Copilot seats assigned versus seats in use.</p></div>
+        </div>
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px;border:1px solid rgba(30,41,59,.8);border-radius:16px;background:rgba(15,23,42,.5)">
+          <span style="width:40px;height:40px;border-radius:12px;background:rgba(251,146,60,.1);border:1px solid rgba(251,146,60,.2);color:#FB923C;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span>
+          <div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#FB923C">Adoption</div><p style="margin:6px 0 0;font-size:13.5px;line-height:1.5;color:#94a3b8">Where usage concentrates, and where it stops.</p></div>
+        </div>
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px;border:1px solid rgba(30,41,59,.8);border-radius:16px;background:rgba(15,23,42,.5)">
+          <span style="width:40px;height:40px;border-radius:12px;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.2);color:#4ADE80;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg></span>
+          <div><div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#4ADE80">Health</div><p style="margin:6px 0 0;font-size:13.5px;line-height:1.5;color:#94a3b8">Configuration change since the baseline.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="contact" data-screen-label="Close + contact" style="max-width:1280px;margin:0 auto;padding:clamp(56px,9vw,96px) clamp(16px,4vw,32px) clamp(72px,10vw,120px)">
+    <div style="position:relative;border:1px solid rgba(0,120,212,.3);border-radius:24px;background:radial-gradient(900px 380px at 8% -10%,rgba(0,120,212,.18),transparent 60%),linear-gradient(168deg,rgba(10,37,64,.5),#070d1e 64%);padding:clamp(28px,5vw,56px) clamp(20px,5vw,56px);overflow:hidden;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:clamp(28px,5vw,64px);align-items:center">
+      <div>
+        <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Direct Engagement</span></div>
+        <h2 style="font-size:clamp(28px,4.6vw,42px);line-height:1.1;letter-spacing:-.028em;font-weight:800;color:#f8fafc;margin:18px 0 16px;max-width:560px;text-wrap:pretty">Five Hours a Month With NASA's Lead Microsoft 365 Architect.</h2>
+        <p style="font-size:17px;line-height:1.6;color:#94a3b8;margin:0 0 30px;max-width:480px">$900 a month. No proposal, no SOW, no minimum term. Not sure it fits? Send the question and Shane answers it himself.</p>
+        <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" size="lg" onClick="{{ startAdvisory }}" dc-props="{{ ctaLg }}" hint-size="auto,52px">Start at $900/mo<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></x-import>
+      </div>
+      <div style="border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(2,6,23,.55);padding:clamp(20px,3vw,28px)">
+        <sc-if value="{{ contactIdle }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Ask a question first</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:12px">
+              <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:#cbd5e1">Name<input placeholder="Your name" style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.28);background:rgba(2,6,23,.55);color:#f1f5f9;font-family:inherit;font-size:14px;outline:none" style-focus="border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.25)"></label>
+              <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:#cbd5e1">Work email<input type="email" placeholder="you@yourcompany.com" style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.28);background:rgba(2,6,23,.55);color:#f1f5f9;font-family:inherit;font-size:14px;outline:none" style-focus="border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.25)"></label>
+            </div>
+            <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:#cbd5e1">Company<input placeholder="Company" style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.28);background:rgba(2,6,23,.55);color:#f1f5f9;font-family:inherit;font-size:14px;outline:none" style-focus="border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.25)"></label>
+            <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;color:#cbd5e1">What's stuck<textarea rows="4" placeholder="The decision, the migration, the Copilot question. Two sentences is plenty." style="width:100%;padding:11px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.28);background:rgba(2,6,23,.55);color:#f1f5f9;font-family:inherit;font-size:14px;line-height:1.5;outline:none;resize:vertical" style-focus="border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.25)"></textarea></label>
+            <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" size="lg" onClick="{{ sendContact }}" dc-props="{{ payBtn }}" hint-size="100%,50px">Send to Shane</x-import>
+            <p style="margin:0;font-size:12px;line-height:1.5;color:#94a3b8">Goes to Shane directly. He cannot take on organizations that work with, contract to, or partner with NASA.</p>
+          </div>
+        </sc-if>
+        <sc-if value="{{ contactSending }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;min-height:300px;text-align:center">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0078D4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:smcSpin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+            <div style="font-size:15px;color:#e2e8f0">Sending…</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ contactSent }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;justify-content:center;gap:12px;min-height:300px">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Sent</div>
+            <div style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Shane has it.</div>
+            <p style="margin:0;font-size:14px;line-height:1.6;color:#cbd5e1">He reads these himself and replies from his own inbox. If the answer is short, you get it there; if it needs a conversation, he proposes a time.</p>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer style="position:relative">
+  <sc-if value="{{ headerLive }}" hint-placeholder-val="{{ true }}"><div style="position:absolute;inset:0;background:#1A1A1C;border-top:1px solid rgba(255,255,255,.08)"></div></sc-if>
+  <sc-if value="{{ headerLocked }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;background:#020617;border-top:1px solid rgba(30,41,59,.8)"></div></sc-if>
+  <div style="position:relative;max-width:1280px;margin:0 auto;padding:64px clamp(16px,4vw,32px) 40px">
+    <div style="display:flex;flex-wrap:wrap;gap:40px;margin-bottom:48px">
+      <div style="flex:1 1 260px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <sc-if value="{{ headerLive }}" hint-placeholder-val="{{ true }}"><span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span></sc-if>
+          <sc-if value="{{ headerLocked }}" hint-placeholder-val="{{ false }}"><span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span></sc-if>
+          <span style="font-family:'Space Grotesk',Inter,sans-serif;font-weight:600;font-size:16px;color:#F5F5F7">Shane McCaw Consulting</span>
+        </div>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#B5B5BC;max-width:320px">Vero Beach, FL — M365 · Copilot AI · SharePoint · Power Platform</p>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Get Started</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="Assessment.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Assessment</a></li>
+          <li><a href="#tiers" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Fractional Architecture</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Solutions</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="Solution - Copilot AI.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Copilot &amp; AI</a></li>
+          <li><a href="Solution - Security Compliance.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Security &amp; Compliance</a></li>
+          <li><a href="Solution - Governance.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Governance</a></li>
+          <li><a href="Solution - SharePoint.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">SharePoint</a></li>
+          <li><a href="Solution - Power Platform.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Power Platform</a></li>
+          <li><a href="Solution - Teams.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Teams</a></li>
+          <li><a href="Solution - Migration.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Migration</a></li>
+          <li><a href="Solution - M365 Health.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">M365 Health</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Company</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="About Shane.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">About Shane</a></li>
+          <li><a href="Resources.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Resources</a></li>
+          <li><a href="Contact.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Contact</a></li>
+          <li><a href="Contact.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Ask a Question</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Legal</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="/terms" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Terms of Service</a></li>
+          <li><a href="/privacy" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Privacy Policy</a></li>
+        </ul>
+      </div>
+    </div>
+    <div style="padding-top:28px;border-top:1px solid rgba(255,255,255,.08);display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;font-size:12px;color:#B5B5BC">
+      <span>© 2026 Shane McCaw Consulting. All rights reserved.</span>
+      <a href="/privacy" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Privacy Policy</a>
+    </div>
+  </div>
+</footer>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;headerTheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;locked&quot;],&quot;default&quot;:&quot;locked&quot;,&quot;tsType&quot;:&quot;'live' | 'locked'&quot;,&quot;section&quot;:&quot;Chrome&quot;,&quot;description&quot;:&quot;live = the site's current charcoal header/footer with the blue→violet mark; locked = same chrome recolored to the locked navy/blue/teal palette&quot;},&quot;showScopedRetainers&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Offers&quot;,&quot;description&quot;:&quot;Show the two discovery-call retainers (vCISO / Governance, Copilot Governance) under the four fixed tiers&quot;},&quot;openAdvisoryOnLoad&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Offers&quot;,&quot;description&quot;:&quot;Land with the $900 Advisory checkout already expanded&quot;}}">
+const TIERS = [
+  { id: "advisory", name: "Architect Advisory Retainer", hours: 5, price: 900, tag: "Start here", fit: "A standing second opinion. Architecture questions answered before they become tickets." },
+  { id: "essentials", name: "Architect Essentials Retainer", hours: 8, price: 1500, fit: "A monthly review plus one live piece of work, every month." },
+  { id: "growth", name: "Architect Growth Retainer", hours: 16, price: 3000, fit: "Two days a month. Roadmap ownership plus hands-on configuration in your tenant." },
+  { id: "enterprise", name: "Architect Enterprise Retainer", hours: 30, price: 5500, fit: "Roughly a day a week. Shane as your fractional lead architect." },
+];
+
+class Component extends DCLogic {
+  state = { openTier: null, pay: {}, narrow: false, menuOpen: false, solOpen: false, contact: "idle" };
+
+  componentDidMount() {
+    this._onResize = () => {
+      const narrow = window.innerWidth < 1024;
+      if (narrow !== this.state.narrow) this.setState({ narrow, menuOpen: false, solOpen: false });
+    };
+    this._onResize();
+    window.addEventListener("resize", this._onResize);
+    if (this.props.openAdvisoryOnLoad) this.setState({ openTier: "advisory" });
+  }
+  componentDidUpdate(prev) {
+    if (prev.openAdvisoryOnLoad !== this.props.openAdvisoryOnLoad) this.setState({ openTier: this.props.openAdvisoryOnLoad ? "advisory" : null });
+  }
+  componentWillUnmount() {
+    window.removeEventListener("resize", this._onResize);
+    clearTimeout(this._t);
+  }
+  jump(id, offset = 96) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - offset, behavior: "smooth" });
+  }
+  startAdvisory = () => {
+    this.setState({ openTier: "advisory", menuOpen: false, solOpen: false });
+    setTimeout(() => this.jump("tier-advisory"), 40);
+  };
+
+  renderVals() {
+    const theme = this.props.headerTheme ?? "live";
+    const { openTier, pay, narrow, menuOpen, solOpen } = this.state;
+    const money = (n) => "$" + n.toLocaleString("en-US");
+    const tiers = TIERS.map((t, i) => {
+      const st = pay[t.id] || "idle";
+      const open = openTier === t.id;
+      return {
+        ...t,
+        index: String(i + 1).padStart(2, "0"),
+        priceText: money(t.price),
+        hoursText: String(t.hours),
+        payLabel: "Start retainer · " + money(t.price) + "/mo",
+        buttonLabel: open ? "Close" : "Start retainer",
+        open,
+        hasTag: !!t.tag,
+        idle: st === "idle",
+        processing: st === "processing",
+        done: st === "done",
+        toggle: () => {
+          const opening = !open;
+          this.setState({ openTier: opening ? t.id : null });
+          if (opening) setTimeout(() => this.jump("tier-" + t.id), 40);
+        },
+        submit: (e) => {
+          if (e && e.preventDefault) e.preventDefault();
+          this.setState((s) => ({ pay: { ...s.pay, [t.id]: "processing" } }));
+          clearTimeout(this._t);
+          this._t = setTimeout(() => this.setState((s) => ({ pay: { ...s.pay, [t.id]: "done" } })), 1600);
+        },
+      };
+    });
+    return {
+      headerLive: theme === "live",
+      headerLocked: theme !== "live",
+      showScoped: this.props.showScopedRetainers ?? true,
+      narrow,
+      wide: !narrow,
+      menuOpen,
+      solOpen,
+      toggleMenu: () => this.setState((s) => ({ menuOpen: !s.menuOpen, solOpen: false })),
+      toggleSolutions: () => this.setState((s) => ({ solOpen: !s.solOpen })),
+      startAdvisory: this.startAdvisory,
+      contactIdle: this.state.contact === "idle",
+      contactSending: this.state.contact === "sending",
+      contactSent: this.state.contact === "sent",
+      sendContact: (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        this.setState({ contact: "sending" });
+        clearTimeout(this._c);
+        this._c = setTimeout(() => this.setState({ contact: "sent" }), 1200);
+      },
+      goTiers: () => this.jump("tiers"),
+      tiers,
+      ctaLg: { style: { minHeight: 52, padding: "0 26px", fontSize: 16, fontWeight: 600, borderRadius: 12, background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", border: "none" } },
+      ctaLgGhost: { style: { minHeight: 52, padding: "0 22px", fontSize: 16, fontWeight: 600, borderRadius: 12, color: "#e2e8f0", borderColor: "rgba(148,163,184,.3)", boxShadow: "none" } },
+      ctaMd: { style: { minHeight: 44, padding: "0 20px", fontSize: 14, fontWeight: 600, borderRadius: 10, minWidth: 150, background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", border: "none" } },
+      ctaMdGhost: { style: { minHeight: 44, padding: "0 18px", fontSize: 14, fontWeight: 600, borderRadius: 10, color: "#e2e8f0", borderColor: "rgba(148,163,184,.3)", boxShadow: "none" } },
+      payBtn: { style: { minHeight: 50, width: "100%", fontSize: 15, fontWeight: 600, borderRadius: 10, background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", border: "none" } },
+    };
+  }
+}
+</script>
+</body>
+</html>

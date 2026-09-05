@@ -1,0 +1,1840 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+html,body{margin:0;padding:0;background:#020617;overflow-x:hidden}
+a{color:#60a5fa;text-decoration:none}
+a:hover{color:#93c5fd}
+@keyframes smcSpin{to{transform:rotate(360deg)}}
+@keyframes smcOrb{to{transform:rotate(-360deg)}}
+@keyframes smcBreath{0%,100%{opacity:.42}50%{opacity:.72}}
+@media (prefers-reduced-motion:reduce){#smcSheen{display:none}*{animation:none!important}}
+@media (max-width:1023px){input,textarea,select{font-size:16px!important}}
+</style>
+</helmet>
+
+<div class="dark" style="background:#020617;color:#cbd5e1;font-family:Inter,system-ui,sans-serif;min-height:100vh;padding-top:72px">
+
+  <header style="position:fixed;top:0;left:0;right:0;z-index:50">
+    <div style="position:absolute;inset:0;background:rgba(2,6,23,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid rgba(30,41,59,.8)"></div>
+    <div style="position:relative;max-width:1280px;margin:0 auto;padding:0 clamp(16px,4vw,32px);height:72px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+      <a href="Work With Me.dc.html" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:#F5F5F7">
+        <span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+        <span style="font-family:'Space Grotesk',Inter,sans-serif;font-weight:700;font-size:16px;letter-spacing:-.02em;line-height:1">Shane McCaw</span>
+      </a>
+      <sc-if value="{{ navWide }}" hint-placeholder-val="{{ true }}">
+        <nav style="display:flex;align-items:center;gap:4px">
+          <a href="#quiz" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#00B4D8;background:rgba(255,255,255,.06);text-decoration:none">Assessment</a>
+          <div style="position:relative">
+            <button onClick="{{ navToggleSolutions }}" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;background:transparent;border:0;cursor:pointer;font-family:inherit" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Solutions<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+            <sc-if value="{{ navSolOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;top:100%;left:0;width:400px;margin-top:6px;background:rgba(5,12,29,.97);border:1px solid rgba(30,41,59,.9);border-radius:16px;padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:2px;backdrop-filter:blur(24px)">
+                <a href="Solution - Copilot AI.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Copilot &amp; AI</a>
+                <a href="Solution - Security Compliance.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Security &amp; Compliance</a>
+                <a href="Solution - Governance.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Governance</a>
+                <a href="Solution - SharePoint.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">SharePoint</a>
+                <a href="Solution - Power Platform.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Power Platform</a>
+                <a href="Solution - Teams.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Teams</a>
+                <a href="Solution - Migration.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Migration</a>
+                <a href="Solution - M365 Health.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">M365 Health</a>
+              </div>
+            </sc-if>
+          </div>
+          <a href="Work With Me.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Fractional Architecture</a>
+          <a href="About Shane.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">About Shane</a>
+          <a href="Resources.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Resources</a>
+          <a href="Contact.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Contact</a>
+        </nav>
+        <div style="display:flex;align-items:center;gap:8px">
+          <a href="#assessment" style="display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;background:#0078D4;text-decoration:none" style-hover="background:#005A9E">Get Your Real Score<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></a>
+        </div>
+      </sc-if>
+      <sc-if value="{{ navNarrow }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ navToggleMenu }}" aria-label="Toggle navigation menu" style="padding:10px;border-radius:8px;color:#B5B5BC;background:transparent;border:0;cursor:pointer;display:flex"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg></button>
+      </sc-if>
+    </div>
+    <sc-if value="{{ navMenuOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="position:relative;border-top:1px solid rgba(30,41,59,.8);padding:8px 16px 20px;display:flex;flex-direction:column;gap:2px">
+        <a href="#quiz" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#00B4D8;background:rgba(255,255,255,.06);text-decoration:none">Assessment</a>
+        <a href="Solutions.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Solutions</a>
+        <a href="Work With Me.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Fractional Architecture</a>
+        <a href="About Shane.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">About Shane</a>
+        <a href="Resources.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Resources</a>
+        <a href="#assessment" style="display:block;margin-top:12px;padding:12px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;text-align:center;background:#0078D4;text-decoration:none">Get Your Real Score</a>
+      </div>
+    </sc-if>
+  </header>
+
+  <section id="quiz" style="max-width:1280px;margin:0 auto;padding:clamp(40px,8vw,72px) clamp(16px,4vw,32px) clamp(56px,9vw,96px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:clamp(40px,6vw,72px);align-items:center">
+
+    <div>
+      <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Eyebrow" hint-size="260px,28px">Copilot Readiness — Free Estimate</x-import>
+
+      <h1 style="font-size:clamp(26px,4.8vw,42px);line-height:1.1;letter-spacing:-.022em;font-weight:800;color:#f8fafc;margin:22px 0 16px;text-wrap:pretty;max-width:520px">Most Tenants Aren't Ready for Copilot. Find Out If Yours Is.</h1>
+      <p style="font-size:clamp(15px,2.3vw,17px);line-height:1.6;color:#94a3b8;margin:0 0 32px;max-width:440px">Seven questions. No sign-in, no scan, no sales call. The radar fills in as you answer, one pillar at a time.</p>
+
+      <sc-if value="{{ notDone }}" hint-placeholder-val="{{ true }}">
+        <div style="background:#0f172a;border:1px solid rgba(30,41,59,.9);border-radius:16px;padding:clamp(18px,4vw,26px) clamp(18px,4vw,26px) 22px;max-width:520px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="font-size:12px;font-weight:700;letter-spacing:.12em;color:#f1f5f9">{{ qNum }}</span>
+              <span style="font-size:12px;font-weight:600;letter-spacing:.12em;color:#475569">/ {{ qTotal }}</span>
+              <span style="width:1px;height:12px;background:#334155"></span>
+              <span style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:{{ pillarColor }}">{{ pillarTag }}</span>
+            </div>
+            <div style="display:flex;gap:5px">
+              <sc-for list="{{ dots }}" as="dot" hint-placeholder-count="7">
+                <span style="width:16px;height:3px;border-radius:2px;background:{{ dot.bg }};transition:background .3s"></span>
+              </sc-for>
+            </div>
+          </div>
+
+          <p style="font-size:clamp(19px,3.4vw,22px);line-height:1.3;font-weight:600;color:#f8fafc;margin:0 0 20px;letter-spacing:-.01em;min-height:58px">{{ questionText }}</p>
+
+          <div style="display:grid;gap:8px">
+            <sc-for list="{{ options }}" as="option" hint-placeholder-count="4">
+              <button type="button" onClick="{{ option.pick }}" style="display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:14px 16px;border-radius:10px;border:1px solid rgba(51,65,85,.8);background:rgba(2,6,23,.5);color:#e2e8f0;font-family:inherit;font-size:15px;cursor:pointer;transition:border-color .18s,background .18s" style-hover="border-color:rgba(59,130,246,.6);background:rgba(30,41,59,.55)">
+                <span style="flex-shrink:0;width:22px;height:22px;border-radius:6px;border:1px solid rgba(71,85,105,.9);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#64748b">{{ option.letter }}</span>
+                <span>{{ option.label }}</span>
+              </button>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px;min-height:20px">
+            <button type="button" onClick="{{ back }}" style="background:none;border:none;padding:0;font-family:inherit;font-size:13px;color:#475569;cursor:pointer;visibility:{{ backVis }}" style-hover="color:#94a3b8">← Previous question</button>
+            <span style="font-size:12px;color:#334155">Illustrative estimate only</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ done }}">
+        <div style="background:linear-gradient(160deg,rgba(23,37,84,.42),#0f172a 62%);border:1px solid rgba(37,99,235,.28);border-radius:16px;padding:clamp(20px,4vw,28px);max-width:520px">
+          <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#60a5fa">Estimated Copilot Readiness</span>
+          <div style="display:flex;align-items:baseline;gap:10px;margin:12px 0 6px">
+            <span style="font-size:clamp(54px,13vw,82px);font-weight:800;letter-spacing:-.04em;line-height:.9;color:#f8fafc">{{ score }}</span>
+            <span style="font-size:22px;font-weight:600;color:#475569">/ 100</span>
+            <span style="margin-left:8px;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.06em;background:rgba(37,99,235,.12);border:1px solid rgba(37,99,235,.3);color:#93c5fd">{{ bandLabel }}</span>
+          </div>
+          <p style="font-size:15px;line-height:1.6;color:#94a3b8;margin:14px 0 22px;max-width:400px">{{ scoreBlurb }}</p>
+          <sc-if value="{{ hasBonus }}">
+            <div style="border-top:1px solid rgba(37,99,235,.22);padding-top:18px;margin:0 0 22px">
+              <span style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#60A5FA">One thing we noticed</span>
+              <p style="font-size:15.5px;line-height:1.6;color:#e2e8f0;margin:10px 0 0;max-width:440px">{{ bonusText }}</p>
+            </div>
+          </sc-if>
+          <div style="display:flex;flex-wrap:wrap;gap:10px">
+            <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="lg" onClick="{{ goEditorial }}" hint-size="220px,40px">Read What the Data Says</x-import>
+            <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="lg" variant="ghost" onClick="{{ restart }}" hint-size="120px,40px">Start over</x-import>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="position:relative;width:100%;max-width:720px;margin:0 auto;aspect-ratio:1/0.62">
+     <div style="position:absolute;left:27%;top:12.9%;width:46%;height:74.2%">
+      <svg viewBox="0 0 480 480" style="position:relative;width:100%;height:100%;display:block;overflow:visible">
+        <defs>
+          <radialGradient id="wg0" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214"><stop offset="0.47" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.56" stop-color="#3B82F6" stop-opacity="1"/><stop offset="0.78" stop-color="#3B82F6" stop-opacity="0.42"/><stop offset="1" stop-color="#3B82F6" stop-opacity="0.06"/></radialGradient>
+          <radialGradient id="wg1" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214"><stop offset="0.47" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.56" stop-color="#8B5CF6" stop-opacity="1"/><stop offset="0.78" stop-color="#8B5CF6" stop-opacity="0.42"/><stop offset="1" stop-color="#8B5CF6" stop-opacity="0.06"/></radialGradient>
+          <radialGradient id="wg2" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214"><stop offset="0.47" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.56" stop-color="#F3F4F6" stop-opacity="1"/><stop offset="0.78" stop-color="#F3F4F6" stop-opacity="0.42"/><stop offset="1" stop-color="#F3F4F6" stop-opacity="0.06"/></radialGradient>
+          <radialGradient id="wg3" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214"><stop offset="0.47" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.56" stop-color="#14B8A6" stop-opacity="1"/><stop offset="0.78" stop-color="#14B8A6" stop-opacity="0.42"/><stop offset="1" stop-color="#14B8A6" stop-opacity="0.06"/></radialGradient>
+          <radialGradient id="wg4" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214"><stop offset="0.47" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.56" stop-color="#F97316" stop-opacity="1"/><stop offset="0.78" stop-color="#F97316" stop-opacity="0.42"/><stop offset="1" stop-color="#F97316" stop-opacity="0.06"/></radialGradient>
+          <radialGradient id="wg5" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214"><stop offset="0.47" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.56" stop-color="#22C55E" stop-opacity="1"/><stop offset="0.78" stop-color="#22C55E" stop-opacity="0.42"/><stop offset="1" stop-color="#22C55E" stop-opacity="0.06"/></radialGradient>
+          <radialGradient id="hubGlow" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="122"><stop offset="0" stop-color="#ffffff" stop-opacity="0.30"/><stop offset="0.34" stop-color="#22D3EE" stop-opacity="0.26"/><stop offset="0.72" stop-color="#3B82F6" stop-opacity="0.16"/><stop offset="1" stop-color="#020617" stop-opacity="0"/></radialGradient>
+          <radialGradient id="sheen" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214"><stop offset="0.5" stop-color="#ffffff" stop-opacity="0.22"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+        </defs>
+
+        <circle cx="240" cy="240" r="214" fill="none" stroke="rgba(148,163,184,.16)" stroke-width="1"></circle>
+        <circle cx="240" cy="240" r="143" fill="none" stroke="rgba(148,163,184,.10)" stroke-width="1"></circle>
+        <circle cx="240" cy="240" r="71" fill="none" stroke="rgba(148,163,184,.08)" stroke-width="1"></circle>
+        <g stroke="rgba(148,163,184,.10)" stroke-width="1">
+          <line x1="240" y1="240" x2="240" y2="26"></line>
+          <line x1="240" y1="240" x2="425.33" y2="133"></line>
+          <line x1="240" y1="240" x2="425.33" y2="347"></line>
+          <line x1="240" y1="240" x2="240" y2="454"></line>
+          <line x1="240" y1="240" x2="54.67" y2="347"></line>
+          <line x1="240" y1="240" x2="54.67" y2="133"></line>
+        </g>
+
+        <circle cx="240" cy="240" r="100" fill="#050d1f"></circle>
+        <circle cx="240" cy="240" r="100" fill="url(#hubGlow)"></circle>
+
+        <g>
+          <path d="M243.49,140.06 L247.47,26.13 A214,214 0 0 1 421.48,126.60 L324.80,187.01 A100,100 0 0 0 243.49,140.06 Z" fill="#1e3a8a" fill-opacity=".16" stroke="#60a5fa" stroke-opacity=".18" stroke-width="1"></path>
+          <path d="M328.29,193.05 L428.95,139.53 A214,214 0 0 1 428.95,340.47 L328.29,286.95 A100,100 0 0 0 328.29,193.05 Z" fill="#4c1d95" fill-opacity=".16" stroke="#a78bfa" stroke-opacity=".18" stroke-width="1"></path>
+          <path d="M324.80,292.99 L421.48,353.40 A214,214 0 0 1 247.47,453.87 L243.49,339.94 A100,100 0 0 0 324.80,292.99 Z" fill="#334155" fill-opacity=".16" stroke="#D1D5DB" stroke-opacity=".18" stroke-width="1"></path>
+          <path d="M236.51,339.94 L232.53,453.87 A214,214 0 0 1 58.52,353.40 L155.20,292.99 A100,100 0 0 0 236.51,339.94 Z" fill="#134e4a" fill-opacity=".16" stroke="#2dd4bf" stroke-opacity=".18" stroke-width="1"></path>
+          <path d="M151.71,286.95 L51.05,340.47 A214,214 0 0 1 51.05,139.53 L151.71,193.05 A100,100 0 0 0 151.71,286.95 Z" fill="#7c2d12" fill-opacity=".16" stroke="#fb923c" stroke-opacity=".18" stroke-width="1"></path>
+          <path d="M155.20,187.01 L58.52,126.60 A214,214 0 0 1 232.53,26.13 L236.51,140.06 A100,100 0 0 0 155.20,187.01 Z" fill="#14532d" fill-opacity=".16" stroke="#4ADE80" stroke-opacity=".18" stroke-width="1"></path>
+        </g>
+
+        <g>
+          <path d="{{ d0 }}" fill="url(#wg0)" stroke="#60a5fa" stroke-opacity=".5" stroke-width=".8" style="transition:d .7s cubic-bezier(.2,.8,.2,1)"></path>
+          <path d="{{ d1 }}" fill="url(#wg1)" stroke="#a78bfa" stroke-opacity=".5" stroke-width=".8" style="transition:d .7s cubic-bezier(.2,.8,.2,1)"></path>
+          <path d="{{ d2 }}" fill="url(#wg2)" stroke="#D1D5DB" stroke-opacity=".5" stroke-width=".8" style="transition:d .7s cubic-bezier(.2,.8,.2,1)"></path>
+          <path d="{{ d3 }}" fill="url(#wg3)" stroke="#2dd4bf" stroke-opacity=".5" stroke-width=".8" style="transition:d .7s cubic-bezier(.2,.8,.2,1)"></path>
+          <path d="{{ d4 }}" fill="url(#wg4)" stroke="#fb923c" stroke-opacity=".5" stroke-width=".8" style="transition:d .7s cubic-bezier(.2,.8,.2,1)"></path>
+          <path d="{{ d5 }}" fill="url(#wg5)" stroke="#4ADE80" stroke-opacity=".5" stroke-width=".8" style="transition:d .7s cubic-bezier(.2,.8,.2,1)"></path>
+        </g>
+
+        <g id="smcSheen" style="mix-blend-mode:screen;pointer-events:none">
+          <path d="M240,240 L247.47,26.13 A214,214 0 0 1 421.48,126.60 Z" fill="url(#sheen)" opacity=".55"></path>
+          <animateTransform attributeName="transform" type="rotate" from="0 240 240" to="360 240 240" dur="9s" repeatCount="indefinite"></animateTransform>
+        </g>
+      </svg>
+
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:{{ hubGlow }};height:{{ hubGlow }};transition:width .8s ease,height .8s ease;pointer-events:none">
+        <div style="width:100%;height:100%;border-radius:50%;background:conic-gradient(from 0deg,#3B82F6,#8B5CF6,#22D3EE,#F3F4F6,#8B5CF6,#3B82F6);filter:blur(30px);opacity:{{ hubGlowOpacity }};transition:opacity .8s ease"></div>
+      </div>
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:{{ hubSize }};height:{{ hubSize }};transition:width .8s ease,height .8s ease;pointer-events:none">
+        <div style="width:100%;height:100%;border-radius:50%;background:conic-gradient(from 0deg,#3B82F6,#8B5CF6,#22D3EE,#F3F4F6,#8B5CF6,#3B82F6);-webkit-mask:radial-gradient(circle,transparent 63%,#000 68%,#000 73%,transparent 78%);mask:radial-gradient(circle,transparent 63%,#000 68%,#000 73%,transparent 78%);animation:smcOrb 22s linear infinite;opacity:.5"></div>
+      </div>
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px">
+        <span style="font-size:{{ hubFont }}px;font-weight:800;letter-spacing:-.03em;color:#f8fafc;line-height:1;transition:font-size .8s ease">{{ hubNum }}</span>
+        <span style="font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#bcccdc;text-shadow:0 1px 6px rgba(2,6,23,.9)">{{ hubLabel }}</span>
+      </div>
+     </div>
+
+      <div style="position:absolute;left:62%;top:16.5%;transform:translate(0,-50%);width:clamp(84px,23vw,148px);text-align:left;pointer-events:none">
+        <div style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#60a5fa">Governance</div>
+        <div style="font-size:clamp(10px,2.1vw,11px);line-height:1.35;color:#64748b;margin-top:5px">1 in 3 lack a named owner</div>
+      </div>
+      <div style="position:absolute;left:74%;top:50%;transform:translate(0,-50%);width:clamp(84px,23vw,148px);text-align:left;pointer-events:none">
+        <div style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#a78bfa">Security</div>
+        <div style="font-size:clamp(10px,2.1vw,11px);line-height:1.35;color:#64748b;margin-top:5px">41% have a CA bypass path</div>
+      </div>
+      <div style="position:absolute;left:62%;top:83.5%;transform:translate(0,-50%);width:clamp(84px,23vw,148px);text-align:left;pointer-events:none">
+        <div style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#D1D5DB">Compliance</div>
+        <div style="font-size:clamp(10px,2.1vw,11px);line-height:1.35;color:#64748b;margin-top:5px">Over-sharing: 6-month lag</div>
+      </div>
+      <div style="position:absolute;left:38%;top:83.5%;transform:translate(-100%,-50%);width:clamp(84px,23vw,148px);text-align:right;pointer-events:none">
+        <div style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#2dd4bf">Licensing</div>
+        <div style="font-size:clamp(10px,2.1vw,11px);line-height:1.35;color:#64748b;margin-top:5px">22% of seats sit unused</div>
+      </div>
+      <div style="position:absolute;left:26%;top:50%;transform:translate(-100%,-50%);width:clamp(84px,23vw,148px);text-align:right;pointer-events:none">
+        <div style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#fb923c">Adoption</div>
+        <div style="font-size:clamp(10px,2.1vw,11px);line-height:1.35;color:#64748b;margin-top:5px">3 apps carry all usage</div>
+      </div>
+      <div style="position:absolute;left:38%;top:16.5%;transform:translate(-100%,-50%);width:clamp(84px,23vw,148px);text-align:right;pointer-events:none">
+        <div style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#4ADE80">Health</div>
+        <div style="font-size:clamp(10px,2.1vw,11px);line-height:1.35;color:#64748b;margin-top:5px">Config changes hourly</div>
+      </div>
+    </div>
+  </section>
+
+  <div id="chapters" style="border-top:1px solid rgba(30,41,59,.8);background:linear-gradient(180deg,#020617,#040b1e 40%,#020617)">
+    <div style="max-width:1160px;margin:0 auto;padding:clamp(56px,9vw,96px) clamp(16px,4vw,32px) 40px">
+      <div data-reveal style="max-width:720px">
+        <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Eyebrow" pill="{{ false }}" hint-size="200px,20px">The Aggregate Picture</x-import>
+        <h2 style="font-size:clamp(28px,5.6vw,42px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:16px 0 18px;text-wrap:pretty">What organizations {{ cohortPhrase }} typically show.</h2>
+        <p style="font-size:17px;line-height:1.65;color:#94a3b8;margin:0">Six pillars decide whether Copilot returns anything. The figures below are aggregate and illustrative — drawn from patterns across tenants of comparable size, not from a scan of yours. Narration throughout is Shane McCaw, Lead Microsoft 365 Architect at NASA.</p>
+        <p style="font-size:15px;line-height:1.6;color:#7dd3c8;margin:20px 0 0;max-width:640px">Worth reading as far as Licensing: the unused Copilot seats we typically find are often worth more than the assessment itself.</p>
+      </div>
+    </div>
+
+    <div style="max-width:1160px;margin:0 auto;padding:0 clamp(16px,4vw,32px) 40px">
+
+      <article data-reveal style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(26px,4vw,64px);padding:clamp(44px,7vw,72px) 0;position:relative;overflow:hidden;border-top:1px solid rgba(30,41,59,.75)">
+        <div data-parallax="0.3" style="position:absolute;left:0;top:8%;width:340px;height:340px;opacity:.055;pointer-events:none;will-change:transform">
+          <svg viewBox="0 0 24 24" width="340" height="340" fill="none" stroke="#60a5fa" stroke-width=".45" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        </div>
+        <div data-parallax="0.14" style="position:absolute;left:0;right:auto;top:6%;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,.14),transparent 68%);filter:blur(30px);pointer-events:none;will-change:transform"></div>
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#60a5fa;box-shadow:0 0 14px #60a5fa"></span>
+            <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#60a5fa">Pillar 01 — Governance</span>
+          </div>
+          <div style="font-size:clamp(52px,11vw,80px);font-weight:800;letter-spacing:-.04em;color:#f1f5f9;line-height:.95">1 in <span data-countup="3">3</span></div>
+          <p style="font-size:15px;line-height:1.55;color:#64748b;margin:14px 0 0;max-width:270px">tenants have nobody named as the day-to-day owner of Microsoft 365 governance.</p>
+        </div>
+        <div>
+          <h3 style="font-size:clamp(21px,3.7vw,26px);font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 14px">{{ hd0 }}</h3>
+          <p style="font-size:16px;line-height:1.7;color:#94a3b8;margin:0 0 12px">{{ bd0 }}</p>
+          <div data-benchmark style="margin-top:26px;display:grid;gap:14px;max-width:520px">
+            <div style="display:grid;grid-template-columns:clamp(92px,26vw,170px) minmax(0,1fr) 44px;align-items:center;gap:14px"><span style="font-size:12px;color:#64748b">Organizations like yours</span><span style="height:6px;border-radius:3px;background:rgba(30,41,59,.9);position:relative;overflow:hidden"><span style="position:absolute;inset:0 62% 0 0;background:#3B82F6;border-radius:3px"></span></span><span style="font-size:12px;font-weight:600;color:#e2e8f0;text-align:right">38%</span></div>
+            <div style="display:grid;grid-template-columns:clamp(92px,26vw,170px) minmax(0,1fr) 44px;align-items:center;gap:14px"><span style="font-size:12px;color:#64748b">Top quartile</span><span style="height:6px;border-radius:3px;background:rgba(30,41,59,.9);position:relative;overflow:hidden"><span style="position:absolute;inset:0 11% 0 0;background:#60a5fa;border-radius:3px"></span></span><span style="font-size:12px;font-weight:600;color:#e2e8f0;text-align:right">89%</span></div>
+            <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 24px;margin-top:10px">
+            <span style="font-size:11px;color:#475569;letter-spacing:.04em">Share of high-value sites with a verified owner</span>
+            <span style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+              <svg width="118" height="30" viewBox="0 0 118 30" style="display:block">
+                <polyline points="0.0,23.5 16.0,22.5 32.0,23.0 48.0,20.5 64.0,19.5 80.0,17.5 96.0,16.5 112.0,14.3" fill="none" stroke="#60a5fa" stroke-opacity=".85" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 4px #60a5fa66)"></polyline>
+                <circle cx="112" cy="14.3" r="2" fill="#60a5fa"></circle>
+              </svg>
+              <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#334155">Illustrative trend</span>
+            </span>
+          </div>
+          </div>
+          <div style="margin-top:28px;max-width:540px;border-top:1px solid rgba(30,41,59,.9);padding-top:16px">
+            <span style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#475569">What we check</span>
+            <ul style="list-style:none;margin:12px 0 0;padding:0;display:grid;gap:9px">
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#60a5fa;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>SharePoint sharing exposure</li>
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#60a5fa;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>Guest account activity</li>
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#60a5fa;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>Site lifecycle policy coverage</li>
+            </ul>
+          </div>
+          <div data-caption style="display:flex;gap:14px;align-items:flex-start;margin-top:30px;max-width:560px">
+            <span style="flex-shrink:0;width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;letter-spacing:-.5px">SM</span>
+            <p style="font-size:15px;line-height:1.65;color:#cbd5e1;margin:0;font-style:italic">"Governance is not a document. It is knowing, this afternoon, who owns the site that holds the salary review."</p>
+          </div>
+        </div>
+      </article>
+
+      <article data-reveal style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(26px,4vw,64px);padding:clamp(44px,7vw,72px) 0;position:relative;overflow:hidden;border-top:1px solid rgba(30,41,59,.75)">
+        <div data-parallax="0.3" style="position:absolute;left:0;top:8%;width:340px;height:340px;opacity:.055;pointer-events:none;will-change:transform">
+          <svg viewBox="0 0 24 24" width="340" height="340" fill="none" stroke="#a78bfa" stroke-width=".45" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
+        </div>
+        <div data-parallax="0.14" style="position:absolute;left:0;right:auto;top:6%;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(139,92,246,.13),transparent 68%);filter:blur(30px);pointer-events:none;will-change:transform"></div>
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#a78bfa;box-shadow:0 0 14px #a78bfa"></span>
+            <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#a78bfa">Pillar 02 — Security</span>
+          </div>
+          <div style="font-size:clamp(52px,11vw,80px);font-weight:800;letter-spacing:-.04em;color:#f1f5f9;line-height:.95"><span data-countup="41">41</span>%</div>
+          <p style="font-size:15px;line-height:1.55;color:#64748b;margin:14px 0 0;max-width:270px">of tenants still have a path that bypasses Conditional Access somewhere.</p>
+        </div>
+        <div>
+          <h3 style="font-size:clamp(21px,3.7vw,26px);font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 14px">{{ hd1 }}</h3>
+          <p style="font-size:16px;line-height:1.7;color:#94a3b8;margin:0 0 12px">{{ bd1 }}</p>
+          <div data-benchmark style="margin-top:26px;display:grid;gap:14px;max-width:520px">
+            <div style="display:grid;grid-template-columns:clamp(92px,26vw,170px) minmax(0,1fr) 44px;align-items:center;gap:14px"><span style="font-size:12px;color:#64748b">Organizations like yours</span><span style="height:6px;border-radius:3px;background:rgba(30,41,59,.9);position:relative;overflow:hidden"><span style="position:absolute;inset:0 47% 0 0;background:#8b5cf6;border-radius:3px"></span></span><span style="font-size:12px;font-weight:600;color:#e2e8f0;text-align:right">53%</span></div>
+            <div style="display:grid;grid-template-columns:clamp(92px,26vw,170px) minmax(0,1fr) 44px;align-items:center;gap:14px"><span style="font-size:12px;color:#64748b">Top quartile</span><span style="height:6px;border-radius:3px;background:rgba(30,41,59,.9);position:relative;overflow:hidden"><span style="position:absolute;inset:0 6% 0 0;background:#a78bfa;border-radius:3px"></span></span><span style="font-size:12px;font-weight:600;color:#e2e8f0;text-align:right">94%</span></div>
+            <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 24px;margin-top:10px">
+            <span style="font-size:11px;color:#475569;letter-spacing:.04em">Sign-ins fully covered by a Conditional Access policy</span>
+            <span style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+              <svg width="118" height="30" viewBox="0 0 118 30" style="display:block">
+                <polyline points="0.0,21.8 16.0,20.5 32.0,21.0 48.0,18.5 64.0,17.0 80.0,15.5 96.0,14.5 112.0,12.5" fill="none" stroke="#a78bfa" stroke-opacity=".85" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 4px #a78bfa66)"></polyline>
+                <circle cx="112" cy="12.5" r="2" fill="#a78bfa"></circle>
+              </svg>
+              <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#334155">Illustrative trend</span>
+            </span>
+          </div>
+          </div>
+          <div style="margin-top:28px;max-width:540px;border-top:1px solid rgba(30,41,59,.9);padding-top:16px">
+            <span style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#475569">What we check</span>
+            <ul style="list-style:none;margin:12px 0 0;padding:0;display:grid;gap:9px">
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#a78bfa;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>Secure Score history</li>
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#a78bfa;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>Conditional Access policy coverage</li>
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#a78bfa;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>MFA registration state</li>
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#a78bfa;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>Legacy authentication usage</li>
+            </ul>
+          </div>
+          <div data-caption style="display:flex;gap:14px;align-items:flex-start;margin-top:30px;max-width:560px">
+            <span style="flex-shrink:0;width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;letter-spacing:-.5px">SM</span>
+            <p style="font-size:15px;line-height:1.65;color:#cbd5e1;margin:0;font-style:italic">"Every tenant I have opened has an exclusion list. The question is only whether anyone still knows why."</p>
+          </div>
+        </div>
+      </article>
+
+      <article data-reveal style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(26px,4vw,64px);padding:clamp(44px,7vw,72px) 0;position:relative;overflow:hidden;border-top:1px solid rgba(30,41,59,.75)">
+        <div data-parallax="0.3" style="position:absolute;left:0;top:8%;width:340px;height:340px;opacity:.055;pointer-events:none;will-change:transform">
+          <svg viewBox="0 0 24 24" width="340" height="340" fill="none" stroke="#D1D5DB" stroke-width=".45" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m9 15 2 2 4-4"/></svg>
+        </div>
+        <div data-parallax="0.14" style="position:absolute;left:0;right:auto;top:6%;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(148,163,184,.10),transparent 68%);filter:blur(30px);pointer-events:none;will-change:transform"></div>
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#D1D5DB;box-shadow:0 0 14px rgba(209,213,219,.7)"></span>
+            <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#D1D5DB">Pillar 03 — Compliance</span>
+          </div>
+          <div style="font-size:clamp(52px,11vw,80px);font-weight:800;letter-spacing:-.04em;color:#f1f5f9;line-height:.95"><span data-countup="6">6</span> mo</div>
+          <p style="font-size:15px;line-height:1.55;color:#64748b;margin:14px 0 0;max-width:270px">median time before an unlabelled, over-shared site is noticed at all.</p>
+        </div>
+        <div>
+          <h3 style="font-size:clamp(21px,3.7vw,26px);font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 14px">{{ hd2 }}</h3>
+          <p style="font-size:16px;line-height:1.7;color:#94a3b8;margin:0 0 12px">{{ bd2 }}</p>
+          <div data-benchmark style="margin-top:26px;display:grid;gap:14px;max-width:520px">
+            <div style="display:grid;grid-template-columns:clamp(92px,26vw,170px) minmax(0,1fr) 44px;align-items:center;gap:14px"><span style="font-size:12px;color:#64748b">Organizations like yours</span><span style="height:6px;border-radius:3px;background:rgba(30,41,59,.9);position:relative;overflow:hidden"><span style="position:absolute;inset:0 71% 0 0;background:#D1D5DB;border-radius:3px"></span></span><span style="font-size:12px;font-weight:600;color:#e2e8f0;text-align:right">29%</span></div>
+            <div style="display:grid;grid-template-columns:clamp(92px,26vw,170px) minmax(0,1fr) 44px;align-items:center;gap:14px"><span style="font-size:12px;color:#64748b">Top quartile</span><span style="height:6px;border-radius:3px;background:rgba(30,41,59,.9);position:relative;overflow:hidden"><span style="position:absolute;inset:0 14% 0 0;background:#F3F4F6;border-radius:3px"></span></span><span style="font-size:12px;font-weight:600;color:#e2e8f0;text-align:right">86%</span></div>
+            <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 24px;margin-top:10px">
+            <span style="font-size:11px;color:#475569;letter-spacing:.04em">Sensitive sites carrying an applied sensitivity label</span>
+            <span style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+              <svg width="118" height="30" viewBox="0 0 118 30" style="display:block">
+                <polyline points="0.0,23.0 16.0,23.3 32.0,21.5 48.0,20.5 64.0,20.8 80.0,18.5 96.0,17.0 112.0,15.5" fill="none" stroke="#D1D5DB" stroke-opacity=".85" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 4px #D1D5DB66)"></polyline>
+                <circle cx="112" cy="15.5" r="2" fill="#D1D5DB"></circle>
+              </svg>
+              <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#334155">Illustrative trend</span>
+            </span>
+          </div>
+          </div>
+          <div style="margin-top:28px;max-width:540px;border-top:1px solid rgba(30,41,59,.9);padding-top:16px">
+            <span style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#475569">What we check</span>
+            <ul style="list-style:none;margin:12px 0 0;padding:0;display:grid;gap:9px">
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#D1D5DB;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>Sensitivity label coverage</li>
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#D1D5DB;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>DLP policy configuration</li>
+            </ul>
+          </div>
+          <div data-caption style="display:flex;gap:14px;align-items:flex-start;margin-top:30px;max-width:560px">
+            <span style="flex-shrink:0;width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;letter-spacing:-.5px">SM</span>
+            <p style="font-size:15px;line-height:1.65;color:#cbd5e1;margin:0;font-style:italic">"A taxonomy nobody applies is a slide deck. Auto-labelling is the only version of this that holds."</p>
+          </div>
+        </div>
+      </article>
+
+      <article data-reveal style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(26px,4vw,64px);padding:clamp(44px,7vw,72px) 0;position:relative;overflow:hidden;border-top:1px solid rgba(30,41,59,.75)">
+        <div data-parallax="0.3" style="position:absolute;left:0;top:8%;width:340px;height:340px;opacity:.055;pointer-events:none;will-change:transform">
+          <svg viewBox="0 0 24 24" width="340" height="340" fill="none" stroke="#2dd4bf" stroke-width=".45" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+        </div>
+        <div data-parallax="0.14" style="position:absolute;left:0;right:auto;top:6%;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(20,184,166,.13),transparent 68%);filter:blur(30px);pointer-events:none;will-change:transform"></div>
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#2dd4bf;box-shadow:0 0 14px #2dd4bf"></span>
+            <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#2dd4bf">Pillar 04 — Licensing</span>
+          </div>
+          <div style="font-size:clamp(52px,11vw,80px);font-weight:800;letter-spacing:-.04em;color:#f1f5f9;line-height:.95"><span data-countup="22">22</span>%</div>
+          <p style="font-size:15px;line-height:1.55;color:#64748b;margin:14px 0 0;max-width:270px">of purchased Copilot seats show no meaningful use after ninety days.</p>
+        </div>
+        <div>
+          <h3 style="font-size:clamp(21px,3.7vw,26px);font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 14px">{{ hd3 }}</h3>
+          <p style="font-size:16px;line-height:1.7;color:#94a3b8;margin:0 0 12px">{{ bd3 }}</p>
+          <div data-benchmark style="margin-top:26px;display:grid;gap:14px;max-width:520px">
+            <div style="display:grid;grid-template-columns:clamp(92px,26vw,170px) minmax(0,1fr) 44px;align-items:center;gap:14px"><span style="font-size:12px;color:#64748b">Organizations like yours</span><span style="height:6px;border-radius:3px;background:rgba(30,41,59,.9);position:relative;overflow:hidden"><span style="position:absolute;inset:0 22% 0 0;background:#14b8a6;border-radius:3px"></span></span><span style="font-size:12px;font-weight:600;color:#e2e8f0;text-align:right">78%</span></div>
+            <div style="display:grid;grid-template-columns:clamp(92px,26vw,170px) minmax(0,1fr) 44px;align-items:center;gap:14px"><span style="font-size:12px;color:#64748b">Top quartile</span><span style="height:6px;border-radius:3px;background:rgba(30,41,59,.9);position:relative;overflow:hidden"><span style="position:absolute;inset:0 3% 0 0;background:#2dd4bf;border-radius:3px"></span></span><span style="font-size:12px;font-weight:600;color:#e2e8f0;text-align:right">97%</span></div>
+            <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 24px;margin-top:10px">
+            <span style="font-size:11px;color:#475569;letter-spacing:.04em">Assigned Copilot seats active in the last 30 days</span>
+            <span style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+              <svg width="118" height="30" viewBox="0 0 118 30" style="display:block">
+                <polyline points="0.0,20.5 16.0,19.0 32.0,19.5 48.0,17.0 64.0,15.0 80.0,13.5 96.0,13.0 112.0,11.0" fill="none" stroke="#2dd4bf" stroke-opacity=".85" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 4px #2dd4bf66)"></polyline>
+                <circle cx="112" cy="11.0" r="2" fill="#2dd4bf"></circle>
+              </svg>
+              <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#334155">Illustrative trend</span>
+            </span>
+          </div>
+          </div>
+          <div style="margin-top:28px;max-width:540px;border-top:1px solid rgba(30,41,59,.9);padding-top:16px">
+            <span style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#475569">What we check</span>
+            <ul style="list-style:none;margin:12px 0 0;padding:0;display:grid;gap:9px">
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#2dd4bf;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>License assignment and utilization (subscribedSkus)</li>
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#2dd4bf;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>Duplicate and unused seat detection</li>
+            </ul>
+          </div>
+          <div style="margin-top:24px;max-width:540px;border:1px solid rgba(45,212,191,.3);border-radius:14px;background:linear-gradient(160deg,rgba(19,78,74,.3),rgba(15,23,42,.72) 70%);padding:22px 24px">
+            <span style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#2dd4bf">Cost recoupment</span>
+            <p style="font-size:17px;line-height:1.55;color:#f1f5f9;margin:10px 0 0;font-weight:500">The dormant seats we typically find are worth more than the assessment costs. On a tenant this size, reclaiming them often covers the engagement outright — before a single finding is fixed.</p>
+            <p style="font-size:11.5px;line-height:1.5;color:#475569;margin:12px 0 0">Illustrative, drawn from aggregate patterns. Your figure comes from your own tenant.</p>
+          </div>
+          <div data-caption style="display:flex;gap:14px;align-items:flex-start;margin-top:30px;max-width:560px">
+            <span style="flex-shrink:0;width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;letter-spacing:-.5px">SM</span>
+            <p style="font-size:15px;line-height:1.65;color:#cbd5e1;margin:0;font-style:italic">"Reclaiming dormant seats has paid for the whole engagement more than once. It is the least interesting finding and the fastest one."</p>
+          </div>
+        </div>
+      </article>
+
+      <article data-reveal style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(26px,4vw,64px);padding:clamp(44px,7vw,72px) 0;position:relative;overflow:hidden;border-top:1px solid rgba(30,41,59,.75)">
+        <div data-parallax="0.3" style="position:absolute;left:0;top:8%;width:340px;height:340px;opacity:.055;pointer-events:none;will-change:transform">
+          <svg viewBox="0 0 24 24" width="340" height="340" fill="none" stroke="#fb923c" stroke-width=".45" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div data-parallax="0.14" style="position:absolute;left:0;right:auto;top:6%;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(249,115,22,.12),transparent 68%);filter:blur(30px);pointer-events:none;will-change:transform"></div>
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#fb923c;box-shadow:0 0 14px #fb923c"></span>
+            <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#fb923c">Pillar 05 — Adoption</span>
+          </div>
+          <div style="font-size:clamp(52px,11vw,80px);font-weight:800;letter-spacing:-.04em;color:#f1f5f9;line-height:.95"><span data-countup="3">3</span> apps</div>
+          <p style="font-size:15px;line-height:1.55;color:#64748b;margin:14px 0 0;max-width:270px">carry nearly all Copilot usage. Everything else stays untouched.</p>
+        </div>
+        <div>
+          <h3 style="font-size:clamp(21px,3.7vw,26px);font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 14px">{{ hd4 }}</h3>
+          <p style="font-size:16px;line-height:1.7;color:#94a3b8;margin:0 0 12px">{{ bd4 }}</p>
+          <div data-benchmark style="margin-top:26px;display:grid;gap:14px;max-width:520px">
+            <div style="display:grid;grid-template-columns:clamp(92px,26vw,170px) minmax(0,1fr) 44px;align-items:center;gap:14px"><span style="font-size:12px;color:#64748b">Organizations like yours</span><span style="height:6px;border-radius:3px;background:rgba(30,41,59,.9);position:relative;overflow:hidden"><span style="position:absolute;inset:0 69% 0 0;background:#f97316;border-radius:3px"></span></span><span style="font-size:12px;font-weight:600;color:#e2e8f0;text-align:right">31%</span></div>
+            <div style="display:grid;grid-template-columns:clamp(92px,26vw,170px) minmax(0,1fr) 44px;align-items:center;gap:14px"><span style="font-size:12px;color:#64748b">Top quartile</span><span style="height:6px;border-radius:3px;background:rgba(30,41,59,.9);position:relative;overflow:hidden"><span style="position:absolute;inset:0 18% 0 0;background:#fb923c;border-radius:3px"></span></span><span style="font-size:12px;font-weight:600;color:#e2e8f0;text-align:right">82%</span></div>
+            <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 24px;margin-top:10px">
+            <span style="font-size:11px;color:#475569;letter-spacing:.04em">Licensed users who completed role-specific enablement</span>
+            <span style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+              <svg width="118" height="30" viewBox="0 0 118 30" style="display:block">
+                <polyline points="0.0,24.3 16.0,23.0 32.0,22.0 48.0,22.5 64.0,20.0 80.0,18.0 96.0,17.0 112.0,15.0" fill="none" stroke="#fb923c" stroke-opacity=".85" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 4px #fb923c66)"></polyline>
+                <circle cx="112" cy="15.0" r="2" fill="#fb923c"></circle>
+              </svg>
+              <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#334155">Illustrative trend</span>
+            </span>
+          </div>
+          </div>
+          <div style="margin-top:28px;max-width:540px;border-top:1px solid rgba(30,41,59,.9);padding-top:16px">
+            <span style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#475569">What we check</span>
+            <ul style="list-style:none;margin:12px 0 0;padding:0;display:grid;gap:9px">
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#fb923c;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>Microsoft 365 usage activity (Teams, OneDrive, email)</li>
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#fb923c;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>Copilot app usage activity</li>
+            </ul>
+          </div>
+          <div data-caption style="display:flex;gap:14px;align-items:flex-start;margin-top:30px;max-width:560px">
+            <span style="flex-shrink:0;width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;letter-spacing:-.5px">SM</span>
+            <p style="font-size:15px;line-height:1.65;color:#cbd5e1;margin:0;font-style:italic">"Nobody fails to adopt Copilot because it is hard. They fail because the second prompt was never demonstrated."</p>
+          </div>
+        </div>
+      </article>
+
+      <article data-reveal style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(26px,4vw,64px);padding:clamp(44px,7vw,72px) 0;position:relative;overflow:hidden;border-top:1px solid rgba(30,41,59,.75)">
+        <div data-parallax="0.3" style="position:absolute;left:0;top:8%;width:340px;height:340px;opacity:.055;pointer-events:none;will-change:transform">
+          <svg viewBox="0 0 24 24" width="340" height="340" fill="none" stroke="#4ADE80" stroke-width=".45" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <div data-parallax="0.14" style="position:absolute;left:0;right:auto;top:6%;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(34,197,94,.12),transparent 68%);filter:blur(30px);pointer-events:none;will-change:transform"></div>
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#4ADE80;box-shadow:0 0 14px #4ADE80"></span>
+            <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#4ADE80">Pillar 06 — Health</span>
+          </div>
+          <div style="font-size:clamp(52px,11vw,80px);font-weight:800;letter-spacing:-.04em;color:#f1f5f9;line-height:.95">Hourly</div>
+          <p style="font-size:15px;line-height:1.55;color:#64748b;margin:14px 0 0;max-width:270px">how often tenant configuration changes. Most reviews run quarterly.</p>
+        </div>
+        <div>
+          <h3 style="font-size:clamp(21px,3.7vw,26px);font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 14px">{{ hd5 }}</h3>
+          <p style="font-size:16px;line-height:1.7;color:#94a3b8;margin:0 0 12px">{{ bd5 }}</p>
+          <div data-benchmark style="margin-top:26px;display:grid;gap:14px;max-width:520px">
+            <div style="display:grid;grid-template-columns:clamp(92px,26vw,170px) minmax(0,1fr) 44px;align-items:center;gap:14px"><span style="font-size:12px;color:#64748b">Organizations like yours</span><span style="height:6px;border-radius:3px;background:rgba(30,41,59,.9);position:relative;overflow:hidden"><span style="position:absolute;inset:0 83% 0 0;background:#22C55E;border-radius:3px"></span></span><span style="font-size:12px;font-weight:600;color:#e2e8f0;text-align:right">17%</span></div>
+            <div style="display:grid;grid-template-columns:clamp(92px,26vw,170px) minmax(0,1fr) 44px;align-items:center;gap:14px"><span style="font-size:12px;color:#64748b">Top quartile</span><span style="height:6px;border-radius:3px;background:rgba(30,41,59,.9);position:relative;overflow:hidden"><span style="position:absolute;inset:0 9% 0 0;background:#4ADE80;border-radius:3px"></span></span><span style="font-size:12px;font-weight:600;color:#e2e8f0;text-align:right">91%</span></div>
+            <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 24px;margin-top:10px">
+            <span style="font-size:11px;color:#475569;letter-spacing:.04em">Configuration changes detected within 24 hours</span>
+            <span style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+              <svg width="118" height="30" viewBox="0 0 118 30" style="display:block">
+                <polyline points="0.0,22.5 16.0,21.5 32.0,20.0 48.0,19.0 64.0,17.5 80.0,16.0 96.0,14.0 112.0,12.0" fill="none" stroke="#4ADE80" stroke-opacity=".85" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 4px #4ADE8066)"></polyline>
+                <circle cx="112" cy="12.0" r="2" fill="#4ADE80"></circle>
+              </svg>
+              <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#334155">Illustrative trend</span>
+            </span>
+          </div>
+          </div>
+          <div style="margin-top:28px;max-width:540px;border-top:1px solid rgba(30,41,59,.9);padding-top:16px">
+            <span style="font-size:clamp(9.5px,2vw,10.5px);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#475569">What we check</span>
+            <ul style="list-style:none;margin:12px 0 0;padding:0;display:grid;gap:9px">
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#4ADE80;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>Directory audit log review</li>
+              <li style="display:flex;align-items:baseline;gap:10px;font-size:13.5px;line-height:1.5;color:#94a3b8"><span style="width:5px;height:5px;border-radius:1px;background:#4ADE80;opacity:.9;flex-shrink:0;transform:translateY(-2px)"></span>Configuration drift over time</li>
+            </ul>
+          </div>
+          <div data-caption style="display:flex;gap:14px;align-items:flex-start;margin-top:30px;max-width:560px">
+            <span style="flex-shrink:0;width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;letter-spacing:-.5px">SM</span>
+            <p style="font-size:15px;line-height:1.65;color:#cbd5e1;margin:0;font-style:italic">"Stop finding out about problems six months late. Nothing in this list is hard once you can see it happen."</p>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+
+  <section id="deliverables" style="max-width:1160px;margin:0 auto;padding:16px clamp(16px,4vw,32px) 0">
+    <div data-reveal style="max-width:760px">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#60A5FA">What You Receive</span>
+      <h2 style="font-size:clamp(28px,5.6vw,42px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:16px 0 18px;text-wrap:pretty">Eight reports, in under thirty minutes.</h2>
+      <p style="font-size:17px;line-height:1.65;color:#94a3b8;margin:0">The scan takes a minute or two. The reports generate straight after it, sized to your tenant. Every finding carries the evidence behind it and traces to a specific step in the Copilot Gate Clearance Plan.</p>
+    </div>
+  </section>
+
+  <section style="max-width:1160px;margin:0 auto;padding:44px clamp(16px,4vw,32px) 24px">
+    <div style="display:grid;gap:56px">
+      <div data-reveal data-reveal-x="-64" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(26px,4vw,34px) 30px;align-items:start">
+        <div style="position:relative;padding-top:0">
+          <div data-parallax="0.28" style="position:absolute;left:-14%;top:6%;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(20,184,166,0.16),transparent 68%);filter:blur(38px);pointer-events:none;will-change:transform"></div>
+          <div style="position:absolute;left:16px;right:-12px;top:24px;bottom:-12px;border-radius:18px;border:1px solid rgba(30,41,59,.6);background:rgba(9,15,31,.55);transform:rotate(1.4deg);pointer-events:none"></div>
+          <div style="position:absolute;left:9px;right:-6px;top:13px;bottom:-6px;border-radius:18px;border:1px solid rgba(30,41,59,.85);background:rgba(12,19,37,.8);transform:rotate(.7deg);pointer-events:none"></div>
+          <div data-parallax="0.07" style="position:relative;border:1px solid rgba(30,41,59,.95);border-radius:18px;background:linear-gradient(158deg,rgba(17,25,45,.97),rgba(7,12,26,.97));overflow:hidden;box-shadow:0 30px 70px -34px rgba(2,6,23,.95);will-change:transform;transition:border-color .25s ease,box-shadow .25s ease" style-hover="border-color:rgba(45,212,191,0.5);box-shadow:0 34px 80px -32px rgba(20,184,166,0.35)">
+            <div style="height:3px;background:linear-gradient(90deg,#14B8A6,rgba(45,212,191,0.45) 55%,transparent)"></div>
+            <div style="position:relative;padding:clamp(18px,4vw,24px) clamp(18px,4vw,26px) 22px">
+              <span style="position:absolute;right:16px;top:2px;font-size:76px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(45,212,191,0.07);pointer-events:none">01</span>
+              <div style="position:relative;display:flex;align-items:center;gap:9px;margin-bottom:16px">
+                <span style="width:7px;height:7px;border-radius:50%;background:#2DD4BF;box-shadow:0 0 12px #2DD4BF"></span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#2DD4BF">Licensing</span>
+                <span style="width:1px;height:11px;background:#334155"></span>
+                <span style="font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#475569">Report 01 / 08</span>
+              </div>
+              <h3 style="position:relative;font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 9px;line-height:1.28;text-wrap:pretty">Copilot Licensing Alignment Report</h3>
+              <p style="position:relative;font-size:14px;line-height:1.6;color:#94a3b8;margin:0 0 22px">Every seat misassigned, wasted, or missing — exact monthly cost waste and the fastest path to correcting it, department by department.</p>
+              <div style="display:flex;align-items:flex-end;gap:18px;padding-top:16px;border-top:1px solid rgba(30,41,59,.8)">
+                <div style="display:grid;gap:6px;flex:1">
+                  <span style="display:block;height:5px;border-radius:3px;width:100%;background:rgba(71,85,105,0.5)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:82%;background:rgba(71,85,105,0.38)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:64%;background:rgba(71,85,105,0.26)"></span>
+                </div>
+                <svg width="52" height="30" viewBox="0 0 52 30" style="display:block;flex-shrink:0">
+                  <rect x="0" y="18" width="9" height="12" rx="2" fill="rgba(20,184,166,0.35)"></rect>
+                  <rect x="14" y="11" width="9" height="19" rx="2" fill="rgba(20,184,166,0.55)"></rect>
+                  <rect x="28" y="5" width="9" height="25" rx="2" fill="#2DD4BF" fill-opacity=".8"></rect>
+                  <rect x="42" y="14" width="9" height="16" rx="2" fill="rgba(20,184,166,0.45)"></rect>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="position:relative;padding-top:44px">
+          <div data-parallax="0.28" style="position:absolute;left:-14%;top:6%;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(59,130,246,0.16),transparent 68%);filter:blur(38px);pointer-events:none;will-change:transform"></div>
+          <div style="position:absolute;left:16px;right:-12px;top:68px;bottom:-12px;border-radius:18px;border:1px solid rgba(30,41,59,.6);background:rgba(9,15,31,.55);transform:rotate(1.4deg);pointer-events:none"></div>
+          <div style="position:absolute;left:9px;right:-6px;top:57px;bottom:-6px;border-radius:18px;border:1px solid rgba(30,41,59,.85);background:rgba(12,19,37,.8);transform:rotate(.7deg);pointer-events:none"></div>
+          <div data-parallax="0.07" style="position:relative;border:1px solid rgba(30,41,59,.95);border-radius:18px;background:linear-gradient(158deg,rgba(17,25,45,.97),rgba(7,12,26,.97));overflow:hidden;box-shadow:0 30px 70px -34px rgba(2,6,23,.95);will-change:transform;transition:border-color .25s ease,box-shadow .25s ease" style-hover="border-color:rgba(96,165,250,0.5);box-shadow:0 34px 80px -32px rgba(59,130,246,0.35)">
+            <div style="height:3px;background:linear-gradient(90deg,#3B82F6,rgba(96,165,250,0.45) 55%,transparent)"></div>
+            <div style="position:relative;padding:clamp(18px,4vw,24px) clamp(18px,4vw,26px) 22px">
+              <span style="position:absolute;right:16px;top:2px;font-size:76px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(96,165,250,0.07);pointer-events:none">02</span>
+              <div style="position:relative;display:flex;align-items:center;gap:9px;margin-bottom:16px">
+                <span style="width:7px;height:7px;border-radius:50%;background:#60A5FA;box-shadow:0 0 12px #60A5FA"></span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#60A5FA">Governance</span>
+                <span style="width:1px;height:11px;background:#334155"></span>
+                <span style="font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#475569">Report 02 / 08</span>
+              </div>
+              <h3 style="position:relative;font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 9px;line-height:1.28;text-wrap:pretty">Microsoft 365 Governance Posture Report</h3>
+              <p style="position:relative;font-size:14px;line-height:1.6;color:#94a3b8;margin:0 0 22px">Oversharing, permission sprawl, and policy drift — traced to the specific sites, links, and libraries causing it, not a generic maturity score.</p>
+              <div style="display:flex;align-items:flex-end;gap:18px;padding-top:16px;border-top:1px solid rgba(30,41,59,.8)">
+                <div style="display:grid;gap:6px;flex:1">
+                  <span style="display:block;height:5px;border-radius:3px;width:100%;background:rgba(71,85,105,0.5)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:82%;background:rgba(71,85,105,0.38)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:64%;background:rgba(71,85,105,0.26)"></span>
+                </div>
+                <svg width="52" height="30" viewBox="0 0 52 30" style="display:block;flex-shrink:0">
+                  <rect x="0" y="18" width="9" height="12" rx="2" fill="rgba(59,130,246,0.35)"></rect>
+                  <rect x="14" y="11" width="9" height="19" rx="2" fill="rgba(59,130,246,0.55)"></rect>
+                  <rect x="28" y="5" width="9" height="25" rx="2" fill="#60A5FA" fill-opacity=".8"></rect>
+                  <rect x="42" y="14" width="9" height="16" rx="2" fill="rgba(59,130,246,0.45)"></rect>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-reveal data-reveal-x="64" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(26px,4vw,34px) 30px;align-items:start">
+        <div style="position:relative;padding-top:0">
+          <div data-parallax="0.28" style="position:absolute;left:-14%;top:6%;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(249,115,22,0.16),transparent 68%);filter:blur(38px);pointer-events:none;will-change:transform"></div>
+          <div style="position:absolute;left:16px;right:-12px;top:24px;bottom:-12px;border-radius:18px;border:1px solid rgba(30,41,59,.6);background:rgba(9,15,31,.55);transform:rotate(1.4deg);pointer-events:none"></div>
+          <div style="position:absolute;left:9px;right:-6px;top:13px;bottom:-6px;border-radius:18px;border:1px solid rgba(30,41,59,.85);background:rgba(12,19,37,.8);transform:rotate(.7deg);pointer-events:none"></div>
+          <div data-parallax="0.07" style="position:relative;border:1px solid rgba(30,41,59,.95);border-radius:18px;background:linear-gradient(158deg,rgba(17,25,45,.97),rgba(7,12,26,.97));overflow:hidden;box-shadow:0 30px 70px -34px rgba(2,6,23,.95);will-change:transform;transition:border-color .25s ease,box-shadow .25s ease" style-hover="border-color:rgba(251,146,60,0.5);box-shadow:0 34px 80px -32px rgba(249,115,22,0.35)">
+            <div style="height:3px;background:linear-gradient(90deg,#F97316,rgba(251,146,60,0.45) 55%,transparent)"></div>
+            <div style="position:relative;padding:clamp(18px,4vw,24px) clamp(18px,4vw,26px) 22px">
+              <span style="position:absolute;right:16px;top:2px;font-size:76px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(251,146,60,0.07);pointer-events:none">03</span>
+              <div style="position:relative;display:flex;align-items:center;gap:9px;margin-bottom:16px">
+                <span style="width:7px;height:7px;border-radius:50%;background:#FB923C;box-shadow:0 0 12px #FB923C"></span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#FB923C">Adoption</span>
+                <span style="width:1px;height:11px;background:#334155"></span>
+                <span style="font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#475569">Report 03 / 08</span>
+              </div>
+              <h3 style="position:relative;font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 9px;line-height:1.28;text-wrap:pretty">Copilot Adoption &amp; Workflow Readiness Report</h3>
+              <p style="position:relative;font-size:14px;line-height:1.6;color:#94a3b8;margin:0 0 22px">Which of your people and workflows are actually ready for Copilot today, and exactly what is blocking the rest — persona by persona, department by department.</p>
+              <div style="display:flex;align-items:flex-end;gap:18px;padding-top:16px;border-top:1px solid rgba(30,41,59,.8)">
+                <div style="display:grid;gap:6px;flex:1">
+                  <span style="display:block;height:5px;border-radius:3px;width:100%;background:rgba(71,85,105,0.5)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:82%;background:rgba(71,85,105,0.38)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:64%;background:rgba(71,85,105,0.26)"></span>
+                </div>
+                <svg width="52" height="30" viewBox="0 0 52 30" style="display:block;flex-shrink:0">
+                  <rect x="0" y="18" width="9" height="12" rx="2" fill="rgba(249,115,22,0.35)"></rect>
+                  <rect x="14" y="11" width="9" height="19" rx="2" fill="rgba(249,115,22,0.55)"></rect>
+                  <rect x="28" y="5" width="9" height="25" rx="2" fill="#FB923C" fill-opacity=".8"></rect>
+                  <rect x="42" y="14" width="9" height="16" rx="2" fill="rgba(249,115,22,0.45)"></rect>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="position:relative;padding-top:44px">
+          <div data-parallax="0.28" style="position:absolute;left:-14%;top:6%;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(209,213,219,0.16),transparent 68%);filter:blur(38px);pointer-events:none;will-change:transform"></div>
+          <div style="position:absolute;left:16px;right:-12px;top:68px;bottom:-12px;border-radius:18px;border:1px solid rgba(30,41,59,.6);background:rgba(9,15,31,.55);transform:rotate(1.4deg);pointer-events:none"></div>
+          <div style="position:absolute;left:9px;right:-6px;top:57px;bottom:-6px;border-radius:18px;border:1px solid rgba(30,41,59,.85);background:rgba(12,19,37,.8);transform:rotate(.7deg);pointer-events:none"></div>
+          <div data-parallax="0.07" style="position:relative;border:1px solid rgba(30,41,59,.95);border-radius:18px;background:linear-gradient(158deg,rgba(17,25,45,.97),rgba(7,12,26,.97));overflow:hidden;box-shadow:0 30px 70px -34px rgba(2,6,23,.95);will-change:transform;transition:border-color .25s ease,box-shadow .25s ease" style-hover="border-color:rgba(243,244,246,0.5);box-shadow:0 34px 80px -32px rgba(209,213,219,0.35)">
+            <div style="height:3px;background:linear-gradient(90deg,#D1D5DB,rgba(243,244,246,0.45) 55%,transparent)"></div>
+            <div style="position:relative;padding:clamp(18px,4vw,24px) clamp(18px,4vw,26px) 22px">
+              <span style="position:absolute;right:16px;top:2px;font-size:76px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(243,244,246,0.07);pointer-events:none">04</span>
+              <div style="position:relative;display:flex;align-items:center;gap:9px;margin-bottom:16px">
+                <span style="width:7px;height:7px;border-radius:50%;background:#F3F4F6;box-shadow:0 0 12px #F3F4F6"></span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#F3F4F6">Compliance</span>
+                <span style="width:1px;height:11px;background:#334155"></span>
+                <span style="font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#475569">Report 04 / 08</span>
+              </div>
+              <h3 style="position:relative;font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 9px;line-height:1.28;text-wrap:pretty">Microsoft 365 Compliance &amp; Regulatory Alignment Report</h3>
+              <p style="position:relative;font-size:14px;line-height:1.6;color:#94a3b8;margin:0 0 22px">Retention, labeling, and DLP gaps mapped against real regulatory frameworks — HIPAA, FINRA, SOX, GDPR — not a generic compliance checklist.</p>
+              <div style="display:flex;align-items:flex-end;gap:18px;padding-top:16px;border-top:1px solid rgba(30,41,59,.8)">
+                <div style="display:grid;gap:6px;flex:1">
+                  <span style="display:block;height:5px;border-radius:3px;width:100%;background:rgba(71,85,105,0.5)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:82%;background:rgba(71,85,105,0.38)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:64%;background:rgba(71,85,105,0.26)"></span>
+                </div>
+                <svg width="52" height="30" viewBox="0 0 52 30" style="display:block;flex-shrink:0">
+                  <rect x="0" y="18" width="9" height="12" rx="2" fill="rgba(209,213,219,0.35)"></rect>
+                  <rect x="14" y="11" width="9" height="19" rx="2" fill="rgba(209,213,219,0.55)"></rect>
+                  <rect x="28" y="5" width="9" height="25" rx="2" fill="#F3F4F6" fill-opacity=".8"></rect>
+                  <rect x="42" y="14" width="9" height="16" rx="2" fill="rgba(209,213,219,0.45)"></rect>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-reveal data-reveal-x="-64" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(26px,4vw,34px) 30px;align-items:start">
+        <div style="position:relative;padding-top:0">
+          <div data-parallax="0.28" style="position:absolute;left:-14%;top:6%;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(34,197,94,0.16),transparent 68%);filter:blur(38px);pointer-events:none;will-change:transform"></div>
+          <div style="position:absolute;left:16px;right:-12px;top:24px;bottom:-12px;border-radius:18px;border:1px solid rgba(30,41,59,.6);background:rgba(9,15,31,.55);transform:rotate(1.4deg);pointer-events:none"></div>
+          <div style="position:absolute;left:9px;right:-6px;top:13px;bottom:-6px;border-radius:18px;border:1px solid rgba(30,41,59,.85);background:rgba(12,19,37,.8);transform:rotate(.7deg);pointer-events:none"></div>
+          <div data-parallax="0.07" style="position:relative;border:1px solid rgba(30,41,59,.95);border-radius:18px;background:linear-gradient(158deg,rgba(17,25,45,.97),rgba(7,12,26,.97));overflow:hidden;box-shadow:0 30px 70px -34px rgba(2,6,23,.95);will-change:transform;transition:border-color .25s ease,box-shadow .25s ease" style-hover="border-color:rgba(74,222,128,0.5);box-shadow:0 34px 80px -32px rgba(34,197,94,0.35)">
+            <div style="height:3px;background:linear-gradient(90deg,#22C55E,rgba(74,222,128,0.45) 55%,transparent)"></div>
+            <div style="position:relative;padding:clamp(18px,4vw,24px) clamp(18px,4vw,26px) 22px">
+              <span style="position:absolute;right:16px;top:2px;font-size:76px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(74,222,128,0.07);pointer-events:none">05</span>
+              <div style="position:relative;display:flex;align-items:center;gap:9px;margin-bottom:16px">
+                <span style="width:7px;height:7px;border-radius:50%;background:#4ADE80;box-shadow:0 0 12px #4ADE80"></span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#4ADE80">Health</span>
+                <span style="width:1px;height:11px;background:#334155"></span>
+                <span style="font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#475569">Report 05 / 08</span>
+              </div>
+              <h3 style="position:relative;font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 9px;line-height:1.28;text-wrap:pretty">Microsoft 365 Operational Health &amp; Service Integrity Report</h3>
+              <p style="position:relative;font-size:14px;line-height:1.6;color:#94a3b8;margin:0 0 22px">Service stability, configuration drift, and tenant hygiene issues that make Copilot's answers unreliable — the plumbing most assessments never check.</p>
+              <div style="display:flex;align-items:flex-end;gap:18px;padding-top:16px;border-top:1px solid rgba(30,41,59,.8)">
+                <div style="display:grid;gap:6px;flex:1">
+                  <span style="display:block;height:5px;border-radius:3px;width:100%;background:rgba(71,85,105,0.5)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:82%;background:rgba(71,85,105,0.38)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:64%;background:rgba(71,85,105,0.26)"></span>
+                </div>
+                <svg width="52" height="30" viewBox="0 0 52 30" style="display:block;flex-shrink:0">
+                  <rect x="0" y="18" width="9" height="12" rx="2" fill="rgba(34,197,94,0.35)"></rect>
+                  <rect x="14" y="11" width="9" height="19" rx="2" fill="rgba(34,197,94,0.55)"></rect>
+                  <rect x="28" y="5" width="9" height="25" rx="2" fill="#4ADE80" fill-opacity=".8"></rect>
+                  <rect x="42" y="14" width="9" height="16" rx="2" fill="rgba(34,197,94,0.45)"></rect>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="position:relative;padding-top:44px">
+          <div data-parallax="0.28" style="position:absolute;left:-14%;top:6%;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(139,92,246,0.16),transparent 68%);filter:blur(38px);pointer-events:none;will-change:transform"></div>
+          <div style="position:absolute;left:16px;right:-12px;top:68px;bottom:-12px;border-radius:18px;border:1px solid rgba(30,41,59,.6);background:rgba(9,15,31,.55);transform:rotate(1.4deg);pointer-events:none"></div>
+          <div style="position:absolute;left:9px;right:-6px;top:57px;bottom:-6px;border-radius:18px;border:1px solid rgba(30,41,59,.85);background:rgba(12,19,37,.8);transform:rotate(.7deg);pointer-events:none"></div>
+          <div data-parallax="0.07" style="position:relative;border:1px solid rgba(30,41,59,.95);border-radius:18px;background:linear-gradient(158deg,rgba(17,25,45,.97),rgba(7,12,26,.97));overflow:hidden;box-shadow:0 30px 70px -34px rgba(2,6,23,.95);will-change:transform;transition:border-color .25s ease,box-shadow .25s ease" style-hover="border-color:rgba(167,139,250,0.5);box-shadow:0 34px 80px -32px rgba(139,92,246,0.35)">
+            <div style="height:3px;background:linear-gradient(90deg,#8B5CF6,rgba(167,139,250,0.45) 55%,transparent)"></div>
+            <div style="position:relative;padding:clamp(18px,4vw,24px) clamp(18px,4vw,26px) 22px">
+              <span style="position:absolute;right:16px;top:2px;font-size:76px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(167,139,250,0.07);pointer-events:none">06</span>
+              <div style="position:relative;display:flex;align-items:center;gap:9px;margin-bottom:16px">
+                <span style="width:7px;height:7px;border-radius:50%;background:#A78BFA;box-shadow:0 0 12px #A78BFA"></span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#A78BFA">Security</span>
+                <span style="width:1px;height:11px;background:#334155"></span>
+                <span style="font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#475569">Report 06 / 08</span>
+              </div>
+              <h3 style="position:relative;font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 9px;line-height:1.28;text-wrap:pretty">Microsoft 365 Security Posture &amp; Blast Radius Report</h3>
+              <p style="position:relative;font-size:14px;line-height:1.6;color:#94a3b8;margin:0 0 22px">Identity, access, and exposure gaps — and exactly how far a single compromised account could reach through Copilot before anyone noticed.</p>
+              <div style="display:flex;align-items:flex-end;gap:18px;padding-top:16px;border-top:1px solid rgba(30,41,59,.8)">
+                <div style="display:grid;gap:6px;flex:1">
+                  <span style="display:block;height:5px;border-radius:3px;width:100%;background:rgba(71,85,105,0.5)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:82%;background:rgba(71,85,105,0.38)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:64%;background:rgba(71,85,105,0.26)"></span>
+                </div>
+                <svg width="52" height="30" viewBox="0 0 52 30" style="display:block;flex-shrink:0">
+                  <rect x="0" y="18" width="9" height="12" rx="2" fill="rgba(139,92,246,0.35)"></rect>
+                  <rect x="14" y="11" width="9" height="19" rx="2" fill="rgba(139,92,246,0.55)"></rect>
+                  <rect x="28" y="5" width="9" height="25" rx="2" fill="#A78BFA" fill-opacity=".8"></rect>
+                  <rect x="42" y="14" width="9" height="16" rx="2" fill="rgba(139,92,246,0.45)"></rect>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-reveal data-reveal-x="64" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(26px,4vw,34px) 30px;align-items:start">
+        <div style="position:relative;padding-top:0">
+          <div data-parallax="0.28" style="position:absolute;left:-14%;top:6%;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(59,130,246,0.16),transparent 68%);filter:blur(38px);pointer-events:none;will-change:transform"></div>
+          <div style="position:absolute;left:16px;right:-12px;top:24px;bottom:-12px;border-radius:18px;border:1px solid rgba(30,41,59,.6);background:rgba(9,15,31,.55);transform:rotate(1.4deg);pointer-events:none"></div>
+          <div style="position:absolute;left:9px;right:-6px;top:13px;bottom:-6px;border-radius:18px;border:1px solid rgba(30,41,59,.85);background:rgba(12,19,37,.8);transform:rotate(.7deg);pointer-events:none"></div>
+          <div data-parallax="0.07" style="position:relative;border:1px solid rgba(30,41,59,.95);border-radius:18px;background:linear-gradient(158deg,rgba(17,25,45,.97),rgba(7,12,26,.97));overflow:hidden;box-shadow:0 30px 70px -34px rgba(2,6,23,.95);will-change:transform;transition:border-color .25s ease,box-shadow .25s ease" style-hover="border-color:rgba(34,211,238,0.5);box-shadow:0 34px 80px -32px rgba(59,130,246,0.35)">
+            <div style="height:3px;background:linear-gradient(90deg,#3B82F6,rgba(34,211,238,0.45) 55%,transparent)"></div>
+            <div style="position:relative;padding:clamp(18px,4vw,24px) clamp(18px,4vw,26px) 22px">
+              <span style="position:absolute;right:16px;top:2px;font-size:76px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(34,211,238,0.07);pointer-events:none">07</span>
+              <div style="position:relative;display:flex;align-items:center;gap:9px;margin-bottom:16px">
+                <span style="width:7px;height:7px;border-radius:50%;background:#22D3EE;box-shadow:0 0 12px #22D3EE"></span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#22D3EE">All six pillars</span>
+                <span style="width:1px;height:11px;background:#334155"></span>
+                <span style="font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#475569">Report 07 / 08</span>
+              </div>
+              <h3 style="position:relative;font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 9px;line-height:1.28;text-wrap:pretty">Copilot Readiness, Safety &amp; Enablement Report</h3>
+              <p style="position:relative;font-size:14px;line-height:1.6;color:#94a3b8;margin:0 0 22px">The full picture — every pillar's real contribution to your Copilot Gate status, in one place. This is the document that answers "are we actually ready."</p>
+              <div style="display:flex;align-items:flex-end;gap:18px;padding-top:16px;border-top:1px solid rgba(30,41,59,.8)">
+                <div style="display:grid;gap:6px;flex:1">
+                  <span style="display:block;height:5px;border-radius:3px;width:100%;background:rgba(71,85,105,0.5)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:82%;background:rgba(71,85,105,0.38)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:64%;background:rgba(71,85,105,0.26)"></span>
+                </div>
+                <svg width="52" height="30" viewBox="0 0 52 30" style="display:block;flex-shrink:0">
+                  <rect x="0" y="18" width="9" height="12" rx="2" fill="rgba(59,130,246,0.35)"></rect>
+                  <rect x="14" y="11" width="9" height="19" rx="2" fill="rgba(59,130,246,0.55)"></rect>
+                  <rect x="28" y="5" width="9" height="25" rx="2" fill="#22D3EE" fill-opacity=".8"></rect>
+                  <rect x="42" y="14" width="9" height="16" rx="2" fill="rgba(59,130,246,0.45)"></rect>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="position:relative;padding-top:44px">
+          <div data-parallax="0.28" style="position:absolute;left:-14%;top:6%;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(139,92,246,0.16),transparent 68%);filter:blur(38px);pointer-events:none;will-change:transform"></div>
+          <div style="position:absolute;left:16px;right:-12px;top:68px;bottom:-12px;border-radius:18px;border:1px solid rgba(30,41,59,.6);background:rgba(9,15,31,.55);transform:rotate(1.4deg);pointer-events:none"></div>
+          <div style="position:absolute;left:9px;right:-6px;top:57px;bottom:-6px;border-radius:18px;border:1px solid rgba(30,41,59,.85);background:rgba(12,19,37,.8);transform:rotate(.7deg);pointer-events:none"></div>
+          <div data-parallax="0.07" style="position:relative;border:1px solid rgba(30,41,59,.95);border-radius:18px;background:linear-gradient(158deg,rgba(17,25,45,.97),rgba(7,12,26,.97));overflow:hidden;box-shadow:0 30px 70px -34px rgba(2,6,23,.95);will-change:transform;transition:border-color .25s ease,box-shadow .25s ease" style-hover="border-color:rgba(34,211,238,0.5);box-shadow:0 34px 80px -32px rgba(139,92,246,0.35)">
+            <div style="height:3px;background:linear-gradient(90deg,#8B5CF6,rgba(34,211,238,0.45) 55%,transparent)"></div>
+            <div style="position:relative;padding:clamp(18px,4vw,24px) clamp(18px,4vw,26px) 22px">
+              <span style="position:absolute;right:16px;top:2px;font-size:76px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(34,211,238,0.07);pointer-events:none">08</span>
+              <div style="position:relative;display:flex;align-items:center;gap:9px;margin-bottom:16px">
+                <span style="width:7px;height:7px;border-radius:50%;background:#22D3EE;box-shadow:0 0 12px #22D3EE"></span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#22D3EE">Clearance plan</span>
+                <span style="width:1px;height:11px;background:#334155"></span>
+                <span style="font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#475569">Report 08 / 08</span>
+              </div>
+              <h3 style="position:relative;font-size:19px;font-weight:700;letter-spacing:-.015em;color:#f1f5f9;margin:0 0 9px;line-height:1.28;text-wrap:pretty">Full Remediation Guide — Copilot Gate Clearance Plan</h3>
+              <p style="position:relative;font-size:14px;line-height:1.6;color:#94a3b8;margin:0 0 22px">The exact sequence of fixes, phase by phase, required to clear the Copilot Gate. Nothing optional, nothing generic — every step traces to a specific finding.</p>
+              <div style="display:flex;align-items:flex-end;gap:18px;padding-top:16px;border-top:1px solid rgba(30,41,59,.8)">
+                <div style="display:grid;gap:6px;flex:1">
+                  <span style="display:block;height:5px;border-radius:3px;width:100%;background:rgba(71,85,105,0.5)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:82%;background:rgba(71,85,105,0.38)"></span>
+                  <span style="display:block;height:5px;border-radius:3px;width:64%;background:rgba(71,85,105,0.26)"></span>
+                </div>
+                <svg width="52" height="30" viewBox="0 0 52 30" style="display:block;flex-shrink:0">
+                  <rect x="0" y="18" width="9" height="12" rx="2" fill="rgba(139,92,246,0.35)"></rect>
+                  <rect x="14" y="11" width="9" height="19" rx="2" fill="rgba(139,92,246,0.55)"></rect>
+                  <rect x="28" y="5" width="9" height="25" rx="2" fill="#22D3EE" fill-opacity=".8"></rect>
+                  <rect x="42" y="14" width="9" height="16" rx="2" fill="rgba(139,92,246,0.45)"></rect>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p data-reveal style="font-size:13px;color:#475569;margin:44px 0 0;max-width:760px">The Statement of Work is generated separately, at the proposal step — it is a contract artifact, not one of the eight reports.</p>
+  </section>
+
+  <section id="adoption" style="max-width:1160px;margin:0 auto;padding:clamp(48px,8vw,72px) clamp(16px,4vw,32px) 24px">
+    <div data-reveal style="max-width:760px;margin-bottom:36px">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#fb923c">White-Glove Copilot Adoption</span>
+      <h2 style="font-size:clamp(28px,5.6vw,42px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:16px 0 18px;text-wrap:pretty">Remediation fixes the tenant. Adoption is how your people actually use it.</h2>
+      <p style="font-size:17px;line-height:1.65;color:#94a3b8;margin:0">The assessment and the remediation work that follows put the tenant in a state where Copilot can return something. Getting employees to the second prompt is a separate discipline, and it is the one that decides whether the licences renew. The programme is drawn from the enablement work Shane ran at NASA. Anything quoted for it comes from comparable pilot deployments, not a guaranteed outcome for your tenant.</p>
+    </div>
+    <div data-reveal style="position:relative;margin-bottom:52px">
+      <div data-parallax="0.2" style="position:absolute;left:-8%;top:-12%;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(249,115,22,.1),transparent 68%);filter:blur(44px);pointer-events:none;will-change:transform"></div>
+      <div style="position:relative;display:flex;align-items:center;gap:14px;margin-bottom:22px">
+        <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#64748b">The programme</span>
+        <span style="flex:1;height:1px;background:linear-gradient(90deg,rgba(249,115,22,.35),rgba(30,41,59,.2))"></span>
+      </div>
+      <div style="position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:18px;align-items:start">
+      <div style="position:relative;padding-top:0">
+        <div style="position:relative;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:linear-gradient(165deg,rgba(30,20,10,.5),rgba(9,14,28,.92) 62%);padding:22px 22px 24px;overflow:hidden;transition:border-color .25s ease,transform .3s ease" style-hover="border-color:rgba(251,146,60,.42);transform:translateY(-3px)">
+          <span style="position:absolute;right:-14px;bottom:-26px;font-size:96px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(251,146,60,.06);pointer-events:none">1</span>
+          <div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px">
+            <span style="width:34px;height:34px;border-radius:11px;background:rgba(249,115,22,.11);border:1px solid rgba(249,115,22,.24);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </span>
+            <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#FB923C;background:rgba(249,115,22,.09);border:1px solid rgba(249,115,22,.2);border-radius:999px;padding:4px 10px">Week 1</span>
+          </div>
+          <h4 style="position:relative;font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9;margin:0 0 8px;line-height:1.3">Pilot cohort setup</h4>
+          <p style="position:relative;font-size:13.5px;line-height:1.6;color:#94a3b8;margin:0">A representative group chosen with you, instrumented so usage is measurable from day one.</p>
+        </div>
+      </div>
+      <div style="position:relative;padding-top:26px">
+        <div style="position:relative;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:linear-gradient(165deg,rgba(30,20,10,.5),rgba(9,14,28,.92) 62%);padding:22px 22px 24px;overflow:hidden;transition:border-color .25s ease,transform .3s ease" style-hover="border-color:rgba(251,146,60,.42);transform:translateY(-3px)">
+          <span style="position:absolute;right:-14px;bottom:-26px;font-size:96px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(251,146,60,.06);pointer-events:none">2</span>
+          <div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px">
+            <span style="width:34px;height:34px;border-radius:11px;background:rgba(249,115,22,.11);border:1px solid rgba(249,115,22,.24);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </span>
+            <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#FB923C;background:rgba(249,115,22,.09);border:1px solid rgba(249,115,22,.2);border-radius:999px;padding:4px 10px">Week 2</span>
+          </div>
+          <h4 style="position:relative;font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9;margin:0 0 8px;line-height:1.3">Change communications</h4>
+          <p style="position:relative;font-size:13.5px;line-height:1.6;color:#94a3b8;margin:0">Plain-language messages for the people who will use it, not a policy memo.</p>
+        </div>
+      </div>
+      <div style="position:relative;padding-top:0">
+        <div style="position:relative;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:linear-gradient(165deg,rgba(30,20,10,.5),rgba(9,14,28,.92) 62%);padding:22px 22px 24px;overflow:hidden;transition:border-color .25s ease,transform .3s ease" style-hover="border-color:rgba(251,146,60,.42);transform:translateY(-3px)">
+          <span style="position:absolute;right:-14px;bottom:-26px;font-size:96px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(251,146,60,.06);pointer-events:none">3</span>
+          <div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px">
+            <span style="width:34px;height:34px;border-radius:11px;background:rgba(249,115,22,.11);border:1px solid rgba(249,115,22,.24);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>
+            </span>
+            <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#FB923C;background:rgba(249,115,22,.09);border:1px solid rgba(249,115,22,.2);border-radius:999px;padding:4px 10px">Daily</span>
+          </div>
+          <h4 style="position:relative;font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9;margin:0 0 8px;line-height:1.3">Daily prompt drip</h4>
+          <p style="position:relative;font-size:13.5px;line-height:1.6;color:#94a3b8;margin:0">One short, role-relevant prompt a day, delivered where people already work.</p>
+        </div>
+      </div>
+      <div style="position:relative;padding-top:26px">
+        <div style="position:relative;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:linear-gradient(165deg,rgba(30,20,10,.5),rgba(9,14,28,.92) 62%);padding:22px 22px 24px;overflow:hidden;transition:border-color .25s ease,transform .3s ease" style-hover="border-color:rgba(251,146,60,.42);transform:translateY(-3px)">
+          <span style="position:absolute;right:-14px;bottom:-26px;font-size:96px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(251,146,60,.06);pointer-events:none">4</span>
+          <div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px">
+            <span style="width:34px;height:34px;border-radius:11px;background:rgba(249,115,22,.11);border:1px solid rgba(249,115,22,.24);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v12H2z"/><path d="M12 15v6"/><path d="M8 21h8"/><path d="m7 11 3-3 2 2 4-4"/></svg>
+            </span>
+            <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#FB923C;background:rgba(249,115,22,.09);border:1px solid rgba(249,115,22,.2);border-radius:999px;padding:4px 10px">Ongoing</span>
+          </div>
+          <h4 style="position:relative;font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9;margin:0 0 8px;line-height:1.3">Live enablement sessions</h4>
+          <p style="position:relative;font-size:13.5px;line-height:1.6;color:#94a3b8;margin:0">Working sessions against your own content, not a generic demo tenant.</p>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <div data-reveal>
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px">
+        <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#64748b">Three tiers</span>
+        <span style="flex:1;height:1px;background:linear-gradient(90deg,rgba(249,115,22,.35),rgba(30,41,59,.2))"></span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,258px),1fr));gap:18px;align-items:stretch">
+      <div style="position:relative;display:flex;flex-direction:column;border:1px solid rgba(30,41,59,.92);border-radius:18px;background:linear-gradient(168deg,rgba(17,25,45,.85),rgba(7,12,26,.95) 70%);padding:26px 24px 24px;transition:border-color .25s ease" style-hover="border-color:rgba(251,146,60,.5)">
+        
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px">
+          <span style="font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#94a3b8">Essential</span>
+          <span style="display:flex;gap:4px">
+              <span style="width:18px;height:4px;border-radius:2px;background:#F97316"></span>
+              <span style="width:18px;height:4px;border-radius:2px;background:rgba(51,65,85,.9)"></span>
+              <span style="width:18px;height:4px;border-radius:2px;background:rgba(51,65,85,.9)"></span>
+          </span>
+        </div>
+        <div style="display:grid;gap:10px;flex:1">
+          <span style="display:flex;align-items:flex-start;gap:10px;font-size:13.5px;line-height:1.5;color:#cbd5e1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:3px"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Pilot cohort setup</span>
+          </span>
+          <span style="display:flex;align-items:flex-start;gap:10px;font-size:13.5px;line-height:1.5;color:#cbd5e1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:3px"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Change communication templates</span>
+          </span>
+          <span style="display:flex;align-items:flex-start;gap:10px;font-size:13.5px;line-height:1.5;color:#cbd5e1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:3px"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>30-day prompt drip</span>
+          </span>
+        </div>
+        <span style="font-size:11.5px;color:#475569;margin-top:20px;padding-top:16px;border-top:1px solid rgba(30,41,59,.9)">Priced in your proposal</span>
+      </div>
+      <div style="position:relative;display:flex;flex-direction:column;border:1px solid rgba(249,115,22,.4);border-radius:18px;background:linear-gradient(168deg,rgba(60,28,10,.5),rgba(9,14,28,.95) 64%);padding:26px 24px 24px;transition:border-color .25s ease" style-hover="border-color:rgba(251,146,60,.5)">
+        <span style="position:absolute;top:-9px;left:24px;font-size:9.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#0b1220;background:#FB923C;border-radius:999px;padding:4px 10px">Most chosen</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px">
+          <span style="font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#FB923C">Growth</span>
+          <span style="display:flex;gap:4px">
+              <span style="width:18px;height:4px;border-radius:2px;background:#F97316"></span>
+              <span style="width:18px;height:4px;border-radius:2px;background:#F97316"></span>
+              <span style="width:18px;height:4px;border-radius:2px;background:rgba(51,65,85,.9)"></span>
+          </span>
+        </div>
+        <div style="display:grid;gap:10px;flex:1">
+          <span style="display:flex;align-items:flex-start;gap:10px;font-size:13.5px;line-height:1.5;color:#cbd5e1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:3px"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Everything in Essential</span>
+          </span>
+          <span style="display:flex;align-items:flex-start;gap:10px;font-size:13.5px;line-height:1.5;color:#cbd5e1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:3px"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Two live enablement sessions</span>
+          </span>
+          <span style="display:flex;align-items:flex-start;gap:10px;font-size:13.5px;line-height:1.5;color:#cbd5e1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:3px"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Role-specific prompt packs</span>
+          </span>
+        </div>
+        <span style="font-size:11.5px;color:#475569;margin-top:20px;padding-top:16px;border-top:1px solid rgba(30,41,59,.9)">Priced in your proposal</span>
+      </div>
+      <div style="position:relative;display:flex;flex-direction:column;border:1px solid rgba(30,41,59,.92);border-radius:18px;background:linear-gradient(168deg,rgba(17,25,45,.85),rgba(7,12,26,.95) 70%);padding:26px 24px 24px;transition:border-color .25s ease" style-hover="border-color:rgba(251,146,60,.5)">
+        
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px">
+          <span style="font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#94a3b8">Enterprise</span>
+          <span style="display:flex;gap:4px">
+              <span style="width:18px;height:4px;border-radius:2px;background:#F97316"></span>
+              <span style="width:18px;height:4px;border-radius:2px;background:#F97316"></span>
+              <span style="width:18px;height:4px;border-radius:2px;background:#F97316"></span>
+          </span>
+        </div>
+        <div style="display:grid;gap:10px;flex:1">
+          <span style="display:flex;align-items:flex-start;gap:10px;font-size:13.5px;line-height:1.5;color:#cbd5e1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:3px"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Everything in Growth</span>
+          </span>
+          <span style="display:flex;align-items:flex-start;gap:10px;font-size:13.5px;line-height:1.5;color:#cbd5e1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:3px"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Department-by-department rollout</span>
+          </span>
+          <span style="display:flex;align-items:flex-start;gap:10px;font-size:13.5px;line-height:1.5;color:#cbd5e1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:3px"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Manager briefings</span>
+          </span>
+          <span style="display:flex;align-items:flex-start;gap:10px;font-size:13.5px;line-height:1.5;color:#cbd5e1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:3px"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Quarterly reviews</span>
+          </span>
+        </div>
+        <span style="font-size:11.5px;color:#475569;margin-top:20px;padding-top:16px;border-top:1px solid rgba(30,41,59,.9)">Priced in your proposal</span>
+      </div>
+      </div>
+    </div>
+    <p data-reveal style="font-size:13px;color:#475569;margin:22px 0 0;max-width:720px">Offered alongside the assessment in your proposal, not a separate decision to make cold. Tier pricing is confirmed in the proposal.</p>
+  </section>
+
+  <section id="assessment" style="max-width:1160px;margin:0 auto;padding:40px clamp(16px,4vw,32px) 110px">
+    <div data-reveal style="position:relative;border:1px solid rgba(37,99,235,.26);border-radius:26px;background:radial-gradient(1100px 420px at 6% -14%,rgba(37,99,235,.17),transparent 62%),linear-gradient(168deg,rgba(20,32,72,.5),#070d1e 64%);padding:clamp(32px,6vw,76px) clamp(20px,5vw,64px);overflow:hidden;box-shadow:0 40px 90px -50px rgba(2,6,23,.95)">
+      <div style="position:absolute;inset:0;background:linear-gradient(rgba(148,163,184,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.05) 1px,transparent 1px);background-size:56px 56px;-webkit-mask:radial-gradient(120% 90% at 88% 0%,#000,transparent 70%);mask:radial-gradient(120% 90% at 88% 0%,#000,transparent 70%);pointer-events:none"></div>
+      <svg viewBox="0 0 360 360" style="position:absolute;right:-90px;top:-96px;width:clamp(280px,42vw,440px);height:auto;pointer-events:none;opacity:.55">
+        <circle cx="180" cy="180" r="176" fill="none" stroke="rgba(96,165,250,.16)"></circle>
+        <circle cx="180" cy="180" r="134" fill="none" stroke="rgba(96,165,250,.12)"></circle>
+        <circle cx="180" cy="180" r="92" fill="none" stroke="rgba(96,165,250,.09)"></circle>
+        <circle cx="180" cy="180" r="50" fill="none" stroke="rgba(96,165,250,.07)"></circle>
+      </svg>
+      <div style="position:absolute;right:-140px;top:-140px;width:460px;height:460px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,.2),transparent 70%);filter:blur(46px);pointer-events:none"></div>
+      <div style="position:absolute;right:clamp(-36px,-2vw,0px);top:clamp(26px,6vw,60px);width:clamp(88px,13vw,132px);height:clamp(88px,13vw,132px);pointer-events:none">
+        <div style="width:100%;height:100%;border-radius:50%;background:conic-gradient(from 0deg,#3B82F6,#8B5CF6,#22D3EE,#F3F4F6,#8B5CF6,#3B82F6);-webkit-mask:radial-gradient(circle,transparent 63%,#000 68%,#000 73%,transparent 78%);mask:radial-gradient(circle,transparent 63%,#000 68%,#000 73%,transparent 78%);animation:smcOrb 22s linear infinite;opacity:.45"></div>
+      </div>
+      <div style="position:absolute;left:0;right:0;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(96,165,250,.5) 22%,rgba(139,92,246,.35) 54%,transparent);pointer-events:none"></div>
+      <div style="position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(30px,4vw,56px);align-items:center">
+      <div style="max-width:600px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+          <span style="width:26px;height:1px;background:linear-gradient(90deg,#60a5fa,rgba(96,165,250,.15))"></span>
+          <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#60a5fa">The Real Number</span>
+        </div>
+        <h2 style="font-size:clamp(30px,5.8vw,46px);line-height:1.08;letter-spacing:-.03em;font-weight:800;color:#f8fafc;margin:0 0 18px;text-wrap:pretty">Want your actual number, <span style="background:linear-gradient(96deg,#93c5fd,#c4b5fd 46%,#a5f3fc);-webkit-background-clip:text;background-clip:text;color:transparent">not an estimate?</span></h2>
+        <p style="font-size:17px;line-height:1.65;color:#94a3b8;margin:0 0 32px">{{ closingLine }} The Copilot Readiness Assessment connects to your tenant through the Microsoft Graph API and scores all six pillars on what is actually there — every site, every policy, every dormant seat. You get your Copilot Gate status, your blast radius, the evidence behind every finding, and the order to fix them in.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <span style="display:flex;align-items:center;gap:8px;font-size:12px;color:#cbd5e1;border:1px solid rgba(51,65,85,.85);background:rgba(2,6,23,.45);border-radius:999px;padding:7px 14px"><span style="width:5px;height:5px;border-radius:50%;background:#60a5fa;box-shadow:0 0 10px #60a5fa;flex-shrink:0"></span>NASA's M365 Copilot Architect</span>
+          <span style="font-size:12px;color:#cbd5e1;border:1px solid rgba(51,65,85,.85);background:rgba(2,6,23,.45);border-radius:999px;padding:7px 14px">Scan: a minute or two</span>
+          <span style="font-size:12px;color:#cbd5e1;border:1px solid rgba(51,65,85,.85);background:rgba(2,6,23,.45);border-radius:999px;padding:7px 14px">Reports: under thirty</span>
+        </div>
+      </div>
+
+      <div style="position:relative;justify-self:end;width:100%;max-width:340px;border:1px solid rgba(37,99,235,.3);border-radius:20px;background:linear-gradient(168deg,rgba(23,37,84,.55),rgba(4,9,22,.9) 68%);padding:24px;box-shadow:0 30px 70px -40px rgba(2,6,23,.95)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:18px;border-bottom:1px solid rgba(30,41,59,.85)">
+          <div>
+            <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#64748b">Your estimate</span>
+            <div style="display:flex;align-items:baseline;gap:6px;margin-top:8px">
+              <span style="font-size:40px;font-weight:800;letter-spacing:-.04em;line-height:1;color:#93c5fd">{{ hubNum }}</span>
+              <span style="font-size:13px;color:#475569">/ 100</span>
+            </div>
+            <span style="font-size:11px;color:#475569">From seven questions</span>
+          </div>
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#60a5fa;border:1px solid rgba(37,99,235,.34);background:rgba(37,99,235,.12);border-radius:999px;padding:4px 9px;white-space:nowrap">Illustrative</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-top:18px">
+          <div>
+            <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#93c5fd">Your actual number</span>
+            <div style="display:flex;align-items:baseline;gap:6px;margin-top:8px">
+              <span style="font-size:40px;font-weight:800;letter-spacing:-.04em;line-height:1;background:linear-gradient(120deg,#93c5fd,#c4b5fd 50%,#a5f3fc);-webkit-background-clip:text;background-clip:text;color:transparent">••</span>
+              <span style="font-size:13px;color:#475569">/ 100</span>
+            </div>
+            <span style="font-size:11px;color:#64748b">From your tenant, all six pillars</span>
+          </div>
+          <span style="width:26px;height:26px;border-radius:8px;border:1px solid rgba(51,65,85,.9);background:rgba(2,6,23,.6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </span>
+        </div>
+        <div style="display:flex;gap:5px;margin-top:20px">
+          <span style="flex:1;height:4px;border-radius:2px;background:#3B82F6"></span>
+          <span style="flex:1;height:4px;border-radius:2px;background:#8B5CF6"></span>
+          <span style="flex:1;height:4px;border-radius:2px;background:#D1D5DB"></span>
+          <span style="flex:1;height:4px;border-radius:2px;background:#14B8A6"></span>
+          <span style="flex:1;height:4px;border-radius:2px;background:#F97316"></span>
+          <span style="flex:1;height:4px;border-radius:2px;background:#22C55E"></span>
+        </div>
+      </div>
+      </div>
+
+      <div style="position:relative;margin-top:clamp(30px,5vw,44px);border:1px solid rgba(30,41,59,.9);border-radius:20px;background:rgba(2,6,23,.42);padding:clamp(22px,4vw,34px)">
+        <div style="display:flex;flex-wrap:wrap;gap:10px 22px;margin-bottom:34px">
+          <sc-for list="{{ steps }}" as="step" hint-placeholder-count="6">
+            <span style="display:flex;align-items:center;gap:9px">
+              <span style="width:22px;height:22px;border-radius:50%;border:1px solid {{ step.ring }};background:{{ step.fill }};color:{{ step.numColor }};font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">{{ step.badge }}</span>
+              <span style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:{{ step.color }}">{{ step.label }}</span>
+            </span>
+          </sc-for>
+        </div>
+
+
+        <sc-if value="{{ atDetails }}" hint-placeholder-val="{{ true }}">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:clamp(26px,4vw,44px);align-items:start">
+            <div>
+              <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#60a5fa">One flat fee</span>
+              <div style="display:flex;align-items:baseline;gap:12px;margin:14px 0 10px">
+                <span style="font-size:clamp(38px,9vw,52px);font-weight:800;letter-spacing:-.04em;line-height:1;color:#f8fafc">$5,000</span>
+                <span style="font-size:15px;color:#64748b">every tenant, every size</span>
+              </div>
+              <p style="font-size:15px;line-height:1.6;color:#94a3b8;margin:0 0 30px;max-width:480px">Not priced per seat and not scoped by headcount. A hundred users or twenty thousand, the scan covers the whole tenant and all eight reports are the same price.</p>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:14px;max-width:520px">
+                <label><span style="display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:7px">First name</span><input value="{{ vFirst }}" onInput="{{ setFirst }}" placeholder="Dana" style="width:100%;box-sizing:border-box;padding:13px 15px;border-radius:10px;border:1px solid rgba(51,65,85,.9);background:rgba(2,6,23,.6);color:#f1f5f9;font-family:inherit;font-size:15px;outline:none" style-focus="border-color:rgba(59,130,246,.7)"></label>
+                <label><span style="display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:7px">Last name</span><input value="{{ vLast }}" onInput="{{ setLast }}" placeholder="Okafor" style="width:100%;box-sizing:border-box;padding:13px 15px;border-radius:10px;border:1px solid rgba(51,65,85,.9);background:rgba(2,6,23,.6);color:#f1f5f9;font-family:inherit;font-size:15px;outline:none" style-focus="border-color:rgba(59,130,246,.7)"></label>
+                <label style="grid-column:1/-1"><span style="display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:7px">Company</span><input value="{{ vCompany }}" onInput="{{ setCompany }}" placeholder="Northwind Logistics" style="width:100%;box-sizing:border-box;padding:13px 15px;border-radius:10px;border:1px solid rgba(51,65,85,.9);background:rgba(2,6,23,.6);color:#f1f5f9;font-family:inherit;font-size:15px;outline:none" style-focus="border-color:rgba(59,130,246,.7)"></label>
+                <label style="grid-column:1/-1"><span style="display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:7px">Work email</span><input type="email" value="{{ vEmail }}" onInput="{{ setEmail }}" placeholder="dana@northwind.com" style="width:100%;box-sizing:border-box;padding:13px 15px;border-radius:10px;border:1px solid rgba(51,65,85,.9);background:rgba(2,6,23,.6);color:#f1f5f9;font-family:inherit;font-size:15px;outline:none" style-focus="border-color:rgba(59,130,246,.7)"></label>
+              </div>
+              <div style="margin-top:22px">
+                <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="lg" onClick="{{ next }}" disabled="{{ detailsInvalid }}" hint-size="200px,44px">Continue to Consent</x-import>
+              </div>
+              <p style="font-size:12px;line-height:1.55;color:#475569;margin:18px 0 0;max-width:520px">Nothing is charged at this step. Consent comes next, payment after that.</p>
+            </div>
+
+            <div style="border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(2,6,23,.5);padding:24px">
+              <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#64748b">Included</span>
+              <div style="display:flex;align-items:baseline;gap:8px;margin:14px 0 4px">
+                <span style="font-size:38px;font-weight:800;letter-spacing:-.035em;color:#f8fafc;line-height:1">$5,000</span>
+                <span style="font-size:13px;color:#475569">flat fee</span>
+              </div>
+              <p style="font-size:13px;color:#64748b;margin:0 0 20px">Your whole tenant, scanned in full — no sampling, no seat tiers.</p>
+              <div style="display:grid;gap:11px">
+                <sc-for list="{{ includes }}" as="item" hint-placeholder-count="6">
+                  <span style="display:flex;align-items:flex-start;gap:10px;font-size:13.5px;line-height:1.45;color:#cbd5e1">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>{{ item.text }}</span>
+                  </span>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ atConsent }}">
+          <div style="max-width:620px">
+            <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#60a5fa">Step 2 — Microsoft consent</span>
+            <h3 style="font-size:clamp(21px,3.7vw,26px);font-weight:700;letter-spacing:-.018em;color:#f8fafc;margin:14px 0 10px;line-height:1.22">Grant read-only access to your tenant.</h3>
+            <p style="font-size:15px;line-height:1.65;color:#94a3b8;margin:0 0 26px;max-width:520px">This opens the Microsoft admin consent screen. An account with Global Administrator or Privileged Role Administrator can approve it. The scan reads; it never writes, never moves a file, and never changes a policy.</p>
+            <div style="border:1px solid rgba(30,41,59,.9);border-radius:14px;background:rgba(2,6,23,.5);padding:20px 22px;margin-bottom:26px">
+              <span style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#64748b">Scopes requested</span>
+              <div style="display:grid;gap:9px;margin-top:14px">
+                <sc-for list="{{ scopes }}" as="scope" hint-placeholder-count="5">
+                  <span style="display:flex;align-items:center;gap:10px;font-family:Menlo,ui-monospace,monospace;font-size:12.5px;color:#cbd5e1">
+                    <span style="width:5px;height:5px;border-radius:50%;background:#60a5fa;flex-shrink:0"></span>
+                    <span>{{ scope.text }}</span>
+                  </span>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+              <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="lg" onClick="{{ next }}" hint-size="230px,44px">Grant Consent in Microsoft 365</x-import>
+              <button type="button" onClick="{{ back2 }}" style="background:none;border:none;padding:0;font-family:inherit;font-size:13px;color:#475569;cursor:pointer" style-hover="color:#94a3b8">Back</button>
+            </div>
+            <p style="font-size:12px;line-height:1.55;color:#475569;margin:18px 0 0;max-width:520px">Consent is revocable at any time from Entra ID → Enterprise applications. Revoking it stops all future scans immediately.</p>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ atPay }}">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:clamp(26px,4vw,44px);align-items:start">
+            <div>
+              <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#60a5fa">Step 3 — Payment</span>
+              <h3 style="font-size:clamp(21px,3.7vw,26px);font-weight:700;letter-spacing:-.018em;color:#f8fafc;margin:14px 0 10px;line-height:1.22">One charge of $5,000.</h3>
+              <p style="font-size:15px;line-height:1.65;color:#94a3b8;margin:0 0 26px;max-width:520px">Consent granted. Card is charged once, today — there is no subscription on the assessment and no hourly billing after it.</p>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:14px;max-width:480px">
+                <label style="grid-column:1/-1"><span style="display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:7px">Card number</span><input value="{{ vCard }}" onInput="{{ setCard }}" inputmode="numeric" autocomplete="cc-number" maxlength="19" placeholder="4242 4242 4242 4242" style="width:100%;box-sizing:border-box;padding:13px 15px;border-radius:10px;border:1px solid rgba(51,65,85,.9);background:rgba(2,6,23,.6);color:#f1f5f9;font-family:inherit;font-size:15px;outline:none;font-family:Menlo,ui-monospace,monospace;letter-spacing:.06em" style-focus="border-color:rgba(59,130,246,.7)"></label>
+                <label><span style="display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:7px">Expiry</span><input value="{{ vExp }}" onInput="{{ setExp }}" inputmode="numeric" autocomplete="cc-exp" maxlength="7" placeholder="MM / YY" style="width:100%;box-sizing:border-box;padding:13px 15px;border-radius:10px;border:1px solid rgba(51,65,85,.9);background:rgba(2,6,23,.6);color:#f1f5f9;font-family:inherit;font-size:15px;outline:none;font-family:Menlo,ui-monospace,monospace" style-focus="border-color:rgba(59,130,246,.7)"></label>
+                <label><span style="display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:7px">CVC</span><input value="{{ vCvc }}" onInput="{{ setCvc }}" inputmode="numeric" maxlength="4" placeholder="123" style="width:100%;box-sizing:border-box;padding:13px 15px;border-radius:10px;border:1px solid rgba(51,65,85,.9);background:rgba(2,6,23,.6);color:#f1f5f9;font-family:inherit;font-size:15px;outline:none;font-family:Menlo,ui-monospace,monospace" style-focus="border-color:rgba(59,130,246,.7)"></label>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:22px">
+                <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="lg" onClick="{{ next }}" disabled="{{ payInvalid }}" hint-size="180px,44px">Pay $5,000</x-import>
+                <button type="button" onClick="{{ back2 }}" style="background:none;border:none;padding:0;font-family:inherit;font-size:13px;color:#475569;cursor:pointer" style-hover="color:#94a3b8">Back</button>
+              </div>
+              <p style="font-size:12px;line-height:1.55;color:#475569;margin:18px 0 0;max-width:520px">Card details are handled by the payment processor; they never touch our servers.</p>
+            </div>
+            <div style="border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(2,6,23,.5);padding:22px">
+              <span style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#64748b">Order</span>
+              <p style="font-size:14px;line-height:1.5;color:#e2e8f0;margin:14px 0 4px;font-weight:600">Copilot Readiness Assessment</p>
+              <p style="font-size:13px;color:#64748b;margin:0 0 18px">{{ vCompany }}</p>
+              <div style="display:flex;align-items:baseline;justify-content:space-between;padding-top:16px;border-top:1px solid rgba(30,41,59,.9)">
+                <span style="font-size:13px;color:#94a3b8">Total due today</span>
+                <span style="font-size:24px;font-weight:800;letter-spacing:-.02em;color:#f8fafc">$5,000</span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ atCode }}">
+          <div style="max-width:620px">
+            <div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:26px">
+              <span style="flex-shrink:0;width:40px;height:40px;border-radius:12px;background:rgba(37,99,235,.14);border:1px solid rgba(37,99,235,.32);display:flex;align-items:center;justify-content:center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+              <div>
+                <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#60a5fa">Step 4 — Verify</span>
+                <h3 style="font-size:clamp(21px,3.7vw,26px);font-weight:700;letter-spacing:-.018em;color:#f8fafc;margin:14px 0 10px;line-height:1.22">Thank you. The scan has already begun.</h3>
+                <p style="font-size:15px;line-height:1.65;color:#94a3b8;margin:0 0 26px;max-width:520px">Payment received, consent is live, and your tenant is being read right now — the pillar scores below are filling in as it goes. We sent a six-digit code to {{ vEmail }}; enter it to claim the account your reports land in.</p>
+              </div>
+            </div>
+            <label style="display:block;max-width:min(100%,340px)"><span style="display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:7px">Six-digit code</span><input value="{{ vCode }}" onInput="{{ setCode }}" inputmode="numeric" maxlength="6" placeholder="——————" style="width:100%;box-sizing:border-box;padding:13px 15px;border-radius:10px;border:1px solid rgba(51,65,85,.9);background:rgba(2,6,23,.6);color:#f1f5f9;font-family:inherit;font-size:15px;outline:none;font-family:Menlo,ui-monospace,monospace;font-size:26px;letter-spacing:.42em;text-align:center;padding:16px 15px" style-focus="border-color:rgba(59,130,246,.7)"></label>
+            <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:20px">
+              <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="lg" onClick="{{ next }}" disabled="{{ codeInvalid }}" hint-size="150px,44px">Verify Code</x-import>
+              <button type="button" onClick="{{ noop }}" style="background:none;border:none;padding:0;font-family:inherit;font-size:13px;color:#475569;cursor:pointer" style-hover="color:#94a3b8">Resend code</button>
+            </div>
+            <p style="font-size:12px;line-height:1.55;color:#475569;margin:18px 0 0;max-width:520px">Codes expire after ten minutes. Check spam if it has not arrived within two.</p>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ atPassword }}">
+          <div style="max-width:620px">
+            <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#60a5fa">Step 5 — Password</span>
+            <h3 style="font-size:clamp(21px,3.7vw,26px);font-weight:700;letter-spacing:-.018em;color:#f8fafc;margin:14px 0 10px;line-height:1.22">Set a password for your account.</h3>
+            <p style="font-size:15px;line-height:1.65;color:#94a3b8;margin:0 0 26px;max-width:520px">This is how you get back into your reports. Twelve characters minimum.</p>
+            <div style="display:grid;gap:14px;max-width:420px">
+              <label><span style="display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:7px">Password</span><input type="password" value="{{ vPass }}" onInput="{{ setPass }}" placeholder="••••••••••••" style="width:100%;box-sizing:border-box;padding:13px 15px;border-radius:10px;border:1px solid rgba(51,65,85,.9);background:rgba(2,6,23,.6);color:#f1f5f9;font-family:inherit;font-size:15px;outline:none" style-focus="border-color:rgba(59,130,246,.7)"></label>
+              <label><span style="display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:7px">Confirm password</span><input type="password" value="{{ vPass2 }}" onInput="{{ setPass2 }}" placeholder="••••••••••••" style="width:100%;box-sizing:border-box;padding:13px 15px;border-radius:10px;border:1px solid rgba(51,65,85,.9);background:rgba(2,6,23,.6);color:#f1f5f9;font-family:inherit;font-size:15px;outline:none" style-focus="border-color:rgba(59,130,246,.7)"></label>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:16px">
+              <span style="flex:1;max-width:200px;height:4px;border-radius:2px;background:rgba(30,41,59,.9);overflow:hidden"><span style="display:block;height:100%;width:{{ passWidth }};background:{{ passColor }};border-radius:2px;transition:width .3s,background .3s"></span></span>
+              <span style="font-size:12px;color:#64748b">{{ passLabel }}</span>
+            </div>
+            <div style="margin-top:24px">
+              <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="lg" onClick="{{ next }}" disabled="{{ passInvalid }}" hint-size="180px,44px">Continue to MFA</x-import>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ atMfa }}">
+          <div style="max-width:640px">
+            <span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#60a5fa">Step 6 — Multi-factor</span>
+            <h3 style="font-size:clamp(21px,3.7vw,26px);font-weight:700;letter-spacing:-.018em;color:#f8fafc;margin:14px 0 10px;line-height:1.22">Add multi-factor authentication.</h3>
+            <p style="font-size:15px;line-height:1.65;color:#94a3b8;margin:0 0 26px;max-width:520px">Required, not optional — these reports name every exposure in your tenant. Scan the code in Microsoft Authenticator, then enter the six digits it shows.</p>
+            <div style="display:flex;flex-wrap:wrap;gap:clamp(18px,4vw,26px);align-items:center">
+              <div style="width:132px;height:132px;border-radius:12px;border:1px solid rgba(51,65,85,.9);background:rgba(2,6,23,.6);display:flex;align-items:center;justify-content:center;text-align:center;padding:14px;box-sizing:border-box">
+                <span style="font-size:11px;line-height:1.5;letter-spacing:.1em;text-transform:uppercase;color:#475569">Authenticator QR</span>
+              </div>
+              <div>
+                <span style="display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:7px">Or enter this key manually</span>
+                <p style="font-family:Menlo,ui-monospace,monospace;font-size:14px;letter-spacing:.14em;color:#cbd5e1;margin:0 0 18px">JBSW Y3DP EHPK 3PXP</p>
+                <label style="display:block;max-width:300px"><span style="display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:7px">Code from the app</span><input value="{{ vMfa }}" onInput="{{ setMfa }}" inputmode="numeric" maxlength="6" placeholder="——————" style="width:100%;box-sizing:border-box;padding:13px 15px;border-radius:10px;border:1px solid rgba(51,65,85,.9);background:rgba(2,6,23,.6);color:#f1f5f9;font-family:inherit;font-size:15px;outline:none;font-family:Menlo,ui-monospace,monospace;font-size:22px;letter-spacing:.36em;text-align:center" style-focus="border-color:rgba(59,130,246,.7)"></label>
+              </div>
+            </div>
+            <div style="margin-top:26px">
+              <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="lg" onClick="{{ next }}" disabled="{{ mfaInvalid }}" hint-size="200px,44px">Finish and Open Portal</x-import>
+            </div>
+          </div>
+        </sc-if>
+
+
+        <sc-if value="{{ scanVisible }}">
+          <div style="margin-top:clamp(24px,4vw,34px);padding-top:24px;border-top:1px solid rgba(30,41,59,.9)">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span style="width:7px;height:7px;border-radius:50%;background:#60a5fa;box-shadow:0 0 10px #60a5fa;animation:smcBreath 1.4s ease-in-out infinite;flex-shrink:0"></span>
+                <span style="font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#93c5fd">{{ scanHeadline }}</span>
+              </div>
+              <span style="font-family:Menlo,ui-monospace,monospace;font-size:10.5px;color:#475569">{{ scanMeta }}</span>
+            </div>
+
+            <div style="display:flex;flex-wrap:wrap;gap:clamp(16px,3vw,26px);align-items:center">
+              <div style="position:relative;width:clamp(116px,17vw,148px);aspect-ratio:1/1;flex-shrink:0">
+                <svg viewBox="0 0 480 480" style="position:absolute;inset:0;width:100%;height:100%;display:block">
+                  <defs>
+                    <radialGradient id="sg0" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214"><stop offset="0.47" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.56" stop-color="#3B82F6" stop-opacity="1"/><stop offset="0.78" stop-color="#3B82F6" stop-opacity="0.42"/><stop offset="1" stop-color="#3B82F6" stop-opacity="0.06"/></radialGradient>
+                    <radialGradient id="sg1" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214"><stop offset="0.47" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.56" stop-color="#8B5CF6" stop-opacity="1"/><stop offset="0.78" stop-color="#8B5CF6" stop-opacity="0.42"/><stop offset="1" stop-color="#8B5CF6" stop-opacity="0.06"/></radialGradient>
+                    <radialGradient id="sg2" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214"><stop offset="0.47" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.56" stop-color="#D1D5DB" stop-opacity="1"/><stop offset="0.78" stop-color="#D1D5DB" stop-opacity="0.42"/><stop offset="1" stop-color="#D1D5DB" stop-opacity="0.06"/></radialGradient>
+                    <radialGradient id="sg3" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214"><stop offset="0.47" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.56" stop-color="#14B8A6" stop-opacity="1"/><stop offset="0.78" stop-color="#14B8A6" stop-opacity="0.42"/><stop offset="1" stop-color="#14B8A6" stop-opacity="0.06"/></radialGradient>
+                    <radialGradient id="sg4" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214"><stop offset="0.47" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.56" stop-color="#F97316" stop-opacity="1"/><stop offset="0.78" stop-color="#F97316" stop-opacity="0.42"/><stop offset="1" stop-color="#F97316" stop-opacity="0.06"/></radialGradient>
+                    <radialGradient id="sg5" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="214"><stop offset="0.47" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.56" stop-color="#22C55E" stop-opacity="1"/><stop offset="0.78" stop-color="#22C55E" stop-opacity="0.42"/><stop offset="1" stop-color="#22C55E" stop-opacity="0.06"/></radialGradient>
+                    <radialGradient id="sgHub" gradientUnits="userSpaceOnUse" cx="240" cy="240" r="122"><stop offset="0" stop-color="#ffffff" stop-opacity="0.30"/><stop offset="0.34" stop-color="#22D3EE" stop-opacity="0.26"/><stop offset="0.72" stop-color="#3B82F6" stop-opacity="0.16"/><stop offset="1" stop-color="#020617" stop-opacity="0"/></radialGradient>
+                  </defs>
+                  <circle cx="240" cy="240" r="214" fill="none" stroke="rgba(148,163,184,.16)" stroke-width="1.6"></circle>
+                  <path d="{{ trackD0 }}" fill="#3B82F6" fill-opacity=".13" stroke="#60A5FA" stroke-opacity=".14" stroke-width="1.4"></path>
+                  <path d="{{ trackD1 }}" fill="#8B5CF6" fill-opacity=".13" stroke="#A78BFA" stroke-opacity=".14" stroke-width="1.4"></path>
+                  <path d="{{ trackD2 }}" fill="#D1D5DB" fill-opacity=".13" stroke="#F3F4F6" stroke-opacity=".14" stroke-width="1.4"></path>
+                  <path d="{{ trackD3 }}" fill="#14B8A6" fill-opacity=".13" stroke="#2DD4BF" stroke-opacity=".14" stroke-width="1.4"></path>
+                  <path d="{{ trackD4 }}" fill="#F97316" fill-opacity=".13" stroke="#FB923C" stroke-opacity=".14" stroke-width="1.4"></path>
+                  <path d="{{ trackD5 }}" fill="#22C55E" fill-opacity=".13" stroke="#4ADE80" stroke-opacity=".14" stroke-width="1.4"></path>
+                  <path d="{{ sd0 }}" fill="url(#sg0)" stroke="#60A5FA" stroke-opacity=".5" stroke-width="1.2" style="transition:d .8s cubic-bezier(.2,.8,.2,1)"></path>
+                  <path d="{{ sd1 }}" fill="url(#sg1)" stroke="#A78BFA" stroke-opacity=".5" stroke-width="1.2" style="transition:d .8s cubic-bezier(.2,.8,.2,1)"></path>
+                  <path d="{{ sd2 }}" fill="url(#sg2)" stroke="#F3F4F6" stroke-opacity=".5" stroke-width="1.2" style="transition:d .8s cubic-bezier(.2,.8,.2,1)"></path>
+                  <path d="{{ sd3 }}" fill="url(#sg3)" stroke="#2DD4BF" stroke-opacity=".5" stroke-width="1.2" style="transition:d .8s cubic-bezier(.2,.8,.2,1)"></path>
+                  <path d="{{ sd4 }}" fill="url(#sg4)" stroke="#FB923C" stroke-opacity=".5" stroke-width="1.2" style="transition:d .8s cubic-bezier(.2,.8,.2,1)"></path>
+                  <path d="{{ sd5 }}" fill="url(#sg5)" stroke="#4ADE80" stroke-opacity=".5" stroke-width="1.2" style="transition:d .8s cubic-bezier(.2,.8,.2,1)"></path>
+                  <circle cx="240" cy="240" r="100" fill="#050d1f"></circle>
+                  <circle cx="240" cy="240" r="100" fill="url(#sgHub)"></circle>
+                </svg>
+                <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44%;height:44%;pointer-events:none">
+                  <div style="width:100%;height:100%;border-radius:50%;background:conic-gradient(from 0deg,#3B82F6,#8B5CF6,#22D3EE,#F3F4F6,#8B5CF6,#3B82F6);-webkit-mask:radial-gradient(circle,transparent 63%,#000 68%,#000 73%,transparent 78%);mask:radial-gradient(circle,transparent 63%,#000 68%,#000 73%,transparent 78%);animation:smcOrb 22s linear infinite;opacity:.45"></div>
+                </div>
+                <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:1px">
+                  <span style="font-size:clamp(15px,2.4vw,19px);font-weight:800;letter-spacing:-.03em;line-height:1;color:#f8fafc">{{ scanHubNum }}</span>
+                  <span style="font-size:clamp(9.5px,1.4vw,10.5px);font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:#94a3b8;text-shadow:0 1px 6px rgba(2,6,23,.9)">{{ scanHubShort }}</span>
+                </div>
+              </div>
+
+              <div style="flex:1 1 260px;min-width:0">
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px">
+                  <span style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#64748b">Findings</span>
+                  <span style="font-size:11px;color:#475569">{{ scanFindingCount }}</span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                  <sc-for list="{{ scanChips }}" as="chip" hint-placeholder-count="6">
+                    <span style="display:flex;align-items:center;gap:7px;font-size:11.5px;line-height:1.25;color:#cbd5e1;border:1px solid rgba(51,65,85,.85);background:rgba(2,6,23,.5);border-radius:999px;padding:5px 11px;opacity:{{ chip.opacity }};transform:{{ chip.transform }};transition:opacity .5s ease,transform .5s cubic-bezier(.2,.8,.2,1)">
+                      <span style="width:5px;height:5px;border-radius:50%;background:{{ chip.color }};flex-shrink:0"></span>{{ chip.text }}
+                    </span>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ atDone }}">
+          <div style="display:flex;gap:18px;align-items:flex-start;max-width:640px">
+            <span style="flex-shrink:0;width:40px;height:40px;border-radius:12px;background:rgba(37,99,235,.14);border:1px solid rgba(37,99,235,.32);display:flex;align-items:center;justify-content:center">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </span>
+            <div>
+              <h3 style="font-size:24px;font-weight:700;letter-spacing:-.018em;color:#f8fafc;margin:0 0 10px">You are set up, {{ vFirst }}. Taking you to the portal.</h3>
+              <p style="font-size:15px;line-height:1.65;color:#94a3b8;margin:0 0 20px">The scan is already running against {{ vCompany }}. Your eight reports appear in the portal as they generate — the first within a few minutes.</p>
+              <div style="display:flex;align-items:center;gap:11px;margin-bottom:22px">
+                <span style="width:14px;height:14px;border-radius:50%;border:2px solid rgba(96,165,250,.3);border-top-color:#60a5fa;animation:smcSpin .9s linear infinite"></span>
+                <span style="font-size:13px;color:#64748b">Redirecting to portal.shanemccaw.com</span>
+              </div>
+              <button type="button" onClick="{{ restartFlow }}" style="background:none;border:none;padding:0;font-family:inherit;font-size:13px;color:#475569;cursor:pointer" style-hover="color:#94a3b8">Start the flow over</button>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Retainer hand-off" style="max-width:1160px;margin:0 auto;padding:0 clamp(16px,4vw,32px) clamp(56px,8vw,88px)">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:18px 28px;border:1px solid rgba(0,180,216,.3);border-radius:16px;background:rgba(15,23,42,.5);padding:clamp(20px,3vw,28px) clamp(20px,4vw,32px)">
+      <div style="flex:1 1 380px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">After the assessment</span></div>
+        <h3 style="font-size:clamp(20px,3vw,26px);font-weight:700;letter-spacing:-.018em;color:#f8fafc;margin:12px 0 8px;line-height:1.22;text-wrap:pretty">The findings become the first month's agenda.</h3>
+        <p style="font-size:14.5px;line-height:1.6;color:#94a3b8;margin:0;max-width:560px">Architect retainers put Shane's hours on the list the scan produced. Four tiers, from $900 a month, no minimum term. Not available to organizations that work with NASA.</p>
+      </div>
+      <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" size="lg" as="a" href="Work With Me.dc.html#tiers" hint-size="220px,40px">See the four retainers</x-import>
+    </div>
+  </section>
+
+  <footer style="border-top:1px solid rgba(30,41,59,.8)">
+    <div style="max-width:1280px;margin:0 auto;padding:64px clamp(16px,4vw,32px) 40px">
+      <div style="display:flex;flex-wrap:wrap;gap:40px;margin-bottom:48px">
+        <div style="flex:1 1 260px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+            <span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+            <span style="font-family:'Space Grotesk',Inter,sans-serif;font-weight:600;font-size:16px;color:#F5F5F7">Shane McCaw Consulting</span>
+          </div>
+          <p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#B5B5BC;max-width:320px">Vero Beach, FL — M365 · Copilot AI · SharePoint · Power Platform</p>
+          <p style="font-size:12px;line-height:1.55;color:#94a3b8;margin:0;max-width:360px">Figures shown on this page are aggregate and illustrative. They describe patterns across comparable tenants and are not a measurement of your environment.</p>
+        </div>
+        <div style="flex:1 1 150px">
+          <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Get Started</h4>
+          <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+            <li><a href="#quiz" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Assessment</a></li>
+            <li><a href="Work With Me.dc.html#tiers" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Fractional Architecture</a></li>
+          </ul>
+        </div>
+        <div style="flex:1 1 150px">
+          <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Solutions</h4>
+          <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+            <li><a href="Solution - Copilot AI.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Copilot &amp; AI</a></li>
+            <li><a href="Solution - Security Compliance.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Security &amp; Compliance</a></li>
+            <li><a href="Solution - Governance.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Governance</a></li>
+            <li><a href="Solution - SharePoint.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">SharePoint</a></li>
+            <li><a href="Solution - Power Platform.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Power Platform</a></li>
+            <li><a href="Solution - Teams.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Teams</a></li>
+            <li><a href="Solution - Migration.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Migration</a></li>
+            <li><a href="Solution - M365 Health.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">M365 Health</a></li>
+          </ul>
+        </div>
+        <div style="flex:1 1 150px">
+          <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Company</h4>
+          <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+            <li><a href="About Shane.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">About Shane</a></li>
+            <li><a href="Resources.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Resources</a></li>
+            <li><a href="Contact.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Contact</a></li>
+            <li><a href="Contact.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Ask a Question</a></li>
+          </ul>
+        </div>
+        <div style="flex:1 1 150px">
+          <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Legal</h4>
+          <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+            <li><a href="/terms" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Terms of Service</a></li>
+            <li><a href="/privacy" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Privacy Policy</a></li>
+          </ul>
+        </div>
+      </div>
+      <div style="padding-top:28px;border-top:1px solid rgba(30,41,59,.8);display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;font-size:12px;color:#B5B5BC">
+        <span>© 2026 Shane McCaw Consulting. All rights reserved. Shane's role at NASA is a personal credential; this practice is independent of NASA.</span>
+        <a href="/privacy" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Privacy Policy</a>
+      </div>
+    </div>
+  </footer>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showBenchmarks&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Editorial&quot;},&quot;narratorCaptions&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Editorial&quot;},&quot;revealOnScroll&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Editorial&quot;}}">
+const PILLARS = [
+  { name: 'Governance', color: '#60A5FA' },
+  { name: 'Security',   color: '#A78BFA' },
+  { name: 'Compliance', color: '#D1D5DB' },
+  { name: 'Licensing',  color: '#2DD4BF' },
+  { name: 'Adoption',   color: '#FB923C' },
+  { name: 'Health',     color: '#4ADE80' }
+];
+
+const SEATS = ['fewer than 100 seats', '100–500 seats', '500–2,000 seats', 'more than 2,000 seats'];
+
+const QUESTIONS = [
+  { tag: 'Context', color: '#94a3b8', pillar: -1,
+    q: 'How many people are in your tenant?',
+    opts: ['Fewer than 100', '100 – 500', '500 – 2,000', 'More than 2,000'] },
+  { tag: 'Governance', color: '#60a5fa', pillar: 0,
+    q: 'Who owns Microsoft 365 governance day to day?',
+    opts: ['Nobody in particular', 'IT, part-time, when something breaks', 'A named owner with time allocated', 'A governance board with a review cadence'] },
+  { tag: 'Security', color: '#a78bfa', pillar: 1,
+    q: 'How far has Conditional Access gone in your tenant?',
+    opts: ['Security defaults only', 'MFA enforced for admins', 'Baseline policies for every user', 'Risk-based, device-aware policies'] },
+  { tag: 'Compliance', color: '#D1D5DB', pillar: 2,
+    q: 'When did you last review external sharing and guest access?',
+    opts: ['Never', 'More than a year ago', 'Within the last six months', 'Reviewed continuously'] },
+  { tag: 'Licensing', color: '#2dd4bf', pillar: 3,
+    q: 'Where are you with Copilot licensing?',
+    opts: ['No licences yet', 'A small pilot group', 'One or two departments', 'Org-wide'] },
+  { tag: 'Adoption', color: '#fb923c', pillar: 4,
+    q: 'Has anyone been shown how to prompt against your own content?',
+    opts: ['No training at all', 'A launch email went out', 'Optional sessions ran once', 'Role-specific enablement, ongoing'] },
+  { tag: 'Health', color: '#4ADE80', pillar: 5,
+    q: 'How would you find out if a tenant setting changed overnight?',
+    opts: ['We would not', 'Someone would notice eventually', 'A monthly or quarterly review', 'Alerting on change, within the hour'] }
+];
+
+const VARIANTS = [
+  { // Governance
+    none: ['Copilot inherits every permission mistake you have ever made.',
+      'It does not read a site the way a person reads a site. It reads everything the signed-in user could technically reach, then summarises it in a sentence. Ownership gaps that were harmless while nobody was looking become an answer in a chat window.'],
+    a: [
+      ['With no owner, nothing stops permissions drifting open.',
+       'No named owner means nobody enforces change management, so sharing settings, guest access and site permissions widen one request at a time and nothing pulls them back. Copilot knows none of that history. It reads what the signed-in user can reach right now and treats it as fair game.'],
+      ['Reactive ownership only ever catches the things that break.',
+       'When governance is picked up between outages, review happens after failure. A permission opening too wide never fails — it just sits there, correct on paper and wrong in practice. By the time Copilot is asked a question, that accumulated state is the answer it gives.'],
+      ['A named owner turns drift into a caught exception.',
+       'Changes get reviewed while they are still one site rather than forty, which is the difference between a finding and an incident. What remains is the content that predates the owner: inherited sites, old project spaces, and the guests still attached to them.'],
+      ['You already run the control most tenants are missing.',
+       'Recorded ownership with a review cadence is the only mechanism that reliably stops permissions accumulating quietly, and it is rare at any size. The residual risk is whatever never reaches the agenda — dormant sites, orphaned groups, and the sharing done inside them.']
+    ]
+  },
+  { // Security
+    none: ['The gap is almost never the policy. It is the exclusion.',
+      'Break-glass accounts, a service principal added during a migration, one group excluded for a project that ended two years ago. Each was reasonable on the day. Together they are the route in, and no quarterly review is scoped to find them.'],
+    a: [
+      ['Defaults authenticate the user. They never ask where from.',
+       'Security defaults enforce MFA and block legacy authentication, and stop there. Nothing conditions access on device, location or risk, so a valid credential is a valid session from anywhere — and the service accounts and break-glass identities below never come under a policy at all.'],
+      ['Admin MFA protects the accounts. It does not cover the tenant.',
+       'The identities most attacked are closed off, which matters more than it is given credit for. Everyone else still signs in on the older path, and that is where exclusions accumulate: a service principal added during a migration, a group excluded for a project that ended, each reasonable on the day.'],
+      ['Once every user is covered, the risk moves into the exclusion list.',
+       'Conditioned access for all users is a real position, and it arrives with a list of exemptions that grows by one entry per migration and is almost never pruned. Nobody owns removing an exclusion, because nothing breaks when it stays.'],
+      ['Re-evaluated per sign-in is the strongest posture available.',
+       'Access is judged on device state and risk each time rather than granted once, which is what the top quartile below is actually made of. Even here the exclusions exist — the difference is whether anyone can still explain why each one is on the list.']
+    ]
+  },
+  { // Compliance
+    none: ['Labels that exist and labels that are applied are different numbers.',
+      'Most tenants have a sensitivity taxonomy. Far fewer have it enforced on the content that matters, and fewer still have retention that survives a departing employee. Copilot does not distinguish between a defined label and an applied one.'],
+    a: [
+      ['Every link ever created is still live.',
+       'Without a review, sharing links made for projects that closed years ago are still resolving, and the content behind them was never labelled because nobody looked at it. Unlabelled, over-shared content is precisely what Copilot is free to read and summarise on request.'],
+      ['The review you did predates most of what is now shared.',
+       'Everything created since has never been checked for labelling or guest exposure, and that is the last year of work — the most current, most sensitive material in the tenant. The taxonomy still says the right things. It is just not applied to any of it.'],
+      ['The links are mostly known. The labels are the open question.',
+       'A recent review means sharing is roughly understood, which puts you ahead of the median. Content can be correctly shared and still unlabelled, and Copilot treats an unlabelled file as ordinary content regardless of what is inside it.'],
+      ['Sharing and labelling staying in step is the whole point.',
+       'Continuous review is the only state where the taxonomy means something, because the label follows the content instead of trailing it. What is left is auto-labelling coverage: the sites nobody classifies because nobody visits them.']
+    ]
+  },
+  { // Licensing
+    none: ['Seats get bought by headcount and used by habit.',
+      'The allocation that made sense at purchase rarely matches where the work actually is three months later. Nobody reclaims a licence, because nobody is measuring one. The renewal arrives priced on the original number.'],
+    a: [
+      ['Nothing is committed yet. That is the cheapest place to be.',
+       'Every allocation decision ahead of you is still unmade, so seats can be set from where the work actually is rather than from an org chart. The waste below is what happens when that order gets reversed: bought first, measured later, renewed on the original number.'],
+      ['A pilot is only worth what you measure out of it.',
+       'The right people in a pilot tell you which roles get real value and which were curious for a fortnight. Pilot seats that go quiet are the first appearance of the pattern below — caught now they shape the next purchase instead of repeating inside it.'],
+      ['This is the point where allocation stops matching the work.',
+       'Seats were assigned to a team structure that has since moved, nobody owns reclaiming them, and the renewal quotes the original count. Dormant seats start appearing here and are rarely noticed until somebody asks for a utilisation number.'],
+      ['The spend is committed. Utilisation is the only lever left.',
+       'At org-wide scale, every seat that goes ninety days without meaningful use renews at full price on the strength of nobody checking. The figures below are money already out the door, and measuring who actually uses what is the only way to get any of it back.']
+    ]
+  },
+  { // Adoption
+    none: ['Usage concentrates in Teams, Outlook and Word — and stops.',
+      'Summarising a meeting is discoverable. Grounding a proposal in last quarter\'s actual numbers is not, unless someone shows you. The difference between a licence that renews and one that gets cut is usually a two-hour session nobody scheduled.'],
+    a: [
+      ['People find the summarise button, and stop there.',
+       'Summarising a meeting is self-evident. Grounding a prompt in last quarter\'s actual numbers has to be shown once, by someone, against real content. Without that, usage plateaus in three apps and the renewal conversation starts from a low number.'],
+      ['An email tells people the licence exists. Nothing more.',
+       'It does not demonstrate a second prompt, so usage settles at whatever was discoverable on day one. That is the concentration below: the same three apps, the same shallow tasks, month after month.'],
+      ['Optional sessions reach the people who did not need them.',
+       'The attendees were going to work it out anyway. The gap below is everyone who did not sign up, and they hold the majority of your seats — the ones that quietly decide whether the renewal is defensible.'],
+      ['Repeated, role-specific enablement is what the top quartile is made of.',
+       'People are shown Copilot against their own content, in their own workflow, more than once — which is the mechanism behind the numbers below rather than a nice-to-have alongside them. What is worth watching now is whether new joiners get the same treatment.']
+    ]
+  },
+  { // Health
+    none: ['A tenant does not stay where you left it.',
+      'Admins change settings, vendors consent to OAuth apps, guests get added, defaults shift underneath you when Microsoft ships. An assessment tells you what is wrong today. Drift is what happens on every day after that.'],
+    a: [
+      ['Undetected is not the same as absent.',
+       'Admins change settings, vendors consent to OAuth apps, guests get added, and defaults shift underneath you when Microsoft ships. None of it announces itself. Every remediation you pay for starts decaying the day after it lands.'],
+      ['You find out because something broke, not because something changed.',
+       'Changes that break things get attention within the day. Changes that quietly open exposure never break anything, so they wait — and those are exactly the ones the figures below are counting.'],
+      ['A quarterly review catches it a quarter after it mattered.',
+       'Between reviews the tenant runs in a state nobody has verified, and the reconstruction afterwards is guesswork about when a setting actually moved. Better than nothing, and still after the fact.'],
+      ['Catching change within the hour is the argument this chapter makes.',
+       'A change caught while it happens is a decision; the same change found later is an archaeology exercise. You already run the control the rest of this page is arguing for — the figures below are your benchmark.']
+    ]
+  }
+];
+
+const VALUES = [0.18, 0.45, 0.7, 0.95];
+const LETTERS = ['A', 'B', 'C', 'D'];
+
+class Component extends DCLogic {
+  state = { step: 0, answers: [null, null, null, null, null, null, null], done: false, flowStep: 0, form: {} };
+
+  componentDidMount() {
+    this.applyToggles();
+    this.initReveal();
+    this.initParallax();
+    this._onNavResize = () => {
+      const navNarrow = window.innerWidth < 1024;
+      if (navNarrow !== !!this.state.navNarrow) this.setState({ navNarrow, navMenuOpen: false, navSolOpen: false });
+    };
+    this._onNavResize();
+    window.addEventListener('resize', this._onNavResize);
+  }
+  componentDidUpdate() {
+    this.applyToggles();
+    if ((this.state.flowStep || 0) >= 3 && (this.state.scanIdx === undefined || this.state.scanIdx <= 6)) this.startScan();
+  }
+
+  startScan() {
+    if (this._scanTick) return;
+    const step = () => {
+      this._scanTick = null;
+      const idx = this.state.scanIdx === undefined ? -1 : this.state.scanIdx;
+      if ((this.state.flowStep || 0) < 3) return;
+      if (idx > 6) return;
+      this.setState({ scanIdx: idx < 0 ? 0 : idx + 1 }, () => {
+        if ((this.state.scanIdx || 0) <= 6) this._scanTick = setTimeout(step, 950);
+      });
+    };
+    if (this.state.scanT0 == null) this.setState({ scanT0: Date.now() });
+    step();
+  }
+
+  componentWillUnmount() { if (this._scanTick) clearTimeout(this._scanTick); window.removeEventListener('resize', this._onNavResize); }
+
+  applyToggles() {
+    const bm = this.props.showBenchmarks !== false;
+    const cap = this.props.narratorCaptions !== false;
+    document.querySelectorAll('[data-benchmark]').forEach(el => { el.style.display = bm ? 'grid' : 'none'; });
+    document.querySelectorAll('[data-caption]').forEach(el => { el.style.display = cap ? 'flex' : 'none'; });
+    document.querySelectorAll('[data-reflect]').forEach(el => {
+      const p = el.querySelector('p');
+      el.style.display = p && p.textContent.trim() ? 'block' : 'none';
+    });
+  }
+
+  initReveal() {
+    if (this.props.revealOnScroll === false || this._io) return;
+    const nodes = Array.from(document.querySelectorAll('[data-reveal]'));
+    if (!nodes.length) return;
+    nodes.forEach(el => {
+      el.style.opacity = '0';
+      el.style.transform = el.dataset.revealX ? 'translate3d(' + el.dataset.revealX + 'px,18px,0)' : 'translateY(22px)';
+      el.style.transition = 'opacity .6s ease, transform .75s cubic-bezier(.2,.8,.2,1)';
+    });
+    this._io = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting || e.boundingClientRect.top < 0) {
+          e.target.style.opacity = '1';
+          e.target.style.transform = 'none';
+          this.countUp(e.target);
+          this._io.unobserve(e.target);
+        }
+      });
+    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.08 });
+    nodes.forEach(el => this._io.observe(el));
+    const sweep = () => nodes.forEach(el => {
+      if (el.style.opacity === '1') return;
+      if (el.getBoundingClientRect().top < window.innerHeight * 0.9) {
+        el.style.opacity = '1';
+        el.style.transform = 'none';
+        this.countUp(el);
+        this._io.unobserve(el);
+      }
+    });
+    this._sweep = sweep;
+    sweep();
+    window.addEventListener('scroll', sweep, { passive: true });
+    window.addEventListener('resize', sweep);
+    [80, 300, 800, 1600].forEach(t => setTimeout(sweep, t));
+  }
+
+  sectorPath(i, ri, ro) {
+    const rad = Math.PI / 180;
+    const a0 = (-90 + i * 60 + 2) * rad, a1 = (-90 + (i + 1) * 60 - 2) * rad;
+    const p = (r, a) => (240 + r * Math.cos(a)).toFixed(2) + ',' + (240 + r * Math.sin(a)).toFixed(2);
+    return 'M' + p(ri, a0) + ' L' + p(ro, a0) + ' A' + ro + ',' + ro + ' 0 0 1 ' + p(ro, a1) +
+           ' L' + p(ri, a1) + ' A' + ri + ',' + ri + ' 0 0 0 ' + p(ri, a0) + ' Z';
+  }
+
+  countUp(root) {
+    root.querySelectorAll('[data-countup]').forEach(el => {
+      if (el.dataset.counted) return;
+      el.dataset.counted = '1';
+      const target = parseFloat(el.dataset.countup);
+      const dur = 1100, t0 = Date.now();
+      el.textContent = '0';
+      const id = setInterval(() => {
+        const t = Math.min(1, (Date.now() - t0) / dur);
+        el.textContent = String(Math.round(target * (1 - Math.pow(1 - t, 3))));
+        if (t >= 1) clearInterval(id);
+      }, 40);
+      // guarantee the true value lands even if timers are throttled or stalled
+      setTimeout(() => { clearInterval(id); el.textContent = String(target); }, dur + 400);
+    });
+  }
+
+
+
+
+
+  initParallax() {
+    if (this._px) return;
+    const layers = Array.from(document.querySelectorAll('[data-parallax]'));
+    if (!layers.length) return;
+    let queued = false;
+    const run = () => {
+      queued = false;
+      if (this._sweep) this._sweep();
+      const mid = window.innerHeight / 2;
+      layers.forEach(el => {
+        const r = el.parentElement.getBoundingClientRect();
+        if (r.bottom < -200 || r.top > window.innerHeight + 200) return;
+        const offset = (r.top + r.height / 2 - mid) * (parseFloat(el.dataset.parallax) || 0.1);
+        el.style.transform = 'translate3d(0,' + offset.toFixed(1) + 'px,0)';
+      });
+    };
+    this._px = () => { if (!queued) { queued = true; setTimeout(run, 16); } };
+    window.addEventListener('scroll', this._px, { passive: true });
+    window.addEventListener('resize', this._px);
+    run();
+  }
+
+  wedges() {
+    return PILLARS.map((_, i) => {
+      const a = this.state.answers[i + 1];
+      return a === null || a === undefined ? 0.1 : VALUES[a];
+    });
+  }
+
+  score() {
+    const w = this.wedges();
+    return Math.round((w.reduce((s, v) => s + v, 0) / w.length) * 100);
+  }
+
+  pick(i) {
+    const answers = this.state.answers.slice();
+    answers[this.state.step] = i;
+    const last = this.state.step >= QUESTIONS.length - 1;
+    this.setState({ answers, done: last, step: last ? this.state.step : this.state.step + 1 });
+  }
+
+  // Curated cross-pillar observation across the three release-readiness pillars:
+  // Security, Governance, Licensing. Returns '' when nothing genuinely pattern-matches.
+  bonusObservation() {
+    const [, gov, sec, , lic] = this.state.answers;
+    if (gov === null || sec === null || lic === null) return '';
+    const govWeak = gov <= 1, govStrong = gov >= 2;
+    const secWeak = sec <= 1, secStrong = sec >= 2;
+    const licNone = lic === 0, licCommitted = lic >= 2;
+    if (govWeak && secWeak && licCommitted)
+      return 'All three foundational pillars — security, governance and licensing — have real gaps, and seats are already committed. Close those and the work left is getting your people using it well. That is exactly what White-Glove Adoption is built for.';
+    if (govWeak && licNone)
+      return 'Nobody owns governance and no licences are bought yet. That is the cleanest possible starting position: settle ownership before the licensing decision, not after it.';
+    if (secStrong && govWeak)
+      return 'Your security answers look solid today. With nobody owning governance, that is a snapshot rather than a guarantee — policies drift when no one is watching them.';
+    if (secWeak && licNone)
+      return 'You have not spent anything on Copilot licensing yet, so nothing is on a deadline. Worth closing the security gaps now, before a purchase adds one.';
+    if (govStrong && secStrong && licCommitted)
+      return 'Security, governance and licensing all hold up. At that point the constraint is not the tenant, it is whether your people are being shown how to use it — which is where White-Glove Adoption picks up.';
+    return '';
+  }
+
+
+  setField(key, value) {
+    this.setState(st => ({ form: Object.assign({}, st.form, { [key]: value }) }));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const q = QUESTIONS[s.step];
+    const w = this.wedges();
+    const answered = s.answers.slice(1).some(a => a !== null);
+    const score = this.score();
+    const band = score >= 80 ? 'Advanced' : score >= 60 ? 'Established' : score >= 40 ? 'Developing' : 'Early';
+    const seat = s.answers[0] === null ? null : SEATS[s.answers[0]];
+
+    const blurb = score >= 70
+      ? 'Strong for an estimate, which usually means the gaps are narrow and specific. Those are the ones a scan finds and a questionnaire never will.'
+      : score >= 45
+        ? 'A middling estimate almost always hides one pillar dragging the rest down. Which one it is, is the whole question.'
+        : 'An estimate this low is common and fixable. The order you fix things in matters more than the score itself.';
+
+    const f = s.form || {};
+    const fs = s.flowStep || 0;
+    const pl = (f.pass || '').length;
+    const pw = pl === 0 ? { width: '0%', color: '#334155', label: 'Twelve characters minimum' }
+      : pl < 12 ? { width: Math.round(pl / 12 * 60) + '%', color: '#F97316', label: 'Too short' }
+      : pl < 16 ? { width: '72%', color: '#3B82F6', label: 'Good' }
+      : { width: '100%', color: '#22C55E', label: 'Strong' };
+
+    const idx = s.scanIdx === undefined ? -1 : s.scanIdx;
+    const elapsed = Math.max(1, Math.min(6, Math.max(0, idx))) * 4;
+    const FALLBACK = [62, 48, 57, 71, 39, 66];
+    const scanScores = w.map((v, i) =>
+      s.answers[i + 1] === null || s.answers[i + 1] === undefined
+        ? FALLBACK[i]
+        : Math.min(97, Math.max(14, Math.round(v * 100) + [3, -4, 6, -2, 4, -5][i])));
+    const FINDINGS = [
+      ['14 sites with no owner', 'Guest access on 6 sites'],
+      ['3 Conditional Access exclusions', 'Legacy auth still reachable'],
+      ['41 sensitive files unlabelled', 'No DLP policy on Teams'],
+      ['22 dormant Copilot seats', '4 duplicate assignments'],
+      ['68% have never prompted', 'No role-specific enablement'],
+      ['9 config changes in 24h', '2 unreviewed OAuth consents']
+    ];
+    const scanFrac = i => idx > i + 1 ? 1 : idx === i + 1 ? 0.42 : 0.06;
+    const findingCount = Math.min(6, Math.max(0, idx)) * 2;
+    const satVals = {};
+    const scanChips = [];
+    for (let i = 0; i < 6; i++) {
+      satVals['sd' + i] = this.sectorPath(i, 100, 100 + scanFrac(i) * 95);
+      if (idx > i + 1) FINDINGS[i].forEach(text => scanChips.push({ text, color: PILLARS[i].color, opacity: 1, transform: 'none' }));
+    }
+    satVals.scanChips = scanChips;
+
+    const vals = {
+      qNum: String(s.step + 1).padStart(2, '0'),
+      qTotal: String(QUESTIONS.length).padStart(2, '0'),
+      pillarTag: q.tag,
+      pillarColor: q.color,
+      questionText: q.q,
+      options: q.opts.map((label, i) => ({ label, letter: LETTERS[i], pick: () => this.pick(i) })),
+      dots: QUESTIONS.map((_, i) => ({ bg: i < s.step || s.done ? '#3b82f6' : i === s.step ? '#60a5fa' : 'rgba(51,65,85,.9)' })),
+      back: () => { if (s.step > 0) this.setState({ step: s.step - 1, done: false }); },
+      backVis: s.step > 0 ? 'visible' : 'hidden',
+      restart: () => this.setState({ step: 0, answers: [null, null, null, null, null, null, null], done: false }),
+      navNarrow: !!s.navNarrow,
+      navWide: !s.navNarrow,
+      navMenuOpen: !!s.navMenuOpen,
+      navSolOpen: !!s.navSolOpen,
+      navToggleMenu: () => this.setState(st => ({ navMenuOpen: !st.navMenuOpen, navSolOpen: false })),
+      navToggleSolutions: () => this.setState(st => ({ navSolOpen: !st.navSolOpen })),
+      goEditorial: () => {
+        const el = document.getElementById('chapters');
+        if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 72, behavior: 'smooth' });
+      },
+      done: s.done,
+      notDone: !s.done,
+      score,
+      bandLabel: band,
+      scoreBlurb: blurb,
+      bonusText: this.bonusObservation(),
+      hasBonus: !!this.bonusObservation(),
+      hubSize: s.done ? '56%' : '54%',
+      hubGlow: s.done ? '46%' : '40%',
+      hubGlowOpacity: s.done ? 0.6 : 0.32,
+      hubFont: s.done ? 38 : 24,
+      hubNum: answered ? String(score) : '—',
+      hubLabel: s.done ? 'Estimated' : 'Live estimate',
+      steps: ['Details', 'Consent', 'Payment', 'Verify', 'Password', 'MFA'].map((label, i) => ({
+        label,
+        badge: i < fs ? '\u2713' : String(i + 1),
+        ring: i === fs ? '#3B82F6' : i < fs ? 'rgba(37,99,235,.5)' : 'rgba(51,65,85,.9)',
+        fill: i === fs ? '#3B82F6' : i < fs ? 'rgba(37,99,235,.14)' : 'transparent',
+        numColor: i === fs ? '#f8fafc' : i < fs ? '#93c5fd' : '#475569',
+        color: i === fs ? '#f1f5f9' : i < fs ? '#93c5fd' : '#475569'
+      })),
+      scanVisible: fs >= 3,
+      scanHubNum: idx > 6 ? String(Math.round(scanScores.reduce((a, b) => a + b, 0) / 6)) : Math.min(6, Math.max(0, idx)) + '/6',
+      scanHubLabel: idx > 6 ? 'Copilot Gate score' : 'Pillars scanned',
+      scanFindingCount: idx <= 0 ? 'reading tenant\u2026' : findingCount + ' so far',
+      scanHubShort: idx > 6 ? 'Gate score' : 'Scanning',
+      trackD0: this.sectorPath(0, 100, 195),
+      trackD1: this.sectorPath(1, 100, 195),
+      trackD2: this.sectorPath(2, 100, 195),
+      trackD3: this.sectorPath(3, 100, 195),
+      trackD4: this.sectorPath(4, 100, 195),
+      trackD5: this.sectorPath(5, 100, 195),
+      scanHeadline: idx <= 0 ? 'Scan starting\u2026' : idx > 6 ? 'Scan complete \u2014 generating reports' : 'Scanning ' + PILLARS[Math.min(5, idx - 1)].name.toLowerCase(),
+      scanMeta: idx <= 0 ? 'graph.microsoft.com \u00b7 connected' : idx > 6 ? '6 of 6 pillars \u00b7 ' + elapsed + 's' : Math.min(6, idx) + ' of 6 pillars \u00b7 ' + elapsed + 's',
+      atDetails: fs === 0,
+      atConsent: fs === 1,
+      atPay: fs === 2,
+      atCode: fs === 3,
+      atPassword: fs === 4,
+      atMfa: fs === 5,
+      atDone: fs >= 6,
+      next: () => this.setState({ flowStep: fs + 1 }),
+      back2: () => this.setState({ flowStep: Math.max(0, fs - 1) }),
+      noop: () => {},
+      restartFlow: () => { if (this._scanTick) { clearTimeout(this._scanTick); this._scanTick = null; } this.setState({ flowStep: 0, scanIdx: undefined, scanT0: null, form: Object.assign({}, f, { code: '', mfa: '' }) }); },
+      vFirst: f.first || '',
+      vLast: f.last || '',
+      vCompany: f.company || 'your tenant',
+      vEmail: f.email || 'your inbox',
+      vCard: f.card || '',
+      vExp: f.exp || '',
+      vCvc: f.cvc || '',
+      vCode: f.code || '',
+      vPass: f.pass || '',
+      vPass2: f.pass2 || '',
+      vMfa: f.mfa || '',
+      setFirst: e => this.setField('first', e.target.value),
+      setLast: e => this.setField('last', e.target.value),
+      setCompany: e => this.setField('company', e.target.value),
+      setEmail: e => this.setField('email', e.target.value),
+      setCard: e => this.setField('card', e.target.value.replace(/\D/g, '').slice(0, 16).replace(/(.{4})(?=.)/g, '$1 ')),
+      setExp: e => {
+        const d = e.target.value.replace(/\D/g, '').slice(0, 4);
+        let out = d;
+        if (d.length === 1 && +d > 1) out = '0' + d;
+        if (d.length >= 2) {
+          const mm = Math.min(12, Math.max(1, parseInt(d.slice(0, 2), 10) || 1));
+          out = String(mm).padStart(2, '0') + (d.length > 2 ? ' / ' + d.slice(2) : '');
+        }
+        this.setField('exp', out);
+      },
+      setCvc: e => this.setField('cvc', e.target.value.replace(/\D/g, '').slice(0, 4)),
+      setCode: e => this.setField('code', e.target.value.replace(/\D/g, '').slice(0, 6)),
+      setPass: e => this.setField('pass', e.target.value),
+      setPass2: e => this.setField('pass2', e.target.value),
+      setMfa: e => this.setField('mfa', e.target.value.replace(/\D/g, '').slice(0, 6)),
+      detailsInvalid: !(f.first && f.last && f.company && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email || '')),
+      payInvalid: !((f.card || '').replace(/\D/g, '').length === 16 && (f.exp || '').replace(/\D/g, '').length === 4 && (f.cvc || '').length >= 3),
+      codeInvalid: (f.code || '').length !== 6,
+      passInvalid: !((f.pass || '').length >= 12 && f.pass === f.pass2),
+      mfaInvalid: (f.mfa || '').length !== 6,
+      passWidth: pw.width,
+      passColor: pw.color,
+      passLabel: pw.label,
+      scopes: [
+        { text: 'Sites.Read.All' },
+        { text: 'Directory.Read.All' },
+        { text: 'Policy.Read.All' },
+        { text: 'Reports.Read.All' },
+        { text: 'AuditLog.Read.All' }
+      ],
+      includes: [
+        { text: 'Read-only Graph scan of all six pillars' },
+        { text: 'Whole tenant, no seat tiers or sampling' },
+        { text: 'Eight reports, generated in under thirty minutes' },
+        { text: 'Your Copilot Gate status and blast radius' },
+        { text: 'Evidence behind every finding, not just scores' },
+        { text: 'Remediation sequence, phase by phase' }
+      ],
+      cohortPhrase: seat ? 'with ' + seat : 'of comparable size',
+      closingLine: s.done
+        ? 'Your estimate of ' + score + ' came from seven answers about how things are meant to work.'
+        : 'An estimate comes from how things are meant to work.'
+    };
+    w.forEach((v, i) => { vals['d' + i] = this.sectorPath(i, 100, 100 + v * 95); });
+    Object.assign(vals, satVals);
+    for (let i = 0; i < 6; i++) {
+      const a = s.answers[i + 1];
+      const v = (a === null || a === undefined) ? VARIANTS[i].none : VARIANTS[i].a[a];
+      vals['hd' + i] = v[0];
+      vals['bd' + i] = v[1];
+    }
+    return vals;
+  }
+}
+
+</script>
+</body>
+</html>
