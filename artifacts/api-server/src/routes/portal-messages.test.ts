@@ -141,6 +141,15 @@ describe("POST /api/portal/messages (#177)", () => {
     const token = makeAdminToken(adminId);
 
     mockSelectResultsQueue = [
+      // customerNotificationPreferencesTable lookup inside createNotification's
+      // getCustomerPreference (#2849) — no row, so it defaults to emailEnabled:
+      // false and createNotification's own deliverPreferenceEmail stays a
+      // no-op, same as this route's real `suppressPreferenceEmail: true` (#2933).
+      [],
+      // usersTable lookup inside createNotification's fanOutToCustomerWebhook ->
+      // resolveMspUserContext (#2849) — no matching row, so webhook fan-out is
+      // a no-op.
+      [],
       // usersTable lookup for the target client's email/name
       [{ email: "client@example.com", name: "Test Client" }],
     ];

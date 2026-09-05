@@ -48,6 +48,10 @@ router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request
       category: "project",
       linkPath,
       recipient: { type: "customer_user", userId: report.clientUserId },
+      // This route already sends its own branded "status-report-reply"
+      // template email below — don't let createNotification's own
+      // preference-gated email double it up once the client opts in (#2933).
+      suppressPreferenceEmail: true,
     });
 
     const [client] = await db.select({ email: usersTable.email, name: usersTable.name })
@@ -122,6 +126,10 @@ router.post("/admin/status-reports/:id/thread", requireAdmin, async (req: Reques
       category: "project",
       linkPath,
       recipient: { type: "customer_user", userId: report.clientUserId },
+      // This route already sends its own branded "admin-thread-reply"
+      // template email below — don't let createNotification's own
+      // preference-gated email double it up once the client opts in (#2933).
+      suppressPreferenceEmail: true,
     });
     const [client] = await db.select({ email: usersTable.email, name: usersTable.name })
       .from(usersTable)

@@ -261,6 +261,7 @@ export default defineConfig({
       "src/routes/portal-team.test.ts",
       "src/routes/portal-billing.test.ts",
       "src/routes/portal-messages.test.ts",
+      "src/lib/notification-center-suppress-preference-email.test.ts",
       "src/routes/portal-risk-register.test.ts",
       "src/routes/portal-policy-decisions.test.ts",
       "src/routes/msp-policy-decisions.test.ts",

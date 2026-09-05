@@ -86,6 +86,10 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
       category: "message",
       linkPath: "/portal/messages",
       recipient: { type: "customer_user", userId: clientUserId },
+      // This route already sends its own branded "client-message-notification"
+      // template email below — don't let createNotification's own
+      // preference-gated email double it up once the client opts in (#2933).
+      suppressPreferenceEmail: true,
     });
     // Email the client
     const [clientUser] = await db.select({ email: usersTable.email, name: usersTable.name })
@@ -119,6 +123,10 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
         category: "message",
         linkPath: `/dashboard/messages?clientId=${senderId}`,
         recipient: { type: "customer_user", userId: adminUser.id },
+        // This route already sends its own branded "admin-message-notification"
+        // template email below — don't let createNotification's own
+        // preference-gated email double it up once the admin opts in (#2933).
+        suppressPreferenceEmail: true,
       });
       void sendWebPushToAdmins({
         title: "New client message",
