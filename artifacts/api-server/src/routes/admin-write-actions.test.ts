@@ -293,6 +293,75 @@ describe("testbed-only restriction is enforced server-side", () => {
   });
 });
 
+// ── Archived templates are not runnable (Git #2937) ─────────────────────────────
+
+describe("an archived template is refused on both preview and execute", () => {
+  // #2937 archived action.submit-file-detonation because its stored endpoint
+  // (POST /security/alerts_v2) is not an operation Microsoft Graph exposes. The
+  // schema's status column already described archiving as a real retirement, but
+  // nothing on this route enforced it — an archived row still previewed and still
+  // executed by templateId, which made archiving decorative. It is a gate now, and
+  // the ARCHIVED fixture below deliberately carries the real retired row's stored
+  // endpoint/method/body so this stays a test about the real defect.
+  const ARCHIVED = {
+    templateId: "action.submit-file-detonation",
+    label: "Submit File/URL for Detonation",
+    description: "ARCHIVED (#2937). POST /security/alerts_v2 is not a real Graph operation.",
+    category: "security",
+    endpoint: "/security/alerts_v2",
+    method: "POST",
+    bodyTemplate: { comment: "Submitted for detonation analysis" },
+    requiredVariables: ["fileOrUrl"],
+    successCriteria: { expectStatus: 200 },
+    dependsOn: [],
+    requiresVerificationGate: false,
+    reversible: false,
+    reverseTemplateId: null,
+    status: "archived",
+  };
+
+  beforeEach(() => {
+    templates.push({ ...ARCHIVED });
+  });
+
+  it("preview refuses it with 409 and never resolves a request", async () => {
+    const res = await auth(
+      request(makeApp())
+        .post("/api/admin/write-actions/action.submit-file-detonation/preview")
+        .send({ customerId: TESTBED_CUSTOMER.id, variables: { fileOrUrl: "https://example.invalid/x" } }),
+    );
+    expect(res.status).toBe(409);
+    expect(res.body.gate).toBe("template_archived");
+    expect(resolveBaselineTemplateRequest).not.toHaveBeenCalled();
+  });
+
+  it("execute refuses it with 409 even with confirmed:true — no write is attempted", async () => {
+    const res = await auth(
+      request(makeApp())
+        .post("/api/admin/write-actions/action.submit-file-detonation/execute")
+        .send({ customerId: TESTBED_CUSTOMER.id, confirmed: true, variables: { fileOrUrl: "https://example.invalid/x" } }),
+    );
+    expect(res.status).toBe(409);
+    expect(res.body.gate).toBe("template_archived");
+    expect(runBaselineTemplateAgainstTenant).not.toHaveBeenCalled();
+  });
+
+  it("an active template is unaffected by the gate", async () => {
+    resolveBaselineTemplateRequest.mockResolvedValue({
+      templateId: "users.disable_enable_signin", label: "Disable / Enable User Sign-In", category: "Users",
+      endpoint: "/users/u1", rawEndpoint: "/users/{{userId}}", method: "PATCH",
+      body: { accountEnabled: false }, rawBodyTemplate: { accountEnabled: "{{accountEnabled}}" },
+      requiredVariables: ["userId", "accountEnabled"], missingVariables: [],
+    });
+    const res = await auth(
+      request(makeApp())
+        .post("/api/admin/write-actions/users.disable_enable_signin/preview")
+        .send({ customerId: TESTBED_CUSTOMER.id, variables: { userId: "u1", accountEnabled: "false" } }),
+    );
+    expect(res.status).toBe(200);
+  });
+});
+
 // ── Explicit confirmation, server-backed ────────────────────────────────────────
 
 describe("explicit confirmation is required server-side", () => {

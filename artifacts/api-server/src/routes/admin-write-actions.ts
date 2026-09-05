@@ -272,6 +272,23 @@ async function loadDependsOnState(dependsOn: string[], customerId: number): Prom
   return resolveDependsOnState(dependsOn, labelById, succeeded);
 }
 
+// ── Archived templates are not runnable (Git #2937) ─────────────────────────────
+//
+// `status` on baseline_action_templates is the schema's first-class retirement
+// switch ("Archived (not hard-deleted) templates are grandfathered into any
+// config pack that already references them"). Before #2937 nothing enforced it
+// on this route: an archived row still previewed and still executed by
+// templateId, which made archiving purely decorative. #2937 archived
+// action.submit-file-detonation precisely because its stored endpoint
+// (POST /security/alerts_v2) is not an operation Microsoft Graph exposes, so
+// letting it execute would send a request that cannot succeed.
+function describeArchivedTemplate(templateId: string, status: string): string {
+  return (
+    `Write-action template '${templateId}' is ${status}, not active — archived templates are not runnable. ` +
+    "See the template's description for why it was retired."
+  );
+}
+
 // ── Preview: resolve the REAL request without executing anything ─────────────────
 
 router.post("/admin/write-actions/:templateId/preview", requireAdmin, async (req: Request, res: Response) => {
@@ -289,6 +306,12 @@ router.post("/admin/write-actions/:templateId/preview", requireAdmin, async (req
       .where(eq(baselineActionTemplatesTable.templateId, templateId))
       .limit(1);
     if (!template) return void res.status(404).json({ error: "Write-action template not found" });
+    if (template.status !== "active") {
+      return void res.status(409).json({
+        error: describeArchivedTemplate(templateId, template.status),
+        gate: "template_archived",
+      });
+    }
 
     // The SAME resolution the executor performs — the operator confirms exactly
     // what will be sent. customerId is injected into the payload the same way the
@@ -383,6 +406,12 @@ router.post("/admin/write-actions/:templateId/execute", requireAdminOrIngestToke
       .where(eq(baselineActionTemplatesTable.templateId, templateId))
       .limit(1);
     if (!template) return void res.status(404).json({ error: "Write-action template not found" });
+    if (template.status !== "active") {
+      return void res.status(409).json({
+        error: describeArchivedTemplate(templateId, template.status),
+        gate: "template_archived",
+      });
+    }
 
     // The one production execution engine — never a parallel implementation.
     // source:"simulator" tags the audit-log row so history can distinguish it.

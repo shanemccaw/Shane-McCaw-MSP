@@ -1955,6 +1955,14 @@ export function SimulatorLeftTree() {
                                   >
                                     {wa.label}
                                   </span>
+                                  {wa.status !== "active" && (
+                                    <span
+                                      className="shrink-0 text-[9px] uppercase tracking-wider text-amber-400/80"
+                                      title="Retired — not runnable. See the template description for why."
+                                    >
+                                      {wa.status}
+                                    </span>
+                                  )}
                                   {!wa.reversible && (
                                     <span
                                       className="shrink-0 text-[9px] uppercase tracking-wider text-red-400/70"
