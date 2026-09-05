@@ -38,7 +38,6 @@ import {
   marketingTasksTable,
   kanbanTasksTable,
   articlesTable,
-  notificationsTable,
   campaignsTable,
   campaignAssetsTable,
   offersTable,
@@ -74,6 +73,7 @@ import { getSecretValue } from "./azure-keyvault";
 import { generateScriptFromService, generateScriptFromDocument } from "./ps-script-gen.js";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
+import { createNotification, createNotificationForAllAdmins } from "./notification-center";
 import { sendPushNotifications } from "./push";
 import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, clearPresentationPhaseGenSSEState, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent, broadcastWorkflowRunProgress, broadcastWorkflowRunComplete, broadcastWorkflowRunError } from "./sse-channels";
 import { broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./document-engine-sow";
@@ -4918,72 +4918,42 @@ async function executeNode(
           log.warn({ runId }, "create_notification: title is empty — skipping insert");
           output = { notificationCount: 0, skipped: true, reason: "title is empty" };
         } else if (cnChannel === "inbox") {
-          // Notification Center path: insert for all admins with full NC fields
-          const adminRows = await db
-            .select({ id: usersTable.id })
-            .from(usersTable)
-            .where(eq(usersTable.role, "admin"));
-
-          if (adminRows.length === 0) {
+          // Notification Center path: route through createNotification() for all
+          // admins so this gets real preference gating, email/webhook fan-out and
+          // SSE broadcast — createNotificationForAllAdmins() handles the fan-out
+          // and the per-admin broadcast internally (see notification-center.ts).
+          const notifiedCount = await createNotificationForAllAdmins({
+            title: cnTitle,
+            body: cnBody || undefined,
+            notifType: resolvedType,
+            linkPath: cnLink ?? undefined,
+            feedType: cnFeedType,
+            category: cnCategory ?? undefined,
+            severity: cnSeverity,
+          });
+          if (notifiedCount === 0) {
             log.warn({ runId }, "create_notification[inbox]: no admin users found — skipping");
             output = { notificationCount: 0, skipped: true, reason: "no admin users" };
           } else {
-            const { broadcastNotification, broadcastUnreadCount } = await import("./sse-channels");
-            await db.insert(notificationsTable).values(
-              adminRows.map(row => ({
-                userId: row.id,
-                title: cnTitle,
-                body: cnBody || null,
-                type: resolvedType,
-                linkPath: cnLink,
-                read: false,
-                feedType: cnFeedType,
-                category: cnCategory,
-                severity: cnSeverity,
-                recipientType: "platform_admin" as const,
-              })),
-            );
-            // SSE broadcast for each admin so open tabs update instantly
-            const newNotif = {
-              title: cnTitle, body: cnBody || null, category: cnCategory,
-              severity: cnSeverity, linkPath: cnLink, feedType: cnFeedType,
-              read: false, createdAt: new Date().toISOString(),
-            };
-            for (const row of adminRows) {
-              broadcastNotification(row.id, newNotif);
-              // Recompute unread count and push it
-              const [cnt] = await db
-                .select({ n: count() })
-                .from(notificationsTable)
-                .where(and(eq(notificationsTable.userId, row.id), eq(notificationsTable.feedType, "personal"), eq(notificationsTable.read, false)));
-              broadcastUnreadCount(row.id, cnt?.n ?? 0);
-            }
-            log.info({ runId, notificationCount: adminRows.length, cnFeedType, cnCategory }, "create_notification[inbox]: inserted notifications");
-            output = { notificationCount: adminRows.length };
+            log.info({ runId, notificationCount: notifiedCount, cnFeedType, cnCategory }, "create_notification[inbox]: inserted notifications");
+            output = { notificationCount: notifiedCount };
           }
         } else {
-          // Legacy path: insert for all admins without NC fields (backward compat)
-          const adminRows = await db
-            .select({ id: usersTable.id })
-            .from(usersTable)
-            .where(eq(usersTable.role, "admin"));
-
-          if (adminRows.length === 0) {
+          // Legacy path: same admin fan-out, without the caller-supplied NC
+          // fields (backward compat) — still routed through createNotification()
+          // rather than a direct db.insert(notificationsTable) (Git #2932).
+          const notifiedCount = await createNotificationForAllAdmins({
+            title: cnTitle,
+            body: cnBody || undefined,
+            notifType: resolvedType,
+            linkPath: cnLink ?? undefined,
+          });
+          if (notifiedCount === 0) {
             log.warn({ runId }, "create_notification: no admin users found — skipping insert");
             output = { notificationCount: 0, skipped: true, reason: "no admin users" };
           } else {
-            await db.insert(notificationsTable).values(
-              adminRows.map(row => ({
-                userId: row.id,
-                title: cnTitle,
-                body: cnBody || null,
-                type: resolvedType,
-                linkPath: cnLink,
-                read: false,
-              })),
-            );
-            log.info({ runId, notificationCount: adminRows.length, cnType: resolvedType }, "create_notification: inserted notifications");
-            output = { notificationCount: adminRows.length };
+            log.info({ runId, notificationCount: notifiedCount, cnType: resolvedType }, "create_notification: inserted notifications");
+            output = { notificationCount: notifiedCount };
           }
         }
         break;
@@ -5868,22 +5838,13 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
           const notifLink  = "/admin-panel/content/articles?tab=drafts";
 
           try {
-            const admins = await db
-              .select({ id: usersTable.id })
-              .from(usersTable)
-              .where(eq(usersTable.role, "admin"));
-
-            if (admins.length > 0) {
-              await db.insert(notificationsTable).values(
-                admins.map(a => ({
-                  userId:   a.id,
-                  title:    notifTitle,
-                  body:     notifBody,
-                  type:     "general" as const,
-                  linkPath: notifLink,
-                })),
-              );
-            }
+            await createNotificationForAllAdmins({
+              title: notifTitle,
+              body: notifBody,
+              notifType: "general",
+              category: "content",
+              linkPath: notifLink,
+            });
           } catch (notifErr) {
             log.warn({ notifErr, slug: newArticle.slug }, "publish_article: failed to insert draft notifications (non-fatal)");
           }
@@ -7657,20 +7618,16 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                 ));
 
               if (approvers.length > 0) {
-                await db.insert(notificationsTable).values(
-                  approvers.map(a => ({
-                    mspUserId: a.userId,
-                    mspId: gateMspId,
-                    recipientType: "msp_user" as const,
-                    title: notifTitle,
-                    body: notifBody,
-                    type: "general" as const,
-                    linkPath: notifLink,
-                    feedType: "personal" as const,
-                    category: "approval",
-                    severity: "warning" as const,
-                  })),
-                );
+                await Promise.all(approvers.map(a => createNotification({
+                  title: notifTitle,
+                  body: notifBody,
+                  notifType: "general",
+                  linkPath: notifLink,
+                  feedType: "personal",
+                  category: "approval",
+                  severity: "warning",
+                  recipient: { type: "msp_user", mspUserId: a.userId, mspId: gateMspId },
+                })));
                 const { sendEmail } = await import("./mailer");
                 for (const a of approvers) {
                   if (a.email) void sendEmail(a.email, notifTitle, `<p>${notifBody}</p><p>Log in to the MSP Portal to review.</p>`);
@@ -7684,22 +7641,13 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           } else {
             const notifLink = `/admin-panel/workflows/runs/${runId}`;
             try {
-              const admins = await db
-                .select({ id: usersTable.id })
-                .from(usersTable)
-                .where(eq(usersTable.role, "admin"));
-
-              if (admins.length > 0) {
-                await db.insert(notificationsTable).values(
-                  admins.map(a => ({
-                    userId: a.id,
-                    title: notifTitle,
-                    body: notifBody,
-                    type: "general" as const,
-                    linkPath: notifLink,
-                  })),
-                );
-              }
+              await createNotificationForAllAdmins({
+                title: notifTitle,
+                body: notifBody,
+                notifType: "general",
+                category: "approval",
+                linkPath: notifLink,
+              });
             } catch (notifErr) {
               log.warn({ notifErr, runId }, "approval_gate: failed to insert notifications (non-fatal)");
             }

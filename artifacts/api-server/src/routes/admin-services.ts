@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplatesTable, contractTemplatesTable, projectsTable, workflowStepsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, kanbanTasksTable, notificationsTable, clientAppRegistrationsTable, type ServiceAssociatedDocument } from "@workspace/db";
+import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplatesTable, contractTemplatesTable, projectsTable, workflowStepsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, kanbanTasksTable, clientAppRegistrationsTable, type ServiceAssociatedDocument } from "@workspace/db";
 import { eq, and, inArray, sql, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { z } from "zod";
@@ -14,6 +14,7 @@ import { probeGraphPermissions } from "../lib/probe-graph-permissions";
 import { createAuditLog } from "../lib/audit";
 import { resolveTemplateTaskMetadata } from "../lib/template-task-metadata";
 import { getDefaultSteps, seedDefaultWorkflowSteps } from "../lib/default-workflow-steps";
+import { createNotification } from "../lib/notification-center";
 
 const log = logger.child({ channel: "admin.content" });
 
@@ -1023,12 +1024,13 @@ async function reProbeClientPermissionsInBackground(clientUserId: number): Promi
 
     // 6. Notify the client if newly required permissions are missing
     if (probeResult.missing.length > 0) {
-      await db.insert(notificationsTable).values({
-        userId: clientUserId,
+      await createNotification({
         title: "Action required: App Registration permissions",
         body: `Your services have been updated and your Microsoft 365 App Registration is now missing ${probeResult.missing.length} required permission${probeResult.missing.length === 1 ? "" : "s"}. Please visit the App Registration page to grant them.`,
-        type: "general",
+        notifType: "general",
+        category: "system",
         linkPath: "/portal/app-registration",
+        recipient: { type: "customer_user", userId: clientUserId },
       });
     }
   } catch (err) {
@@ -1161,10 +1163,13 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
 
   const [service] = await db.select().from(servicesTable).where(eq(servicesTable.id, serviceId));
   if (service) {
-    await db.insert(notificationsTable).values({
-      userId: clientUserId,
+    await createNotification({
       title: `Service activated: ${service.name}`,
-      body: null, type: "general", linkPath: "/portal/services",
+      body: undefined,
+      notifType: "general",
+      category: "project",
+      linkPath: "/portal/services",
+      recipient: { type: "customer_user", userId: clientUserId },
     });
 
     // Auto-generate project from the service's directly linked workflow template (if any)
@@ -1240,12 +1245,13 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
       templateStepsSeeded = true;
 
       // Notify client about the new project
-      await db.insert(notificationsTable).values({
-        userId: clientUserId,
+      await createNotification({
         title: `Your project is ready: ${autoProject.title}`,
-        body: null,
-        type: "project_update",
+        body: undefined,
+        notifType: "project_update",
+        category: "project",
         linkPath: `/portal/projects/${autoProject.id}`,
+        recipient: { type: "customer_user", userId: clientUserId },
       });
     }
 
