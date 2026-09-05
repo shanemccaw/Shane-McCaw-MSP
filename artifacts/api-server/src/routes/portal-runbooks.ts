@@ -81,6 +81,7 @@ import { z } from "zod";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import {
   computeRiskLevel,
   deriveWorkload,
@@ -126,6 +127,10 @@ function titleCasePillar(pillar: string): string {
 router.get(
   "/portal/runbooks",
   requireRole("Assessment"),
+  // #1168: Config Pack execution itself stays unconditional; only this READ
+  // checks the tier bundles Runbooks (an Assessment-tier login has no active
+  // Monitoring subscription, so this fails closed to empty automatically).
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.runbooks),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -644,6 +649,7 @@ decisionRoute("prepare_cr", "/portal/hold-windows/:holdId/prepare-cr");
 router.get(
   "/portal/hold-windows/:holdId/events",
   requireRole("Assessment"),
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.runbooks),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

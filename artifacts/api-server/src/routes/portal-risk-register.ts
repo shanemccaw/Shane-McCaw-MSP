@@ -87,6 +87,7 @@ import { z } from "zod";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { formatChangeRequestCode } from "../lib/portal-change-control";
 import { logger } from "../lib/logger";
@@ -409,6 +410,9 @@ async function scopeOrEmpty(req: Request, res: Response, emptyKey: "risks" | "de
 router.get(
   "/portal/risk-register",
   requireRole("CustomerUser"),
+  // #1168: creation (accept/POST below) is unconditional; only this READ
+  // checks the customer's purchased Monitoring tier bundles Risk Register.
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.riskRegister),
   async (req: Request, res: Response) => {
     try {
       const scope = await scopeOrEmpty(req, res, "risks");
@@ -453,6 +457,9 @@ router.get(
 router.get(
   "/portal/policy-decisions",
   requireRole("CustomerUser"),
+  // #1168: this is the policy-decision VIEW of risk data, gated the same as
+  // the dedicated policy-decisions.ts module.
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.policyDecisions),
   async (req: Request, res: Response) => {
     try {
       const scope = await scopeOrEmpty(req, res, "decisions");

@@ -219,6 +219,7 @@ export default defineConfig({
       "src/middlewares/requireAuth.test.ts",
       "src/lib/productTypeConfig.test.ts",
       "src/lib/msp-entitlement.test.ts",
+      "src/lib/portal-tier-features.test.ts",
       "src/routes/admin-engines.test.ts",
       "src/routes/admin-overlord.test.ts",
       "src/routes/portal-customer-offboard.test.ts",

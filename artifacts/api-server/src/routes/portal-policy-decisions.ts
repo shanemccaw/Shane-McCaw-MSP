@@ -59,6 +59,7 @@ import { z } from "zod";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
 
@@ -158,6 +159,9 @@ function toWirePolicyRegisterEntry(row: PolicyDecisionRow, obligationTypeById: M
 router.get(
   "/portal/policy-register",
   requireRole("CustomerUser"),
+  // #1168: creation (the POST below) is unconditional; only this READ checks
+  // the customer's purchased Monitoring tier actually bundles Policy Decisions.
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.policyDecisions),
   async (req: Request, res: Response) => {
     try {
       const customerId = resolveCustomerId(req);

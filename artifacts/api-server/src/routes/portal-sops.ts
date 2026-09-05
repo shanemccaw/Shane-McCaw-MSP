@@ -81,6 +81,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import {
   auditResult,
   automatedStepCount,
@@ -342,6 +343,9 @@ async function loadCustomStepsBySop(customerId: number): Promise<Map<string, Cus
 router.get(
   "/portal/sops",
   requireRole("CustomerUser"),
+  // #1168: authoring (POST below) stays unconditional; only this READ checks
+  // the tier bundles SOPs & Runbooks.
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.sopsRunbooks),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -510,6 +514,7 @@ function dedupeInOrder(values: readonly string[]): string[] {
 router.get(
   "/portal/sop-runs",
   requireRole("CustomerUser"),
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.sopsRunbooks),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

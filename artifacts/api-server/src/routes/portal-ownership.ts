@@ -126,6 +126,7 @@ import {
 import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 
 import { requireRole, type AuthUser } from "../middlewares/requireAuth";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import {
   resolveCustomerId,
   resolveCustomerMspId,
@@ -420,6 +421,9 @@ export interface WireOwnershipPayload {
 router.get(
   "/portal/ownership",
   requireRole("CustomerUser"),
+  // #1168: writes below stay unconditional; only this READ checks the
+  // customer's purchased Monitoring tier bundles RACI/Ownership.
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.ownership),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -1141,6 +1145,7 @@ router.post(
 router.get(
   "/portal/ownership/events",
   requireRole("CustomerUser"),
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.ownership),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = scopedCustomerId(req, res);
     if (customerId === null) return;
