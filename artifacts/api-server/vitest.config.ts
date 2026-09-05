@@ -509,6 +509,10 @@ export default defineConfig({
       // by the sweep's SQL (every customer, one pass), proved to agree against the real
       // local Postgres. Skips cleanly with no DATABASE_URL.
       "src/lib/tenant-billing-state.live-db.test.ts",
+      // #2847 → #2765 seam: a cancelled per-customer subscription really does freeze
+      // that customer's retention clocks and start the 7-year window, with tenants.status
+      // left untouched throughout (which is the gap #2847 was filed for).
+      "src/lib/retention/subscription-freeze.live-db.test.ts",
     ],
     coverage: {
       provider: "v8",

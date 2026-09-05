@@ -64,7 +64,7 @@
  * made here and no cascade is implemented. Filed as a decision issue under #1944.
  */
 
-import { and, desc, eq, exists, inArray, notExists, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, exists, inArray, isNotNull, notExists, or, sql, type SQL } from "drizzle-orm";
 import {
   db,
   tenantsTable,
@@ -360,6 +360,13 @@ export async function recordTenantSubscription(
       .values(values)
       .onConflictDoUpdate({
         target: tenantSubscriptionsTable.stripeSubscriptionId,
+        // `tenant_subscriptions_stripe_sub_uq` is a PARTIAL unique index
+        // (`WHERE stripe_subscription_id IS NOT NULL`), and Postgres will not infer a
+        // partial index from a bare conflict target — it answers 42P10 *"there is no
+        // unique or exclusion constraint matching the ON CONFLICT specification"*. The
+        // predicate has to be repeated here so the planner can match the index. Caught
+        // by `tenant-billing-state.live-db.test.ts`; a mocked `db` could not have.
+        targetWhere: isNotNull(tenantSubscriptionsTable.stripeSubscriptionId),
         set: {
           status: values.status,
           planName: values.planName,
