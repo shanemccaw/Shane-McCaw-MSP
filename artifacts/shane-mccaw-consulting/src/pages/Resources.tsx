@@ -2,9 +2,6 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
-import { ChatCTA } from "@/components/ChatCTA";
-import { GlassPanel } from "@/components/design-system/GlassPanel";
-import { GradientText } from "@/components/design-system/GradientText";
 import { trackEvent } from "@/lib/analytics";
 import {
   Download,
@@ -22,7 +19,7 @@ import type { Article } from "@/data/articles";
 import { pdf } from "@react-pdf/renderer";
 import { CopilotReadinessPDF } from "@/lib/CopilotReadinessPDF";
 
-const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
+const GRADIENT_BG = { background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" };
 
 // Canonical filter order (matches src/content/articles/README.md); only categories
 // with at least one published article render, and any new category an author adds
@@ -60,15 +57,18 @@ function shareArticle(slug: string, platform: "linkedin" | "x") {
 
 function ArticleMeta({ article, shareCount, testId }: { article: Article; shareCount?: number; testId?: string }) {
   return (
-    <div className="flex items-center gap-3">
-      <p className="text-text-secondary text-xs">{article.date}</p>
-      <span className="text-text-tertiary text-xs">·</span>
-      <p className="text-text-secondary text-xs">{article.readingTime}</p>
+    <div className="flex flex-wrap items-center gap-2 text-xs text-[#94a3b8]">
+      <span>{article.date}</span>
+      <span className="text-[#64748b]">·</span>
+      <span>{article.readingTime}</span>
       {(shareCount ?? 0) > 0 && (
-        <span className="flex items-center gap-1 text-text-secondary text-xs" data-testid={testId}>
-          <Share2 className="w-3 h-3" />
-          {shareCount} {shareCount === 1 ? "share" : "shares"}
-        </span>
+        <>
+          <span className="text-[#64748b]">·</span>
+          <span className="flex items-center gap-1" data-testid={testId}>
+            <Share2 className="w-3 h-3" />
+            {shareCount} {shareCount === 1 ? "share" : "shares"}
+          </span>
+        </>
       )}
     </div>
   );
@@ -155,6 +155,9 @@ export default function Resources() {
     setSubmitted(true);
   };
 
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(leadMagnetEmail);
+  const leadInvalid = !(leadMagnetName.trim() && emailValid);
+
   return (
     <Layout>
       <SEOMeta
@@ -163,13 +166,24 @@ export default function Resources() {
       />
 
       {/* Hero — content-first framing */}
-      <section className="pt-32 sm:pt-40 pb-10 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">Resources &amp; Field Notes</p>
-          <h1 className="font-display text-4xl sm:text-6xl font-bold text-text-primary tracking-tight leading-tight max-w-4xl mb-6">
-            Practical Microsoft 365 guidance, <GradientText>written from the field</GradientText>
+      <section
+        className="relative overflow-hidden pt-32 sm:pt-40 pb-7 sm:pb-10 px-4 sm:px-6 lg:px-8"
+        style={{
+          background:
+            "radial-gradient(circle 1100px at 76% -20%, rgba(139,92,246,.12), rgba(2,6,23,0) 62%), radial-gradient(circle 800px at 6% 12%, rgba(0,120,212,.06), rgba(2,6,23,0) 66%)",
+        }}
+      >
+        <div className="max-w-[1160px] mx-auto relative">
+          <div className="flex items-center gap-3">
+            <span className="w-[26px] h-px" style={{ background: "linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))" }} />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#00B4D8]">
+              Resources &amp; Field Notes
+            </span>
+          </div>
+          <h1 className="text-[28px] sm:text-[34px] lg:text-[42px] leading-[1.1] tracking-[-0.022em] font-extrabold text-[#f8fafc] mt-[22px] mb-5 max-w-[820px]">
+            Practical Microsoft 365 guidance, <span className="text-[#00B4D8]">written from the field</span>
           </h1>
-          <p className="text-text-secondary text-lg md:text-xl max-w-3xl leading-relaxed">
+          <p className="text-base sm:text-lg leading-relaxed text-[#94a3b8] max-w-[760px]">
             Tactical, do-this-first guidance — the security controls, governance policies, and platform
             decisions that make a measurable difference — plus honest notes from Shane's own journey
             building a modern Microsoft practice. Thirty years in the ecosystem, currently Lead M365
@@ -180,34 +194,61 @@ export default function Resources() {
 
       {/* Featured — latest article */}
       {featured && (
-        <section className="pb-4 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-6xl mx-auto">
+        <section className="px-4 sm:px-6 lg:px-8 pb-3 sm:pb-4">
+          <div className="max-w-[1160px] mx-auto">
             <article
-              className="bg-charcoal-1 rounded-2xl border border-white/[0.06] hover:border-accent-blue/30 transition-colors p-6 md:p-10"
+              className="relative overflow-hidden rounded-3xl border border-[rgba(0,120,212,0.3)] hover:border-[rgba(0,120,212,0.55)] transition-colors p-6 md:p-11 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-8 lg:gap-14 items-end"
+              style={{
+                background:
+                  "radial-gradient(900px 380px at 8% -10%,rgba(0,120,212,.16),transparent 60%),linear-gradient(168deg,rgba(10,37,64,.5),#070d1e 64%)",
+              }}
               data-testid="featured-article"
             >
-              <div className="flex flex-wrap items-center gap-3 mb-4">
-                <span className="text-accent-violet text-xs font-bold uppercase tracking-widest">Latest article</span>
-                <span className="inline-block bg-white/[0.06] text-accent-blue text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wide border border-white/[0.08]">
-                  {featured.category}
-                </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-3 mb-[18px]">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#00B4D8]">Latest article</span>
+                  <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-[#60a5fa] bg-[rgba(96,165,250,0.1)] border border-[rgba(96,165,250,0.2)] rounded-full px-[11px] py-[5px]">
+                    {featured.category}
+                  </span>
+                </div>
+                <h2 className="text-2xl md:text-4xl leading-[1.15] tracking-[-0.025em] font-extrabold mb-3.5 max-w-[720px]">
+                  <Link href={`/resources/${featured.slug}`} className="text-[#f8fafc] hover:text-[#00B4D8] transition-colors">
+                    {featured.title}
+                  </Link>
+                </h2>
+                <p className="text-base leading-[1.65] text-[#94a3b8] mb-6 max-w-[680px]">{featured.summary}</p>
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-3.5">
+                  <Link
+                    href={`/resources/${featured.slug}`}
+                    className="inline-flex items-center gap-2 text-white text-sm font-semibold rounded-xl px-6 py-3 transition-opacity hover:opacity-90"
+                    style={GRADIENT_BG}
+                    data-testid="read-featured"
+                  >
+                    Read Article <ArrowRight className="w-4 h-4" />
+                  </Link>
+                  <ArticleMeta article={featured} shareCount={shareCounts[featured.slug]} testId="share-count-featured" />
+                </div>
               </div>
-              <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary leading-snug mb-3 max-w-3xl">
-                <Link href={`/resources/${featured.slug}`} className="hover:text-accent-blue transition-colors">
-                  {featured.title}
-                </Link>
-              </h2>
-              <p className="text-text-secondary leading-relaxed mb-6 max-w-3xl">{featured.summary}</p>
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <ArticleMeta article={featured} shareCount={shareCounts[featured.slug]} testId="share-count-featured" />
-                <Link
-                  href={`/resources/${featured.slug}`}
-                  className="inline-flex items-center gap-2 text-white text-sm font-semibold rounded-lg px-5 py-2.5 transition-opacity hover:opacity-90"
-                  style={GRADIENT_BG}
-                  data-testid="read-featured"
-                >
-                  Read Article <ArrowRight className="w-4 h-4" />
-                </Link>
+              <div className="lg:justify-self-end w-full max-w-[300px] border-l border-[rgba(0,180,216,0.35)] pl-[18px] sm:pl-7 flex flex-col gap-[18px]">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#00B4D8]">Published</div>
+                  <div className="text-[22px] sm:text-[28px] font-extrabold tracking-[-0.025em] text-[#f8fafc] mt-1.5 leading-[1.1]">
+                    {featured.date}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#00B4D8]">Reading time</div>
+                  <div className="text-[22px] sm:text-[28px] font-extrabold tracking-[-0.025em] text-[#f8fafc] mt-1.5 leading-[1.1]">
+                    {featured.readingTime}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#00B4D8]">By</div>
+                  <div className="text-[15px] font-semibold text-[#e2e8f0] mt-1.5 leading-[1.35]">
+                    Shane McCaw
+                    <span className="block text-[12.5px] font-normal text-[#94a3b8] mt-0.5">Lead M365 Architect at NASA</span>
+                  </div>
+                </div>
               </div>
             </article>
           </div>
@@ -215,17 +256,17 @@ export default function Resources() {
       )}
 
       {/* Browse — search, category filter, article grid */}
-      <section className="py-10 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex flex-col md:flex-row md:items-center gap-4 mb-8">
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-text-secondary absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+      <section className="py-7 sm:py-10 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[1160px] mx-auto">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3.5 mb-7">
+            <div className="relative flex-1 min-w-[260px] max-w-[420px]">
+              <Search className="w-4 h-4 text-[#94a3b8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="search"
                 placeholder="Search articles…"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
-                className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg pl-10 pr-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-blue/60"
+                className="w-full rounded-[10px] border border-[rgba(148,163,184,0.25)] bg-[rgba(15,23,42,0.6)] pl-10 pr-3.5 py-[11px] text-sm text-[#f1f5f9] placeholder:text-[#64748b] outline-none focus:border-[#0078D4] focus:ring-2 focus:ring-[rgba(0,120,212,0.25)]"
                 aria-label="Search articles"
                 data-testid="resources-search"
               />
@@ -235,89 +276,89 @@ export default function Resources() {
                 <button
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  className={`px-4 py-[10px] rounded-full text-[13px] font-semibold transition-colors ${
                     activeCategory === cat
-                      ? "text-white"
-                      : "bg-white/[0.06] text-text-secondary hover:text-text-primary border border-white/[0.08]"
+                      ? "text-white bg-[#0078D4] border border-[#0078D4]"
+                      : "text-[#cbd5e1] bg-white/[0.04] border border-[rgba(148,163,184,0.2)] hover:text-[#f8fafc] hover:border-[rgba(0,180,216,0.45)]"
                   }`}
-                  style={activeCategory === cat ? GRADIENT_BG : undefined}
                   data-testid={`category-${cat.replace(/\s+/g, "-").toLowerCase()}`}
                 >
-                  {cat} <span className="opacity-70">({categoryCounts[cat] ?? 0})</span>
+                  {cat} <span className={activeCategory === cat ? "opacity-75" : "opacity-60"}>({categoryCounts[cat] ?? 0})</span>
                 </button>
               ))}
             </div>
           </div>
 
           {gridArticles.length === 0 && !featured ? (
-            <div className="border border-white/[0.06] rounded-2xl bg-charcoal-1 p-10 text-center" data-testid="no-results">
-              <p className="text-text-primary font-semibold mb-2">No articles match your search.</p>
-              <p className="text-text-secondary text-sm mb-6">Try a different term, or browse everything below.</p>
+            <div
+              className="border border-[rgba(30,41,59,0.9)] rounded-2xl bg-[rgba(15,23,42,0.5)] p-10 text-center"
+              data-testid="no-results"
+            >
+              <p className="text-[#f8fafc] font-semibold mb-2">No articles match your search.</p>
+              <p className="text-[#94a3b8] text-sm mb-[22px]">Try a different term, or browse everything below.</p>
               <button
                 onClick={() => { setQuery(""); setActiveCategory("All"); }}
-                className="inline-flex items-center gap-2 text-accent-blue text-sm font-semibold border border-accent-blue/30 rounded-lg px-5 py-2.5 hover:bg-accent-blue/10 transition-colors"
+                className="inline-flex items-center gap-2 text-[#e2e8f0] text-sm font-semibold border border-[rgba(148,163,184,0.3)] rounded-xl px-5 py-2.5 hover:border-[#00B4D8] hover:text-[#00B4D8] transition-colors"
                 data-testid="clear-filters"
               >
                 Show all articles
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {gridArticles.map((post, i) => (
                 <article
                   key={post.slug}
-                  className="bg-charcoal-1 rounded-2xl border border-white/[0.06] overflow-hidden hover:border-accent-blue/30 hover:-translate-y-1 transition-all duration-300 flex flex-col"
+                  className="flex flex-col border border-[rgba(30,41,59,0.9)] rounded-2xl bg-[rgba(15,23,42,0.5)] p-[22px] transition-all duration-200 hover:border-[rgba(0,120,212,0.45)] hover:-translate-y-[3px]"
                   data-testid={`blog-post-${i}`}
                 >
-                  <div className="p-6 flex flex-col flex-1">
-                    <span className="inline-block bg-white/[0.06] text-accent-blue text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wide mb-4 border border-white/[0.08] w-fit">
-                      {post.category}
-                    </span>
-                    <h3 className="font-display text-lg font-bold text-text-primary mb-3 leading-snug">
-                      <Link href={`/resources/${post.slug}`} className="hover:text-accent-blue transition-colors">
-                        {post.title}
+                  <span className="self-start text-[10.5px] font-bold uppercase tracking-[0.1em] text-[#60a5fa] bg-[rgba(96,165,250,0.1)] border border-[rgba(96,165,250,0.2)] rounded-full px-[11px] py-[5px] mb-4">
+                    {post.category}
+                  </span>
+                  <h3 className="text-lg leading-[1.3] tracking-[-0.015em] font-bold mb-2.5">
+                    <Link href={`/resources/${post.slug}`} className="text-[#f8fafc] hover:text-[#00B4D8] transition-colors">
+                      {post.title}
+                    </Link>
+                  </h3>
+                  <p className="text-sm leading-[1.6] text-[#94a3b8] mb-5 flex-1">{post.summary}</p>
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 pt-3.5 border-t border-[rgba(30,41,59,0.9)]">
+                    <ArticleMeta article={post} shareCount={shareCounts[post.slug]} testId={`share-count-${i}`} />
+                    <div className="flex items-center gap-3">
+                      <a
+                        href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`${window.location.origin}/resources/${post.slug}`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Share "${post.title}" on LinkedIn`}
+                        className="text-[#94a3b8] hover:text-[#00B4D8] transition-colors flex p-2 -m-2"
+                        data-testid={`share-linkedin-${i}`}
+                        onClick={e => {
+                          e.stopPropagation();
+                          shareArticle(post.slug, "linkedin");
+                        }}
+                      >
+                        <FaLinkedin className="w-4 h-4" />
+                      </a>
+                      <a
+                        href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post.title)}&url=${encodeURIComponent(`${window.location.origin}/resources/${post.slug}`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Share "${post.title}" on X`}
+                        className="text-[#94a3b8] hover:text-[#f8fafc] transition-colors flex p-2 -m-2"
+                        data-testid={`share-x-${i}`}
+                        onClick={e => {
+                          e.stopPropagation();
+                          shareArticle(post.slug, "x");
+                        }}
+                      >
+                        <FaXTwitter className="w-[15px] h-[15px]" />
+                      </a>
+                      <Link
+                        href={`/resources/${post.slug}`}
+                        className="text-[#00B4D8] hover:text-[#5ed2ea] text-[13px] font-semibold flex items-center gap-1 whitespace-nowrap transition-colors"
+                        data-testid={`read-more-${i}`}
+                      >
+                        Read More <ArrowRight className="w-3 h-3" />
                       </Link>
-                    </h3>
-                    <p className="text-text-secondary text-sm leading-relaxed mb-6 flex-1">{post.summary}</p>
-                    <div className="flex items-center justify-between gap-3">
-                      <ArticleMeta article={post} shareCount={shareCounts[post.slug]} testId={`share-count-${i}`} />
-                      <div className="flex items-center gap-3">
-                        <a
-                          href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`${window.location.origin}/resources/${post.slug}`)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label={`Share "${post.title}" on LinkedIn`}
-                          className="text-text-tertiary hover:text-accent-blue transition-colors"
-                          data-testid={`share-linkedin-${i}`}
-                          onClick={e => {
-                            e.stopPropagation();
-                            shareArticle(post.slug, "linkedin");
-                          }}
-                        >
-                          <FaLinkedin className="w-4 h-4" />
-                        </a>
-                        <a
-                          href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post.title)}&url=${encodeURIComponent(`${window.location.origin}/resources/${post.slug}`)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label={`Share "${post.title}" on X`}
-                          className="text-text-tertiary hover:text-text-primary transition-colors"
-                          data-testid={`share-x-${i}`}
-                          onClick={e => {
-                            e.stopPropagation();
-                            shareArticle(post.slug, "x");
-                          }}
-                        >
-                          <FaXTwitter className="w-4 h-4" />
-                        </a>
-                        <Link
-                          href={`/resources/${post.slug}`}
-                          className="text-accent-blue text-sm font-semibold hover:underline flex items-center gap-1 whitespace-nowrap"
-                          data-testid={`read-more-${i}`}
-                        >
-                          Read More <ArrowRight className="w-3 h-3" />
-                        </Link>
-                      </div>
                     </div>
                   </div>
                 </article>
@@ -328,31 +369,33 @@ export default function Resources() {
       </section>
 
       {/* What gets published here — the two content tracks */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">What gets published here</h2>
-          <p className="text-text-secondary max-w-3xl mb-8 leading-relaxed">
+      <section className="py-10 sm:py-14 px-4 sm:px-6 lg:px-8 border-t border-[rgba(30,41,59,0.8)]">
+        <div className="max-w-[1160px] mx-auto">
+          <h2 className="text-2xl sm:text-[34px] leading-[1.14] tracking-[-0.025em] font-extrabold text-[#f8fafc] mb-3">
+            What gets published here
+          </h2>
+          <p className="text-base leading-[1.65] text-[#94a3b8] max-w-[760px] mb-7">
             Everything on this page falls into one of two tracks — and both are written to be genuinely
             useful on their own, whether or not you ever hire anyone.
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-6">
-              <div className="w-10 h-10 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4 text-accent-blue">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-2xl border border-[rgba(30,41,59,0.9)] bg-[rgba(15,23,42,0.5)] p-6">
+              <div className="w-10 h-10 rounded-xl bg-[rgba(0,120,212,0.12)] border border-[rgba(0,120,212,0.25)] flex items-center justify-center mb-4 text-[#60a5fa]">
                 <ListChecks className="w-5 h-5" />
               </div>
-              <h3 className="font-display font-bold text-text-primary mb-2">Tactical guides</h3>
-              <p className="text-text-secondary text-sm leading-relaxed">
+              <h3 className="text-[17px] font-bold tracking-[-0.01em] text-[#f8fafc] mb-2">Tactical guides</h3>
+              <p className="text-sm leading-[1.6] text-[#94a3b8]">
                 Concrete, do-this-first walkthroughs: the Conditional Access rules worth turning on before
                 anything else, the DLP policies that actually move your score, the governance and platform
                 configurations that pay for themselves. Written to be applied the same day you read them.
               </p>
             </div>
-            <div className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-6">
-              <div className="w-10 h-10 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4 text-accent-violet">
+            <div className="rounded-2xl border border-[rgba(30,41,59,0.9)] bg-[rgba(15,23,42,0.5)] p-6">
+              <div className="w-10 h-10 rounded-xl bg-[rgba(0,180,216,0.1)] border border-[rgba(0,180,216,0.25)] flex items-center justify-center mb-4 text-[#00B4D8]">
                 <PenLine className="w-5 h-5" />
               </div>
-              <h3 className="font-display font-bold text-text-primary mb-2">Field notes</h3>
-              <p className="text-text-secondary text-sm leading-relaxed">
+              <h3 className="text-[17px] font-bold tracking-[-0.01em] text-[#f8fafc] mb-2">Field notes</h3>
+              <p className="text-sm leading-[1.6] text-[#94a3b8]">
                 The business journey, in the open: what Shane is building, the decisions behind it, what's
                 working and what isn't — the honest lessons from thirty years in the Microsoft ecosystem
                 and from running a modern Microsoft practice today.
@@ -362,97 +405,115 @@ export default function Resources() {
         </div>
       </section>
 
-      {/* Go deeper — checklist download + free assessments (secondary CTAs) */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-8">Go deeper</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Lead magnet — compact */}
-            <GlassPanel className="p-6 md:p-8 flex flex-col">
+      {/* Go deeper — checklist download */}
+      <section
+        className="py-10 sm:py-14 px-4 sm:px-6 lg:px-8 border-t border-[rgba(30,41,59,0.8)]"
+        style={{ background: "linear-gradient(180deg,#020617,#040b1e 40%,#020617)" }}
+      >
+        <div className="max-w-[1160px] mx-auto">
+          <h2 className="text-2xl sm:text-[34px] leading-[1.14] tracking-[-0.025em] font-extrabold text-[#f8fafc] mb-6">
+            Go deeper
+          </h2>
+          <div
+            className="rounded-[20px] border border-white/[0.12] bg-white/[0.05] backdrop-blur-2xl p-6 sm:p-9 grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-12 items-center"
+          >
+            <div>
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center text-accent-blue flex-shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-[rgba(0,120,212,0.12)] border border-[rgba(0,120,212,0.25)] flex items-center justify-center text-[#60a5fa] flex-shrink-0">
                   <Download className="w-5 h-5" />
                 </div>
-                <p className="text-accent-blue text-xs font-semibold uppercase tracking-[0.1em]">Free download</p>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#00B4D8]">Free download</span>
               </div>
-              <h3 className="font-display text-xl font-bold text-text-primary mb-2">The M365 Copilot Readiness Checklist</h3>
-              <p className="text-text-secondary text-sm mb-2 leading-relaxed">
+              <h3 className="text-xl sm:text-[26px] font-bold tracking-[-0.018em] text-[#f8fafc] mb-2.5 leading-[1.2]">
+                The M365 Copilot Readiness Checklist
+              </h3>
+              <p className="text-[15px] leading-[1.6] text-[#94a3b8] mb-2.5 max-w-[520px]">
                 20 questions every IT leader should answer before buying Copilot licenses — across security,
                 identity, data governance, and change readiness.
               </p>
-              <p className="text-text-secondary text-xs mb-5">Instant download · No email marketing spam · No sales call</p>
-              <div className="mt-auto">
-                {!submitted ? (
-                  <form onSubmit={handleLeadMagnet} className="flex flex-col gap-3" data-testid="lead-magnet-form">
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <input
-                        type="text"
-                        placeholder="First name"
-                        value={leadMagnetName}
-                        onChange={e => setLeadMagnetName(e.target.value)}
-                        required
-                        className="flex-1 bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-blue/60"
-                        data-testid="lead-magnet-name"
-                      />
-                      <input
-                        type="email"
-                        placeholder="Work email"
-                        value={leadMagnetEmail}
-                        onChange={e => setLeadMagnetEmail(e.target.value)}
-                        required
-                        className="flex-1 bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-blue/60"
-                        data-testid="lead-magnet-email"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={pdfGenerating}
-                      className="inline-flex items-center justify-center rounded-xl px-6 py-2.5 text-sm font-semibold text-white whitespace-nowrap transition-opacity hover:opacity-90 disabled:opacity-50"
-                      style={GRADIENT_BG}
-                      data-testid="lead-magnet-submit"
-                    >
-                      {pdfGenerating ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin mr-2 inline-block" />
-                          Preparing your checklist…
-                        </>
-                      ) : (
-                        "Download Free Checklist"
-                      )}
-                    </button>
-                  </form>
-                ) : (
-                  <div className="bg-white/[0.06] border border-white/[0.1] rounded-lg px-6 py-4 text-text-primary font-medium" data-testid="lead-magnet-success">
-                    Thanks, {leadMagnetName}! Your checklist is on its way to {leadMagnetEmail}.
+              <p className="text-[12.5px] text-[#94a3b8]">Instant download · No email marketing spam · No sales call</p>
+            </div>
+            <div>
+              {!submitted ? (
+                <form onSubmit={handleLeadMagnet} className="flex flex-col gap-3" data-testid="lead-magnet-form">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      placeholder="First name"
+                      value={leadMagnetName}
+                      onChange={e => setLeadMagnetName(e.target.value)}
+                      required
+                      className="w-full rounded-[10px] border border-[rgba(148,163,184,0.25)] bg-[rgba(2,6,23,0.55)] px-3.5 py-3 text-sm text-[#f1f5f9] placeholder:text-[#64748b] outline-none focus:border-[#0078D4] focus:ring-2 focus:ring-[rgba(0,120,212,0.25)]"
+                      data-testid="lead-magnet-name"
+                    />
+                    <input
+                      type="email"
+                      placeholder="Work email"
+                      value={leadMagnetEmail}
+                      onChange={e => setLeadMagnetEmail(e.target.value)}
+                      required
+                      className="w-full rounded-[10px] border border-[rgba(148,163,184,0.25)] bg-[rgba(2,6,23,0.55)] px-3.5 py-3 text-sm text-[#f1f5f9] placeholder:text-[#64748b] outline-none focus:border-[#0078D4] focus:ring-2 focus:ring-[rgba(0,120,212,0.25)]"
+                      data-testid="lead-magnet-email"
+                    />
                   </div>
-                )}
-              </div>
-            </GlassPanel>
+                  <button
+                    type="submit"
+                    disabled={pdfGenerating || leadInvalid}
+                    className="inline-flex items-center justify-center rounded-xl px-6 py-[13px] text-[15px] font-semibold text-white whitespace-nowrap transition-opacity hover:opacity-90 disabled:opacity-50"
+                    style={GRADIENT_BG}
+                    data-testid="lead-magnet-submit"
+                  >
+                    {pdfGenerating ? (
+                      <>
+                        <Loader2 className="w-[18px] h-[18px] animate-spin mr-2 inline-block" />
+                        Preparing your checklist…
+                      </>
+                    ) : (
+                      "Download Free Checklist"
+                    )}
+                  </button>
+                </form>
+              ) : (
+                <div
+                  className="border border-[rgba(0,180,216,0.3)] bg-[rgba(0,180,216,0.06)] rounded-xl px-5 py-[18px] text-[15px] leading-[1.5] font-medium text-[#f1f5f9]"
+                  data-testid="lead-magnet-success"
+                >
+                  Thanks, {leadMagnetName}! Your checklist is on its way to {leadMagnetEmail}.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Closing CTA — compact */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
-        <div className="max-w-3xl mx-auto text-center">
-          <GlassPanel className="p-8 sm:p-10">
-            <h2 className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-3">
-              Found a gap you'd rather not tackle <GradientText>alone?</GradientText>
-            </h2>
-            <p className="text-text-secondary leading-relaxed max-w-xl mx-auto mb-6">
-              Shane has spent 30 years in the Microsoft ecosystem and currently serves as Lead M365
-              Architect at NASA. Book a free 30-minute discovery call to talk through what you're seeing.
-            </p>
-            <ChatCTA
-              className="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
+      {/* Closing CTA */}
+      <section className="max-w-[820px] mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 pb-16 sm:pb-24">
+        <div
+          className="relative overflow-hidden text-center rounded-3xl border border-[rgba(0,120,212,0.3)] px-5 sm:px-12 py-8 sm:py-14"
+          style={{
+            background:
+              "radial-gradient(700px 320px at 50% -20%,rgba(0,120,212,.18),transparent 60%),linear-gradient(168deg,rgba(10,37,64,.5),#070d1e 64%)",
+          }}
+        >
+          <h2 className="text-[26px] sm:text-[38px] leading-[1.12] tracking-[-0.025em] font-extrabold text-[#f8fafc] mb-3.5">
+            Found a gap you'd rather not tackle <span className="text-[#00B4D8]">alone?</span>
+          </h2>
+          <p className="text-base leading-[1.65] text-[#94a3b8] max-w-[560px] mx-auto mb-[26px]">
+            Shane has spent 30 years in the Microsoft ecosystem and currently serves as Lead M365
+            Architect at NASA. Book a free 30-minute discovery call to talk through what you're seeing.
+          </p>
+          <div className="flex justify-center">
+            <Link
+              href="/contact"
+              className="inline-flex items-center justify-center gap-2 px-8 py-[15px] rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
               data-track="cta"
             >
               <MessageSquare className="w-4 h-4" />
               Book a Consultation
-            </ChatCTA>
-            <p className="mt-4 text-text-secondary text-sm tracking-wide">No pitch. No obligation. Just clarity.</p>
-          </GlassPanel>
+            </Link>
+          </div>
+          <p className="mt-[18px] text-[13px] tracking-[0.02em] text-[#94a3b8]">No pitch. No obligation. Just clarity.</p>
         </div>
       </section>
     </Layout>
