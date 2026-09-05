@@ -119,6 +119,27 @@ vi.mock("../middlewares/requireAuth", () => ({
   requireAuth: (_req: any, _res: any, next: () => void) => next(),
 }));
 
+// #1168's tier-feature gate is exercised by its own lib test — these tests are
+// about the route's scoping/business logic and assume an entitled tier. Keys
+// mirror the real PORTAL_TIER_MODULE_KEYS string literals in
+// lib/portal-tier-features.ts (kept as literals, not importOriginal, so this
+// mock never has to resolve that module's own real @workspace/db imports).
+vi.mock("../lib/portal-tier-features", () => ({
+  requireTierFeature: () => (_req: any, _res: any, next: () => void) => next(),
+  PORTAL_TIER_MODULE_KEYS: {
+    policyDecisions: "policy_decisions",
+    riskRegister: "risk_register",
+    runbooks: "runbooks",
+    remediationTracking: "remediation_tracking",
+    sopsRunbooks: "sops_runbooks",
+    messageCenter: "message_center",
+    changeControl: "change_control",
+    ownership: "ownership",
+    securityPlan: "security_plan",
+    piiGovernance: "pii_governance",
+  },
+}));
+
 vi.mock("../lib/logger", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };

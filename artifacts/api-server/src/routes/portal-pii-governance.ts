@@ -49,6 +49,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { PII_GOVERNANCE_CHECKS } from "../lib/portal-pii-governance";
 import { computePiiGovernance } from "../lib/portal-pii-governance-query";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
@@ -80,6 +81,9 @@ function emptyPayload() {
 router.get(
   "/portal/pii-governance",
   requireRole("CustomerUser"),
+  // #1168: the underlying compliance signals collect unconditionally; only
+  // this READ checks the tier bundles PII Governance.
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.piiGovernance),
   async (req: Request, res: Response) => {
     try {
       const customerId = resolveCustomerId(req);

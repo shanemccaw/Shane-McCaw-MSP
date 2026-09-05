@@ -76,6 +76,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { logger } from "../lib/logger";
 import {
   buildBuckets,
@@ -283,6 +284,9 @@ function toWirePost(row: MessageCenterRow, buckets: readonly Bucket[], now: Date
 router.get(
   "/portal/message-center",
   requireRole("CustomerUser"),
+  // #1168: sync/ingestion is unconditional; only this READ checks the
+  // customer's purchased Monitoring tier bundles Message Center.
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.messageCenter),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

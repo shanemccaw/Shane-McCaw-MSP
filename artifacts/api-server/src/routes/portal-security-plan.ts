@@ -67,6 +67,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { getLastSignedSecurityPlanVersion } from "../lib/security-plan-versioning";
 import { logger } from "../lib/logger";
 
@@ -129,6 +130,9 @@ async function resolveAssembledPlan(customerId: number): Promise<WireAssembledSe
 router.get(
   "/portal/security-plan",
   requireRole("CustomerUser"),
+  // #1168: authoring the plan (msp-security-plan.ts) is unconditional; only
+  // this customer-facing READ checks the tier bundles Security Plan.
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.securityPlan),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

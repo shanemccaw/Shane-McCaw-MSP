@@ -39,6 +39,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { requireRole } from "../middlewares/requireAuth";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { logger } from "../lib/logger";
 import { resolveRemediationChecklist, resolveRemediationChecklistItem, isKnownCheckKey } from "../lib/remediation-checklist";
 import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger";
@@ -80,6 +81,9 @@ function resolveCustomerId(req: Request): number | null {
 router.get(
   "/portal/remediation/checklist",
   requireRole("Assessment"),
+  // #1168: writes below stay unconditional; only this READ checks the tier
+  // bundles Remediation Tracking (same module key as portal-remediation-tracker.ts).
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.remediationTracking),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
