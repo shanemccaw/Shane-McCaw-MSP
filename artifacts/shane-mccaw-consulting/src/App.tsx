@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import Home from "./pages/Home";
+import About from "./pages/About";
 import Status from "./pages/Status";
 import Resources from "./pages/Resources";
 import ArticlePage from "./pages/ArticlePage";
@@ -66,6 +67,7 @@ export default function App() {
       <Switch>
       {/* Primary Routes */}
       <Route path="/" component={Home} />
+      <Route path="/about" component={About} />
       <Route path="/status" component={Status} />
       <Route path="/resources" component={Resources} />
       <Route path="/resources/:slug" component={ArticlePage} />
