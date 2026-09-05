@@ -1234,29 +1234,28 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
       "the scope is refused.",
   },
   {
-    // #2858 — action.fresh-start-device. NOTE the template id says "fresh start"
-    // but the stored endpoint is windowsDefenderScan, which is an antivirus scan,
-    // not Windows Autopilot Reset. The permission is the same either way (the real
-    // beta wipe/fresh-start actions are all PrivilegedOperations.All too), so the
-    // derivation is correct regardless of which the step is eventually meant to be.
+    // Git #2941 — action.fresh-start-device. Previously this row's stored endpoint was
+    // windowsDefenderScan (an antivirus scan), a mismatch against its own "Fresh Start"
+    // label filed as #2858 and corrected by #2941. The real Graph action behind Intune's
+    // "Fresh Start" device reset is cleanWindowsDevice (confirmed against Microsoft
+    // Learn); permission is unchanged either way — both are
+    // DeviceManagementManagedDevices.PrivilegedOperations.All.
     method: "POST",
-    pattern: "/deviceManagement/managedDevices/*/windowsDefenderScan",
+    pattern: "/deviceManagement/managedDevices/*/cleanWindowsDevice",
     documentedApplicationTiers: {
       leastPrivileged: "DeviceManagementManagedDevices.PrivilegedOperations.All",
       higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
     },
     permissions: ["DeviceManagementManagedDevices.PrivilegedOperations.All"],
     justification:
-      "action.fresh-start-device stores POST /deviceManagement/managedDevices/{id}/windowsDefenderScan, " +
-      "which triggers a Microsoft Defender antivirus scan on a managed device. Microsoft permissions it " +
-      "identically to the wipe/retire/lock/reboot family even though a scan is not itself destructive.",
-    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-devices-manageddevice-windowsdefenderscan",
+      "action.fresh-start-device stores POST /deviceManagement/managedDevices/{id}/cleanWindowsDevice, " +
+      "which performs Intune's real \"Fresh Start\" reset (reinstalls Windows, optionally keeping user " +
+      "data via keepUserData). Microsoft permissions it identically to the wipe/retire/lock/reboot family.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-devices-manageddevice-cleanwindowsdevice",
     grantRecommended: false,
     notRequestedReason:
-      "Same permission and same objection as the other three Intune remote actions. This one is the " +
-      "sharpest illustration of why the refusal is about the GRANT and not about the action: an antivirus " +
-      "scan is harmless, and Microsoft still charges tenant-wide wipe/retire/lock for the privilege of " +
-      "asking for it.",
+      "Same permission and same objection as the other three Intune remote actions above — a destructive " +
+      "device-level reset gated behind the same tenant-wide privileged-operations grant as reboot/lock/retire.",
   },
   {
     // #2858 — action.remote-wipe-device.
