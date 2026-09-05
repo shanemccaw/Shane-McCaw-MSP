@@ -1086,8 +1086,22 @@ export async function graphWriteForTenant(
     throw new WriteConsentRequiredError(tenantId, writeConsentStatus ? `status_${writeConsentStatus}` : "no_row");
   }
 
+  // `path` is normally relative to the v1.0 root. An ABSOLUTE Graph URL is also
+  // accepted and used verbatim, mirroring graphFetchForTenant's #1796 widening —
+  // some resources (e.g. windowsAutopilotDeploymentProfile, Git #2939) are
+  // documented ONLY on the beta moniker, so a write-side transport pinned to
+  // GRAPH_BASE (v1.0) can never reach them. Gated to the Graph host, same as
+  // the read path, so this can never become a general-purpose fetch that leaks
+  // a tenant's write bearer token to an arbitrary origin.
+  if (/^https?:\/\//i.test(path) && !path.startsWith(GRAPH_HOST_PREFIX)) {
+    throw new Error(
+      `graphWriteForTenant: absolute URLs must be on ${GRAPH_HOST_PREFIX} — refusing to send a Graph token to ${path.slice(0, 120)}`,
+    );
+  }
+  const url = path.startsWith(GRAPH_HOST_PREFIX) ? path : `${GRAPH_BASE}${path}`;
+
   const token = await getWriteAccessTokenForTenant(tenantId);
-  const res = await fetch(`${GRAPH_BASE}${path}`, {
+  const res = await fetch(url, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,

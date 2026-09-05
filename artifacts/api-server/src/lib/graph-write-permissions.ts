@@ -1287,25 +1287,26 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
     },
     permissions: ["DeviceManagementServiceConfig.ReadWrite.All"],
     justification:
-      "action.assign-autopilot-profile targets a Windows Autopilot deployment profile. THE STORED " +
-      "ENDPOINT CANNOT RUN AS THIS PLATFORM CALLS IT, for two separate reasons, both filed (see #2858's " +
-      "DONE bookend for the issue number). (1) The entire windowsAutopilotDeploymentProfile resource is " +
-      "documented ONLY in the beta Microsoft Graph endpoint — requesting the v1.0 URL redirects to the " +
-      "beta moniker, and its Methods table lists just Get and assign — while lib/graph.ts pins " +
-      "GRAPH_BASE to https://graph.microsoft.com/v1.0, so this call 404s at the transport before any " +
-      "permission is checked. (2) The assign action's only documented parameter is `deviceIds` (String " +
-      "collection), but the stored body is a groupAssignmentTarget shape, which belongs to the profile's " +
-      "`assignments` relationship, not to this action. The permission is recorded here anyway because it " +
-      "is DeviceManagementServiceConfig.ReadWrite.All whichever of the two mechanisms the step is fixed " +
-      "to use — Microsoft scopes the whole Autopilot enrolment surface under it.",
+      "action.assign-autopilot-profile targets a Windows Autopilot deployment profile. The " +
+      "baseline_action_templates row previously stored a v1.0-relative endpoint against a resource " +
+      "documented ONLY on the beta Graph moniker (its Methods table lists just Get and assign) plus a " +
+      "groupAssignmentTarget body that belongs to the profile's `assignments` relationship, not to the " +
+      "`assign` action itself (whose only documented parameter is `deviceIds`, a String collection). " +
+      "#2939 corrected the stored endpoint to the absolute beta URL (graphWriteForTenant now accepts an " +
+      "absolute https://graph.microsoft.com/{v1.0,beta}/... URL the same way graphFetchForTenant already " +
+      "did per #1796) and the body to {\"deviceIds\": [...]}. The permission was identical under the old, " +
+      "broken endpoint/body too — Microsoft scopes the whole Autopilot enrolment surface under this same " +
+      "DeviceManagementServiceConfig.ReadWrite.All application permission — so this rule did not change " +
+      "when the stored row was fixed.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-enrollment-windowsautopilotdeploymentprofile-assign",
     grantRecommended: false,
     notRequestedReason:
       "DeviceManagementServiceConfig.ReadWrite.All would be a new permission covering Intune's whole " +
       "service-configuration surface (enrolment restrictions, Autopilot, Apple/Android enrolment " +
-      "profiles), and it is being asked for on behalf of a step that cannot execute at all until the " +
-      "endpoint and body are corrected. Requesting it now would enlarge every customer's consent for " +
-      "something that is broken independently of consent.",
+      "profiles). The transport/body defects that made the step non-runnable are now fixed (#2939), but " +
+      "no Config Pack wires this template yet — nobody has evaluated whether to request this broad a " +
+      "surface for a step nothing currently uses. Requesting it now would enlarge every customer's " +
+      "consent ahead of an actual product decision to ship the step.",
   },
   {
     // #2858 — action.resolve-alert. Sibling of the PATCH /security/incidents/*
@@ -1428,11 +1429,20 @@ export function isNonGraphEndpoint(endpoint: string): boolean {
 }
 
 /**
+ * `graphWriteForTenant` accepts an absolute `https://graph.microsoft.com/{v1.0,beta}/...`
+ * URL as well as a relative path (Git #2939 — some resources, e.g.
+ * windowsAutopilotDeploymentProfile, are documented only on the beta moniker). Strip
+ * that host+version prefix before pattern-matching, so a rule's relative `pattern`
+ * matches a stored absolute-URL endpoint exactly the same way it matches a relative one.
+ */
+const GRAPH_ABSOLUTE_URL_PREFIX = /^https:\/\/graph\.microsoft\.com\/(v1\.0|beta)(?=\/|$)/i;
+
+/**
  * Collapse `{{placeholders}}` and concrete ids to `*` so a template endpoint and
  * a resolved one both match the same rule. Query strings are dropped.
  */
 export function normaliseEndpoint(endpoint: string): string {
-  const path = endpoint.split("?")[0];
+  const path = endpoint.replace(GRAPH_ABSOLUTE_URL_PREFIX, "").split("?")[0];
   return path
     .split("/")
     .map((seg) => {
