@@ -331,11 +331,16 @@ const inFlightDrift = new Map<number, Promise<{ diffRowId: number }>>();
  * writes the diff store, and has no transport at all. This is a read-through cache
  * over derived data, not a mutation of anything the customer owns.
  *
- * `resourceKeys` is deliberately NOT accepted here. Git #2032 found that a
- * resource-scoped recompute silently overwrites a full diff, because `resourceKeys`
- * is not part of the cache key `(base, head, mode, rulesetFingerprint)` — so a
- * narrowed request would replace the whole-tenant evidence with a fragment of it.
- * Until that is fixed, no route this session adds exposes the parameter.
+ * `resourceKeys` is still NOT accepted here — no longer because of Git #2032 (fixed
+ * 2026-09-04, commit `501c9139e`: `resource_keys_fingerprint` is now part of the
+ * differ's cache key, so a narrowed and a full-tenant diff no longer collide), but as
+ * a deliberate product choice (Git #2901): this endpoint's whole design principle is
+ * "the tenant's real, whole-picture change report" (see
+ * `docs/configuration-state-contract-pack.md` §4.6-§4.7), and a caller narrowing that
+ * to a fragment of resources changes what "the comparison" means to the portal
+ * customer viewing it. Exposing narrowing here is a real product decision, not a
+ * mechanical follow-up to the #2032 fix — see the operator-side `POST /diffs` in
+ * `msp-config-state-diffs.ts`, which now does accept it, for the contrast.
  *
  * `?compute=false` returns only an already-stored comparison, for a caller that would
  * rather render "not computed yet" than wait.

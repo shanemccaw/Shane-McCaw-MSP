@@ -50,12 +50,14 @@
  * `tenant_compare` diff's `oldValue` column literally contains the base tenant's
  * configuration; head-side entitlement alone would leak it.
  *
- * ─── `resourceKeys` is deliberately not exposed ────────────────────────────────
- * Git #2032: a resource-scoped recompute silently overwrote a full-tenant diff,
- * because `resourceKeys` is not part of the differ's cache key
- * `(base, head, mode, rulesetFingerprint)`. Until that is fixed, no route added here
- * accepts the parameter — a narrowed request would replace whole-tenant evidence with
- * a fragment of it, and the caller would have no way to tell.
+ * ─── `resourceKeys` narrowing (Git #2901) ──────────────────────────────────────
+ * Git #2032 (a resource-scoped recompute silently overwriting a full-tenant diff,
+ * because `resourceKeys` was not part of the differ's cache key) was fixed
+ * 2026-09-04 (commit `501c9139e`): `config_diffs` now carries
+ * `resource_keys_fingerprint` as part of both the cache key and the unique
+ * constraint, so a narrowed request and a full-tenant one land in distinct rows
+ * instead of colliding. `POST /diffs` below now accepts `resourceKeys`, same as the
+ * sibling `admin-config-diffs.ts` route.
  *
  * ─── No apply path ─────────────────────────────────────────────────────────────
  * `promotion` COMPUTES THE DIFFERENCE ONLY, and nothing here may ever apply it.
@@ -272,6 +274,7 @@ interface ComputeBody {
   baselineId?: unknown;
   recompute?: unknown;
   triggerRef?: unknown;
+  resourceKeys?: unknown;
 }
 
 router.post("/msp/config-state/diffs", requireRole("MSPOperator"),
@@ -335,6 +338,18 @@ router.post("/msp/config-state/diffs", requireRole("MSPOperator"),
           "headSnapshotRowId is required and must be a tenant_config_snapshots.id integer");
       }
 
+      // `resourceKeys` narrows the comparison to specific resource types. Safe since
+      // Git #2032 (see the doc header): the fingerprint is now part of the cache key,
+      // so a narrowed request and a full-tenant one never collide.
+      const rawResourceKeys = body.resourceKeys;
+      if (rawResourceKeys !== undefined
+          && (!Array.isArray(rawResourceKeys)
+              || rawResourceKeys.some((k) => typeof k !== "string"))) {
+        return apiError(res, 400, ApiErrorCode.VALIDATION,
+          "resourceKeys, when supplied, must be an array of resource key strings");
+      }
+      const resourceKeys = rawResourceKeys as string[] | undefined;
+
       // ── Entitlement, on both sides, BEFORE the differ is reached ───────────
       const base = await loadScopedSnapshot(String(baseRowId), book.tenantIds);
       const head = await loadScopedSnapshot(String(headRowIdRaw), book.tenantIds);
@@ -350,9 +365,9 @@ router.post("/msp/config-state/diffs", requireRole("MSPOperator"),
         requestedByUserId: userId,
         // `recompute: true` REPLACES the stored diff for this pair. Sound because a
         // diff is DERIVED from two immutable snapshots under a recorded ruleset — see
-        // the differ's `useCache` doc. `resourceKeys` is deliberately never passed
-        // (#2032).
+        // the differ's `useCache` doc.
         useCache: body.recompute !== true,
+        resourceKeys,
       };
 
       let result: DiffSnapshotsResult;
