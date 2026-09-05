@@ -51,7 +51,7 @@ import { db, servicesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getStripeKey, getStripePublishableKey } from "../lib/stripe.ts";
-import { isServiceFree, resolveServicePriceCents } from "../lib/catalog-pricing.ts";
+import { isServiceFree } from "../lib/catalog-pricing.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 import { sendEmail, purchaseConfirmationEmail } from "../lib/mailer.ts";
@@ -66,6 +66,23 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 const FLOW = "work_with_me_retainer" as const;
 const INTERVAL = "month" as const;
+
+/**
+ * The four fixed, hours-based Architect Retainer tiers are the ONLY retainers
+ * sold self-serve through this public route. The two "scoped" retainers
+ * (vCISO / Governance, Copilot Governance) carry a catalog price but are
+ * positioned as discovery-call engagements ("Request scoping" → Contact) whose
+ * final price is set in a call, so they are deliberately excluded here — a
+ * direct POST of their slug is refused. Prices still come from the catalog; this
+ * is an allowlist of WHICH tiers transact, not a price. Mirrors the frontend's
+ * TIER_ORDER.
+ */
+const SELF_SERVE_TIER_SLUGS = new Set([
+  "architect-advisory-retainer",
+  "architect-essentials-retainer",
+  "architect-growth-retainer",
+  "architect-enterprise-retainer",
+]);
 
 type ResolvedRetainer = {
   serviceId: number;
@@ -87,6 +104,14 @@ async function resolveRetainer(rawSlug: unknown, res: Response): Promise<Resolve
   const slug = typeof rawSlug === "string" ? rawSlug.trim() : "";
   if (!slug) {
     res.status(400).json({ error: "slug_required" });
+    return null;
+  }
+
+  // Only the four fixed self-serve tiers transact here — scoped/discovery-call
+  // retainers are priced in a call, not bought through this route.
+  if (!SELF_SERVE_TIER_SLUGS.has(slug)) {
+    log.warn({ slug }, "retainer payment: slug is not a self-serve tier");
+    res.status(409).json({ error: "not_self_serve" });
     return null;
   }
 
@@ -130,11 +155,15 @@ async function resolveRetainer(rawSlug: unknown, res: Response): Promise<Resolve
     return null;
   }
 
-  const amountCents = resolveServicePriceCents(service);
+  // Self-serve checkout uses the CANONICAL integer-cents price only — not the
+  // legacy decimal fallback. The four fixed tiers carry `priceCents`; the two
+  // discovery-call scoped retainers carry only a `base_price` "from" figure and
+  // are deliberately excluded from self-serve here (they're priced in a call,
+  // via "Request scoping" → Contact), so a direct POST cannot buy one at its
+  // "from" price.
+  const amountCents = service.priceCents != null && Number(service.priceCents) > 0 ? Math.round(Number(service.priceCents)) : 0;
   if (amountCents <= 0) {
-    // The two discovery-call scoped retainers land here (priced in a call, not
-    // self-serve). Reported plainly rather than charged at zero.
-    log.warn({ slug, serviceId: service.id }, "retainer payment: tier has no self-serve price");
+    log.warn({ slug, serviceId: service.id }, "retainer payment: tier has no fixed self-serve price (scoped/discovery-call retainer?)");
     res.status(409).json({ error: "price_unresolved" });
     return null;
   }
@@ -250,7 +279,9 @@ router.post("/public/retainers/payment-intent", async (req: Request, res: Respon
         ],
         payment_behavior: "default_incomplete",
         payment_settings: { save_default_payment_method: "on_subscription" },
-        expand: ["latest_invoice.payment_intent"],
+        // Stripe SDK 22 / API 2025+ removed `invoice.payment_intent`; the
+        // in-page client secret now comes from the invoice's confirmation_secret.
+        expand: ["latest_invoice.confirmation_secret"],
         metadata: {
           flow: FLOW,
           orderKey,
@@ -263,18 +294,18 @@ router.post("/public/retainers/payment-intent", async (req: Request, res: Respon
     );
 
     const invoice = subscription.latest_invoice;
-    const intent =
-      invoice && typeof invoice !== "string" ? (invoice.payment_intent as import("stripe").Stripe.PaymentIntent | null) : null;
+    const clientSecret =
+      invoice && typeof invoice !== "string" ? (invoice.confirmation_secret?.client_secret ?? null) : null;
 
     // An already-active subscription recovered on reload (paid, then the page
-    // reloaded before the confirm callback landed) has no outstanding
-    // PaymentIntent to confirm — the client is told to skip straight to confirm.
+    // reloaded before the confirm callback landed) has no outstanding secret to
+    // confirm against — the client is told to skip straight to confirm.
     const alreadyActive = subscription.status === "active" || subscription.status === "trialing";
 
-    if (!intent && !alreadyActive) {
+    if (!clientSecret && !alreadyActive) {
       log.error(
         { orderKey, subscriptionId: subscription.id, status: subscription.status },
-        "retainer payment: subscription created but exposes no PaymentIntent to confirm",
+        "retainer payment: subscription created but exposes no confirmation secret",
       );
       res.status(500).json({ error: "payment_intent_missing" });
       return;
@@ -284,7 +315,7 @@ router.post("/public/retainers/payment-intent", async (req: Request, res: Respon
       {
         orderKey,
         subscriptionId: subscription.id,
-        paymentIntentId: intent?.id,
+        hasClientSecret: !!clientSecret,
         amountCents: retainer.amountCents,
         status: subscription.status,
         stripeCustomerId: customer.id,
@@ -293,10 +324,9 @@ router.post("/public/retainers/payment-intent", async (req: Request, res: Respon
     );
 
     res.json({
-      clientSecret: intent?.client_secret ?? null,
+      clientSecret,
       publishableKey,
       subscriptionId: subscription.id,
-      paymentIntentId: intent?.id ?? null,
       amountCents: retainer.amountCents,
       productName: retainer.serviceName,
       hoursPerMonth: retainer.hoursPerMonth,
@@ -343,7 +373,7 @@ router.post("/public/retainers/payment-confirmed", async (req: Request, res: Res
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(stripeKey);
     const subscription = await stripe.subscriptions.retrieve(parsed.data.subscriptionId, {
-      expand: ["latest_invoice.payment_intent"],
+      expand: ["latest_invoice"],
     });
 
     if (subscription.metadata?.["orderKey"] !== parsed.data.orderKey || subscription.metadata?.["flow"] !== FLOW) {
