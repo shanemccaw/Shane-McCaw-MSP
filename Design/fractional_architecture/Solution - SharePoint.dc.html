@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap">
+  <script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#020617;color:#cbd5e1;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    a{color:#00B4D8}a:hover{color:#5ed2ea}
+    @media (max-width:1023px){input,textarea,select{font-size:16px!important}}
+  </style>
+</helmet>
+
+<header style="position:fixed;top:0;left:0;right:0;z-index:50">
+  <div style="position:absolute;inset:0;background:rgba(2,6,23,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid rgba(30,41,59,.8)"></div>
+  <div style="position:relative;max-width:1280px;margin:0 auto;padding:0 clamp(16px,4vw,32px);height:72px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+    <a href="Work With Me.dc.html" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:#F5F5F7">
+      <span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+      <span style="font-family:'Space Grotesk',Inter,sans-serif;font-weight:700;font-size:16px;letter-spacing:-.02em;line-height:1">Shane McCaw</span>
+    </a>
+    <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+      <nav style="display:flex;align-items:center;gap:4px">
+        <a href="Assessment.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Assessment</a>
+        <div style="position:relative">
+          <button onClick="{{ toggleSolutions }}" style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#00B4D8;background:rgba(255,255,255,.06);border:0;cursor:pointer;font-family:inherit">Solutions<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <sc-if value="{{ solOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:100%;left:0;width:400px;margin-top:6px;background:rgba(5,12,29,.97);border:1px solid rgba(30,41,59,.9);border-radius:16px;padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:2px;backdrop-filter:blur(24px)">
+              <a href="Solution - Copilot AI.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Copilot &amp; AI</a>
+              <a href="Solution - Security Compliance.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Security &amp; Compliance</a>
+              <a href="Solution - Governance.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Governance</a>
+              <a href="Solution - SharePoint.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">SharePoint</a>
+              <a href="Solution - Power Platform.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Power Platform</a>
+              <a href="Solution - Teams.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Teams</a>
+              <a href="Solution - Migration.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">Migration</a>
+              <a href="Solution - M365 Health.dc.html" style="padding:10px 12px;border-radius:12px;font-size:13px;font-weight:500;color:#F5F5F7;text-decoration:none" style-hover="background:rgba(255,255,255,.06);color:#00B4D8">M365 Health</a>
+            </div>
+          </sc-if>
+        </div>
+        <a href="Work With Me.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Fractional Architecture</a>
+        <a href="About Shane.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">About Shane</a>
+        <a href="Resources.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Resources</a>
+        <a href="Contact.dc.html" style="padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7;background:rgba(255,255,255,.04)">Contact</a>
+      </nav>
+      <div style="display:flex;align-items:center;gap:8px">
+        <a href="Contact.dc.html" style="display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;background:#0078D4;text-decoration:none" style-hover="background:#005A9E">Talk to Shane<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></a>
+      </div>
+    </sc-if>
+    <sc-if value="{{ narrow }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ toggleMenu }}" aria-label="Toggle navigation menu" style="padding:10px;border-radius:8px;color:#B5B5BC;background:transparent;border:0;cursor:pointer;display:flex"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg></button>
+    </sc-if>
+  </div>
+  <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:relative;border-top:1px solid rgba(30,41,59,.8);padding:8px 16px 20px;display:flex;flex-direction:column;gap:2px">
+      <a href="Assessment.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Assessment</a>
+      <span style="display:block;padding:12px 12px 6px;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#94a3b8">Solutions</span>
+      <a href="Solution - Copilot AI.dc.html" style="display:block;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none">Copilot &amp; AI</a>
+      <a href="Solution - Security Compliance.dc.html" style="display:block;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none">Security &amp; Compliance</a>
+      <a href="Solution - Governance.dc.html" style="display:block;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none">Governance</a>
+      <a href="Solution - SharePoint.dc.html" style="display:block;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none">SharePoint</a>
+      <a href="Solution - Power Platform.dc.html" style="display:block;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none">Power Platform</a>
+      <a href="Solution - Teams.dc.html" style="display:block;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none">Teams</a>
+      <a href="Solution - Migration.dc.html" style="display:block;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none">Migration</a>
+      <a href="Solution - M365 Health.dc.html" style="display:block;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:500;color:#B5B5BC;text-decoration:none">M365 Health</a>
+      <a href="Work With Me.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Fractional Architecture</a>
+      <a href="About Shane.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">About Shane</a>
+      <a href="Resources.dc.html" style="display:block;padding:12px 12px;border-radius:8px;font-size:14px;font-weight:500;color:#F5F5F7;text-decoration:none">Resources</a>
+      <a href="Contact.dc.html" style="display:block;margin-top:12px;padding:12px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;text-align:center;background:#0078D4;text-decoration:none">Talk to Shane</a>
+    </div>
+  </sc-if>
+</header>
+
+<main style="padding-top:72px">
+
+  <section data-screen-label="Deep dive hero" style="position:relative;overflow:hidden;background:{{ t.heroBg }}">
+    <sc-if value="{{ t.isCopilot }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:-60px;top:50%;transform:translateY(-50%);opacity:.16;pointer-events:none;line-height:0;{{ t.iconGlow }}"><svg width="470" height="470" viewBox="0 0 24 24" fill="none" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"><defs><linearGradient id="auraGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3b82f6"></stop><stop offset="100%" stop-color="#8b5cf6"></stop></linearGradient></defs><path stroke="url(#auraGrad)" d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></svg></span></sc-if>
+    <sc-if value="{{ t.isSecurity }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:-60px;top:50%;transform:translateY(-50%);opacity:.11;pointer-events:none;line-height:0;{{ t.iconGlow }}"><svg width="470" height="470" viewBox="0 0 24 24" fill="none" stroke="{{ t.accentFg }}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg></span></sc-if>
+    <sc-if value="{{ t.isGovernance }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:-60px;top:50%;transform:translateY(-50%);opacity:.11;pointer-events:none;line-height:0;{{ t.iconGlow }}"><svg width="470" height="470" viewBox="0 0 24 24" fill="none" stroke="{{ t.accentFg }}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg></span></sc-if>
+    <sc-if value="{{ t.isSharePoint }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:-60px;top:50%;transform:translateY(-50%);opacity:.11;pointer-events:none;line-height:0;{{ t.iconGlow }}"><svg width="470" height="470" viewBox="0 0 24 24" fill="none" stroke="{{ t.accentFg }}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"></path><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"></path><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"></path></svg></span></sc-if>
+    <sc-if value="{{ t.isPowerPlatform }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:-60px;top:50%;transform:translateY(-50%);opacity:.11;pointer-events:none;line-height:0;{{ t.iconGlow }}"><svg width="470" height="470" viewBox="0 0 24 24" fill="none" stroke="{{ t.accentFg }}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg></span></sc-if>
+    <sc-if value="{{ t.isTeams }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:-60px;top:50%;transform:translateY(-50%);opacity:.11;pointer-events:none;line-height:0;{{ t.iconGlow }}"><svg width="470" height="470" viewBox="0 0 24 24" fill="none" stroke="{{ t.accentFg }}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span></sc-if>
+    <sc-if value="{{ t.isMigration }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:-60px;top:50%;transform:translateY(-50%);opacity:.11;pointer-events:none;line-height:0;{{ t.iconGlow }}"><svg width="470" height="470" viewBox="0 0 24 24" fill="none" stroke="{{ t.accentFg }}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"></path><path d="M20 7H4"></path><path d="m8 21-4-4 4-4"></path><path d="M4 17h16"></path></svg></span></sc-if>
+    <sc-if value="{{ t.isHealth }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:-60px;top:50%;transform:translateY(-50%);opacity:.11;pointer-events:none;line-height:0;{{ t.iconGlow }}"><svg width="470" height="470" viewBox="0 0 24 24" fill="none" stroke="{{ t.accentFg }}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg></span></sc-if>
+    <div style="position:relative;max-width:1160px;margin:0 auto;padding:clamp(48px,8vw,88px) clamp(16px,4vw,32px) clamp(40px,6vw,64px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:clamp(36px,5vw,64px);align-items:center">
+    <div style="max-width:600px">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Deep dive · {{ t.label }}</span></div>
+      <h1 style="font-size:clamp(26px,3.6vw,38px);line-height:1.12;letter-spacing:-.022em;font-weight:800;color:#f8fafc;margin:22px 0 18px;text-wrap:pretty">{{ t.h1 }} <sc-if value="{{ t.isCopilot }}" hint-placeholder-val="{{ false }}"><span style="background:linear-gradient(90deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;background-clip:text;color:transparent">{{ t.h1b }}</span></sc-if><sc-if value="{{ t.isNotCopilot }}" hint-placeholder-val="{{ true }}"><span style="color:{{ t.accentFg }}">{{ t.h1b }}</span></sc-if></h1>
+      <p style="font-size:clamp(15px,2.2vw,17px);line-height:1.65;color:#94a3b8;margin:0 0 12px;text-wrap:pretty">{{ t.lead }}</p>
+      <p style="font-size:14px;line-height:1.65;color:#94a3b8;margin:0 0 28px;text-wrap:pretty">{{ t.sub }}</p>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+        <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" size="lg" as="a" href="Work With Me.dc.html#tiers" dc-props="{{ ctaLg }}" hint-size="auto,52px">Work with Shane on this · from $900/mo<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></x-import>
+        <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="outline" size="lg" as="a" href="Contact.dc.html" dc-props="{{ ctaLgGhost }}" hint-size="auto,52px">Talk to Shane first</x-import>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px 22px;margin-top:26px;font-size:13px;color:#94a3b8">
+        <span style="display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Read-only review, run by Shane</span>
+        <span style="display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Nothing installed</span>
+        <span style="display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>NASA contractors and partners excluded</span>
+      </div>
+    </div>
+
+    <div style="justify-self:end;width:100%;max-width:500px;border:{{ t.panelBorder }};border-radius:18px;background:{{ t.panelBg }};backdrop-filter:blur(3px);box-shadow:{{ t.panelShadow }};padding:22px 24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#00B4D8">What Shane's review typically finds</span>
+        <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8">Illustrative, not your tenant</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:13px;font-weight:600;color:#e2e8f0">{{ r1.label }}</span><b style="font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;color:#60a5fa">{{ r1.value }}</b></div>
+          <div style="height:10px;border-radius:999px;background:rgba(2,6,23,.7);overflow:hidden"><div style="width:{{ r1.pct }}%;height:100%;border-radius:999px;background:linear-gradient(90deg,rgba(96,165,250,.25),#60a5fa)"></div></div>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.5">{{ r1.sub }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:13px;font-weight:600;color:#e2e8f0">{{ r2.label }}</span><b style="font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;color:#fbbf24">{{ r2.value }}</b></div>
+          <div style="height:10px;border-radius:999px;background:rgba(2,6,23,.7);overflow:hidden"><div style="width:{{ r2.pct }}%;height:100%;border-radius:999px;background:linear-gradient(90deg,rgba(251,191,36,.25),#fbbf24)"></div></div>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.5">{{ r2.sub }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:13px;font-weight:600;color:#e2e8f0">{{ r3.label }}</span><b style="font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;color:#f87171">{{ r3.value }}</b></div>
+          <div style="height:10px;border-radius:999px;background:rgba(2,6,23,.7);overflow:hidden"><div style="width:{{ r3.pct }}%;height:100%;border-radius:999px;background:linear-gradient(90deg,rgba(248,113,113,.25),#f87171)"></div></div>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.5">{{ r3.sub }}</span>
+        </div>
+      </div>
+      <p style="margin:18px 0 0;padding-top:14px;border-top:1px solid rgba(30,41,59,.9);font-size:12.5px;line-height:1.55;color:#94a3b8">{{ t.panelNote }}</p>
+    </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Two paths" style="border-top:1px solid rgba(30,41,59,.8);border-bottom:1px solid rgba(30,41,59,.8);background:rgba(15,23,42,.4)">
+    <div style="max-width:1160px;margin:0 auto;padding:clamp(40px,6vw,64px) clamp(16px,4vw,32px)">
+      <div style="max-width:720px;margin-bottom:26px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">{{ t.pathsEyebrow }}</span></div>
+        <h2 style="font-size:clamp(24px,4vw,34px);line-height:1.14;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:14px 0 12px;text-wrap:pretty">{{ t.pathsH2 }}</h2>
+        <p style="font-size:15px;line-height:1.65;color:#94a3b8;margin:0;text-wrap:pretty">{{ t.pathsLead }}</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px">
+        <div style="border:1px solid rgba(248,113,113,.28);border-radius:16px;background:rgba(15,23,42,.6);padding:22px">
+          <span style="display:inline-flex;padding:4px 10px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:#f87171;margin-bottom:16px">How it usually goes</span>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ t.bad }}" as="bp" hint-placeholder-count="4">
+              <div style="display:flex;gap:12px">
+                <div style="display:flex;flex-direction:column;align-items:center;flex:none">
+                  <sc-if value="{{ bp.end }}" hint-placeholder-val="{{ false }}"><span style="width:11px;height:11px;border-radius:999px;flex:none;margin-top:4px;background:#f87171;box-shadow:0 0 0 3px rgba(248,113,113,.15)"></span></sc-if>
+                  <sc-if value="{{ bp.mid }}" hint-placeholder-val="{{ true }}"><span style="width:11px;height:11px;border-radius:999px;flex:none;margin-top:4px;border:2px solid #94a3b8;background:transparent"></span></sc-if>
+                  <sc-if value="{{ bp.line }}" hint-placeholder-val="{{ true }}"><span style="width:1px;flex:1;min-height:18px;background:rgba(148,163,184,.18)"></span></sc-if>
+                </div>
+                <div style="padding-bottom:16px;min-width:0">
+                  <div style="font-size:14px;font-weight:700;color:#f8fafc">{{ bp.title }}</div>
+                  <div style="font-size:13px;color:#94a3b8;line-height:1.55;margin-top:3px">{{ bp.body }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="border:1px solid rgba(0,180,216,.35);border-radius:16px;background:rgba(15,23,42,.6);padding:22px">
+          <span style="display:inline-flex;padding:4px 10px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;background:rgba(0,180,216,.1);border:1px solid rgba(0,180,216,.3);color:#00B4D8;margin-bottom:16px">How it goes with Shane</span>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ t.good }}" as="gp" hint-placeholder-count="5">
+              <div style="display:flex;gap:12px">
+                <div style="display:flex;flex-direction:column;align-items:center;flex:none">
+                  <sc-if value="{{ gp.end }}" hint-placeholder-val="{{ false }}"><span style="width:11px;height:11px;border-radius:999px;flex:none;margin-top:4px;background:#00B4D8;box-shadow:0 0 0 3px rgba(0,180,216,.18)"></span></sc-if>
+                  <sc-if value="{{ gp.mid }}" hint-placeholder-val="{{ true }}"><span style="width:11px;height:11px;border-radius:999px;flex:none;margin-top:4px;background:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.18)"></span></sc-if>
+                  <sc-if value="{{ gp.line }}" hint-placeholder-val="{{ true }}"><span style="width:1px;flex:1;min-height:18px;background:rgba(148,163,184,.18)"></span></sc-if>
+                </div>
+                <div style="padding-bottom:16px;min-width:0">
+                  <div style="font-size:14px;font-weight:700;color:#f8fafc">{{ gp.title }}</div>
+                  <div style="font-size:13px;color:#94a3b8;line-height:1.55;margin-top:3px">{{ gp.body }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="The work, by name" style="max-width:1160px;margin:0 auto;padding:clamp(48px,7vw,72px) clamp(16px,4vw,32px) clamp(24px,4vw,40px)">
+    <div style="max-width:760px;margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">The work, by name</span></div>
+      <h2 style="font-size:clamp(24px,4vw,34px);line-height:1.14;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:14px 0 12px;text-wrap:pretty">{{ t.workH2 }}</h2>
+      <p style="font-size:15px;line-height:1.65;color:#94a3b8;margin:0;text-wrap:pretty">Retainer hours are advisory: reviews, decisions, the call on which of two designs to ship. Delivery work becomes a fixed-price statement of work you approve before it starts. The price depends on what the review finds and how many people it touches, so it is quoted after the review, not before.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:14px">
+      <sc-for list="{{ t.projects }}" as="pj" hint-placeholder-count="4">
+        <div style="border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:20px;display:flex;flex-direction:column;gap:8px" style-hover="border-color:rgba(0,120,212,.4)">
+          <span style="font-size:15px;font-weight:700;color:#f8fafc;line-height:1.35;letter-spacing:-.01em">{{ pj.name }}</span>
+          <span style="font-size:13px;color:#94a3b8;line-height:1.6;flex-grow:1">{{ pj.body }}</span>
+          <div style="margin-top:8px;padding-top:12px;border-top:1px solid rgba(30,41,59,.9)">
+            <span style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#00B4D8">{{ pj.when }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section data-screen-label="Deep dive switcher" style="max-width:1160px;margin:0 auto;padding:0 clamp(16px,4vw,32px) clamp(40px,6vw,64px)">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid rgba(30,41,59,.9);border-radius:14px;background:rgba(15,23,42,.5);padding:14px 18px">
+      <a href="Solutions.dc.html" style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#94a3b8;margin-right:4px;text-decoration:none" style-hover="color:#f8fafc"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>All solutions</a>
+      <sc-for list="{{ pills }}" as="p" hint-placeholder-count="8">
+        <sc-if value="{{ p.active }}" hint-placeholder-val="{{ false }}"><span style="padding:9px 14px;border-radius:999px;font-size:12px;font-weight:700;color:#f8fafc;border:1px solid rgba(0,180,216,.5);background:rgba(0,180,216,.1);white-space:nowrap">{{ p.label }}</span></sc-if>
+        <sc-if value="{{ p.inactive }}" hint-placeholder-val="{{ true }}"><a href="{{ p.href }}" style="padding:9px 14px;border-radius:999px;font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(30,41,59,.9);text-decoration:none;white-space:nowrap" style-hover="color:#f8fafc;border-color:rgba(0,180,216,.4)">{{ p.label }}</a></sc-if>
+      </sc-for>
+    </div>
+  </section>
+
+  <section id="how-it-goes" data-screen-label="How it goes" style="border-top:1px solid rgba(30,41,59,.8);background:linear-gradient(180deg,#020617,#040b1e 40%,#020617)">
+    <div style="max-width:1160px;margin:0 auto;padding:clamp(48px,8vw,88px) clamp(16px,4vw,32px)">
+      <div style="max-width:720px;margin-bottom:28px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">How working with Shane goes</span></div>
+        <h2 style="font-size:clamp(24px,4vw,34px);line-height:1.14;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:14px 0 12px;text-wrap:pretty">A conversation first. Then Shane reviews the tenant himself.</h2>
+        <p style="font-size:15px;line-height:1.65;color:#94a3b8;margin:0;text-wrap:pretty">No automated scan runs before you have spoken. The review is a read-only pass Shane runs himself after kickoff, focused on what you told him matters.</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:14px">
+        <div style="position:relative;overflow:hidden;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.6);padding:22px 20px">
+          <span style="position:absolute;right:-6px;bottom:-28px;font-size:104px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(0,180,216,.06);pointer-events:none">1</span>
+          <span style="font-family:Menlo,ui-monospace,monospace;font-size:11px;letter-spacing:.12em;color:#00B4D8">01</span>
+          <h3 style="font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9;margin:12px 0 8px">Start, or ask first</h3>
+          <p style="font-size:13.5px;line-height:1.6;color:#94a3b8;margin:0;position:relative">Start a retainer from $900 a month, or send Shane the question that is stuck. Either way the next step is the same.</p>
+        </div>
+        <div style="position:relative;overflow:hidden;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.6);padding:22px 20px">
+          <span style="position:absolute;right:-6px;bottom:-28px;font-size:104px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(0,180,216,.06);pointer-events:none">2</span>
+          <span style="font-family:Menlo,ui-monospace,monospace;font-size:11px;letter-spacing:.12em;color:#00B4D8">02</span>
+          <h3 style="font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9;margin:12px 0 8px">Kickoff with Shane</h3>
+          <p style="font-size:13.5px;line-height:1.6;color:#94a3b8;margin:0;position:relative">A call to cover what is planned, what is broken, and where the review should focus. You bring the decisions; he brings the questions.</p>
+        </div>
+        <div style="position:relative;overflow:hidden;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.6);padding:22px 20px">
+          <span style="position:absolute;right:-6px;bottom:-28px;font-size:104px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(0,180,216,.06);pointer-events:none">3</span>
+          <span style="font-family:Menlo,ui-monospace,monospace;font-size:11px;letter-spacing:.12em;color:#00B4D8">03</span>
+          <h3 style="font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9;margin:12px 0 8px">Shane reviews your tenant</h3>
+          <p style="font-size:13.5px;line-height:1.6;color:#94a3b8;margin:0;position:relative">A read-only pass he runs himself after kickoff. Nothing installed, nothing changed, access you can revoke the same day.</p>
+        </div>
+        <div style="position:relative;overflow:hidden;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.6);padding:22px 20px">
+          <span style="position:absolute;right:-6px;bottom:-28px;font-size:104px;font-weight:800;letter-spacing:-.05em;line-height:1;color:rgba(0,180,216,.06);pointer-events:none">4</span>
+          <span style="font-family:Menlo,ui-monospace,monospace;font-size:11px;letter-spacing:.12em;color:#00B4D8">04</span>
+          <h3 style="font-size:16px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9;margin:12px 0 8px">Findings, then the work</h3>
+          <p style="font-size:13.5px;line-height:1.6;color:#94a3b8;margin:0;position:relative">Written findings with an order to fix things in. Retainer hours work the list; delivery becomes a fixed-price SOW you approve first.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Close" style="max-width:940px;margin:0 auto;padding:clamp(40px,6vw,64px) clamp(16px,4vw,32px) clamp(72px,10vw,120px)">
+    <div style="position:relative;border:1px solid rgba(0,120,212,.3);border-radius:24px;background:radial-gradient(900px 380px at 8% -10%,rgba(0,120,212,.18),transparent 60%),linear-gradient(168deg,rgba(10,37,64,.5),#070d1e 64%);padding:clamp(32px,6vw,64px) clamp(20px,5vw,56px);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:1px;background:linear-gradient(90deg,#00B4D8,rgba(0,180,216,.15))"></span><span style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#00B4D8">Direct Engagement</span></div>
+      <h2 style="font-size:clamp(28px,5vw,42px);line-height:1.1;letter-spacing:-.028em;font-weight:800;color:#f8fafc;margin:18px 0 16px;max-width:680px;text-wrap:pretty">Bring the {{ t.short }} decision. Leave with the answer.</h2>
+      <p style="font-size:17px;line-height:1.6;color:#94a3b8;margin:0 0 30px;max-width:560px">NASA's Lead Microsoft 365 Architect, 30 years in the Microsoft ecosystem, from $900 a month. No proposal, no SOW, no minimum term.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+        <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="primary" size="lg" as="a" href="Work With Me.dc.html#tiers" dc-props="{{ ctaLg }}" hint-size="auto,52px">Start at $900/mo<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></x-import>
+        <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="outline" size="lg" as="a" href="Contact.dc.html" dc-props="{{ ctaLgGhost }}" hint-size="auto,52px">Ask Shane the question</x-import>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer style="position:relative">
+  <div style="position:absolute;inset:0;background:#020617;border-top:1px solid rgba(30,41,59,.8)"></div>
+  <div style="position:relative;max-width:1280px;margin:0 auto;padding:64px clamp(16px,4vw,32px) 40px">
+    <div style="display:flex;flex-wrap:wrap;gap:40px;margin-bottom:48px">
+      <div style="flex:1 1 260px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <span style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+          <span style="font-family:'Space Grotesk',Inter,sans-serif;font-weight:600;font-size:16px;color:#F5F5F7">Shane McCaw Consulting</span>
+        </div>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#B5B5BC;max-width:320px">Vero Beach, FL — M365 · Copilot AI · SharePoint · Power Platform</p>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Get Started</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="Assessment.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Assessment</a></li>
+          <li><a href="Work With Me.dc.html#tiers" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Fractional Architecture</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Solutions</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="Solution - Copilot AI.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Copilot &amp; AI</a></li>
+          <li><a href="Solution - Security Compliance.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Security &amp; Compliance</a></li>
+          <li><a href="Solution - Governance.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Governance</a></li>
+          <li><a href="Solution - SharePoint.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">SharePoint</a></li>
+          <li><a href="Solution - Power Platform.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Power Platform</a></li>
+          <li><a href="Solution - Teams.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Teams</a></li>
+          <li><a href="Solution - Migration.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Migration</a></li>
+          <li><a href="Solution - M365 Health.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">M365 Health</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Company</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="About Shane.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">About Shane</a></li>
+          <li><a href="Resources.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Resources</a></li>
+          <li><a href="Contact.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Contact</a></li>
+          <li><a href="Contact.dc.html" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Ask a Question</a></li>
+        </ul>
+      </div>
+      <div style="flex:1 1 150px">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#F5F5F7">Legal</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <li><a href="/terms" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Terms of Service</a></li>
+          <li><a href="/privacy" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Privacy Policy</a></li>
+        </ul>
+      </div>
+    </div>
+    <div style="padding-top:28px;border-top:1px solid rgba(30,41,59,.8);display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;font-size:12px;color:#B5B5BC">
+      <span>© 2026 Shane McCaw Consulting. All rights reserved. Shane's role at NASA is a personal credential; this practice is independent of NASA.</span>
+      <a href="/privacy" style="color:#B5B5BC;text-decoration:none" style-hover="color:#F5F5F7">Privacy Policy</a>
+    </div>
+  </div>
+</footer>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const TOPICS = [
+  {
+    id: "copilot", label: "Copilot & AI", short: "Copilot",
+    h1: "Copilot doesn't leak your data.", h1b: "It reads it out loud.",
+    lead: "Copilot answers from whatever your permission model already exposes. Every overshared site, every \u201cAnyone with the link\u201d, every unlabelled salary file: reachable today, quotable the day the seats go live. The rollout doesn't create the exposure. It narrates it.",
+    sub: "The panel alongside is what Shane's read-only review returns for a typical mid-market tenant: the exact surface Copilot's index will see.",
+    rows: [
+      { label: "Files and messages Copilot will index", value: "2.1M", pct: 100, sub: "Everything the permission model exposes to licensed users." },
+      { label: "Reachable beyond the intended audience", value: "214,000", pct: 34, sub: "Open links, broken inheritance, org-wide groups used as ACLs." },
+      { label: "Sensitive and unlabelled among those", value: "3,400", pct: 9, sub: "Salary, legal and board material with no label on it." },
+    ],
+    panelNote: "Six findings would block this rollout. Every one is fixable before a single seat is assigned.",
+    pathsEyebrow: "Deployment order",
+    pathsH2: "The order of operations decides whether Copilot is an advantage or a headline.",
+    pathsLead: "Most failed rollouts run the same script: buy seats, enable, apologise. The work is identical either way: permissions, labels, licensing. The only variable is whether it happens before or after someone asks Copilot the wrong question.",
+    bad: [["Buy 300 seats", "The licence spend is committed before anyone has read the tenant."], ["Enable for everyone", "The index inherits every oversharing decision of the last decade."], ["Week two", "\u201cSummarise what we pay the leadership team\u201d returns an answer."], ["Rollout paused", "Legal owns the incident, adoption never recovers, seats keep billing."]],
+    good: [["Kickoff with Shane", "What is licensed, what is budgeted, what the board was promised."], ["Shane's read-only review", "The exact reachable surface, measured before any spend."], ["Exposure closed", "Open links closed, labels applied, permissions rebuilt, in the right order."], ["Pilot, then seats", "A pilot group with usage policy in place, then licences that match reality."], ["Standing review", "Retainer hours keep the reachable surface from quietly reopening."]],
+    workH2: "Top four Copilot projects that surface after the review.",
+    projects: [
+      { name: "Copilot for Microsoft 365 Deployment Project", body: "The permission model, labelling and licensing plan behind a defensible rollout.", when: "Before the first seat" },
+      { name: "Copilot Data Exposure Remediation", body: "Closes the oversharing, unlabelled content and orphaned permissions the review found.", when: "When the review says no" },
+      { name: "Copilot Adoption & Governance Program", body: "Acceptable-use policy, prompt handling, and the adoption work that makes renewal justifiable.", when: "After go-live" },
+      { name: "Data Classification & Sensitivity Label Rollout", body: "Labels that are applied, not just defined, on the content Copilot will read first.", when: "Before or alongside rollout" },
+    ],
+  },
+  {
+    id: "security", label: "Security & Compliance", short: "security",
+    h1: "The gap is almost never the policy.", h1b: "It's the exclusion.",
+    lead: "Break-glass accounts, a service principal added during a migration, one group excluded for a project that ended two years ago. Each was reasonable on the day. Together they are the route in, and no quarterly review is scoped to find them.",
+    sub: "The panel alongside is what Shane's review returns for a typical tenant that believes Conditional Access is finished.",
+    rows: [
+      { label: "Users covered by a Conditional Access policy", value: "71%", pct: 71, sub: "The rest sign in on the older path, every day." },
+      { label: "Exclusions nobody can still explain", value: "19", pct: 40, sub: "Service principals, ended projects, copies of break-glass." },
+      { label: "Admin roles held permanently", value: "14", pct: 60, sub: "Standing Global Admins where time-bound activation belongs." },
+    ],
+    panelNote: "A valid credential is a valid session from anywhere until the exclusions are pruned. That is the first week of work.",
+    pathsEyebrow: "Hardening order",
+    pathsH2: "Security defaults authenticate the user. They never ask where from.",
+    pathsLead: "Every hardening effort touches the same controls: MFA, Conditional Access, privileged roles, mail flow, data loss prevention. The difference is whether they are sequenced by an architect or by the last incident.",
+    bad: [["Security defaults on", "MFA enforced, legacy auth blocked, and everyone assumes the job is finished."], ["An exclusion for the migration", "Reasonable, temporary, never removed."], ["Audit season", "The compliance questionnaire asks for evidence nobody has."], ["The incident", "A valid credential from the wrong country, on a path no policy covered."]],
+    good: [["Kickoff with Shane", "Which frameworks apply, what the auditors asked for last time, what broke."], ["Shane's read-only review", "Every policy, every exclusion, every standing admin role, listed with a reason or without one."], ["Coverage rebuilt", "Baseline Conditional Access for every user, then device and risk conditions."], ["Privilege made temporary", "Standing admin roles moved to time-bound activation with approval."], ["Standing review", "Retainer hours re-read the exclusion list every month, before an auditor does."]],
+    workH2: "Top four security and compliance projects that surface after the review.",
+    projects: [
+      { name: "Identity Modernization & Conditional Access Build-Out", body: "Baseline policies for every user, exclusions with an owner and an end date.", when: "First" },
+      { name: "Security & Compliance Hardening for Microsoft 365", body: "Mail flow, sharing, privileged access and audit settings brought to a defensible baseline.", when: "After identity" },
+      { name: "DLP Policy Implementation", body: "Policies that stop sensitive data leaving, tuned so people stop working around them.", when: "Once labels exist" },
+      { name: "Compliance Framework Implementation", body: "SOC 2, NIST CSF, ISO 27001 or CMMC controls mapped to tenant settings, with evidence.", when: "When an audit is on the calendar" },
+    ],
+  },
+  {
+    id: "governance", label: "Governance", short: "governance",
+    h1: "Nobody owns the tenant.", h1b: "So the tenant owns itself.",
+    lead: "With no named owner, sharing settings, guest access and site permissions widen one request at a time and nothing pulls them back. Governance is not a policy document. It is someone whose job it is to say no, and the settings that make no stick.",
+    sub: "The panel alongside is what Shane's review returns for a tenant where governance has been picked up between outages.",
+    rows: [
+      { label: "Sites with no active owner", value: "38%", pct: 38, sub: "The owner left. The site kept sharing." },
+      { label: "Sharing links created in the last twelve months", value: "61,000", pct: 100, sub: "Almost none reviewed after the day they were made." },
+      { label: "Guest accounts inactive for 90+ days", value: "412", pct: 45, sub: "Still attached to the sites they were invited into." },
+    ],
+    panelNote: "None of this fails. It sits there, correct on paper and wrong in practice, until something reads it.",
+    pathsEyebrow: "Ownership order",
+    pathsH2: "Reactive ownership only ever catches the things that break.",
+    pathsLead: "A permission opening too wide never fails. It waits. Recorded ownership with a review cadence is the only mechanism that reliably stops permissions accumulating quietly, and it is rare at any size.",
+    bad: [["IT, part-time", "Governance happens when something breaks, so review happens after failure."], ["One request at a time", "Each sharing exception is reasonable. Nobody sees the sum."], ["The audit", "Somebody asks who can reach the finance site. Nobody can answer quickly."], ["Cleanup by hand", "Months of work to reconstruct decisions nobody recorded."]],
+    good: [["Kickoff with Shane", "Who decides today, who should, and what the board needs to see."], ["Shane's read-only review", "Ownership, sharing settings, guest access and lifecycle across every site and team."], ["Owners named", "Every site and team gets an accountable owner and an expiry."], ["Settings that hold", "Sharing defaults, guest policy and labels set so drift becomes an exception."], ["Standing review", "Retainer hours run the review cadence so it happens without a crisis."]],
+    workH2: "Top four governance projects that surface after the review.",
+    projects: [
+      { name: "Governance Remediation & Architecture Hardening", body: "Ownership, lifecycle and sharing defaults rebuilt from the review's findings.", when: "First" },
+      { name: "External Sharing & Guest Access Governance", body: "Guest lifecycle, sharing policy per site class, access reviews that actually run.", when: "When guests outnumber owners" },
+      { name: "Data Classification & Sensitivity Label Rollout", body: "A taxonomy applied to content, with auto-labelling where nobody visits.", when: "Before Copilot" },
+      { name: "Retention & Records Management Implementation", body: "Retention that survives a departing employee and a legal hold that holds.", when: "When legal asks" },
+    ],
+  },
+  {
+    id: "sharepoint", label: "SharePoint", short: "SharePoint",
+    h1: "Every link ever created is", h1b: "still live.",
+    lead: "Sharing links made for projects that closed years ago still resolve. Sites whose owners left still share. SharePoint does exactly what it was told in 2019, and nobody has told it anything since.",
+    sub: "The panel alongside is what Shane's review returns for a typical SharePoint estate that grew without an information architecture.",
+    rows: [
+      { label: "Sites", value: "1,860", pct: 100, sub: "Roughly one for every four people, most created by a Team." },
+      { label: "Sites with broken permission inheritance", value: "27%", pct: 27, sub: "Unique permissions nobody remembers granting." },
+      { label: "\u201cAnyone with the link\u201d files", value: "48,000", pct: 52, sub: "Reachable by anyone the link was ever forwarded to." },
+    ],
+    panelNote: "The intranet nobody uses and the site everybody overshares are the same architecture problem.",
+    pathsEyebrow: "Rebuild order",
+    pathsH2: "Sharing and labelling staying in step is the whole point.",
+    pathsLead: "An information architecture is a decision about who owns what and how long it lives. Without one, hub sites, sharing settings and labels are three separate arguments that never resolve.",
+    bad: [["Every Team makes a site", "Two thousand sites, no hierarchy, no owner of the whole."], ["Sharing set to Anyone", "Because the alternative generated tickets."], ["The intranet project", "A new front door on the same unstructured house."], ["The oversharing finding", "Found by Copilot, or by an auditor, or by the person who should not have seen it."]],
+    good: [["Kickoff with Shane", "What the business actually uses SharePoint for, and what it thinks it does."], ["Shane's read-only review", "Every site, its owner, its sharing state and its last activity."], ["Architecture decided", "Hub structure, site classes, sharing policy per class."], ["Estate reshaped", "Orphans reassigned, dormant sites archived, inheritance restored where it matters."], ["Standing review", "Retainer hours keep new sites landing in the structure, not beside it."]],
+    workH2: "Top four SharePoint projects that surface after the review.",
+    projects: [
+      { name: "SharePoint & Teams Information Architecture Rebuild", body: "Hubs, site classes and ownership designed once, then enforced by settings.", when: "First" },
+      { name: "External Sharing & Guest Access Governance", body: "Sharing policy per site class and guest lifecycle that closes what the review found.", when: "When links outnumber owners" },
+      { name: "Intranet / Hub Site Build-Out", body: "A front door built on the architecture, not in place of it.", when: "After the rebuild" },
+      { name: "SharePoint Migration", body: "File shares and legacy sites moved into the structure, with what is not worth moving left behind.", when: "When there is something to bring" },
+    ],
+  },
+  {
+    id: "power-platform", label: "Power Platform", short: "Power Platform",
+    h1: "Your citizen developers shipped to production.", h1b: "Nobody told production.",
+    lead: "Flows running on a departed employee's credentials. Apps in the default environment with connectors that move customer data into personal storage. The Power Platform is the fastest way to build in Microsoft 365, and the least governed.",
+    sub: "The panel alongside is what Shane's review returns for a tenant that never set an environment strategy.",
+    rows: [
+      { label: "Flows and apps in the default environment", value: "640", pct: 100, sub: "Built by makers, running on personal connections." },
+      { label: "Connectors crossing business and non-business data", value: "22", pct: 35, sub: "No data loss prevention policy separates them." },
+      { label: "Apps whose owner has left", value: "31", pct: 20, sub: "Still running, still authorised, nobody to ask." },
+    ],
+    panelNote: "The goal is not to stop the makers. It is to give them an environment where what they build can be trusted.",
+    pathsEyebrow: "Guardrail order",
+    pathsH2: "Governance that arrives after the apps exist has to negotiate.",
+    pathsLead: "Environment strategy, connector policy and ownership are cheap on day one and expensive after six hundred flows depend on the wrong defaults.",
+    bad: [["Default environment for everything", "Every maker, every connector, one shared space."], ["A flow becomes a process", "Payroll approvals run on one person's connection."], ["That person leaves", "The flow fails on the first Monday, or worse, keeps running."], ["The lockdown", "IT disables makers wholesale and the business routes around it."]],
+    good: [["Kickoff with Shane", "What has been built, who depends on it, what must never leave the tenant."], ["Shane's read-only review", "Every app, flow, connector and owner across all environments."], ["Environments designed", "Personal, team and production tiers with promotion paths."], ["Connector policy set", "Business and non-business connectors separated by policy, not by hope."], ["Standing review", "Retainer hours review new apps and orphaned owners each month."]],
+    workH2: "Top three Power Platform projects that surface after the review.",
+    projects: [
+      { name: "Environment strategy", body: "Default, team and production environments with a promotion path makers will actually follow.", when: "First" },
+      { name: "Connector DLP policy", body: "Business and non-business connector groups, tested against the flows that exist today.", when: "Before the next incident" },
+      { name: "Ownership and lifecycle", body: "Co-owners on every production flow, orphaned apps reassigned or retired.", when: "Ongoing" },
+    ],
+  },
+  {
+    id: "teams", label: "Teams", short: "Teams",
+    h1: "A Team for every project.", h1b: "And a Team for every project that never ended.",
+    lead: "Teams created in the 2020 rush are still there, still sharing, still holding guests. Sprawl is not a storage problem. It is a permissions problem with a chat window attached.",
+    sub: "The panel alongside is what Shane's review returns for a tenant that turned on self-service Team creation and never turned on expiry.",
+    rows: [
+      { label: "Teams", value: "940", pct: 100, sub: "One for every two people. Most created in 2020." },
+      { label: "Inactive for 180+ days", value: "46%", pct: 46, sub: "No expiration policy applied, so nothing ends." },
+      { label: "Teams with external guests and no owner", value: "63", pct: 18, sub: "Nobody accountable for who is inside." },
+    ],
+    panelNote: "Every dormant Team is a SharePoint site with a sharing history. Lifecycle is the cheapest security control you are not running.",
+    pathsEyebrow: "Lifecycle order",
+    pathsH2: "Sprawl is what happens when creation is free and ending is nobody's job.",
+    pathsLead: "Naming, expiry, guest policy and ownership decide whether Teams is a collaboration platform or an archive that still accepts guests.",
+    bad: [["Self-service creation on", "Anyone can make a Team. Everyone does."], ["The project ends", "The Team does not. Neither does its guest access."], ["The owner leaves", "Four hundred ownerless Teams, each still a site."], ["The cleanup", "Someone deletes in bulk and takes a live process with it."]],
+    good: [["Kickoff with Shane", "How Teams is actually used: chat, files, phone, meetings, external work."], ["Shane's read-only review", "Every Team, owner, guest and last activity, plus the policies that govern them."], ["Lifecycle switched on", "Expiry, naming and ownership rules that end what has ended."], ["Guests governed", "Access reviews and guest policy per Team class."], ["Standing review", "Retainer hours handle the exceptions each month instead of another cleanup."]],
+    workH2: "Top four Teams projects that surface after the review.",
+    projects: [
+      { name: "Teams Sprawl & Lifecycle Automation", body: "Expiry, naming and ownership policy applied to the estate the review found.", when: "First" },
+      { name: "SharePoint & Teams Information Architecture Rebuild", body: "Team classes and the sites behind them designed together.", when: "When sprawl is structural" },
+      { name: "Teams Phone License & Calling Policy Configuration", body: "Calling plans, policies and licences configured for the people who use them.", when: "When phones move to Teams" },
+      { name: "Teams Rooms License & Policy Configuration", body: "Room accounts, licences and policies set for meeting spaces.", when: "When rooms come online" },
+    ],
+  },
+  {
+    id: "migration", label: "Migration", short: "migration",
+    h1: "Migrations fail on", h1b: "the things nobody listed.",
+    lead: "The shared mailboxes with no owner, the distribution lists that ran a business process, the identities that do not match on the other side. Cutover is the easy part. The inventory is where it goes wrong.",
+    sub: "The panel alongside is what Shane's review returns before a typical Exchange or tenant-to-tenant move. Shane ran NASA's migration from on-prem Exchange to Microsoft 365 and from Skype for Business to Teams.",
+    rows: [
+      { label: "Mailboxes to move", value: "2,400", pct: 100, sub: "Plus the shared mailboxes nobody put on the list." },
+      { label: "Identity mismatches between source and target", value: "8%", pct: 30, sub: "UPNs, proxy addresses, duplicate SMTP." },
+      { label: "Content not worth bringing across", value: "41%", pct: 41, sub: "Stale sites, orphaned OneDrives, archives nobody opens." },
+    ],
+    panelNote: "What you leave behind is a decision. What you forget is an outage.",
+    pathsEyebrow: "Cutover order",
+    pathsH2: "Sequence is the whole difference between a migration and an incident.",
+    pathsLead: "Identity first, then mail, then files, then the things that depend on all three. Every migration that skipped a step found it again on cutover weekend.",
+    bad: [["Pick a tool, set a date", "The project plan starts at cutover and works backwards."], ["Discovery by surprise", "Shared mailboxes, mail-enabled lists and app relays appear the week before."], ["Cutover weekend", "Identity mismatches block sign-in on Monday morning."], ["The long tail", "Six months of \u201cit used to work\u201d tickets nobody budgeted for."]],
+    good: [["Kickoff with Shane", "What is moving, what is not, and what the business cannot lose for an hour."], ["Shane's read-only review", "Mailboxes, identities, sites, dependencies and the mismatches between source and target."], ["Identity reconciled", "UPNs, addresses and licences aligned before anything moves."], ["Waves, not a weekend", "Pilot, then waves sized to the help desk, with what not to bring decided up front."], ["Standing review", "Retainer hours own the tail: coexistence, decommissioning, the last stragglers."]],
+    workH2: "Top four migration projects that surface after the review.",
+    projects: [
+      { name: "Microsoft 365 Migration Execution", body: "On-prem Exchange, file shares and identity moved in waves, with the inventory done first.", when: "From on-prem" },
+      { name: "Tenant-to-Tenant Migration", body: "Mergers, divestitures and consolidations: identity mapping, coexistence, cutover.", when: "Tenant to tenant" },
+      { name: "SharePoint Migration", body: "Sites and file shares into a designed structure, stale content left behind on purpose.", when: "Files and sites" },
+      { name: "Exchange Online Hygiene & Modernization", body: "Mail flow, legacy protocols and stale objects cleaned up before or after the move.", when: "Before cutover, or after" },
+    ],
+  },
+  {
+    id: "health", label: "M365 Health", short: "tenant health",
+    h1: "A tenant does not stay", h1b: "where you left it.",
+    lead: "Admins change settings, vendors consent to OAuth apps, defaults shift when Microsoft ships. An assessment tells you what is wrong today. Health is what happens on every day after that.",
+    sub: "The panel alongside is what Shane's review returns for a tenant that was configured well once and reviewed never.",
+    rows: [
+      { label: "Message Center changes this quarter", value: "210", pct: 100, sub: "Each one a default that may have moved under you." },
+      { label: "Licences assigned but unused for 90+ days", value: "18%", pct: 18, sub: "Paid, renewed, idle." },
+      { label: "Settings changed since the last review", value: "57", pct: 45, sub: "Nobody can say who changed them, or why." },
+    ],
+    panelNote: "Undetected is not the same as absent. Every remediation starts decaying the day after it lands.",
+    pathsEyebrow: "Review order",
+    pathsH2: "You find out because something broke, not because something changed.",
+    pathsLead: "Changes that break things get attention within the day. Changes that quietly open exposure never break anything, so they wait. A health practice is the review that catches the second kind.",
+    bad: [["Configured once", "A good baseline, a proud handover document."], ["Eighteen months pass", "Three admins, two vendors, forty Microsoft changes."], ["The renewal", "Licences renew on the original count. Nobody checked usage."], ["The archaeology", "Someone tries to work out when a setting moved. Nobody can."]],
+    good: [["Kickoff with Shane", "What was decided at the last baseline, and who has touched the tenant since."], ["Shane's read-only review", "Configuration against baseline, licence utilisation, service health, Message Center exposure."], ["Baseline restored", "Drifted settings moved back, or the baseline updated deliberately."], ["Licences right-sized", "Idle seats reclaimed before the renewal, not after."], ["Standing review", "Retainer hours run the review each month so change becomes a decision, not a discovery."]],
+    workH2: "Top four tenant health projects that surface after the review.",
+    projects: [
+      { name: "License Waste Optimization & Cost Recovery", body: "Idle seats and mismatched SKUs found and reclaimed before renewal.", when: "Before renewal" },
+      { name: "Intune Deployment & Device Compliance Build-Out", body: "Baselines, compliance policies and enrolment paths for the devices that reach the tenant.", when: "When devices are the gap" },
+      { name: "Business Continuity / Disaster Recovery Implementation", body: "Backup, recovery and continuity for the data Microsoft does not restore for you.", when: "Before you need it" },
+      { name: "Exchange Online Hygiene & Modernization", body: "Legacy protocols, stale objects and mail flow brought to a defensible state.", when: "When mail is the gap" },
+    ],
+  },
+];
+
+const PAGE = {"copilot":"Solution - Copilot AI.dc.html","security":"Solution - Security Compliance.dc.html","governance":"Solution - Governance.dc.html","sharepoint":"Solution - SharePoint.dc.html","power-platform":"Solution - Power Platform.dc.html","teams":"Solution - Teams.dc.html","migration":"Solution - Migration.dc.html","health":"Solution - M365 Health.dc.html"};
+
+const THEME = {
+  copilot: { hex: "#38bdf8", rgb: [56, 189, 248] },
+  security: { hex: "#a78bfa", rgb: [167, 139, 250] },
+  governance: { hex: "#60a5fa", rgb: [96, 165, 250] },
+  sharepoint: { hex: "#22d3ee", rgb: [34, 211, 238] },
+  "power-platform": { hex: "#f59e0b", rgb: [245, 158, 11] },
+  teams: { hex: "#818cf8", rgb: [129, 140, 248] },
+  migration: { hex: "#fb7185", rgb: [251, 113, 133] },
+  health: { hex: "#4ADE80", rgb: [74, 222, 128] },
+};
+
+class Component extends DCLogic {
+  state = { topic: null, narrow: false, menuOpen: false, solOpen: false };
+
+  componentDidMount() {
+    this._onResize = () => {
+      const narrow = window.innerWidth < 1024;
+      if (narrow !== this.state.narrow) this.setState({ narrow, menuOpen: false, solOpen: false });
+    };
+    window.addEventListener("resize", this._onResize);
+    this._onResize();
+  }
+  componentWillUnmount() {
+    window.removeEventListener("resize", this._onResize);
+  }
+
+  renderVals() {
+    const { topic, narrow, menuOpen, solOpen } = this.state;
+    const id = "sharepoint";
+    const base = TOPICS.find((t) => t.id === id) || TOPICS[0];
+    const path = (arr) => arr.map(([title, body], i) => ({ title, body, end: i === arr.length - 1, mid: i < arr.length - 1, line: i < arr.length - 1 }));
+    const th = THEME[base.id] || THEME.copilot;
+    const [R, G, B] = th.rgb;
+    const rgba = (a) => "rgba(" + R + "," + G + "," + B + "," + a + ")";
+    const isAura = base.id === "copilot";
+    const t = {
+      ...base,
+      bad: path(base.bad),
+      good: path(base.good),
+      projects: base.projects,
+      accentFg: th.hex,
+      heroBg: isAura
+        ? "radial-gradient(circle 1100px at 80% -20%, rgba(59,130,246,.16), rgba(2,6,23,0) 62%), radial-gradient(circle 900px at 10% 100%, rgba(139,92,246,.14), rgba(2,6,23,0) 66%)"
+        : "radial-gradient(circle 1100px at 76% -20%, " + rgba(".12") + ", rgba(2,6,23,0) 62%), radial-gradient(circle 800px at 6% 12%, rgba(0,120,212,.06), rgba(2,6,23,0) 66%)",
+      iconGlow: isAura ? "filter:drop-shadow(0 0 30px rgba(139,92,246,.4))" : "filter:drop-shadow(0 0 26px " + rgba(".3") + ")",
+      panelBorder: isAura ? "1px solid rgba(139,92,246,.28)" : "1px solid " + rgba(".22"),
+      panelBg: isAura
+        ? "linear-gradient(160deg,rgba(59,130,246,.14),rgba(139,92,246,.10) 45%,rgba(11,21,36,.5) 80%)"
+        : "linear-gradient(160deg," + rgba(".10") + ",rgba(11,21,36,.52) 55%,rgba(11,21,36,.34))",
+      panelShadow: isAura ? "0 0 70px rgba(139,92,246,.18), inset 0 1px 0 rgba(148,163,184,.08)" : "0 0 60px " + rgba(".13") + ", inset 0 1px 0 rgba(148,163,184,.08)",
+      isCopilot: base.id === "copilot",
+      isSecurity: base.id === "security",
+      isGovernance: base.id === "governance",
+      isSharePoint: base.id === "sharepoint",
+      isPowerPlatform: base.id === "power-platform",
+      isTeams: base.id === "teams",
+      isMigration: base.id === "migration",
+      isHealth: base.id === "health",
+      isNotCopilot: base.id !== "copilot",
+    };
+    return {
+      t,
+      r1: base.rows[0], r2: base.rows[1], r3: base.rows[2],
+      pills: TOPICS.map((p) => ({ label: p.label, href: PAGE[p.id], active: p.id === base.id, inactive: p.id !== base.id })),
+      narrow, wide: !narrow, menuOpen, solOpen,
+      toggleMenu: () => this.setState((s) => ({ menuOpen: !s.menuOpen, solOpen: false })),
+      toggleSolutions: () => this.setState((s) => ({ solOpen: !s.solOpen })),
+      ctaLg: { style: { minHeight: 52, padding: "0 26px", fontSize: 16, fontWeight: 600, borderRadius: 12, background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", border: "none" } },
+      ctaLgGhost: { style: { minHeight: 52, padding: "0 22px", fontSize: 16, fontWeight: 600, borderRadius: 12, color: "#e2e8f0", borderColor: "rgba(148,163,184,.3)", boxShadow: "none" } },
+    };
+  }
+}
+</script>
+</body>
+</html>
