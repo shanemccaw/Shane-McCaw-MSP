@@ -7,6 +7,8 @@ import Status from "./pages/Status";
 import Resources from "./pages/Resources";
 import Contact from "./pages/Contact";
 import ArticlePage from "./pages/ArticlePage";
+import Solutions from "./pages/Solutions";
+import SolutionTopicPage from "./pages/solutions/SolutionTopicPage";
 import Terms from "./pages/legal/Terms";
 import Privacy from "./pages/legal/Privacy";
 import Dpa from "./pages/legal/Dpa";
@@ -78,6 +80,8 @@ export default function App() {
       <Route path="/resources" component={Resources} />
       <Route path="/resources/:slug" component={ArticlePage} />
       <Route path="/contact" component={Contact} />
+      <Route path="/solutions" component={Solutions} />
+      <Route path="/solutions/:slug" component={SolutionTopicPage} />
       <Route path="/login" component={Login} />
 
       {/* Legal Routes */}
