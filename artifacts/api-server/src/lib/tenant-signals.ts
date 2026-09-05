@@ -643,6 +643,16 @@ const CHECK_DIAGNOSTIC_ONLY_KEYS = new Set([
   "_licenseGap",
   "_licenseGapCode",
   "_licenseGapFeature",
+  // Git #2923: the per-object evidence every count-family mapping transform now
+  // captures alongside its count (monitor-executor.ts, EVIDENCE_PROPERTY_KEY).
+  // Belongs here for exactly the reason the four above do — it is a per-check
+  // diagnostic under one bare name, so on the flat profile it would collide on
+  // EVERY merge, and the last check to be merged would be the only one whose
+  // evidence survived. No signal rule reads it: `evaluateRule` reads mapping
+  // targetFields and `<checkKey>__itemCount`, and `_evidence` is neither
+  // (`buildProducibleProfileKeys` in pillar-coverage.ts never enumerates it).
+  // Still recorded verbatim, per check, in `mergedProfileByCheck`.
+  "_evidence",
 ]);
 
 /**

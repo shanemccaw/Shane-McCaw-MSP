@@ -9,6 +9,7 @@ import {
 import { eq } from "drizzle-orm";
 import { anthropic, withAiUsageCapture, totalCapturedCostCents } from "@workspace/integrations-anthropic-ai";
 import { buildTenantProfile, findReusableDocument, namespacedProfileKey, resolveDocumentOwnerUserId, type CategorizedFinding, type MergedProfileByCheck } from "./tenant-signals";
+import { EVIDENCE_PROPERTY_KEY as MONITOR_EVIDENCE_PROPERTY_KEY } from "./monitor-executor";
 import { getDocumentStylePrefix, getPrompt } from "./prompt-loader";
 import { extractAiHtml, firstTextBlock } from "./sow-pricing";
 // Git #547 — the real go-live score. `copilot-gate.ts` is the single definition
@@ -584,6 +585,16 @@ export function namespacedProfileEntries(byCheck: MergedProfileByCheck): Array<[
   for (const checkKey of Object.keys(byCheck).sort()) {
     const props = byCheck[checkKey] ?? {};
     for (const propertyName of Object.keys(props).sort()) {
+      // Git #2923: `_evidence` is the per-object capture behind a check's counts
+      // — up to 50 real objects per count-family mapping rule, per check. It is
+      // deliberately excluded here rather than left to the pattern filter,
+      // because `scopeProfileEntries` returns EVERYTHING when a document type
+      // has no `included_profile_key_patterns` (a real, current state for most
+      // types), so including it would silently push hundreds of directory
+      // objects per tenant into every such document's prompt. The counts these
+      // objects back are still here, under their own targetFields, which is
+      // what document prose is written against.
+      if (propertyName === MONITOR_EVIDENCE_PROPERTY_KEY) continue;
       entries.push([namespacedProfileKey(checkKey, propertyName), props[propertyName]]);
     }
   }

@@ -985,6 +985,16 @@ function countDuplicateValues(flatVals: string[]): number {
 interface FlattenResult {
   /** Every non-null `field` value found, in document order, across all items. */
   values: unknown[];
+  /**
+   * The fetched ITEM each entry of `values` came out of, index-for-index (#2923).
+   *
+   * A flattened value on its own cannot be drilled into: `skuId` "abc-123"
+   * appearing twice is a real duplicate, but "which two users hold it" is the
+   * only form of that fact anyone can act on, and it is discarded the moment the
+   * value leaves its item. Kept parallel to `values` rather than as a wrapper
+   * object so the existing `.map`/`String()` call sites read unchanged.
+   */
+  owners: unknown[];
   /** True if at least one item really had an array at the mapping's sourceField. */
   sawArray: boolean;
   /**
@@ -1017,12 +1027,17 @@ interface FlattenResult {
  * over un-flattened licence objects reports a tenant's ENTIRE licence estate as
  * duplicated. Skipping keeps a wrong shape at zero instead of at "alarming".
  */
-function flattenNestedField(vals: unknown[], field: string): FlattenResult {
+function flattenNestedField(vals: unknown[], field: string, items?: unknown[]): FlattenResult {
   const values: unknown[] = [];
+  const owners: unknown[] = [];
   let sawArray = false;
   let sawEntry = false;
   let sawField = false;
-  for (const val of vals) {
+  // Indexed rather than for-of because `vals` is `items.map(...)` — index i of
+  // one is index i of the other, and that correspondence is the only way back
+  // from a flattened value to the object that carried it (#2923).
+  for (let i = 0; i < vals.length; i++) {
+    const val = vals[i];
     if (!Array.isArray(val)) continue;
     sawArray = true;
     for (const entry of val) {
@@ -1031,10 +1046,10 @@ function flattenNestedField(vals: unknown[], field: string): FlattenResult {
       const v = (entry as Record<string, unknown>)[field];
       if (v === undefined) continue;
       sawField = true;
-      if (v !== null) values.push(v);
+      if (v !== null) { values.push(v); owners.push(items?.[i]); }
     }
   }
-  return { values, sawArray, sawEntry, sawField };
+  return { values, owners, sawArray, sawEntry, sawField };
 }
 
 /**
@@ -1076,6 +1091,286 @@ function expressionTopLevelPaths(expression: string): string[] {
   return [...out];
 }
 
+// ── Per-object evidence capture (#2923) ──────────────────────────────────────
+
+/**
+ * The reserved `extractedProperties` key every count-family transform writes its
+ * real matching objects under.
+ *
+ * Underscore-prefixed because that is this file's ESTABLISHED reserved-key
+ * convention (`_itemCount`, `_licenseGap*`, `_fanOut`, `_serviceName`), and
+ * several downstream consumers already skip `_`-prefixed keys by that
+ * convention rather than by an enumerated list — `monitor-check-trace.ts`'s
+ * `INTERNAL_KEY_PREFIX` filter and `dashboard-resolvers.ts`'s `aggregateGroupBy`
+ * both do. A bare `evidence` key would instead read as a real mapping
+ * targetField to every one of them.
+ *
+ * Deliberately NOT a new column. `extractedProperties` is already persisted
+ * verbatim in BOTH places the evidence has to reach — `tenant_monitor_profiles
+ * .extracted_properties` (the executor writes it) and `msp_diagnostic_findings
+ * .extracted_properties` (diagnostics-runner.ts spreads the CheckResult's own
+ * object into the finding row) — so carrying it inside that jsonb keeps ONE
+ * copy of the fact. A parallel column would be a second copy that can disagree
+ * with the count sitting beside it, which is the failure this platform keeps
+ * rediscovering by hand.
+ */
+export const EVIDENCE_PROPERTY_KEY = "_evidence";
+
+/**
+ * How many matching objects one mapping rule captures before it stops.
+ *
+ * `extractedProperties` is written as jsonb per tenant PER RUN, and a real
+ * stale-sign-in check on a large tenant matches thousands of users. Storing all
+ * of them would multiply every scan's row size by the size of the tenant. The
+ * cap is not a silent truncation: `matchedCount` on the record below is always
+ * the REAL total, and `truncated`/`note` say out loud that the list is a
+ * prefix — so a consumer can never mistake "the first 50" for "all of them",
+ * which is the only way a cap here could produce a plausible wrong answer.
+ */
+const EVIDENCE_ITEM_CAP = 50;
+
+/** How many real fields one evidence item projects before it stops. */
+const EVIDENCE_PROJECTED_FIELD_CAP = 6;
+
+/** Longest scalar array carried verbatim as an evidence field value. */
+const EVIDENCE_SCALAR_ARRAY_CAP = 10;
+
+/**
+ * Real identifying field names, in projection priority order.
+ *
+ * Every spelling here was taken from the live database — the distinct top-level
+ * keys actually present on captured `tenant_monitor_profiles.raw_response`
+ * items (Graph objects: `id`, `displayName`, `userPrincipalName`, `mail`,
+ * `webUrl`, `uniqueName`, `appDisplayName`; CSV usage-report rows, whose real
+ * headers contain spaces: `Display Name`, `User Principal Name`, `Owner
+ * Principal Name`). It is an allow-list of NAMES, never of values: nothing here
+ * invents a field a fetched object did not carry.
+ */
+const EVIDENCE_IDENTITY_FIELDS = [
+  "id", "Id", "objectId", "principalId", "appId", "deviceId", "siteId", "skuId", "Identity",
+  "displayName", "Display Name", "appDisplayName", "name", "Name", "uniqueName", "title",
+  "userPrincipalName", "User Principal Name", "Owner Principal Name", "Owner Display Name",
+  "mail", "skuPartNumber", "webUrl",
+];
+
+/** The subset of the above that reads as a human label, in preference order. */
+const EVIDENCE_LABEL_FIELDS = [
+  "displayName", "Display Name", "appDisplayName", "name", "Name", "uniqueName", "title",
+  "userPrincipalName", "User Principal Name", "Owner Principal Name", "Owner Display Name",
+  "skuPartNumber", "mail",
+];
+
+/** The subset that reads as a stable identifier, in preference order. */
+const EVIDENCE_ID_FIELDS = [
+  "id", "Id", "objectId", "principalId", "appId", "deviceId", "siteId", "skuId", "Identity",
+];
+
+/** One real object (or scalar) that caused a count to increment. */
+export interface EvidenceItem {
+  /** The matched object's real identifier, when it carries one. Absent otherwise. */
+  id?: string;
+  /**
+   * The matched object's real display text, VERBATIM from whichever field it
+   * actually carries — never authored here.
+   */
+  label?: string;
+  /**
+   * Which real field `label` was read off, so no consumer can mistake it for
+   * text this platform wrote.
+   */
+  labelField?: string;
+  /**
+   * The projected real fields: the identity allow-list this object genuinely
+   * has, plus the value at the mapping rule's own field — the one that made it
+   * match. Real key names, values verbatim.
+   */
+  fields: Record<string, unknown>;
+  /**
+   * Present ONLY when the match was an entry INSIDE a fetched item's array
+   * (`countWhere` over array entries, `countDuplicates`/`countDuplicatesBy`
+   * over flattened values) — the owning item's identity. Without it, "skuId
+   * abc-123 is duplicated" names no one.
+   */
+  owner?: { id?: string; label?: string };
+}
+
+/** What one count-family mapping rule captured, alongside the count it produced. */
+export interface EvidenceRecord {
+  /** The transform as AUTHORED in the stored jsonb rule, arguments included. */
+  transform: string;
+  /** The stored rule's own sourceField. */
+  sourceField: string;
+  /** The REAL total number of matches — never the capped length of `items`. */
+  matchedCount: number;
+  /** How many of them `items` actually carries. */
+  shown: number;
+  /** True when `shown < matchedCount`. */
+  truncated: boolean;
+  /** Present only when truncated: the honest "showing first N of M" sentence. */
+  note?: string;
+  items: EvidenceItem[];
+}
+
+function isEvidenceScalar(v: unknown): boolean {
+  return v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean";
+}
+
+/**
+ * Whether a value is small enough to carry verbatim as an evidence field.
+ *
+ * Scalars always are. A short array OF scalars is too — `groupTypes: ["Unified"]`
+ * and `proxyAddresses` are exactly the kind of value that explains a match. A
+ * nested object, or a long array, is not: it is the unbounded payload the cap
+ * above exists to keep out of the row, and the identity fields already say which
+ * object this is.
+ */
+function evidenceFieldValue(v: unknown): { keep: boolean; value?: unknown } {
+  if (v === undefined) return { keep: false };
+  if (isEvidenceScalar(v)) return { keep: true, value: v };
+  if (Array.isArray(v) && v.length <= EVIDENCE_SCALAR_ARRAY_CAP && v.every(isEvidenceScalar)) {
+    return { keep: true, value: v };
+  }
+  return { keep: false };
+}
+
+function firstRealField(obj: Record<string, unknown>, names: string[]): { field: string; value: string } | null {
+  for (const name of names) {
+    const v = obj[name];
+    if (v == null || v === "") continue;
+    if (typeof v !== "string" && typeof v !== "number") continue;
+    return { field: name, value: String(v) };
+  }
+  return null;
+}
+
+/** `{ id, label }` for an owning item — the same picker, minus the projection. */
+function evidenceOwner(owner: unknown): { id?: string; label?: string } | undefined {
+  if (typeof owner !== "object" || owner === null || Array.isArray(owner)) return undefined;
+  const obj = owner as Record<string, unknown>;
+  const id = firstRealField(obj, EVIDENCE_ID_FIELDS);
+  const label = firstRealField(obj, EVIDENCE_LABEL_FIELDS);
+  if (!id && !label) return undefined;
+  return { ...(id ? { id: id.value } : {}), ...(label ? { label: label.value } : {}) };
+}
+
+/**
+ * Projects one real match into an `EvidenceItem`.
+ *
+ * `subject` is the thing that matched: a fetched Graph/PowerShell/CSV object,
+ * or — for the transforms that count flattened scalars — the scalar itself.
+ * `matchedField`/`matchedValue` are the mapping rule's own field and the real
+ * value at it, i.e. the reason this row is in the list at all.
+ *
+ * The projection is width-bounded (see EVIDENCE_PROJECTED_FIELD_CAP), not
+ * content-edited: every value it emits is byte-identical to what the tenant
+ * returned. When an object carries NONE of the identity names — a real case for
+ * report rows and PowerShell results with bespoke shapes — it falls back to that
+ * object's own scalar-valued fields in document order, because an evidence row
+ * of `{}` is worse than a slightly wider one.
+ */
+function buildEvidenceItem(
+  subject: unknown,
+  matchedField: string,
+  matchedValue: unknown,
+  owner?: unknown,
+): EvidenceItem {
+  const ownerIdentity = evidenceOwner(owner);
+  const fields: Record<string, unknown> = {};
+
+  if (typeof subject !== "object" || subject === null || Array.isArray(subject)) {
+    // A flattened scalar (a skuId, a licence value). It IS its own label.
+    const key = matchedField || "value";
+    fields[key] = subject;
+    return {
+      ...(subject == null ? {} : { label: String(subject), labelField: key }),
+      fields,
+      ...(ownerIdentity ? { owner: ownerIdentity } : {}),
+    };
+  }
+
+  const obj = subject as Record<string, unknown>;
+  for (const name of EVIDENCE_IDENTITY_FIELDS) {
+    if (Object.keys(fields).length >= EVIDENCE_PROJECTED_FIELD_CAP) break;
+    if (name in fields) continue;
+    const picked = evidenceFieldValue(obj[name]);
+    if (picked.keep) fields[name] = picked.value;
+  }
+  if (Object.keys(fields).length === 0) {
+    for (const [k, v] of Object.entries(obj)) {
+      if (Object.keys(fields).length >= EVIDENCE_PROJECTED_FIELD_CAP) break;
+      const picked = evidenceFieldValue(v);
+      if (picked.keep) fields[k] = picked.value;
+    }
+  }
+  // The rule's own field last and unconditionally (up to one slot over the cap):
+  // it is the single field that explains why this object is here, so it must not
+  // be the one the cap drops.
+  if (matchedField && !(matchedField in fields)) {
+    const picked = evidenceFieldValue(matchedValue);
+    if (picked.keep) fields[matchedField] = picked.value;
+  }
+
+  const id = firstRealField(obj, EVIDENCE_ID_FIELDS);
+  const label = firstRealField(obj, EVIDENCE_LABEL_FIELDS);
+  return {
+    ...(id ? { id: id.value } : {}),
+    ...(label ? { label: label.value, labelField: label.field } : {}),
+    fields,
+    ...(ownerIdentity ? { owner: ownerIdentity } : {}),
+  };
+}
+
+/**
+ * Accumulates the real matching objects behind ONE mapping rule's count.
+ *
+ * Counting and capturing are driven off the SAME `add()` call on purpose: a
+ * transform that incremented a counter separately from appending evidence could
+ * drift, and a count that disagrees with its own evidence list is worse than no
+ * evidence at all. `matched` is therefore the count the transform publishes, not
+ * a second tally beside it.
+ */
+class EvidenceCollector {
+  private matchedCount = 0;
+  private readonly items: EvidenceItem[] = [];
+
+  constructor(private readonly transform: string, private readonly sourceField: string) {}
+
+  /** Record one real match. Returns nothing — `count` is the authority. */
+  add(subject: unknown, matchedField: string, matchedValue: unknown, owner?: unknown): void {
+    this.matchedCount++;
+    if (this.items.length >= EVIDENCE_ITEM_CAP) return;
+    this.items.push(buildEvidenceItem(subject, matchedField, matchedValue, owner));
+  }
+
+  /** The real number of matches recorded — what the transform writes as its count. */
+  get count(): number {
+    return this.matchedCount;
+  }
+
+  /**
+   * The record to publish, or null when nothing matched.
+   *
+   * Zero-match rules emit NO record, deliberately: a clean tenant's row stays
+   * byte-identical to what it was before #2923, and "no evidence" is never
+   * ambiguous because the count sitting beside it is 0.
+   */
+  toRecord(): EvidenceRecord | null {
+    if (this.matchedCount === 0) return null;
+    const truncated = this.items.length < this.matchedCount;
+    return {
+      transform: this.transform,
+      sourceField: this.sourceField,
+      matchedCount: this.matchedCount,
+      shown: this.items.length,
+      truncated,
+      ...(truncated
+        ? { note: `Showing the first ${this.items.length} of ${this.matchedCount} matching objects.` }
+        : {}),
+      items: this.items,
+    };
+  }
+}
+
 // ── Property extraction from Graph response items ─────────────────────────────
 
 export function applyMapping(
@@ -1084,6 +1379,14 @@ export function applyMapping(
   properties: string[],
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
+  // #2923 — the real matching objects behind each count-family targetField.
+  // Published under EVIDENCE_PROPERTY_KEY at the end, and only when something
+  // actually matched, so a clean tenant's extractedProperties is unchanged.
+  const evidence: Record<string, EvidenceRecord> = {};
+  const publishEvidence = (targetField: string, collector: EvidenceCollector): void => {
+    const record = collector.toRecord();
+    if (record) evidence[targetField] = record;
+  };
 
   // Raw property extraction (count, first value, etc.)
   for (const prop of properties) {
@@ -1162,9 +1465,22 @@ export function applyMapping(
       : undefined));
 
     switch (transform) {
-      case "count":
-        result[targetField] = vals.filter(v => v != null).length;
+      // The four predicate-over-items counts share one shape: walk `vals`
+      // INDEXED (index i of `vals` is index i of `items`, since `vals` is
+      // `items.map(...)`), let the collector do the counting, and hand it the
+      // real item that matched. Before #2923 each was a `.filter().length` that
+      // had the matching objects in hand at that exact expression and threw
+      // them away.
+      case "count": {
+        const ev = new EvidenceCollector(rawTransform, sourceField);
+        for (let i = 0; i < vals.length; i++) {
+          if (vals[i] == null) continue;
+          ev.add(items[i], sourceField, vals[i]);
+        }
+        result[targetField] = ev.count;
+        publishEvidence(targetField, ev);
         break;
+      }
       case "exists":
         result[targetField] = vals.some(v => v != null && v !== false && v !== "");
         break;
@@ -1174,15 +1490,37 @@ export function applyMapping(
       case "join":
         result[targetField] = vals.filter(v => v != null).join(", ");
         break;
-      case "countTruthy":
-        result[targetField] = vals.filter(v => v != null && v !== false && v !== "").length;
+      case "countTruthy": {
+        const ev = new EvidenceCollector(rawTransform, sourceField);
+        for (let i = 0; i < vals.length; i++) {
+          const v = vals[i];
+          if (!(v != null && v !== false && v !== "")) continue;
+          ev.add(items[i], sourceField, v);
+        }
+        result[targetField] = ev.count;
+        publishEvidence(targetField, ev);
         break;
-      case "countFalse":
-        result[targetField] = vals.filter(v => v === false).length;
+      }
+      case "countFalse": {
+        const ev = new EvidenceCollector(rawTransform, sourceField);
+        for (let i = 0; i < vals.length; i++) {
+          if (vals[i] !== false) continue;
+          ev.add(items[i], sourceField, false);
+        }
+        result[targetField] = ev.count;
+        publishEvidence(targetField, ev);
         break;
-      case "countEquals":
-        result[targetField] = vals.filter(v => String(v) === compareValue).length;
+      }
+      case "countEquals": {
+        const ev = new EvidenceCollector(rawTransform, sourceField);
+        for (let i = 0; i < vals.length; i++) {
+          if (String(vals[i]) !== compareValue) continue;
+          ev.add(items[i], sourceField, vals[i]);
+        }
+        result[targetField] = ev.count;
+        publishEvidence(targetField, ev);
         break;
+      }
       case "countEmptyArray": {
         // Counts items whose nested array field is present but EMPTY — the real
         // shape of "this group has no owners" from
@@ -1196,13 +1534,17 @@ export function applyMapping(
         // artefact. Under-reporting to 0 and warning loudly is the honest
         // failure; the warning names the fix.
         let sawArray = false;
-        let empty = 0;
-        for (const v of vals) {
+        const ev = new EvidenceCollector(rawTransform, sourceField);
+        for (let i = 0; i < vals.length; i++) {
+          const v = vals[i];
           if (!Array.isArray(v)) continue;
           sawArray = true;
-          if (v.length === 0) empty++;
+          // The empty array IS the evidence value here — "owners: []" is the
+          // whole finding, and the item beside it is the group that has none.
+          if (v.length === 0) ev.add(items[i], sourceField, v);
         }
-        result[targetField] = empty;
+        result[targetField] = ev.count;
+        publishEvidence(targetField, ev);
         if (!sawArray && items.length > 0) {
           log.warn(
             { targetField, sourceField },
@@ -1214,16 +1556,25 @@ export function applyMapping(
       case "countIfLastSignInOlderThan": {
         const cutoff = Date.now() - (staleDays! * 24 * 60 * 60 * 1000);
         let sawSignInActivity = false;
-        result[targetField] = items.filter(item => {
-          if (typeof item !== "object" || item === null) return false;
+        // The evidence field here is the SIGN-IN timestamp, not the mapping's
+        // own sourceField (which is the licence assignment that makes the user
+        // in-scope). "last signed in 2024-01-03" is what makes the row
+        // self-explanatory; `null` is the real "never signed in" case the
+        // predicate below counts as stale, and it is carried as such.
+        const signInField = "signInActivity.lastSignInDateTime";
+        const ev = new EvidenceCollector(rawTransform, sourceField);
+        for (const item of items) {
+          if (typeof item !== "object" || item === null) continue;
           const licenseVal = resolvePathInData(sourceField, item as Record<string, unknown>);
-          if (licenseVal == null || (Array.isArray(licenseVal) && licenseVal.length === 0)) return false;
-          const lastSignIn = resolvePathInData("signInActivity.lastSignInDateTime", item as Record<string, unknown>);
+          if (licenseVal == null || (Array.isArray(licenseVal) && licenseVal.length === 0)) continue;
+          const lastSignIn = resolvePathInData(signInField, item as Record<string, unknown>);
           if (lastSignIn != null) sawSignInActivity = true;
-          if (lastSignIn == null) return true; // never signed in counts as stale
+          if (lastSignIn == null) { ev.add(item, signInField, null); continue; } // never signed in counts as stale
           const signInTime = new Date(lastSignIn as string).getTime();
-          return !Number.isNaN(signInTime) && signInTime < cutoff;
-        }).length;
+          if (!Number.isNaN(signInTime) && signInTime < cutoff) ev.add(item, signInField, lastSignIn);
+        }
+        result[targetField] = ev.count;
+        publishEvidence(targetField, ev);
         if (!sawSignInActivity) {
           log.warn({ targetField, sourceField }, "monitor-executor: countIfLastSignInOlderThan found no signInActivity data on any item — check may be missing $select=signInActivity on its Graph endpoint");
         }
@@ -1231,28 +1582,54 @@ export function applyMapping(
       }
       case "groupByCount": {
         const grouped: Record<string, number> = {};
-        for (const val of vals) {
+        // Evidence for a group map is "which object went into which bucket" —
+        // each captured item carries its own real sourceField value, which IS
+        // the bucket key, so the drill-down from a bar to its members needs no
+        // second structure. One entry per counted OCCURRENCE, so the evidence
+        // and the bucket totals can only ever agree.
+        const ev = new EvidenceCollector(rawTransform, sourceField);
+        for (let i = 0; i < vals.length; i++) {
+          const val = vals[i];
           if (val == null) continue;
           const flatVals = Array.isArray(val) ? val : [val];
           for (const v of flatVals) {
             if (v == null) continue;
             const key = String(v);
             grouped[key] = (grouped[key] ?? 0) + 1;
+            ev.add(items[i], sourceField, v);
           }
         }
         result[targetField] = grouped;
+        publishEvidence(targetField, ev);
         break;
       }
       case "countDuplicates": {
         const flatVals: string[] = [];
-        for (const val of vals) {
+        // Parallel to flatVals: the fetched item each flattened value came out
+        // of. A duplicate count with no owners names a value and nobody holding
+        // it, which is not actionable (#2923).
+        const flatOwners: unknown[] = [];
+        for (let i = 0; i < vals.length; i++) {
+          const val = vals[i];
           if (val == null) continue;
           const items2 = Array.isArray(val) ? val : [val];
           for (const v of items2) {
-            if (v != null) flatVals.push(String(v));
+            if (v != null) { flatVals.push(String(v)); flatOwners.push(items[i]); }
           }
         }
         result[targetField] = countDuplicateValues(flatVals);
+        // Re-uses countDuplicateValues' OWN definition of duplicate (an
+        // occurrence whose value appears more than once) rather than a second
+        // notion of it, so the evidence length equals the published count by
+        // construction — asserted in the tests.
+        const dupTally = new Map<string, number>();
+        for (const v of flatVals) dupTally.set(v, (dupTally.get(v) ?? 0) + 1);
+        const ev = new EvidenceCollector(rawTransform, sourceField);
+        for (let i = 0; i < flatVals.length; i++) {
+          if ((dupTally.get(flatVals[i]) ?? 0) <= 1) continue;
+          ev.add(flatVals[i], sourceField, flatVals[i], flatOwners[i]);
+        }
+        publishEvidence(targetField, ev);
         break;
       }
       case "valueWhere": {
@@ -1416,16 +1793,44 @@ export function applyMapping(
         const overEntries = arrays.length > 0;
 
         const scopes: Record<string, unknown>[] = [];
+        // Parallel to `scopes`, and undefined when the scope IS the fetched item
+        // (nothing owns it but itself). Built by an INDEXED walk rather than
+        // `arrays.flat()` — same order, same membership, but it keeps the link
+        // from an array entry back to the item that carried it, which flat()
+        // destroys and which is the only thing that makes an entry-scoped match
+        // identifiable (#2923).
+        const scopeOwners: unknown[] = [];
         let skippedNonObjects = 0;
-        const candidates: unknown[] = overEntries
-          ? arrays.flat()
-          : items;
-        for (const scope of candidates) {
-          if (typeof scope !== "object" || scope === null || Array.isArray(scope)) { skippedNonObjects++; continue; }
-          scopes.push(scope as Record<string, unknown>);
+        if (overEntries) {
+          for (let i = 0; i < vals.length; i++) {
+            const val = vals[i];
+            if (!Array.isArray(val)) continue;
+            for (const scope of val) {
+              if (typeof scope !== "object" || scope === null || Array.isArray(scope)) { skippedNonObjects++; continue; }
+              scopes.push(scope as Record<string, unknown>);
+              scopeOwners.push(items[i]);
+            }
+          }
+        } else {
+          for (const scope of items) {
+            if (typeof scope !== "object" || scope === null || Array.isArray(scope)) { skippedNonObjects++; continue; }
+            scopes.push(scope as Record<string, unknown>);
+            scopeOwners.push(undefined);
+          }
         }
 
-        result[targetField] = scopes.filter(s => evalConditionGrammar(countWhereExpr!, s)).length;
+        const ev = new EvidenceCollector(rawTransform, sourceField);
+        for (let i = 0; i < scopes.length; i++) {
+          if (!evalConditionGrammar(countWhereExpr!, scopes[i])) continue;
+          // matchedField is "" here on purpose: what made this scope match is the
+          // whole predicate, not one named field, and naming an arbitrary one of
+          // its fields would be a claim the engine cannot back. The identity
+          // projection still carries the object's real fields, and the record's
+          // own `transform` carries the predicate verbatim.
+          ev.add(scopes[i], "", undefined, scopeOwners[i]);
+        }
+        result[targetField] = ev.count;
+        publishEvidence(targetField, ev);
 
         // Diagnostics. Each of these describes a way the count is 0 (or wrong)
         // for a reason that is about the stored rule, not about the tenant.
@@ -1458,8 +1863,20 @@ export function applyMapping(
         // detection is NOT reimplemented — the flattened list goes through the
         // same countDuplicateValues() that `countDuplicates` uses, so both
         // transforms can only ever agree on what "duplicate" means.
-        const flat = flattenNestedField(vals, nestedField!);
-        result[targetField] = countDuplicateValues(flat.values.map(v => String(v)));
+        const flat = flattenNestedField(vals, nestedField!, items);
+        const flatStrings = flat.values.map(v => String(v));
+        result[targetField] = countDuplicateValues(flatStrings);
+        // Same construction as `countDuplicates`: one evidence entry per
+        // duplicated OCCURRENCE, each carrying the owning item, so the list
+        // length equals the published count.
+        const dupTally = new Map<string, number>();
+        for (const v of flatStrings) dupTally.set(v, (dupTally.get(v) ?? 0) + 1);
+        const ev = new EvidenceCollector(rawTransform, sourceField);
+        for (let i = 0; i < flatStrings.length; i++) {
+          if ((dupTally.get(flatStrings[i]) ?? 0) <= 1) continue;
+          ev.add(flatStrings[i], nestedField!, flatStrings[i], flat.owners[i]);
+        }
+        publishEvidence(targetField, ev);
         if (!flat.sawArray && items.length > 0) {
           log.warn(
             { targetField, sourceField, transform: rawTransform },
@@ -1490,6 +1907,10 @@ export function applyMapping(
   }
 
   result._itemCount = items.length;
+  // #2923 — written ONLY when a count-family rule actually matched something, so
+  // the extractedProperties of a check that found nothing is byte-identical to
+  // what it was before this change.
+  if (Object.keys(evidence).length > 0) result[EVIDENCE_PROPERTY_KEY] = evidence;
   return result;
 }
 
