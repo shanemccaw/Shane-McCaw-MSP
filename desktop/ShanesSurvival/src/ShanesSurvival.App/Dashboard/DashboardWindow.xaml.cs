@@ -105,14 +105,17 @@ public partial class DashboardWindow : Window
             var settings = _settingsService.Load();
 
             var result = await _dashboardService.ComputeAsync(settings.PostgresConnectionString);
-            Render(result);
+            var forecastResult = await _payPeriodForecastService.ComputeAsync(
+                settings.PostgresConnectionString, DateOnly.FromDateTime(DateTime.Today));
+
+            // #2934: the hero readout needs both — the real pay-period verdict (forecastResult's
+            // Cycle 1) drives what's biggest on screen, the flat gate_status number is demoted to
+            // its supporting text — so compute both before rendering either.
+            Render(result, forecastResult);
+            RenderForecast(forecastResult);
 
             var debtsResult = await _debtRepository.ListAsync(settings.PostgresConnectionString);
             RenderCriticalDebts(debtsResult);
-
-            var forecastResult = await _payPeriodForecastService.ComputeAsync(
-                settings.PostgresConnectionString, DateOnly.FromDateTime(DateTime.Today));
-            RenderForecast(forecastResult);
 
             var planResult = await _planRepository.GetActiveAsync(settings.PostgresConnectionString);
             RenderCurrentPlan(planResult);
@@ -126,7 +129,7 @@ public partial class DashboardWindow : Window
         }
     }
 
-    private void Render(DashboardResult result)
+    private void Render(DashboardResult result, PayPeriodForecastResult forecastResult)
     {
         if (!result.Success)
         {
@@ -134,7 +137,7 @@ public partial class DashboardWindow : Window
             return;
         }
 
-        RenderGateReadout(result);
+        RenderHero(result, forecastResult);
         RenderSpendBleed(result.SpendBleed);
         RenderWarnings(result.Warnings);
     }
@@ -154,11 +157,49 @@ public partial class DashboardWindow : Window
     }
 
     /// <summary>
-    /// The single biggest, most prominent element on screen — real covered/short verdict in
-    /// large type, with the real Income Gate balance vs. total shortfall as supporting text,
-    /// same as gate_status's real output.
+    /// The single biggest, most prominent element on screen (#2934). Shane is biweekly,
+    /// paycheck-to-paycheck — the real question is "am I covered before my next check," which is
+    /// #2918's pay_period_forecast Cycle 1, not gate_status's flat all-bills-due-today number. So
+    /// the hero now leads with Cycle 1's real verdict; the flat shortfall is demoted to smaller,
+    /// honestly-labeled supporting text below it. When Cycle 1 genuinely can't be computed (no
+    /// active income source, no expected-per-cycle figure set), the flat gate_status verdict is
+    /// the only real number available and stands in as the hero instead of showing nothing.
     /// </summary>
-    private void RenderGateReadout(DashboardResult result)
+    private void RenderHero(DashboardResult result, PayPeriodForecastResult forecastResult)
+    {
+        var cycle1 = forecastResult.Success ? forecastResult.Cycle1 : null;
+        if (cycle1 is null)
+        {
+            RenderFlatShortfallAsHero(result, forecastUnavailable: true);
+            return;
+        }
+
+        if (cycle1.IsCovered is null)
+        {
+            GateVerdictText.Text = "Unknown — " + (cycle1.AvailableAmount is null
+                ? "no expected income figure set for this cycle."
+                : "cannot compute a verdict yet.");
+            GateVerdictText.Foreground = ThemeBrush("SecondaryTextBrush");
+            GateReadoutBorder.BorderBrush = ThemeBrush("DividerBrush");
+        }
+        else if (cycle1.IsCovered.Value)
+        {
+            GateVerdictText.Text = $"COVERED — {Money(cycle1.Delta!.Value)} left before {cycle1.WindowEnd:MMM d}";
+            GateVerdictText.Foreground = ThemeBrush("CoveredAccentBrush");
+            GateReadoutBorder.BorderBrush = ThemeBrush("CoveredAccentBrush");
+        }
+        else
+        {
+            GateVerdictText.Text = $"SHORT {Money(Math.Abs(cycle1.Delta!.Value))} before {cycle1.WindowEnd:MMM d}";
+            GateVerdictText.Foreground = ThemeBrush("DangerAccentBrush");
+            GateReadoutBorder.BorderBrush = ThemeBrush("DangerAccentBrush");
+        }
+
+        GateSupportingText.Text = BuildFlatShortfallText(result);
+    }
+
+    /// <summary>Fallback hero for when Cycle 1's pay-period verdict genuinely can't be computed — the flat gate_status number stands in, honestly labeled as such, rather than showing nothing.</summary>
+    private void RenderFlatShortfallAsHero(DashboardResult result, bool forecastUnavailable)
     {
         if (result.TopLineAmount is null)
         {
@@ -183,13 +224,28 @@ public partial class DashboardWindow : Window
             GateReadoutBorder.BorderBrush = ThemeBrush("DangerAccentBrush");
         }
 
+        GateSupportingText.Text = BuildFlatShortfallText(result) +
+            (forecastUnavailable ? "  (Pay-period forecast unavailable — showing the flat total instead.)" : string.Empty);
+    }
+
+    /// <summary>
+    /// The demoted flat gate_status number (#2934) — real Income Gate balance and total shortfall
+    /// across every bill, honestly labeled as the "if it all came due today" figure so it isn't
+    /// mistaken for the real short-term pay-period picture above it.
+    /// </summary>
+    private string BuildFlatShortfallText(DashboardResult result)
+    {
+        if (result.TopLineAmount is null)
+        {
+            return "Assign an Income Gate account (and Sync Now) to compute this.";
+        }
+
         var reserveSuffix = result.ReserveAccounts.Count > 0
             ? $"  +  Reserve ({string.Join(", ", result.ReserveAccounts.Select(r => r.Name))}): {Money(result.ReserveTotal)}"
             : string.Empty;
 
-        GateSupportingText.Text =
-            $"{result.IncomeGateAccountName} balance: {Money(result.IncomeGateBalance ?? 0m)}{reserveSuffix}  −  " +
-            $"Total shortfall across bills: {Money(result.TotalShortfall)}";
+        return $"{result.IncomeGateAccountName} balance: {Money(result.IncomeGateBalance ?? 0m)}{reserveSuffix}  −  " +
+            $"{Money(result.TotalShortfall)} across every bill if it all came due today.";
     }
 
     /// <summary>
