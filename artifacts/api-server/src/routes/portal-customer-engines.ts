@@ -34,11 +34,17 @@ import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
 import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
-import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, usersTable, wfTriggersTable, wfDefinitionsTable } from "@workspace/db";
+import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, usersTable, wfTriggersTable, wfDefinitionsTable, mspRiskDecisionsTable, policyDecisionsTable, mspMessageCenterItemsTable, changeMaintenanceWindowsTable, remediationTrackerStepsTable } from "@workspace/db";
 import { eq, desc, and, count, inArray, or, asc } from "drizzle-orm";
 import { createAuditLog } from "../lib/audit";
 import { getStripeKey } from "../lib/stripe";
 import { resolveCustomerUserIds } from "../lib/tenant-signals";
+import { resolveTenantScope } from "../lib/portal-customer-scope";
+import { hasAddOnEntitlement } from "../lib/portal-addon-entitlements";
+import { CHANGE_CONTROL_FEATURE_KEY } from "./portal-change-control";
+import { toMaintenanceCandidate, windowOverlapsRange } from "../lib/portal-change-maintenance";
+import { effectiveDate } from "../lib/portal-message-center";
+import { remediationTerminalState } from "../lib/remediation-tracker-terminal-state";
 
 const router: IRouter = Router();
 
@@ -422,6 +428,17 @@ router.get(
     // second login or a recreated account still sees its own organization's data.
     const customerUserIds = await resolveCustomerUserIds(customerId);
 
+    // #2922 — the (mspId, tenantId) pair the five cross-Feature roll-up counts
+    // below are scoped by. Every one of those tables predates `tenants` and is
+    // keyed on this free-text tenant identifier, not `customerId` directly
+    // (see each table's own scoping rationale in portal-risk-register.ts /
+    // portal-change-control.ts / portal-message-center.ts). Null for an
+    // account whose tenant row carries no resolvable M365 identifier — every
+    // count below reads as a true 0 in that case, not an error (same
+    // "unresolvable scope is an honest empty register" rule those routes
+    // already follow).
+    const tenantScope = await resolveTenantScope(customerId);
+
     try {
       const snapshots = await db
         .select({
@@ -676,6 +693,139 @@ router.get(
       const [{ unreadMessages }] = await db.select({ unreadMessages: count() }).from(messagesTable)
         .where(and(inArray(messagesTable.clientUserId, customerUserIds), eq(messagesTable.readByClient, false)));
 
+      // ── #2922 — real cross-Feature roll-up counts ────────────────────────
+      //
+      // Six operational counts pulled from the Features that already own this
+      // data — Risk Register, Microsoft Message Center, Change Control's
+      // maintenance calendar, Remediation Tracker, and Policy Decisions — none
+      // of which had a queryable aggregate before this. Every count is 0 when
+      // `tenantScope` is null (see its own comment above) rather than
+      // attempted against a blank/absent tenant identifier.
+      let rbdWaiting = 0;
+      let rbdActive = 0;
+      let microsoftChangesThisWeek = 0;
+      let changeScheduleThisWeek = 0;
+      let remediationInProgress = 0;
+      let policiesExpiringSoon = 0;
+
+      const now = new Date();
+      const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      if (tenantScope) {
+        // RBD waiting / active — RISK_ACCEPTANCE_STATUSES's own two live-in-flight
+        // values (`pending_signature`, `active`; the third, `revoked`, is neither
+        // waiting nor active and is excluded). One grouped query, not two counts.
+        const rbdCounts = await db
+          .select({ status: mspRiskDecisionsTable.status, n: count() })
+          .from(mspRiskDecisionsTable)
+          .where(
+            and(
+              eq(mspRiskDecisionsTable.mspId, tenantScope.mspId),
+              eq(mspRiskDecisionsTable.tenantId, tenantScope.tenantId),
+            ),
+          )
+          .groupBy(mspRiskDecisionsTable.status);
+        for (const row of rbdCounts) {
+          if (row.status === "pending_signature") rbdWaiting = row.n;
+          else if (row.status === "active") rbdActive = row.n;
+        }
+
+        // Microsoft Changes happening this week — same `customerId` + `mspId`
+        // scoping portal-message-center.ts's own read uses, same `effectiveDate()`
+        // (actionRequiredByDateTime ?? endDateTime ?? startDateTime ??
+        // lastModifiedDateTime) that page already uses to place a post on its
+        // calendar, filtered to the real rolling next-7-days window.
+        const mcRows = await db
+          .select({
+            actionRequiredByDateTime: mspMessageCenterItemsTable.actionRequiredByDateTime,
+            endDateTime: mspMessageCenterItemsTable.endDateTime,
+            startDateTime: mspMessageCenterItemsTable.startDateTime,
+            lastModifiedDateTime: mspMessageCenterItemsTable.lastModifiedDateTime,
+          })
+          .from(mspMessageCenterItemsTable)
+          .where(
+            and(
+              eq(mspMessageCenterItemsTable.customerId, tenantScope.customerId),
+              eq(mspMessageCenterItemsTable.mspId, tenantScope.mspId),
+            ),
+          );
+        microsoftChangesThisWeek = mcRows.filter((r) => {
+          const d = effectiveDate(r).getTime();
+          return d >= now.getTime() && d < weekFromNow.getTime();
+        }).length;
+
+        // Change schedule for the week — the maintenance calendar
+        // (portal-change-control.ts's own `/change-control/maintenance-windows`
+        // read), gated on the same purchased add-on that route requires: an
+        // unentitled tenant has no maintenance calendar to count, same as it
+        // gets a 402 hitting that route directly. `windowOverlapsRange` walks a
+        // recurring window's own cadence forward so a "every Saturday" rule
+        // created months ago still counts if a Saturday falls in this window.
+        if (await hasAddOnEntitlement(tenantScope.customerId, CHANGE_CONTROL_FEATURE_KEY)) {
+          const windowRows = await db
+            .select()
+            .from(changeMaintenanceWindowsTable)
+            .where(
+              and(
+                eq(changeMaintenanceWindowsTable.mspId, tenantScope.mspId),
+                eq(changeMaintenanceWindowsTable.active, true),
+                or(
+                  eq(changeMaintenanceWindowsTable.scope, "global"),
+                  and(eq(changeMaintenanceWindowsTable.scope, "tenant"), eq(changeMaintenanceWindowsTable.tenantId, tenantScope.tenantId)),
+                  eq(changeMaintenanceWindowsTable.scope, "workload"),
+                ),
+              ),
+            );
+          // Scope matching is already done by the WHERE clause above (identical
+          // to portal-change-control.ts's own maintenance-windows read, which
+          // includes every workload-scoped window unfiltered by workload — a
+          // combined calendar, not one workload's view) — only the recurrence
+          // overlap check is left to do here.
+          changeScheduleThisWeek = windowRows
+            .map(toMaintenanceCandidate)
+            .filter((w) => windowOverlapsRange(w, now, weekFromNow)).length;
+        }
+
+        // Remediation steps in progress — a customer claim (completed /
+        // already_handled / deferred / shane_handles) that has not yet been
+        // confirmed by a re-scan and has not exited to the risk register.
+        // Reuses remediationTrackerTable's own `remediationTerminalState()` so
+        // this count can never disagree with what the tracker page itself shows
+        // as "outstanding". Scoped by `customerId` directly — this table has no
+        // (mspId, tenantId) shape, unlike the four above.
+        const remediationRows = await db
+          .select({
+            status: remediationTrackerStepsTable.status,
+            verificationState: remediationTrackerStepsTable.verificationState,
+          })
+          .from(remediationTrackerStepsTable)
+          .where(eq(remediationTrackerStepsTable.customerId, customerId));
+        remediationInProgress = remediationRows.filter(
+          (r) => remediationTerminalState(r.status, r.verificationState) === "outstanding",
+        ).length;
+
+        // Policies expiring soon — policy_decisions' own review clock
+        // (reviewState, #2518), advanced on the same schedule as the register
+        // page reads it. `due` is the operational "coming up" lead window
+        // (RISK_REVIEW_DUE_LEAD_DAYS, alert-engine.ts) short of its deadline;
+        // `overdue` has already passed it. A dependency-based decision (#1526)
+        // has a null reviewState and is correctly excluded — there is no
+        // "soon" for a condition with no date.
+        const policyCounts = await db
+          .select({ reviewState: policyDecisionsTable.reviewState, n: count() })
+          .from(policyDecisionsTable)
+          .where(
+            and(
+              eq(policyDecisionsTable.mspId, tenantScope.mspId),
+              eq(policyDecisionsTable.tenantId, tenantScope.tenantId),
+            ),
+          )
+          .groupBy(policyDecisionsTable.reviewState);
+        policiesExpiringSoon = policyCounts
+          .filter((row) => row.reviewState === "due" || row.reviewState === "overdue")
+          .reduce((sum, row) => sum + row.n, 0);
+      }
+
       res.json({
         scores: {
           security: scores.security ?? 0,
@@ -712,7 +862,16 @@ router.get(
         // this is a shape fix, not a behaviour change.
         customerStatus: customer?.status ?? null,
         customerName: customer?.customerName ?? null,
-        mspId: req.user!.mspId ?? null
+        mspId: req.user!.mspId ?? null,
+        // #2922 — real cross-Feature roll-up counts, see the block above.
+        overviewCounts: {
+          rbdWaiting,
+          rbdActive,
+          microsoftChangesThisWeek,
+          changeScheduleThisWeek,
+          remediationInProgress,
+          policiesExpiringSoon,
+        },
       });
     } catch (err) {
       log.error({ err, customerId }, "portal-customer-engines: dashboard failed");

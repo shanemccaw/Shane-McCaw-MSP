@@ -75,6 +75,10 @@ import { fetchPublishedKnowledgeBaseRows } from "../lib/remediation-knowledge-ba
 import { resolveTenantScope } from "../lib/portal-customer-scope";
 import { declineRemediationStepToRisk } from "../lib/remediation-tracker-risk-decline";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
+import {
+  remediationTerminalState,
+  type RemediationTerminalState,
+} from "../lib/remediation-tracker-terminal-state";
 
 /**
  * Roles that represent SHANE / the MSP acting, as opposed to the customer
@@ -114,27 +118,6 @@ const STEP_ID_SET = new Set(REMEDIATION_TRACKER_STEP_IDS);
 const putStepSchema = z.object({
   status: z.enum(REMEDIATION_TRACKER_STEP_STATUS),
 });
-
-/**
- * #1542 — the checklist's three terminal read-states, derived rather than
- * stored: "done means verified, never claimed" (#1489), so `completed` alone
- * is not a terminal state here.
- *
- *   verified    — the pointed check passed (verificationState === "verified").
- *   accepted    — exited to the register with a signature (status ===
- *                 "accepted_risk", which is ONLY ever set by
- *                 remediation-tracker-risk-decline.ts alongside a real signed
- *                 msp_risk_decisions row — never a bare claim).
- *   outstanding — neither. Every other status/verification combination,
- *                 including a customer's un-re-verified `completed` claim.
- */
-type RemediationTerminalState = "verified" | "accepted" | "outstanding";
-
-function remediationTerminalState(status: string, verificationState: string): RemediationTerminalState {
-  if (verificationState === "verified") return "verified";
-  if (status === "accepted_risk") return "accepted";
-  return "outstanding";
-}
 
 /** The wire shape of one stored step. */
 interface WireTrackerStep {

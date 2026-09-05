@@ -8,6 +8,8 @@
  * unredacted regardless of payment status.
  *
  * The DB is mocked with a FIFO queue mirroring the route's exact query order:
+ *   0. tenantsTable (#2922: resolveTenantScope's own lookup, now the very
+ *      first DB call the route makes, before the try block — see beforeEach)
  *   1. tenantEngineSnapshotsTable  (engine snapshots -> findings/recommendations)
  *   2. assessmentSowAgreementsTable (paid/free_activated check — the new gate)
  *   3. mspDiagnosticFindingsTable (#2500: latest run id for priorityItems)
@@ -160,6 +162,12 @@ function queueSnapshot() {
 
 beforeEach(() => {
   mockResultQueue = [];
+  // #2922 — resolveTenantScope's own tenantsTable lookup, now the very first
+  // DB call the route makes (before the try block). Empty result -> no
+  // resolvable tenant -> tenantScope null -> the 5 cross-Feature roll-up
+  // queries that build added are skipped entirely, leaving every push below
+  // (which predates that build) in its original order and meaning.
+  mockResultQueue.push([]);
 });
 
 describe("GET /api/portal/dashboard — assessment findings/recommendations paywall (#164)", () => {
