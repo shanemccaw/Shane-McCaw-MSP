@@ -46,6 +46,18 @@ const DELIBERATE_EXCLUSIONS = new Set([
   "msp_sharepoint_connectors",
   "msp_mailbox_connectors",
   "simulator_migration_runs",
+  // #2946: auth/session/identity tables that belong to the user's own
+  // account, not per-tenant test data. Wiping these on a tenant reset could
+  // log the test account out or break its MFA/passkey enrollment -- a real
+  // open product decision the migration file's own header explicitly defers
+  // to Shane rather than assumes. Filed and flagged, not fixed here.
+  "mfa_challenges",
+  "mfa_enrollments",
+  "password_reset_tokens",
+  "user_sessions",
+  "webauthn_challenges",
+  "webauthn_credentials",
+  "push_subscriptions",
 ]);
 
 function loadDatabaseUrl() {
@@ -92,15 +104,21 @@ function queryRealFkEdges(databaseUrl) {
 }
 
 function coveredTables(resetFileSql) {
-  // Every quoted table identifier inside the file's ARRAY[...] DELETE lists,
-  // plus the standalone 'projects' DELETE the file also runs directly.
+  // Every quoted table identifier inside the file's ARRAY[...] DELETE lists
+  // -- #2946 added "table:column" pairs for loops that delete by a
+  // non-uniform column name across tables, so take the part before the
+  // colon, if any -- plus the standalone 'projects' DELETE the file also
+  // runs directly, plus any literal `DELETE FROM <table>` statement outside
+  // an ARRAY[]-driven loop (e.g. config_diffs's own two-column special case).
   const covered = new Set();
   const arrayBlocks = resetFileSql.match(/ARRAY\[[^\]]*\]/gs) || [];
   for (const block of arrayBlocks) {
-    const names = block.match(/'([a-z0-9_]+)'/g) || [];
-    for (const n of names) covered.add(n.slice(1, -1));
+    const names = block.match(/'([a-z0-9_]+(?::[a-z0-9_]+)?)'/g) || [];
+    for (const n of names) covered.add(n.slice(1, -1).split(":")[0]);
   }
   covered.add("projects");
+  const literalDeletes = resetFileSql.match(/DELETE FROM ([a-z0-9_]+)\b/g) || [];
+  for (const stmt of literalDeletes) covered.add(stmt.replace("DELETE FROM ", ""));
   return covered;
 }
 
