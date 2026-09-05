@@ -144,7 +144,7 @@ describe("POST /api/dashboard/resolve", () => {
     mockResultQueue = [[]]; // ownership query → empty = not owned
     const res = await resolve(operatorToken({ mspId: 1 }), { metrics: ["engine.healthScore"], customerId: 999 });
     expect(res.status).toBe(403);
-    expect(res.body.error).toMatch(/not permitted/i);
+    expect(res.body.error.message).toMatch(/not permitted/i);
   });
 
   it("403s when a CustomerUser names a different customerId", async () => {
