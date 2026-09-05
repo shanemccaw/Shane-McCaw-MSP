@@ -194,7 +194,11 @@ function IssueNode({
           : <span style={{ width: 10 }} />
         }
         <GitPullRequest size={11} color={ISSUE_STATUS_COLOR[issue.status]} style={{ flex: "none" }} />
-        {issue.epicId === null && <AlertCircle size={10} color={ACCENT.amber} style={{ flex: "none" }} title="No parent Epic" />}
+        {issue.epicId === null && (
+          <span style={{ flex: "none", display: "flex" }} title="No parent Epic">
+            <AlertCircle size={10} color={ACCENT.amber} />
+          </span>
+        )}
         <span style={{ fontSize: 12, color: isSelected ? TEXT.strong : TEXT.body, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {issue.githubNumber ? `#${issue.githubNumber} ` : ""}{issue.title}
         </span>
