@@ -1,0 +1,6 @@
+{
+  "manifests": [
+    "725-chat-escalation.json",
+    "work-with-me/retainer-tiers.json"
+  ]
+}

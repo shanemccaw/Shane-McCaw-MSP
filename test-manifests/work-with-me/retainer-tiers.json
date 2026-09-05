@@ -1,0 +1,14 @@
+{
+  "issue": 2955,
+  "feature": "Work With Me — Architect Retainer tiers (data layer)",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "b61802bdfc576aca55c3c5c669fd483e5428aa26",
+  "notes": "Covers the new Work With Me home page (/) retainer tiers, #2955. The four tier names, hours and prices the accordion renders come from the live services catalog via GET /api/services?type=retainer, asserted below against the deployed api-server + shared local DB (a pre-existing, deployed endpoint). The embedded Stripe subscription checkout itself (POST /api/public/retainers/payment-intent + /payment-confirmed in public-retainer-payment.ts) was verified live against Stripe TEST mode in the build session: a real sub_ was created carrying a confirmation_secret client secret (embedded, never redirects), Advisory resolved to amountCents 90000 from the catalog, and every guard held (unpaid subscription 409, order-key mismatch 403, non-self-serve slug 409, invalid email 400). That new route is NOT asserted here because it ships on production-base-2026-09-05 and is absent from the main-based deployed dev server the runner targets; uiSteps for the new home page are omitted for the same reason (it is not deployed to the runner's dev site). Both belong in a run against a production-base deployment.",
+  "apiTests": [
+    {
+      "method": "GET",
+      "path": "/api/services?type=retainer",
+      "expect": { "status": 200, "jsonPath": "$[0].slug", "exists": true }
+    }
+  ]
+}
