@@ -431,6 +431,69 @@ async function getConditionValue(
           [tid],
         );
 
+      // ── Risk Register (#1487, Git #1942) ────────────────────────────────────
+      case "risk.identified":
+        if (!tid) return 0;
+        return await count(
+          `SELECT COUNT(*)::text AS n FROM msp_risk_decisions
+           WHERE tenant_id = $1 AND status = 'pending_signature'
+             AND created_at > NOW() - ($2 * INTERVAL '1 minute')`,
+          [tid, w],
+        );
+      case "risk.accepted":
+        if (!tid) return 0;
+        return await count(
+          `SELECT COUNT(*)::text AS n FROM msp_risk_decisions
+           WHERE tenant_id = $1 AND status = 'active'
+             AND accepted_at > NOW() - ($2 * INTERVAL '1 minute')`,
+          [tid, w],
+        );
+      case "risk.expiring":
+        // review_state is the #1507 review clock, kept live by
+        // alert-engine.ts#advanceRiskReviewClock — 'due' already bakes in
+        // its own lead-time window, so window_minutes is not used here.
+        if (!tid) return 0;
+        return await count(
+          `SELECT COUNT(*)::text AS n FROM msp_risk_decisions
+           WHERE tenant_id = $1 AND status = 'active' AND review_state = 'due'`,
+          [tid],
+        );
+
+      // ── Policy Decisions (#1490, Git #1942) ─────────────────────────────────
+      case "policy.created":
+        if (!tid) return 0;
+        return await count(
+          `SELECT COUNT(*)::text AS n FROM policy_decisions
+           WHERE tenant_id = $1 AND created_at > NOW() - ($2 * INTERVAL '1 minute')`,
+          [tid, w],
+        );
+      case "policy.accepted":
+        if (!tid) return 0;
+        return await count(
+          `SELECT COUNT(*)::text AS n FROM policy_decisions
+           WHERE tenant_id = $1 AND signed_at > NOW() - ($2 * INTERVAL '1 minute')`,
+          [tid, w],
+        );
+      case "policy.drifted":
+        // Settled #1942 producer: policy_evaluation_runs.tenant_id is
+        // tenants.id (customerId), NOT the M365 tenant GUID text every other
+        // condition here scopes by — this is the one condition_type keyed on
+        // customerId instead of tid.
+        return await count(
+          `SELECT COUNT(*)::text AS n FROM policy_evaluation_runs
+           WHERE tenant_id = $1 AND outcome = 'divergent'
+             AND evaluated_at > NOW() - ($2 * INTERVAL '1 minute')`,
+          [cid, w],
+        );
+      case "policy.executed":
+        if (!tid) return 0;
+        return await count(
+          `SELECT COUNT(*)::text AS n FROM msp_sop_runs
+           WHERE tenant_id = $1 AND standing_policy_id IS NOT NULL AND status = 'Completed'
+             AND updated_at > NOW() - ($2 * INTERVAL '1 minute')`,
+          [tid, w],
+        );
+
       // ── remediation ────────────────────────────────────────────────────────
       case "remediation.scan_complete":
         return await count(
@@ -612,6 +675,13 @@ function buildSummary(conditionType: string, value: number, ctx: TenantContext):
     case "progress.pillar_score_move": return `${who}a health pillar score moved beyond the threshold.`;
     case "review.risk_acceptance_due": return `${who}${n} accepted risk${s} due for review.`;
     case "review.policy_review_due":   return `${who}${n} policy decision${s} due for review.`;
+    case "risk.identified":  return `${who}${n} new risk${s} raised into the Risk Register.`;
+    case "risk.accepted":    return `${who}${n} risk acceptance${s} signed.`;
+    case "risk.expiring":    return `${who}${n} accepted risk${n === 1 ? "'s" : "s'"} review${s} entered the due window.`;
+    case "policy.created":   return `${who}${n} new policy decision${s} recorded.`;
+    case "policy.accepted":  return `${who}${n} policy decision${s} signed.`;
+    case "policy.drifted":   return `${who}${n} standing polic${n === 1 ? "y" : "ies"} diverged from ${n === 1 ? "its" : "their"} target state.`;
+    case "policy.executed":  return `${who}${n} standing polic${n === 1 ? "y" : "ies"} enacted by an SOP run.`;
     case "remediation.scan_complete":  return `${who}${n} tenant scan${s} completed.`;
     case "remediation.phase_gate_verified": return `${who}${n} remediation step${s} marked complete.`;
     case "remediation.task_awaiting_customer": return `${who}${n} remediation task${s} awaiting your action.`;
