@@ -68,6 +68,20 @@ const EXECUTOR_BACKED = new Set(["graph", "powershell", "sharepoint-admin", "dns
  * Git #2850 re-synced this set after pass 2 added 57 Microsoft Teams `Get-Cs*` entries
  * (87 -> 144 keys). Re-run this script after any catalog change: it is what turns a new
  * catalog entry into `is_collectable = true` on the rows that name that cmdlet.
+ *
+ * Git #2873 — `collectPowerShellResource()` handles `sharepoint-admin` through this
+ * exact same `PS_CATALOG_BY_CMDLET` lookup (config-snapshot-collector.ts's own
+ * `read_transport === "powershell" || read_transport === "sharepoint-admin"` branch),
+ * so the same cataloged-cmdlet check below now applies to both transports, not just
+ * `powershell`. All 23 `sharepoint-admin` rows name `Get-Pnp*`/`Get-MgAdminSharepoint
+ * Setting`/etc cmdlets, and none of them are in this set — the ps-execution container
+ * has no PnP.PowerShell module baked into its image and no "sharepoint" session type
+ * in `child-worker.ps1` (only `exchange`/`compliance`/`teams` exist), so there is zero
+ * live capability-survey evidence any of them even work app-only yet. Per #1961's own
+ * discipline (proven-OK entries only, real DEV deployment + health check before use),
+ * none are added here on a guess — building the PnP session type + module + survey is
+ * real follow-up work of its own, filed separately. This set stays Exchange/Compliance/
+ * Teams cmdlets only until that lands.
  */
 const PS_CATALOG_CMDLETS = new Set([
   "Get-AcceptedDomain", "Get-ActiveSyncDeviceAccessRule", "Get-AddressBookPolicy",
@@ -313,17 +327,23 @@ async function main() {
       if (!hasExecutor) {
         reason = "no_executor";
         notes = `no executor exists for the ${res.read_transport} transport (Git #1849)`;
-      } else if (res.read_transport === "powershell" && !hasCatalogedPsCmdlet(res.read_cmdlets)) {
-        // Git #2841: the transport being executor-backed in general doesn't mean THIS
-        // row's own cmdlet has a ps-execution catalog entry. Same reason string the
-        // runtime collector already uses for this exact case (skipReason: "no_executor"
-        // in collectPowerShellResource()) — this just stops the registry claiming
-        // collectable ahead of a call that can never succeed.
+      } else if (
+        (res.read_transport === "powershell" || res.read_transport === "sharepoint-admin") &&
+        !hasCatalogedPsCmdlet(res.read_cmdlets)
+      ) {
+        // Git #2841 (powershell) / #2873 (sharepoint-admin): the transport being
+        // executor-backed in general doesn't mean THIS row's own cmdlet has a
+        // ps-execution catalog entry. Same reason string the runtime collector
+        // already uses for this exact case (skipReason: "no_executor" in
+        // collectPowerShellResource(), which resolves both transports through the
+        // identical PS_CATALOG_BY_CMDLET lookup) — this just stops the registry
+        // claiming collectable ahead of a call that can never succeed.
         reason = "no_executor";
         const named = (Array.isArray(res.read_cmdlets) ? res.read_cmdlets : [])
           .filter((c) => !PS_NON_READ_HELPER_CMDLETS.has(c));
+        const gitRef = res.read_transport === "sharepoint-admin" ? "#2873" : "#2841";
         notes = `No ps-execution catalog entry invokes this resource's read cmdlet unfiltered — needs ` +
-          `${named.length > 0 ? named.join(", ") : "(no read cmdlet recorded)"} (Git #2841)`;
+          `${named.length > 0 ? named.join(", ") : "(no read cmdlet recorded)"} (Git ${gitRef})`;
       } else if (identity.strategy === "unresolved") {
         reason = "identity_unresolved";
       } else if (res.graph_container_kind === "function") {
