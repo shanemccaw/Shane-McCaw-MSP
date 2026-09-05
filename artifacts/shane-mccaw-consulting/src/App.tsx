@@ -4,6 +4,7 @@ import Home from "./pages/Home";
 import About from "./pages/About";
 import Status from "./pages/Status";
 import Resources from "./pages/Resources";
+import Contact from "./pages/Contact";
 import ArticlePage from "./pages/ArticlePage";
 import Terms from "./pages/legal/Terms";
 import Privacy from "./pages/legal/Privacy";
@@ -71,6 +72,7 @@ export default function App() {
       <Route path="/status" component={Status} />
       <Route path="/resources" component={Resources} />
       <Route path="/resources/:slug" component={ArticlePage} />
+      <Route path="/contact" component={Contact} />
       <Route path="/login" component={Login} />
 
       {/* Legal Routes */}
