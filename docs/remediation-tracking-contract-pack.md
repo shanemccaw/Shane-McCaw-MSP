@@ -18,7 +18,7 @@ and built** — found during #2586's MSP-console audit, one day after the pack s
 
 | Issue | Prior pack's claim | Reality (verified today) |
 |---|---|---|
-| #1538 (checklist derived from findings) | DECIDED, not built | **CLOSED** — `portal-remediation-checklist.ts` live, 3 routes |
+| #1538 (checklist derived from findings) | DECIDED, not built | **CLOSED** — `portal-remediation-checklist.ts` live, 4 routes |
 | #1539 (fix route as first-class dimension) | DECIDED, not built | **CLOSED** — `portal-remediation-fix-routes.ts` live, `REMEDIATION_FIX_ROUTE` enum real |
 | #1540 (pointed re-verification scan) | DECIDED, not built | **CLOSED** — `POST .../steps/:stepId/verify` live |
 | #1541 (CR gate — diff before approval) | DECIDED, not built | **CLOSED** — `portal-remediation-reveal.ts` + checklist `raise-change` live |
@@ -31,7 +31,8 @@ and built** — found during #2586's MSP-console audit, one day after the pack s
 Also confirmed stale on its own terms, independent of #2828's issue-by-issue table: the prior
 pack's §1 documented **2 endpoints on the tracker route** (GET + PUT) where the file now holds
 **5** (adding `POST .../verify`, `GET .../verification-guide`, `POST .../decline-to-risk`), and
-**6 endpoints total** where **15** now exist across all 7 route files. Its §4c coverage-gap claim
+**6 endpoints total** where **16** now exist across all 7 route files (15 as of this pack's own
+#1719 revision, plus #2869's checklist `decline-to-risk`). Its §4c coverage-gap claim
 ("four steps have no mapped check: 18, 28, 27, 30") is also now wrong in a way #2828 didn't
 name: `s28` gained a real check mapping (`onedrive:sync-errors`) under #753/#1956, so the real
 gap today is three steps (18, 27, 30), not four — see §4c below.
@@ -55,11 +56,11 @@ for every item, not a near-empty table. This pack documents that real state.
 
 ## 1. Per-surface wire contract
 
-**15 live HTTP surfaces** across 7 route files, all customer-scoped off the JWT's `customerId`
+**16 live HTTP surfaces** across 7 route files, all customer-scoped off the JWT's `customerId`
 claim (`resolveCustomerId()`, repeated per-file, or `resolveTenantScope()` for the two surfaces
 that also need the M365 tenant id — see §1g), all gated at least `requireRole("Assessment")` (the
-lowest role carrying a `customerId` claim) except `decline-to-risk`, which floors at
-`requireRole("CustomerUser")` (§1f).
+lowest role carrying a `customerId` claim) except the two `decline-to-risk` routes (§1a, §1b),
+which floor at `requireRole("CustomerUser")` (§1f).
 
 ### 1a. `portal-remediation-tracker.ts` (629 lines) — the s1–s30 legacy tracker
 
@@ -166,9 +167,11 @@ every other write does (`:573-597`).
 **Response `201`** (`:604-620`): `{ step: WireTrackerStep, rbdId: string, accepted: { by, on,
 statement } }`.
 
-### 1b. `PUT /api/portal/remediation/checklist/:checkKey` and its 2 siblings — `portal-remediation-checklist.ts` (242 lines) — entirely new since the prior pack (#1538/#1941)
+### 1b. `PUT /api/portal/remediation/checklist/:checkKey` and its 3 siblings — `portal-remediation-checklist.ts` (408 lines) — entirely new since the prior pack (#1538/#1941/#1542)
 
-**Zero routes in this file existed in the prior pack's world.** All 3 undocumented by it.
+**Zero routes in this file existed in the prior pack's world.** All 4 undocumented by it. The
+file grew a fourth route since this pack's own #1719 revision — `POST .../decline-to-risk`
+(`:281-406`), added by #2869 — mirroring the s1-s30 tracker's own decline-to-risk route (§1a).
 
 #### `GET /portal/remediation/checklist` (`:66-84`)
 
@@ -201,21 +204,32 @@ PUT — writes the identical `remediation_tracker_steps` table with `step_id` ho
 `checkKey` string instead of an `s`-id (module header, `:21-30`). 400 for an unknown `checkKey`
 (`isKnownCheckKey()` against `monitor_checks.key`, `:104-107`).
 
-**No guard against `accepted_risk`** on this route — see §7 (already filed, #2827).
+**`accepted_risk` is explicitly rejected on this route** (`:135-136`):
+`{ error: "accepted_risk cannot be set directly — use POST .../decline-to-risk" }` — #2827's gap
+is fixed; see §7.1.
 
 Response: `{ item: { checkKey, status, completedAt, updatedAt, verificationState, verifiedAt } }`
 (`:174-191`) — note this shape has **no `terminalState`** field, unlike §1a's `WireTrackerStep`.
 
-#### `POST /portal/remediation/checklist/:checkKey/raise-change` (`:208-239`) — #1941
+#### `POST /portal/remediation/checklist/:checkKey/raise-change` (`:238-269`) — #1941
 
 Raises a real `msp_change_requests` row from a checklist item. 404 if the item names no open
-finding for the tenant's latest scan (`resolveRemediationChecklistItem()`, `:221-225`) — a
+finding for the tenant's latest scan (`resolveRemediationChecklistItem()`) — a
 resolved or never-real finding cannot have a change raised against it (fail-closed, #1941).
 Otherwise calls `raiseChangeRequest()` (`portal-change-control-raise.ts:114`, the SAME function
 the wizard's `POST /portal/change-control` uses) via
 `buildRaiseChangeRequestInputForChecklistItem()` (§6). Response `201`:
 `{ code, risk, workload, freezeException, riskDischarged, checkKey }`
-(`portal-change-control-raise.ts:80-93`, route `:229`).
+(`portal-change-control-raise.ts:80-93`).
+
+#### `POST /portal/remediation/checklist/:checkKey/decline-to-risk` (`:281-406`) — #2869, new since this pack's own #1719 revision
+
+The checklist's own signed exit to `accepted_risk`, mirroring §1a's tracker `decline-to-risk`
+route. Floors at `requireRole("CustomerUser")` (`:283`) — the one route in this file with a
+higher floor than the file's other `Assessment`-tier routes (§1 header). Creates a real, signed
+`msp_risk_decisions` row via `declineRemediationChecklistItemToRisk()`; 409s on a repeat decline
+(`:336`) — the same claim-vs-proof guard §7.1 describes the PUT route enforcing by rejection,
+this route is the actual, signed replacement path for it.
 
 ### 1c. `GET /api/portal/remediation/fix-routes` — `portal-remediation-fix-routes.ts` (162 lines) — new since the prior pack (#1539)
 
@@ -319,9 +333,10 @@ re-scan" when none carried a title, `:199-204`). Empty response renders "nothing
 | `GET .../pillar-scores` | **CURRENT** | #1381 | Unchanged |
 | `GET .../export.csv`, `.../export.pdf` | **CURRENT** | #733 | Unchanged |
 | `GET .../evidence-pack.pdf` | **CURRENT** | #742 | Unchanged |
-| `GET /remediation/checklist` — findings-derived checklist | **CURRENT** | #1538 | Prior pack listed this DECIDED; 3 real routes now exist |
-| `PUT /remediation/checklist/:checkKey` | **CURRENT** | #1538 | No `accepted_risk` guard — filed, see §7 (#2827) |
+| `GET /remediation/checklist` — findings-derived checklist | **CURRENT** | #1538 | Prior pack listed this DECIDED; 4 real routes now exist |
+| `PUT /remediation/checklist/:checkKey` | **CURRENT** | #1538, #2827 | `accepted_risk` guard now live (`:135-136`) — #2827 fixed, see §7.1 |
 | `POST /remediation/checklist/:checkKey/raise-change` | **CURRENT** | #1941 | Not itself named on #1538–#1546; the CR-raise counterpart to #1541's gate |
+| `POST /remediation/checklist/:checkKey/decline-to-risk` | **CURRENT** | #2869 | Signed exit to Risk Register, mirrors §1a's tracker route; the real replacement path #7.1 describes |
 | `GET /remediation/fix-routes` — tenant-resolved fix-route dimension | **CURRENT** | #1539 | Prior pack listed this DECIDED; 153-item real catalogue today |
 | `POST /remediation/fix-routes/:checkKey/reveal` — CR-gated script reveal | **CURRENT** | #1541 | Prior pack listed this DECIDED; fail-closed gate confirmed live |
 | `GET /remediation/bypass-resolutions` — CR-bypass-but-resolved correlation | **CURRENT** | #1543 | Prior pack listed this DECIDED, called it the checklist's biggest fixture gap; now a real, purely-observational read |
@@ -562,18 +577,23 @@ per-tenant finding catalogue for the s1-s30 world that varies from the fixed 28-
 
 ## 7. Open gaps found by this audit — flagged here, cross-referenced where already filed
 
-### 7.1 Already filed — `PUT .../remediation/checklist/:checkKey` accepts `accepted_risk` directly, with nothing behind it
+### 7.1 Resolved — `PUT .../remediation/checklist/:checkKey` now rejects `accepted_risk` directly, and a real signed replacement exists
 
-**Confirmed live today, same as #2586's own audit found it**: `portal-remediation-checklist.ts:87-198`
-validates its write body against the full 7-value `REMEDIATION_TRACKER_STEP_STATUS` enum
-(`putItemSchema`, `:55-57`) with **no guard excluding `accepted_risk`** — unlike the sibling
-s1-s30 route (§1a), which explicitly 400s that exact value. A bare
-`PUT /remediation/checklist/:checkKey { "status": "accepted_risk" }`, reachable by any
-`Assessment`-tier customer, sets an item to `accepted_risk` with no `msp_risk_decisions` row, no
-typed name, no confirmation — the exact claim-vs-proof collapse `accepted_risk` exists to
-prevent. **Already filed as #2827** (`bug` + `security`, parented under Feature #1684) during
-#2586's build, which found the identical gap on the MSP-console mirror at the same time. Not
-re-filed here — cited so this pack's own §5/§2 don't silently omit it.
+**Filed as #2827** (`bug` + `security`, parented under Feature #1684) during #2586's build, which
+found the identical gap on the MSP-console mirror at the same time: at that time,
+`portal-remediation-checklist.ts`'s PUT validated its write body against the full 7-value
+`REMEDIATION_TRACKER_STEP_STATUS` enum with no guard excluding `accepted_risk` — unlike the
+sibling s1-s30 route (§1a), which explicitly 400s that exact value. **Confirmed fixed today**
+(`portal-remediation-checklist.ts:135-136`): the PUT now explicitly 400s `accepted_risk` with
+`{ error: "accepted_risk cannot be set directly — use POST .../decline-to-risk" }`, closing
+#2827.
+
+The route that message points to is also now real, not aspirational: **#2869 added
+`POST /portal/remediation/checklist/:checkKey/decline-to-risk`** (`:281-406`, §1b) — the
+checklist's own signed exit to `accepted_risk`, mirroring §1a's tracker `decline-to-risk` route.
+It creates a real, signed `msp_risk_decisions` row via `declineRemediationChecklistItemToRisk()`,
+409s on a repeat decline, and floors at `requireRole("CustomerUser")`. Both #2827 and #2869 are
+closed; nothing remains open on this thread.
 
 ### 7.2 Noted, not filed — `REMEDIATION_TRACKER_STATUS_LABELS` has no `accepted_risk` entry
 
@@ -657,5 +677,5 @@ PostgreSQL: `remediation_knowledge_base` (153 rows, all published), `config_pack
 (28 execution-ready active packs), `remediation_tracker_steps` (4 real rows in the local
 testbed, 0 `accepted_risk`). Confirmed no `Design/portal/` export exists yet for this module and
 `useRemediationTracker.ts` has zero page consumer — the expected pre-Design state, not a gap.
-One live gap re-confirmed, already filed as #2827 (not re-filed, §7.1). No product code, schema,
-or UI was changed by this pass.
+One live gap this pass previously re-confirmed as still open, #2827, is now closed along with its
+follow-on #2869 — see §7.1. No product code, schema, or UI was changed by this pass.
