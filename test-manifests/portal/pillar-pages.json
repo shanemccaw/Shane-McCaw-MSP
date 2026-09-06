@@ -1,0 +1,87 @@
+{
+  "issue": 1749,
+  "feature": "Pillar pages (#1485/#1621, screen 12) — the six real pillar landing pages in artifacts/portal, wired to the already-built GET /api/portal/pillars (pillar-summary-stats.ts). Real design landed in Design/portal/design_handoff_full_site/screens/Pillar Pages.dc.html; pages live at artifacts/portal/src/pages/pillar.tsx, route /pillars/:pillar, reached from the shell's PillarTabStrip. Scope: pillar summary cards + scores only — the design's full per-check 'block' breakdown and the click-a-finding-for-full-breakdown + SOP/Runbook remediation offer are a real, separate follow-up (#1621's own open architecture questions).",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "shaneapp://runTest was not reachable from this build session (the mcp shane-msp tool set exposed to this session carries no runTest/executeSql tool this time, and the local dev-server process was also down on port 8080 at build time) — this manifest is written and registered but NOT live-executed this session. Real verification performed instead: `tsc -p tsconfig.json --noEmit` clean, and `vite build` clean, on artifacts/portal.",
+    "apiTests prove the real, already-built backend contract directly: log in via POST /api/auth/login, extract a bearer token, then exercise GET /api/portal/pillars exactly as usePillarPage.ts's own fetchWithAuth call does.",
+    "PILLAR_SUMMARY_KEYS order is fixed server-side (pillar-summary-stats.ts, asserted by its own cross-app order test) and reused here: governance=0, licensing=1, adoption=2, compliance=3, health=4, security=5, copilot=6 — asserted by index rather than a JSONPath filter (HttpTestExecutor.cs's TryResolveJsonPath has no `[?(@...)]` filter support, #3052).",
+    "No write assertions: /api/portal/pillars is a pure read (buildPillarSummary), so there is nothing to round-trip or restore.",
+    "ENV VARS required: DEPLOY_URL, TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD — the same CustomerUser testbed account other portal manifests use.",
+    "UI steps deliberately assert the honest-state scaffolding (page shell, score hero, findings section) rather than exact score numbers or finding titles, which are real tenant data that changes with every scan run."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the CustomerUser testbed account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_CUSTOMER_EMAIL}}", "password": "{{TEST_CUSTOMER_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "TEST1 — GET /api/portal/pillars returns all 7 real pillar cards.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars", "exists": true }
+    },
+    {
+      "name": "TEST2 — index 0 of that fixed-order list is really 'governance' (PILLAR_SUMMARY_KEYS order, see notes).",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[0].pillar", "value": "governance" }
+    },
+    {
+      "name": "TEST3 — index 5 is 'security', matching the tab strip / page route order.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[5].pillar", "value": "security" }
+    },
+    {
+      "name": "TEST4 — every card carries the real evaluation envelope the page's honest evaluation line reads (scored/insufficient_data/not_evaluated).",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[0].evaluation.status", "exists": true }
+    },
+    {
+      "name": "TEST5 — the governance card's real stat callouts array is present (the page's stat-tile grid reads this directly).",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[0].stats", "exists": true }
+    },
+    {
+      "name": "TEST6 — the tenant-wide scanned-check-count the page's 'scanned with' honesty line reads is present.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.scannedCheckCount", "exists": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "goto the real login page.", "action": "goto", "target": "/portal/login" },
+    { "action": "expect", "selector": "[data-testid='login-email']", "state": "visible", "critical": true },
+    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_CUSTOMER_EMAIL}}" },
+    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_CUSTOMER_PASSWORD}}" },
+    { "name": "sign in.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the real Governance pillar page.", "action": "goto", "target": "/portal/pillars/governance" },
+    { "name": "UI1 — the page renders.", "action": "expect", "selector": "[data-testid='pillar-page-governance']", "state": "visible", "critical": true },
+    { "name": "UI2 — the header shows the real pillar label.", "action": "expect", "selector": "[data-testid='pillar-page-governance']", "state": "visible", "textContains": "Governance", "critical": true },
+    { "name": "UI3 — the score hero renders (real score or the honest em dash — never a fixture number).", "action": "expect", "selector": "[data-testid='pillar-score-hero']", "state": "visible", "critical": true },
+    { "name": "UI4 — the findings section always renders, scanned or not.", "action": "expect", "selector": "[data-testid='pillar-findings']", "state": "visible" },
+
+    { "name": "UI5 — the shell's pillar tab strip is reachable from this page too.", "action": "expect", "selector": "[data-testid='pillar-tab-security']", "state": "visible", "critical": true },
+    { "name": "UI6 — selecting the Security tab routes to its own real page.", "action": "click", "selector": "[data-testid='pillar-tab-security']", "critical": true },
+    { "name": "UI7 — the Security pillar page renders.", "action": "expect", "selector": "[data-testid='pillar-page-security']", "state": "visible", "textContains": "Security", "critical": true }
+  ]
+}

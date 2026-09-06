@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation, useSearch } from "wouter";
+import { PILLARS, PILLAR_KEYS } from "@workspace/copilot-scan-scene/journeyTokens";
 import { TopBar, type Breadcrumb } from "./TopBar";
 import { PillarTabStrip } from "./PillarTabStrip";
 import { SidebarNav } from "./SidebarNav";
@@ -28,6 +29,9 @@ function useBreadcrumb(): Breadcrumb {
 
   if (location === "/") return { current: "Overview" };
   if (location === "/support") return { current: "Support" };
+
+  const pillarMatch = PILLAR_KEYS.find((k) => location === `/pillars/${k}`);
+  if (pillarMatch) return { parent: "Pillars", current: PILLARS[pillarMatch].label };
 
   if (location === "/coming-soon") {
     const feature = params.get("feature");

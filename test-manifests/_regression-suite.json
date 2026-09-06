@@ -97,6 +97,7 @@
     "portal/billing.json",
     "portal/sops-runbooks.json",
     "portal/microsoft-changes.json",
-    "portal/config-state.json"
+    "portal/config-state.json",
+    "portal/pillar-pages.json"
   ]
 }

@@ -1,4 +1,4 @@
-import { Link, useLocation, useSearch } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   PILLAR_KEYS,
   PILLARS,
@@ -7,7 +7,6 @@ import {
   severityForScore,
   type PillarKey,
 } from "@workspace/copilot-scan-scene/journeyTokens";
-import { comingSoonHref } from "./moduleNav";
 import type { PillarShellScore } from "./usePillarSummary";
 
 const NEVER_SCANNED_INK = "#475569";
@@ -22,11 +21,7 @@ function scoreLabel(entry: PillarShellScore): { text: string; ink: string } {
 /**
  * The six-pillar tab strip — the shell-level pillar switcher (#1823; frame
  * scaffolded by #1819, README "Layout" §3). Selecting a pillar routes to its
- * dashboard — none of the six pillar pages exist yet (that surface is #1621's
- * scope, not this issue's — see #1823's "boundary with #1621"), so every tab
- * currently routes through the same honest not-yet-built state the sidebar
- * uses (Git #1827's `/coming-soon`), tagged `group=pillar` so the shell can
- * keep the tab's selected state and the breadcrumb accurate.
+ * real page (#1749, Feature #1621's own wiring pass) at `/pillars/<key>`.
  *
  * Design-token compliance confirmed against `docs/design-system.md` +
  * `Design/portal/design_handoff_ui_shell/{README.md,Shell.dc.html}` (#1823):
@@ -37,7 +32,7 @@ function scoreLabel(entry: PillarShellScore): { text: string; ink: string } {
  * `"copilot"` card — it's the roll-up, not a seventh pillar). The reference
  * `Shell.dc.html` renders this exact shape (band + icon + label + score, no
  * ambient glow) for its pillar tabs — the hand-tuned per-pillar glow table
- * belongs to the pillar *pages* (#1621), not this switcher.
+ * belongs to the pillar *pages* (#1621's own `pillar.tsx`), not this switcher.
  */
 export function PillarTabStrip({
   scores,
@@ -45,12 +40,7 @@ export function PillarTabStrip({
   scores: Readonly<Record<PillarKey, PillarShellScore>>;
 }) {
   const [location] = useLocation();
-  const search = useSearch();
-  const params = new URLSearchParams(search);
-  const activeKey =
-    location === "/coming-soon" && params.get("group") === "pillar"
-      ? PILLAR_KEYS.find((k) => PILLARS[k].label === params.get("feature"))
-      : undefined;
+  const activeKey = PILLAR_KEYS.find((k) => location === `/pillars/${k}`);
 
   return (
     <div
@@ -66,7 +56,7 @@ export function PillarTabStrip({
         return (
           <Link
             key={key}
-            href={comingSoonHref(identity.label, "pillar")}
+            href={`/pillars/${key}`}
             data-testid={`pillar-tab-${key}`}
             className="group flex min-w-0 flex-col border-r focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0078D4]"
             style={{ flex: "1 0 130px", borderColor: "rgba(255,255,255,.06)" }}
