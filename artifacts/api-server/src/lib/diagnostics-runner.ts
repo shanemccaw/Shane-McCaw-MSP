@@ -307,6 +307,14 @@ export function buildFindingDescription(result: CheckResult): string {
   }
   if (result.status === "license_gap") {
     const feature = licenseGapFeatureOf(result);
+    // #2925 — see dashboard-resolvers.ts's PORTAL_NOT_ONBOARDED_FEATURE comment.
+    // classifyGraphError() only ever produces this exact feature string from its
+    // "Account is not provisioned" branch, which #2837 confirmed is a
+    // never-onboarded Security & Compliance portal, not a real license gap.
+    // Keep this wording identical to dashboard-resolvers.ts's licenseGapMessage.
+    if (feature === "Microsoft Defender for Office 365") {
+      return "We couldn't evaluate this because the Microsoft 365 Defender / Security & Compliance portal (security.microsoft.com) hasn't been opened yet on your tenant. This isn't a licensing gap — Microsoft Defender for Office 365 is already licensed here. A Global Admin needs to sign into security.microsoft.com at least once to complete onboarding; we'll pick this check back up automatically once that's done.";
+    }
     return `We couldn't evaluate this because your Microsoft 365 tenant doesn't have ${feature}. This isn't a security problem — it means the capability isn't licensed on your tenant. Adding ${feature} would let us monitor and report on it.`;
   }
   // #1847 — the executor already resolved the tenant-level fact and stamped its

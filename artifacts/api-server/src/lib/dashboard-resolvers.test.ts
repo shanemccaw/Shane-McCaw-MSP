@@ -403,7 +403,7 @@ describe("monitor_profile scalar field selection (risk heatmap correctness)", ()
     if (res.status !== "not_available") return;
     expect(res.reason).toBe("license_gap");
     expect(res.detail).toBe(
-      "We couldn't evaluate this because your Microsoft 365 tenant doesn't have Microsoft Defender for Office 365. This isn't a security problem — it means the capability isn't licensed on your tenant. Adding Microsoft Defender for Office 365 would let us monitor and report on it.",
+      "We couldn't evaluate this because the Microsoft 365 Defender / Security & Compliance portal (security.microsoft.com) hasn't been opened yet on your tenant. This isn't a licensing gap — Microsoft Defender for Office 365 is already licensed here. A Global Admin needs to sign into security.microsoft.com at least once to complete onboarding; we'll pick this check back up automatically once that's done.",
     );
   });
 
