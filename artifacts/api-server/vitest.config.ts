@@ -309,6 +309,10 @@ export default defineConfig({
       "src/routes/admin-write-actions.test.ts",
       "src/routes/admin-document-generator.test.ts",
       "src/lib/active-directory.test.ts",
+      // #2882 — verifyCaptchaToken() fails CLOSED (not open) when
+      // TURNSTILE_SECRET_KEY is missing/empty, matching the already-correct
+      // network-error fail-closed path.
+      "src/lib/captcha.test.ts",
       "src/routes/admin-active-directory-credential-ops.test.ts",
       "src/routes/mfa-admin-reset.test.ts",
       "src/routes/admin-active-directory-user-actions.test.ts",

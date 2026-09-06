@@ -4,8 +4,8 @@ const log = logger.child({ channel: "auth" });
 
 export async function verifyCaptchaToken(token: string) {
   if (!process.env.TURNSTILE_SECRET_KEY) {
-    console.warn("WARN: TURNSTILE_SECRET_KEY is missing/empty. Bypassing CAPTCHA verification.");
-    return { success: true, bypassed: true };
+    log.error("TURNSTILE_SECRET_KEY is missing/empty; failing CAPTCHA verification closed");
+    return { success: false, bypassed: false };
   }
 
   try {
