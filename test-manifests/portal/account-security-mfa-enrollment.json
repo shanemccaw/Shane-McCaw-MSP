@@ -1,0 +1,88 @@
+{
+  "issue": 2995,
+  "feature": "Account security - the real artifacts/portal '/account-security' page (src/pages/account-security.tsx), part of #1595. This manifest covers #2995's own scope specifically: the Multifactor methods section (TOTP/SMS/passkey self-service enrollment), all real per `artifacts/api-server/src/routes/mfa.ts` (setup/verify-setup/DELETE for TOTP and SMS, registration-options/verify-registration/DELETE for passkey via @simplewebauthn/browser). The page itself and its data-rights wiring (export/deletion-request) are #2996's own scope (test-manifests/portal/account-security-data-rights.json) - not duplicated here. Change-password is #1675's own open scope - not covered here either.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "2f37bf1e0",
+
+  "notes": [
+    "WHAT THIS COVERS: every MFA enrollment endpoint's auth gate, the non-mutating half of TOTP setup (returns a real secret+QR, enrolls nothing until verify-setup), and a real UI walk of all three method cards through a real login (artifacts/portal now has a real login page as of #2991 - Auth Core - so this manifest uses it directly rather than only asserting the honest sign-in-required gate the way #2996's manifest still does).",
+    "TOTP-VERIFY-SETUP, SMS SETUP/VERIFY, AND PASSKEY REGISTRATION ARE NOT DRIVEN END-TO-END HERE, AND WHY: completing TOTP verify-setup requires computing a live 6-digit code from the setup response's secret (RFC 6238 HMAC-based OTP) - this manifest format has no scripting step to do that deterministically, so only the non-mutating setup call is exercised as an apiTest. SMS setup sends a real SMS via the configured provider to whatever number is posted - a real side effect, not something to fire repeatedly against a shared account with a placeholder number. Passkey registration is a real WebAuthn ceremony requiring an actual authenticator device - fundamentally not automatable from a declarative test. All three were verified end-to-end by a different method during the #2995 build session (2026-09-06): a JWT minted locally for the TEST_PORTAL_EMAIL account (id 39) drove a real POST totp/setup -> a real valid TOTP code computed via `otplib.generateSync` against the returned secret -> POST totp/verify-setup (200 ok:true) -> GET enrollments confirmed totp:true -> DELETE totp -> GET enrollments confirmed totp:false again, restoring the account's real MFA state exactly as found. SMS/passkey were verified by code reading against mfa.ts plus the identical, already-shipped pattern in artifacts/admin-panel/src/pages/AdminSecurity.tsx (startRegistration from @simplewebauthn/browser against the sibling admin-registration-options route).",
+    "ADMIN SMS GATE: mfa.ts's rejectIfAdmin (checked via req.user.role === 'admin', not the finer-grained mspRole) returns 403 'Admins must use passkey or authenticator app authentication' for SMS setup. TEST_PORTAL_EMAIL (role: client, mspRole: CustomerUser) is NOT an admin, so UI-SMS-CARD below asserts the normal (non-gated) SMS card state, not the admin-blocked one - there is no designated admin testbed portal account today to cover the gated branch with a real login; that branch is verified by code reading (mfa.ts:374-381) and the page's own isAdmin-gated render only.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use, user id 39).",
+    "NOT YET RUN via shaneapp://runTest as of this build (2026-09-06): a real attempt was made (`shaneapp://runTest?file=account-security-mfa-enrollment.json`) against the running BuildConsole instance and correctly returned 'manifest not found' - runTest resolves test-manifests/ against the dedicated C:\\dev-server checkout, which only receives this worktree's commits at BuildConsole's own end-of-build merge (Git #1371/#1372 worktree isolation), the same structural gap #2996's own manifest documents for its own build. Verified instead by a real tsc --noEmit pass (0 errors), a real `vite build` (succeeds), and the direct live API round trip described above. Re-run this manifest via shaneapp://runTest once merged."
+  ],
+
+  "apiTests": [
+    {
+      "name": "AUTH-GATE-1 - POST /api/auth/mfa/totp/setup with no Authorization header returns 401 (requireAuth)",
+      "method": "POST",
+      "path": "/api/auth/mfa/totp/setup",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-2 - POST /api/auth/mfa/sms/setup with no Authorization header returns 401 (requireAuth)",
+      "method": "POST",
+      "path": "/api/auth/mfa/sms/setup",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-3 - POST /api/auth/mfa/passkey/registration-options with no Authorization header returns 401 (requireAuth)",
+      "method": "POST",
+      "path": "/api/auth/mfa/passkey/registration-options",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP - log in as the designated testbed portal account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "MFA1 (mfa.ts:350) - authenticated GET /api/auth/mfa/enrollments returns the real flattened-booleans shape.",
+      "method": "GET",
+      "path": "/api/auth/mfa/enrollments",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.passkeyCount", "exists": true }
+    },
+    {
+      "name": "TOTP-SETUP (mfa.ts:385) - POST /api/auth/mfa/totp/setup is non-mutating (enrolls nothing until verify-setup) and returns a real otpauth secret + render-ready QR data URL.",
+      "method": "POST",
+      "path": "/api/auth/mfa/totp/setup",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.qrDataUrl", "contains": "data:image/png;base64," }
+    },
+    {
+      "name": "TOTP-SETUP2 - the response also carries the raw secret (manual-entry fallback) and the otpauth URI the QR encodes.",
+      "method": "POST",
+      "path": "/api/auth/mfa/totp/setup",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.otpauth", "contains": "otpauth://totp/" }
+    },
+    {
+      "name": "TOTP-VERIFY-REJECTS-BAD-CODE (mfa.ts:396) - verify-setup with an obviously wrong code is rejected, not silently accepted.",
+      "method": "POST",
+      "path": "/api/auth/mfa/totp/verify-setup",
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{authToken}}" },
+      "body": { "secret": "JBSWY3DPEHPK3PXP", "code": "000000" },
+      "expect": { "status": 400, "json": { "error": "Invalid verification code. Please try again." } }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "UI-LOGIN1 - goto the real login page (#2991).", "action": "goto", "target": "/login" },
+    { "name": "UI-LOGIN2 - wait for the login form to hydrate.", "action": "expect", "selector": "[data-testid='login-email']", "state": "visible" },
+    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "UI-LOGIN3 - submit.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+    { "name": "UI-GOTO - go to Account security.", "action": "goto", "target": "/account-security" },
+    { "name": "UI-MFA1 - the Multifactor methods section rendered with all three real method cards.", "action": "expect", "selector": "[data-testid='account-security-mfa-passkey']", "state": "present", "critical": true },
+    { "name": "UI-MFA2 - the Authenticator app card is present.", "action": "expect", "selector": "[data-testid='account-security-mfa-app']", "state": "present" },
+    { "name": "UI-MFA3 - the Text message card is present (this test account is not an admin, so it is not gated - see notes).", "action": "expect", "selector": "[data-testid='account-security-mfa-sms']", "state": "present" },
+    { "name": "UI-PANEL1 - open the Authenticator app panel.", "action": "click", "selector": "[data-testid='account-security-mfa-app']" },
+    { "name": "UI-PANEL2 - the real enrollment panel opened (either the 'Active' state or the 'Set up authenticator' CTA, both real states of the same live mfa.totp read).", "action": "expect", "selector": "[data-testid='account-security-mfa-panel']", "state": "present", "critical": true },
+    { "name": "UI-PANEL3 - close the panel without submitting (this manifest never enrolls/removes a real MFA method against the shared testbed account - see notes for why).", "action": "click", "selector": "[data-testid='account-security-mfa-panel'] button" }
+  ]
+}
