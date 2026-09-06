@@ -2,7 +2,6 @@ import { type ReactNode } from "react";
 import { Header } from "./Header";
 import { Footer } from "./Footer";
 import { BackToTop } from "./BackToTop";
-import { EngagementOfferPanel } from "./EngagementOfferPanel";
 
 interface LayoutProps {
   children: ReactNode;
@@ -17,7 +16,6 @@ export function Layout({ children }: LayoutProps) {
       </main>
       <Footer />
       <BackToTop />
-      <EngagementOfferPanel />
     </div>
   );
 }
