@@ -186,6 +186,21 @@ namespace BuildConsole.Services
             public readonly List<InteractiveEvent> Events = new();
             /// <summary>Total events ever appended (including ones trimmed off the front of <see cref="Events"/>) — lets a cursor-based pull survive buffer trimming.</summary>
             public int TotalEmitted;
+
+            // ── Git #1990 — rejected/aborted tool-call tracking ──────────────
+            /// <summary>Git #1990 — bounded map of tool_use id → its one-line command preview, populated on each
+            /// ToolCall so a later rejected tool_result (matched by tool_use_id) can name the exact command that
+            /// was refused. An entry is dropped when its result lands. Guarded by _gate.</summary>
+            public readonly Dictionary<string, string?> ToolCommandById = new();
+            /// <summary>Git #1990 — count of tool_result blocks that came back as a PERMISSION/INTERRUPT rejection
+            /// ("The user doesn't want to proceed with this tool use. The tool use was rejected.") — is_error carrying
+            /// the rejection sentinel text, NOT an ordinary failing-command error. A queue build has no human at the
+            /// keyboard to decline a permission prompt, so any such rejection means the session's tools were being
+            /// refused (a Stop/interrupt abort, or a tool the launch could not satisfy). Read at reap. Guarded by _gate.</summary>
+            public int RejectedToolCount;
+            /// <summary>Git #1990 — the command preview of the most recent rejected tool call, surfaced in the reap
+            /// log so the refused command is visible without digging through the raw transcript. Guarded by _gate.</summary>
+            public string? LastRejectedCommand;
         }
 
         private readonly BuildTrackerApiClient _api;
@@ -259,6 +274,12 @@ namespace BuildConsole.Services
 
         private const int MaxBufferedEvents = 4000;
         private const int MaxRetained = 32;
+        /// <summary>Git #1990 — sentinel exit code recorded for a build that exited 0 (looked like a clean
+        /// completion) but whose tool calls were coming back REJECTED — a queue build with no human to
+        /// decline a permission prompt. Distinct from a genuine completion (0) and from "process gone" (-2),
+        /// non-zero so it lands failed/Crashed instead of done/Verifying. Named so a log/DB reader can tell
+        /// this apart from an ordinary failure.</summary>
+        private const int RejectedToolsExitCode = -3;
         /// <summary>How long a soft interrupt gets to take effect before the escalation check.</summary>
         private const int StopSoftGraceMs = 4000;
         /// <summary>If the process is still emitting output within this window at the escalation check, the soft interrupt is deemed unresponsive → hard kill.</summary>
@@ -1408,6 +1429,36 @@ namespace BuildConsole.Services
                         }
                     }
 
+                    // Git #1990 — a queue build has no human at the keyboard to decline a permission
+                    // prompt, so a session whose tool calls came back REJECTED ("The user doesn't want
+                    // to proceed with this tool use.") was having its tools refused — a Stop/interrupt
+                    // abort, or a tool the launch could not satisfy. #1988 only landed `failed` because
+                    // its Stop escalation made the CLI exit 1; the SAME situation with a clean
+                    // idle-finalize exits 0 and the mapping below would record it done/Verifying —
+                    // indistinguishable from real completed work, the exact "reports done, nothing
+                    // landed" danger. Record a clean-exit-with-rejections build under a distinct sentinel
+                    // exit code so it lands failed/Crashed (never done), with the refused command named.
+                    // Skipped for a limit-parked build (it's coming back, not finished).
+                    if (!limitParked)
+                    {
+                        int rejectedCount; string? lastRejected;
+                        lock (_gate) { rejectedCount = entry.RejectedToolCount; lastRejected = entry.LastRejectedCommand; }
+                        if (rejectedCount > 0)
+                        {
+                            if (exitCode == 0)
+                            {
+                                ActivityLog.Log("interactive-build",
+                                    $"queue #{id} ({entry.Title}) exited 0 but had {rejectedCount} rejected tool call(s) — recording as failed ({RejectedToolsExitCode}, rejected-tools) so it is NOT mistaken for a real completion. Last refused: {lastRejected ?? "(command not captured)"}.");
+                                exitCode = RejectedToolsExitCode;
+                            }
+                            else
+                            {
+                                ActivityLog.Log("interactive-build",
+                                    $"queue #{id} ({entry.Title}) had {rejectedCount} rejected tool call(s) and already exited {exitCode} (non-zero → failed). Last refused: {lastRejected ?? "(command not captured)"}.");
+                            }
+                        }
+                    }
+
                     // Report completion — direct Postgres when available (always-on Neon,
                     // no nap/sleep issue), HTTP fallback otherwise. The fallback path is
                     // kept for environments where DATABASE_URL isn't configured.
@@ -2419,7 +2470,23 @@ namespace BuildConsole.Services
             var events = ParseInteractiveEvents(data);
             LogRawSampleOnce(events, data);
             bool hadRenderable = false;
-            foreach (var ev in events) { AppendEvent(entry, ev); hadRenderable = true; }
+            List<string>? rejectionLogs = null;
+            foreach (var ev in events)
+            {
+                AppendEvent(entry, ev);
+                hadRenderable = true;
+                // Git #1990 — track each tool call's command and detect permission/interrupt
+                // rejections so a refused tool is both logged now (with the command) and can force
+                // a distinct exit at reap. Runs after AppendEvent so the command map is populated
+                // before its own result is matched. Collected here, logged outside the _gate lock.
+                var rlog = NoteToolRejection(entry, ev, id);
+                if (rlog != null) (rejectionLogs ??= new List<string>()).Add(rlog);
+            }
+            // The rejection COUNT is rebuilt during an adopted build's replay (so reap still sees it),
+            // but the per-rejection log line is suppressed then to avoid re-logging the pre-restart
+            // transcript — same replay-suppression discipline as usage/session-limit above.
+            if (rejectionLogs != null && !entry.Replaying)
+                foreach (var l in rejectionLogs) ActivityLog.Log("interactive-build", l);
 
             string? waitingLog = null;
             lock (_gate)
@@ -2490,6 +2557,72 @@ namespace BuildConsole.Services
                     entry.ActiveSubagents.Remove(ev.ResultForToolUseId);
                 }
             }
+        }
+
+        /// <summary>
+        /// Git #1990 — records a tool call's command (so a later rejected result can name it) and detects a
+        /// PERMISSION/INTERRUPT tool_result rejection. A queue build runs with no human at the keyboard, so a
+        /// tool_result carrying the CLI's "The user doesn't want to proceed with this tool use. The tool use
+        /// was rejected." sentinel is never a real user decision — it is a Stop/interrupt abort, or a tool the
+        /// launch could not satisfy. Returns a human-readable log line when <paramref name="ev"/> is such a
+        /// rejection (to be logged by the caller OUTSIDE the _gate lock), else null. Guarded by _gate.
+        /// </summary>
+        private string? NoteToolRejection(RunningEntry entry, InteractiveEvent ev, int id)
+        {
+            if (ev.Kind == InteractiveEventKind.ToolCall)
+            {
+                if (!string.IsNullOrEmpty(ev.ToolUseId))
+                {
+                    lock (_gate)
+                    {
+                        entry.ToolCommandById[ev.ToolUseId!] = ev.CommandPreview ?? ev.ToolName;
+                        // Bound the map defensively: it normally holds only the currently-outstanding calls
+                        // (each id is dropped when its result lands below), but a stream where results never
+                        // match must not grow it without limit.
+                        if (entry.ToolCommandById.Count > MaxBufferedEvents) entry.ToolCommandById.Clear();
+                    }
+                }
+                return null;
+            }
+
+            if (ev.Kind != InteractiveEventKind.ToolResult) return null;
+
+            // A result landed — drop its call from the outstanding-command map (whether or not it's a
+            // rejection), reading the command first so a rejection can still name it.
+            string? cmd = null;
+            bool rejected = ev.IsError && LooksLikeToolRejection(ev.Text);
+            int count = 0;
+            lock (_gate)
+            {
+                if (!string.IsNullOrEmpty(ev.ResultForToolUseId)
+                    && entry.ToolCommandById.TryGetValue(ev.ResultForToolUseId!, out var c))
+                {
+                    cmd = c;
+                    entry.ToolCommandById.Remove(ev.ResultForToolUseId!);
+                }
+                if (rejected)
+                {
+                    entry.RejectedToolCount++;
+                    entry.LastRejectedCommand = cmd;
+                    count = entry.RejectedToolCount;
+                }
+            }
+
+            if (!rejected) return null;
+            return $"tool call REJECTED (queue #{id}, {count} this session): {cmd ?? "(command not captured)"} " +
+                   $"— {Truncate((ev.Text ?? "").Replace("\r", " ").Replace("\n", " "), 160)}";
+        }
+
+        /// <summary>Git #1990 — true when a tool_result's text is the CLI's permission/interrupt rejection
+        /// sentinel ("The user doesn't want to proceed with this tool use. The tool use was rejected."), matched
+        /// on either half so a minor wording change still trips it. Deliberately specific — an ordinary failing
+        /// command (is_error with real stderr) must NOT match.</summary>
+        private static bool LooksLikeToolRejection(string? text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            return text.IndexOf("the tool use was rejected", StringComparison.OrdinalIgnoreCase) >= 0
+                || text.IndexOf("doesn't want to proceed with this tool use", StringComparison.OrdinalIgnoreCase) >= 0
+                || text.IndexOf("does not want to proceed with this tool use", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>Returns true for tool names that represent a long-running background subagent or workflow the user should be aware of (e.g. Task, workflow).</summary>
