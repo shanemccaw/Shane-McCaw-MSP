@@ -75,6 +75,8 @@ export interface OverviewCountsWire {
   changeScheduleThisWeek: number;
   remediationInProgress: number;
   policiesExpiringSoon: number;
+  /** #3049 — Ownership/RACI r/a cells named to this login, still `acceptance: "pending"`. */
+  raciPendingAcceptance: number;
 }
 
 export interface DashboardResponseWire {

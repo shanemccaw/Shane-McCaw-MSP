@@ -34,7 +34,7 @@ import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
 import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
-import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, usersTable, wfTriggersTable, wfDefinitionsTable, mspRiskDecisionsTable, policyDecisionsTable, mspMessageCenterItemsTable, changeMaintenanceWindowsTable, remediationTrackerStepsTable } from "@workspace/db";
+import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, usersTable, wfTriggersTable, wfDefinitionsTable, mspRiskDecisionsTable, policyDecisionsTable, mspMessageCenterItemsTable, changeMaintenanceWindowsTable, remediationTrackerStepsTable, portalOwnershipAssignmentsTable } from "@workspace/db";
 import { eq, desc, and, count, inArray, or, asc } from "drizzle-orm";
 import { createAuditLog } from "../lib/audit";
 import { getStripeKey } from "../lib/stripe";
@@ -45,6 +45,7 @@ import { CHANGE_CONTROL_FEATURE_KEY } from "./portal-change-control";
 import { toMaintenanceCandidate, windowOverlapsRange } from "../lib/portal-change-maintenance";
 import { effectiveDate } from "../lib/portal-message-center";
 import { remediationTerminalState } from "../lib/remediation-tracker-terminal-state";
+import { personIdForUser } from "../lib/portal-ownership";
 
 const router: IRouter = Router();
 
@@ -708,6 +709,30 @@ router.get(
       let remediationInProgress = 0;
       let policiesExpiringSoon = 0;
 
+      // Seventh count (#3049, filed against #2922's own honest gap): pending
+      // Ownership/RACI acceptances named to THIS login. `portal_ownership_assignments`
+      // already carries everything needed — `acceptance` moves "" -> "pending" ->
+      // "accepted"/"declined" (#1518), and only r/a cells ever carry it (c/i never
+      // do). `ownerPersonId` uses the same "u{id}" wire scheme every other route in
+      // this codebase resolves the current actor to (`personIdForUser`), so this is
+      // a plain count against real rows, no schema change required. Scoped by
+      // `customerId` alone, like the ownership matrix route itself — this table has
+      // no `(mspId, tenantId)` shape, so it doesn't depend on `tenantScope`.
+      const [{ raciPendingAcceptance }] = await db
+        .select({ raciPendingAcceptance: count() })
+        .from(portalOwnershipAssignmentsTable)
+        .where(
+          and(
+            eq(portalOwnershipAssignmentsTable.customerId, customerId),
+            eq(portalOwnershipAssignmentsTable.ownerPersonId, personIdForUser(req.user!.id)),
+            eq(portalOwnershipAssignmentsTable.acceptance, "pending"),
+            or(
+              eq(portalOwnershipAssignmentsTable.roleKey, "r"),
+              eq(portalOwnershipAssignmentsTable.roleKey, "a"),
+            ),
+          ),
+        );
+
       const now = new Date();
       const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
@@ -864,6 +889,7 @@ router.get(
         customerName: customer?.customerName ?? null,
         mspId: req.user!.mspId ?? null,
         // #2922 — real cross-Feature roll-up counts, see the block above.
+        // raciPendingAcceptance is #3049's addition to the same object.
         overviewCounts: {
           rbdWaiting,
           rbdActive,
@@ -871,6 +897,7 @@ router.get(
           changeScheduleThisWeek,
           remediationInProgress,
           policiesExpiringSoon,
+          raciPendingAcceptance,
         },
       });
     } catch (err) {

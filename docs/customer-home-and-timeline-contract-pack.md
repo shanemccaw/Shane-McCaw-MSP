@@ -15,6 +15,12 @@ had a queryable aggregate before. Section 2's field table, source list, enum lis
 honest-empty notes below are updated for it; the timeline endpoint (§1) is unchanged by
 this pass.
 
+**Regenerated 2026-09-06 for #3049** (also under #1655): `overviewCounts` gained a
+seventh field, `raciPendingAcceptance` — a real count of this login's own Ownership/RACI
+r/a cells still `acceptance = "pending"` on `portal_ownership_assignments`. No schema
+change was needed (`acceptance`/`ownerPersonId` already existed from #1518/#1515);
+this is a new query, not a new column.
+
 Both cited endpoints were confirmed real and live in the current codebase before any of
 this was written (Step 1 of #2446's own body):
 
@@ -48,6 +54,8 @@ Sources this pack is built against, and nothing else:
   `microsoftChangesThisWeek`
 - `artifacts/api-server/src/lib/remediation-tracker-terminal-state.ts` —
   `remediationTerminalState()`, behind `remediationInProgress`
+- `artifacts/api-server/src/lib/portal-ownership.ts` — `personIdForUser()`, the "u{id}"
+  wire-person-id scheme behind `raciPendingAcceptance` (#3049)
 - `lib/db/src/schema/msp.ts` — `msp_diagnostic_runs`, `msp_diagnostic_findings` (real
   enum sources), plus `msp_risk_decisions` (`RISK_ACCEPTANCE_STATUSES`) and
   `policy_decisions` (`reviewState`) for `overviewCounts`
@@ -172,7 +180,7 @@ Response shape (`:829-875`):
 | `customerStatus` | `string \| null` | nullable, explicit | `tenants.status`, coalesced to `null` (not `undefined`) so the key never vanishes from the JSON payload |
 | `customerName` | `string \| null` | nullable, explicit | `tenants.customerName`, same `?? null` treatment |
 | `mspId` | `number \| null` | nullable | `req.user.mspId` from the JWT |
-| `overviewCounts` | `OverviewCounts` | not null | #2922 — six cross-Feature roll-up counts, see below (`:865-872`) |
+| `overviewCounts` | `OverviewCounts` | not null | #2922 (six fields) + #3049 (seventh, `raciPendingAcceptance`) — cross-Feature roll-up counts, see below |
 
 Each `results.pillars[engineKey]` entry (`:508-510`):
 
@@ -190,11 +198,12 @@ computed from that project's `kanban_tasks` ordered by `order` — `stepNumber` 
 list, `totalSteps` is the project's total task count. `null` if no task is
 `in_progress`.
 
-### `overviewCounts` (#2922) — cross-Feature roll-up counts
+### `overviewCounts` (#2922 + #3049) — cross-Feature roll-up counts
 
-All six are `0` when `tenantScope` (`:440`) is null — no resolvable tenant identifier is
-an honest, real `0` for every count, not an error. None of these five source tables had
-a queryable aggregate before this build.
+The first six are `0` when `tenantScope` (`:440`) is null — no resolvable tenant
+identifier is an honest, real `0` for every count, not an error. `raciPendingAcceptance`
+(#3049) does not depend on `tenantScope` — the Ownership matrix is scoped by
+`customerId` alone, same as `portal-ownership.ts`'s own read.
 
 | Field | Type | Source |
 |---|---|---|
@@ -204,6 +213,7 @@ a queryable aggregate before this build.
 | `changeScheduleThisWeek` | `number` | `change_maintenance_windows` rows scoped identically to `portal-change-control.ts`'s own `GET /change-control/maintenance-windows` read (global scope, matching-tenant scope, or any workload scope), gated on the same `change_control` add-on entitlement that route requires (`hasAddOnEntitlement`, `0` and no query at all when unentitled) — then `windowOverlapsRange()` (`portal-change-maintenance.ts`) walks each window's own recurrence cadence to find whether an occurrence falls in `[now, now + 7 days)`, so a recurring window anchored months ago still counts (`:764-787`) |
 | `remediationInProgress` | `number` | `remediation_tracker_steps` rows scoped `customerId`, counted where `remediationTerminalState(status, verificationState) === "outstanding"` (`remediation-tracker-terminal-state.ts`) — a customer claim (`completed` / `already_handled` / `deferred` / `shane_handles`) neither re-verified by a scan nor exited to the risk register. Reuses the tracker route's own three-state model rather than re-deriving it, so the two can never disagree (`:796-805`) |
 | `policiesExpiringSoon` | `number` | `policy_decisions` rows scoped `(mspId, tenantId)`, counted where `reviewState` (#2518) is `"due"` or `"overdue"` — the same operational review clock `alert-engine.ts`'s `advancePolicyReviewClock` already advances on a schedule (`RISK_REVIEW_DUE_LEAD_DAYS = 14`-day lead window for `"due"`). A dependency-based decision (#1526) has a null `reviewState` and is correctly excluded — there is no "soon" for a condition with no date (`:814-826`) |
+| `raciPendingAcceptance` | `number` | `portal_ownership_assignments` rows scoped `customerId`, `ownerPersonId = personIdForUser(req.user.id)` (this login, not the whole account — matching the pattern every other route resolving "the acting person" already uses), `roleKey in ("r", "a")`, `acceptance = "pending"` — c/i cells never carry acceptance so they're excluded by construction, not filtered out (#3049) |
 
 ---
 
@@ -255,6 +265,11 @@ a queryable aggregate before this build.
   `policiesExpiringSoon` reads `policy_decisions.reviewState in ("due", "overdue")`,
   advanced on a schedule by `alert-engine.ts`'s `advancePolicyReviewClock`
   (`RISK_REVIEW_DUE_LEAD_DAYS = 14` days).
+- **Ownership/RACI acceptance state** (#3049) — `portal_ownership_assignments.acceptance`:
+  `"" | "pending" | "accepted" | "declined"` (text, no DB CHECK — `"declined"` is an
+  application-layer value added by #1518). Only `r`/`a` `roleKey` cells ever carry a
+  non-`""` value; `c`/`i` never do. `overviewCounts.raciPendingAcceptance` reads
+  `acceptance = "pending"` on `roleKey in ("r", "a")` rows named to the current login.
 
 ---
 
@@ -320,13 +335,17 @@ Filed as #2499 (sibling of this issue's own parent #1655), labeled `bug`.
   payload for a customer with no `tenants` row match — called out in the route's own
   comment as a deliberate shape guarantee for `app-shell`'s inactive banner and
   `CustomerDashboardExtras`' promo gate.
-- **Dashboard `overviewCounts`** (#2922): every one of the six fields is a real `0`, not
-  an omitted key or an error, in two distinct honest-empty cases — (1) `tenantScope` is
-  null (no resolvable M365 tenant identifier: all six read `0`), and (2)
+- **Dashboard `overviewCounts`** (#2922): every one of the first six fields is a real
+  `0`, not an omitted key or an error, in two distinct honest-empty cases — (1)
+  `tenantScope` is null (no resolvable M365 tenant identifier: all six read `0`), and (2)
   `changeScheduleThisWeek` specifically when the tenant has no active `change_control`
   add-on entitlement (`0`, no query issued at all — the same 402 that route gives a
   direct caller, just folded into an honest `0` here rather than surfaced as an error on
   a payload with five other real fields).
+- **Dashboard `overviewCounts.raciPendingAcceptance`** (#3049): a real `0` whenever this
+  login has no `portal_ownership_assignments` row naming it in a pending r/a cell —
+  including the common case of a customer with no Ownership matrix activity at all.
+  Independent of `tenantScope`; does not go to `0` for the same reason the other six do.
 
 ---
 
