@@ -22,8 +22,37 @@ import { claimAllPending, finalize } from "./queue.mjs";
 import { tryAcquire } from "./lock.mjs";
 import * as bs from "./buildset.mjs";
 import * as st from "./service-targeting.mjs";
+import * as rh from "./restart-hold.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Git #1855: before firing the actual restart, give any active restart holds
+ * (see restart-hold.mjs) a bounded grace window to clear -- a long-running agent
+ * task (e.g. #1793's hour-long capability survey) can register that it's
+ * mid-flight so a restart landing in the middle of one of its requests waits a
+ * moment instead of yanking the server immediately. BOUNDED by
+ * config.restartHoldMaxWaitMs: this is a grace window, not a full defer -- other
+ * agents' work still needs to land, so an expired wait proceeds with the restart
+ * regardless (never wedge the fleet on someone else's hold).
+ */
+async function waitForHoldsToClear(config) {
+  const startedAt = Date.now();
+  let holds = rh.activeHolds(config);
+  if (holds.length === 0) return { waitedMs: 0, cleared: true, holdsAtStart: [], holdsRemaining: [] };
+  const holdsAtStart = holds.map((h) => h.name);
+  const deadline = startedAt + config.restartHoldMaxWaitMs;
+  while (holds.length > 0 && Date.now() < deadline) {
+    await sleep(Math.min(2000, Math.max(200, config.acquireBackoffMs)));
+    holds = rh.activeHolds(config);
+  }
+  return {
+    waitedMs: Date.now() - startedAt,
+    cleared: holds.length === 0,
+    holdsAtStart,
+    holdsRemaining: holds.map((h) => h.name),
+  };
+}
 
 function writeCurrentCycle(config, obj) {
   mkdirSync(path.dirname(config.currentCycleFile), { recursive: true });
@@ -144,8 +173,11 @@ export async function runCycle(config, deps, opts = {}) {
   const changed = merged.length > 0 && serverHeadAfterMerge !== serverHeadBefore;
 
   // 4) Restart the server process ONCE, only if the tree actually advanced.
+  //    Git #1855: give any active restart holds a bounded grace window first.
   let restart = { oldPid: null, newPid: null, ready: null, skipped: true };
+  let holdWait = null;
   if (changed) {
+    holdWait = await waitForHoldsToClear(config);
     writeCurrentCycle(config, {
       cycleId,
       runnerPid: process.pid,
@@ -154,6 +186,7 @@ export async function runCycle(config, deps, opts = {}) {
       serverHeadBefore,
       serverHeadAfterMerge,
       batch: batch.map((r) => r.id),
+      holdWait,
     });
     restart = { skipped: false, ...(await deps.restart(config)) };
   }
@@ -190,6 +223,7 @@ export async function runCycle(config, deps, opts = {}) {
     serverHeadFinal,
     restarted: changed,
     restart,
+    holdWait,
     batchSize: batch.length,
     mergedCount: merged.length,
     conflicts: Object.values(perRequest).filter((o) => o.conflict).length,
@@ -302,20 +336,25 @@ export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) 
   }
 
   let restart = { skipped: true, oldPid: null, newPid: null, ready: null };
+  let holdWait = null;
   let reason;
   if (!advanced) {
     reason = "build set complete -- no member merged; restart skipped (nothing new to reload)";
-  } else if (plan) {
-    reason = `build set complete -- ONE selective restart: ${st.describePlan(plan, set.name)}`;
-    restart = {
-      skipped: false,
-      targeting,
-      ...(await deps.restart(config, { only: plan.neededRunning, plan })),
-    };
   } else {
-    reason =
-      "build set complete -- ONE restart of all services (combined footprint unresolved -> full restart)";
-    restart = { skipped: false, targeting, ...(await deps.restart(config)) };
+    // Git #1855: same bounded grace window as the ungrouped runCycle path.
+    holdWait = await waitForHoldsToClear(config);
+    if (plan) {
+      reason = `build set complete -- ONE selective restart: ${st.describePlan(plan, set.name)}`;
+      restart = {
+        skipped: false,
+        targeting,
+        ...(await deps.restart(config, { only: plan.neededRunning, plan })),
+      };
+    } else {
+      reason =
+        "build set complete -- ONE restart of all services (combined footprint unresolved -> full restart)";
+      restart = { skipped: false, targeting, ...(await deps.restart(config)) };
+    }
   }
 
   const serverHeadFinal = revParse(W, "HEAD");
@@ -332,6 +371,7 @@ export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) 
     cycleId,
     restarted: advanced,
     reason,
+    holdWait,
     serverHeadBefore,
     serverHeadFinal,
     merged: bs.mergedCount(set),
@@ -377,6 +417,7 @@ export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) 
     serverHeadFinal,
     restarted: advanced,
     restart,
+    holdWait,
     mergedCount: bs.mergedCount(set),
     members: Object.keys(set.members),
     targeting,
@@ -388,6 +429,7 @@ export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) 
     cycleId,
     serverHeadFinal,
     reason,
+    holdWait,
     targeting,
     plan: plan
       ? { rebuild: plan.toRebuild, start: plan.toStart, stop: plan.toStop, neededRunning: plan.neededRunning }

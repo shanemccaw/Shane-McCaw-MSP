@@ -235,6 +235,70 @@ restart.
 > the subset), rather than doing zero-downtime per-service supervision — the
 > targeting decides *which* services run, not independent per-service uptime.
 
+## Any request to :8080 can be dropped for minutes -- restart holds + resilient fetch (Git #1855)
+
+**Any caller hitting the local api-server directly (not through `request-restart.mjs`)
+can have its request dropped, with no warning, for as long as a rebuild+restart
+takes.** Live evidence: #1793's app-only PowerShell capability survey ran for over
+an hour against `POST /api/simulator/ps-execution/cmdlet`. A concurrent build
+finished mid-survey and the coordinator restarted the api-server; `dev-all.log`
+showed a **510-second** window where the server was simply gone. Every request in
+that window failed with a raw `TypeError: fetch failed`, and the survey's first run
+recorded 36 of those transport failures as if they were real per-cmdlet results --
+a false-negative capability table, discarded and re-run from scratch.
+
+Two tools close that gap. Neither requires going through `request-restart.mjs` --
+they're for a caller (a script, an agent's own long-running probe) making ordinary
+HTTP calls against `http://localhost:<DEV_API_PORT>` while a restart could land at
+any time.
+
+### 1. `api-fetch.mjs` -- a REAL signal, not a blind retry
+
+`fetchResilient(url, fetchOpts, { config })` wraps `fetch()`: on a genuine transport
+failure (connection refused/reset, "fetch failed" -- never a client-side deadline,
+which is a real hang and is thrown through as-is) it reads the coordinator's OWN
+state off disk (`current-cycle.json`'s phase, the restart mutex's owner) via
+`describeRestartState(config)` and retries, instead of guessing blind. Exhausting
+the retry budget (default 40 attempts × 15s ≈ 10 min, comfortably above the 510s
+real-world window above) throws `ApiServerUnreachableError` carrying that real
+state in its message, so a caller that gives up can say **why** instead of just
+re-printing "fetch failed".
+
+```js
+import { fetchResilient, ApiServerUnreachableError } from "./api-fetch.mjs";
+import { loadConfig } from "./config.mjs";
+
+const config = loadConfig();
+const res = await fetchResilient(`http://localhost:${config.apiPort}/api/...`, { method: "POST", ... }, { config });
+```
+
+### 2. `restart-hold.mjs` -- a bounded advisory lock the coordinator honors
+
+A long-running task can register that it's mid-flight, so the coordinator's NEXT
+restart (`runCycle` and the build-set completion restart both call this) waits --
+**bounded** by `DEV_SERVER_RESTART_HOLD_MAX_WAIT_MS` (default 2 min) -- for active
+holds to clear before actually tearing the server down. This is the ad-hoc-task
+counterpart to `--buildSet`'s deferral: a build set is a *declared* group of
+builds; a restart hold is any process announcing "give me a moment" without being
+part of one. It is **advisory and bounded on purpose** -- other agents' work still
+needs to land, so it is a grace window, not a way to indefinitely block a restart.
+A hold whose heartbeat goes stale (`DEV_SERVER_RESTART_HOLD_DEFAULT_TTL_MS`,
+default 10 min) is treated as abandoned and ignored, the same never-wedge-the-fleet
+discipline as the mutex's own stale-lock recovery.
+
+```
+node scripts/dev-server/restart-hold.mjs acquire my-long-task   # or renew on your own cadence
+node scripts/dev-server/restart-hold.mjs release my-long-task   # always release when done
+node scripts/dev-server/restart-hold.mjs status                 # see what's currently held
+```
+
+Or programmatically: `acquireHold(config, name, { ttlMs })` / `renewHold` /
+`releaseHold` / `activeHolds`. `scripts/src/ps-capability-survey.ts` -- the #1793
+driver this was filed from -- uses both: it acquires (renewed on every cmdlet call)
+a `ps-capability-survey` hold for the run's duration, and its own transport-failure
+retry loop now reports the coordinator's real state via `describeRestartState`
+instead of a generic "waiting for it to come back" guess.
+
 ## Shared-store protection (Git #1988)
 
 A worktree's `node_modules` dirs are junctions into the **shared main-checkout
@@ -343,6 +407,8 @@ stale-lock recovery.
 | `server-process.mjs` | Start/stop/**restart by pid-tree** (never by name) + readiness probe. |
 | `coordinator.mjs` | `runCycle()` — the mutex-held merge→restart→confirm batch. Plus the Build-Set functions `runSetMemberCycle()` / `maybeFireSetRestart()` / `finishSetFromCli()` (merge-no-restart per member, then ONE restart on completion). |
 | `buildset.mjs` | **Build Sets** — per-set manifest state machine (now incl. `baseHead`) + CLI (`open`/`status`/`close`/`drop`/`sweep`/`reset`). |
+| `restart-hold.mjs` | **Git #1855** — bounded advisory restart holds a long-running agent task can take so the coordinator's next restart waits, briefly, for it to clear. CLI (`acquire`/`renew`/`release`/`status`) + `.d.mts` types for TS callers. |
+| `api-fetch.mjs` | **Git #1855** — `fetchResilient()`, a retry-aware `fetch()` wrapper that reads the coordinator's real state (`describeRestartState`) to distinguish an in-progress restart from a genuine failure, instead of guessing off a raw `TypeError: fetch failed`. `.d.mts` types for TS callers. |
 | `service-targeting.mjs` | **Selective service targeting** — pure (git-only) planner: classify a set's combined changed-file footprint into services and decide rebuild/start/stop/keep per service. |
 | `request-restart.mjs` | **Agent entrypoint** — the coalescing algorithm, and the `--buildSet` deferred-restart path. |
 | `status.mjs` | Diagnostic: current state + exact log paths. |
@@ -375,6 +441,12 @@ running-but-unrelated front-ends; off by default so a set never yanks a service
 in use — the API server is never stopped regardless). `DEV_ALL_ONLY` (csv of
 services `dev-all.mjs` should start; set automatically by the coordinator from
 the computed plan — unset starts all).
+
+Restart holds (Git #1855): `DEV_SERVER_RESTART_HOLD_DEFAULT_TTL_MS` (default 10
+min — how long a hold survives without being renewed before it's treated as
+abandoned), `DEV_SERVER_RESTART_HOLD_MAX_WAIT_MS` (default 2 min — the bounded
+grace window the coordinator waits for active holds to clear before restarting
+anyway).
 
 ## Known follow-ups (honest limits)
 

@@ -17,6 +17,9 @@
 //   4. Merge conflict handling -- a conflicting commit is reported failed and
 //      aborted, leaving the server checkout clean and the other commit intact.
 //   5. Stale-lock recovery -- a lock owned by a dead pid is broken and retaken.
+//   11. Restart holds (Git #1855) -- an active hold defers the coordinator's
+//       restart within a bounded grace window; the wait is genuine but never
+//       indefinite, so a forgotten/never-released hold can't wedge the fleet.
 
 import { spawnSync } from "node:child_process";
 import {
@@ -38,6 +41,7 @@ import { enqueue, outcomeFor, listPending } from "./queue.mjs";
 import { runCycle, runSetMemberCycle, finishSetFromCli } from "./coordinator.mjs";
 import { tryAcquire, pidAlive } from "./lock.mjs";
 import * as bs from "./buildset.mjs";
+import * as rh from "./restart-hold.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REQUEST_RESTART = path.join(HERE, "request-restart.mjs");
@@ -501,6 +505,71 @@ async function main() {
       const { plan, cls } = planFor(["docs/x.md", "test-manifests/y.json", "scripts/dev-server/z.mjs"]);
       check("docs/tests/tooling-only footprint rebuilds no front-end", () =>
         assert.ok(plan.toRebuild.length === 0 && cls.ignoredFiles.length === 3));
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Scenario 11: RESTART HOLDS (Git #1855) -- an active hold gives the
+  // coordinator's restart step a bounded grace window; releasing the hold early
+  // lets the restart proceed sooner, and a hold that's never released does NOT
+  // block the restart forever (it still fires once the bounded wait elapses).
+  // ---------------------------------------------------------------
+  console.log("Scenario 11: restart holds defer the restart within a bounded grace window");
+  {
+    const { repo, agents } = makeRepo(1);
+    cleanup.push(repo);
+    const stateDir = path.join(repo, "_state");
+    applyEnv({ ...baseEnv(repo, stateDir), DEV_SERVER_RESTART_HOLD_MAX_WAIT_MS: "800" });
+    const config = loadConfig({ cwd: repo });
+
+    // No hold at all -- the restart fires immediately, no wait.
+    {
+      const fakeRestart = async () => ({ fake: true, ready: true });
+      enqueue(config, { agentId: agents[0].branch, commit: agents[0].sha, worktree: repo });
+      const record = await runCycle(config, { restart: fakeRestart });
+      check("no active holds -> restart fires with no wait", () =>
+        assert.ok(record.holdWait && record.holdWait.waitedMs < 300 && record.holdWait.cleared, `holdWait=${JSON.stringify(record.holdWait)}`));
+      check("restart still happened", () => assert.ok(record.restarted, "expected a restart"));
+    }
+
+    // A hold that's released quickly (well inside the max-wait budget) lets the
+    // restart proceed once it clears, having genuinely waited for it.
+    {
+      const { repo: repo2, agents: agents2 } = makeRepo(1);
+      cleanup.push(repo2);
+      const stateDir2 = path.join(repo2, "_state");
+      applyEnv({ ...baseEnv(repo2, stateDir2), DEV_SERVER_RESTART_HOLD_MAX_WAIT_MS: "5000" });
+      const config2 = loadConfig({ cwd: repo2 });
+      rh.acquireHold(config2, "test-survey", { ttlMs: 60_000 });
+      setTimeout(() => rh.releaseHold(config2, "test-survey"), 250);
+
+      const fakeRestart = async () => ({ fake: true, ready: true });
+      enqueue(config2, { agentId: agents2[0].branch, commit: agents2[0].sha, worktree: repo2 });
+      const record = await runCycle(config2, { restart: fakeRestart });
+      check("restart waited for the hold to clear (genuinely deferred, not instant)", () =>
+        assert.ok(record.holdWait.waitedMs >= 200, `waitedMs=${record.holdWait.waitedMs}`));
+      check("restart proceeded once the hold cleared, well under the max wait", () =>
+        assert.ok(record.holdWait.cleared && record.holdWait.waitedMs < 5000, `holdWait=${JSON.stringify(record.holdWait)}`));
+      check("restart still fired", () => assert.ok(record.restarted, "expected a restart"));
+    }
+
+    // A hold that is NEVER released does not wedge the coordinator forever --
+    // the bounded wait times out and the restart proceeds anyway.
+    {
+      const { repo: repo3, agents: agents3 } = makeRepo(1);
+      cleanup.push(repo3);
+      const stateDir3 = path.join(repo3, "_state");
+      applyEnv({ ...baseEnv(repo3, stateDir3), DEV_SERVER_RESTART_HOLD_MAX_WAIT_MS: "500" });
+      const config3 = loadConfig({ cwd: repo3 });
+      rh.acquireHold(config3, "forgotten-survey", { ttlMs: 60_000 }); // never released
+
+      const fakeRestart = async () => ({ fake: true, ready: true });
+      enqueue(config3, { agentId: agents3[0].branch, commit: agents3[0].sha, worktree: repo3 });
+      const record = await runCycle(config3, { restart: fakeRestart });
+      check("an unreleased hold does not clear before the bounded wait elapses", () =>
+        assert.ok(!record.holdWait.cleared && record.holdWait.holdsRemaining.includes("forgotten-survey"), `holdWait=${JSON.stringify(record.holdWait)}`));
+      check("the restart still fires once the grace window elapses (never wedged forever)", () =>
+        assert.ok(record.restarted, "expected the restart to proceed despite the still-active hold"));
     }
   }
 

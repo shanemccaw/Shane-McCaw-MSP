@@ -120,6 +120,13 @@ export function loadConfig({ cwd = process.cwd() } = {}) {
     buildSetsLog: path.join(stateDir, "buildsets.log"),
     worktreesDir: path.join(stateDir, "worktrees"),
 
+    // Restart holds (Git #1855) -- ad-hoc, bounded advisory locks a long-running
+    // agent task (not necessarily part of a declared --buildSet) can take so the
+    // coordinator's NEXT restart waits briefly for it to clear instead of tearing
+    // the api-server down mid-flight. One JSON file per hold under
+    // restartHoldsDir; see restart-hold.mjs.
+    restartHoldsDir: path.join(stateDir, "restart-holds"),
+
     // server checkout
     serverWorktree,
     serverBranch,
@@ -142,6 +149,20 @@ export function loadConfig({ cwd = process.cwd() } = {}) {
     // NOT the primary completion mechanism (which is expected-count / explicit
     // close). Default 6h. Set 0 to disable staleness reporting.
     buildSetStaleMs: Number(process.env.DEV_BUILD_SET_STALE_MS || 6 * 60 * 60 * 1000),
+
+    // Restart holds (Git #1855): the default TTL a hold gets if the caller
+    // doesn't specify one -- how long a hold survives without being renewed
+    // before the coordinator treats it as abandoned and ignores it (same
+    // never-wedge-the-fleet discipline as lock.mjs's stale-lock recovery).
+    // Default 10 min: comfortably longer than one call in a long-running loop
+    // (e.g. #1793's survey renews on every cmdlet call, seconds apart), short
+    // enough that a crashed holder can't block restarts for long.
+    restartHoldDefaultTtlMs: Number(process.env.DEV_SERVER_RESTART_HOLD_DEFAULT_TTL_MS || 10 * 60 * 1000),
+    // How long the coordinator will wait, bounded, for active restart holds to
+    // clear before proceeding with the restart anyway. This is a GRACE WINDOW,
+    // not a full defer -- a restart hold cannot indefinitely block other agents'
+    // work from going live. Default 2 min.
+    restartHoldMaxWaitMs: Number(process.env.DEV_SERVER_RESTART_HOLD_MAX_WAIT_MS || 2 * 60 * 1000),
 
     // Selective service targeting (see service-targeting.mjs): when a completed
     // build set's single restart fires, by default it NEVER stops a running-but-

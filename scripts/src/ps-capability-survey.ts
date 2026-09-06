@@ -46,11 +46,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+// Git #1855: the general, reusable versions of the "don't record a
+// coordinator-restart transport failure as a per-cmdlet result" defence this
+// script grew ad hoc. loadConfig() gives both a real, first-party read of the
+// coordinator's own state (used below to make the retry loop's own log/failure
+// text say WHAT actually happened instead of guessing), and the restart-hold
+// registry so the coordinator's own restart step gives this hour-long run a
+// bounded grace window instead of yanking the server mid-batch.
+import { loadConfig } from "../dev-server/config.mjs";
+import { describeRestartState } from "../dev-server/api-fetch.mjs";
+import { acquireHold, releaseHold } from "../dev-server/restart-hold.mjs";
 
 const { Pool } = pg;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../..");
+
+const devServerConfig = loadConfig({ cwd: REPO_ROOT });
+const RESTART_HOLD_NAME = "ps-capability-survey";
 
 /** Minimal .env.local reader — this script is run by hand, not by the server. */
 function loadEnvLocal(): void {
@@ -258,17 +271,32 @@ async function callCmdletWaitingOutRestarts<T>(
   cmdletKey: string,
   params: Record<string, unknown>,
 ): Promise<CmdletCall<T>> {
+  // Git #1855: renew our restart hold on every call — the coordinator's next
+  // restart gives this run a bounded grace window as long as the hold's
+  // heartbeat stays fresh, which a call every few seconds comfortably does.
+  acquireHold(devServerConfig, RESTART_HOLD_NAME);
   for (let attempt = 1; attempt <= UNREACHABLE_RETRY_ATTEMPTS; attempt++) {
     const result = await callCmdlet<T>(cmdletKey, params);
     if (result.ok || result.kind !== "unreachable") return result;
     if (attempt === 1) {
-      console.warn(`  api-server unreachable — waiting for it to come back (this is a restart, not a cmdlet result)`);
+      // Git #1855: a REAL signal, not a guess — the coordinator's own state
+      // files say whether this is actually a restart in flight.
+      const state = describeRestartState(devServerConfig);
+      const stateDesc = state.cycleActive
+        ? `dev-server coordinator cycle ${state.cycleId} is in phase "${state.phase}"`
+        : state.lockHeld
+          ? `dev-server coordinator lock is held (pid ${state.lockOwnerPid})`
+          : "dev-server coordinator reports no active cycle — this may not be a restart";
+      console.warn(`  api-server unreachable — waiting for it to come back (${stateDesc})`);
     }
     await sleep(UNREACHABLE_RETRY_DELAY_MS);
   }
+  const state = describeRestartState(devServerConfig);
   throw new ApiServerUnreachableError(
     `api-server at ${API_BASE_URL} stayed unreachable across ${UNREACHABLE_RETRY_ATTEMPTS} attempts ` +
       `(~${Math.round((UNREACHABLE_RETRY_ATTEMPTS * UNREACHABLE_RETRY_DELAY_MS) / 60000)} minutes). ` +
+      `dev-server coordinator state at last attempt: ${state.cycleActive ? `cycle ${state.cycleId} phase "${state.phase}"` : "no active cycle"}, ` +
+      `lock ${state.lockHeld ? `held (pid ${state.lockOwnerPid})` : "free"}. ` +
       `Refusing to record transport failures as per-cmdlet survey results.`,
   );
 }
@@ -504,6 +532,14 @@ async function main(): Promise<void> {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
   if (!INGEST_TOKEN) throw new Error("BUILD_TRACKER_INGEST_TOKEN is required (the api-server simulator route's auth)");
 
+  // Git #1855: announce to the dev-server coordinator that this run is mid-
+  // flight against the local api-server, so its next restart gives us a
+  // bounded grace window instead of landing mid-batch. Released in `finally`
+  // below no matter how the run ends (completed, failed, or thrown); it also
+  // expires on its own (restartHoldDefaultTtlMs) if this process is killed
+  // without a chance to release it, so it can never wedge the coordinator.
+  acquireHold(devServerConfig, RESTART_HOLD_NAME);
+  try {
   // The revision that actually served the run. Recorded on the run row because
   // a survey result is only meaningful against the code that produced it.
   let revision: string | null = null;
@@ -572,6 +608,9 @@ async function main(): Promise<void> {
     for (const r of summary) console.log(`  ${r.session_type.padEnd(11)} ${r.status.padEnd(24)} ${r.n}`);
   } finally {
     await pool.end();
+  }
+  } finally {
+    releaseHold(devServerConfig, RESTART_HOLD_NAME);
   }
 }
 
