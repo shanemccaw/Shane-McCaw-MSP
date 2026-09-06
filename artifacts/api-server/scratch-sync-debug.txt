@@ -1,0 +1,11 @@
+Sync started at 2026-08-12T01:26:12.372Z
+Fetched issues count: 798
+Projects status diagnostics: {"inProgress":20,"error":null,"issuesScanned":798,"issuesWithProjectItems":797,"issuesWithStatusField":623,"distinctStatusValues":["Done","Architecting","Backlog","In progress"]}
+sub_issues_summary found count: 52
+parent_issue_url found count: 625
+Unique parent numbers identified: 803, 601, 773, 530, 647, 778, 771, 756, 704, 719, 673, 597, 621, 668, 350, 570, 180, 571, 343, 584, 531, 527, 519, 508, 427, 355, 360, 302, 292, 183, 271, 260, 259, 258, 257, 246, 226, 208, 152, 113, 161, 131, 48, 132, 77, 92, 98, 78, 95, 57, 52, 70
+Upserting by github_number instead of delete-then-reinsert (Git #693)
+Epics upserted into db: 52
+Nested epics linked to their parent epic: 19
+Issues upserted into db: 746
+Milestones fetched from GitHub: 7
