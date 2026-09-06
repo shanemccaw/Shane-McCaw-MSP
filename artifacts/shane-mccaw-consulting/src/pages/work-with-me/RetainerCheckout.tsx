@@ -62,7 +62,7 @@ function loadStripeJs(): Promise<void> {
 
 // The Payment Element renders in a cross-origin iframe, so it can only be styled
 // through Stripe's appearance API — these numbers mirror the design's own field
-// styling (rgba(2,6,23,.55) fields, #0078D4 accent, 9px radius) so the two match.
+// styling (dark-slate fields, #0078D4 accent, 9px radius) so the two match.
 const STRIPE_FONTS = [
   { cssSrc: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" },
 ] as const;
@@ -75,7 +75,12 @@ const STRIPE_APPEARANCE = {
     fontSizeBase: "14px",
     borderRadius: "9px",
     colorPrimary: "#0078D4",
-    colorBackground: "rgba(2,6,23,0.55)",
+    // Stripe's appearance variables reject alpha here (HEX/rgb()/hsl() only) — an
+    // rgba() value is invalid and Stripe drops the whole appearance object, which
+    // (combined with the confirm-time bug fixed below) is what broke checkout. This
+    // opaque slate is the closest match to the former translucent rgba(2,6,23,.55)
+    // surface composited over the card's dark gradient.
+    colorBackground: "#0b1120",
     colorText: "#f1f5f9",
     colorTextSecondary: "#94a3b8",
     colorTextPlaceholder: "#64748b",
@@ -111,6 +116,12 @@ const STRIPE_APPEARANCE = {
 } as const;
 
 const STRIPE_PAYMENT_ELEMENT_OPTIONS = { layout: { type: "tabs" } } as const;
+
+// Hard ceiling on how long the buyer waits on "Confirming with Stripe…" before we
+// give up and show an error. confirmPayment() normally resolves in a second or two;
+// if a Stripe integration hiccup ever leaves it unresolved, this stops the spinner
+// from running forever with no feedback (see pay() below).
+const CONFIRM_TIMEOUT_MS = 20_000;
 
 const INPUT_STYLE: React.CSSProperties = {
   width: "100%",
@@ -166,8 +177,6 @@ export interface RetainerTier {
   payLabel: string;
 }
 
-type PayState = "idle" | "processing" | "done";
-
 const CHECK_ITEMS = [
   "Live 1:1 working sessions with Shane",
   "Written findings after each session",
@@ -177,7 +186,13 @@ const CHECK_ITEMS = [
 ];
 
 export function RetainerCheckout({ tier }: { tier: RetainerTier }) {
-  const [payState, setPayState] = useState<PayState>("idle");
+  // Only two states live here: the payment form stays mounted until the
+  // subscription is active, then it is replaced by the "Retainer started" panel.
+  // The interim "Confirming with Stripe…" state is deliberately owned by the form
+  // (rendered as an overlay) rather than swapped in here — swapping it in used to
+  // unmount the Payment Element mid-confirm, which made confirmPayment throw
+  // "could not retrieve data from the specified Element" and hang the spinner.
+  const [done, setDone] = useState(false);
 
   return (
     <div
@@ -221,14 +236,9 @@ export function RetainerCheckout({ tier }: { tier: RetainerTier }) {
 
       {/* RIGHT — the real embedded checkout */}
       <div>
-        {payState === "idle" && <RetainerPaymentForm tier={tier} onPaid={() => setPayState("done")} onProcessingChange={(p) => p && setPayState("processing")} />}
-        {payState === "processing" && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, minHeight: 260, textAlign: "center" }}>
-            <Loader2 className="w-7 h-7" style={{ color: "#0078D4", animation: "smcSpin 1s linear infinite" }} />
-            <div style={{ fontSize: 15, color: "#e2e8f0" }}>Confirming with Stripe…</div>
-          </div>
-        )}
-        {payState === "done" && (
+        {!done ? (
+          <RetainerPaymentForm tier={tier} onPaid={() => setDone(true)} />
+        ) : (
           <div
             style={{
               display: "flex",
@@ -266,11 +276,9 @@ export function RetainerCheckout({ tier }: { tier: RetainerTier }) {
 function RetainerPaymentForm({
   tier,
   onPaid,
-  onProcessingChange,
 }: {
   tier: RetainerTier;
   onPaid: () => void;
-  onProcessingChange: (processing: boolean) => void;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const stripeRef = useRef<StripeInstance | null>(null);
@@ -284,6 +292,10 @@ function RetainerPaymentForm({
   const [payError, setPayError] = useState<string | null>(null);
   const [booting, setBooting] = useState(false);
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
+  // True while confirmPayment is in flight. Drives the "Confirming with Stripe…"
+  // overlay WITHOUT unmounting the Payment Element — the Element must stay mounted
+  // for confirmPayment to read it.
+  const [paying, setPaying] = useState(false);
 
   const emailValid = EMAIL_RE.test(email.trim());
 
@@ -376,24 +388,41 @@ function RetainerPaymentForm({
   async function pay() {
     const stripe = stripeRef.current;
     const elements = elementsRef.current;
-    if (!stripe || !elements || !subscriptionId) return;
-    onProcessingChange(true);
+    if (!stripe || !elements || !subscriptionId || paying) return;
+    setPaying(true);
     setPayError(null);
+
+    // Safety net: if confirmPayment() never settles (a Stripe integration hiccup can
+    // leave it unresolved), surface an error after CONFIRM_TIMEOUT_MS instead of
+    // spinning forever. `timedOut` makes a late result a no-op once we've given up.
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      setPaying(false);
+      setPayError("This is taking longer than expected. Please try again, or contact Shane if it keeps happening.");
+    }, CONFIRM_TIMEOUT_MS);
+
     try {
       const result = await stripe.confirmPayment({ elements, redirect: "if_required" });
+      clearTimeout(timeout);
+      if (timedOut) return;
       if (result.error) {
-        onProcessingChange(false);
+        setPaying(false);
         setPayError(result.error.message ?? "Your payment could not be completed.");
         return;
       }
       if (result.paymentIntent?.status !== "succeeded") {
-        onProcessingChange(false);
+        setPaying(false);
         setPayError("Your payment is still processing. We'll email you as soon as it clears.");
         return;
       }
+      // Success: keep the overlay up (no setPaying(false)) — confirmOnServer flips
+      // the parent to the "Retainer started" panel, which unmounts this form.
       await confirmOnServer(subscriptionId);
     } catch (err) {
-      onProcessingChange(false);
+      clearTimeout(timeout);
+      if (timedOut) return;
+      setPaying(false);
       setPayError(err instanceof Error ? err.message : "Something went wrong taking the payment.");
     }
   }
@@ -407,7 +436,7 @@ function RetainerPaymentForm({
   }, []);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 14 }}>
       <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 500, color: "#cbd5e1" }}>
         Work email
         <input
@@ -460,7 +489,7 @@ function RetainerPaymentForm({
           <button
             type="button"
             onClick={() => void pay()}
-            disabled={!ready}
+            disabled={!ready || paying}
             style={{
               minHeight: 50,
               width: "100%",
@@ -470,8 +499,8 @@ function RetainerPaymentForm({
               background: "linear-gradient(90deg,#3b82f6,#8b5cf6)",
               border: "none",
               color: "#fff",
-              cursor: ready ? "pointer" : "not-allowed",
-              opacity: ready ? 1 : 0.6,
+              cursor: ready && !paying ? "pointer" : "not-allowed",
+              opacity: ready && !paying ? 1 : 0.6,
             }}
           >
             {tier.payLabel}
@@ -485,6 +514,28 @@ function RetainerPaymentForm({
         <Lock className="w-3 h-3" style={{ flexShrink: 0 }} />
         Secured by Stripe. The same checkout as the Copilot Readiness Assessment. Billed monthly until you cancel.
       </div>
+
+      {/* "Confirming with Stripe…" — an overlay, not a swapped-in view, so the
+          Payment Element stays mounted underneath while confirmPayment runs. */}
+      {paying && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 14,
+            textAlign: "center",
+            background: "rgba(2,6,23,.78)",
+            borderRadius: 12,
+          }}
+        >
+          <Loader2 className="w-7 h-7" style={{ color: "#0078D4", animation: "smcSpin 1s linear infinite" }} />
+          <div style={{ fontSize: 15, color: "#e2e8f0" }}>Confirming with Stripe…</div>
+        </div>
+      )}
     </div>
   );
 }
