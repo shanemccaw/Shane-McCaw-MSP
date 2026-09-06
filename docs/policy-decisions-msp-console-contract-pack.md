@@ -1,0 +1,590 @@
+# Policy Decisions + Policy Engine — MSP Console contract extraction pack
+
+**#2589**, the Document step for **#1685** (Feature: Policy Decisions + Policy Engine, MSP
+Console — the operator half of #1490), under **#1571** (EPIC: Portal Admin) and its fixed 4-step
+order: API build-out → **Document (this pack)** → Design → Implement & wire. This is a **new
+pack** — no MSP-console-side Policy Decisions/Policy Engine pack existed before this pass; only
+`docs/policy-decisions-contract-pack.md` (the customer-portal pack, #1490/#1577) did, and that
+pack explicitly scoped itself to the customer side.
+
+`artifacts/msp-console` itself is still a bare scaffold (`index.tsx`, `not-found.tsx` only —
+#1680 closed `NOT_PLANNED` 2026-09-03 as part of #1571's reset, same state the sibling
+Risk Register MSP Console pack records). That is a blocker for #2591 (wire), **not** for this
+step — every backend surface this pack documents is real, audited, and already mounted.
+
+Read-only. Every field below is extracted verbatim from the routes' own `Wire*`
+interfaces/response shapes and the Drizzle schema, cited to file:line, and cross-checked live
+against local PostgreSQL. **Nothing here is authored or invented.**
+
+**This is a separate module from `docs/policy-decisions-contract-pack.md`** (the customer-portal
+pack). That pack's own §4 states, from an 2026-08-29 read, "Policy Engine ... Fully unbuilt. No
+table, no route, no wire type." **That is no longer true — flagged here so a reader who opens
+that pack first is not misled.** In the roughly one week since, #1547–#1553 all shipped real code
+(§0.2 below). This pack does not edit that file (out of scope, and it is the customer-portal
+module's own pack to regenerate — see #1722, dispatched the same day as this issue), but a stale
+claim of "fully unbuilt" left standing next to a genuinely-built backend is worth naming plainly.
+
+Backend routes (all live, all mounted — `artifacts/api-server/src/routes/index.ts:270,556` and
+`:269,555` and `:273,559`):
+- `artifacts/api-server/src/routes/msp-policy-decisions.ts` — Policy Decisions, MSP-side read +
+  manual clearance-resolve (2 routes)
+- `artifacts/api-server/src/routes/msp-standing-policies.ts` — Policy Engine's declarative
+  object: list, author, on-demand evaluate, enactment-route preview, evaluation history (5 routes)
+- `artifacts/api-server/src/routes/msp-policy-engine-settings.ts` — per-tenant Policy Engine
+  opt-in: read + flip (2 routes)
+
+**9 routes total.** Schema: `lib/db/src/schema/msp.ts:8994` (`policyDecisionsTable`), `:5457`
+(`standingPoliciesTable`), `:5609` (`policyEvaluationRunsTable`), `:199` (`tenantsTable`,
+`policyEngineOptIn` at `:291`, `consent` at `:205`), `:403` (`complianceObligationsTable`), `:371`
+(`complianceFrameworksTable`, `authorityType` at `:379`). Verified live against local
+PostgreSQL (`psql "$DATABASE_URL" -c '\d policy_decisions'` / `'\d standing_policies'` /
+`'\d policy_evaluation_runs'` / `'\d compliance_obligations'` / `'\d compliance_frameworks'`) —
+every column and constraint cited below is confirmed present on the running schema, not just in
+the Drizzle source.
+
+---
+
+## 0. The two objects and their real state today
+
+### 0.1 Policy Decisions — reactive, obligation-bound, signed. Own table since Git #2024/#1528.
+
+`policy_decisions` (`msp.ts:8994`) is its own table with its own primary key and lifecycle — Git
+#1528 (2026-08-31) explicitly rejected folding it back into `msp_risk_decisions` as a
+`decisionState` discriminator (`msp.ts:8947-8948`'s own header). There is no unsigned
+intermediate state: a row is a signed decision from the moment it exists, created by the
+customer's own combined create/sign-off endpoint (`portal-policy-decisions.ts`). **The
+`docs/policy-decisions-contract-pack.md` pack's own §8 "one row, `RBD-2026-575`" reference is
+against `msp_risk_decisions`, a different table** — that reference predates the #2024 split and
+does not describe `policy_decisions` at all. Verified live: `policy_decisions` carries **zero
+rows** today (§9).
+
+### 0.2 Policy Engine — declarative, no obligation, no signature. Real and built, contrary to the customer pack's Aug-29 read.
+
+Two real objects now exist, live and mounted:
+
+- **`standing_policies`** (`msp.ts:5457`, #1547) — the declarative target-state object, bound to
+  an OU (`active_directory_ous`), with three target kinds (§5).
+- **`policy_evaluation_runs`** (`msp.ts:5609`, #1549) — the continuous-evaluation
+  reconciliation loop's durable register, one row per policy considered per pass.
+
+Supporting, non-route library code, all real and wired into the Workflow Engine as a live node
+type (`policy_evaluate_due`, `workflow-executor.ts:1632,7022`, seeded schedule+event workflows at
+`seed-system-workflows.ts:1105-1150`):
+
+| File | What it does | Issue |
+|---|---|---|
+| `lib/standing-policies.ts` | Pure wire mapping (`toWireStandingPolicy`) + the #1550 enactment-gate rule (`evaluatePolicyEnactmentGate`) | #1547, #1550 |
+| `lib/policy-enactment-route.ts` | The #1551 route resolver — which of three shapes a detected divergence takes | #1551 |
+| `lib/policy-compliance.ts` | Pure compliance-comparison rules for `mailbox_attribute` and `group_membership` | #1553, #1953 |
+| `lib/policy-compliance-evaluator.ts` | Orchestrates one on-demand pass; writes real `msp_diagnostic_findings` rows | #1553 |
+| `lib/policy-engine-nodes.ts` | The `policy_evaluate_due` Workflow Engine node — both the hourly DIVERGENCE sweep and the EVENT trigger | #1549 |
+
+**Not this pack's job to re-litigate, but stated because it changes what Design sees:** the
+customer-portal pack's §4/§7 rows describing Policy Engine sub-issues (#1547–#1553) as
+`DECIDED — unbuilt` were accurate when written; every one of those seven is closed (verified
+`gh issue view`, all seven `state: CLOSED`) and has shipped real, mounted, tested-in-part code.
+This pack's own §6 (CURRENT vs DECIDED) restates each one's real, current status.
+
+**`service_policy` is still genuinely unbuilt as a compliance target** — `EVALUABLE_TARGET_KINDS`
+(`policy-compliance.ts:152`) is `["mailbox_attribute", "group_membership"]` only; a
+`service_policy`-kind standing policy can be authored (§3.2) but `POST .../evaluate` always
+returns `notEvaluableReason` for it (`policy-compliance-evaluator.ts:76-85`). Real, current,
+confirmed by direct code read — not a guess.
+
+---
+
+## 1. Consumer map
+
+| Endpoint | Method | Route file:line | Consumer today | Status |
+|---|---|---|---|---|
+| `/api/msp/policy-decisions/:customerId` | GET | `msp-policy-decisions.ts:183-212` | none | live, staged for #2591 |
+| `/api/msp/policy-decisions/:customerId/:id/clearance/resolve` | PATCH | `msp-policy-decisions.ts:223-322` | none | live, staged for #2591 |
+| `/api/msp/standing-policies` | GET | `msp-standing-policies.ts:93-117` | none | live, staged for #2591 |
+| `/api/msp/standing-policies` | POST | `msp-standing-policies.ts:136-243` | none | live, staged for #2591 |
+| `/api/msp/standing-policies/:id/evaluate` | POST | `msp-standing-policies.ts:256-299` | none | live, staged for #2591 |
+| `/api/msp/standing-policies/:id/enactment` | GET | `msp-standing-policies.ts:306-385` | none | live, staged for #2591 — the only route in this whole pack with real test coverage (§3.5) |
+| `/api/msp/standing-policies/:id/evaluations` | GET | `msp-standing-policies.ts:390-442` | none | live, staged for #2591 |
+| `/api/msp/tenants/:tenantId/policy-engine` | GET | `msp-policy-engine-settings.ts:39-66` | none | live, staged for #2591 |
+| `/api/msp/tenants/:tenantId/policy-engine` | PATCH | `msp-policy-engine-settings.ts:70-111` | none | live, staged for #2591 |
+
+**No orphaned-endpoint sub-issue filed.** Same as the sibling Risk Register MSP Console pack's
+own §0.1 precedent — every one of these 9 routes is the expected pre-Design/pre-wire state, with
+a real Design step (#2590) and wire step (#2591) already tracked ahead of it. Zero AdminV2 or MCP
+cross-surface reuse either (grepped `artifacts/admin-panel/src`, `artifacts/mcp-server/src` for
+`standing-policies`, `policy-engine`, `msp/policy-decisions` — zero matches), unlike the RBD
+pack's `available-checks`/`GET /msp/rbd` rows.
+
+---
+
+## 2. Wire contract — Policy Decisions (`msp-policy-decisions.ts`)
+
+### 2.1 `WirePolicyRegisterEntry` (`:88-111`) — the SAME shape the customer's own `portal-policy-decisions.ts` defines
+
+```ts
+// msp-policy-decisions.ts:88-111 — WirePolicyRegisterEntry (verbatim)
+interface WirePolicyRegisterEntry {
+  readonly id: string;
+  readonly state: string;
+  readonly pillar: string | null;
+  readonly title: string;
+  readonly obligation: string;
+  readonly obligationId: string | null;
+  readonly obligationType: string | null;
+  readonly owner: string;
+  readonly ownerId: string | null;
+  readonly reviewCadence: string | null;
+  readonly reviewDueAt: string | null;
+  readonly reviewState: string | null;
+  readonly compensatingControl: string;
+  readonly signedBy: string;
+  readonly signedAt: string;
+  readonly statement: string;
+  readonly clearanceCondition: string | null;
+  readonly clearanceTriggerType: string | null;
+  readonly clearanceTriggerSkuPartNumber: string | null;
+  readonly clearanceResolvedAt: string | null;
+  readonly clearanceResolvedNote: string | null;
+  readonly isCleared: boolean;
+}
+```
+
+This is a **byte-for-byte duplicate interface** of `portal-policy-decisions.ts:79-116`'s own
+`WirePolicyRegisterEntry` — same field names, same nullability, same `toWirePolicyRegisterEntry`
+mapper logic (`msp-policy-decisions.ts:127-152` vs. `portal-policy-decisions.ts:131-156`), copied
+rather than shared. The MSP console reads this table through a hand-duplicated wire shape, not an
+imported one — real today, worth Design/#2591 knowing the two files will drift independently if
+either is edited without the other (§7.1).
+
+| Wire field | DB column | Type | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `id` (serial) | `string` (stringified) | no | |
+| `state` | `decision_state` | `string` | no | default `'live'` — real values §5 |
+| `pillar` | `pillar` | `string \| null` | yes | free text |
+| `title` | `title` | `string` | no | |
+| `obligation` | `obligation` | `string` | no | free-text citation, kept even once `obligationId` resolves |
+| `obligationId` | `obligation_id` | `string \| null` (stringified) | yes | FK → `compliance_obligations.id`, set-null |
+| `obligationType` | derived, joined | `string \| null` | — | resolved via `loadObligationTypes` (`:113-125`), one batched query joining `compliance_obligations` → `compliance_frameworks.authority_type`; null unless `obligationId` is set AND the join resolves |
+| `owner` | `owner` | `string` | no | |
+| `ownerId` | `owner_id` | `string \| null` | yes | RACI person key |
+| `reviewCadence` | `review_cadence` | `string \| null`, enum §5 | yes | NULL for a dependency-based row — the DATE clock |
+| `reviewDueAt` | `review_due_at` | ISO string or `null` | yes | computed at create time (#2518), not stored raw as entered |
+| `reviewState` | `review_state` | `string \| null` | yes | NULL for a dependency-based row — no on_track/due/overdue reading for a dependency |
+| `compensatingControl` | `compensating_control` | `string` | no | |
+| `signedBy` | `signed_by` | `string` | no | the typed name at sign-off |
+| `signedAt` | `signed_at`, ISO | `string` | no | server clock, never the client's |
+| `statement` | `statement` | `string` | no | the exact confirmation sentence, snapshotted |
+| `clearanceCondition` | `clearance_condition` | `string \| null` | yes | non-null is what makes a row dependency-based — the THIRD clock (#1526) |
+| `clearanceTriggerType` | `clearance_trigger_type` | `string \| null`, enum §5 | yes | `license_sku` (platform-observable) \| `manual` (only this route's PATCH can clear it) |
+| `clearanceTriggerSkuPartNumber` | `clearance_trigger_sku_part_number` | `string \| null` | yes | the SKU `advancePolicyClearances()` (`alert-engine.ts`) watches for |
+| `clearanceResolvedAt` | `clearance_resolved_at`, ISO | `string \| null` | yes | non-null = actionable immediately, no scheduled review to wait for |
+| `clearanceResolvedNote` | `clearance_resolved_note` | `string \| null` | yes | auto-detect message or the human's own note |
+| `isCleared` | derived — `clearanceResolvedAt !== null` | `boolean` | — | computed on every read, never stored |
+
+**Not on this wire at all**, present on the raw row: `mspId`, `tenantId`, `ipAddress`,
+`signatureHash`, `createdAt`, `updatedAt` — the same six columns the customer's own wire also
+omits (both mappers are the same shape). No forbidden-list route comment names these explicitly;
+they are simply not in either curated interface, real internal/audit columns kept off both wires
+by construction.
+
+### 2.2 List — `GET /api/msp/policy-decisions/:customerId` (`:183-212`)
+
+`requireRole("MSPOperator")`. `:customerId` resolved to `(mspId, tenantId)` via
+`resolveOwnedTenant` (`:157-179`) — `resolveTenantScope(customerId)` then a same-MSP check; a
+tenant that exists but belongs to another MSP 404s identically to one that doesn't exist
+(mirrors `msp-security-plan.ts`'s own `resolveOwnedTenant`, per the route file's own header
+`:26-35`). Scoped `WHERE msp_id = ? AND tenant_id = ?`, newest-id-first. Response:
+`{customerId, decisions: WirePolicyRegisterEntry[]}` (`:206`).
+
+### 2.3 Manual clearance resolve — `PATCH /api/msp/policy-decisions/:customerId/:id/clearance/resolve` (`:223-322`)
+
+`requireRole("MSPOperator")`. Body: `{note: string, 1-2000 chars}` (`resolveClearanceSchema`,
+`:219-221`). Identical business rules to the customer's own
+`PATCH /portal/policy-register/:id/clearance/resolve` (`portal-policy-decisions.ts:443-543`) —
+same four guarded states in the same order:
+
+1. `404` if the decision doesn't resolve to `(mspId, tenantId, id)` — a cross-tenant or
+   cross-MSP id looks identical to a non-existent one (`:259-262`).
+2. `409 CONFLICT` if `clearanceCondition IS NULL` — "no dependency clearance to resolve" (`:263-266`).
+3. `409 CONFLICT` if `clearanceTriggerType !== 'manual'` — a `license_sku` row is the platform's
+   own to resolve via `advancePolicyClearances()`; a human cannot force it (`:267-274`).
+4. `409 CONFLICT` if already resolved (`:276-279`), **plus** a real race guard: the `UPDATE`
+   itself is `WHERE id = ? AND clearance_resolved_at IS NULL` (`:289-295`) — a second concurrent
+   resolve loses the race at the DB level, not just the earlier read-check.
+
+Response: `{decision: WirePolicyRegisterEntry}` (`:316`). **Any MSPOperator can resolve any
+decision belonging to their MSP's own customer** — no check that the resolving user has any
+particular relationship to the decision, matching the header's own stated rationale (`:54-59`):
+this is "recording an observed operational fact," not a policy position, and the customer's own
+endpoint already lets *any* `CustomerUser` resolve it too, not specifically the original signer.
+
+### 2.4 Deliberately NOT built here: an MSP-side create/author endpoint
+
+Stated plainly in the route file's own header (`:42-54`): `policy_decisions` has no unsigned
+intermediate state — a row is a signed decision from the moment it exists, and `signedBy` is the
+customer's own typed confirmation. Building an MSP-side create would put an MSP staffer's name in
+`signedBy` on a row that reads, on the wire, as the customer's own signed compliance position — a
+real product/trust decision (money/entitlement/customer-promise territory), not a missing-column
+gap. **The header comment's own last sentence (`:53-54`) claims this was "filed as a real finding
+... see the sibling issue this build filed under #1685."** Checked directly against
+`gh api .../1685/sub_issues` and the #2671 completion comment itself: **no such sibling issue was
+actually filed** — the #2671 completion comment says the opposite, explicitly ("not filed as a
+separate issue since it's a 'should we' question for you, not a bug"). The code comment and the
+issue's own closing comment disagree about whether this was filed. Filed as this pack's own
+finding (§ below) rather than left as a silent discrepancy.
+
+---
+
+## 3. Wire contract — Policy Engine
+
+### 3.1 `WireStandingPolicy` (`standing-policies.ts:22-38`)
+
+```ts
+// lib/standing-policies.ts:22-38 — WireStandingPolicy (verbatim)
+interface WireStandingPolicy {
+  readonly id: number;
+  readonly ouId: number;
+  readonly title: string;
+  readonly description: string;
+  readonly targetKind: StandingPolicyTargetKind;
+  readonly targetState: unknown;
+  readonly catalogItemId: number | null;
+  readonly sopId: string | null;
+  readonly isActive: boolean;
+  readonly createdByName: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+```
+
+| Wire field | DB column | Type | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `id` | `number` | no | |
+| `ouId` | `ou_id` | `number` | no | FK → `active_directory_ous.id`, cascade — the attachment point |
+| `title` | `title` | `string` | no | |
+| `description` | `description` | `string` | no | default `''` |
+| `targetKind` | `target_kind` | enum §5 | no | `mailbox_attribute` \| `group_membership` \| `service_policy` |
+| `targetState` | `target_state` (jsonb) | `unknown` on the wire | no, default `{}` | typed `unknown` — real shape depends on `targetKind` (§0.2 note on `policy-compliance.ts`'s own per-kind interfaces); served verbatim, never reshaped |
+| `catalogItemId` | `catalog_item_id` | `number \| null` | yes | FK → `change_catalog_items.id`, set-null; #1550's binding, nullable until bound |
+| `sopId` | `sop_id` | `string \| null` | yes | `msp_sops.sop_id` (text join key, not the numeric `msp_sops.id`); #1548's naming half |
+| `isActive` | `is_active` | `boolean` | no, default `false` | opt-in, default-off (#1549) |
+| `createdByName` | `created_by_name` | `string \| null` | yes | |
+| `createdAt` / `updatedAt` | `created_at` / `updated_at`, ISO | `string` | no | |
+
+**Not on this wire:** `mspId` (scoping only, never served), `createdByPersonId` (the RACI key
+behind `createdByName` — present on the row, absent from `WireStandingPolicy`, an asymmetry with
+Policy Decisions' own `ownerId`/`owner` pair which DOES serve both halves — flagged, not filed,
+§7.2).
+
+### 3.2 List — `GET /api/msp/standing-policies` (`:93-117`)
+
+`requireRole("MSPOperator")`. Scoped `WHERE msp_id = ?` only — no tenant filter, matching the
+RBD pack's own `GET /api/msp/rbd` precedent (a cross-customer register for one MSP). Response:
+`{policies: WireStandingPolicy[]}` (`:111`). **Zero test coverage** — `msp-standing-policies.test.ts`
+covers only the `/enactment` route (§3.5); this route has no test file entry at all (verified:
+`grep "describe(" msp-standing-policies.test.ts` returns exactly one block, for `/enactment`).
+
+### 3.3 Author — `POST /api/msp/standing-policies` (`:136-243`)
+
+`requireRole("MSPOperator")`. Body (`createSchema`, `:120-134`):
+
+| Field | Rule | Notes |
+|---|---|---|
+| `ouId` | `z.number().int().positive()`, required | must resolve to a real `active_directory_ous` row (`:159-167`, `400` otherwise) |
+| `title` | `z.string().min(1).max(200)`, required | |
+| `description` | `z.string().max(2000)`, optional | defaults to `''` |
+| `targetKind` | `z.enum(STANDING_POLICY_TARGET_KIND)`, required | §5 |
+| `targetState` | `z.record(z.string(), z.unknown())`, optional | **no per-`targetKind` shape validation at create time** — a `mailbox_attribute` policy can be authored with a `group_membership`-shaped (or empty, or garbage) `targetState` and the route accepts it; the mismatch only surfaces later, as `not_evaluable`, when `POST .../evaluate` runs `isMailboxAttributeTargetState`/`isGroupMembershipTargetState` (§0.2). Flagged, not filed — §7.3 |
+| `catalogItemId` | `z.number().int().positive()`, optional | must be THIS MSP's own real catalog item (`:171-181`, `400` otherwise) — #1550's binding |
+| `sopId` | `z.string().min(1).max(200)`, optional | must be THIS MSP's own real `msp_sops.sop_id` (`:186-196`, `400` otherwise) — #1548's naming |
+| `isActive` | `z.boolean()`, optional | defaults `false` |
+
+Server-derived: `mspId` (session), `createdByPersonId`/`createdByName` (`actorIdentity`,
+`:84-90`, from `req.user` — never "the system"). Success `201`: full `WireStandingPolicy`
+(`:237`).
+
+**Real side effect on create:** if `isActive === true` AND the target OU resolves to a real
+`tenantId`, the route fires `fireWorkflowsForEvent("policy.standing_policy.activated", {...})`
+(`:225-235`) — fire-and-forget, failure logged but never fails the create response (`:232-234`).
+This is the real EVENT trigger for #1549's continuous-evaluation loop (§0.2), scoping the
+immediate evaluation pass to that one tenant rather than waiting for the next hourly sweep
+(`seed-system-workflows.ts:1129-1150`).
+
+### 3.4 On-demand evaluate — `POST /api/msp/standing-policies/:id/evaluate` (`:256-299`)
+
+`requireRole("MSPOperator")`. Body: `{customerId: number}` (`evaluateSchema`, `:252-254`). Policy
+must be this MSP's own (`404` otherwise, `:281-289`). Delegates entirely to
+`evaluateStandingPolicyForCustomer` (`policy-compliance-evaluator.ts:60-225`) and returns its
+summary verbatim (`:291-293`):
+
+```ts
+// policy-compliance-evaluator.ts:45-52 — PolicyEvaluationSummary (verbatim)
+interface PolicyEvaluationSummary {
+  readonly runId: string | null;
+  readonly membersObserved: number;
+  readonly compliant: number;
+  readonly nonCompliant: number;
+  readonly findingsCreated: readonly string[];
+  readonly notEvaluableReason: string | null;
+}
+```
+
+Real, honest short-circuits before any Graph read, each returning `runId: null` and a specific
+`notEvaluableReason` string (never a fabricated verdict): policy doesn't exist; customer doesn't
+exist; customer belongs to a different MSP than the policy; **policy is not active** (the #1549
+default-off gate, enforced here too, independently of the route-level "policy belongs to this
+MSP" check); target kind has no evaluator wired (`service_policy` today, §0.2); the OU doesn't
+exist; a `group_membership` policy's `targetState` doesn't parse as one; zero real directory
+members resolve to the OU. Only past all of those does it write a real `msp_diagnostic_runs` row
+(`package_key: "policy:compliance"`) and, per non-compliant member, a real `msp_diagnostic_findings`
+row (`standingPolicyId`, `findingSource: "policy"`, `checkKey: "policy:<id>:<targetKind>"` —
+`policy-compliance-evaluator.ts:157-178,193-214`). The finding's `description` names the policy's
+own `sopId` as the fix when one is bound, or says plainly none is named yet (`:143`).
+
+### 3.5 Enactment-route preview — `GET /api/msp/standing-policies/:id/enactment` (`:306-385`)
+
+`requireRole("MSPOperator")`. Query: `{customerId: number}` (coerced, `:302-304`). Policy must be
+this MSP's own; customer must be a real `tenants` row belonging to this MSP (both `404`
+otherwise, distinct messages, `:337-338,355-357`). Resolves via the pure rule
+`resolvePolicyEnactmentRoute` (`policy-enactment-route.ts:133-148`) over three live facts —
+`policy.isActive`, `customer.policyEngineOptIn`, `customer.consent.writeBack.status` — **and
+detects nothing itself**: this previews what route a divergence WOULD take right now, it does not
+run an evaluation. Response (`:371-379`):
+
+```ts
+{
+  policyId: number, customerId: number,
+  targetKind: StandingPolicyTargetKind,
+  sopId: string | null, catalogItemId: number | null,
+  route: "engine_enacts" | "checklist_item" | "not_evaluated",
+  reason: "policy_inactive" | "tenant_not_opted_in" | "write_consent_granted" | "write_consent_denied",
+}
+```
+
+**The one route in this whole pack with real test coverage** — `msp-standing-policies.test.ts`,
+9 cases: auth/role floor, cross-MSP 404s (both directions), and all four resolver branches
+(`engine_enacts`, `checklist_item` — "the NASA posture," `not_evaluated`×2 for each independent
+gate). The resolution rule itself (§3.6 below) is genuinely a truth table over two independent
+per-tenant signals, not a single flag — worth Design/#2591 rendering the reason distinctly from
+the route, since two different reasons can produce the identical `not_evaluated` route.
+
+### 3.6 Evaluation history — `GET /api/msp/standing-policies/:id/evaluations` (`:390-442`)
+
+`requireRole("MSPOperator")`. Policy must be this MSP's own (`404` otherwise). Returns up to 200
+most-recent `policy_evaluation_runs` rows for this policy (`:419-424`), response
+`{evaluations: [...]}` (`:426-436`) — every field on the wire verbatim from the table (`id`,
+`tenantId`, `triggerKind`, `triggerEventType`, `outcome`, `detail`, `evaluatedAt` ISO), no curated
+interface, no filtering. `outcome` real values and where each is DB-CHECK-enforced: §5.
+
+### 3.7 Per-tenant Policy Engine opt-in — `msp-policy-engine-settings.ts`
+
+`GET /api/msp/tenants/:tenantId/policy-engine` (`:39-66`) and
+`PATCH /api/msp/tenants/:tenantId/policy-engine` (`:70-111`), both `requireRole("MSPOperator")`.
+Both scope `WHERE id = :tenantId AND msp_id = <session mspId>` (`loadOwnedTenant`, `:30-37`) —
+`404` for a tenant belonging to another MSP, same non-leaking pattern as every other route in
+this pack. `PATCH` body `{optIn: boolean}` (`patchSchema`, `:68`). Both responses:
+`{tenantId, policyEngineOptIn}` — the bare boolean, nothing else. The route file's own header
+(`:9-13`) states plainly: **"SCOPE STOP: artifacts/portal has no page for this module"** — there
+is genuinely no customer-facing surface for this checkbox anywhere in the codebase today, and
+none is implied to exist by this pack (§4's cross-surface note expands on this).
+
+---
+
+## 4. Cross-surface edges
+
+| Edge | Column | Points at | Served on either wire? | Notes |
+|---|---|---|---|---|
+| Decision ↔ obligation | `policy_decisions.obligation_id` | `compliance_obligations.id`, FK set-null | Yes — `obligationId` (raw) + `obligationType` (joined) on `WirePolicyRegisterEntry` | Same join `portal-policy-decisions.ts` performs — one extra batched query per list call, not N |
+| Standing policy ↔ OU | `standing_policies.ou_id` | `active_directory_ous.id`, FK cascade | `ouId` raw only — no OU name/label joined onto `WireStandingPolicy` | The MSP Console UI (#2591) will need a separate OU lookup to show anything but a bare id |
+| Standing policy ↔ tenant | via `active_directory_ous.tenant_id` (indirect — no direct FK on `standing_policies`) | `tenants.id` | Not on `WireStandingPolicy` at all | Resolved server-side only, inside route handlers (§3.3's activation-event dispatch, §3.4/§3.5's evaluate/enactment routes) — never returned to the client as a field |
+| Standing policy ↔ catalog item | `standing_policies.catalog_item_id` | `change_catalog_items.id`, FK set-null | `catalogItemId` raw only | #1550's binding; `evaluatePolicyEnactmentGate` (`standing-policies.ts:102-116`) reasons over the bound item's live `status`, but that gate is not invoked by any route in this pack — it is `lib/policy-enactment.ts`'s own job (the actual CR raise, out of this pack's scope) |
+| Standing policy ↔ SOP | `standing_policies.sop_id` | `msp_sops.sop_id` (text key, no FK) | `sopId` raw only | #1548's naming; the actual run still goes through the pre-existing `POST /api/msp/sops/:sopId/run` (`msp-sops.ts`), not any route in this pack — no new execution path |
+| Evaluation run ↔ standing policy | `policy_evaluation_runs.standing_policy_id` | `standing_policies.id`, FK cascade | Yes — implicit, the route is already scoped to one `:id` | Real hard FK, `ON DELETE CASCADE` — deleting a policy would delete its whole evaluation history (no route in this pack deletes a policy at all, §7.4) |
+| Evaluation run ↔ tenant | `policy_evaluation_runs.tenant_id` | `tenants.id`, FK set-null | Yes, `tenantId` | Null when the policy's OU carries no tenant |
+| Finding ↔ standing policy | `msp_diagnostic_findings.standing_policy_id` | `standing_policies.id`, FK set-null | Not served by any route in this pack | Written only by `policy-compliance-evaluator.ts` (§3.4); reading findings back is the Remediation Tracker/checklist module's own contract, out of scope here |
+| Enactment ↔ write consent | `resolvePolicyEnactmentRoute`'s `consent` param | `tenants.consent.writeBack.status` (jsonb) | Served as the derived `route`/`reason` pair only — the raw consent map is never echoed | Same live signal `resolveTenantWriteCeiling` (#1539, `remediation-fix-route.ts`) already gates platform-driven writes on — reused, not reinvented |
+| Policy Engine opt-in ↔ tenant | `tenants.policy_engine_opt_in` | — (own column, no join) | Yes, `policyEngineOptIn` (§3.7) | Read directly by both `resolvePolicyEnactmentRoute` (§3.5) and `policy-engine-nodes.ts`'s reconciliation loop — this is the one place it is actually SET |
+| Customer-facing read | — | — | **None exists** | Confirmed by repo-wide grep: no `artifacts/portal` route or page reads `standing_policies`, `policy_evaluation_runs`, or the opt-in column anywhere. #1685's own body states "Customer reads standing policy and the deviation decisions on their tenant" as the intended eventual architecture — not yet built, and out of this pack's scope (this pack documents the MSP-console/operator half only) |
+
+---
+
+## 5. Real enum unions (and where each is actually enforced)
+
+| Vocabulary | Values | Where fixed | DB-enforced? |
+|---|---|---|---|
+| Policy Decisions `decisionState` | free text, real values `live` seen (default) | `policy_decisions.decision_state`, `msp.ts:9028` | **No CHECK constraint** (confirmed live — only `policy_decisions_review_xor_clearance_chk` exists on this table) |
+| Policy Decisions `reviewCadence` | `Monthly`, `Quarterly`, `Semi-Annual`, `Annual`, `Biennial` | `REVIEW_CADENCES`, `msp.ts:8991` | No — plain `text`, enforced only by `portal-policy-decisions.ts`'s create-time zod schema (this pack's own two routes never write it) |
+| Policy Decisions `clearanceTriggerType` | `license_sku`, `manual` | `CLEARANCE_TRIGGER_TYPES`, `msp.ts:8983` | No — plain `text` |
+| `complianceFrameworksTable.authorityType` | `regulation`, `certification`, `contract`, `insurance`, `internal_schedule` | `AUTHORITY_TYPES`, `msp.ts:357` | No — plain `text`, default `'regulation'` |
+| Standing policy `targetKind` | `mailbox_attribute`, `group_membership`, `service_policy` | `STANDING_POLICY_TARGET_KIND`, `msp.ts:5448` | **No CHECK constraint** (confirmed live — `standing_policies` has zero check constraints, only FKs) — enforced only by `createSchema`'s `z.enum` at author time (§3.3) |
+| Policy evaluation `triggerKind` | `event`, `schedule` | `POLICY_EVALUATION_TRIGGER_KIND`, `msp.ts:5597` | **Yes — `policy_evaluation_runs_trigger_kind_check`, confirmed live** |
+| Policy evaluation `outcome` | `compliant`, `divergent`, `not_evaluable`, `skipped_not_opted_in`, `error` | `POLICY_EVALUATION_OUTCOME`, `msp.ts:5600` | **Yes — `policy_evaluation_runs_outcome_check`, confirmed live** |
+| Enactment `route` | `engine_enacts`, `checklist_item`, `not_evaluated` | `POLICY_ENACTMENT_ROUTE`, `policy-enactment-route.ts:76` | No — pure function return value, never persisted |
+| Enactment `reason` | `policy_inactive`, `tenant_not_opted_in`, `write_consent_granted`, `write_consent_denied` | `POLICY_ENACTMENT_REASON`, `policy-enactment-route.ts:87` | No — same, pure/ephemeral |
+| Evaluable target kinds (a NARROWER real vocabulary than `targetKind` itself) | `mailbox_attribute`, `group_membership` — **NOT `service_policy`** | `EVALUABLE_TARGET_KINDS`, `policy-compliance.ts:152` | No — a plain array checked in code; this is the one place `service_policy`'s unbuilt status is load-bearing, not just documentary |
+
+**Two of the two tables this pack's routes write to (`policy_decisions`, `standing_policies`)
+have zero DB-CHECK-enforced text vocabularies** between them — every enum above except the two on
+`policy_evaluation_runs` relies entirely on application-layer validation. Real, current fact, not
+a finding — `policy_evaluation_runs` (a machine-only, no-user-input table) is the one place a real
+CHECK exists, consistent with the sibling RBD pack's own §5 observation about this codebase's
+general pattern.
+
+---
+
+## 6. Field status — CURRENT vs DECIDED
+
+| Surface | Field / behavior | Status | Issue |
+|---|---|---|---|
+| Policy Decisions | MSP-side read (`GET .../:customerId`) and manual clearance-resolve, scoped and tested | CURRENT | #2671 |
+| Policy Decisions | MSP-side create/author endpoint | **Deliberately NOT built** — a genuine product/trust decision (misattributed signature), not a missing-column gap | flagged §2.4, real finding #3035 filed this pack (see below) |
+| Policy Engine | Standing policy as a second, declarative object, own table | CURRENT — built | #1547 |
+| Policy Engine | SOP as the enactment mechanism (naming only, engine never executes) | CURRENT — the naming half (`sopId` column, create-time validation) is built; the actual enactment CALL still runs through the pre-existing `msp-sops.ts` run route, not a new one | #1548 |
+| Policy Engine | Continuous evaluation — EVENT + DIVERGENCE triggers, real Workflow Engine node | CURRENT — built and seeded (hourly cron + activation event) | #1549 |
+| Policy Engine | A policy IS a standard change catalog item | CURRENT — the pure gate rule (`evaluatePolicyEnactmentGate`) and the `catalogItemId` binding exist; **the actual auto-approved-CR raise is `lib/policy-enactment.ts`'s job, invoked from `sop-execution.ts`, and is out of this pack's own route-file scope** — not independently re-verified here | #1550 |
+| Policy Engine | Write-consent decides the enactment shape (the NASA case) | CURRENT — built, tested (§3.5) | #1551 |
+| Policy Engine | VIP classification — platform authoritative | CURRENT — `vip_classifications` table exists (`msp.ts:5542`); **no route in this pack reads or writes it** — no MSP-console surface for VIP classification exists yet, a real gap for #2591 to know about, not this pack's own routes' job to close | #1552 |
+| Policy Engine | Policy non-compliance as a finding source | CURRENT — built for `mailbox_attribute`/`group_membership`; `service_policy` genuinely unbuilt (§0.2, §5) | #1553 |
+| Policy Engine | OU membership resolved via Graph department match | CURRENT — decided | #1952 |
+| Policy Engine | Compliance evaluator for `group_membership` | CURRENT — built (§0.2) | #1953 |
+| Policy Engine | Compliance evaluator for `service_policy` | **Still unbuilt** — `EVALUABLE_TARGET_KINDS` excludes it; likely needs Exchange Online PowerShell (ps-execution), not a pure Graph read, per the code's own comment (`policy-compliance.ts:18-20`) | #1953 (closed, but this half remains open per the code's own honest comment) |
+| Policy Engine | Customer-facing read of standing policy / deviation decisions | **Not built at all** — zero routes, zero pages | #1685's own stated intent, no tracking issue found for the read half specifically |
+| Policy Engine | Edit/deactivate a standing policy after creation | **Not built at all** — zero `UPDATE` statements against `standing_policies` anywhere in the codebase (confirmed by repo-wide grep) | real finding #3034 filed this pack (see below) |
+
+---
+
+## 7. Open gaps and notes — NOT decided, flagged for #2591
+
+### 7.1 The MSP-side and customer-side `WirePolicyRegisterEntry` are hand-duplicated, not shared
+
+`msp-policy-decisions.ts:88-152` and `portal-policy-decisions.ts:79-156` define the identical
+interface and near-identical mapper independently. A future field addition to one that is not
+mirrored to the other will silently drift the two surfaces apart. Not a bug today — both are
+byte-for-byte identical right now, verified by direct comparison — but worth #2591 knowing before
+adding to either.
+
+### 7.2 `WireStandingPolicy` omits `createdByPersonId`
+
+Present on the row, absent from the wire (`standing-policies.ts:22-38`) — an asymmetry with
+Policy Decisions' own `owner`/`ownerId` pair, which serves both the display name and the RACI
+key. Not filed; a UI that wants to link "authored by" to a real person record has no id to do it
+with today, only a free-text name.
+
+### 7.3 `targetState` has no shape validation at author time, per `targetKind`
+
+`createSchema.targetState` (`msp-standing-policies.ts:127`) is `z.record(z.string(), z.unknown())`
+— any object is accepted regardless of `targetKind`. A mismatched or malformed `targetState` is
+never rejected at creation; it silently becomes `not_evaluable` only when `POST .../evaluate` is
+later called (§3.4). A UI (#2591) building the author form needs to enforce the per-kind shape
+itself, since the backend does not.
+
+### 7.4 No delete/deactivate route for a standing policy
+
+Covered as a real finding, filed below rather than merely flagged, because unlike §7.1–§7.3 (open
+design questions with no live consequence yet) this one has a real, live operational
+consequence: an MSP that authors a policy with `isActive: true` starts the hourly reconciliation
+sweep and, for `mailbox_attribute`/`group_membership` kinds, real Graph reads and real
+`msp_diagnostic_findings` writes against a real customer tenant — with no way to turn it back off
+short of direct database access.
+
+---
+
+## 8. The forbidden list — declared, not merely absent
+
+1. **No cross-tenant/cross-MSP read or write.** All 9 routes scope by `resolveMspIdStrict(req)`
+   (session-derived) and, where a specific tenant/customer/policy/decision is named, re-verify
+   ownership before ever touching the row — verified on every route, no exception. A resource
+   belonging to another MSP always 404s identically to one that does not exist.
+2. **No second signature on the manual clearance resolve.** Guarded `WHERE clearance_resolved_at
+   IS NULL` at the DB level (§2.3), not just an earlier read-check — a genuine race guard.
+3. **Scope of the automatic dependency clearance cannot be forced by hand.** `clearanceTriggerType
+   === 'license_sku'` rows 409 on a manual resolve attempt — only `advancePolicyClearances()`
+   (`alert-engine.ts`, outside this pack) may clear those.
+4. **The Policy Engine never executes directly.** Confirmed structurally: no route in this pack
+   calls Graph write operations, `runSopForCustomer`, or raises a Change Request. `sopId` and
+   `catalogItemId` are names/bindings only (§4) — the actual enactment call chain
+   (`sop-execution.ts` / `lib/policy-enactment.ts`) lives entirely outside these three route files.
+5. **No fabricated compliance verdict.** `evaluateStandingPolicyForCustomer` returns
+   `notEvaluableReason` rather than guessing compliant/non-compliant for every real gap it hits
+   (policy inactive, unsupported target kind, no resolvable OU members, malformed target state) —
+   verified across all seven of its short-circuit branches (§3.4).
+6. **No evaluation or enactment against a tenant that has not opted in.** Both
+   `resolvePolicyEnactmentRoute` (§3.5) and `policy-engine-nodes.ts`'s reconciliation loop check
+   `tenants.policy_engine_opt_in` before proceeding — confirmed the on-demand `POST .../evaluate`
+   route (§3.4) does **not** independently re-check this same opt-in flag (only `isActive` and
+   ownership), a real asymmetry worth noting: an MSP operator can trigger a one-off Graph read via
+   the on-demand route even for a tenant that has never opted into the continuous loop. Flagged,
+   not filed — the on-demand route is explicitly human-authorized per call (§3.4's own header
+   note, `policy-compliance-evaluator.ts:1-28`), which is a materially different trust boundary
+   than an unattended sweep.
+
+---
+
+## 9. Honest-empty contract
+
+Verified live against the local Postgres instance, 2026-09-06:
+
+| Table | Real row count |
+|---|---|
+| `policy_decisions` | **0** |
+| `standing_policies` | **0** |
+| `policy_evaluation_runs` | **0** |
+| `compliance_obligations` | 8 (up from 7 at the customer pack's own 2026-08-29 read — `iso-27001 · ISO 27001 A.5.18` was added since, resolving one of #1525's four flagged sample obligations) |
+| `compliance_frameworks` | 6 (up from 5, same addition) |
+| `tenant_compliance_scope` | 0 — unchanged, still every tenant on the `default_in_scope` fallback |
+
+Every list route in this pack (`GET .../policy-decisions/:customerId`,
+`GET .../standing-policies`, `GET .../standing-policies/:id/evaluations`) will genuinely return
+an empty array for **every real customer today** — not a read failure, the honest current state
+of a module whose backend just landed with no data authored against it yet. None of the three
+GET-list routes in this pack distinguish loading/empty/failed on the wire itself (that is a
+client-side concern for #2591 to build, the same way the customer-portal pack's own tri-state is
+implemented entirely in its `usePolicyDecisions()` hook, not the route).
+
+---
+
+## Real findings filed this pack
+
+Both filed and parented as direct sibling sub-issues of **#1685** (this issue's own Feature — no
+closer Feature-tier parent exists), board status set to AI Batter Up, per this repo's standing
+filing rule:
+
+1. **#3034 — No way to deactivate or edit a standing policy once authored** (§6, §7.4) — a real,
+   confirmed gap with a live operational consequence (an authored-active policy starts consuming
+   Graph reads and writing findings against a real customer tenant with no operator-facing
+   off-switch).
+2. **#3035 — `msp-policy-decisions.ts`'s own header comment claims a sibling issue was filed under
+   #1685 for the "no MSP-side create" decision (§2.4) — no such issue exists.** The #2671
+   completion comment says the opposite (explicitly not filed). A stale/incorrect code comment
+   asserting a real GitHub issue exists when it does not is itself worth a record, independent of
+   whether the underlying "should MSP staff be able to author on a customer's behalf" question
+   needs deciding (that question is restated honestly in this new issue, since — per the header's
+   own reasoning — it never actually got a place to live).
+
+---
+
+## Appendix — files read for this pack
+
+- `artifacts/api-server/src/routes/msp-policy-decisions.ts`, `msp-policy-decisions.test.ts`
+- `artifacts/api-server/src/routes/portal-policy-decisions.ts` (cross-reference, §2.1)
+- `artifacts/api-server/src/routes/msp-standing-policies.ts`, `msp-standing-policies.test.ts`
+- `artifacts/api-server/src/routes/msp-policy-engine-settings.ts`
+- `artifacts/api-server/src/lib/standing-policies.ts`
+- `artifacts/api-server/src/lib/policy-enactment-route.ts`
+- `artifacts/api-server/src/lib/policy-compliance.ts`
+- `artifacts/api-server/src/lib/policy-compliance-evaluator.ts`
+- `artifacts/api-server/src/lib/policy-engine-nodes.ts`
+- `artifacts/api-server/src/lib/seed-system-workflows.ts` (Policy Engine workflow seeds, §0.2)
+- `artifacts/api-server/src/lib/workflow-executor.ts` (`policy_evaluate_due` node registration only)
+- `artifacts/api-server/src/routes/index.ts` (mount lines only)
+- `lib/db/src/schema/msp.ts` (`policyDecisionsTable`, `standingPoliciesTable`,
+  `policyEvaluationRunsTable`, `tenantsTable`, `complianceObligationsTable`,
+  `complianceFrameworksTable`, `vipClassificationsTable`, `mspDiagnosticFindingsTable`)
+- Direct query, local Postgres (`shanemccawmsp`): `\d policy_decisions`, `\d standing_policies`,
+  `\d policy_evaluation_runs`, `\d compliance_frameworks`, `\d compliance_obligations`, real row
+  counts and real values, 2026-09-06
+- Repo-wide grep: `artifacts/msp-console/src`, `artifacts/admin-panel/src`,
+  `artifacts/mcp-server/src` for any consumer of this pack's 9 endpoints or the two tables (zero
+  matches, confirming §1's consumer map); `update(standingPoliciesTable)` repo-wide (zero matches,
+  confirming §7.4's finding)
+- GitHub: #2589 (this issue), #1685, #1490, #1571, #1680, #2671, #1722, #1547–#1553, #1952,
+  #1953, #1525, #1526, #1528, #2024, #2518
