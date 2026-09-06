@@ -1,10 +1,17 @@
 {
-  "feature": "Customer Portal Sign-in Help (/login/help) -- Git #1349. A public, mostly client-side page for a locked-out/unauthenticated user: a service-status strip (reuses the existing GET /api/status check), a 5-item FAQ accordion (first item open by default, static copy), two static cards, and ShaneBot. ShaneBot raises a REAL Zoho Desk ticket via POST /api/portal/sign-in-help/ticket -> lib/zoho-desk.ts raiseSignInHelpTicket() (synchronous exception to the queue-only write rule so a real reference can be returned on the spot), attaching the account's REAL recent successful sign-ins + current lockout state (there is no per-attempt/failed-login log on this platform -- only user_sessions successful logins + the failed_login_attempts counter/locked_until on the user row; documented honestly rather than fabricated).",
+  "issue": 2991,
+  "feature": "Auth Core: Sign-in help (Feature #1648, Git #1349). Rebuilt from scratch against Design/portal/design_handoff_full_site/screens/Auth Sign-In Help.dc.html, superseding the retired portal-v2 page this file used to cover (slug-scoped /portal/{slug}/login/help with a FAQ accordion + ShaneBot chat widget -- none of that exists anymore; artifacts/msp-portal was retired wholesale). The new page is a plain, unslugged /sign-in-help route: an email + 4-issue-card form wired to POST /api/portal/sign-in-help/ticket (portal-sign-in-help.ts:133-168, unchanged endpoint), plus a platform-status sidebar wired to GET /api/status (public-status.ts:298, unchanged endpoint).",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "PENDING",
-  "notes": "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these assertions only go green once this session's commit is deployed by the dev-server rebuild.,THE FULL TICKET-CREATION HAPPY PATH (real SM-4xxxx reference) IS NOT ASSERTED HERE: raiseSignInHelpTicket requires live Zoho Desk credentials + ZOHO_DESK_DEFAULT_DEPARTMENT_ID, which the local/test harness does not carry, so the endpoint returns 502 there. What IS asserted is the route's real input VALIDATION (400s), which needs no Zoho, plus the page + accordion + ShaneBot flow up to the email step.,SIGN-IN 'ATTEMPTS' ATTACHMENT IS SUCCESSFUL-LOGIN HISTORY, NOT FAILED-ATTEMPT ROWS: this platform logs successful sign-ins (user_sessions) + a failed-attempt counter/lockout state on the user row, but NOT individual failed attempts. The ticket attaches the real former; the design's 'last ten sign-in attempts' bot copy is kept verbatim.,THE PAGE IS PUBLIC (no login block) -- the user is locked out by definition, so /login/help and its POST must not require auth. UI route shape: /portal/{slug}/login/help (slug-scoped, declared in SlugInnerSwitch).,NO 'signed in but portal is empty' FAQ ITEM -- deliberately excluded by design (a scan gate holds the portal closed until first scan, so that state does not exist).,ENV VARS required: DEPLOY_URL.",
+  "notes": [
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these assertions only go green once this session's commit is deployed by the dev-server rebuild.",
+    "THE FULL TICKET-CREATION HAPPY PATH (real SIH-xxxx reference) IS NOT ASSERTED HERE: raiseSignInHelpTicket requires live Zoho Desk credentials + ZOHO_DESK_DEFAULT_DEPARTMENT_ID, which the local/test harness does not carry, so the endpoint returns 502 there. What IS asserted is the route's real input VALIDATION (400s, unchanged from before), which needs no Zoho, plus the new page rendering and issue-card selection.",
+    "The client's issue-card LABELS are the current design's copy (\"I have lost access to my authenticator\", etc.), which is newer than the server's own internal SIGN_IN_HELP_ISSUES labels (\"Lost my authenticator, no recovery codes\", etc.) used only inside the raised Zoho ticket body -- see the filed finding on this drift. Only issueKey is ever sent to the server, so this does not affect wire behavior.",
+    "The page is public (no login block) -- the user is locked out by definition, so /sign-in-help and its POST must not require auth. Route is /portal/sign-in-help (this app mounts at /portal/, no slug prefix)."
+  ],
   "apiTests": [
     {
+      "name": "sign-in-help ticket rejects a malformed email (unchanged real validation)",
       "method": "POST",
       "path": "/api/portal/sign-in-help/ticket",
       "headers": { "Content-Type": "application/json" },
@@ -12,69 +19,54 @@
       "expect": { "status": 400, "jsonPath": "$.error", "exists": true }
     },
     {
+      "name": "sign-in-help ticket rejects an unrecognized issueKey (server-side-authoritative catalog)",
       "method": "POST",
       "path": "/api/portal/sign-in-help/ticket",
       "headers": { "Content-Type": "application/json" },
       "body": { "email": "someone@example.com", "issueKey": "not-a-real-issue" },
       "expect": { "status": 400, "jsonPath": "$.error", "exists": true }
+    },
+    {
+      "name": "GET /api/status responds with the real discriminated status shape this page's sidebar reads",
+      "method": "GET",
+      "path": "/api/status",
+      "expect": { "status": 200, "jsonPath": "$.status", "exists": true }
     }
   ],
   "uiSteps": [
     {
-      "name": "SIH1 -- the public sign-in help page resolves (no login required).",
+      "name": "SIH1 -- the public sign-in-help page resolves (no login required).",
       "action": "goto",
-      "target": "/portal/shane-mccaw-consulting/login/help",
+      "target": "/portal/sign-in-help",
       "critical": true
     },
     {
-      "name": "SIH2 -- the first FAQ row renders.",
+      "name": "SIH2 -- the real email field renders.",
       "action": "expect",
-      "selector": "[data-testid='faq-toggle-password']",
+      "selector": "[data-testid='sign-in-help-email']",
       "state": "visible",
       "critical": true
     },
     {
-      "name": "SIH3 -- the first FAQ item is open by default, showing its real body copy.",
+      "name": "SIH3 -- the 4 real issue cards render with the current design's copy.",
       "action": "expect",
-      "selector": "[data-testid='faq-toggle-password']",
-      "textContains": "My password is not being accepted"
-    },
-    {
-      "name": "SIH4 -- open ShaneBot.",
-      "action": "click",
-      "selector": "[data-testid='open-shanebot']",
-      "critical": true
-    },
-    {
-      "name": "SIH5 -- the ShaneBot scroll region (max-height 52vh, pinned to bottom) mounts.",
-      "action": "expect",
-      "selector": "[data-testid='shanebot-scroll']",
+      "selector": "[data-testid='sign-in-help-issue-mfa']",
       "state": "visible",
+      "textContains": "I have lost access to my authenticator",
       "critical": true
     },
     {
-      "name": "SIH6 -- ...with the verbatim greeting.",
-      "action": "expect",
-      "selector": "[data-testid='shanebot-scroll']",
-      "textContains": "I raise sign-in tickets so you do not have to write one"
-    },
-    {
-      "name": "SIH7 -- pick the 'locked out' issue.",
+      "name": "SIH4 -- picking the 'locked' issue selects it.",
       "action": "click",
-      "selector": "[data-testid='shanebot-issue-locked']",
+      "selector": "[data-testid='sign-in-help-issue-locked']",
       "critical": true
     },
     {
-      "name": "SIH8 -- ShaneBot now asks for the account email (with the verbatim last-ten-attempts promise).",
+      "name": "SIH5 -- the real submit button is present.",
       "action": "expect",
-      "selector": "[data-testid='shanebot-scroll']",
-      "textContains": "attach your last ten sign-in attempts"
-    },
-    {
-      "name": "SIH9 -- ...and the email input is presented.",
-      "action": "expect",
-      "selector": "[data-testid='shanebot-email']",
-      "state": "visible"
+      "selector": "[data-testid='sign-in-help-submit']",
+      "state": "visible",
+      "textContains": "Raise this with a human"
     }
   ]
 }

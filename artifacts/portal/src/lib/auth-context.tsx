@@ -53,6 +53,41 @@ export interface AuthUser {
   mfaSetupPending?: boolean;
 }
 
+/**
+ * Git #2991 (Feature #1648, Auth Core) — thrown by every auth-flow call below
+ * that can fail with a structured error the caller needs to branch on (a
+ * locked-account timestamp, a distinct 404 reason, an entitlement code) —
+ * not just a message string. `data` is the real parsed response body, so a
+ * caller can read e.g. `err.data?.lockedUntil` without a second fetch.
+ */
+export class AuthApiError extends Error {
+  status: number;
+  data: Record<string, unknown> | undefined;
+  constructor(message: string, status: number, data?: Record<string, unknown>) {
+    super(message);
+    this.name = "AuthApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
+/** GET /auth/setup-context response shape (auth.ts:704-714). */
+export interface SetupContext {
+  clientName: string | null;
+  firstName: string | null;
+  role: MspRole | null;
+  slug: string | null;
+  products: { name: string; tagline: string | null; category: string | null }[];
+}
+
+/** Shared shape returned by setup-password and both MFA challenge endpoints. */
+export interface AuthSession {
+  accessToken: string;
+  refreshToken: string;
+  refreshExpiresAt: string;
+  user: AuthUser;
+}
+
 interface AuthState {
   user: AuthUser | null;
   accessToken: string | null;
@@ -73,6 +108,23 @@ interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<{ mfaRequired?: boolean; mfaToken?: string; methods?: string[]; user?: AuthUser }>;
   /** Complete an MFA flow by supplying the tokens received from the MFA challenge endpoint */
   completeMfaLogin: (accessToken: string, refreshToken?: string, refreshExpiresAt?: string) => void;
+  /** POST /auth/forgot-password — always resolves; the endpoint itself is unconditionally 200 (auth.ts:718-780). */
+  forgotPassword: (email: string) => Promise<void>;
+  /** POST /auth/reset-password — throws AuthApiError on a dead/short-password link. */
+  resetPassword: (token: string, password: string) => Promise<{ ok: true }>;
+  /** GET /auth/setup-context — throws AuthApiError (404) for a dead link or missing account. */
+  getSetupContext: (token: string) => Promise<SetupContext>;
+  /** POST /auth/setup-password — signs the account in on success (Git #439's mfaSetupPending applies). */
+  setupPassword: (token: string, password: string) => Promise<AuthSession>;
+  /** POST /auth/mfa/totp/challenge — completes the pending login on success. */
+  mfaTotpChallenge: (mfaToken: string, code: string) => Promise<AuthSession>;
+  /** POST /auth/mfa/bypass — completes the pending login on success. */
+  mfaBypass: (mfaToken: string, code: string) => Promise<AuthSession>;
+  /** POST /portal/sign-in-help/ticket — the caller is by definition unauthenticated. */
+  signInHelp: (
+    email: string,
+    issueKey: "mfa" | "locked" | "nocode" | "other",
+  ) => Promise<{ reference: string; priority: string; routingNote: string; email: string }>;
   logout: () => Promise<void>;
   extendSession: () => Promise<void>;
   fetchWithAuth: (
@@ -633,9 +685,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         mfaToken?: string;
         methods?: string[];
         error?: string;
+        accountLocked?: boolean;
+        lockedUntil?: string;
       };
 
-      if (!res.ok) throw new Error(data.error ?? "Login failed");
+      // AuthApiError (not a plain Error) so the login screen can branch on
+      // res.status/data — a 423 lockout carries a real lockedUntil timestamp
+      // the caller needs, and a 401 covers two distinct backend cases (bad
+      // credentials vs. no password set) behind one deliberately generic
+      // message (auth.ts:338, 343 — contract pack §1).
+      if (!res.ok) throw new AuthApiError(data.error ?? "Login failed", res.status, data);
 
       if (data.mfaRequired) {
         return { mfaRequired: true, mfaToken: data.mfaToken, methods: data.methods };
@@ -862,10 +921,136 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applyTokens, doRefresh],
   );
 
+  // ── Auth Core (#2991, Feature #1648) — the remaining unauthenticated flows ──
+
+  const forgotPassword = useCallback(async (email: string): Promise<void> => {
+    // auth.ts:718-780 responds 200 { ok: true } unconditionally, before any
+    // lookup runs — there is nothing for a caller to branch on, so this never
+    // throws. A network failure here is swallowed the same way the backend
+    // itself swallows a mail-send failure: "received" only ever means the
+    // request was accepted.
+    try {
+      await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+    } catch {
+      // ignore — see above
+    }
+  }, []);
+
+  const resetPassword = useCallback(async (token: string, password: string): Promise<{ ok: true }> => {
+    const res = await fetch("/api/auth/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password }),
+    });
+    const data = (await res.json()) as { ok?: boolean; error?: string };
+    if (!res.ok) throw new AuthApiError(data.error ?? "Reset failed", res.status, data);
+    return { ok: true };
+  }, []);
+
+  const getSetupContext = useCallback(async (token: string): Promise<SetupContext> => {
+    const res = await fetch(`/api/auth/setup-context?token=${encodeURIComponent(token)}`);
+    const data = (await res.json()) as Partial<SetupContext> & { error?: string };
+    if (!res.ok) throw new AuthApiError(data.error ?? "This setup link is invalid or has expired.", res.status, data);
+    return data as SetupContext;
+  }, []);
+
+  const setupPassword = useCallback(
+    async (token: string, password: string): Promise<AuthSession> => {
+      const res = await fetch("/api/auth/setup-password", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password }),
+      });
+      const data = (await res.json()) as Partial<AuthSession> & { error?: string };
+      if (!res.ok) throw new AuthApiError(data.error ?? "Setup failed", res.status, data);
+
+      const session = data as AuthSession;
+      // This is the one setup-flow route that signs the account in on success
+      // (contract pack §1) — apply the session and start the same silent-
+      // refresh loop login()/completeMfaLogin() start.
+      applyTokens(session.accessToken, session.refreshToken, session.refreshExpiresAt);
+      if (silentRefreshTimerRef.current) clearInterval(silentRefreshTimerRef.current);
+      silentRefreshTimerRef.current = setInterval(() => {
+        void doRefresh();
+      }, SILENT_REFRESH_INTERVAL_MS);
+      return session;
+    },
+    [applyTokens, doRefresh],
+  );
+
+  const mfaTotpChallenge = useCallback(
+    async (mfaToken: string, code: string): Promise<AuthSession> => {
+      const res = await fetch("/api/auth/mfa/totp/challenge", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mfaToken, code }),
+      });
+      const data = (await res.json()) as Partial<AuthSession> & { error?: string };
+      if (!res.ok) throw new AuthApiError(data.error ?? "Verification failed", res.status, data);
+      const session = data as AuthSession;
+      completeMfaLogin(session.accessToken, session.refreshToken, session.refreshExpiresAt);
+      return session;
+    },
+    [completeMfaLogin],
+  );
+
+  const mfaBypass = useCallback(
+    async (mfaToken: string, code: string): Promise<AuthSession> => {
+      const res = await fetch("/api/auth/mfa/bypass", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mfaToken, code }),
+      });
+      const data = (await res.json()) as Partial<AuthSession> & { error?: string };
+      if (!res.ok) throw new AuthApiError(data.error ?? "Verification failed", res.status, data);
+      const session = data as AuthSession;
+      completeMfaLogin(session.accessToken, session.refreshToken, session.refreshExpiresAt);
+      return session;
+    },
+    [completeMfaLogin],
+  );
+
+  const signInHelp = useCallback(
+    async (
+      email: string,
+      issueKey: "mfa" | "locked" | "nocode" | "other",
+    ): Promise<{ reference: string; priority: string; routingNote: string; email: string }> => {
+      const res = await fetch("/api/portal/sign-in-help/ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, issueKey }),
+      });
+      const data = (await res.json()) as {
+        reference?: string;
+        priority?: string;
+        routingNote?: string;
+        email?: string;
+        error?: string;
+      };
+      if (!res.ok) throw new AuthApiError(data.error ?? "Could not raise a ticket", res.status, data);
+      return data as { reference: string; priority: string; routingNote: string; email: string };
+    },
+    [],
+  );
+
   const value: AuthContextValue = {
     ...state,
     login,
     completeMfaLogin,
+    forgotPassword,
+    resetPassword,
+    getSetupContext,
+    setupPassword,
+    mfaTotpChallenge,
+    mfaBypass,
+    signInHelp,
     logout,
     extendSession,
     fetchWithAuth,

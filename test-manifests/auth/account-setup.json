@@ -1,0 +1,34 @@
+{
+  "issue": 2991,
+  "feature": "Auth Core: Account setup (Feature #1648). New screen, no prior wire issue -- built against Design/portal/design_handoff_full_site/screens/Auth Account Setup.dc.html. Wired to GET /api/auth/setup-context (auth.ts:649-715) then POST /api/auth/setup-password (auth.ts:547-639), per docs/auth-core-contract-pack.md.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree.",
+    "No real, unexpired account_setup_tokens row exists in the local DB to drive the happy-path context/products render without minting one -- what IS asserted is the real, unconditional dead-link state for a missing/invalid token, which needs no fixture.",
+    "Route is /portal/account-setup (no slug prefix)."
+  ],
+  "uiSteps": [
+    {
+      "name": "A visit with no ?token shows the real, honest dead-link card rather than a blank or fabricated form",
+      "action": "goto",
+      "target": "/portal/account-setup",
+      "critical": true
+    },
+    {
+      "name": "The real 404 copy for an invalid/expired setup link renders verbatim",
+      "action": "expect",
+      "selector": "body",
+      "state": "visible",
+      "textContains": "This setup link is invalid or has expired",
+      "critical": true
+    },
+    {
+      "name": "The dead-end card offers the real forgot-password recovery path",
+      "action": "expect",
+      "selector": "body",
+      "state": "visible",
+      "textContains": "Send me a new link"
+    }
+  ]
+}

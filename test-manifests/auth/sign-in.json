@@ -1,0 +1,59 @@
+{
+  "issue": 2991,
+  "feature": "Auth Core: Sign-in + MFA challenge (Feature #1648). Real screens rebuilt from scratch against Design/portal/design_handoff_full_site/screens/Auth Sign-In.dc.html and Auth MFA Challenge.dc.html, superseding the retired portal-v2 login page this file used to cover (that page and its #email/#password/[data-testid='login-submit'] IDs no longer exist -- artifacts/msp-portal was retired wholesale). Wired to the real POST /api/auth/login (auth.ts:321-418) and, on an mfaRequired response, an inline MFA-challenge phase of the SAME page (not a separate route) wired to POST /api/auth/mfa/totp/challenge and POST /api/auth/mfa/bypass (mfa.ts).",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these assertions only go green once this session's commit is deployed by the dev-server rebuild.",
+    "No known-password test account exists in the local DB for a real end-to-end 401/423/mfaRequired assertion here without writing one -- see auth/password-reset-guard.json for the forgot-password API coverage, which needs no credential. This manifest covers the real page load + form wiring; the credential-branch banners (invalid/locked/mfaRequired) were verified by direct route reading against docs/auth-core-contract-pack.md, not exercised end-to-end here.",
+    "Route is /portal/login (this app mounts at /portal/, no slug prefix for the auth flow)."
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/portal/login" },
+
+    {
+      "name": "Sign-in card renders the real design copy verbatim",
+      "action": "expect",
+      "selector": "body",
+      "state": "visible",
+      "textContains": "Your tenant's governance record, SOWs and monitoring signals.",
+      "critical": true
+    },
+    {
+      "name": "Real email field feeding POST /api/auth/login",
+      "action": "expect",
+      "selector": "[data-testid='login-email']",
+      "state": "visible",
+      "critical": true
+    },
+    {
+      "name": "Real password field",
+      "action": "expect",
+      "selector": "[data-testid='login-password']",
+      "state": "visible",
+      "critical": true
+    },
+    {
+      "name": "Real submit button",
+      "action": "expect",
+      "selector": "[data-testid='login-submit']",
+      "state": "visible",
+      "textContains": "Sign in",
+      "critical": true
+    },
+    {
+      "name": "Forgot-password link points at the real /forgot-password route",
+      "action": "expect",
+      "selector": "[data-testid='login-forgot-password']",
+      "state": "visible"
+    },
+    {
+      "name": "Sign-in-help link is reachable without a session",
+      "action": "expect",
+      "selector": "[data-testid='login-sign-in-help']",
+      "state": "visible"
+    }
+  ]
+}

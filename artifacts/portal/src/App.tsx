@@ -1,4 +1,4 @@
-import { Route, Switch, Router as WouterRouter } from "wouter";
+import { Route, Switch, Router as WouterRouter, Link } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -10,6 +10,11 @@ import IndexPage from "@/pages/index";
 import ComingSoon from "@/pages/coming-soon";
 import SupportPage from "@/pages/support";
 import AccountSecurityPage from "@/pages/account-security";
+import LoginPage from "@/pages/login";
+import ForgotPasswordPage from "@/pages/forgot-password";
+import ResetPasswordPage from "@/pages/reset-password";
+import AccountSetupPage from "@/pages/account-setup";
+import SignInHelpPage from "@/pages/sign-in-help";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -20,9 +25,9 @@ const queryClient = new QueryClient();
 const ROUTER_BASE = (import.meta.env.BASE_URL || "/portal/").replace(/\/$/, "");
 
 // The auth model is carried verbatim from the retired portal (real, wired to
-// /api/auth/*). Until a login page is rebuilt under its own issue, an
-// unauthenticated visitor sees an honest sign-in-required panel rather than a
-// redirect to a route that does not exist yet.
+// /api/auth/*). #2991 (Feature #1648, Auth Core) wired the 6 real screens
+// this now links to, so an unauthenticated visitor gets a real path in
+// instead of a dead end.
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
 
@@ -42,6 +47,9 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
           <p className="mt-2 text-sm text-muted-foreground">
             You need to be signed in to view the customer portal.
           </p>
+          <Link href="/login" className="mt-4 inline-block text-sm font-semibold text-primary hover:underline">
+            Go to sign in →
+          </Link>
         </div>
       </div>
     );
@@ -50,17 +58,19 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function AppRoutes() {
+function ProtectedRoutes() {
   return (
-    <PortalLayout>
-      <Switch>
-        <Route path="/" component={IndexPage} />
-        <Route path="/support" component={SupportPage} />
-        <Route path="/account-security" component={AccountSecurityPage} />
-        <Route path="/coming-soon" component={ComingSoon} />
-        <Route component={NotFound} />
-      </Switch>
-    </PortalLayout>
+    <RequireAuth>
+      <PortalLayout>
+        <Switch>
+          <Route path="/" component={IndexPage} />
+          <Route path="/support" component={SupportPage} />
+          <Route path="/account-security" component={AccountSecurityPage} />
+          <Route path="/coming-soon" component={ComingSoon} />
+          <Route component={NotFound} />
+        </Switch>
+      </PortalLayout>
+    </RequireAuth>
   );
 }
 
@@ -71,9 +81,24 @@ export default function App() {
         <ThemeProvider>
           <SlugProvider slug={getStoredSlug() ?? ""}>
             <WouterRouter base={ROUTER_BASE}>
-              <RequireAuth>
-                <AppRoutes />
-              </RequireAuth>
+              {/*
+                Auth Core (#2991, Feature #1648) — the 5 unauthenticated
+                entry points render OUTSIDE RequireAuth/PortalLayout: a
+                logged-out visitor has no session for PortalLayout's shell to
+                key off, and these routes are precisely the ones reachable
+                without one. The MFA challenge is not a separate route — see
+                pages/login.tsx's own header comment.
+              */}
+              <Switch>
+                <Route path="/login" component={LoginPage} />
+                <Route path="/forgot-password" component={ForgotPasswordPage} />
+                <Route path="/reset-password" component={ResetPasswordPage} />
+                <Route path="/account-setup" component={AccountSetupPage} />
+                <Route path="/sign-in-help" component={SignInHelpPage} />
+                <Route>
+                  <ProtectedRoutes />
+                </Route>
+              </Switch>
             </WouterRouter>
           </SlugProvider>
           <Toaster richColors closeButton />
