@@ -2,7 +2,7 @@
   "issue": 3037,
   "feature": "Remediation Tracking: 28-step programme - the real artifacts/portal '/remediation-tracking' page (src/pages/remediation-tracking.tsx), part of #3037/#3039/Feature #1489. Wires GET /api/portal/remediation-tracker (steps + live pricing), PUT /api/portal/remediation-tracker/steps/:stepId, POST .../steps/:stepId/verify, GET .../steps/:stepId/verification-guide, POST .../steps/:stepId/decline-to-risk (§1a, #3037), plus GET .../pillar-scores and the export.csv/export.pdf/evidence-pack.pdf downloads (§1f-1g, #3039 - PillarScoresCard + RemediationExportControls, both mounted inside RemediationProgrammeTab on this same tab), per docs/remediation-tracking-contract-pack.md and the landed 'Remediation Tracking.dc.html' export's 28-step programme tab. Does NOT cover the checklist/fix-routes/reveal/bypass-resolutions tabs (§1b-1e, #3038) - a separate real functional unit under the same Feature, still in flight as of this edit.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "436675c12",
 
   "notes": [
     "WHAT THIS COVERS: the auth gate on every §1a route, the real 200 payload shape (steps[] + pricing.phases[3]/pricing.hire), the explicit 400 §1a's PUT returns when a client tries to set accepted_risk directly (the signed-only guard), 400s for an unknown stepId across PUT/verify/verification-guide, a 404 for verification-guide on a step with no mapped check, and a real, REVERSIBLE PUT round-trip (unlike Risk Register's accept, a status PUT is not a permanent signed action, so the write is undone at the end of the same test run to keep this manifest idempotent).",
