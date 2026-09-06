@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -7,6 +8,36 @@ using System.Threading.Tasks;
 
 namespace BuildConsole.Services
 {
+    /// <summary>Git #2084 — the shared-store health scan `provision-worktree.mjs --json` runs
+    /// (via store-doctor.mjs's <c>scanSharedStore</c>) against the main-checkout node_modules
+    /// every fresh worktree junctions into, plus whatever auto-repair (Git #1980) it applied.
+    /// Mirrors the real `storeHealth` shape on both provision result paths (reuse + fresh
+    /// create) — see provision-worktree.mjs.</summary>
+    public class StoreHealthAutoRepairInfo
+    {
+        public int RepairedLinks { get; set; }
+        public int RepairedBins { get; set; }
+        public int Unrepairable { get; set; }
+        public string? Error { get; set; }
+        public bool CleanAfterRepair { get; set; }
+    }
+
+    public class StoreHealthInfo
+    {
+        public bool Clean { get; set; }
+        public int Foreign { get; set; }
+        public int Dangling { get; set; }
+        public int PoisonedBins { get; set; }
+        /// <summary>Set only when the scan itself threw (e.g. the shared store path doesn't exist yet).</summary>
+        public string? Error { get; set; }
+        /// <summary>Present only when the pre-repair scan found poisoning (Git #1980's auto-repair ran).</summary>
+        public StoreHealthAutoRepairInfo? AutoRepair { get; set; }
+
+        /// <summary>True when this build's launch should surface a warning: the scan failed outright,
+        /// or the store was poisoned and either no repair ran or it didn't fully clean things up.</summary>
+        public bool NeedsWarning => Error != null || (!Clean && (AutoRepair == null || !AutoRepair.CleanAfterRepair));
+    }
+
     /// <summary>Result of provisioning (or reusing) an isolated agent worktree.</summary>
     public class WorktreeProvisionResult
     {
@@ -21,6 +52,9 @@ namespace BuildConsole.Services
         /// earlier session's uncommitted/unpushed work was preserved to. A resumed build must not
         /// trust a clean <c>git status</c> when this is set.</summary>
         public List<string> PriorWorkRescued { get; set; } = new();
+        /// <summary>Git #2084 — the shared-store health scan this provision performed. Null only if
+        /// the child process's JSON genuinely omitted the field (a foreign/legacy output shape).</summary>
+        public StoreHealthInfo? StoreHealth { get; set; }
     }
 
     /// <summary>
@@ -33,6 +67,25 @@ namespace BuildConsole.Services
     public static class WorktreeProvisionService
     {
         private const string LogChannel = "worktree.provision";
+
+        /// <summary>Git #2084 — one pending "this build launched against a poisoned shared store"
+        /// warning per queue item id, stashed here by <see cref="QueueWatcherService"/>'s launch path
+        /// right after provisioning and popped by <c>BuildWatchWindow.OccupySlot</c> so the Build Watch
+        /// slot shows it the moment the build's pane is created. Cross-class rather than a QueueItem
+        /// field because the queue row is server-synced JSON — this is purely local, launch-time state.</summary>
+        public static readonly ConcurrentDictionary<int, string> PendingLaunchWarnings = new();
+
+        /// <summary>Human-readable warning text for a Build Watch slot, or null when nothing needs
+        /// surfacing. Never prescribes `pnpm install` (Git #1987) — always points at store-doctor.mjs.</summary>
+        public static string? BuildStoreHealthWarning(StoreHealthInfo? health)
+        {
+            if (health == null || !health.NeedsWarning) return null;
+            string detail = health.Error != null
+                ? $"scan error: {health.Error}"
+                : $"foreign={health.Foreign} dangling={health.Dangling} poisonedBins={health.PoisonedBins}" +
+                  (health.AutoRepair != null ? " (auto-repair attempted, still not clean after repair)" : "");
+            return $"⚠ Shared pnpm store poisoned (Git #1988) — {detail}. Run `node scripts/dev-server/store-doctor.mjs` to repair. Do NOT run pnpm install (#1987).";
+        }
 
         /// <summary>Create (or idempotently reuse) an isolated worktree off origin/main for
         /// <paramref name="name"/>, junctioning a shared node_modules when <paramref name="link"/>
@@ -114,6 +167,34 @@ namespace BuildConsole.Services
                     if (root.TryGetProperty("priorWorkRescued", out var pw) && pw.ValueKind == JsonValueKind.Array)
                         foreach (var el in pw.EnumerateArray())
                             if (el.ValueKind == JsonValueKind.String) res.PriorWorkRescued.Add(el.GetString()!);
+                    // Git #2084 — parse the shared-store health scan. Present on both the reuse and
+                    // fresh-create result paths (provision-worktree.mjs); previously dropped entirely,
+                    // so a build launched against a poisoned store started with no visible warning.
+                    if (root.TryGetProperty("storeHealth", out var sh) && sh.ValueKind == JsonValueKind.Object)
+                    {
+                        var health = new StoreHealthInfo();
+                        if (sh.TryGetProperty("error", out var shErr) && shErr.ValueKind == JsonValueKind.String)
+                            health.Error = shErr.GetString();
+                        if (sh.TryGetProperty("clean", out var shClean) && shClean.ValueKind != JsonValueKind.Null)
+                            health.Clean = shClean.ValueKind == JsonValueKind.True;
+                        if (sh.TryGetProperty("foreign", out var shForeign) && shForeign.ValueKind == JsonValueKind.Number)
+                            health.Foreign = shForeign.GetInt32();
+                        if (sh.TryGetProperty("dangling", out var shDangling) && shDangling.ValueKind == JsonValueKind.Number)
+                            health.Dangling = shDangling.GetInt32();
+                        if (sh.TryGetProperty("poisonedBins", out var shBins) && shBins.ValueKind == JsonValueKind.Number)
+                            health.PoisonedBins = shBins.GetInt32();
+                        if (sh.TryGetProperty("autoRepair", out var ar) && ar.ValueKind == JsonValueKind.Object)
+                        {
+                            var repair = new StoreHealthAutoRepairInfo();
+                            if (ar.TryGetProperty("repairedLinks", out var rl) && rl.ValueKind == JsonValueKind.Number) repair.RepairedLinks = rl.GetInt32();
+                            if (ar.TryGetProperty("repairedBins", out var rb) && rb.ValueKind == JsonValueKind.Number) repair.RepairedBins = rb.GetInt32();
+                            if (ar.TryGetProperty("unrepairable", out var ur) && ur.ValueKind == JsonValueKind.Number) repair.Unrepairable = ur.GetInt32();
+                            if (ar.TryGetProperty("error", out var re) && re.ValueKind == JsonValueKind.String) repair.Error = re.GetString();
+                            if (ar.TryGetProperty("cleanAfterRepair", out var car) && car.ValueKind != JsonValueKind.Null) repair.CleanAfterRepair = car.ValueKind == JsonValueKind.True;
+                            health.AutoRepair = repair;
+                        }
+                        res.StoreHealth = health;
+                    }
                 }
                 catch
                 {
@@ -134,6 +215,22 @@ namespace BuildConsole.Services
                 // Log it loudly and durably so it's discoverable from the activity log alone.
                 if (res.Ok && res.PriorWorkRescued.Count > 0)
                     ActivityLog.Log(LogChannel, $"{actionDescription}: ⚠ RE-PROVISION over prior work (Git #1958) — this checkout does NOT contain it; rescued to: {string.Join(", ", res.PriorWorkRescued)}. See {res.Path}\\.worktree-reprovisioned.json.");
+                // Git #2084 — a poisoned shared store was previously invisible at launch (the field
+                // was parsed nowhere), so a build hit inexplicable tsc/vitest failures mid-session with
+                // no signal why (#1955/#1967's failure mode). Log it loudly here regardless of outcome
+                // — this worktree's node_modules junctions point straight at that same shared store —
+                // and point at store-doctor.mjs, never `pnpm install` (Git #1987).
+                if (res.Ok && res.StoreHealth?.NeedsWarning == true)
+                {
+                    var h = res.StoreHealth;
+                    string detail = h.Error != null
+                        ? $"scan error: {h.Error}"
+                        : $"foreign={h.Foreign} dangling={h.Dangling} poisonedBins={h.PoisonedBins}" +
+                          (h.AutoRepair != null
+                              ? $", auto-repair ran (repairedLinks={h.AutoRepair.RepairedLinks}, repairedBins={h.AutoRepair.RepairedBins}, unrepairable={h.AutoRepair.Unrepairable}{(h.AutoRepair.Error != null ? $", error={h.AutoRepair.Error}" : "")}) — still not clean after repair"
+                              : "");
+                    ActivityLog.Log(LogChannel, $"{actionDescription}: ⚠ SHARED STORE POISONED (Git #1988) — {detail}. Run `node scripts/dev-server/store-doctor.mjs` (do NOT run pnpm install, per #1987).");
+                }
                 return res;
             }
             catch (Exception ex)

@@ -1959,6 +1959,15 @@ namespace BuildConsole.Services
                 }
                 workDir = prov.Path!;
                 worktreePath = prov.Path;
+
+                // Git #2084 — a poisoned shared store this worktree just junctioned into was
+                // previously invisible at launch. Stash the warning for this queue item so
+                // BuildWatchWindow.OccupySlot can surface it on the Build Watch slot the moment
+                // this build's pane is created, in addition to the ActivityLog line provisioning
+                // itself already logged.
+                string? storeWarning = WorktreeProvisionService.BuildStoreHealthWarning(prov.StoreHealth);
+                if (storeWarning != null)
+                    WorktreeProvisionService.PendingLaunchWarnings[item.Id] = storeWarning;
             }
             else
             {

@@ -1297,6 +1297,12 @@ namespace BuildConsole
             // this build's items from the shared tracker, filtered to this queue id, in the pane itself.
             slot.Pane.SetChecklistBuild(item.Id);
 
+            // Git #2084 — surface a poisoned-shared-store warning (stashed by QueueWatcherService's
+            // launch path right after provisioning) as the first turn in this slot's transcript, so
+            // it's visible the moment the pane is created instead of only in the ActivityLog.
+            if (WorktreeProvisionService.PendingLaunchWarnings.TryRemove(item.Id, out var storeWarning))
+                vm.Turns.Add(new AssistantParagraphTurn { Text = storeWarning, Kind = ParagraphKind.Error });
+
             slot.EmptyText.Visibility = Visibility.Collapsed;
             slot.ContentGrid.Visibility = Visibility.Visible;
 
