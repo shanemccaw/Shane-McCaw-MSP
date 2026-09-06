@@ -72,6 +72,10 @@ export interface BillingLiveState {
    * success, or the reason it failed.
    */
   readonly downloadReceipt: (invoiceId: number) => Promise<string | null>;
+  /** Re-runs the invoices read — the design's "Try again" action on a failed
+   *  read (`dataState === "fixture"`), same `attempt`-counter pattern as
+   *  `useAccountSecurityLive`'s `refetch`. */
+  readonly refetch: () => void;
 }
 
 /**
@@ -84,9 +88,11 @@ export function useBillingLive(): BillingLiveState {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     void (async () => {
       try {
         const res = await fetchWithAuth(INVOICES_URL, undefined, { silent: true });
@@ -97,6 +103,7 @@ export function useBillingLive(): BillingLiveState {
         setError(null);
       } catch (err: unknown) {
         if (cancelled) return;
+        setRows(null);
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         if (!cancelled) setLoading(false);
@@ -105,7 +112,9 @@ export function useBillingLive(): BillingLiveState {
     return () => {
       cancelled = true;
     };
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, attempt]);
+
+  const refetch = useCallback(() => setAttempt((n) => n + 1), []);
 
   const openStripePortal = useCallback(async (): Promise<string | null> => {
     setOpeningPortal(true);
@@ -157,6 +166,6 @@ export function useBillingLive(): BillingLiveState {
     // the HARD RULE this strict pass exists to catch: `rows` is only ever
     // null when the fetch itself failed or hasn't resolved.
     const dataState: BillingDataState = loading ? "loading" : rows !== null ? "live" : "fixture";
-    return { receipts: rows ?? [], dataState, loading, error, openStripePortal, openingPortal, downloadReceipt };
-  }, [rows, loading, error, openStripePortal, openingPortal, downloadReceipt]);
+    return { receipts: rows ?? [], dataState, loading, error, openStripePortal, openingPortal, downloadReceipt, refetch };
+  }, [rows, loading, error, openStripePortal, openingPortal, downloadReceipt, refetch]);
 }

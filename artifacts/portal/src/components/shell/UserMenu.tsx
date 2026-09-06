@@ -69,13 +69,13 @@ function Divider() {
  * section).
  *
  * Scope per #1820: identity, sign-out, and links out to the surfaces that
- * own their own controls. Billing, Webhooks and Settings have no page in
- * `artifacts/portal` yet, so they route through the same honest
+ * own their own controls. Billing (#2998) and Account security (#2996) are
+ * real pages now, routed directly. Webhooks and Settings have no page in
+ * `artifacts/portal` yet, so they still route through the honest
  * `/coming-soon?feature=` state #1819 established rather than a dead link.
- * Account security is #1595's own Feature — not yet built either, so it
- * routes the same way; this dropdown never duplicates password/MFA/session
- * controls itself. Per #1751, the signed-in e-mail is NOT presented as a
- * verified M365 identity — it's the account's own contact e-mail.
+ * This dropdown never duplicates password/MFA/session controls itself. Per
+ * #1751, the signed-in e-mail is NOT presented as a verified M365 identity —
+ * it's the account's own contact e-mail.
  */
 export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose: () => void; onSignOut: () => void }) {
   return (
@@ -114,7 +114,7 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
       <Divider />
       <div style={{ padding: "4px 6px" }}>
         <MenuRow
-          href={comingSoonHref("Billing", "account")}
+          href="/billing"
           icon={CreditCard}
           label="Billing"
           testId="user-menu-billing"

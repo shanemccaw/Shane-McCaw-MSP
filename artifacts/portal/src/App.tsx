@@ -10,6 +10,7 @@ import IndexPage from "@/pages/index";
 import ComingSoon from "@/pages/coming-soon";
 import SupportPage from "@/pages/support";
 import AccountSecurityPage from "@/pages/account-security";
+import BillingPage from "@/pages/billing";
 import LoginPage from "@/pages/login";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
@@ -67,6 +68,7 @@ function ProtectedRoutes() {
           <Route path="/" component={IndexPage} />
           <Route path="/support" component={SupportPage} />
           <Route path="/account-security" component={AccountSecurityPage} />
+          <Route path="/billing" component={BillingPage} />
           <Route path="/notification-preferences" component={NotificationPreferencesPage} />
           <Route path="/coming-soon" component={ComingSoon} />
           <Route component={NotFound} />

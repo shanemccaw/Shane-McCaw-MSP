@@ -1,0 +1,57 @@
+{
+  "issue": 2998,
+  "feature": "Billing - the real artifacts/portal '/billing' page (src/pages/billing.tsx), part of #1598. Covers this build's own scope: Receipts (GET /api/portal/invoices, Git #1237) and 'Manage payment in Stripe' (POST /api/portal/billing/customer-portal), wired via billingLive.ts, per Design/portal/design_handoff_full_site/docs/billing-contract-pack.md and the landed Billing.dc.html export. The landed design deliberately does NOT surface a live plan-state section (subscriptionsLive.ts / GET /portal/billing/subscriptions, Git #1611) on this page - its own logic states no tenant holds a monthly monitoring subscription today, so there is nothing real to show as a current plan; that endpoint stays real and unwired here, matching the design as shipped. Monitoring-plan tier cards are the design's own labeled illustration ('Illustrative, not your account'), not tenant data - not covered by apiTests.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "WHAT THIS COVERS: both real reads/actions this page wires - GET /api/portal/invoices (Receipts) and POST /api/portal/billing/customer-portal (Manage payment in Stripe) - are auth-gated as documented, and a logged-in customer gets the real payload shape billingLive.ts consumes.",
+    "WHAT THIS DOES NOT COVER, AND WHY (no portal login page yet): artifacts/portal has no login page today (#1648) - App.tsx's RequireAuth renders an honest 'Sign in required' panel for an unauthenticated visitor, the same structural gap test-manifests/portal/account-security-data-rights.json (#2996) and customer-home-overview.json (#2921) already document. The uiSteps below only assert what is honestly reachable today. apiTests exercise the full real backend directly with a real bearer token. Once a portal login page exists, extend this manifest with a real login block + goto '/billing' + assert on real rendered data-testids (billing-source / billing-manage-payment / billing-receipt-row / billing-download-<id> are already on the page) - no code change needed on the page side.",
+    "GET /api/portal/billing/customer-portal IS A POST that opens a real Stripe session - not exercised end-to-end here (it would open a live external redirect target for whichever account authenticates); the auth-gate (401 unauthenticated) is asserted, matching the same real-write caution account-security-data-rights.json documents for its own deletion-request POST.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use).",
+    "NOT YET RUN via shaneapp://runTest as of this build (2026-09-06, session for #2998): BuildConsole's local instance resolves test-manifests/ and UI routes against the dev-server checkout, which does not yet have this page/route merged/deployed (this branch is not yet picked up). Same structural gap #2921's and #2996's own manifests document for their uiSteps run. Verified instead by: a real `tsc -p tsconfig.json --noEmit` pass (0 errors) and a real `vite build` (succeeds) against artifacts/portal with this page + route added, plus direct reading of portal-billing.ts confirming the shapes billingWire.ts/billingLive.ts assert against. Re-run this manifest via shaneapp://runTest once the dev-server merge/restart cycle has picked up this branch."
+  ],
+
+  "apiTests": [
+    {
+      "name": "AUTH-GATE-1 - GET /api/portal/invoices with no Authorization header returns 401 (requireAuth)",
+      "method": "GET",
+      "path": "/api/portal/invoices",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-2 - POST /api/portal/billing/customer-portal with no Authorization header returns 401 (requireAuth)",
+      "method": "POST",
+      "path": "/api/portal/billing/customer-portal",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP - log in as the designated testbed portal account to obtain a real client bearer; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "INVOICES - an authenticated GET /api/portal/invoices returns a real array (possibly empty), never a fixture substitution",
+      "method": "GET",
+      "path": "/api/portal/invoices",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "isArray": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/billing" },
+    {
+      "name": "Unauthenticated visit: the shell route mounts and RequireAuth's honest sign-in-required panel renders (no portal login page exists yet - see notes)",
+      "action": "expect",
+      "selector": "h1",
+      "state": "visible",
+      "textContains": "Sign in required",
+      "critical": true
+    }
+  ]
+}

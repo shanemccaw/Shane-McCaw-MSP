@@ -35,6 +35,11 @@ export interface BillingReceiptRow {
   readonly amount: string;
   /** Whether GET /api/portal/invoices/:id/download has a file to serve. */
   readonly downloadable: boolean;
+  /** invoicesTable.status narrowed to a boolean the same way receiptWire.ts's
+   *  Stripe-sourced rows are (`isPaid = entry.status === "paid"`) — the real
+   *  enum is draft | due | paid | overdue; anything but "paid" renders as
+   *  "Pending" rather than inventing a four-way status pill. */
+  readonly paid: boolean;
 }
 
 function str(value: unknown): string {
@@ -83,6 +88,7 @@ function toReceiptRow(raw: WireInvoice): BillingReceiptRow | null {
     ref: str(raw.invoiceNumber) || `inv_${id}`,
     amount: fmtAmount(raw.amount),
     downloadable: !!str(raw.pdfFilename),
+    paid: str(raw.status) === "paid",
   };
 }
 
