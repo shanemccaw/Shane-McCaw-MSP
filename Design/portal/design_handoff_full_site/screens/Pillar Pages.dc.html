@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes scanSlide{0%{transform:translateX(-110%)}100%{transform:translateX(360%)}}
+@keyframes washBreathe{0%,100%{opacity:.35}50%{opacity:.9}}
+</style>
+</helmet>
+<div data-screen-label="Pillar page" style="position:relative;width:100%;height:{{rootH}};min-height:{{rootMinH}};background:#020617;overflow:hidden;font-family:Inter,system-ui,sans-serif">
+  <sc-if value="{{chromeShow}}" hint-placeholder-val="{{ true }}">
+  <div style="position:absolute;inset:0;background:radial-gradient(700px 420px at 100% 0%, rgba(0,180,216,.05), transparent);pointer-events:none"></div>
+  <div style="position:absolute;inset:0;background:radial-gradient(120% 90% at 0% 100%, rgba(0,120,212,.08), rgba(2,6,23,0) 62%);opacity:{{oNone}};transition:opacity 1800ms cubic-bezier(.4,0,.2,1);pointer-events:none"></div>
+  <div style="position:absolute;inset:0;background:radial-gradient(120% 90% at 0% 100%, rgba(52,211,153,.14), rgba(2,6,23,0) 62%);opacity:{{oHealthy}};transition:opacity 1800ms cubic-bezier(.4,0,.2,1);pointer-events:none"></div>
+  <div style="position:absolute;inset:0;background:radial-gradient(120% 90% at 0% 100%, rgba(251,191,36,.15), rgba(2,6,23,0) 62%);opacity:{{oAttention}};transition:opacity 1800ms cubic-bezier(.4,0,.2,1);pointer-events:none"></div>
+  <div style="position:absolute;inset:0;background:radial-gradient(120% 90% at 0% 100%, rgba(248,113,113,.18), rgba(2,6,23,0) 62%);opacity:{{oCritical}};transition:opacity 1800ms cubic-bezier(.4,0,.2,1);pointer-events:none"></div>
+  <sc-if value="{{scanRunning}}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;background:radial-gradient(90% 70% at 0% 100%, rgba(0,120,212,.10), rgba(2,6,23,0) 60%);animation:washBreathe 4s ease-in-out infinite;pointer-events:none"></div></sc-if>
+  </sc-if>
+  <div style="position:relative;height:100%;display:flex;flex-direction:column">
+    <sc-if value="{{impersonated}}" hint-placeholder-val="{{ false }}">
+      <div style="height:36px;background:#0078D4;display:flex;align-items:center;gap:10px;padding:0 16px;flex:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"></path><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path></svg>
+        <span style="font-size:12.5px;font-weight:600;color:#fff">Impersonation active</span>
+        <span style="font-size:12px;color:rgba(255,255,255,.75)">An MSP operator is viewing this portal as the customer</span>
+        <span style="margin-left:auto;font-size:11.5px;font-weight:600;color:#fff;border:1px solid rgba(255,255,255,.55);border-radius:999px;padding:3px 12px;cursor:pointer">End session</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{chromeShow}}" hint-placeholder-val="{{ true }}">
+    <div style="height:56px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px 0 20px;border-bottom:1px solid rgba(255,255,255,.10)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700">S</div>
+        <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13.5px;font-weight:600;color:#f8fafc">Shane McCaw</span><span style="font-size:10px;color:#64748b;letter-spacing:.08em;text-transform:uppercase">Customer portal</span></div>
+      </div>
+      <div style="width:1px;height:20px;background:rgba(255,255,255,.10)"></div>
+      <div style="display:flex;align-items:center;gap:7px"><span style="font-size:14px;color:#64748b">Pillars</span><span style="font-size:14px;color:#334155">/</span><span style="font-size:14px;font-weight:600;color:#f8fafc">{{hLabel}}</span></div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+        <div onClick="{{toggleSop}}" style="position:relative;width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:{{sopBtnBg}}" style-hover="background:rgba(255,255,255,.06)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"></path><path d="m3 7 2 2 4-4"></path><path d="M13 6h8M13 12h8M13 18h8"></path></svg>
+          <sc-if value="{{sopBadge}}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;border-radius:999px;background:#00B4D8;color:#020617;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px">{{sopCount}}</span></sc-if>
+        </div>
+        <div onClick="{{toggleAlerts}}" style="position:relative;width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:{{bellBtnBg}}" style-hover="background:rgba(255,255,255,.06)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+          <sc-if value="{{alertsBadge}}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;border-radius:999px;background:#00B4D8;color:#020617;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px">2</span></sc-if>
+        </div>
+        <div style="width:1px;height:20px;background:rgba(255,255,255,.10);margin:0 6px"></div>
+        <div onClick="{{toggleUser}}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 6px 3px 3px;border-radius:999px;background:{{userBtnBg}}" style-hover="background:rgba(255,255,255,.06)">
+          <div style="width:28px;height:28px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center;box-shadow:{{avatarRing}}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"></path></svg>
+          </div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+        </div>
+      </div>
+    </div>
+    <div style="height:64px;flex:none;display:flex;border-bottom:1px solid rgba(255,255,255,.10)">
+      <sc-for list="{{pillars}}" as="p" hint-placeholder-count="6">
+        <div onClick="{{p.onSel}}" style="flex:1;display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.06);cursor:pointer;background:{{p.tabBg}}" style-hover="background:rgba(255,255,255,.04)">
+          <div style="height:3px;background:{{p.band}}"></div>
+          <div style="flex:1;display:flex;align-items:center;gap:9px;padding:0 16px">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="{{p.primary}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{p.icon}}"></path></svg>
+            <span style="font-size:12.5px;font-weight:600;color:{{p.ink}}">{{p.label}}</span>
+            <span style="margin-left:auto;font-size:13px;font-weight:700;color:{{p.scoreInk}};font-variant-numeric:tabular-nums">{{p.score}}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    </sc-if>
+    <div style="flex:1;display:flex;min-height:0">
+      <sc-if value="{{chromeShow}}" hint-placeholder-val="{{ true }}">
+      <div style="width:232px;flex:none;border-right:1px solid rgba(255,255,255,.10);display:flex;flex-direction:column;padding:14px 10px 12px">
+        <div style="display:flex;flex-direction:column;gap:1px;overflow-y:auto;min-height:0;margin-bottom:10px">
+          <sc-for list="{{modules}}" as="m" hint-placeholder-count="10">
+            <div style="display:flex;align-items:center;gap:10px;padding:5.5px 10px;border-radius:6px;cursor:pointer;background:{{m.rowBg}}" style-hover="background:rgba(255,255,255,.04)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{m.ink}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{m.p1}}"></path><path d="{{m.p2}}"></path><path d="{{m.p3}}"></path></svg>
+              <span style="font-size:13px;color:{{m.ink}};font-weight:{{m.weight}}">{{m.label}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top:auto;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:linear-gradient(135deg, rgba(0,120,212,.12), rgba(139,92,246,.10));padding:14px 14px 12px">
+          <div style="display:flex;align-items:center;gap:7px;padding-bottom:8px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="#00B4D8"><path d="M12 3l1.7 4.4L18 9l-4.3 1.6L12 15l-1.7-4.4L6 9l4.3-1.6zM18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path></svg>
+            <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">TENANT STATUS</span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:5px">
+            <span style="font-size:30px;font-weight:800;color:{{scoreInk}};line-height:1;font-variant-numeric:tabular-nums">{{scoreText}}</span>
+            <sc-if value="{{showScore}}" hint-placeholder-val="{{ true }}"><span style="font-size:13px;color:#475569">/ 100</span></sc-if>
+          </div>
+          <div style="font-size:12.5px;font-weight:600;color:{{sevColor}};padding:5px 0 2px">{{sevLabel}}</div>
+          <div style="font-size:11.5px;color:#64748b;line-height:1.45">{{scanLine}}</div>
+          <sc-if value="{{scanRunning}}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:9px;height:3px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;position:relative"><div style="position:absolute;top:0;left:0;height:100%;width:34%;border-radius:999px;background:linear-gradient(90deg,#0078D4,#00B4D8);animation:scanSlide 1.8s ease-in-out infinite"></div></div>
+          </sc-if>
+          <sc-if value="{{showCta}}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{runScan}}" style="margin-top:10px;background:#0078D4;color:#fff;font-size:12.5px;font-weight:600;border-radius:6px;padding:8px 0;text-align:center;cursor:pointer" style-hover="background:#005A9E">Run first scan</div>
+          </sc-if>
+        </div>
+      </div>
+      </sc-if>
+      <div style="flex:1;min-width:0;overflow-y:auto">
+        <div style="max-width:1120px;margin:0 auto;padding:20px 28px 44px;display:flex;flex-direction:column;gap:14px">
+          <div style="position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.10);border-radius:14px;background:linear-gradient(135deg, rgba(0,120,212,.10), rgba(139,92,246,.08))">
+            <div style="height:3px;background:{{hBand}}"></div>
+            <div style="position:absolute;left:-140px;top:-150px;width:660px;height:360px;background:{{hGlow}};pointer-events:none"></div>
+            <div style="position:relative;padding:15px 20px 16px;display:flex;flex-direction:column;gap:13px">
+              <div style="display:flex;align-items:center;gap:13px;flex-wrap:wrap">
+                <div style="width:40px;height:40px;border-radius:10px;background:rgba(2,6,23,.35);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center;flex:none">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{hPrimary}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{hIcon}}"></path></svg>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:2px">
+                  <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">PILLAR · {{hChecksLine}}</span>
+                  <span style="font-size:20px;font-weight:700;color:#f8fafc">{{hLabel}}</span>
+                </div>
+                <div style="margin-left:auto;display:flex;flex-direction:column;gap:2px;align-items:flex-end">
+                  <span style="font-size:10.5px;color:#64748b">{{hScanLine1}}</span>
+                  <span style="font-size:10.5px;color:#475569">{{hScanLine2}}</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:stretch;gap:18px;flex-wrap:wrap">
+                <div style="display:flex;flex-direction:column;gap:4px;min-width:250px">
+                  <div style="display:flex;align-items:baseline;gap:8px">
+                    <span style="font-size:46px;font-weight:800;color:{{hScoreInk}};line-height:1;font-variant-numeric:tabular-nums">{{hScore}}</span>
+                    <sc-if value="{{hScored}}" hint-placeholder-val="{{ true }}"><span style="font-size:13px;color:#475569">/ 100</span></sc-if>
+                    <sc-if value="{{hDeltaShow}}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;font-weight:700;color:{{hDeltaInk}};border:1px solid {{hDeltaBorder}};border-radius:999px;padding:3px 10px">{{hDelta}}</span></sc-if>
+                  </div>
+                  <span style="font-size:12.5px;font-weight:600;color:{{hSevInk}}">{{hSevLabel}}</span>
+                  <span style="font-size:11.5px;color:#64748b;line-height:1.5;max-width:360px">{{hEval}}</span>
+                </div>
+                <div style="width:1px;background:rgba(255,255,255,.08)"></div>
+                <div style="display:flex;flex-direction:column;gap:7px;justify-content:center">
+                  <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">TREND</span>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <sc-for list="{{trendDots}}" as="d" hint-placeholder-count="5">
+                      <span style="width:9px;height:9px;border-radius:999px;background:{{d.bg}};border:{{d.border}}"></span>
+                    </sc-for>
+                  </div>
+                  <span style="font-size:10.5px;color:#64748b;max-width:170px;line-height:1.45">{{hTrendNote}}</span>
+                </div>
+                <div style="width:1px;background:rgba(255,255,255,.08)"></div>
+                <div style="display:flex;flex-direction:column;gap:7px;justify-content:center">
+                  <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">OPEN FINDINGS</span>
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                    <sc-for list="{{fcChips}}" as="c" hint-placeholder-count="2">
+                      <span style="font-size:10.5px;font-weight:600;color:{{c.ink}};border:1px solid {{c.border}};border-radius:999px;padding:3px 10px">{{c.t}}</span>
+                    </sc-for>
+                  </div>
+                  <span style="font-size:10.5px;color:#64748b;max-width:200px;line-height:1.45">{{hFindNote}}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);border:1px solid rgba(255,255,255,.10);border-radius:14px;background:rgba(255,255,255,.02);overflow:hidden">
+            <sc-for list="{{tiles}}" as="t" hint-placeholder-count="4">
+              <div style="padding:14px 16px 12px;display:flex;flex-direction:column;gap:3px;border-left:{{t.bl}}">
+                <span style="font-size:10px;font-weight:600;letter-spacing:.12em;color:#64748b">{{t.label}}</span>
+                <div style="display:flex;align-items:center;gap:8px;min-height:28px">
+                  <span style="font-size:24px;font-weight:800;color:{{t.bigInk}};line-height:1.1;font-variant-numeric:tabular-nums">{{t.big}}</span>
+                  <sc-if value="{{t.pillShow}}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;font-weight:600;color:#94a3b8;border:1px solid rgba(148,163,184,.30);border-radius:999px;padding:2px 8px">{{t.pill}}</span></sc-if>
+                </div>
+                <span style="font-size:11px;color:#64748b">{{t.sub}}</span>
+                <span style="font-size:9.5px;color:#475569">{{t.key}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:grid;grid-template-columns:1.55fr 1fr;gap:14px;align-items:start">
+            <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">FINDINGS FROM YOUR LATEST SCAN</span>
+                <div style="flex:1;height:1px;background:rgba(255,255,255,.06)"></div>
+              </div>
+              <sc-if value="{{findingsEmpty}}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:13px 16px;display:flex;align-items:center;gap:10px">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><path d="m9 11 3 3L22 4"></path></svg>
+                  <span style="font-size:13px;color:#cbd5e1;font-weight:600">{{findingsEmptyTitle}}</span>
+                  <span style="font-size:11.5px;color:#64748b">{{findingsEmptySub}}</span>
+                </div>
+              </sc-if>
+              <sc-for list="{{findings}}" as="f" hint-placeholder-count="2">
+                <div style="border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.015);padding:12px 14px 11px;display:flex;flex-direction:column;gap:7px">
+                  <div style="display:flex;align-items:flex-start;gap:9px">
+                    <span style="width:8px;height:8px;border-radius:999px;background:{{f.dot}};flex:none;margin-top:4px"></span>
+                    <span style="font-size:13px;font-weight:600;color:#f8fafc;line-height:1.45;flex:1">{{f.title}}</span>
+                    <span style="font-size:10px;font-weight:600;color:{{f.dot}};flex:none;letter-spacing:.08em">{{f.sev}}</span>
+                  </div>
+                  <span style="font-size:11.5px;color:#64748b;line-height:1.5;padding-left:17px">{{f.desc}}</span>
+                  <div style="display:flex;align-items:center;gap:10px;padding-left:17px;flex-wrap:wrap">
+                    <span style="font-size:9.5px;color:#475569;border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:2px 8px">{{f.key}}</span>
+                    <sc-if value="{{f.evShow}}" hint-placeholder-val="{{ true }}"><span style="font-size:11px;font-weight:600;color:#60a5fa;cursor:pointer">{{f.ev}}</span></sc-if>
+                    <sc-if value="{{f.noEv}}" hint-placeholder-val="{{ false }}"><span style="font-size:10.5px;color:#475569">No per-item evidence — a policy gap, not an object list</span></sc-if>
+                    <span style="margin-left:auto;font-size:10.5px;color:#94a3b8">{{f.rec}}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">WHAT FEEDS THIS SCORE</span>
+                <div style="flex:1;height:1px;background:rgba(255,255,255,.06)"></div>
+              </div>
+              <div style="border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.015);padding:13px 14px;display:flex;flex-direction:column;gap:10px">
+                <span style="font-size:11.5px;color:#94a3b8;line-height:1.5">{{covLine}}</span>
+                <div style="display:flex;height:8px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.05)">
+                  <sc-for list="{{covSegs}}" as="g" hint-placeholder-count="3"><div style="width:{{g.w}};background:{{g.bg}}"></div></sc-for>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:5px">
+                  <sc-for list="{{covLegend}}" as="l" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:center;gap:7px"><span style="width:7px;height:7px;border-radius:2px;background:{{l.bg}};flex:none"></span><span style="font-size:11px;color:#94a3b8;flex:1">{{l.t}}</span><span style="font-size:11.5px;font-weight:700;color:#cbd5e1;font-variant-numeric:tabular-nums">{{l.n}}</span></div>
+                  </sc-for>
+                </div>
+                <sc-if value="{{blockedShow}}" hint-placeholder-val="{{ false }}">
+                  <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:9px;display:flex;gap:8px">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4M12 17h.01"></path></svg>
+                    <span style="font-size:10.5px;color:#64748b;line-height:1.5">{{blockedNote}}</span>
+                  </div>
+                </sc-if>
+              </div>
+              <sc-if value="{{gapShow}}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.015);padding:13px 14px;display:flex;flex-direction:column;gap:9px">
+                  <div style="display:flex;align-items:center;gap:7px">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v10H5z"></path><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+                    <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">LICENCE-GATED — HONEST, NOT BROKEN</span>
+                  </div>
+                  <sc-for list="{{gapRows}}" as="g" hint-placeholder-count="2">
+                    <div style="display:flex;flex-direction:column;gap:2px">
+                      <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:12px;font-weight:600;color:#cbd5e1;flex:1">{{g.f}}</span><span style="font-size:11.5px;font-weight:700;color:#94a3b8;font-variant-numeric:tabular-nums">{{g.n}}</span></div>
+                      <span style="font-size:10.5px;color:#64748b">{{g.note}}</span>
+                    </div>
+                  </sc-for>
+                  <span style="font-size:10.5px;color:#475569;line-height:1.5;border-top:1px solid rgba(255,255,255,.06);padding-top:8px">Your SKUs are probed before each gated check runs — the gap is reported, never guessed.</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{driftShow}}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.015);padding:12px 14px;display:flex;flex-direction:column;gap:6px">
+                  <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">CONFIG DRIFT BASELINE</span>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:12px;font-weight:600;color:#cbd5e1;flex:1;min-width:0">{{driftLabel}}</span>
+                    <span style="font-size:10px;font-weight:600;color:{{driftInk}};border:1px solid {{driftBorder}};border-radius:999px;padding:2px 9px;flex:none">{{driftState}}</span>
+                  </div>
+                  <span style="font-size:10.5px;color:#64748b;line-height:1.5">{{driftNote}}</span>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">SIGNALS — WHAT WAS MEASURED</span>
+              <div style="flex:1;height:1px;background:rgba(255,255,255,.06)"></div>
+              <span style="font-size:10.5px;color:#475569">{{sigMeta}}</span>
+            </div>
+            <sc-for list="{{sigGroups}}" as="gr" hint-placeholder-count="3">
+              <div style="display:flex;flex-direction:column;gap:8px;padding-top:2px">
+                <span style="font-size:10px;font-weight:600;letter-spacing:.14em;color:#475569">{{gr.title}}</span>
+                <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:10px">
+                  <sc-for list="{{gr.cards}}" as="c" hint-placeholder-count="4">
+                    <div style="grid-column:span {{c.span}};background:{{c.bg}};border:{{c.bd}};border-radius:12px;padding:13px 15px 12px;display:flex;flex-direction:column;gap:2px;overflow:hidden;cursor:pointer;min-width:0" style-hover="filter:brightness(1.25)">
+                      <div style="display:flex;align-items:center;gap:9px">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{c.ink}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="{{c.icon}}"></path></svg>
+                        <span style="font-size:{{c.valFs}};font-weight:800;color:#f8fafc;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap">{{c.val}}</span>
+                        <sc-if value="{{c.deltaShow}}" hint-placeholder-val="{{ false }}"><span style="font-size:10.5px;font-weight:700;color:{{c.deltaInk}}">{{c.delta}}</span></sc-if>
+                        <div style="margin-left:auto;display:flex;align-items:flex-end;gap:2.5px;height:12px;flex:none">
+                          <sc-for list="{{c.bars}}" as="b" hint-placeholder-count="5"><span style="width:4px;height:{{b.h}};border-radius:1px;background:{{b.bg}}"></span></sc-for>
+                        </div>
+                      </div>
+                      <span style="font-size:13px;font-weight:600;color:#f8fafc;line-height:1.35;padding-top:5px">{{c.name}}</span>
+                      <span style="font-size:11px;color:#64748b;line-height:1.4">{{c.sub}}</span>
+                      <div style="display:flex;align-items:center;gap:6px;padding-top:9px;margin-top:auto;min-width:0">
+                        <span style="width:6px;height:6px;border-radius:999px;background:{{c.stInk}};flex:none"></span>
+                        <span style="font-size:10.5px;font-weight:700;color:{{c.stInk}}">{{c.status}}</span>
+                        <span style="margin-left:auto;font-size:9px;color:#334155;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{c.key}}</span>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+            <div style="display:flex;align-items:center;gap:8px;padding:2px 2px 0">
+              <span style="font-size:11px;color:#475569">{{sigMore}}</span>
+              <span style="margin-left:auto;font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer">View all checks</span>
+            </div>
+          </div>
+          <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">SKU LEDGER — PRICED WHERE A PRICE EXISTS</span>
+                <div style="flex:1;height:1px;background:rgba(255,255,255,.06)"></div>
+                <span style="font-size:10.5px;color:#475569">license:sku-utilization</span>
+              </div>
+              <div style="border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.015);padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:center;gap:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.06)">
+                  <span style="flex:1.6;font-size:9.5px;font-weight:600;letter-spacing:.12em;color:#475569">SKU</span>
+                  <span style="flex:.6;text-align:right;font-size:9.5px;font-weight:600;letter-spacing:.12em;color:#475569">PURCHASED</span>
+                  <span style="flex:.6;text-align:right;font-size:9.5px;font-weight:600;letter-spacing:.12em;color:#475569">ASSIGNED</span>
+                  <span style="flex:.6;text-align:right;font-size:9.5px;font-weight:600;letter-spacing:.12em;color:#475569">UNASSIGNED</span>
+                  <span style="flex:.7;text-align:right;font-size:9.5px;font-weight:600;letter-spacing:.12em;color:#475569">PRICE / MO</span>
+                  <span style="flex:.7;text-align:right;font-size:9.5px;font-weight:600;letter-spacing:.12em;color:#475569">WASTE / YR</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="flex:1.6;display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-size:12.5px;color:#f8fafc;font-weight:600">Office 365 E3</span><span style="font-size:10px;color:#475569">ENTERPRISEPACK</span></div>
+                  <span style="flex:.6;text-align:right;font-size:12.5px;color:#cbd5e1;font-variant-numeric:tabular-nums">1</span>
+                  <span style="flex:.6;text-align:right;font-size:12.5px;color:#cbd5e1;font-variant-numeric:tabular-nums">1</span>
+                  <span style="flex:.6;text-align:right;font-size:12.5px;color:#cbd5e1;font-variant-numeric:tabular-nums">0</span>
+                  <span style="flex:.7;text-align:right;font-size:12.5px;color:#cbd5e1;font-variant-numeric:tabular-nums">$23.00</span>
+                  <span style="flex:.7;text-align:right;font-size:12.5px;font-weight:700;color:#f8fafc;font-variant-numeric:tabular-nums">$0</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:7px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">
+                  <span style="font-size:9.5px;font-weight:600;letter-spacing:.12em;color:#475569">EXCLUDED FROM WASTE MATHS — WITH REASONS</span>
+                </div>
+                <sc-for list="{{ledgerEx}}" as="e" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <span style="flex:1;font-size:12px;color:#94a3b8;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{e.name}}</span>
+                    <span style="font-size:11.5px;color:#64748b;font-variant-numeric:tabular-nums">{{e.count}}</span>
+                    <span style="font-size:10px;color:#94a3b8;border:1px solid rgba(148,163,184,.30);border-radius:999px;padding:2px 9px;flex:none">{{e.reason}}</span>
+                  </div>
+                </sc-for>
+                <span style="font-size:10.5px;color:#475569;line-height:1.5;border-top:1px solid rgba(255,255,255,.06);padding-top:8px">Waste is computed only where a real unit price is on file — 1 of 4 SKUs today. Excluded is a rendered state, not a hidden one.</span>
+              </div>
+            </div>
+          </sc-if>
+          <div style="text-align:center;font-size:10.5px;color:#475569;line-height:1.6;padding-top:4px">{{provLine}}</div>
+        </div>
+      </div>
+      <sc-if value="{{chromeShow}}" hint-placeholder-val="{{ true }}">
+      <div style="width:{{botW}};flex:none;border-left:1px solid rgba(255,255,255,.10);background:linear-gradient(120deg, rgba(0,120,212,.10), rgba(139,92,246,.08));transition:width 260ms cubic-bezier(.2,.8,.2,1);overflow:hidden;display:flex;flex-direction:column;min-height:0">
+        <sc-if value="{{botClosed}}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{toggleBot}}" style="flex:1;display:flex;flex-direction:column;align-items:center;padding:12px 0;cursor:pointer" style-hover="background:rgba(255,255,255,.03)">
+            <div style="width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path><path d="M12 8V4H8"></path></svg>
+            </div>
+            <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:600;letter-spacing:.18em;color:#64748b;margin:auto 0;text-transform:uppercase">ShaneBot</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>
+          </div>
+        </sc-if>
+        <sc-if value="{{botOpen}}" hint-placeholder-val="{{ false }}">
+          <div style="width:380px;height:100%;display:flex;flex-direction:column;min-height:0">
+            <div style="height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid rgba(255,255,255,.08)">
+              <div style="width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path><path d="M12 8V4H8"></path></svg>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;font-weight:600;color:#f8fafc">ShaneBot</span><span style="font-size:10.5px;color:#64748b">Answers from your own tenant</span></div>
+              <div onClick="{{toggleBot}}" style="margin-left:auto;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:rgba(255,255,255,.05)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+              </div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:0 28px;text-align:center">
+              <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path><path d="M12 8V4H8"></path></svg>
+              </div>
+              <span style="font-size:13px;font-weight:600;color:#cbd5e1">Ask about your tenant</span>
+              <span style="font-size:12px;color:#64748b;line-height:1.5">I answer from your own data — scores, checks, licences — and show a card when there's something real to show.</span>
+              <div style="display:flex;flex-direction:column;gap:6px;width:100%;padding-top:6px">
+                <span style="font-size:12px;color:#94a3b8;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:7px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">{{botQ1}}</span>
+                <span style="font-size:12px;color:#94a3b8;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:7px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">Which checks can't run on my licences?</span>
+                <span style="font-size:12px;color:#94a3b8;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:7px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">What does licence-gated mean?</span>
+              </div>
+            </div>
+            <div style="flex:none;padding:12px 14px 14px;border-top:1px solid rgba(255,255,255,.08)">
+              <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:5px 5px 5px 14px">
+                <span style="flex:1;font-size:13px;color:#475569">Ask about your tenant…</span>
+                <div style="width:28px;height:28px;border-radius:999px;background:#0078D4;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:#005A9E">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7M12 19V5"></path></svg>
+                </div>
+              </div>
+              <div style="font-size:10.5px;color:#475569;padding:8px 4px 0">Answers draw only on your tenant's own data</div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+      </sc-if>
+    </div>
+  </div>
+  <sc-if value="{{overlayShow}}" hint-placeholder-val="{{ false }}"><div onClick="{{closeAll}}" style="position:fixed;inset:0;z-index:40"></div></sc-if>
+  <sc-if value="{{showUserPop}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;top:{{popTop}};right:16px;z-index:50;width:312px;background:rgba(11,17,32,.98);border:1px solid rgba(255,255,255,.10);border-radius:14px;box-shadow:0 18px 48px rgba(0,0,0,.55);overflow:hidden">
+      <sc-if value="{{impersonated}}" hint-placeholder-val="{{ false }}">
+        <div style="margin:10px 10px 0;border:1px solid rgba(0,180,216,.45);background:rgba(0,180,216,.08);border-radius:8px;padding:10px 12px;display:flex;gap:9px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"></path><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Impersonation session</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.45">An operator at Shane McCaw is viewing this portal as the customer.</span>
+            <span style="font-size:11.5px;font-weight:600;color:#00B4D8;padding-top:2px;cursor:pointer">End session</span>
+          </div>
+        </div>
+      </sc-if>
+      <div style="display:flex;align-items:center;gap:11px;padding:14px 14px 12px">
+        <div style="width:36px;height:36px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"></path></svg>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+          <span style="font-size:12px;color:#64748b">Name not provided</span>
+          <span style="font-size:12.5px;color:#94a3b8;border-bottom:1px dashed rgba(148,163,184,.35);padding-bottom:1px">signed-in email</span>
+        </div>
+        <span style="margin-left:auto;font-size:10px;font-weight:600;color:#94a3b8;border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:3px 8px;flex:none">Customer</span>
+      </div>
+      <sc-if value="{{mfaPending}}" hint-placeholder-val="{{ false }}">
+        <div style="margin:0 10px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.07);border-radius:8px;padding:9px 12px;display:flex;align-items:center;gap:9px;cursor:pointer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.3 0C14.3 3.8 16.8 5 18.8 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4M12 16h.01"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:1px">
+            <span style="font-size:12.5px;font-weight:600;color:#f8fafc">MFA setup pending</span>
+            <span style="font-size:11px;color:#94a3b8">Enrolment is enforced — set it up now</span>
+          </div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto"><path d="m9 18 6-6-6-6"></path></svg>
+        </div>
+      </sc-if>
+      <div style="padding:8px 6px 4px;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"></path><path d="M2 10h20"></path></svg>
+          <span style="font-size:13px;color:#cbd5e1">Billing</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"></path><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"></path><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"></path></svg>
+          <span style="font-size:13px;color:#cbd5e1">Webhooks</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path></svg>
+          <span style="font-size:13px;color:#cbd5e1">Settings</span>
+        </div>
+        <div style="height:1px;background:rgba(255,255,255,.08);margin:4px 10px"></div>
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v10H5z"></path><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Account security</span><span style="font-size:10.5px;color:#64748b">Password · MFA · active sessions</span></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5M12 15V3"></path></svg>
+          <span style="font-size:13px;color:#cbd5e1">Export my data</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M10 11v6M14 11v6"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Request deletion</span><span style="font-size:10.5px;color:#64748b">Starts a request — nothing is deleted immediately</span></div>
+        </div>
+        <div style="height:1px;background:rgba(255,255,255,.08);margin:4px 10px"></div>
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5M21 12H9"></path></svg>
+          <span style="font-size:13px;color:#cbd5e1">Sign out</span>
+        </div>
+      </div>
+      <div style="padding:9px 16px 11px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:7px">
+        <div style="width:16px;height:16px;border-radius:4px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:8px;font-weight:700">S</div>
+        <span style="font-size:10.5px;color:#64748b">Managed by Shane McCaw</span>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{showAlertsPop}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;top:{{popTop}};right:60px;z-index:50;width:380px;background:rgba(11,17,32,.98);border:1px solid rgba(255,255,255,.10);border-radius:14px;box-shadow:0 18px 48px rgba(0,0,0,.55);overflow:hidden">
+      <sc-if value="{{alertsEmpty}}" hint-placeholder-val="{{ false }}">
+        <div style="padding:13px 14px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.08)">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Alerts</span>
+          <span style="margin-left:auto;font-size:11px;color:#64748b">Up to date</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:30px 24px 26px;text-align:center">
+          <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+          </div>
+          <span style="font-size:13px;font-weight:600;color:#cbd5e1">Nothing needs your attention</span>
+          <span style="font-size:12px;color:#64748b;line-height:1.5;max-width:250px">Alerts land here when a scan, drift, or your MSP's work triggers one of your conditions.</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{alertsFull}}" hint-placeholder-val="{{ false }}">
+        <div style="padding:13px 14px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.08)">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Alerts</span>
+          <span style="font-size:10px;font-weight:600;color:#00B4D8;border:1px solid rgba(0,180,216,.45);border-radius:999px;padding:2px 8px">2 new</span>
+          <span style="margin-left:auto;font-size:11px;font-weight:600;color:#60a5fa;cursor:pointer">Mark all read</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;padding:6px 14px;border-bottom:1px solid rgba(255,255,255,.06)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"></path></svg>
+          <span style="font-size:10.5px;color:#64748b">Quiet hours 19:00 – 07:30 · critical breaks through</span>
+        </div>
+        <div style="display:flex;flex-direction:column;padding:6px">
+          <sc-for list="{{alerts}}" as="a" hint-placeholder-count="5">
+            <div style="display:flex;gap:10px;padding:9px 9px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.03)">
+              <div style="width:30px;height:30px;flex:none;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{a.iconInk}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{a.p1}}"></path><path d="{{a.p2}}"></path></svg>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-size:12.5px;font-weight:600;color:{{a.titleInk}}">{{a.title}}</span>
+                  <sc-if value="{{a.unread}}" hint-placeholder-val="{{ false }}"><span style="margin-left:auto;width:6px;height:6px;border-radius:999px;background:#00B4D8;flex:none"></span></sc-if>
+                </div>
+                <sc-if value="{{a.isDelta}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:baseline;gap:5px;font-variant-numeric:tabular-nums">
+                    <span style="font-size:11.5px;color:#64748b">Overall score</span>
+                    <span style="font-size:11.5px;color:#475569">46</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="align-self:center"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+                    <span style="font-size:11.5px;font-weight:700;color:#00B4D8">54</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{a.notDelta}}" hint-placeholder-val="{{ true }}"><span style="font-size:11.5px;color:#94a3b8">{{a.sub}}</span></sc-if>
+                <span style="font-size:10.5px;color:#64748b">{{a.meta}}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid rgba(255,255,255,.08);cursor:pointer" style-hover="background:rgba(255,255,255,.03)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path></svg>
+        <span style="font-size:12px;color:#94a3b8">Alert preferences — in Settings</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto"><path d="m9 18 6-6-6-6"></path></svg>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{showSopPop}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;top:{{popTop}};right:104px;z-index:50;width:380px;background:rgba(11,17,32,.98);border:1px solid rgba(255,255,255,.10);border-radius:14px;box-shadow:0 18px 48px rgba(0,0,0,.55);overflow:hidden">
+      <sc-if value="{{sopEmpty}}" hint-placeholder-val="{{ true }}">
+        <div style="padding:13px 14px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.08)">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">SOP activity</span>
+          <span style="margin-left:auto;font-size:11px;color:#64748b">Idle</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:30px 24px 26px;text-align:center">
+          <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"></path><path d="m3 7 2 2 4-4"></path><path d="M13 6h8M13 12h8M13 18h8"></path></svg>
+          </div>
+          <span style="font-size:13px;font-weight:600;color:#cbd5e1">Nothing running right now</span>
+          <span style="font-size:12px;color:#64748b;line-height:1.5;max-width:250px">When your MSP executes a procedure against your tenant, its live progress appears here.</span>
+          <span style="font-size:12px;font-weight:600;color:#60a5fa;cursor:pointer">View SOP library</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{sopFull}}" hint-placeholder-val="{{ false }}">
+        <div style="padding:13px 14px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.08)">
+          <span style="width:7px;height:7px;border-radius:999px;background:#00B4D8"></span>
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">SOP activity</span>
+          <span style="margin-left:auto;font-size:11px;color:#64748b">{{sopCount}} in queue</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:12px 12px 4px">
+          <sc-for list="{{sopsShown}}" as="s" hint-placeholder-count="2">
+            <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.02);padding:11px 12px 12px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:12.5px;font-weight:600;color:#f8fafc">{{s.title}}</span>
+                <span style="margin-left:auto;font-size:10px;font-weight:600;color:{{s.chipInk}};border:1px solid {{s.chipBorder}};background:{{s.chipBg}};border-radius:999px;padding:2px 9px;flex:none">{{s.chip}}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;padding:6px 0 7px">
+                <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px">{{s.mode}}</span>
+                <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px">{{s.cr}}</span>
+              </div>
+              <div style="font-size:11.5px;color:#94a3b8;padding-bottom:8px">{{s.step}}</div>
+              <div style="height:3px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden"><div style="height:100%;width:{{s.pctW}};border-radius:999px;background:linear-gradient(90deg,#0078D4,#00B4D8)"></div></div>
+              <div style="display:flex;align-items:center;gap:5px;padding-top:8px">
+                <span style="font-size:10.5px;color:#64748b">{{s.meta}} · run by</span>
+                <span style="font-size:10.5px;color:#64748b;border-bottom:1px dashed rgba(148,163,184,.35)">operator</span>
+                <span style="font-size:10.5px;color:#64748b">· owner</span>
+                <span style="font-size:10.5px;color:#64748b;border-bottom:1px dashed rgba(148,163,184,.35)">owner</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:9px 14px 12px;display:flex;align-items:center">
+          <span style="font-size:11px;color:#64748b">Steps continue even if you close this</span>
+          <span style="margin-left:auto;font-size:12px;font-weight:600;color:#60a5fa;cursor:pointer">Open Runbooks</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;pillar&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;governance&quot;, &quot;security&quot;, &quot;compliance&quot;, &quot;licensing&quot;, &quot;adoption&quot;, &quot;health&quot;], &quot;default&quot;: &quot;governance&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Pillar page&quot;},
+  &quot;unscored&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Pillar page&quot;},
+  &quot;severity&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;none&quot;, &quot;healthy&quot;, &quot;attention&quot;, &quot;critical&quot;], &quot;default&quot;: &quot;attention&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Tenant state&quot;},
+  &quot;scanRunning&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Tenant state&quot;},
+  &quot;sopRuns&quot;: {&quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 0, &quot;min&quot;: 0, &quot;max&quot;: 3, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Activity&quot;},
+  &quot;impersonated&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Session&quot;},
+  &quot;mfaPending&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Session&quot;}
+}">
+class Component extends DCLogic {
+  state = { pillar: null, open: null, bot: false, demoScan: false, demoResult: null };
+  componentDidUpdate(prev) { if (prev.pillar !== this.props.pillar && this.state.pillar) this.setState({ pillar: null }); }
+  componentWillUnmount() { if (this._t) clearTimeout(this._t); }
+  renderVals() {
+    const chrome = !this.props.embedded;
+    const sev = this.state.demoResult || (this.props.severity ?? "attention");
+    const scanned = sev !== "none";
+    const scan = this.state.demoScan || !!this.props.scanRunning;
+    const sop = this.props.sopRuns ?? 0;
+    const imp = !!this.props.impersonated;
+    const mfa = !!this.props.mfaPending;
+    const unscored = !!this.props.unscored && scanned;
+    const open = this.state.open;
+    const SEVC = (s) => (s >= 60 ? "#34d399" : s >= 50 ? "#fbbf24" : "#f87171");
+    const SEVL = (s) => (s >= 60 ? "Healthy" : s >= 50 ? "Attention required" : "Critical");
+    const CH = {
+      ok: ["ok", "#34d399", "1px solid rgba(52,211,153,.30)", "#34d399"],
+      partial: ["partial", "#00B4D8", "1px solid rgba(0,180,216,.40)", "#00B4D8"],
+      gap: ["licence gap", "#94a3b8", "1px solid rgba(148,163,184,.30)", "#64748b"],
+      err: ["errored", "#fbbf24", "1px solid rgba(251,191,36,.35)", "#fbbf24"],
+      never: ["never run", "#64748b", "1px dashed rgba(148,163,184,.30)", "#475569"],
+      queued: ["not yet run", "#64748b", "1px dashed rgba(148,163,184,.30)", "#475569"],
+    };
+    const SEGC = { ok: "#34d399", partial: "#00B4D8", gap: "#64748b", blocked: "#fbbf24", queued: "#334155" };
+    const FSEV = { critical: "#f87171", warning: "#fbbf24", info: "#60a5fa" };
+    const PLACEHOLDER_DESC = "This check flagged items that need review. A readable summary for this check isn't available yet.";
+    const ICONS = {
+      governance: "M16 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM12 3v18M7 21h5M9 6h6M3 10h4M17 10h4",
+      security: "M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.3 0C14.3 3.8 16.8 5 18.8 5a1 1 0 0 1 1 1z",
+      compliance: "M16 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2",
+      licensing: "M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76zM16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 18V6",
+      adoption: "M18 21a8 8 0 0 0-16 0M10 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3",
+      health: "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2",
+    };
+    const D = {
+      governance: {
+        label: "Governance", primary: "#3B82F6", accent: "#60A5FA",
+        glow: "radial-gradient(closest-side, rgba(59,130,246,.30), rgba(2,6,23,0) 100%)",
+        score: 54, delta: "no change", flat: true, total: 44, evaluable: 30,
+        evalLine: "Scored from 30 evaluable governance signals · minimum 2 required",
+        segs: [["ok", 36, "observed with data"], ["gap", 3, "licence-gated — your SKUs can't feed them"], ["blocked", 5, "errored or can't run"]],
+        blockedNote: "Blocked here: a Graph 404 on branding, the SharePoint app-credential error, one PowerShell mail check, and 2 catalog rows marked inactive that can never run. Errored means no data — never zero.",
+        gaps: [["Entra ID P1 or P2", "3 checks", "sign-in activity behind guest & licence staleness maths"]],
+        drift: ["public-teams-discoverable", "tracked", "ok", "Baseline captured with today's scan · 0 deviations since. A drift event appears the moment a tracked setting changes."],
+        fc: { critical: 0, warning: 2, info: 0 },
+        tiles: [
+          ["GROUPS WITH NO OWNER", "12", "of 104 groups scanned", "governance:ownerless-groups"],
+          ["PUBLIC, DISCOVERABLE TEAMS", "5", "of 18 teams", "governance:public-teams-discoverable"],
+          ["GUEST ACCOUNTS", "3", "2 with no recent sign-in", "governance:guest-count"],
+          ["DORMANT SERVICE PRINCIPALS", "61", "of 498 enterprise apps", "appgov:dormant-service-principals"],
+        ],
+        findings: [
+          ["warning", "Groups exist with no owner — nobody is accountable for membership or lifecycle", "governance:ownerless-groups", "Evidence · 12 groups"],
+          ["warning", "5 Teams are public and discoverable by anyone in the directory", "governance:public-teams-discoverable", "Evidence · 5 teams"],
+        ],
+        groups: [
+          ["SHARING & COLLABORATION", [
+            ["users", "Public, discoverable teams", "5", "+1", "of 18 teams", "meh", 4, "governance:public-teams-discoverable"],
+            ["users", "Public Microsoft 365 groups", "24", "±0", "of 78 groups", "meh", 4, "governance:public-groups-discoverable"],
+            ["grid", "Inactive SharePoint sites", "21", "+2", "no activity in 90 days", "meh", 4, "sharepoint:inactive-sites"],
+            ["globe", "OneDrive external sharing", "on", "", "external sharing enabled", "meh", 3, "onedrive:external-sharing-settings"],
+            ["grid", "Sites carrying a label", "12", "±0", "of 99 sites", "meh", 3, "sharepoint:site-label-coverage"],
+            ["users", "Channels across teams", "27", "±0", "in 18 teams", "good", 3, "teams:channel-sprawl"],
+            ["lock", "Tenant sharing capability", "—", "", "SharePoint app credential error", "na", 3, "sharepoint:tenant-sharing-capability"],
+            ["globe", "Anonymous links", "—", "", "inactive in catalog — can never run", "na", 6, "sharepoint:anonymous-links"],
+            ["globe", "Org-wide links", "—", "", "inactive in catalog — can never run", "na", 6, "sharepoint:orgwide-links"],
+          ]],
+          ["TEAMS GOVERNANCE", [
+            ["users", "Teams without an owner", "2", "±0", "of 18 teams", "meh", 4, "teams:ownerless-teams"],
+            ["users", "Teams with guests", "4", "+1", "of 18 teams", "meh", 3, "teams:guest-membership"],
+            ["users", "Inactive teams", "6", "±0", "no activity in 90 days", "meh", 3, "teams:inactive-teams"],
+            ["globe", "External access", "on", "", "open to all domains", "meh", 2, "teams:external-access-settings"],
+            ["shield", "Guest settings", "OK", "", "per-team guest controls read", "good", 4, "teams:guest-settings-governance"],
+            ["file", "Meeting policy coverage", "18 / 18", "±0", "teams with a policy", "good", 3, "teams:meeting-policy-coverage"],
+            ["file", "Messaging policy coverage", "18 / 18", "±0", "teams with a policy", "good", 3, "teams:messaging-policy-coverage"],
+            ["grid", "Teams inventoried", "18", "±0", "full team census", "good", 2, "teams:inventory-count"],
+          ]],
+          ["IDENTITY & OWNERSHIP", [
+            ["users", "Groups without an owner", "12", "+2", "of 104 groups scanned", "meh", 5, "governance:ownerless-groups"],
+            ["users", "Stale guests", "2", "+1", "no sign-in in 90 days", "meh", 3, "governance:guest-staleness"],
+            ["shield", "Empty security groups", "4", "±0", "of 9 security groups", "meh", 2, "governance:empty-security-groups"],
+            ["users", "Guest accounts", "3", "±0", "in the directory", "good", 2, "governance:guest-count"],
+            ["users", "Stale user accounts", "5", "±0", "of 24 users · no sign-in 90d", "meh", 4, "identity:stale-accounts"],
+            ["lock", "Guest MFA enforcement", "0", "±0", "no policy covers guests", "meh", 4, "identity:guest-mfa-enforcement"],
+            ["globe", "B2B invite policy", "open", "", "guest invites unrestricted", "meh", 2, "identity:b2b-collaboration-settings"],
+            ["globe", "Cross-tenant access", "set", "", "policy configured", "good", 2, "identity:cross-tenant-access"],
+          ]],
+          ["REVIEWS & LIFECYCLE", [
+            ["file", "Access reviews completed", "0", "±0", "none have ever run", "meh", 4, "governance:access-review-completion"],
+            ["users", "Guest access reviews", "0", "±0", "no review covers guests", "meh", 4, "governance:guest-access-reviews"],
+            ["file", "Overdue access reviews", "0", "±0", "none overdue", "good", 4, "governance:overdue-access-reviews"],
+            ["grid", "Group expiration policy", "0", "±0", "no expiration configured", "meh", 3, "governance:group-expiration-policy"],
+            ["users", "Dynamic groups in use", "8", "±0", "of 104 groups", "good", 3, "governance:dynamic-group-usage"],
+            ["file", "Sensitivity labels published", "0", "±0", "none exist yet", "meh", 3, "governance:sensitivity-label-adoption"],
+            ["file", "Auto-labeling policy", "0", "±0", "none configured", "meh", 3, "governance:auto-labeling-coverage"],
+          ]],
+          ["APPS & MAIL", [
+            ["file", "Dormant service principals", "61", "+3", "of 498 enterprise apps", "meh", 5, "appgov:dormant-service-principals"],
+            ["file", "Stale app registrations", "3", "±0", "of 11 · over 12 months old", "meh", 4, "appgov:stale-app-registrations"],
+            ["shield", "User consent policy", "on", "", "users can grant app consent", "meh", 3, "appgov:consent-policy-status"],
+            ["mail", "Distribution lists", "17", "±0", "mail-enabled groups", "good", 3, "exchange:distribution-list-count"],
+            ["mail", "Mail flow rules", "—", "", "PowerShell errored", "na", 3, "exchange:mail-flow-rule-review"],
+            ["file", "Labels for Copilot to honour", "0", "±0", "none published", "meh", 3, "copilot:sensitivity-labels-exist"],
+            ["mail", "Microsoft announcements", "486", "+12", "tracked for your services", "good", 3, "m365:message-center"],
+          ]],
+          ["LICENSING TOUCHPOINTS & BLOCKED", [
+            ["users", "Group-based licensing", "0", "±0", "no groups assign licences", "meh", 4, "cost:group-based-licensing-adoption"],
+            ["file", "SKU utilisation", "1 / 1", "±0", "purchased / assigned", "good", 4, "license:sku-utilization"],
+            ["lock", "Licences on inactive accounts", "—", "", "Needs Entra ID P1", "na", 4, "license:unused-assigned"],
+            ["users", "Departed-user access", "—", "", "Needs Entra ID P1", "na", 6, "onedrive:departed-user-access"],
+            ["grid", "Tenant branding", "—", "", "Graph 404 — errored", "na", 6, "platform:branding-config"],
+          ]],
+        ],
+      },
+      security: {
+        label: "Security", primary: "#8B5CF6", accent: "#A78BFA",
+        glow: "radial-gradient(closest-side, rgba(139,92,246,.30), rgba(2,6,23,0) 100%)",
+        score: 58, delta: "+4 since last scan", total: 62, evaluable: 40,
+        evalLine: "Scored from 40 evaluable security signals · minimum 2 required",
+        segs: [["ok", 37, "observed with data"], ["gap", 18, "licence-gated — your SKUs can't feed them"], ["blocked", 7, "errored or can't run"]],
+        blockedNote: "PowerShell mail checks and the SharePoint sharing check ran and errored; 2 catalog rows are inactive. Errored means no data — never zero.",
+        gaps: [["Entra ID P1 or P2", "9 checks", "identity risk, MFA reports, PIM"], ["Defender for Office 365", "9 checks", "alerts, incidents, safe links & attachments"]],
+        drift: ["ca-policy · email-authentication", "tracked", "ok", "2 baselines captured · 0 deviations since. A drift event appears the moment a tracked setting changes."],
+        fc: { critical: 1, warning: 2, info: 0 },
+        tiles: [
+          ["CONDITIONAL ACCESS POLICIES", "0", "none exist in this tenant", "identity:ca-policy-count"],
+          ["GLOBAL ADMINISTRATORS", "6", "recommended maximum is 4", "identity:global-admin-count"],
+          ["MFA-REGISTERED USERS", "—", "registration report is P1-gated", "identity:mfa-registration", "Needs Entra ID P1"],
+          ["SECURE SCORE", "41.6", "of 74 points · 90 controls", "security:secure-score"],
+        ],
+        findings: [
+          ["critical", "No Conditional Access policy blocks legacy authentication — MFA can be bypassed entirely", "identity:ca-legacy-auth-block", null],
+          ["warning", "No DMARC record found at _dmarc.<your domain>", "exchange:dkim-spf-dmarc-status", "Evidence · 1 domain"],
+          ["warning", "6 users hold Global Administrator — above the recommended maximum of 4", "identity:global-admin-count", "Evidence · 6 admins"],
+        ],
+        groups: [
+          ["CONDITIONAL ACCESS", [
+            ["shield", "Conditional Access policies", "0", "±0", "none exist — nothing is enforced", "bad", 6, "identity:ca-policy-count"],
+            ["shield", "Legacy auth block", "0", "±0", "legacy auth is not blocked — MFA can be bypassed", "bad", 6, "identity:ca-legacy-auth-block"],
+            ["lock", "MFA coverage policy", "0", "±0", "no policy requires MFA", "meh", 3, "identity:ca-mfa-coverage"],
+            ["device", "Device compliance policy", "0", "±0", "no CA device requirement", "meh", 3, "identity:ca-device-compliance"],
+            ["users", "Guest MFA policy", "0", "±0", "guests sign in without MFA", "meh", 3, "identity:guest-mfa-enforcement"],
+            ["shield", "Sign-in risk policy", "0", "±0", "none configured", "meh", 3, "identity:signin-risk-policy"],
+            ["shield", "User risk policy", "0", "±0", "none configured", "meh", 3, "identity:user-risk-policy"],
+            ["file", "Report-only policies", "0", "±0", "nothing being piloted", "meh", 3, "identity:ca-report-only"],
+            ["shield", "Continuous access evaluation", "0", "±0", "no CAE policy", "meh", 2, "identity:continuous-access-evaluation"],
+            ["globe", "Named locations", "0", "±0", "none defined", "meh", 2, "identity:named-locations"],
+            ["globe", "Cross-tenant access", "set", "", "policy configured", "good", 2, "identity:cross-tenant-access"],
+          ]],
+          ["IDENTITY RISK — ENTRA ID P1/P2 GATED", [
+            ["lock", "MFA registration", "—", "", "Needs Entra ID P1", "na", 3, "identity:mfa-registration"],
+            ["lock", "Privileged MFA gap", "—", "", "Needs Entra ID P1", "na", 3, "identity:privileged-mfa-gap"],
+            ["lock", "MFA method breakdown", "—", "", "Needs Entra ID P1", "na", 3, "identity:mfa-method-breakdown"],
+            ["shield", "Legacy auth sign-ins", "—", "", "Needs Entra ID P1", "na", 3, "identity:legacy-auth-usage"],
+            ["users", "Risky users", "—", "", "Needs Entra ID P2", "na", 3, "identity:risky-users"],
+            ["shield", "Risky sign-ins", "—", "", "Needs Entra ID P2", "na", 3, "identity:risky-signins"],
+            ["lock", "PIM eligible roles", "—", "", "Needs Entra ID P2", "na", 3, "identity:pim-eligible-roles"],
+            ["users", "PIM groups", "—", "", "Needs Entra ID P2", "na", 3, "identity:pim-groups"],
+          ]],
+          ["PRIVILEGE & ACCOUNTS", [
+            ["users", "Global Administrators", "6", "+1", "recommended max 4", "meh", 4, "identity:global-admin-count"],
+            ["lock", "Standing privileged assignments", "18", "±0", "permanent — no PIM in place", "meh", 4, "identity:pim-permanent-roles"],
+            ["shield", "Break-glass accounts", "OK", "", "accounts healthy", "good", 2, "identity:break-glass-health"],
+            ["file", "Role definitions read", "145", "±0", "full RBAC census", "good", 2, "security:azure-roleDefinitions-compliance"],
+            ["users", "Stale user accounts", "5", "±0", "of 24 · no sign-in 90d", "meh", 3, "identity:stale-accounts"],
+            ["users", "Stale guests", "2", "+1", "no sign-in in 90 days", "meh", 3, "governance:guest-staleness"],
+            ["lock", "Self-service password reset", "on", "", "enabled for admins", "good", 2, "identity:sspr-config"],
+            ["shield", "Password protection", "on", "", "banned-password policy", "good", 2, "security:password-protection-policy"],
+            ["lock", "Password expiration", "never", "", "9 domains — no expiry set", "meh", 2, "identity:password-expiration-policy"],
+            ["lock", "Tenant password expiry", "never", "", "tenant-wide — no expiry set", "meh", 12, "platform:tenant-password-expiration"],
+          ]],
+          ["DEFENDER & ALERTS — LICENCE-GATED", [
+            ["shield", "Alerts by severity", "—", "", "Needs Defender for Office 365", "na", 3, "security:alert-count-by-severity"],
+            ["shield", "Open incidents", "—", "", "Needs Defender for Office 365", "na", 3, "security:open-incidents"],
+            ["shield", "Automated investigation", "—", "", "Needs Defender for Office 365", "na", 3, "security:automated-investigation"],
+            ["users", "Insider risk alerts", "—", "", "Needs Defender for Office 365", "na", 3, "security:insider-risk-alerts"],
+            ["mail", "Anti-phishing coverage", "—", "", "Needs Defender for Office 365", "na", 3, "security:antiphishing-coverage"],
+            ["globe", "Safe Links coverage", "—", "", "Needs Defender for Office 365", "na", 3, "security:safe-links-coverage"],
+            ["mail", "Safe Attachments coverage", "—", "", "Needs Defender for Office 365", "na", 3, "security:safe-attachments-coverage"],
+            ["file", "DLP violations", "—", "", "Needs Defender for Office 365", "na", 3, "security:dlp-violations"],
+            ["chart", "DLP true-positive rate", "—", "", "Needs Defender for Office 365", "na", 4, "security:dlp-true-positive-rate"],
+            ["file", "Workload identity risk", "—", "", "Needs Entra Workload ID", "na", 4, "appgov:workload-identity-risk"],
+            ["chart", "Licence tier distribution", "4", "±0", "SKUs read — no P1/P2, no Defender", "good", 4, "cost:entra-license-tier-distribution"],
+          ]],
+          ["DEVICE SECURITY", [
+            ["device", "App protection policies", "0", "±0", "none exist", "meh", 2, "devices:app-protection-coverage"],
+            ["lock", "BitLocker keys escrowed", "0", "±0", "no keys on file", "meh", 2, "devices:bitlocker-key-escrow"],
+            ["file", "Compliance policies", "0", "±0", "none exist", "meh", 2, "devices:compliance-policy-coverage"],
+            ["device", "Non-compliant devices", "0", "±0", "no enrolled devices", "good", 2, "devices:compliant-vs-noncompliant"],
+            ["lock", "Unencrypted devices", "0", "±0", "no enrolled devices", "good", 2, "devices:encryption-status"],
+            ["device", "Outdated OS devices", "0", "±0", "no enrolled devices", "good", 2, "devices:os-patch-compliance"],
+          ]],
+          ["MAIL & DNS", [
+            ["globe", "Email authentication (DNS)", "2 gaps", "±0", "DMARC + DKIM missing · SPF ok", "meh", 4, "exchange:dkim-spf-dmarc-status"],
+            ["mail", "Anti-spam policies", "—", "", "PowerShell errored", "na", 2, "exchange:antispam-policy-coverage"],
+            ["mail", "Transport rules", "—", "", "PowerShell errored", "na", 2, "exchange:transport-rule-count"],
+            ["mail", "Mail flow rules", "—", "", "PowerShell errored", "na", 2, "exchange:mail-flow-rule-review"],
+            ["mail", "Connector TLS health", "—", "", "PowerShell errored", "na", 2, "exchange:connector-health"],
+          ]],
+          ["APP GOVERNANCE & SHAREPOINT", [
+            ["file", "Risky app permission grants", "9", "±0", "of 37 grants", "meh", 4, "appgov:risky-permission-grants"],
+            ["file", "Unreviewed consents", "12", "±0", "of 37 grants", "meh", 4, "appgov:unreviewed-consents"],
+            ["shield", "User consent policy", "on", "", "users can grant app consent", "meh", 4, "appgov:consent-policy-status"],
+            ["globe", "Sites Copilot could over-reach", "7", "+1", "93 of 99 sites scanned", "meh", 3, "copilot:data-exposure-risk"],
+            ["file", "Enterprise apps inventoried", "498", "±0", "service principals", "good", 3, "appgov:enterprise-app-count"],
+            ["lock", "Tenant sharing capability", "—", "", "SharePoint app credential error", "na", 2, "sharepoint:tenant-sharing-capability"],
+            ["globe", "Anonymous links", "—", "", "inactive in catalog", "na", 2, "sharepoint:anonymous-links"],
+            ["mail", "Auto-forwarding rules", "—", "", "in no package — never runs", "na", 2, "exchange:auto-forwarding-rules"],
+          ]],
+          ["TEAMS", [
+            ["globe", "External access", "on", "", "open to all domains", "meh", 4, "teams:external-access-settings"],
+            ["file", "App permission policy", "18 / 18", "±0", "teams covered", "good", 4, "teams:app-permission-policy"],
+            ["shield", "Guest settings", "OK", "", "per-team guest controls read", "good", 4, "teams:guest-settings-governance"],
+          ]],
+        ],
+      },
+      compliance: {
+        label: "Compliance", primary: "#F3F4F6", accent: "#D1D5DB",
+        glow: "radial-gradient(closest-side, rgba(226,232,240,.22), rgba(148,163,184,.12) 58%, rgba(2,6,23,0) 100%)",
+        score: 74, delta: "+1 since last scan", total: 15, evaluable: 6,
+        evalLine: "Scored from 6 evaluable compliance signals · minimum 2 required",
+        segs: [["ok", 4, "observed with data"], ["partial", 1, "fan-out coverage 93 of 99 sites"], ["gap", 2, "licence-gated — your SKUs can't feed them"], ["blocked", 8, "errored or never run"]],
+        blockedNote: "7 Purview and Exchange PowerShell checks ran and errored — the execution container is down. One check has never run (collection-only package). No data, never zero.",
+        gaps: [["Microsoft Purview", "2 checks", "retention labels & retention policies"]],
+        drift: ["eeeu-site-sharing", "not comparable", "dim", "The drift collector can't diff this shape yet — an honest limitation, reported as such rather than papered over."],
+        fc: { critical: 0, warning: 1, info: 1 },
+        tiles: [
+          ["SITES SHARED WITH EVERYONE", "7", "93 of 99 sites scanned", "compliance:eeeu-site-sharing"],
+          ["SENSITIVITY LABELS PUBLISHED", "0", "none exist yet", "governance:sensitivity-label-adoption"],
+          ["RETENTION LABELS", "—", "labelling is Purview-gated", "governance:retention-label-adoption", "Needs Microsoft Purview"],
+          ["DLP POLICIES", "—", "check ran and errored", "compliance:zero-dlp-policies", "Errored — no data"],
+        ],
+        findings: [
+          ["warning", "7 sites grant access to Everyone except external users", "compliance:eeeu-site-sharing", "Evidence · 7 sites"],
+          ["info", "No sensitivity labels are published — nothing can be auto-protected", "governance:sensitivity-label-adoption", null],
+        ],
+        groups: [
+          ["DATA EXPOSURE", [
+            ["globe", "Sites shared with Everyone", "7", "+1", "93 of 99 sites scanned", "meh", 7, "compliance:eeeu-site-sharing"],
+            ["file", "Terms of use agreements", "0", "±0", "none configured", "good", 2, "identity:terms-of-use"],
+            ["grid", "Overshared OneDrive files", "—", "", "never run — collection-only", "na", 3, "onedrive:overshared-files"],
+          ]],
+          ["LABELS, RETENTION & REVIEWS", [
+            ["file", "Sensitivity labels published", "0", "±0", "none exist yet", "meh", 4, "governance:sensitivity-label-adoption"],
+            ["file", "Access reviews completed", "0", "±0", "none have run", "meh", 2, "governance:access-review-completion"],
+            ["users", "Guest access reviews", "0", "±0", "none cover guests", "meh", 2, "governance:guest-access-reviews"],
+            ["lock", "Retention labels", "—", "", "Needs Microsoft Purview", "na", 2, "governance:retention-label-adoption"],
+            ["lock", "Retention policy coverage", "—", "", "Needs Microsoft Purview", "na", 2, "governance:retention-policy-coverage"],
+          ]],
+          ["PURVIEW PIPELINE — DOWN", [
+            ["file", "Missing sensitivity labels", "—", "", "PowerShell errored", "na", 3, "compliance:missing-labels"],
+            ["shield", "Weak DLP policies", "—", "", "PowerShell errored", "na", 3, "compliance:weak-dlp-policies"],
+            ["shield", "DLP policy census", "—", "", "PowerShell errored", "na", 3, "compliance:zero-dlp-policies"],
+            ["file", "DLP incidents", "—", "", "PowerShell errored", "na", 3, "compliance:dlp-incidents"],
+            ["file", "Label policy errors", "—", "", "PowerShell errored", "na", 4, "compliance:label-errors"],
+            ["file", "Audit log retention", "—", "", "PowerShell errored — first-ever invocation", "na", 4, "compliance:audit-log-retention"],
+            ["mail", "Litigation hold coverage", "—", "", "PowerShell errored — first-ever invocation", "na", 4, "exchange:litigation-hold-coverage"],
+          ]],
+        ],
+      },
+      licensing: {
+        label: "Licensing", primary: "#14B8A6", accent: "#2DD4BF",
+        glow: "radial-gradient(closest-side, rgba(20,184,166,.30), rgba(2,6,23,0) 100%)",
+        score: 57, delta: "+3 since last scan", total: 14, evaluable: 11,
+        evalLine: "Scored from 11 evaluable licensing signals · minimum 2 required",
+        segs: [["ok", 10, "observed with data"], ["gap", 1, "licence-gated — your SKUs can't feed it"], ["blocked", 3, "errored or can't run"]],
+        blockedNote: "Three mailbox-licensing checks (PowerShell) ran and errored — the execution container is down. No data, never zero.",
+        gaps: [["Entra ID P1 or P2", "1 check", "sign-in activity behind inactive-licence maths"]],
+        drift: null,
+        fc: { critical: 0, warning: 0, info: 0 },
+        tiles: [
+          ["PAID SEATS PROVISIONED", "1", "Office 365 E3", "cost:utilization-by-sku"],
+          ["PAID, UNASSIGNED", "0", "every seat is assigned", "cost:utilization-by-sku"],
+          ["ANNUAL WASTE", "—", "no price data for this tenant's SKUs", "cost:utilization-by-sku", "No price on file"],
+          ["LICENCES ON INACTIVE ACCOUNTS", "—", "needs sign-in activity", "license:unused-assigned", "Needs Entra ID P1"],
+        ],
+        findings: [],
+        groups: [
+          ["SEATS & SPEND", [
+            ["file", "Paid seats vs assigned", "1 / 1", "±0", "purchased / assigned", "good", 3, "cost:utilization-by-sku"],
+            ["file", "SKUs on tenant", "4", "±0", "full licence census", "good", 2, "cost:license-count-by-sku"],
+            ["file", "Unassigned paid licences", "0", "±0", "across 4 SKUs", "good", 2, "cost:unused-unassigned-licenses"],
+            ["users", "Duplicate assignments", "0", "±0", "of 24 users", "good", 2, "cost:duplicate-assignments"],
+            ["chart", "Under-used premium", "0", "±0", "of 24 users", "good", 3, "cost:underutilized-premium"],
+          ]],
+          ["FOOTPRINT", [
+            ["chart", "Licence tier distribution", "4", "±0", "SKUs — no P1/P2, no Defender", "good", 3, "cost:entra-license-tier-distribution"],
+            ["grid", "Project licences", "0", "±0", "Plan 1 / 3 / 5", "good", 3, "licensing:project-online-detection"],
+            ["file", "Copilot vs total users", "0", "±0", "Copilot licences held", "good", 2, "copilot:license-vs-total-users"],
+            ["grid", "OneDrive storage read", "OK", "", "usage on file", "good", 2, "onedrive:storage-utilization"],
+            ["grid", "SharePoint storage read", "38%", "±0", "of tenant quota", "good", 2, "sharepoint:storage-utilization"],
+          ]],
+          ["COPILOT READINESS — ROLL-UP CHECKS", [
+            ["file", "Copilot seats assigned", "0", "±0", "none purchased yet", "good", 6, "license:copilot-assignment"],
+            ["file", "Copilot prerequisite SKUs", "0", "±0", "no eligible SKU found", "meh", 6, "copilot:readiness-prerequisite"],
+          ]],
+          ["UNMEASURABLE TODAY", [
+            ["mail", "Shared-mailbox licensing", "—", "", "PowerShell errored", "na", 4, "exchange:shared-mailbox-licensing"],
+            ["mail", "Archive mailbox rate", "—", "", "PowerShell errored", "na", 4, "exchange:archive-mailbox-rate"],
+            ["mail", "Mailbox quota utilisation", "—", "", "PowerShell errored", "na", 4, "exchange:mailbox-quota-utilization"],
+          ]],
+        ],
+      },
+      adoption: {
+        label: "Adoption", primary: "#F97316", accent: "#FB923C",
+        glow: "radial-gradient(closest-side, rgba(249,115,22,.26), rgba(2,6,23,0) 100%)",
+        score: 82, delta: "−7 since last scan", total: 16, evaluable: 14,
+        evalLine: "Scored from 14 evaluable adoption signals · minimum 2 required",
+        segs: [["ok", 14, "observed with data"], ["blocked", 2, "errored — not zeros"]],
+        blockedNote: "Planner's fan-out failed on all 104 groups; Teams Phone couldn't establish a session. Both are errors, not zeros.",
+        gaps: [],
+        drift: null,
+        fc: { critical: 0, warning: 0, info: 1 },
+        tiles: [
+          ["ACTIVE EMAIL USERS", "1", "of 24 licensed · last 7 days", "adoption:email-activity-trend"],
+          ["ACTIVE TEAMS USERS", "0", "last 7 days", "adoption:teams-activity-trend"],
+          ["ACTIVE SHAREPOINT USERS", "0", "last 7 days", "adoption:sharepoint-onedrive-trend"],
+          ["ACTIVE ONEDRIVE USERS", "0", "last 7 days", "onedrive:active-users"],
+        ],
+        findings: [
+          ["info", "1 of 24 licensed users was active across Microsoft 365 in the last 7 days", "adoption:overall-active-rate", "Evidence · 24 users"],
+        ],
+        groups: [
+          ["WORKLOAD ACTIVITY — LAST 7 DAYS", [
+            ["users", "Active Teams users", "0", "−1", "of 24 licensed", "meh", 4, "adoption:teams-activity-trend"],
+            ["grid", "Active SharePoint users", "0", "±0", "last 7 days", "meh", 3, "adoption:sharepoint-onedrive-trend"],
+            ["grid", "Active OneDrive users", "0", "±0", "last 7 days", "meh", 3, "onedrive:active-users"],
+            ["mail", "Active email users", "1", "±0", "last 7 days", "good", 2, "adoption:email-activity-trend"],
+          ]],
+          ["REACH & PEOPLE", [
+            ["users", "Overall active users", "1", "−1", "of 24 licensed", "meh", 4, "adoption:overall-active-rate"],
+            ["device", "Mobile app users", "0", "±0", "M365 apps · 7 days", "meh", 3, "adoption:m365-mobile-app-usage"],
+            ["grid", "SharePoint user activity", "0", "±0", "actions in 7 days", "meh", 3, "adoption:sharepoint-user-activity"],
+            ["users", "Users mapped to departments", "24", "±0", "full directory", "good", 2, "identity:department-directory"],
+          ]],
+          ["COPILOT & COMMUNITIES — ROLL-UP CHECKS", [
+            ["file", "Active Copilot users", "0", "±0", "no licences held", "meh", 3, "copilot:active-usage-rate"],
+            ["chart", "Copilot usage by app", "0", "±0", "nothing to report yet", "meh", 3, "copilot:usage-by-app"],
+            ["file", "Licensed but inactive", "0", "±0", "no Copilot seats exist", "good", 2, "copilot:licensed-but-inactive"],
+            ["users", "Viva Engage communities", "1", "±0", "community", "good", 2, "adoption:viva-engage-health"],
+            ["users", "Viva Engage activity", "0", "±0", "active users · 7 days", "meh", 2, "adoption:viva-engage-user-activity"],
+          ]],
+          ["STRUCTURE & BLOCKED", [
+            ["users", "Inactive teams", "6", "±0", "of 18 · no activity 90d", "meh", 3, "teams:inactive-teams"],
+            ["device", "Known Folder Move", "0", "±0", "no KFM profiles configured", "meh", 3, "devices:kfm-configuration"],
+            ["chart", "Copilot 30-day activity", "0", "±0", "nothing to report yet", "meh", 2, "copilot:usage-activity"],
+            ["grid", "Planner adoption", "—", "", "fan-out failed on 104 groups", "na", 2, "adoption:planner-usage"],
+            ["device", "Teams Phone provisioning", "—", "", "no Teams session", "na", 2, "adoption:teams-phone-provisioning"],
+          ]],
+        ],
+      },
+      health: {
+        label: "Health", primary: "#22C55E", accent: "#4ADE80",
+        glow: "radial-gradient(closest-side, rgba(34,197,94,.28), rgba(2,6,23,0) 100%)",
+        score: 63, delta: "+55 — first device data", total: 25, evaluable: 22,
+        evalLine: "Scored from 22 evaluable signals · the premier run collected this tenant's first device data (8 → 63)",
+        segs: [["ok", 22, "observed with data"], ["gap", 1, "licence-gated — PIM eligible roles"], ["blocked", 2, "errored — not zeros"]],
+        blockedNote: "Two mailbox checks (PowerShell) ran and errored — the execution container is down. No data, never zero.",
+        gaps: [["Entra ID P1 or P2", "1 check", "PIM eligible-role schedules"]],
+        drift: null,
+        fc: { critical: 0, warning: 1, info: 1 },
+        tiles: [
+          ["DEVICES ENROLLED IN INTUNE", "0", "device posture can't be evaluated yet", "devices:enrollment-status"],
+          ["STALE OR DUPLICATE DEVICE RECORDS", "8", "in Entra ID", "devices:stale-duplicate-records"],
+          ["APP CREDENTIALS EXPIRING", "2", "of 11 app registrations", "appgov:cert-secret-expiration"],
+          ["MICROSOFT SERVICES", "25", "all operational right now", "m365:service-health"],
+        ],
+        findings: [
+          ["warning", "8 device records in Entra ID are stale or duplicated", "devices:stale-duplicate-records", "Evidence · 8 records"],
+          ["info", "No devices are enrolled in Intune — compliance, encryption and patching can't be evaluated", "devices:enrollment-status", null],
+        ],
+        groups: [
+          ["DEVICES", [
+            ["device", "Devices enrolled in Intune", "0", "±0", "posture can't be evaluated yet", "meh", 4, "devices:enrollment-status"],
+            ["device", "Stale or duplicate device records", "8", "", "in Entra ID · first device data", "meh", 4, "devices:stale-duplicate-records"],
+            ["device", "Autopilot profiles", "0", "±0", "none configured", "meh", 2, "devices:autopilot-coverage"],
+            ["device", "Update rings", "0", "±0", "none configured", "meh", 2, "devices:update-rings-config"],
+            ["file", "Unassigned Intune profiles", "0", "±0", "none dangling", "good", 3, "devices:unassigned-intune-profiles"],
+            ["device", "Known Folder Move", "0", "±0", "no KFM profiles", "meh", 3, "devices:kfm-configuration"],
+            ["file", "Compliance policies", "0", "±0", "none exist", "meh", 3, "devices:compliance-policy-coverage"],
+            ["device", "Outdated OS devices", "0", "±0", "no enrolled devices", "good", 3, "devices:os-patch-compliance"],
+          ]],
+          ["IDENTITY & PLATFORM", [
+            ["globe", "Hybrid sync", "Cloud", "", "no on-prem sync configured", "good", 3, "identity:hybrid-sync-health"],
+            ["shield", "Conditional Access policies", "0", "±0", "none exist — see Security", "meh", 3, "identity:ca-policy-count"],
+            ["lock", "PIM eligible roles", "—", "", "Needs Entra ID P2", "na", 2, "identity:pim-eligible-roles"],
+            ["globe", "Multi-geo", "off", "", "single geography", "good", 2, "platform:multi-geo-status"],
+            ["file", "App credentials expiring", "2", "±0", "of 11 app registrations", "meh", 2, "appgov:cert-secret-expiration"],
+          ]],
+          ["SCORE & SERVICES", [
+            ["chart", "Microsoft Secure Score", "41.6", "+2.1", "of 74 points · 90 controls", "meh", 4, "security:secure-score"],
+            ["chart", "Score by category", "9", "±0", "control categories read", "good", 2, "security:secure-score-by-category"],
+            ["globe", "Service health", "25 / 25", "±0", "services operational", "good", 2, "m365:service-health"],
+            ["device", "Teams Rooms devices", "0", "±0", "none to monitor", "good", 2, "teams:rooms-device-health"],
+            ["grid", "Teams inventoried", "18", "±0", "full team census", "good", 2, "teams:inventory-count"],
+          ]],
+          ["STORAGE & SITES", [
+            ["grid", "SharePoint sites", "99", "±0", "full site census", "good", 2, "sharepoint:site-count"],
+            ["grid", "Sites near storage limit", "0", "±0", "of 99 sites", "good", 2, "sharepoint:storage-near-limit"],
+            ["grid", "SharePoint storage", "38%", "±0", "of tenant quota", "good", 2, "sharepoint:storage-utilization"],
+            ["grid", "OneDrive storage", "OK", "", "usage on file", "good", 2, "onedrive:storage-utilization"],
+            ["grid", "OneDrive sync errors", "0", "±0", "stale sync accounts", "good", 2, "onedrive:sync-errors"],
+            ["users", "Teams counted", "18", "±0", "team census", "good", 2, "teams:team-count"],
+          ]],
+          ["UNMEASURABLE TODAY", [
+            ["mail", "Archive mailbox rate", "—", "", "PowerShell errored", "na", 6, "exchange:archive-mailbox-rate"],
+            ["mail", "Mailbox quota utilisation", "—", "", "PowerShell errored", "na", 6, "exchange:mailbox-quota-utilization"],
+          ]],
+        ],
+      },
+    };
+    const ORDER = ["governance", "security", "compliance", "licensing", "adoption", "health"];
+    const pk = this.state.pillar || this.props.pillar || "governance";
+    const d = D[pk] || D.governance;
+    const pillars = ORDER.map((k) => {
+      const p = D[k];
+      const active = k === pk;
+      return {
+        label: p.label, primary: p.primary, icon: ICONS[k],
+        band: `linear-gradient(90deg,${p.primary},${p.accent})`,
+        score: scanned ? String(p.score) : "—",
+        scoreInk: scanned ? SEVC(p.score) : "#475569",
+        ink: active ? "#f8fafc" : "#cbd5e1",
+        tabBg: active ? "rgba(255,255,255,.05)" : "transparent",
+        onSel: () => this.setState({ pillar: k }),
+      };
+    });
+    const M = [
+      ["Overview", "M3 3h7v9H3z", "M14 3h7v5h-7z", "M14 12h7v9h-7zM3 16h7v5H3z"],
+      ["Microsoft Changes", "m3 11 18-5v12L3 14v-3z", "M11.6 16.8a3 3 0 1 1-5.8-1.6", ""],
+      ["Change Control", "M9 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", "M21 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", "M13 6h3a2 2 0 0 1 2 2v7M6 9v12"],
+      ["Risk Register", "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z", "M12 9v4M12 17h.01", ""],
+      ["Remediation", "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z", "", ""],
+      ["SOPs", "M8 2h8v4H8z", "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2", "M12 11h4M12 16h4M8 11h.01M8 16h.01"],
+      ["Runbooks", "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z", "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z", ""],
+      ["Ownership / RACI", "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z", "M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"],
+      ["Policy Decisions", "m14 13-7.5 7.5a2.12 2.12 0 0 1-3-3L11 10", "M16 16l6-6M8 8l6-6M9 7l8 8M21 11l-8-8", ""],
+      ["Security Plan", "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", "M14 2v4a2 2 0 0 0 2 2h4", "m9 15 2 2 4-4"],
+    ];
+    const modules = M.map(([label, p1, p2, p3]) => ({ label, p1, p2, p3: p3 || "", rowBg: "transparent", ink: "#94a3b8", weight: 400 }));
+    const tiles = d.tiles.map((t, i) => {
+      const unavailable = t[1] === "—";
+      return {
+        label: t[0],
+        big: scanned ? t[1] : "—",
+        bigInk: scanned && !unavailable ? "#f8fafc" : "#475569",
+        sub: scanned ? t[2] : "first scan establishes this",
+        key: t[3],
+        pillShow: scanned && !!t[4],
+        pill: t[4] || "",
+        bl: i === 0 ? "none" : "1px solid rgba(255,255,255,.08)",
+      };
+    });
+    const findings = (scanned ? d.findings : []).map(([fsev, title, key, ev]) => ({
+      dot: FSEV[fsev], sev: fsev.toUpperCase(), title, key,
+      desc: PLACEHOLDER_DESC,
+      evShow: !!ev, ev: ev || "", noEv: !ev,
+      rec: fsev === "info" ? "Informational — no action required" : "Recommended: review and remediate · priority 2",
+    }));
+    const findingsEmpty = findings.length === 0;
+    const fcParts = [];
+    if (scanned) {
+      if (d.fc.critical) fcParts.push({ t: `${d.fc.critical} critical`, ink: "#f87171", border: "rgba(248,113,113,.35)" });
+      if (d.fc.warning) fcParts.push({ t: `${d.fc.warning} warning`, ink: "#fbbf24", border: "rgba(251,191,36,.35)" });
+      if (d.fc.info) fcParts.push({ t: `${d.fc.info} info`, ink: "#60a5fa", border: "rgba(96,165,250,.35)" });
+      if (!fcParts.length) fcParts.push({ t: "none open", ink: "#34d399", border: "rgba(52,211,153,.30)" });
+    } else fcParts.push({ t: "nothing measured yet", ink: "#64748b", border: "rgba(148,163,184,.25)" });
+    const segsSrc = scanned ? d.segs : [["queued", d.total, "wired, waiting on the first scan"]];
+    const covSegs = segsSrc.map(([k, n]) => ({ w: ((n / d.total) * 100).toFixed(1) + "%", bg: SEGC[k] }));
+    const covLegend = segsSrc.map(([k, n, note]) => ({ bg: SEGC[k], t: (k === "gap" ? "licence-gated" : k === "blocked" ? "blocked" : k) + " — " + note, n: String(n) }));
+    const SICON = {
+      users: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
+      lock: "M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4",
+      shield: "M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.3 0C14.3 3.8 16.8 5 18.8 5a1 1 0 0 1 1 1z",
+      mail: "M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2zM2 10h20",
+      file: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7ZM14 2v4a2 2 0 0 0 2 2h4",
+      device: "M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM12 18h.01",
+      grid: "M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z",
+      globe: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z",
+      chart: "M3 3v18h18M18 17V9M13 17V5M8 17v-3",
+    };
+    const CTIER = {
+      bad: { bg: "linear-gradient(135deg, rgba(248,113,113,.13), rgba(2,6,23,0) 75%)", bd: "1px solid rgba(248,113,113,.34)", ink: "#f87171", status: "Not yet addressed", b1: "7px", b2: "12px" },
+      meh: { bg: "linear-gradient(135deg, rgba(251,191,36,.10), rgba(2,6,23,0) 75%)", bd: "1px solid rgba(251,191,36,.26)", ink: "#fbbf24", status: "Partially addressed", b1: "5px", b2: "9px" },
+      good: { bg: "linear-gradient(135deg, rgba(52,211,153,.09), rgba(2,6,23,0) 75%)", bd: "1px solid rgba(52,211,153,.24)", ink: "#34d399", status: "Fully covered", b1: "6px", b2: "8px" },
+      na: { bg: "rgba(148,163,184,.03)", bd: "1px dashed rgba(148,163,184,.28)", ink: "#64748b", status: "Can't be measured", b1: "2px", b2: "2px" },
+    };
+    const dash = () => ({ h: "2px", bg: "rgba(148,163,184,.30)" });
+    const sigGroups = d.groups.map(([title, cards]) => ({
+      title,
+      cards: cards.map(([ic, name, val, delta, sub, tier, span, key]) => {
+        const t = scanned ? tier : "na";
+        const s = CTIER[t];
+        const v = scanned ? val : "—";
+        return {
+          icon: SICON[ic], name, key, span: String(span),
+          val: v,
+          valFs: v.length > 6 ? "15px" : v.length > 4 ? "18px" : "22px",
+          delta: scanned ? delta : "",
+          deltaShow: scanned && !!delta,
+          deltaInk: delta === "±0" ? "#475569" : "#00B4D8",
+          sub: scanned ? sub : "first scan establishes this",
+          bg: s.bg, bd: s.bd, ink: s.ink,
+          status: scanned ? s.status : "not yet run",
+          stInk: scanned ? s.ink : "#475569",
+          bars: t === "na" ? [dash(), dash(), dash(), dash(), dash()] : [{ h: s.b1, bg: s.ink }, { h: s.b2, bg: s.ink }, dash(), dash(), dash()],
+        };
+      }),
+    }));
+    const cardCount = d.groups.reduce((n, g) => n + g[1].length, 0);
+    const score = { healthy: "72", attention: "54", critical: "38", none: "—" }[sev];
+    const sevColor = { healthy: "#34d399", attention: "#fbbf24", critical: "#f87171", none: "#64748b" }[sev];
+    const sevLabel = { healthy: "Healthy", attention: "Attention required", critical: "Critical", none: "Not scanned yet" }[sev];
+    const alerts = [
+      { title: "New critical finding in Security", sub: "Legacy authentication remains enabled", meta: "Findings · 2h ago · broke through quiet hours", iconInk: "#f87171", unread: true, p1: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z", p2: "M12 9v4M12 17h.01" },
+      { title: "Scan complete", isDelta: true, meta: "Remediation · 6h ago", iconInk: "#00B4D8", unread: true, p1: "M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8", p2: "M21 3v5h-5" },
+      { title: "Fix verified", sub: "MFA gap closed on privileged roles", meta: "Progress · Yesterday", iconInk: "#00B4D8", unread: false, p1: "M22 11.08V12a10 10 0 1 1-5.93-9.14", p2: "m9 11 3 3L22 4" },
+      { title: "Invoice issued", sub: "Available in Billing", meta: "Billing · 3d ago", iconInk: "#94a3b8", unread: false, p1: "M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z", p2: "M2 10h20" },
+      { title: "Risk acceptance due", sub: "One signed acceptance expires soon", meta: "Reviews · 4d ago", iconInk: "#94a3b8", unread: false, p1: "M12 6v6l4 2", p2: "M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z" },
+    ].map((a) => ({ ...a, sub: a.sub || "", isDelta: !!a.isDelta, notDelta: !a.isDelta, titleInk: a.unread ? "#f8fafc" : "#94a3b8" }));
+    const allSops = [
+      { title: "Enforce MFA on privileged roles", chip: "Running", chipInk: "#00B4D8", chipBorder: "rgba(0,180,216,.45)", chipBg: "rgba(0,180,216,.10)", mode: "Assisted run", cr: "CR · Not recorded", step: "Step 2 of 5 · Verify conditional access baseline", pctW: "40%", meta: "Started 14 minutes ago" },
+      { title: "Quarterly access review", chip: "Queued", chipInk: "#94a3b8", chipBorder: "rgba(148,163,184,.35)", chipBg: "transparent", mode: "Scheduled", cr: "CR · Not recorded", step: "Queued · 5 steps in scope", pctW: "0%", meta: "Waiting for the run above" },
+      { title: "Baseline conditional access review", chip: "Queued", chipInk: "#94a3b8", chipBorder: "rgba(148,163,184,.35)", chipBg: "transparent", mode: "Scheduled", cr: "CR · Not recorded", step: "Queued · 3 steps in scope", pctW: "0%", meta: "Waiting for the queue" },
+    ];
+    const landedJustNow = this.state.demoResult && !this.state.demoScan;
+    const toggle = (k) => () => this.setState((s) => ({ open: s.open === k ? null : k }));
+    const pillarSevInk = SEVC(d.score);
+    const trendFilled = scanned ? 2 : 0;
+    const gapRows = (scanned ? d.gaps : []).map(([f, n, note]) => ({ f, n, note }));
+    const drift = scanned ? d.drift : null;
+    return {
+      pillars, modules, alerts, tiles, findings, sigGroups, covSegs, covLegend, gapRows,
+      hLabel: d.label,
+      hBand: `linear-gradient(90deg,${d.primary},${d.accent})`,
+      hGlow: d.glow, hPrimary: d.primary, hIcon: ICONS[pk],
+      hChecksLine: `${d.total} CHECKS FEED IT`,
+      hScanLine1: scanned ? "core:premier · run 445" : "no runs yet",
+      hScanLine2: scanned ? "151 checks · 2 hours ago" : "first scan establishes the baseline",
+      hScore: scanned && !unscored ? String(d.score) : "—",
+      hScoreInk: scanned && !unscored ? pillarSevInk : "#475569",
+      hScored: scanned && !unscored,
+      hDeltaShow: scanned && !unscored,
+      hDelta: d.delta,
+      hDeltaInk: d.flat ? "#64748b" : "#00B4D8",
+      hDeltaBorder: d.flat ? "rgba(148,163,184,.30)" : "rgba(0,180,216,.40)",
+      hSevInk: !scanned ? "#64748b" : unscored ? "#64748b" : pillarSevInk,
+      hSevLabel: !scanned ? "Not scanned yet" : unscored ? "Not enough signal to score" : SEVL(d.score),
+      hEval: !scanned
+        ? `${d.total} checks are wired to this pillar — none has run yet. Your first scan establishes the baseline.`
+        : unscored
+        ? "Only 1 evaluable signal — 2 required. Unscored is a designed state: never a red zero, never a guess."
+        : d.evalLine,
+      trendDots: [0, 1, 2, 3, 4].map((i) => ({
+        bg: i < trendFilled ? "#00B4D8" : "transparent",
+        border: i < trendFilled ? "1px solid rgba(0,180,216,.6)" : "1px solid rgba(148,163,184,.35)",
+      })),
+      hTrendNote: scanned ? "appears after 5 checkpoints — 2 so far" : "appears after 5 checkpoints — 0 so far",
+      fcChips: fcParts,
+      hFindNote: scanned ? "from run 445 · evidence lists every affected object" : "findings land with your first scan",
+      findingsEmpty,
+      findingsEmptyTitle: scanned ? "No open findings in this pillar." : "Nothing has been measured yet.",
+      findingsEmptySub: scanned ? "Every signal that could be evaluated came back clean." : "Findings land with your first scan.",
+      covLine: scanned
+        ? `${d.total} checks in the catalog are tagged ${d.label.toLowerCase()} · ${d.evaluable} produced an evaluable signal in run 445`
+        : `${d.total} checks are wired to this pillar · none has run yet`,
+      blockedShow: scanned && d.segs.some((s) => s[0] === "blocked"),
+      blockedNote: d.blockedNote,
+      gapShow: gapRows.length > 0,
+      driftShow: !!drift,
+      driftLabel: drift ? drift[0] : "",
+      driftState: drift ? drift[1] : "",
+      driftInk: drift && drift[2] === "ok" ? "#00B4D8" : "#94a3b8",
+      driftBorder: drift && drift[2] === "ok" ? "rgba(0,180,216,.45)" : "rgba(148,163,184,.30)",
+      driftNote: drift ? drift[3] : "",
+      sigMeta: scanned ? `${cardCount} checks · latest observation 2 hours ago` : `0 of ${d.total} observed — first scan pending`,
+      sigMore: cardCount >= d.total
+        ? `Complete — every catalog check that feeds ${d.label.toLowerCase()} is on this page${cardCount > d.total ? ", plus roll-up extras" : ""}.`
+        : `+ ${d.total - cardCount} more checks feed ${d.label.toLowerCase()} — every card is a real catalog check`,
+      ledgerShow: pk === "licensing" && scanned,
+      ledgerEx: [
+        { name: "FLOW_FREE", count: "×10,000", reason: "zero price" },
+        { name: "POWER_BI_STANDARD", count: "×1,000,000", reason: "zero price" },
+        { name: "Power_Pages_vTrial_for_Makers", count: "×10,000", reason: "no price on file" },
+      ],
+      provLine: scanned
+        ? "Every figure on this page traces to a monitor-check observation on your tenant — run 445 (core:premier) · 151 checks · 2 hours ago. Unavailable renders as unavailable — never zero, never red."
+        : "No scan has run yet — this page renders only what has genuinely been observed. Today that is nothing, and it says so.",
+      botQ1: scanned ? `Why is my ${d.label} score ${d.score}?` : "What happens in my first scan?",
+      sopsShown: allSops.slice(0, Math.max(sop, 0)),
+      oNone: sev === "none" ? 1 : 0,
+      oHealthy: sev === "healthy" ? 1 : 0,
+      oAttention: sev === "attention" ? 1 : 0,
+      oCritical: sev === "critical" ? 1 : 0,
+      scanRunning: scan,
+      impersonated: imp,
+      mfaPending: mfa,
+      sopBadge: sop > 0,
+      sopCount: String(sop),
+      scoreText: score,
+      scoreInk: sev === "none" ? "#475569" : "#f8fafc",
+      sevColor, sevLabel,
+      showScore: sev !== "none",
+      showCta: sev === "none" && !scan,
+      scanLine: scan
+        ? (sev === "none" ? "First scan in progress" : "Scan in progress")
+        : landedJustNow ? "First scan complete — just now"
+        : (sev === "none" ? "First scan establishes your baseline" : "Latest scan complete"),
+      avatarRing: imp ? "0 0 0 2px #00B4D8" : "none",
+      popTop: imp ? "100px" : "64px",
+      overlayShow: chrome && open !== null,
+      showUserPop: chrome && open === "user",
+      showAlertsPop: chrome && open === "alerts",
+      showSopPop: chrome && open === "sop",
+      chromeShow: chrome,
+      rootH: chrome ? "100vh" : "100%",
+      rootMinH: chrome ? "640px" : "0",
+      userBtnBg: open === "user" ? "rgba(255,255,255,.06)" : "transparent",
+      bellBtnBg: open === "alerts" ? "rgba(255,255,255,.06)" : "transparent",
+      sopBtnBg: open === "sop" ? "rgba(255,255,255,.06)" : "transparent",
+      alertsEmpty: sev === "none",
+      alertsFull: sev !== "none",
+      alertsBadge: sev !== "none",
+      sopEmpty: sop === 0,
+      sopFull: sop > 0,
+      botW: this.state.bot ? "380px" : "46px",
+      botOpen: this.state.bot,
+      botClosed: !this.state.bot,
+      toggleUser: toggle("user"),
+      toggleAlerts: toggle("alerts"),
+      toggleSop: toggle("sop"),
+      closeAll: () => this.setState({ open: null }),
+      toggleBot: () => this.setState((s) => ({ bot: !s.bot })),
+      runScan: () => {
+        this.setState({ demoScan: true });
+        this._t = setTimeout(() => this.setState({ demoScan: false, demoResult: "attention" }), 7000);
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

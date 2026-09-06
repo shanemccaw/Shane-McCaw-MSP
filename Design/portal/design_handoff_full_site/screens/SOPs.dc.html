@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes skelPulse{0%,100%{opacity:.5}50%{opacity:.9}}
+</style>
+</helmet>
+<div data-screen-label="SOPs and Runbooks" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;padding:24px 30px 48px;padding-right:max(30px, calc(100% - 1010px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{pageTitle}}</span>
+      <span title="{{pageHint}}" style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+      <sc-if value="{{viewSops}}" hint-placeholder-val="{{ true }}">
+        <span onClick="{{newProc}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:7px 16px;cursor:pointer" style-hover="background:#005A9E">New procedure</span>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{skeletons}}" as="s" hint-placeholder-count="3">
+          <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.02);padding:16px;display:flex;flex-direction:column;gap:9px;animation:skelPulse 1.6s ease-in-out infinite">
+            <div style="height:10px;width:{{s.w1}};border-radius:999px;background:rgba(255,255,255,.07)"></div>
+            <div style="height:9px;width:{{s.w2}};border-radius:999px;background:rgba(255,255,255,.05)"></div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isFixture}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:9px;border:1px dashed rgba(251,191,36,.45);background:rgba(251,191,36,.06);border-radius:10px;padding:10px 14px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+        <span style="font-size:12px;color:#e2e8f0">{{fixtureLine}}</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isReady}}" hint-placeholder-val="{{ true }}">
+
+    <sc-if value="{{viewSops}}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
+        <sc-for list="{{statCards}}" as="c" hint-placeholder-count="4">
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:13px 16px 14px;display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#475569">{{c.label}}</span>
+            <span style="font-size:22px;font-weight:800;color:{{c.c}};line-height:1.1;font-variant-numeric:tabular-nums">{{c.value}}</span>
+            <span style="font-size:11px;color:#64748b">{{c.sub}}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{hasBanner}}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{goRunbooks}}" style="display:flex;align-items:center;gap:10px;border:1px solid {{bannerBorder}};background:{{bannerBg}};border-radius:10px;padding:10px 14px;cursor:pointer" style-hover="opacity:.9">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:{{bannerInk}};border:1px solid {{bannerBorder}};border-radius:999px;padding:2px 9px;flex:none">{{bannerTag}}</span>
+          <span style="font-size:12px;color:#cbd5e1;min-width:0">{{bannerText}}</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto;flex:none"><path d="m9 18 6-6-6-6"></path></svg>
+        </div>
+      </sc-if>
+
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+          <span onClick="{{t.pick}}" style="font-size:12px;font-weight:600;border-radius:999px;padding:5px 14px;cursor:pointer;color:{{t.ink}};background:{{t.bg}}">{{t.label}}</span>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{tabLib}}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.10);border-radius:6px;background:rgba(255,255,255,.03);padding:7px 12px;min-width:200px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z"></path><path d="m21 21-4.3-4.3"></path></svg>
+            <span style="font-size:12px;color:#475569">Search procedures</span>
+          </div>
+          <div style="display:flex;border:1px solid rgba(255,255,255,.10);border-radius:8px;overflow:hidden">
+            <sc-for list="{{srcSeg}}" as="o" hint-placeholder-count="3">
+              <span onClick="{{o.pick}}" style="font-size:11.5px;font-weight:600;padding:6px 13px;cursor:pointer;color:{{o.ink}};background:{{o.bg}};white-space:nowrap">{{o.label}}</span>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <sc-for list="{{catChips}}" as="c" hint-placeholder-count="3">
+              <span onClick="{{c.pick}}" style="font-size:11.5px;font-weight:600;border:1px solid {{c.border}};border-radius:999px;padding:5px 12px;cursor:pointer;color:{{c.ink}};background:{{c.bg}}">{{c.label}} · {{c.n}}</span>
+            </sc-for>
+          </div>
+        </div>
+
+        <sc-if value="{{libEmpty}}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed rgba(148,163,184,.25);border-radius:12px;padding:26px;text-align:center;display:flex;flex-direction:column;gap:5px;align-items:center">
+            <span style="font-size:12.5px;font-weight:600;color:#cbd5e1">No procedures yet</span>
+            <span style="font-size:11.5px;color:#64748b">Your MSP's baseline library appears after onboarding.</span>
+          </div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+            <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:5px 18px 8px">
+              <span style="display:block;font-size:9.5px;font-weight:700;letter-spacing:.13em;color:#475569;padding:11px 0 5px">{{g.label}} · {{g.n}}</span>
+              <sc-if value="{{g.hasNote}}" hint-placeholder-val="{{ false }}">
+                <span style="display:block;font-size:11px;color:#64748b;line-height:1.5;max-width:620px;padding:0 0 7px">{{g.note}}</span>
+              </sc-if>
+              <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="3">
+                <div onClick="{{r.click}}" style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06);cursor:pointer" style-hover="opacity:.85">
+                  <span title="{{r.srcTitle}}" style="width:7px;height:7px;border-radius:999px;background:{{r.dot}};flex:none"></span>
+                  <span style="font-size:11px;font-family:ui-monospace,Menlo,monospace;color:#64748b;width:96px;flex:none">{{r.code}}</span>
+                  <span style="font-size:12.5px;font-weight:600;color:#e2e8f0;min-width:0">{{r.title}}</span>
+                  <sc-if value="{{r.runnable}}" hint-placeholder-val="{{ false }}"><span title="Has automated steps your MSP can run through Graph" style="font-size:9px;font-weight:700;letter-spacing:.08em;color:#22d3ee;border:1px solid rgba(34,211,238,.35);border-radius:999px;padding:2px 7px;flex:none">GRAPH</span></sc-if>
+                  <sc-if value="{{r.hasCustom}}" hint-placeholder-val="{{ false }}"><span title="Steps your team added to this procedure" style="font-size:9px;font-weight:700;letter-spacing:.08em;color:#94a3b8;border:1px solid rgba(148,163,184,.3);border-radius:999px;padding:2px 7px;flex:none">{{r.customLabel}}</span></sc-if>
+                  <span style="margin-left:auto;font-size:11px;color:#64748b;flex:none">{{r.level}}</span>
+                  <span title="{{r.ownerTitle}}" style="width:22px;height:22px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:700;color:#94a3b8;flex:none">{{r.owner}}</span>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="m9 18 6-6-6-6"></path></svg>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{tabQueue}}" hint-placeholder-val="{{ false }}">
+        <sc-if value="{{queueEmpty}}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed rgba(148,163,184,.25);border-radius:12px;padding:26px;text-align:center;display:flex;flex-direction:column;gap:5px;align-items:center">
+            <span style="font-size:12.5px;font-weight:600;color:#cbd5e1">Nothing running or queued</span>
+            <span style="font-size:11.5px;color:#64748b;line-height:1.55;max-width:520px">No procedure has ever been run against your tenant. When your MSP runs one — by hand, from a standing policy, from a lifecycle event or from a remediation item — it appears here live, with which of those started it.</span>
+          </div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <sc-for list="{{queueRows}}" as="q" hint-placeholder-count="2">
+            <div onClick="{{q.click}}" style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:13px 18px 14px;cursor:pointer" style-hover="border-color:rgba(255,255,255,.16)">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-size:10px;font-weight:600;color:{{q.chipInk}};border:1px solid {{q.chipBorder}};background:{{q.chipBg}};border-radius:999px;padding:2px 9px;flex:none">{{q.state}}</span>
+                <span style="font-size:11px;font-family:ui-monospace,Menlo,monospace;color:#64748b">{{q.code}}</span>
+                <span style="font-size:12.5px;font-weight:600;color:#e2e8f0">{{q.title}}</span>
+                <span style="margin-left:auto;font-size:11px;color:#64748b">{{q.started}}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:9px">
+                <div style="flex:1;height:3px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden"><div style="height:100%;width:{{q.pctW}};border-radius:999px;background:linear-gradient(90deg,#0078D4,#00B4D8)"></div></div>
+                <span style="font-size:11px;font-weight:700;color:#94a3b8;font-variant-numeric:tabular-nums;flex:none">{{q.pct}}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+                <span style="font-size:11.5px;color:#94a3b8">{{q.step}}</span>
+                <span style="margin-left:auto;font-size:10px;color:#94a3b8;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px;flex:none">{{q.originLabel}}</span>
+                <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px;flex:none">{{q.verLabel}}</span>
+                <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px;flex:none">{{q.mode}}</span>
+                <span style="font-size:10px;color:{{q.crInk}};border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px;flex:none">{{q.cr}}</span>
+                <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px;flex:none">{{q.svc}}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{tabHist}}" hint-placeholder-val="{{ false }}">
+        <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:700px">{{histNote}}</span>
+        <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:5px 18px 8px">
+          <sc-for list="{{auditRows}}" as="a" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06);flex-wrap:wrap">
+              <span style="font-size:11px;color:#64748b;width:120px;flex:none;font-variant-numeric:tabular-nums">{{a.when}}</span>
+              <span style="font-size:11px;font-family:ui-monospace,Menlo,monospace;color:#64748b;width:96px;flex:none">{{a.code}}</span>
+              <div style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1">
+                <span style="font-size:12px;font-weight:600;color:#e2e8f0">{{a.action}} · <span style="font-weight:400;color:#94a3b8">{{a.actor}}</span></span>
+                <span style="font-size:11px;color:#64748b">{{a.detail}}</span>
+              </div>
+              <span style="font-size:10px;font-weight:600;color:{{a.resInk}};border:1px solid {{a.resBorder}};border-radius:999px;padding:2px 9px;flex:none">{{a.result}}</span>
+              <span title="SHA-256 over the entry's own fields — reproducible, not decorative" style="font-size:10px;font-family:ui-monospace,Menlo,monospace;color:#475569;flex:none">{{a.hash}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{viewRunbooks}}" hint-placeholder-val="{{ false }}">
+      <sc-if value="{{rbEmpty}}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:12px;padding:26px;text-align:center;display:flex;flex-direction:column;gap:5px;align-items:center">
+          <span style="font-size:12.5px;font-weight:600;color:#cbd5e1">No active runbooks</span>
+          <span style="font-size:11.5px;color:#64748b">Runbooks start from a site fix or a recurring review — not from this page.</span>
+        </div>
+      </sc-if>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <sc-for list="{{runbooks}}" as="rb" hint-placeholder-count="3">
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 18px 14px">
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+              <span style="font-size:13px;font-weight:600;color:#f8fafc">{{rb.title}}</span>
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.08em;color:{{rb.pillInk}};border:1px solid {{rb.pillBorder}};border-radius:999px;padding:2px 8px">{{rb.pillar}}</span>
+              <span style="font-size:10px;font-weight:600;color:{{rb.stInk}};border:1px solid {{rb.stBorder}};border-radius:999px;padding:2px 9px">{{rb.status}}</span>
+              <span style="margin-left:auto;font-size:11px;color:#64748b">{{rb.cycle}}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+              <div style="flex:1;height:3px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden"><div style="height:100%;width:{{rb.pctW}};border-radius:999px;background:linear-gradient(90deg,#0078D4,#00B4D8)"></div></div>
+              <span style="font-size:11px;color:#94a3b8;flex:none">{{rb.prog}}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;margin-top:6px">
+              <sc-for list="{{rb.steps}}" as="s" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:10px;padding:7.5px 0;border-top:1px solid rgba(255,255,255,.05)">
+                  <span onClick="{{s.click}}" style="width:16px;height:16px;flex:none;border-radius:4px;border:1px solid {{s.boxBorder}};background:{{s.boxBg}};color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:{{s.cursor}}">{{s.tick}}</span>
+                  <span style="font-size:12px;color:{{s.ink}};min-width:0">{{s.text}}</span>
+                  <sc-if value="{{s.custom}}" hint-placeholder-val="{{ false }}"><span style="font-size:8.5px;font-weight:700;letter-spacing:.08em;color:#94a3b8;border:1px solid rgba(148,163,184,.3);border-radius:999px;padding:1.5px 6px;flex:none">YOURS</span></sc-if>
+                  <sc-if value="{{s.gated}}" hint-placeholder-val="{{ false }}"><span title="{{s.gateTitle}}" style="font-size:8.5px;font-weight:700;letter-spacing:.08em;color:#c2a63d;border:1px solid rgba(194,166,61,.4);border-radius:999px;padding:1.5px 6px;flex:none;cursor:help">HELD</span></sc-if>
+                </div>
+              </sc-for>
+              <div onClick="{{rb.addStep}}" style="display:flex;align-items:center;gap:8px;padding:8px 0 2px;border-top:1px solid rgba(255,255,255,.05);cursor:pointer" style-hover="opacity:.8">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+                <span style="font-size:11.5px;font-weight:600;color:#94a3b8">Add step</span>
+              </div>
+            </div>
+            <sc-if value="{{rb.hasHold}}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{rb.holdClick}}" style="display:flex;align-items:center;gap:9px;margin-top:11px;border:1px solid {{rb.holdBorder}};background:{{rb.holdBg}};border-radius:9px;padding:8px 12px;cursor:pointer" style-hover="opacity:.9">
+                <span style="font-size:9.5px;font-weight:700;letter-spacing:.08em;color:{{rb.holdInk}};border:1px solid {{rb.holdBorder}};border-radius:999px;padding:2px 8px;flex:none">{{rb.holdBadge}}</span>
+                <span style="font-size:11.5px;color:#cbd5e1;min-width:0">{{rb.holdTitle}}</span>
+                <span style="margin-left:auto;font-size:11px;font-weight:700;color:{{rb.holdInk}};font-variant-numeric:tabular-nums;flex:none">{{rb.holdTMinus}}</span>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{hasHolds}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Hold windows</span>
+            <span style="font-size:11px;color:#64748b">{{holdSummary}}</span>
+          </div>
+          <sc-for list="{{holds}}" as="h" hint-placeholder-count="2">
+            <div onClick="{{h.click}}" style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:13px 18px 13px;cursor:pointer" style-hover="border-color:rgba(255,255,255,.16)">
+              <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                <span style="font-size:9.5px;font-weight:700;letter-spacing:.08em;color:{{h.ink}};border:1px solid {{h.border}};background:{{h.bg}};border-radius:999px;padding:2px 9px;flex:none">{{h.badge}}</span>
+                <span style="font-size:12.5px;font-weight:600;color:#e2e8f0;min-width:0">{{h.title}}</span>
+                <span style="margin-left:auto;font-size:12px;font-weight:700;color:{{h.ink}};font-variant-numeric:tabular-nums;flex:none">{{h.tMinus}}</span>
+              </div>
+              <span style="display:block;font-size:11px;color:#64748b;margin-top:5px">{{h.gates}}</span>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:9px;flex-wrap:wrap">
+                <div style="display:flex;gap:2.5px;flex:none">
+                  <sc-for list="{{h.ticks}}" as="t" hint-placeholder-count="8"><span style="width:7px;height:12px;border-radius:2px;background:{{t.bg}}"></span></sc-for>
+                </div>
+                <span style="font-size:11px;color:#94a3b8">{{h.waitLine}}</span>
+                <span style="font-size:11px;color:{{h.scanInk}}">{{h.scanLine}}</span>
+                <span onClick="{{h.actClick}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:{{h.actInk}};border:1px solid {{h.actBorder}};border-radius:6px;padding:5px 13px;cursor:pointer;flex:none" style-hover="background:rgba(255,255,255,.04)">{{h.action}}</span>
+              </div>
+              <span style="display:block;font-size:10px;color:#475569;margin-top:7px">{{h.prov}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <span style="font-size:10.5px;color:#475569;line-height:1.5;max-width:760px">Each cycle keeps its own ticks now, so a new cycle starts clean without erasing what the last one recorded. Releasing a hold raises a change request; nothing executes from this page.</span>
+    </sc-if>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{lpOpen}}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{lpClose}}" style="position:absolute;inset:0;z-index:20;background:rgba(2,6,23,.35)"></div>
+    <div style="position:absolute;z-index:21;top:0;right:0;bottom:0;width:368px;border-left:1px solid rgba(255,255,255,.10);background:#0b1120;box-shadow:-18px 0 48px rgba(0,0,0,.5);display:flex;flex-direction:column;min-height:0">
+      <div style="flex:none;display:flex;align-items:center;gap:10px;padding:16px 18px 14px;border-bottom:1px solid rgba(255,255,255,.08)">
+        <div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:14px;font-weight:600;color:#f8fafc">{{lpTitle}}</span><span style="font-size:11.5px;color:#64748b">{{lpState}}</span></div>
+        <div onClick="{{lpClose}}" style="margin-left:auto;width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:rgba(255,255,255,.06)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </div>
+      </div>
+      <div style="flex:1;overflow-y:auto;min-height:0;padding:16px 18px 20px;display:flex;flex-direction:column;gap:14px">
+        <sc-if value="{{lpHasSteps}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <sc-for list="{{lpSteps}}" as="s" hint-placeholder-count="3">
+              <div style="display:flex;align-items:flex-start;gap:11px">
+                <span style="width:20px;height:20px;flex:none;border-radius:999px;border:1px solid {{s.ringBorder}};background:{{s.ringBg}};color:{{s.ringInk}};font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center">{{s.n}}</span>
+                <div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:12.5px;font-weight:600;color:#e2e8f0">{{s.k}}</span><span style="font-size:11.5px;color:#64748b;line-height:1.45">{{s.v}}</span></div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{lpHasField}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">{{lpFieldLabel}}</span>
+            <div style="border:1px solid rgba(255,255,255,.10);border-radius:6px;background:rgba(255,255,255,.03);padding:11px 12px;font-size:13px;color:#334155">{{lpFieldHint}}</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{lpHasRows}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:4px 14px 10px">
+            <sc-for list="{{lpRows}}" as="r" hint-placeholder-count="2">
+              <div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.06)">
+                <span style="width:6px;height:6px;border-radius:999px;background:#34d399;flex:none"></span>
+                <div style="display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-size:12px;font-weight:600;color:#e2e8f0">{{r.k}}</span><span style="font-size:11px;color:#64748b">{{r.v}}</span></div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{lpHasNote}}" hint-placeholder-val="{{ false }}"><span style="font-size:11.5px;color:#64748b;line-height:1.5">{{lpNote}}</span></sc-if>
+      </div>
+      <sc-if value="{{lpHasCta}}" hint-placeholder-val="{{ false }}">
+        <div style="flex:none;padding:12px 18px 16px;border-top:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12.5px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:11px 0;text-align:center;cursor:pointer" style-hover="background:#005A9E">{{lpCta}}</span>
+          <span style="font-size:10.5px;color:#475569;text-align:center">{{lpFoot}}</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:860},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;view&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;sops&quot;,&quot;runbooks&quot;],&quot;default&quot;:&quot;sops&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;empty&quot;,&quot;fixture&quot;,&quot;loading&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data honesty&quot;},&quot;sopRuns&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:0,&quot;min&quot;:0,&quot;max&quot;:3,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Activity&quot;},&quot;showCustomSteps&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Activity&quot;},&quot;openPanel&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(spec: object) =&gt; void&quot;},&quot;goRunbooks&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;() =&gt; void&quot;}}">
+class Component extends DCLogic {
+  state = { tab: "lib", src: "all", cat: "All", rbChecked: {}, lp: null };
+  openP(spec) { if (this.props.openPanel) this.props.openPanel(spec); else this.setState({ lp: spec }); }
+  renderVals() {
+    const ds = this.props.dataState ?? "live";
+    const isLoading = ds === "loading", isFixture = ds === "fixture", isEmpty = ds === "empty";
+    const live = ds === "live";
+    const view = this.props.view ?? "sops";
+    const sopRuns = this.props.sopRuns ?? 0;
+    const S = this.state;
+
+    const overlay = this.props.showCustomSteps === true;
+    const LIB = [
+      { id: "iam01", code: "IAM-01", title: "Onboard a new starter", source: "baseline", cat: "IDENTITY & ACCESS", level: "Partially automated", runnable: true, avg: "11m", updated: "v2.1 · 12 Aug 2026", owner: "SM", ownerName: "S. McCaw",
+        steps: [["Create the account and assign licences", "POST /v1.0/users"], ["Add to role and access groups", "POST /v1.0/groups/{id}/members/$ref"], ["Enrol MFA and confirm registration", "GET /v1.0/reports/credentialUserRegistrationDetails"], ["Hand over credentials to the manager", null], ["Record the starter in the register", null]],
+        custom: overlay ? [["Notify the floor supervisor on the day", "v2.1"]] : [] },
+      { id: "iam02", code: "IAM-02", title: "Offboard a leaver", source: "baseline", cat: "IDENTITY & ACCESS", level: "Partially automated", runnable: true, avg: "14m", updated: "v2.3 · 27 Aug 2026", owner: "SM", ownerName: "S. McCaw",
+        steps: [["Block sign-in and revoke sessions", "POST /v1.0/users/{id}/revokeSignInSessions"], ["Remove group and role membership", "GET /v1.0/users/{id}/memberOf"], ["Convert the mailbox to shared", null], ["Reassign owned sites and files", null], ["Reclaim licences", "DELETE /v1.0/users/{id}/licenseDetails"], ["Record the leaver in the register", null]],
+        custom: overlay ? [["Collect the building pass before the final day", "v2.3"]] : [] },
+      { id: "iam03", code: "IAM-03", title: "Reset credentials after a suspected compromise", source: "baseline", cat: "IDENTITY & ACCESS", level: "Partially automated", runnable: true, avg: "9m", updated: "v1.4 · 18 Jun 2026", owner: "SM", ownerName: "S. McCaw",
+        steps: [["Revoke all sessions", "POST /v1.0/users/{id}/revokeSignInSessions"], ["Force a password reset", null], ["Re-register MFA methods", null], ["Review sign-in history for the period", "GET /v1.0/auditLogs/signIns"], ["Record the incident reference", null]], custom: [] },
+      { id: "iam04", code: "IAM-04", title: "Mover — change of role or department", source: "baseline", cat: "LIFECYCLE", level: "Partially automated", runnable: true, avg: "12m estimated", updated: "v1.0 · 31 Aug 2026", owner: "SM", ownerName: "S. McCaw",
+        steps: [["Read the current access set", "GET /v1.0/users/{id}/memberOf"], ["Remove access the old role carried", "DELETE /v1.0/groups/{id}/members/{uid}/$ref"], ["Grant the new role's access", "POST /v1.0/groups/{id}/members/$ref"], ["Confirm nothing was carried over", null], ["Record the move", null]], custom: [] },
+      { id: "iam05", code: "IAM-05", title: "Promote to elevated access", source: "baseline", cat: "LIFECYCLE", level: "Partially automated", runnable: true, avg: "8m estimated", updated: "v1.0 · 31 Aug 2026", owner: "SM", ownerName: "S. McCaw",
+        steps: [["Verify the approval record exists", null], ["Make the role assignment eligible, not active", "POST /v1.0/roleManagement/directory/roleEligibilityScheduleRequests"], ["Confirm MFA and device compliance", null], ["Record the promotion", null]], custom: [] },
+      { id: "iam06", code: "IAM-06", title: "Demote from elevated access", source: "baseline", cat: "LIFECYCLE", level: "Partially automated", runnable: true, avg: "7m estimated", updated: "v1.0 · 31 Aug 2026", owner: "SM", ownerName: "S. McCaw",
+        steps: [["Remove the eligible role assignment", "DELETE /v1.0/roleManagement/directory/roleEligibilitySchedules/{id}"], ["End any active assignment", null], ["Verify no standing admin access remains", "GET /v1.0/roleManagement/directory/roleAssignments"], ["Record the demotion", null]], custom: [] },
+      { id: "iam07", code: "IAM-07", title: "Propagate a de-VIP decision", source: "baseline", cat: "LIFECYCLE", level: "Partially automated", runnable: true, avg: "6m estimated", updated: "v1.0 · 31 Aug 2026", owner: "SM", ownerName: "S. McCaw",
+        steps: [["Remove the VIP classification", null], ["Drop the heightened monitoring policies", null], ["Confirm alerting reverts to standard", null], ["Record the reclassification", null]], custom: [] },
+      { id: "ir01", code: "IR-01", title: "Contain a compromised mailbox", source: "baseline", cat: "INCIDENT RESPONSE", level: "Partially automated", runnable: true, avg: "16m", updated: "v3.0 · 2 Jul 2026", owner: "SM", ownerName: "S. McCaw",
+        steps: [["Revoke sessions and reset credentials", "POST /v1.0/users/{id}/revokeSignInSessions"], ["Remove forwarding and inbox rules", null], ["Search for and purge the sent messages", null], ["Review mailbox audit for the period", "GET /v1.0/auditLogs/directoryAudits"], ["Record the incident and its evidence", null]], custom: [] },
+      { id: "ir02", code: "IR-02", title: "Respond to mass file deletion", source: "baseline", cat: "INCIDENT RESPONSE", level: "Manual with verification", runnable: true, avg: "34m", updated: "v2.0 · 2 Jul 2026", owner: "SM", ownerName: "S. McCaw",
+        steps: [["Identify the acting account and scope", "GET /v1.0/auditLogs/signIns"], ["Suspend the account", null], ["Restore from the recycle bin or version history", null], ["Verify the restored set matches the deleted set", null], ["Record the incident and its evidence", null]], custom: [] },
+      { id: "gov01", code: "GOV-01", title: "Quarterly access review", source: "baseline", cat: "GOVERNANCE", level: "Manual with verification", runnable: true, avg: "38m", updated: "v2.0 · 30 Jul 2026", owner: "SM", ownerName: "S. McCaw",
+        steps: [["Export current role assignments", "GET /v1.0/roleManagement/directory/roleAssignments"], ["Owners confirm each assignment", null], ["Remove unconfirmed assignments", null], ["Verify removals", "GET /v1.0/roleManagement/directory/roleAssignments"], ["File the review record", null]],
+        custom: overlay ? [["Send the summary to the audit committee", "v2.0"]] : [] },
+      { id: "data01", code: "DATA-01", title: "Restore a deleted site", source: "baseline", cat: "GOVERNANCE", level: "Reference only", runnable: false, avg: "15m estimated", updated: "v1.0 · 11 Apr 2026", owner: "SM", ownerName: "S. McCaw",
+        steps: [["Locate the site in the recycle bin", null], ["Restore and confirm ownership", null], ["Re-check sharing settings", null]], custom: [] },
+      { id: "cust592", code: "SOP-CUSTOM-592", title: "Sandbox test procedure", source: "baseline", cat: "GOVERNANCE", level: "Reference only", runnable: false, avg: "—", updated: "v1.0 · 14 Aug 2026", owner: "SM", ownerName: "S. McCaw admin",
+        steps: [["Placeholder step for testing the library", null]], custom: [] },
+      { id: "cu4c1e", code: "SOP-CUST-4c1e", title: "Approve external sharing requests", source: "ours", cat: "YOUR PROCEDURES", level: "Reference only", runnable: false, avg: "—", updated: "v1.0 · 21 Aug 2026", owner: "JD", ownerName: "J. Diaz",
+        steps: [["Requester files the business case", null], ["IT admin reviews the target site", null], ["Approve for 90 days maximum", null], ["Log the approval in the register", null]], custom: [] },
+      { id: "cu9b72", code: "SOP-CUST-9b72", title: "Quarterly vendor access attestation", source: "ours", cat: "YOUR PROCEDURES", level: "Reference only", runnable: false, avg: "—", updated: "v1.0 · 26 Aug 2026", owner: "JD", ownerName: "J. Diaz",
+        steps: [["List every vendor with tenant access", null], ["The sponsoring manager attests to each one", null], ["Withdraw access with no attestation", null], ["File the attestation record", null]], custom: [] },
+      { id: "cu2fd0", code: "SOP-CUST-2fd0", title: "Escalate a suspected phishing report", source: "ours", cat: "YOUR PROCEDURES", level: "Reference only", runnable: false, avg: "—", updated: "v1.0 · 28 Aug 2026", owner: "JD", ownerName: "J. Diaz",
+        steps: [["Staff member forwards the message to the mailbox", null], ["Service desk triages within the hour", null], ["Escalate to your MSP if it reached anyone", null]], custom: [] },
+    ];
+    LIB.forEach((p) => { p.runs = []; });
+    const lib = isEmpty ? [] : LIB;
+
+    const sopPanel = (p) => this.openP({
+      title: p.title,
+      state: p.code + " · " + p.level + " · " + p.updated,
+      steps: p.steps.map(([t, ep], i) => ({ n: String(i + 1), k: t, v: ep || "Manual step" }))
+        .concat(p.custom.map(([t, v], i) => ({ n: String(p.steps.length + i + 1), k: t, v: "Your own step · added against " + v }))),
+      rows: p.custom.length
+        ? [{ k: p.custom.length + (p.custom.length === 1 ? " step of yours" : " steps of yours"), v: "Kept in your own record, appended after the procedure's own steps. A new version of the procedure never discards them." }]
+        : null,
+      note: (p.source === "ours"
+        ? "Written by your team. Your MSP reads it and does not edit it, and a procedure you author can never gain an automated step."
+        : "Maintained by your MSP and updated when Microsoft changes behaviour.")
+        + (p.custom.length ? "" : " You have not added any steps of your own to this one.")
+        + " Review cadence is not recorded anywhere, so none is shown. Last updated by " + p.ownerName + ".",
+      cta: "Add a step of your own",
+      foot: "Up to 60 of your own steps. Adding one never makes a procedure runnable.",
+    });
+
+    const filtered = lib.filter((p) => (S.src === "all" || p.source === S.src) && (S.cat === "All" || p.cat === S.cat));
+    const cats = [];
+    lib.forEach((p) => { if (cats.indexOf(p.cat) < 0) cats.push(p.cat); });
+    const groups = cats.map((c) => {
+      const rows = filtered.filter((p) => p.cat === c).map((p) => ({
+        code: p.code, title: p.title, level: p.level, runnable: p.runnable,
+        dot: p.source === "baseline" ? "#60a5fa" : "#22d3ee",
+        srcTitle: p.source === "baseline" ? "Maintained by your MSP" : "Written by your team",
+        owner: p.owner, ownerTitle: "Last updated by " + p.ownerName,
+        hasCustom: p.custom.length > 0, customLabel: "+" + p.custom.length + " YOURS",
+        click: () => sopPanel(p),
+      }));
+      const note = c === "LIFECYCLE"
+        ? "These four exist as procedures your MSP can run by hand. Nothing in the portal fires them automatically from a decision made elsewhere yet."
+        : c === "YOUR PROCEDURES" ? "Written by your team. These stay reference-only — an authored procedure never gains an automated step." : "";
+      return { label: c, n: String(rows.length), rows, note, hasNote: !!note };
+    }).filter((g) => g.rows.length);
+
+    const auto = lib.filter((p) => p.steps.some(([, ep]) => ep)).length;
+    const ratio = lib.length ? Math.round((auto / lib.length) * 100) : 0;
+    const mine = lib.filter((p) => p.source === "ours").length;
+    const runCount = isEmpty ? 0 : sopRuns;
+    const statCards = [
+      { label: "PROCEDURES IN YOUR LIBRARY", value: String(lib.length), sub: lib.length ? (lib.length - mine) + " from your MSP · " + mine + " yours" : "—", c: "#60a5fa" },
+      { label: "CAN RUN THROUGH GRAPH", value: ratio + "%", sub: auto + " of " + lib.length + " · counted from the procedure's own steps only", c: "#34d399" },
+      { label: "RUN AGAINST YOUR TENANT", value: String(runCount), sub: runCount === 0 ? "No procedure has been run here yet" : runCount + " in flight now", c: "#22d3ee" },
+      { label: "AVERAGE RUN TIME", value: runCount === 0 ? "—" : "14m", sub: runCount === 0 ? "Nothing has completed, so there is no average" : "Across completed runs", c: "#a78bfa" },
+    ];
+
+    const QSRC = [
+      { code: "IAM-02", title: "Offboard a leaver", state: "Running", pct: 33, step: "Step 2 of 6 · Remove group and role membership", mode: "Automated steps only", cr: "CR-2026-151", svc: "Entra ID", started: "Started 14 minutes ago", origin: "lifecycle", ver: "v2.3",
+        steps: [{ k: "Block sign-in and revoke sessions", v: "Automated · passed", done: true }, { k: "Remove group and role membership", v: "In progress · automated", done: false }, { k: "Convert the mailbox to shared", v: "Waiting · manual", done: false }, { k: "Reassign owned sites and files", v: "Waiting · manual", done: false }, { k: "Reclaim licences", v: "Waiting · automated", done: false }, { k: "Record the leaver in the register", v: "Waiting · manual", done: false }] },
+      { code: "GOV-01", title: "Quarterly access review", state: "Queued", pct: 0, step: "Queued · 5 steps in scope", mode: "Full execution", cr: "CR-2026-149", svc: "Entra ID", started: "Queued 2 hours ago", origin: "policy", ver: "v2.0",
+        steps: [{ k: "Export current role assignments", v: "Waiting · automated", done: false }, { k: "Owners confirm each assignment", v: "Waiting · manual", done: false }, { k: "Remove unconfirmed assignments", v: "Waiting · manual", done: false }, { k: "Verify removals", v: "Waiting · automated", done: false }, { k: "File the review record", v: "Waiting · manual", done: false }] },
+      { code: "IR-01", title: "Contain a compromised mailbox", state: "Queued", pct: 0, step: "Queued · 5 steps in scope", mode: "Automated steps only", cr: "Not recorded", svc: "Exchange Online", started: "Queued 40 minutes ago", origin: "remediation", ver: "v3.0",
+        steps: [{ k: "Revoke sessions and reset credentials", v: "Waiting · automated", done: false }, { k: "Remove forwarding and inbox rules", v: "Waiting · manual", done: false }, { k: "Search for and purge the sent messages", v: "Waiting · manual", done: false }, { k: "Review mailbox audit for the period", v: "Waiting · automated", done: false }, { k: "Record the incident and its evidence", v: "Waiting · manual", done: false }] },
+    ];
+    const ORIGIN = {
+      policy: { label: "From a standing policy", note: "Started by a standing policy your MSP holds, under a change request approved once for repeated use." },
+      lifecycle: { label: "From a lifecycle event", note: "Started against a joiner, mover or leaver event." },
+      remediation: { label: "From remediation", note: "Started by a remediation item rather than by hand." },
+      manual: { label: "Started by hand", note: "An operator at your MSP started this one directly." },
+    };
+    const queue = isEmpty ? [] : QSRC.slice(0, sopRuns);
+    const queueRows = queue.map((q) => ({
+      ...q, pctW: q.pct + "%", pct: q.pct + "%",
+      chipInk: q.state === "Running" ? "#00B4D8" : "#94a3b8",
+      chipBorder: q.state === "Running" ? "rgba(0,180,216,.45)" : "rgba(148,163,184,.35)",
+      chipBg: q.state === "Running" ? "rgba(0,180,216,.10)" : "transparent",
+      cr: "CR · " + q.cr,
+      crInk: /^CR-/.test(q.cr) ? "#60a5fa" : "#64748b",
+      originLabel: ORIGIN[q.origin].label,
+      verLabel: "Ran against " + q.ver,
+      click: () => this.openP({
+        title: q.title,
+        state: q.state + " · " + q.pct + "% · " + q.started.toLowerCase(),
+        steps: q.steps.map((s, i) => ({ n: String(i + 1), k: s.k, v: s.v, done: s.done })),
+        rows: [{ k: "Why it started", v: ORIGIN[q.origin].note }, { k: "Change request", v: q.cr }, { k: "Procedure version", v: q.ver + " — frozen at the moment the run started, so a later edit cannot change what ran" }, { k: "Mode", v: q.mode }, { k: "Service", v: q.svc }, { k: "Operator", v: "M. Chen, your MSP" }],
+        note: "Run by your MSP. Steps continue whether or not you are watching, and nothing here can be started or stopped from this page. A run whose automated steps finish while manual ones are still open settles as blocked, not complete.",
+        cta: null, foot: null,
+      }),
+    }));
+
+    const RES = { Success: ["#34d399", "rgba(52,211,153,.35)"], Partial: ["#c2a63d", "rgba(194,166,61,.4)"], Failure: ["#f87171", "rgba(248,113,113,.35)"], Recorded: ["#60a5fa", "rgba(96,165,250,.35)"] };
+    const PUBS = [
+      ["31 Aug · 09:40", "IAM-07", "S. McCaw", "v1.0 published — first version", "0c4a…51be"],
+      ["31 Aug · 09:38", "IAM-06", "S. McCaw", "v1.0 published — first version", "b71f…2ad0"],
+      ["31 Aug · 09:36", "IAM-05", "S. McCaw", "v1.0 published — first version", "5e92…c803"],
+      ["31 Aug · 09:33", "IAM-04", "S. McCaw", "v1.0 published — first version", "d318…7f45"],
+      ["28 Aug · 16:12", "SOP-CUST-2fd0", "J. Diaz", "v1.0 published by your team", "9a05…e6c7"],
+      ["27 Aug · 11:04", "IAM-02", "S. McCaw", "v2.3 replaces v2.2", "3fd7…19b2"],
+      ["26 Aug · 10:21", "SOP-CUST-9b72", "J. Diaz", "v1.0 published by your team", "cc41…8d0f"],
+      ["21 Aug · 15:47", "SOP-CUST-4c1e", "J. Diaz", "v1.0 published by your team", "77e3…b154"],
+      ["30 Jul · 09:15", "GOV-01", "S. McCaw", "v2.0 replaces v1.4", "7be0…d412"],
+    ];
+    const EXECS = [
+      ["3 Sep · 09:31", "IAM-02", "Execution started", "M. Chen", "Lifecycle event · 6 steps in scope · v2.3", "Recorded", "e2b8…40aa"],
+      ["3 Sep · 07:12", "GOV-01", "Execution queued", "Standing policy", "Approved once for repeated use · CR-2026-149", "Recorded", "1d6f…93ce"],
+      ["3 Sep · 08:55", "IR-01", "Execution queued", "Remediation item", "Queued behind the run above · v3.0", "Recorded", "aa10…5b7d"],
+    ];
+    const auditRows = (isEmpty ? [] : EXECS.slice(0, runCount)
+      .concat(PUBS.map(([when, code, actor, detail, hash]) => [when, code, "Version published", actor, detail, "Recorded", hash]))
+    ).map(([when, code, action, actor, detail, result, hash]) => ({ when, code, action, actor, detail, result, hash, resInk: RES[result][0], resBorder: RES[result][1] }));
+    const histNote = runCount === 0
+      ? "No procedure has ever been run against your tenant, so there is no execution history. Everything below is a version publication — a real, dated, attributable event that exists whether or not anything has run."
+      : "Version publications and executions in one list. A publication is recorded even when nothing has run.";
+
+    const HOLD_TONE = {
+      early: { ink: "#34d399", border: "rgba(52,211,153,.35)", bg: "rgba(52,211,153,.06)" },
+      due: { ink: "#f87171", border: "rgba(248,113,113,.35)", bg: "rgba(248,113,113,.06)" },
+      closing: { ink: "#c2a63d", border: "rgba(194,166,61,.4)", bg: "rgba(194,166,61,.06)" },
+      running: { ink: "#60a5fa", border: "rgba(96,165,250,.35)", bg: "rgba(96,165,250,.06)" },
+    };
+    const HOLDS = [
+      { key: "h1", title: "Wait 14 days before deleting Legacy-Marketing", gates: "Gates step 4 · Delete the Legacy-Marketing site", state: "early", badge: "CLEAR TO CLOSE EARLY", tMinus: "T-5d",
+        wait: 14, ext: 0, done: 9, scanLine: "No access detected in 14 days", scanInk: "#34d399", prov: "Access scan · daily · last ran today 02:00", action: "Close early",
+        note: "Close early raises a change request and closes the window — the gated step still runs only after approval.",
+        rows: [{ k: "Agreed wait", v: "14 days" }, { k: "Extended", v: "None" }, { k: "Scan verdict", v: "Clear — no access in 14 days" }] },
+      { key: "h2", title: "Hold before removing 12 site admins", gates: "Gates step 3 · Remove admin rights", state: "due", badge: "DECISION DUE", tMinus: "T-0",
+        wait: 7, ext: 3, done: 10, scanLine: "2 admin sign-ins during the window", scanInk: "#c2a63d", prov: "Sign-in scan · daily · last ran today 02:00", action: "Decide",
+        note: "Release raises a change request — the gated step runs after approval, not on click. The agreed wait is never rewritten; extensions accumulate beside it.",
+        rows: [{ k: "Agreed wait", v: "7 days" }, { k: "Extended", v: "+3 days · 20 Aug · owner requested more time" }, { k: "Scan verdict", v: "Signals — 2 admin sign-ins" }] },
+    ];
+    const holds = (isEmpty ? [] : HOLDS).map((h) => {
+      const t = HOLD_TONE[h.state];
+      const total = h.wait + h.ext;
+      const open = () => this.openP({
+        title: h.title,
+        state: h.badge.charAt(0) + h.badge.slice(1).toLowerCase() + " · " + h.tMinus,
+        rows: h.rows.concat([{ k: "Gated step", v: h.gates.replace("Gates step", "Step") }]),
+        note: h.note,
+        cta: h.action,
+        foot: "Not wired yet — decision endpoints are live",
+      });
+      return { ...h, ...t,
+        waitLine: h.wait + "d wait" + (h.ext ? " · +" + h.ext + "d extended" : ""),
+        ticks: Array.from({ length: total }, (_, i) => ({ bg: i < h.done ? t.ink : "rgba(255,255,255,.10)" })),
+        actInk: t.ink, actBorder: t.border,
+        click: open, actClick: open,
+      };
+    });
+
+    const PILL = { Governance: ["#60a5fa", "rgba(59,130,246,.35)"], Security: ["#a78bfa", "rgba(139,92,246,.35)"] };
+    const RB = [
+      { key: "rb1", title: "Convert public sites to private", pillar: "GOVERNANCE", pk: "Governance", cycle: "Day 12 of 90", status: "Holding", holdKey: "h1",
+        steps: [["Inventory public sites", 1], ["Confirm owners notified", 1], ["Flip sharing to private", 1], ["Delete the Legacy-Marketing site", 0, 0, 1], ["Verify external links are dead", 0], ["Record the disposition", 0]] },
+      { key: "rb2", title: "Manage guest access", pillar: "GOVERNANCE", pk: "Governance", cycle: "Day 84 of 90", status: "On track", holdKey: null,
+        steps: [["Export current guest list", 1], ["Owners confirm each guest", 1], ["Remove unconfirmed guests", 1], ["Disable stale guest accounts", 1], ["Verify removals", 1], ["Record the review", 0], ["Schedule the next cycle", 0]] },
+      { key: "rb3", title: "Reduce site admins", pillar: "SECURITY", pk: "Security", cycle: "Day 30 of 60", status: "Holding", holdKey: "h2",
+        steps: [["List sites with 3+ admins", 1], ["Notify departmental leads", 1, 1], ["Remove admin rights", 0, 0, 1], ["Verify remaining admins", 0], ["Record the change", 0]] },
+    ];
+    const runbooks = (isEmpty ? [] : RB).map((rb) => {
+      const hold = holds.find((h) => h.key === rb.holdKey) || null;
+      const steps = rb.steps.map(([text, checked, custom, gated], i) => {
+        const key = rb.key + "-" + i;
+        const isOn = S.rbChecked[key] != null ? S.rbChecked[key] : !!checked;
+        return { text, custom: !!custom, gated: !!gated,
+          gateTitle: hold ? hold.title : "",
+          tick: isOn ? "✓" : "",
+          boxBg: isOn ? "#0078D4" : "transparent",
+          boxBorder: isOn ? "#0078D4" : "rgba(255,255,255,.18)",
+          ink: isOn ? "#64748b" : "#cbd5e1",
+          cursor: live ? "pointer" : "default",
+          click: live ? () => this.setState((s) => ({ rbChecked: { ...s.rbChecked, [key]: !isOn } })) : () => {},
+        };
+      });
+      const on = steps.filter((s) => s.tick).length;
+      const st = rb.status === "On track" ? ["#34d399", "rgba(52,211,153,.35)"] : ["#c2a63d", "rgba(194,166,61,.4)"];
+      return { ...rb, steps,
+        pillInk: PILL[rb.pk][0], pillBorder: PILL[rb.pk][1],
+        stInk: st[0], stBorder: st[1],
+        prog: on + " of " + steps.length + " steps",
+        pctW: Math.round((on / steps.length) * 100) + "%",
+        hasHold: !!hold,
+        holdBadge: hold ? hold.badge : "", holdTitle: hold ? hold.title : "", holdTMinus: hold ? hold.tMinus : "",
+        holdInk: hold ? hold.ink : "", holdBorder: hold ? hold.border : "", holdBg: hold ? hold.bg : "",
+        holdClick: hold ? hold.click : () => {},
+        addStep: () => this.openP({
+          title: "Add a step", state: rb.title,
+          field: { label: "Step", hint: "1 to 500 characters" },
+          note: "Saved as your own step and kept when the cycle resets.",
+          cta: "Add step", foot: "Not wired yet — the step endpoint is live",
+        }),
+      };
+    });
+
+    const due = holds.filter((h) => h.state === "due").length;
+    const early = holds.filter((h) => h.state === "early").length;
+    const bannerParts = [];
+    if (due) bannerParts.push(due + " decision due");
+    if (early) bannerParts.push(early + " clear to close early");
+    const bTone = due ? HOLD_TONE.due : HOLD_TONE.early;
+
+    const tabs = [
+      { k: "lib", label: "Library" },
+      { k: "queue", label: "Queue" + (queue.length ? " · " + queue.length : "") },
+      { k: "hist", label: "History" },
+    ].map((t) => ({ label: t.label,
+      ink: S.tab === t.k ? "#f8fafc" : "#64748b",
+      bg: S.tab === t.k ? "rgba(255,255,255,.07)" : "transparent",
+      pick: () => this.setState({ tab: t.k }) }));
+
+    const srcSeg = [["all", "All"], ["baseline", "Baseline"], ["ours", "Yours"]].map(([k, label]) => ({
+      label, ink: S.src === k ? "#f8fafc" : "#64748b",
+      bg: S.src === k ? "rgba(0,120,212,.25)" : "transparent",
+      pick: () => this.setState({ src: k }) }));
+
+    const catChips = [{ k: "All", label: "Everything", n: lib.length }].concat(cats.map((c) => ({ k: c, label: c.charAt(0) + c.slice(1).toLowerCase(), n: lib.filter((p) => p.cat === c).length })))
+      .map((c) => ({ label: c.label, n: String(c.n),
+        ink: S.cat === c.k ? "#f8fafc" : "#64748b",
+        border: S.cat === c.k ? "rgba(0,180,216,.45)" : "rgba(255,255,255,.10)",
+        bg: S.cat === c.k ? "rgba(0,180,216,.08)" : "transparent",
+        pick: () => this.setState({ cat: c.k }) }));
+
+    const lp = S.lp;
+    const lpSteps = (lp && lp.steps ? lp.steps : []).map((s, i) => ({
+      n: s.done ? "✓" : String(s.n || i + 1), k: s.k, v: s.v,
+      ringBorder: s.done ? "rgba(52,211,153,.45)" : "rgba(255,255,255,.14)",
+      ringBg: s.done ? "rgba(52,211,153,.12)" : "transparent",
+      ringInk: s.done ? "#34d399" : "#94a3b8" }));
+
+    return {
+      rootH: this.props.embedded ? "100%" : "100vh",
+      pageTitle: view === "sops" ? "SOPs & Runbooks" : "Active runbooks",
+      pageHint: view === "sops" ? "Procedures your MSP maintains and runs against your tenant. Nothing executes from this page." : "Recurring review cycles with step checklists. Holds gate a step on elapsed time.",
+      viewSops: view === "sops", viewRunbooks: view === "runbooks",
+      stateLine: isLoading ? "Loading" : isFixture ? "Example data" : "Live",
+      stateInk: isFixture ? "#fbbf24" : "#64748b",
+      stateDot: isLoading ? "#64748b" : isFixture ? "#fbbf24" : "#34d399",
+      fixtureLine: view === "sops" ? "Your procedure library could not be loaded — showing example data. Actions are disabled." : "Your runbooks could not be loaded — showing example data. Actions are disabled.",
+      isLoading, isFixture, isReady: !isLoading,
+      skeletons: [{ w1: "34%", w2: "70%" }, { w1: "26%", w2: "82%" }, { w1: "42%", w2: "60%" }],
+      statCards,
+      hasBanner: !isEmpty && !isFixture && holds.length > 0,
+      bannerTag: due ? due + " DECISION DUE" : "CAN CLOSE EARLY",
+      bannerText: holds.length + " procedures are in a hold window — a step that waits on elapsed time rather than on work. " + bannerParts.join(", ") + ".",
+      bannerInk: bTone.ink, bannerBorder: bTone.border, bannerBg: bTone.bg,
+      goRunbooks: () => { if (this.props.goRunbooks) this.props.goRunbooks(); },
+      tabs,
+      tabLib: S.tab === "lib", tabQueue: S.tab === "queue", tabHist: S.tab === "hist",
+      srcSeg, catChips, groups,
+      libEmpty: lib.length === 0,
+      queueRows, queueEmpty: queue.length === 0,
+      auditRows, histNote,
+      runbooks, rbEmpty: runbooks.length === 0,
+      holds, hasHolds: holds.length > 0,
+      holdSummary: holds.length ? holds.length + " open · " + bannerParts.join(" · ") : "",
+      newProc: () => this.openP({
+        title: "New procedure", state: "Lands in your library as 'Written by your team'",
+        field: { label: "Title", hint: "e.g. Approve external sharing requests" },
+        steps: [{ n: "1", k: "Name and describe it", v: "Title, purpose, category" }, { n: "2", k: "List the steps", v: "1 to 60, plain text" }, { n: "3", k: "It stays reference-only", v: "A procedure you author can never gain an automated step, and nothing you write here can run against your tenant" }],
+        cta: "Create procedure", foot: "Not wired yet — the authoring endpoint is live",
+      }),
+      lpOpen: !!lp,
+      lpTitle: lp ? lp.title : "", lpState: lp && lp.state ? lp.state : "",
+      lpSteps, lpHasSteps: lpSteps.length > 0,
+      lpHasField: !!(lp && lp.field),
+      lpFieldLabel: lp && lp.field ? lp.field.label : "", lpFieldHint: lp && lp.field ? lp.field.hint : "",
+      lpRows: lp && lp.rows ? lp.rows : [], lpHasRows: !!(lp && lp.rows && lp.rows.length),
+      lpNote: lp && lp.note ? lp.note : "", lpHasNote: !!(lp && lp.note),
+      lpCta: lp && lp.cta ? lp.cta : "", lpHasCta: !!(lp && lp.cta),
+      lpFoot: lp && lp.foot ? lp.foot : "",
+      lpClose: () => this.setState({ lp: null }),
+    };
+  }
+}
+</script>
+</body>
+</html>

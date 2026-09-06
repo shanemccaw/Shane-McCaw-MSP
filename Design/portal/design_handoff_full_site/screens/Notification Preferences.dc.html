@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes skelPulse{0%,100%{opacity:.5}50%{opacity:.9}}
+</style>
+</helmet>
+<div data-screen-label="Notification preferences" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:24px 30px 90px;padding-right:max(30px, calc(100% - 900px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Notification preferences</span>
+      <span title="Choose what reaches you, and whether it also goes to email. This is delivery, not detection." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+    </div>
+
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <sc-for list="{{skeletons}}" as="s" hint-placeholder-count="6">
+          <div style="border:1px solid rgba(255,255,255,.07);border-radius:12px;background:rgba(255,255,255,.02);padding:14px;display:flex;flex-direction:column;gap:8px;animation:skelPulse 1.6s ease-in-out infinite">
+            <div style="height:10px;width:{{s.w1}};border-radius:999px;background:rgba(255,255,255,.07)"></div>
+            <div style="height:9px;width:{{s.w2}};border-radius:999px;background:rgba(255,255,255,.05)"></div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isFailed}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:14px 16px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">Your preferences could not be read</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:620px">Nothing is listed because nothing could be fetched — not because everything is switched off. Your real settings are unchanged and still deciding what reaches you right now.</span>
+          <span onClick="{{retry}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">Try again</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isLive}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <span style="font-size:12.5px;font-weight:600;color:#f8fafc">These settings control delivery, not detection</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.65;max-width:660px">Turning a category off stops it from reaching you — it does not change the thresholds or escalation rules your provider has configured for your monitoring.</span>
+        <span style="font-size:11.5px;color:#c2a63d;line-height:1.6;max-width:660px">Turning a category off is total. No bell entry, no email, and no webhook delivery for it either — an endpoint of yours subscribed to that category simply stops receiving anything, silently.</span>
+      </div>
+
+      <sc-if value="{{allDefault}}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:12.5px;font-weight:600;color:#f8fafc">You have never changed any of these</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:640px">Every category below is at its default: in-app on, email off. That is a real answer rather than a blank form — you are already receiving everything in the bell and nothing by email.</span>
+        </div>
+      </sc-if>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:6px 20px 14px">
+        <div style="display:flex;align-items:center;gap:12px;padding:13px 0 8px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Notification Categories</span>
+          <span style="font-size:11px;color:#64748b">{{catMeta}}</span>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:44px;margin-left:auto;margin-right:9px;flex:none;text-align:center">NOTIFY</span>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:44px;margin:0 9px;flex:none;text-align:center">EMAIL</span>
+        </div>
+        <sc-for list="{{cats}}" as="c" hint-placeholder-count="15">
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid rgba(255,255,255,.06)">
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-size:12.5px;font-weight:600;color:{{c.titleInk}}">{{c.label}}</span>
+                <sc-if value="{{c.changed}}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:9px;font-weight:700;letter-spacing:.08em;color:#38bdf8;border:1px solid rgba(56,189,248,.3);border-radius:999px;padding:2px 7px">CHANGED</span>
+                </sc-if>
+              </div>
+              <span style="font-size:11.5px;color:#64748b;line-height:1.5;max-width:520px">{{c.description}}</span>
+              <sc-if value="{{c.muted}}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:11px;color:#c2a63d;line-height:1.5">Nothing in this category reaches you — bell, email or webhook.</span>
+              </sc-if>
+            </div>
+            <div onClick="{{c.toggleInApp}}" style="box-sizing:border-box;width:44px;height:24px;border-radius:999px;background:{{c.aBg}};border:1px solid {{c.aBd}};display:flex;align-items:center;padding:2px;cursor:pointer;justify-content:{{c.aJust}};flex:none;margin:0 9px">
+              <span style="width:18px;height:18px;border-radius:999px;background:{{c.aKnob}};flex:none"></span>
+            </div>
+            <div onClick="{{c.toggleEmail}}" title="{{c.eTip}}" style="box-sizing:border-box;width:44px;height:24px;border-radius:999px;background:{{c.eBg}};border:1px solid {{c.eBd}};display:flex;align-items:center;padding:2px;cursor:{{c.eCur}};justify-content:{{c.eJust}};flex:none;margin:0 9px;opacity:{{c.eOpacity}}">
+              <span style="width:18px;height:18px;border-radius:999px;background:{{c.eKnob}};flex:none"></span>
+            </div>
+          </div>
+        </sc-for>
+        <span style="display:block;font-size:10.5px;color:#475569;line-height:1.55;border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:2px">Email can only be on where in-app is on. Turning in-app off turns email off with it, because the email is sent as a copy of the bell entry rather than on its own.</span>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Email goes to {{emailAddr}}</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:660px">Every enabled category emails as soon as it fires. There is no daily or weekly digest here and no way to batch them — the cadence controls you may have seen on monitoring alerts belong to a different set of settings entirely.</span>
+        <span style="font-size:11.5px;color:#c2a63d;line-height:1.6;max-width:660px">If an email fails to send, you will not be told. Delivery is attempted once and failures are logged on our side only, so a category showing email on is not proof that email is arriving.</span>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:15px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Not the same as your monitoring alerts</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.65;max-width:660px">This page covers the platform's own notifications — invoices, signed documents, security events, system messages. Monitoring alerts about your tenant have their own thresholds, severities and digest cadence, kept on a separate page. The two lists were built for different purposes and share nothing: no setting here changes one there.</span>
+        <span onClick="{{goAlerts}}" style="align-self:flex-start;font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer">Open monitoring alert preferences</span>
+      </div>
+
+      <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+            <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+          </div>
+          <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ledger}}" as="l" hint-placeholder-count="6">
+                <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                  <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                  <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{barShow}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;bottom:0;left:0;right:0;z-index:40;background:rgba(11,17,32,.97);border-top:1px solid rgba(255,255,255,.10);padding:12px 30px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:12px;color:#cbd5e1;min-width:0">{{barText}}</span>
+      <span onClick="{{discard}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#94a3b8;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 14px;cursor:pointer;flex:none;white-space:nowrap">Discard</span>
+      <span onClick="{{save}}" style="font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 15px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:#005A9E">Save changes</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{toastShow}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;bottom:22px;left:50%;transform:translateX(-50%);z-index:50;background:rgba(11,17,32,.98);border:1px solid rgba(52,211,153,.35);border-radius:10px;padding:11px 16px;box-shadow:0 14px 34px rgba(0,0,0,.5);display:flex;align-items:center;gap:9px;max-width:520px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="m5 13 4 4L19 7"></path></svg>
+      <span style="font-size:12px;color:#cbd5e1;line-height:1.5">{{toastText}}</span>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1060,&quot;height&quot;:940},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;loading&quot;,&quot;fetch-failed&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;hasStoredChanges&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;emailAddress&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;you@contoso.com&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;goAlerts&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;() =&gt; void&quot;},&quot;openPanel&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(spec: any) =&gt; void&quot;}}">
+class Component extends DCLogic {
+  state = { draft: null, saved: null, ledger: true, failed: null, toast: false };
+
+  componentWillUnmount() { clearTimeout(this._t); }
+
+  renderVals() {
+    const S = this.state;
+    const P = this.props;
+    const ds = S.failed !== null ? S.failed : (P.dataState || "live");
+    const isLoading = ds === "loading";
+    const isFailed = ds === "fetch-failed";
+    const isLive = ds === "live";
+
+    const CATS = [
+      ["fulfillment", "Fulfillment", "Work items and deliverables completed for you"],
+      ["payment", "Payment", "Invoices, charges, and payment confirmations"],
+      ["security", "Security", "Security findings and alerts from your monitoring"],
+      ["ai", "AI Insights", "AI-generated analysis and recommendations"],
+      ["sow", "Statements of Work", "SOW updates, approvals, and signatures"],
+      ["signal", "Signals", "Monitoring signals detected on your environment"],
+      ["message", "Messages", "New messages from your account team"],
+      ["system", "System", "General platform and account notices"],
+      ["lead", "Leads", "New lead activity related to your account"],
+      ["dunning", "Billing Reminders", "Past-due or upcoming payment reminders"],
+      ["consent", "Consent", "Changes to Microsoft 365 tenant consent status"],
+      ["automation", "Automation", "Automated workflow runs on your behalf"],
+      ["project", "Projects", "Project status and milestone updates"],
+      ["onboarding", "Onboarding", "Setup and onboarding progress updates"],
+      ["offer", "Offers", "Remediation and service offers for you"],
+    ];
+
+    const STORED = P.hasStoredChanges === true
+      ? { payment: { a: true, e: true }, dunning: { a: true, e: true }, lead: { a: false, e: false }, ai: { a: false, e: false } }
+      : {};
+    const base = {};
+    CATS.forEach(([k]) => {
+      const s = STORED[k];
+      base[k] = { a: s ? s.a : true, e: s ? s.e : false, stored: !!s };
+    });
+    const saved = S.saved || base;
+    const cur = S.draft || saved;
+
+    const changedKeys = CATS.filter(([k]) => cur[k].a !== saved[k].a || cur[k].e !== saved[k].e).map(([k]) => k);
+    const allDefault = CATS.every(([k]) => cur[k].a === true && cur[k].e === false);
+    const emailOn = CATS.filter(([k]) => cur[k].e).length;
+    const mutedCount = CATS.filter(([k]) => !cur[k].a).length;
+
+    const set = (k, patch) => {
+      const next = {};
+      CATS.forEach(([c]) => { next[c] = { ...cur[c] }; });
+      Object.assign(next[k], patch);
+      if (patch.a === false) next[k].e = false;
+      this.setState({ draft: next });
+    };
+
+    const cats = CATS.map(([k, label, description]) => {
+      const v = cur[k];
+      return {
+        label, description,
+        titleInk: v.a ? "#e2e8f0" : "#94a3b8",
+        muted: !v.a,
+        changed: changedKeys.indexOf(k) >= 0,
+        aBg: v.a ? "#0078D4" : "rgba(255,255,255,.07)", aBd: v.a ? "#0078D4" : "rgba(255,255,255,.14)",
+        aJust: v.a ? "flex-end" : "flex-start", aKnob: v.a ? "#fff" : "#64748b",
+        toggleInApp: () => set(k, { a: !v.a }),
+        eBg: v.e ? "#0078D4" : "rgba(255,255,255,.07)", eBd: v.e ? "#0078D4" : "rgba(255,255,255,.14)",
+        eJust: v.e ? "flex-end" : "flex-start", eKnob: v.e ? "#fff" : "#64748b",
+        eOpacity: v.a ? "1" : "0.35", eCur: v.a ? "pointer" : "not-allowed",
+        eTip: v.a ? "Email a copy of this category" : "In-app is off for this category, so there is nothing to email a copy of",
+        toggleEmail: () => v.a && set(k, { e: !v.e }),
+      };
+    });
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      isLoading, isFailed, isLive,
+      stateLine: isLoading ? "Reading your preferences" : isFailed ? "Could not read your preferences" : "Live — 15 categories",
+      stateDot: isFailed ? "#f87171" : isLoading ? "#475569" : "#34d399",
+      stateInk: isFailed ? "#f87171" : "#64748b",
+      skeletons: [{ w1: "30%", w2: "62%" }, { w1: "24%", w2: "54%" }, { w1: "28%", w2: "58%" }, { w1: "22%", w2: "48%" }, { w1: "26%", w2: "56%" }, { w1: "31%", w2: "50%" }],
+      retry: () => this.setState({ failed: "live" }),
+
+      allDefault: allDefault && changedKeys.length === 0,
+      cats,
+      catMeta: mutedCount === 0
+        ? "all reaching you · " + emailOn + (emailOn === 1 ? " also by email" : " also by email")
+        : mutedCount + (mutedCount === 1 ? " category muted · " : " categories muted · ") + emailOn + " by email",
+      emailAddr: P.emailAddress || "you@contoso.com",
+      goAlerts: () => (P.goAlerts ? P.goAlerts() : null),
+
+      barShow: changedKeys.length > 0,
+      barText: changedKeys.length + (changedKeys.length === 1 ? " category changed and not saved yet" : " categories changed and not saved yet"),
+      discard: () => this.setState({ draft: null }),
+      save: () => {
+        clearTimeout(this._t);
+        this.setState({ saved: cur, draft: null, toast: true });
+        this._t = setTimeout(() => this.setState({ toast: false }), 3200);
+      },
+      toastShow: S.toast,
+      toastText: "Saved. Each category was written on its own, so if one had failed the rest would still have gone through.",
+
+      ledgerShow: P.showLedger !== false,
+      ledgerOpen: S.ledger,
+      ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger: [
+        { gap: "No record of what a muted category suppressed. A suppressed notification is never created, so there is nothing to look back at — only the absence of what would have appeared.", where: "§10" },
+        { gap: "No digest or cadence. Every enabled category emails immediately; batching belongs to monitoring alerts, not here.", where: "§10" },
+        { gap: "No confirmation of what was stored. Saving reports success without reading the values back, so the list you see is what you set rather than what the server returned.", where: "§2" },
+        { gap: "No signal when an email fails. Delivery is attempted once and failures are logged on our side only.", where: "§6" },
+        { gap: "No effect on what your MSP sees. Muting a category hides it from you, not from them.", where: "§5" },
+        { gap: "No separate webhook switch. Webhook delivery for a category rides on its in-app setting and cannot be kept on independently.", where: "§5" },
+        { gap: "No shared ground with monitoring alert preferences. Two deliberately separate lists; nothing here reads or writes anything there.", where: "§8" },
+        { gap: "No per-severity control. A category is on or off as a whole — there is no way to keep only the urgent ones.", where: "§3" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

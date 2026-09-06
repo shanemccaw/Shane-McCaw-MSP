@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
+@keyframes skelPulse{0%,100%{opacity:.5}50%{opacity:.9}}
+</style>
+</helmet>
+
+<div data-screen-label="Security plan" style="flex:1;min-width:0;height:{{rootH}};display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:24px 30px 60px;padding-right:max(30px, calc(100% - 1300px));display:flex;flex-direction:column;gap:18px">
+
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{skeletons}}" as="s" hint-placeholder-count="4">
+          <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.02);padding:16px;display:flex;flex-direction:column;gap:9px;animation:skelPulse 1.6s ease-in-out infinite">
+            <div style="height:10px;width:{{s.w1}};border-radius:999px;background:rgba(255,255,255,.07)"></div>
+            <div style="height:9px;width:{{s.w2}};border-radius:999px;background:rgba(255,255,255,.05)"></div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isFailed}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:11px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:15px 17px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">Your security plan could not be loaded</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:620px">This is a failed read, not an absent plan. A signed plan may well exist.</span>
+          <span onClick="{{retry}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">Try again</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{neverSealed}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:32px 28px;display:flex;flex-direction:column;gap:10px">
+        <span style="font-size:9.5px;font-weight:700;letter-spacing:.16em;color:#475569">SECURITY PLAN</span>
+        <span style="font-size:19px;font-weight:700;color:#f8fafc;letter-spacing:-.015em">No version has been sealed</span>
+        <span style="font-family:Georgia,'Times New Roman',serif;font-size:14px;color:#94a3b8;line-height:1.75;max-width:640px">A plan is assembled rather than written: your MSP freezes the current contents of the registers in this portal, writes the scope and methodology around that state, seals it as a version and signs it. No version has been sealed for your tenant.</span>
+        <div style="display:flex;flex-direction:column;gap:7px;padding-top:6px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.13em;color:#475569">REGISTERS IT WILL BE ASSEMBLED FROM</span>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <sc-for list="{{sourceChips}}" as="c" hint-placeholder-count="7">
+              <span style="font-size:11px;color:#94a3b8;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:4px 10px">{{c.t}}</span>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{hasPlan}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:18px">
+
+        <div style="border:1px solid {{headBd}};background:{{headBg}};border-radius:16px;padding:0;overflow:hidden">
+          <div style="height:3px;background:{{railAccent}}"></div>
+          <div style="padding:16px 24px 18px;display:flex;flex-direction:column;gap:13px">
+            <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
+              <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+                <span style="font-size:9.5px;font-weight:700;letter-spacing:.17em;color:#94a3b8">SECURITY PLAN · CONTOSO LTD</span>
+                <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap">
+                  <span style="font-size:27px;font-weight:800;color:#f8fafc;letter-spacing:-.022em;line-height:1.05">{{versionHead}}</span>
+                  <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:{{sigInk}};background:{{sigBg}};border:1px solid {{sigBd}};border-radius:999px;padding:4px 10px">{{sigLabel}}</span>
+                </div>
+              </div>
+              <div style="margin-left:auto;display:flex;flex-direction:column;gap:3px;align-items:flex-end">
+                <span style="font-size:11px;color:#64748b">{{sealedLine}}</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:{{scopeTagInk}}">{{scopeTag}}</span>
+              </div>
+            </div>
+
+            <div style="border-left:2px solid {{railAccent}};padding-left:15px;display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.13em;color:#475569">SCOPE OF THIS SIGNATURE</span>
+              <span style="font-family:Georgia,'Times New Roman',serif;font-size:14.5px;color:#e2e8f0;line-height:1.65;max-width:700px">{{scopeStatement}}</span>
+            </div>
+
+            <div style="display:flex;gap:0;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.08);padding-top:15px">
+              <sc-for list="{{headFacts}}" as="f" hint-placeholder-count="4">
+                <div style="display:flex;flex-direction:column;gap:4px;min-width:172px;padding-right:24px">
+                  <span style="font-size:9px;font-weight:700;letter-spacing:.13em;color:#475569">{{f.k}}</span>
+                  <span style="font-size:12.5px;font-weight:600;color:{{f.ink}};line-height:1.45">{{f.v}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <sc-if value="{{attentionShow}}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid rgba(251,191,36,.24);border-radius:14px;background:rgba(251,191,36,.035);padding:15px 18px 17px;display:flex;flex-direction:column;gap:12px">
+            <div onClick="{{attnToggle}}" style="display:flex;align-items:center;gap:11px;flex-wrap:wrap;cursor:pointer" style-hover="opacity:.85">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;transform:{{attnChev}}"><path d="m9 18 6-6-6-6"></path></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.15em;color:#fbbf24">STILL NEEDS ATTENTION</span>
+              <span style="font-size:11.5px;font-weight:600;color:#e2e8f0">{{attentionCount}}</span>
+              <sc-if value="{{attnClosed}}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                  <sc-for list="{{attnPills}}" as="p" hint-placeholder-count="4">
+                    <span style="display:flex;align-items:center;gap:5px;border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:3px 9px">
+                      <span style="font-size:10px;font-weight:800;color:{{p.ink}};font-variant-numeric:tabular-nums">{{p.n}}</span>
+                      <span style="font-size:9px;font-weight:700;letter-spacing:.08em;color:#64748b">{{p.label}}</span>
+                    </span>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <span style="margin-left:auto;font-size:10.5px;font-weight:600;color:#64748b">{{attnToggleLabel}}</span>
+            </div>
+
+            <sc-if value="{{attnOpen}}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:stretch;gap:26px;flex-wrap:wrap">
+              <sc-for list="{{attnCols}}" as="col" hint-placeholder-count="4">
+                <div style="flex:1;min-width:196px;display:flex;flex-direction:column;gap:7px">
+                  <div style="display:flex;align-items:baseline;gap:7px">
+                    <span style="font-size:15px;font-weight:800;color:{{col.ink}};line-height:1;font-variant-numeric:tabular-nums">{{col.n}}</span>
+                    <span style="font-size:9px;font-weight:700;letter-spacing:.1em;color:#64748b;min-width:0">{{col.label}}</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:0">
+                    <sc-for list="{{col.items}}" as="a" hint-placeholder-count="2">
+                      <div onClick="{{a.pick}}" title="{{a.hint}}" style="display:flex;align-items:center;gap:7px;padding:4px 0;cursor:pointer;border-radius:5px" style-hover="opacity:.7">
+                        <span style="width:5px;height:5px;border-radius:999px;background:{{a.accent}};flex:none"></span>
+                        <span style="font-size:11.5px;color:#e2e8f0;min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4">{{a.title}}</span>
+                        <sc-if value="{{a.movedShow}}" hint-placeholder-val="{{ false }}">
+                          <span style="font-size:8.5px;font-weight:800;letter-spacing:.06em;color:#38bdf8;flex:none">MOVED</span>
+                        </sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <span style="font-size:10px;color:#475569;line-height:1.55;max-width:820px">{{attentionCap}}</span>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <div style="display:grid;grid-template-columns:236px minmax(0,1fr);gap:20px;align-items:start">
+
+          <div style="display:flex;flex-direction:column;gap:16px;position:sticky;top:0">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.15em;color:#475569">CONTENTS</span>
+            <sc-for list="{{railGroups}}" as="g" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:8.5px;font-weight:700;letter-spacing:.14em;color:#334155;padding:0 0 4px">{{g.label}}</span>
+                <sc-for list="{{g.items}}" as="i" hint-placeholder-count="4">
+                  <div onClick="{{i.pick}}" style="display:flex;align-items:baseline;gap:9px;padding:6px 9px;border-radius:7px;cursor:pointer;background:{{i.bg}};border-left:2px solid {{i.bar}}" style-hover="background:rgba(255,255,255,.04)">
+                    <span style="font-size:9.5px;font-weight:700;color:{{i.numInk}};width:22px;flex:none;font-variant-numeric:tabular-nums">{{i.num}}</span>
+                    <span style="font-size:11.5px;font-weight:{{i.weight}};color:{{i.ink}};min-width:0;flex:1;line-height:1.4">{{i.label}}</span>
+                    <span style="font-size:9.5px;color:#475569;flex:none;font-variant-numeric:tabular-nums">{{i.sub}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:16px;background:rgba(255,255,255,.02);padding:22px 26px 24px;display:flex;flex-direction:column;gap:16px;min-width:0">
+
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:13px">
+              <span style="font-size:11px;font-weight:700;color:#475569;font-variant-numeric:tabular-nums">{{paneNum}}</span>
+              <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.015em">{{paneTitle}}</span>
+              <sc-if value="{{paneTagShow}}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:{{paneTagInk}};border:1px solid {{paneTagBd}};background:{{paneTagBg}};border-radius:999px;padding:3px 8px">{{paneTag}}</span>
+              </sc-if>
+              <span style="margin-left:auto;font-size:11px;color:#64748b">{{paneMeta}}</span>
+            </div>
+
+            <sc-if value="{{paneTextShow}}" hint-placeholder-val="{{ true }}">
+              <span style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#e2e8f0;line-height:1.8;max-width:66ch;text-wrap:pretty">{{paneText}}</span>
+            </sc-if>
+
+            <sc-if value="{{paneStatsShow}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;gap:26px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.07);padding:14px 0">
+                <sc-for list="{{paneStats}}" as="s" hint-placeholder-count="3">
+                  <div style="display:flex;flex-direction:column;gap:3px">
+                    <span style="font-size:22px;font-weight:800;color:{{s.ink}};line-height:1;font-variant-numeric:tabular-nums">{{s.n}}</span>
+                    <span style="font-size:11px;color:#94a3b8">{{s.label}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{paneTableShow}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:0;min-width:0">
+                <div style="display:flex;gap:14px;padding:0 0 8px">
+                  <span style="width:12px;flex:none"></span>
+                  <sc-for list="{{paneCols}}" as="c" hint-placeholder-count="4">
+                    <span style="width:{{c.w}};flex:{{c.flex}};min-width:0;text-align:{{c.align}};font-size:8.5px;font-weight:700;letter-spacing:.12em;color:#475569">{{c.v}}</span>
+                  </sc-for>
+                </div>
+                <sc-for list="{{paneRows}}" as="r" hint-placeholder-count="6">
+                  <div style="display:flex;gap:14px;align-items:flex-start;padding:11px 0;border-top:1px solid rgba(255,255,255,.06)">
+                    <span style="width:12px;flex:none;display:flex;justify-content:center;padding-top:5px">
+                      <span style="width:6px;height:6px;border-radius:999px;background:{{r.dot}}"></span>
+                    </span>
+                    <sc-for list="{{r.cells}}" as="c" hint-placeholder-count="4">
+                      <span style="width:{{c.w}};flex:{{c.flex}};min-width:0;text-align:{{c.align}};font-size:{{c.fs}};font-weight:{{c.weight}};color:{{c.ink}};line-height:1.45;font-family:{{c.font}}">{{c.v}}</span>
+                    </sc-for>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{paneEmptyShow}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12.5px;color:#94a3b8;line-height:1.6;max-width:640px">{{paneEmpty}}</span>
+            </sc-if>
+
+            <sc-if value="{{paneCapShow}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:10.5px;color:#475569;line-height:1.6;max-width:660px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">{{paneCap}}</span>
+            </sc-if>
+
+            <div style="display:flex;align-items:center;gap:10px;border-top:1px solid rgba(255,255,255,.08);padding-top:14px;flex-wrap:wrap">
+              <sc-if value="{{prevShow}}" hint-placeholder-val="{{ true }}">
+                <span onClick="{{prev}}" style="font-size:11px;font-weight:600;color:#94a3b8;border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:7px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.05);color:#f8fafc">{{prevLabel}}</span>
+              </sc-if>
+              <sc-if value="{{nextShow}}" hint-placeholder-val="{{ true }}">
+                <span onClick="{{next}}" style="margin-left:auto;font-size:11px;font-weight:600;color:#f8fafc;border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:7px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.06)">{{nextLabel}}</span>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1300,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;signed&quot;,&quot;sealed-unsigned&quot;,&quot;never-sealed&quot;,&quot;loading&quot;,&quot;fetch-failed&quot;],&quot;default&quot;:&quot;signed&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;scoped&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data&quot;}}">
+const GRN = "#34d399", AMB = "#fbbf24", RED = "#f87171", BLU = "#60a5fa", SLT = "#64748b", TEAL = "#00B4D8";
+// A register's own word for "not resolved". Statuses are never mapped onto a common
+// scale; this set only decides which rows get a marker in the domain tables.
+const UNRESOLVED = ["due", "Open", "vacant", "in_progress", "rejected", "awaiting_approval"];
+
+class Component extends DCLogic {
+  state = { idx: 3, failed: null, attnOpen: true };
+
+  renderVals() {
+    const S = this.state, P = this.props;
+    const ds = S.failed !== null ? S.failed : (P.dataState || "signed");
+    const scoped = P.scoped === true;
+
+    const isLoading = ds === "loading";
+    const isFailed = ds === "fetch-failed";
+    const neverSealed = ds === "never-sealed";
+    const unsigned = ds === "sealed-unsigned";
+    const signed = ds === "signed";
+    const hasPlan = signed || unsigned;
+
+    const MODS = {
+      policy: "Policy decisions", risk: "Risk register", raci: "Ownership and RACI",
+      sops: "SOPs and runbooks", rem: "Remediation", cc: "Change control", ms: "Microsoft changes",
+    };
+    const MODDOT = {
+      policy: "#38bdf8", risk: RED, raci: "#a78bfa", sops: "#22d3ee",
+      rem: AMB, cc: BLU, ms: "#94a3b8",
+    };
+
+    // Every row is read from the register that owns it. `dom` is a grouping of the
+    // row's own recorded dimension — not a new status and not a score.
+    const ROWS = [
+      ["policy", "identity", "Guest access requires a named sponsor", "live", "Review on track", "Identity"],
+      ["policy", "data", "Retention on customer-facing sites", "live", "ISO 27001:2022 A.5.33", "Data"],
+      ["policy", "change", "Licence reclamation threshold", "due", "Review due", "Cost"],
+      ["risk", "identity", "MFA gaps on privileged accounts", "Accepted", "Raw critical → residual medium", "Identity · CIS M365"],
+      ["risk", "identity", "Guest accounts without sponsor review", "Open", "Raw critical → residual high", "Identity · NIST 800-53"],
+      ["risk", "data", "Teams sites with no retention policy", "Open", "Raw high → residual high", "Data · CIS M365"],
+      ["raci", "identity", "Identity and access", "two accountable", "Accountable held by two people", ""],
+      ["raci", "collab", "SharePoint and OneDrive", "vacant", "Accountable vacant", ""],
+      ["raci", "monitor", "Defender", "one accountable", "Accountable held by one person", ""],
+      ["raci", "monitor", "Monitoring and alerting", "tracked", "Owner accepted", ""],
+      ["sops", "identity", "Offboard a leaver", "published", "Identity and access · hybrid", ""],
+      ["sops", "monitor", "Contain a compromised mailbox", "published", "Incident response · hybrid", ""],
+      ["sops", "identity", "Propagate a de-VIP decision", "published", "Lifecycle · hybrid", ""],
+      ["sops", "collab", "Approve external sharing requests", "published", "Your procedures · manual", ""],
+      ["rem", "identity", "Remove consent from 19 OAuth apps", "completed", "Verification verified", ""],
+      ["rem", "data", "Apply retention to 14 Teams sites", "in_progress", "Verification pending", ""],
+      ["cc", "change", "Require compliant devices for admin sign-in", "rejected", "significant · high · identity", ""],
+      ["cc", "change", "Enable app governance policies", "completed", "standard · medium · security", ""],
+      ["cc", "change", "Tighten external sharing defaults", "awaiting_approval", "significant · medium · collaboration", ""],
+      ["ms", "data", "Teams meeting recording retention default", "interpreted", "breaking · controllable true", ""],
+      ["ms", "monitor", "Entra ID sign-in log schema update", "interpreted", "informational · controllable false", ""],
+    ];
+
+    const kept = scoped ? ROWS.filter(r => r[1] === "identity" || r[1] === "data") : ROWS;
+
+    const DOMAINS = [
+      ["identity", "Identity and access"],
+      ["data", "Data and retention"],
+      ["collab", "Collaboration and sharing"],
+      ["change", "Change and operations"],
+      ["monitor", "Monitoring and response"],
+    ];
+    const MODKEYS = ["policy", "risk", "raci", "sops", "rem", "cc", "ms"];
+
+    const DRIFT = [
+      ["changed", "Guest accounts without sponsor review", "Status was open, now mitigating", "risk"],
+      ["added", "Unowned Teams sites retention", "Raised after this version was signed", "risk"],
+      ["changed", "Apply retention to 14 Teams sites", "Verification was pending, now verified", "rem"],
+      ["added", "Quarterly vendor access attestation", "Written by your team since signing", "sops"],
+      ["removed", "Sandbox test procedure", "No longer in the library", "sops"],
+    ];
+    const DK = { added: GRN, removed: RED, changed: AMB };
+
+    const PROSE = {
+      scope: {
+        edited: true,
+        text: scoped
+          ? "This plan covers the identity and data pillars of the Contoso production tenant. The collaboration and cost pillars are assessed on a separate cycle and are named as exclusions in section 3. A plan may be narrowed by pillar, by framework or by business unit; it cannot be narrowed by outcome, so no failing row has been left out of the pillars named here."
+          : "This plan covers the whole assessed estate of the Contoso production tenant: every pillar assessed, every framework assessed against, and every business unit within the tenant. A plan may be narrowed by pillar, by framework or by business unit; this version applies no narrowing, so every row held by every register at the moment of sealing is carried into Parts II and III.",
+      },
+      method: {
+        edited: false,
+        text: "Each row in Parts II and III was read at the moment of sealing from the register that owns it: the policy register, the risk register, the ownership matrix, the procedure library, the remediation tracker, the change record and the Microsoft change interpretations. Each register's own status vocabulary is preserved as recorded — statuses are not translated into a shared set and are not combined into a score. Part II groups those same rows by the control domain each register recorded against the row; Part III presents each register's rows unaltered, in the order the register holds them.",
+      },
+      excl: {
+        edited: true,
+        text: scoped
+          ? "Four risks, two policy decisions and one change request fall outside the pillars named in section 1 and are excluded from this version. They are counted here rather than dropped, so the extent of what this plan does not speak to forms part of what was signed."
+          : "None. This version was sealed against the full assessed estate, and no register contributed a partial set of rows.",
+      },
+      exec: {
+        edited: true,
+        text: "Identity remains the concentrated exposure. Two accepted risks and one open risk all sit on privileged access, the guest sponsorship policy is live but its supporting access review is the open risk behind it, and one workload carries no accountable owner. Retention is the second theme: policy is live for customer-facing sites, the corresponding remediation is in flight against fourteen Teams sites, and a signed acceptance stands behind the residual exposure in the interim. The procedure library now covers the lifecycle events that were absent at the previous review, including leaver offboarding and mailbox containment. Two changes are unresolved at the date of signing — compliant-device enforcement for administrative sign-in was rejected, and the tightening of external sharing defaults awaits approval.",
+      },
+    };
+
+    const cell = (v, w, o) => Object.assign({
+      v, w, flex: w === "auto" ? "1" : "none", align: "left",
+      fs: "12px", weight: "400", ink: "#cbd5e1", font: "inherit",
+    }, o || {});
+
+    // ── contents
+    const SECTIONS = [];
+    SECTIONS.push({ num: "1", label: "Scope", kind: "prose", p: "scope" });
+    SECTIONS.push({ num: "2", label: "Methodology", kind: "prose", p: "method" });
+    SECTIONS.push({ num: "3", label: "Exclusions", kind: "prose", p: "excl" });
+    SECTIONS.push({ num: "4", label: "Executive summary", kind: "prose", p: "exec" });
+    DOMAINS.forEach(([k, label], i) => {
+      SECTIONS.push({ num: "5." + (i + 1), label, kind: "domain", dom: k, count: kept.filter(r => r[1] === k).length });
+    });
+    MODKEYS.forEach((k, i) => {
+      SECTIONS.push({ num: "6." + (i + 1), label: MODS[k], kind: "mod", mod: k, count: kept.filter(r => r[0] === k).length });
+    });
+    SECTIONS.push({ num: "7", label: "Changes since signing", kind: "drift", count: signed ? DRIFT.length : 0 });
+    SECTIONS.push({ num: "8", label: "Version history", kind: "history", count: unsigned ? 1 : 4 });
+    SECTIONS.push({ num: "9", label: "Notes on this document", kind: "notes", count: 6 });
+
+    const idx = Math.min(S.idx, SECTIONS.length - 1);
+    const sec = SECTIONS[idx];
+
+    const groupOf = s => s.kind === "prose" ? 0 : s.kind === "domain" ? 1 : s.kind === "mod" ? 2 : 3;
+    const GROUP_LABELS = ["PART I — THE PLAN", "PART II — CONTROL DOMAINS", "PART III — SCHEDULES", "PART IV — APPENDICES"];
+    const railGroups = GROUP_LABELS.map((label, gi) => ({
+      label,
+      items: SECTIONS.map((s, i) => ({ s, i })).filter(o => groupOf(o.s) === gi).map(({ s, i }) => ({
+        num: s.num, label: s.label,
+        sub: s.count == null ? "" : String(s.count),
+        bg: i === idx ? "rgba(0,120,212,.16)" : "transparent",
+        bar: i === idx ? TEAL : "transparent",
+        ink: i === idx ? "#f8fafc" : "#94a3b8",
+        numInk: i === idx ? TEAL : "#475569",
+        weight: i === idx ? "700" : "500",
+        pick: () => this.setState({ idx: i }),
+      })),
+    }));
+
+    // ── attention strip: rows the owning register itself records as unresolved,
+    // surfaced before the document and bucketed only into open vs in progress.
+    const INPROG = ["in_progress", "awaiting_approval"];
+    const driftOn = {};
+    if (signed) DRIFT.forEach(d => { driftOn[d[1]] = d[0] + " · " + d[2]; });
+    const domIdxOf = dom => SECTIONS.findIndex(s => s.kind === "domain" && s.dom === dom);
+
+    const attention = kept
+      .filter(r => UNRESOLVED.indexOf(r[3]) >= 0)
+      .map(r => ({
+        state: r[3],
+        bucket: INPROG.indexOf(r[3]) >= 0 ? "IN PROGRESS" : "OPEN",
+        accent: INPROG.indexOf(r[3]) >= 0 ? BLU : AMB,
+        title: r[2],
+        reg: MODS[r[0]],
+        detail: r[4],
+        moved: driftOn[r[2]] || "",
+        movedShow: !!driftOn[r[2]],
+        goto: r[1],
+      }))
+      .sort((a, b) => (a.bucket === b.bucket ? 0 : a.bucket === "OPEN" ? -1 : 1))
+      .map(a => Object.assign(a, { pick: () => this.setState({ idx: domIdxOf(a.goto) }) }));
+
+    const nOpen = attention.filter(a => a.bucket === "OPEN").length;
+    const nProg = attention.length - nOpen;
+
+    // Grouped by control domain so the strip reads as a short docket per domain
+    // rather than one column of cards.
+    const attnCols = DOMAINS.map(([k, label]) => {
+      const items = attention.filter(a => a.goto === k).map(a => Object.assign({}, a, {
+        hint: a.title + " · " + a.state + " · " + a.reg + (a.moved ? " · moved since signing: " + a.moved : ""),
+      }));
+      return {
+        label: label.toUpperCase(), n: items.length, items,
+        ink: items.some(i => i.bucket === "OPEN") ? AMB : BLU,
+      };
+    }).filter(c => c.n > 0);
+
+    // ── active pane
+    let pane = { num: sec.num, title: sec.label, meta: "", textShow: false, tableShow: false };
+
+    if (sec.kind === "prose") {
+      const pr = PROSE[sec.p];
+      pane.textShow = true;
+      pane.text = pr.text;
+      pane.tagShow = true;
+      pane.tag = pr.edited ? "REWRITTEN FOR THIS VERSION" : "CARRIED FORWARD";
+      pane.tagInk = pr.edited ? "#38bdf8" : SLT;
+      pane.tagBd = pr.edited ? "rgba(56,189,248,.32)" : "rgba(148,163,184,.25)";
+      pane.tagBg = pr.edited ? "rgba(56,189,248,.06)" : "transparent";
+      if (sec.p === "excl" && scoped) {
+        pane.tableShow = true;
+        pane.meta = "7 rows not covered";
+        pane.cols = [cell("REGISTER", "auto"), cell("ROWS EXCLUDED", "130px", { align: "right" })];
+        pane.rows = [["Risk register", 4], ["Policy decisions", 2], ["Change control", 1]].map(([m, n]) => ({
+          dot: "#c2a63d",
+          cells: [cell(m, "auto"), cell(String(n), "130px", { align: "right", ink: "#c2a63d", weight: "600" })],
+        }));
+      }
+    }
+
+    if (sec.kind === "domain") {
+      const rows = kept.filter(r => r[1] === sec.dom);
+      const unres = rows.filter(r => UNRESOLVED.indexOf(r[3]) >= 0).length;
+      const regs = {};
+      rows.forEach(r => { regs[r[0]] = (regs[r[0]] || 0) + 1; });
+      pane.meta = rows.length + (rows.length === 1 ? " row" : " rows") + " · " + Object.keys(regs).length + " registers";
+      pane.statsShow = true;
+      pane.stats = [
+        { n: String(rows.length), label: "rows in this domain", ink: "#f8fafc" },
+        { n: String(unres), label: "recorded unresolved", ink: unres ? AMB : GRN },
+        { n: String(Object.keys(regs).length), label: "registers contributing", ink: "#f8fafc" },
+      ];
+      pane.tableShow = rows.length > 0;
+      pane.cols = [cell("ITEM", "auto"), cell("AS RECORDED", "150px"), cell("STATUS", "130px", { align: "right" }), cell("REGISTER", "138px", { align: "right" })];
+      pane.rows = rows.map(r => ({
+        dot: UNRESOLVED.indexOf(r[3]) >= 0 ? AMB : MODDOT[r[0]],
+        cells: [
+          cell(r[2], "auto", { ink: "#e2e8f0", weight: "600" }),
+          cell(r[4], "150px", { fs: "11px", ink: SLT }),
+          cell(r[3], "130px", { align: "right", fs: "11.5px", ink: UNRESOLVED.indexOf(r[3]) >= 0 ? AMB : "#94a3b8" }),
+          cell(MODS[r[0]], "138px", { align: "right", fs: "11px", ink: "#475569" }),
+        ],
+      }));
+      pane.emptyShow = rows.length === 0;
+      pane.empty = "No register recorded a row against this domain when the plan was sealed.";
+      pane.capShow = true;
+      pane.cap = "Grouped by the control domain each register recorded against the row. A marker denotes a status the owning register itself records as unresolved; the words in the status column are that register's own and are not mapped onto a shared scale.";
+    }
+
+    if (sec.kind === "mod") {
+      const rows = kept.filter(r => r[0] === sec.mod);
+      const dn = signed ? DRIFT.filter(d => d[3] === sec.mod).length : 0;
+      pane.meta = rows.length + (rows.length === 1 ? " row" : " rows") + (dn ? " · " + dn + " moved since signing" : "");
+      pane.tableShow = rows.length > 0;
+      pane.cols = [cell("ITEM", "auto"), cell("DETAIL", "210px"), cell("DIMENSIONS", "150px"), cell("STATUS", "120px", { align: "right" })];
+      pane.rows = rows.map(r => ({
+        dot: MODDOT[r[0]],
+        cells: [
+          cell(r[2], "auto", { ink: "#e2e8f0", weight: "600" }),
+          cell(r[4], "210px", { fs: "11px", ink: SLT }),
+          cell(r[5] || "—", "150px", { fs: "11px", ink: "#475569" }),
+          cell(r[3], "120px", { align: "right", fs: "11.5px", ink: "#94a3b8" }),
+        ],
+      }));
+      pane.emptyShow = rows.length === 0;
+      pane.empty = "This register held nothing for your tenant when the plan was sealed.";
+      pane.capShow = true;
+      pane.cap = "This register's rows exactly as it held them at the moment of sealing.";
+    }
+
+    if (sec.kind === "drift") {
+      pane.meta = signed ? "compared against version 4" : "no signature to compare against";
+      if (unsigned) {
+        pane.emptyShow = true;
+        pane.empty = "Nothing has been signed, so there is no baseline to compare today against. This is not the same as nothing having changed.";
+      } else {
+        pane.statsShow = true;
+        pane.stats = ["added", "removed", "changed"].map(k => ({
+          n: String(DRIFT.filter(d => d[0] === k).length), label: k, ink: DK[k],
+        }));
+        pane.tableShow = true;
+        pane.cols = [cell("CHANGE", "78px"), cell("ITEM", "auto"), cell("WHAT MOVED", "230px"), cell("REGISTER", "138px", { align: "right" })];
+        pane.rows = DRIFT.map(d => ({
+          dot: DK[d[0]],
+          cells: [
+            cell(d[0], "78px", { fs: "10px", weight: "700", ink: DK[d[0]] }),
+            cell(d[1], "auto", { ink: "#e2e8f0", weight: "600" }),
+            cell(d[2], "230px", { fs: "11px", ink: SLT }),
+            cell(MODS[d[3]], "138px", { align: "right", fs: "11px", ink: "#475569" }),
+          ],
+        }));
+        pane.capShow = true;
+        pane.cap = "A row counts as moved when its status or its detail line differs from the sealed version. Whether the written sections have gone out of date is a judgement made when the next version is prepared, and is not measured here.";
+      }
+    }
+
+    if (sec.kind === "history") {
+      pane.meta = unsigned ? "1 version" : "4 versions · one current at a time";
+      pane.tableShow = true;
+      pane.cols = [cell("VERSION", "84px"), cell("STATE", "150px"), cell("SIGNED BY AND SCOPE", "auto"), cell("DATE", "110px", { align: "right" })];
+      const H = unsigned
+        ? [["1", "Current, unsigned", AMB, "Sealed by M. Chen · full assessed estate", "2 Sep 2026"]]
+        : [
+          ["4", "Current, signed", GRN, "S. McCaw · " + (scoped ? "identity and data pillars" : "full assessed estate"), "1 Sep 2026"],
+          ["3", "Superseded", SLT, "S. McCaw · full assessed estate", "12 Jul 2026"],
+          ["2", "Superseded", SLT, "S. McCaw · identity pillar only", "9 Apr 2026"],
+          ["1", "Superseded", SLT, "S. McCaw · full assessed estate", "16 Jan 2026"],
+        ];
+      pane.rows = H.map(h => ({
+        dot: h[2],
+        cells: [
+          cell("Version " + h[0], "84px", { ink: "#e2e8f0", weight: "700" }),
+          cell(h[1], "150px", { fs: "11px", ink: h[2] }),
+          cell(h[3], "auto", { fs: "11.5px", ink: "#94a3b8" }),
+          cell(h[4], "110px", { align: "right", fs: "11px", ink: "#475569" }),
+        ],
+      }));
+      pane.capShow = true;
+      pane.cap = "Each version retains its own copy of everything it covered, so an older version still reads exactly as it did on the day it was signed. Sealing a new version supersedes the last; it never rewrites it.";
+    }
+
+    if (sec.kind === "notes") {
+      pane.meta = "limits of this document";
+      pane.tableShow = true;
+      pane.cols = [cell("LIMIT", "auto"), cell("REFERENCE", "84px", { align: "right" })];
+      pane.rows = [
+        ["No overall score. Nothing here rolls the rows up into a percentage, a grade or a pass mark; the registers do not share a scale.", "§6.3"],
+        ["Not a live view. This is the sealed snapshot that was signed. What has moved since is in section 7 rather than merged into Parts II and III.", "§2.5"],
+        ["No narrowing by outcome. A version may be limited to a pillar, a framework or a business unit, and to nothing else.", "§2.1"],
+        ["No blank scope on a signature. A narrowed plan cannot be sealed without a written statement of what it covers.", "§2.2"],
+        ["No customer write path. Your MSP prepares and signs the plan; nothing on this page edits or signs it.", "§6.1"],
+        ["Business-unit narrowing is all-or-nothing today — one value is held per tenant, so a single tenant cannot be split into units.", "§2.1"],
+      ].map(([g, w]) => ({
+        dot: "#334155",
+        cells: [
+          cell(g, "auto", { fs: "12px", ink: "#94a3b8" }),
+          cell(w, "84px", { align: "right", fs: "10.5px", ink: "#475569", font: "ui-monospace,Menlo,monospace" }),
+        ],
+      }));
+    }
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      isLoading, isFailed, neverSealed, hasPlan,
+      skeletons: [{ w1: "38%", w2: "62%" }, { w1: "30%", w2: "78%" }, { w1: "44%", w2: "54%" }, { w1: "26%", w2: "48%" }],
+      retry: () => this.setState({ failed: "signed" }),
+      sourceChips: MODKEYS.map(k => ({ t: MODS[k] })),
+
+      versionHead: unsigned ? "Version 1" : "Version 4",
+      sigLabel: unsigned ? "SEALED, AWAITING SIGNATURE" : "SIGNED",
+      sigInk: unsigned ? AMB : GRN,
+      sigBg: unsigned ? "rgba(251,191,36,.10)" : "rgba(52,211,153,.10)",
+      sigBd: unsigned ? "rgba(251,191,36,.30)" : "rgba(52,211,153,.30)",
+      headBd: unsigned ? "rgba(251,191,36,.26)" : "rgba(52,211,153,.20)",
+      headBg: unsigned ? "rgba(251,191,36,.035)" : "rgba(52,211,153,.03)",
+      railAccent: unsigned ? "rgba(251,191,36,.5)" : "rgba(52,211,153,.5)",
+      sealedLine: unsigned ? "Sealed 2 Sep 2026 · contents fixed" : "Sealed and signed 1 Sep 2026",
+      scopeTag: scoped ? "NARROWED SCOPE" : "FULL ASSESSED ESTATE",
+      scopeTagInk: scoped ? "#c2a63d" : GRN,
+      scopeStatement: scoped
+        ? "Identity and data pillars only, for the Contoso production tenant. Collaboration and cost are assessed on a separate cycle and are not covered by this version."
+        : "The whole assessed estate of the Contoso production tenant — every pillar, every framework assessed against, and every business unit within the tenant. No scope narrowing applied.",
+      headFacts: [
+        { k: "PREPARED BY", v: "M. Chen, your MSP", ink: "#e2e8f0" },
+        { k: "SIGNED BY", v: unsigned ? "Not signed" : "S. McCaw, Principal Architect", ink: unsigned ? "#c2a63d" : "#e2e8f0" },
+        { k: "SIGNED ON", v: unsigned ? "—" : "1 Sep 2026, 16:04", ink: unsigned ? "#c2a63d" : "#e2e8f0" },
+        { k: "TENANT", v: "Contoso Ltd · production", ink: "#e2e8f0" },
+        { k: "ROWS CARRIED", v: kept.length + " across " + MODKEYS.length + " registers", ink: "#e2e8f0" },
+      ],
+
+      attentionShow: attention.length > 0,
+      attentionClear: attention.length === 0,
+      attention, attnCols,
+      attnOpen: S.attnOpen !== false,
+      attnClosed: S.attnOpen === false,
+      attnChev: S.attnOpen === false ? "none" : "rotate(90deg)",
+      attnToggleLabel: S.attnOpen === false ? "Show" : "Hide",
+      attnToggle: () => this.setState({ attnOpen: S.attnOpen === false }),
+      attnPills: attnCols.map(c => ({ label: c.label, n: String(c.n), ink: c.ink })),
+      attentionCount: nOpen + " open · " + nProg + " in progress",
+      attentionCap: signed
+        ? "Derived from the sealed version: these are the rows whose owning register recorded them as unresolved on the day it was signed. Anything marked as moved has changed since — section 7 carries the comparison."
+        : "Derived from the sealed version. Nothing has been signed, so there is no comparison against a baseline.",
+
+      railGroups,
+
+      paneNum: pane.num,
+      paneTitle: pane.title,
+      paneMeta: pane.meta || "",
+      paneTagShow: !!pane.tagShow,
+      paneTag: pane.tag || "",
+      paneTagInk: pane.tagInk || SLT,
+      paneTagBd: pane.tagBd || "rgba(148,163,184,.25)",
+      paneTagBg: pane.tagBg || "transparent",
+      paneTextShow: !!pane.textShow,
+      paneText: pane.text || "",
+      paneStatsShow: !!pane.statsShow,
+      paneStats: pane.stats || [],
+      paneTableShow: !!pane.tableShow,
+      paneCols: pane.cols || [],
+      paneRows: pane.rows || [],
+      paneEmptyShow: !!pane.emptyShow,
+      paneEmpty: pane.empty || "",
+      paneCapShow: !!pane.capShow,
+      paneCap: pane.cap || "",
+
+      prevShow: idx > 0,
+      prevLabel: idx > 0 ? "← " + SECTIONS[idx - 1].num + "  " + SECTIONS[idx - 1].label : "",
+      prev: () => this.setState({ idx: idx - 1 }),
+      nextShow: idx < SECTIONS.length - 1,
+      nextLabel: idx < SECTIONS.length - 1 ? SECTIONS[idx + 1].num + "  " + SECTIONS[idx + 1].label + " →" : "",
+      next: () => this.setState({ idx: idx + 1 }),
+    };
+  }
+}
+
+</script>
+</body>
+</html>

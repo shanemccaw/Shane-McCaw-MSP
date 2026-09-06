@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes skelPulse{0%,100%{opacity:.5}50%{opacity:.9}}
+</style>
+</helmet>
+<div data-screen-label="Webhooks" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:24px 30px 56px;padding-right:max(30px, calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Webhooks</span>
+      <span title="Outbound HTTP callbacks. Every event the platform dispatches is offered to every endpoint subscribed to it. Nothing here reads or writes your tenant." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+      <sc-if value="{{canCreate}}" hint-placeholder-val="{{ true }}">
+        <span onClick="{{startCreate}}" style="margin-left:auto;font-size:12.5px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer;flex:none" style-hover="background:#005A9E">New endpoint</span>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{skeletons}}" as="s" hint-placeholder-count="3">
+          <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.02);padding:16px;display:flex;flex-direction:column;gap:9px;animation:skelPulse 1.6s ease-in-out infinite">
+            <div style="height:10px;width:{{s.w1}};border-radius:999px;background:rgba(255,255,255,.07)"></div>
+            <div style="height:9px;width:{{s.w2}};border-radius:999px;background:rgba(255,255,255,.05)"></div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isFailed}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:14px 16px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">Your endpoint list could not be loaded</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:600px">This is a failed read, not an empty list. Nothing below would be your configuration, so nothing is shown — a webhook may well be live and delivering right now.</span>
+          <span onClick="{{retry}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">Try again</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{creating}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(0,120,212,.45);border-radius:14px;background:rgba(0,120,212,.05);padding:18px 20px 16px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:14px;font-weight:600;color:#f8fafc">New endpoint</span>
+          <span onClick="{{cancelCreate}}" style="margin-left:auto;font-size:11.5px;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">Cancel</span>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <div style="flex:1;min-width:min(200px,100%);display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Label</span>
+            <input onInput="{{setLabel}}" value="{{formLabel}}" placeholder="Ops relay" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;font-size:12.5px;color:#f8fafc;font-family:inherit;outline:none">
+            <span style="font-size:10.5px;color:#475569">Required, 1–120 characters.</span>
+          </div>
+          <div style="flex:2;min-width:min(260px,100%);display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Destination URL</span>
+            <input onInput="{{setUrl}}" value="{{formUrl}}" placeholder="https://" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;font-size:12.5px;color:#f8fafc;font-family:ui-monospace,Menlo,monospace;outline:none">
+            <span style="font-size:10.5px;color:{{urlHintInk}}">{{urlHint}}</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Events</span>
+            <span style="font-size:10.5px;color:#64748b">{{pickedLine}}</span>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <sc-for list="{{pickChips}}" as="c" hint-placeholder-count="8">
+              <span onClick="{{c.click}}" style="font-size:10.5px;font-family:ui-monospace,Menlo,monospace;color:{{c.ink}};background:{{c.bg}};border:1px solid {{c.bd}};border-radius:999px;padding:4px 10px;cursor:pointer">{{c.t}}</span>
+            </sc-for>
+          </div>
+          <span style="font-size:10.5px;color:#475569;line-height:1.5">Any string is accepted by the API — subscriptions are not checked against this list. Subscribing to something that is never dispatched is silent, so only offer what the platform really emits.</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;border-top:1px solid rgba(255,255,255,.07);padding-top:13px">
+          <span style="font-size:11.5px;color:#64748b;line-height:1.5;max-width:520px">A signing secret is generated when you save. It is shown once, on the next screen, and cannot be retrieved afterwards.</span>
+          <span onClick="{{submitCreate}}" style="margin-left:auto;font-size:12.5px;font-weight:600;color:{{createInk}};background:{{createBg}};border-radius:6px;padding:9px 16px;cursor:{{createCur}};flex:none">Create endpoint</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isEmpty}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:34px 26px;display:flex;flex-direction:column;gap:8px;align-items:center;text-align:center">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">No endpoints configured</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:540px">This is a real, successful read of your configuration: you have no outbound webhooks, and none has ever been created. No events are being delivered anywhere.</span>
+        <span onClick="{{startCreate}}" style="font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 16px;cursor:pointer;margin-top:6px" style-hover="background:#005A9E">Create your first endpoint</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{hasRows}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:6px 20px 14px">
+        <div style="display:flex;align-items:baseline;gap:10px;padding:12px 0 6px">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Endpoints</span>
+          <span style="font-size:11px;color:#64748b">{{epCountLine}}</span>
+        </div>
+        <sc-for list="{{endpoints}}" as="e" hint-placeholder-count="3">
+          <div style="border-top:1px solid rgba(255,255,255,.06)">
+            <div onClick="{{e.toggle}}" style="display:flex;align-items:center;gap:12px;padding:11px 0;cursor:pointer" style-hover="opacity:.88">
+              <span style="width:7px;height:7px;border-radius:999px;background:{{e.dot}};border:1px solid {{e.dotBd}};flex:none"></span>
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+                <span style="font-size:12.5px;font-weight:600;color:#e2e8f0">{{e.label}}</span>
+                <span style="font-size:11px;color:#64748b;font-family:ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{e.url}}</span>
+              </div>
+              <span style="font-size:10px;font-weight:600;color:{{e.stateInk}};background:{{e.stateBg}};border:1px solid {{e.stateBd}};border-radius:999px;padding:3px 9px;flex:none;white-space:nowrap">{{e.stateLabel}}</span>
+              <span style="font-size:11px;color:#64748b;width:82px;flex:none;text-align:right;white-space:nowrap">{{e.eventsLine}}</span>
+              <span style="font-size:11px;color:#64748b;width:96px;flex:none;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{e.lastLine}}</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;transform:{{e.chev}}"><path d="m9 18 6-6-6-6"></path></svg>
+            </div>
+
+            <sc-if value="{{e.open}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:14px;padding:4px 0 18px">
+                <div style="display:flex;gap:26px;flex-wrap:wrap">
+                  <div style="display:flex;flex-direction:column;gap:4px;min-width:min(170px,100%)">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">SIGNING SECRET</span>
+                    <span style="font-size:12px;color:#cbd5e1;font-family:ui-monospace,Menlo,monospace">{{e.secretPrefix}}<span style="color:#334155">…</span></span>
+                    <span style="font-size:10.5px;color:#64748b;line-height:1.5;max-width:230px">Only this prefix is readable. The full secret existed once, at creation.</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:4px;min-width:min(150px,100%)">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">OWNER</span>
+                    <span style="font-size:12px;color:#cbd5e1">{{e.ownerLine}}</span>
+                    <span style="font-size:10.5px;color:#64748b;line-height:1.5;max-width:210px">Ownership is fixed at creation and cannot be moved.</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:4px;min-width:min(140px,100%)">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">CREATED</span>
+                    <span style="font-size:12px;color:#cbd5e1">{{e.createdLine}}</span>
+                    <span style="font-size:10.5px;color:#64748b">Last change {{e.updatedLine}}</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px;min-width:min(120px,100%)">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">DELIVERING</span>
+                    <div onClick="{{e.toggleActive}}" style="width:38px;height:21px;border-radius:999px;background:{{e.swBg}};border:1px solid {{e.swBd}};display:flex;align-items:center;padding:2px;cursor:pointer;justify-content:{{e.swJust}}">
+                      <span style="width:15px;height:15px;border-radius:999px;background:{{e.swKnob}};flex:none"></span>
+                    </div>
+                    <span style="font-size:10.5px;color:#64748b">{{e.activeLine}}</span>
+                  </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">SUBSCRIBED EVENTS</span>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <sc-for list="{{e.events}}" as="ev" hint-placeholder-count="3">
+                      <span title="{{ev.tip}}" style="font-size:10.5px;font-family:ui-monospace,Menlo,monospace;color:{{ev.ink}};border:1px solid {{ev.bd}};background:{{ev.bg}};border-radius:999px;padding:4px 10px">{{ev.t}}</span>
+                    </sc-for>
+                  </div>
+                  <sc-if value="{{e.hasDead}}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:10.5px;color:#c2a63d;line-height:1.5">One subscription is to an event the platform never dispatches — it will never deliver anything.</span>
+                  </sc-if>
+                </div>
+
+                <div style="border:1px solid rgba(255,255,255,.07);border-radius:12px;background:rgba(255,255,255,.015)">
+                  <div style="display:flex;align-items:baseline;gap:10px;padding:11px 14px 9px;border-bottom:1px solid rgba(255,255,255,.06)">
+                    <span style="font-size:12px;font-weight:600;color:#e2e8f0">Deliveries</span>
+                    <span style="font-size:10.5px;color:#64748b">{{e.delivLine}}</span>
+                  </div>
+                  <sc-if value="{{e.noDeliv}}" hint-placeholder-val="{{ false }}">
+                    <div style="padding:18px 14px;display:flex;flex-direction:column;gap:5px">
+                      <span style="font-size:12px;font-weight:600;color:#e2e8f0">No deliveries yet</span>
+                      <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:560px">Nothing has been dispatched to this endpoint since it was created, so it has never been proven to work. Untested is not the same as healthy.</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{e.hasDeliv}}" hint-placeholder-val="{{ true }}">
+                    <div style="display:flex;flex-direction:column">
+                      <sc-for list="{{e.deliveries}}" as="d" hint-placeholder-count="4">
+                        <div style="display:flex;align-items:flex-start;gap:12px;padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.04)">
+                          <span style="font-size:9px;font-weight:700;letter-spacing:.06em;color:{{d.ink}};background:{{d.bg}};border:1px solid {{d.bd}};border-radius:4px;padding:3px 6px;width:54px;text-align:center;flex:none">{{d.status}}</span>
+                          <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+                            <span style="font-size:11.5px;font-family:ui-monospace,Menlo,monospace;color:#cbd5e1">{{d.eventType}}</span>
+                            <sc-if value="{{d.hasSnippet}}" hint-placeholder-val="{{ false }}">
+                              <span style="font-size:10.5px;color:#64748b;font-family:ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{d.snippet}}</span>
+                            </sc-if>
+                            <sc-if value="{{d.terminal}}" hint-placeholder-val="{{ false }}">
+                              <span style="font-size:10.5px;color:#c2a63d">Terminal after 3 attempts. There is no replay — this event is gone.</span>
+                            </sc-if>
+                            <sc-if value="{{d.hasRetry}}" hint-placeholder-val="{{ false }}">
+                              <span style="font-size:10.5px;color:#94a3b8">Next attempt {{d.nextRetry}}</span>
+                            </sc-if>
+                          </div>
+                          <span style="font-size:11px;color:#64748b;width:56px;flex:none;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">{{d.code}}</span>
+                          <span style="font-size:11px;color:#64748b;width:52px;flex:none;text-align:right;white-space:nowrap">{{d.attempt}}</span>
+                          <span style="font-size:11px;color:#64748b;width:76px;flex:none;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{d.when}}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <div style="padding:10px 14px;display:flex;flex-direction:column;gap:4px">
+                    <span style="font-size:10.5px;color:#475569;line-height:1.5">The most recent 200 deliveries are readable and no further — there is no way to page past them, so this log is a window, not a record.</span>
+                    <span style="font-size:10.5px;color:#475569;line-height:1.5">The payload sent for each delivery is stored but not served, so a failure cannot be inspected from here.</span>
+                  </div>
+                </div>
+
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                  <span onClick="{{e.rotate}}" style="font-size:11.5px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:7px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">Rotate secret</span>
+                  <span onClick="{{e.edit}}" style="font-size:11.5px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:7px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">Edit label, URL and events</span>
+                  <span onClick="{{e.del}}" style="font-size:11.5px;font-weight:600;color:#f87171;border:1px solid rgba(248,113,113,.35);border-radius:6px;padding:7px 12px;cursor:pointer" style-hover="background:rgba(248,113,113,.08)">Delete</span>
+                  <span style="font-size:10.5px;color:#475569;max-width:280px;line-height:1.45">Rotation takes effect immediately, with no overlap period where the old secret still validates.</span>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+        <span style="display:block;font-size:10.5px;color:#475569;line-height:1.5;border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:2px">{{healthNote}}</span>
+      </div>
+    </sc-if>
+
+    <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:16px 20px 16px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">What you can subscribe to</span>
+        <span style="font-size:11px;color:#64748b">41 event types</span>
+        <span onClick="{{toggleCatalog}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer">{{catalogToggle}}</span>
+      </div>
+      <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:640px">Webhooks ride the platform event bus. These are not the same thing as your alert preferences: alerts are built on their own condition catalogue, and none of those conditions is dispatched as an event. The two surfaces share category names, not wire names — a webhook cannot subscribe to an alert condition, and turning an alert on does not send anything here.</span>
+      <sc-if value="{{catalogOpen}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:14px;padding-top:2px">
+          <sc-for list="{{catalog}}" as="g" hint-placeholder-count="2">
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">{{g.label}}</span>
+              <span style="font-size:11.5px;color:#64748b;line-height:1.5;max-width:620px">{{g.note}}</span>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <sc-for list="{{g.items}}" as="i" hint-placeholder-count="8">
+                  <span title="{{i.tip}}" style="font-size:10.5px;font-family:ui-monospace,Menlo,monospace;color:{{i.ink}};border:1px solid {{i.bd}};background:{{i.bg}};border-radius:999px;padding:4px 10px">{{i.t}}</span>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+          <span style="font-size:10.5px;color:#475569;line-height:1.55;max-width:640px">Every event dispatched by the platform is offered to every endpoint subscribed to it. There is no filtering step and no approval step between the two.</span>
+        </div>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+        </div>
+        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="6">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none">{{l.where}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <span style="font-size:10.5px;color:#475569;line-height:1.55;padding-top:4px">None of these has an issue filed against it yet, so none is a settled decision — they are open questions this design leaves visible rather than papers over.</span>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{secretShow}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:60;background:rgba(2,6,23,.72);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="width:520px;max-width:100%;background:#0b1120;border:1px solid rgba(0,180,216,.35);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);padding:22px 24px 20px;display:flex;flex-direction:column;gap:13px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v10H5z"></path><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+          <span style="font-size:15px;font-weight:700;color:#f8fafc">{{secretTitle}}</span>
+        </div>
+        <span style="font-size:12.5px;color:#94a3b8;line-height:1.6">Copy this now. It is shown here and nowhere else — after you close this box only the first 14 characters are ever readable again, and there is no way to ask for it back.</span>
+        <div style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:12px 13px">
+          <span style="font-size:12.5px;font-family:ui-monospace,Menlo,monospace;color:#f8fafc;word-break:break-all;flex:1;min-width:0">{{secretValue}}</span>
+          <span onClick="{{copySecret}}" style="font-size:11px;font-weight:600;color:{{copyInk}};border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:6px 10px;cursor:pointer;flex:none" style-hover="background:rgba(255,255,255,.05)">{{copyLabel}}</span>
+        </div>
+        <span style="font-size:11.5px;color:#64748b;line-height:1.55">{{secretNote}}</span>
+        <div style="display:flex;align-items:center;gap:10px;border-top:1px solid rgba(255,255,255,.08);padding-top:13px">
+          <span style="font-size:11px;color:#475569">{{secretFoot}}</span>
+          <span onClick="{{dismissSecret}}" style="margin-left:auto;font-size:12.5px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:9px 16px;cursor:pointer" style-hover="background:#005A9E">I have stored it</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{confirmShow}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:60;background:rgba(2,6,23,.72);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="width:460px;max-width:100%;background:#0b1120;border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);padding:20px 22px 18px;display:flex;flex-direction:column;gap:11px">
+        <span style="font-size:14.5px;font-weight:700;color:#f8fafc">{{confirmTitle}}</span>
+        <span style="font-size:12.5px;color:#94a3b8;line-height:1.6">{{confirmBody}}</span>
+        <span style="font-size:11.5px;color:#c2a63d;line-height:1.55">{{confirmNote}}</span>
+        <div style="display:flex;align-items:center;gap:9px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px">
+          <span onClick="{{confirmCancel}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#94a3b8;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 14px;cursor:pointer">Keep as is</span>
+          <span onClick="{{confirmGo}}" style="font-size:12px;font-weight:600;color:#fff;background:{{confirmBg}};border-radius:6px;padding:8px 14px;cursor:pointer">{{confirmCta}}</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;live-empty&quot;,&quot;loading&quot;,&quot;fetch-failed&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;honestHealth&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;openPanel&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(spec: any) =&gt; void&quot;}}">
+class Component extends DCLogic {
+  state = { open: null, creating: false, label: "", url: "", picked: [], secret: null, confirm: null, copied: false, actives: {}, deleted: {}, catalog: false, ledger: true, failed: null, rotated: {}, created: [] };
+
+  renderVals() {
+    const S = this.state;
+    const P = this.props;
+    const ds = S.failed !== null ? S.failed : (P.dataState || "live");
+    const honest = P.honestHealth !== false;
+
+    const ROUTE_EVENTS = ["signal.fired", "fulfillment.item.created", "fulfillment.item.updated", "offer.accepted", "offer.rejected", "monitoring.run.completed", "service.activated", "service.deactivated", "project.created", "project.completed", "invoice.created", "invoice.paid", "contract.signed"];
+    const BUS_EVENTS = ["auth.login", "auth.logout", "auth.token.refresh", "auth.token.revoked", "auth.role.changed", "document.version.added", "idempotency.hit"];
+    const DEAD = "signal.fired";
+
+    const BASE = [
+      { id: "wh_1", label: "Ops relay", url: "https://hooks.internal.contoso.com/m365-ops", secretPrefix: "whsec_9f21ab4c", events: ["auth.role.changed", "document.version.added", "offer.accepted"], created: "12 Aug 2026", updated: "27 Aug 2026", owner: "Your account", active: true,
+        deliveries: [
+          { e: "auth.role.changed", s: "success", code: 200, a: 1, when: "09:41", snip: null },
+          { e: "document.version.added", s: "success", code: 200, a: 1, when: "09:12", snip: null },
+          { e: "offer.accepted", s: "success", code: 202, a: 1, when: "Yesterday", snip: null },
+          { e: "auth.role.changed", s: "retrying", code: 503, a: 2, when: "Yesterday", snip: "upstream connect error or disconnect/reset before headers", retry: "in 4 min" },
+          { e: "document.version.added", s: "success", code: 200, a: 1, when: "1 Sep", snip: null } ] },
+      { id: "wh_2", label: "SIEM ingest", url: "https://siem.contoso.com/api/collect/webhook/m365", secretPrefix: "whsec_3d70e155", events: ["auth.login", "auth.logout", "auth.token.revoked", "signal.fired"], created: "3 Jul 2026", updated: "3 Jul 2026", owner: "Your account", active: true,
+        deliveries: [
+          { e: "auth.login", s: "failed", code: 401, a: 3, when: "09:44", snip: "{\"error\":\"collector token expired\"}", term: true },
+          { e: "auth.login", s: "failed", code: 401, a: 3, when: "09:31", snip: "{\"error\":\"collector token expired\"}", term: true },
+          { e: "auth.token.revoked", s: "failed", code: 401, a: 3, when: "08:58", snip: "{\"error\":\"collector token expired\"}", term: true },
+          { e: "auth.logout", s: "success", code: 200, a: 1, when: "2 Sep", snip: null } ] },
+      { id: "wh_3", label: "Finance sandbox", url: "https://sandbox.contoso-finance.example/hooks/inbound", secretPrefix: "whsec_c04b8e7a", events: ["invoice.created", "invoice.paid"], created: "28 Aug 2026", updated: "28 Aug 2026", owner: "Your account", active: false, deliveries: [] },
+    ];
+
+    const rows = S.created.concat(BASE).filter((r) => !S.deleted[r.id]).map((r) => ({ ...r, active: S.actives[r.id] === undefined ? r.active : !!S.actives[r.id], secretPrefix: S.rotated[r.id] || r.secretPrefix }));
+
+    const isLoading = ds === "loading";
+    const isFailed = ds === "fetch-failed";
+    const isEmpty = ds === "live-empty";
+    const listable = ds === "live" || (ds === "live-empty" && S.created.length > 0);
+    const hasRows = listable && rows.length > 0;
+    const emptyAfterDelete = listable && rows.length === 0;
+
+    const stateLine = isLoading ? "Reading your endpoints" : isFailed ? "Could not read your endpoints" : rows.length === 0 ? "Live — 0 endpoints configured" : "Live — " + rows.length + (rows.length === 1 ? " endpoint" : " endpoints");
+    const stateDot = isFailed ? "#f87171" : isLoading ? "#475569" : "#34d399";
+    const stateInk = isFailed ? "#f87171" : "#64748b";
+
+    const st = (d, active) => {
+      if (!active) return { l: "Paused", ink: "#94a3b8", bg: "rgba(148,163,184,.10)", bd: "rgba(148,163,184,.28)", dot: "#64748b" };
+      if (!d.length) return honest
+        ? { l: "Untested", ink: "#c2a63d", bg: "rgba(194,166,61,.10)", bd: "rgba(194,166,61,.30)", dot: "#c2a63d" }
+        : { l: "Healthy", ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)", dot: "#34d399" };
+      const ok = d.filter((x) => x.s === "success").length / d.length;
+      if (ok < 0.7) return { l: "Failing", ink: "#f87171", bg: "rgba(248,113,113,.10)", bd: "rgba(248,113,113,.30)", dot: "#f87171" };
+      if (ok < 0.98) return { l: "Degraded", ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.30)", dot: "#fbbf24" };
+      return { l: "Healthy", ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)", dot: "#34d399" };
+    };
+    const DST = {
+      success: { ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.25)" },
+      failed: { ink: "#f87171", bg: "rgba(248,113,113,.10)", bd: "rgba(248,113,113,.28)" },
+      retrying: { ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" },
+      pending: { ink: "#94a3b8", bg: "rgba(148,163,184,.10)", bd: "rgba(148,163,184,.25)" },
+    };
+
+    const evChip = (t) => t === DEAD
+      ? { t, ink: "#c2a63d", bd: "rgba(194,166,61,.35)", bg: "rgba(194,166,61,.07)", tip: "Subscribable, but nothing in the platform dispatches this event — it has never fired and cannot." }
+      : { t, ink: "#94a3b8", bd: "rgba(255,255,255,.10)", bg: "transparent", tip: "" };
+
+    const endpoints = rows.map((r) => {
+      const s = st(r.deliveries, r.active);
+      const fails = r.deliveries.filter((d) => d.s !== "success").length;
+      return {
+        label: r.label, url: r.url, secretPrefix: r.secretPrefix, ownerLine: r.owner, createdLine: r.created, updatedLine: r.updated,
+        stateLabel: s.l, stateInk: s.ink, stateBg: s.bg, stateBd: s.bd, dot: s.dot, dotBd: s.bd,
+        eventsLine: r.events.length + (r.events.length === 1 ? " event" : " events"),
+        lastLine: r.deliveries.length ? "Last " + r.deliveries[0].when : "Never delivered",
+        open: S.open === r.id, chev: S.open === r.id ? "rotate(90deg)" : "none",
+        toggle: () => this.setState({ open: S.open === r.id ? null : r.id }),
+        events: r.events.map(evChip), hasDead: r.events.indexOf(DEAD) >= 0,
+        activeLine: r.active ? "Events are sent" : "Nothing is sent",
+        swBg: r.active ? "#0078D4" : "rgba(255,255,255,.07)", swBd: r.active ? "#0078D4" : "rgba(255,255,255,.14)",
+        swJust: r.active ? "flex-end" : "flex-start", swKnob: r.active ? "#fff" : "#64748b",
+        toggleActive: () => this.setState({ actives: { ...S.actives, [r.id]: !r.active } }),
+        noDeliv: r.deliveries.length === 0, hasDeliv: r.deliveries.length > 0,
+        delivLine: r.deliveries.length ? r.deliveries.length + " logged · " + fails + " not delivered" : "none logged",
+        deliveries: r.deliveries.map((d) => ({
+          status: d.s, ink: DST[d.s].ink, bg: DST[d.s].bg, bd: DST[d.s].bd,
+          eventType: d.e, code: d.code == null ? "no reply" : String(d.code),
+          attempt: "try " + d.a + "/3", when: d.when,
+          snippet: d.snip || "", hasSnippet: !!d.snip, terminal: !!d.term,
+          hasRetry: !!d.retry, nextRetry: d.retry || "",
+        })),
+        rotate: () => this.setState({ confirm: { kind: "rotate", id: r.id, label: r.label } }),
+        del: () => this.setState({ confirm: { kind: "delete", id: r.id, label: r.label } }),
+        edit: () => this.setState({ confirm: { kind: "edit", id: r.id, label: r.label } }),
+      };
+    });
+
+    const urlOk = /^https?:\/\/.+/.test(S.url.trim());
+    const canSubmit = S.label.trim().length > 0 && S.label.trim().length <= 120 && urlOk;
+    const C = S.confirm;
+    const cSpec = !C ? null : C.kind === "rotate"
+      ? { title: "Rotate the secret for " + C.label + "?", body: "A new secret is generated and shown once. The current secret stops validating the moment you confirm.", note: "There is no overlap period and no rotation history — anything still signing with the old secret will start failing immediately.", cta: "Rotate now", bg: "#0078D4" }
+      : C.kind === "delete"
+      ? { title: "Delete " + C.label + "?", body: "The endpoint is removed and its delivery history is removed with it. There is no archive and no undo.", note: "If you only want deliveries to stop, pause it instead — a paused endpoint keeps its history.", cta: "Delete endpoint", bg: "#b91c1c" }
+      : { title: "Editing is wired, this prototype is not", body: "Label, URL, events and the paused state are all patchable against the real endpoint. The form is the same one used to create — this design has not built the pre-filled version yet.", note: "Owner, secret and delivery history are not editable by any code path.", cta: "Understood", bg: "#0078D4" };
+
+    const mkSecret = () => "whsec_" + Array.from({ length: 64 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
+    const nowLine = "3 Sep 2026";
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      stateLine, stateDot, stateInk,
+      isLoading, isFailed, isEmpty: (isEmpty && !S.created.length) || emptyAfterDelete, hasRows,
+      canCreate: !isLoading && !isFailed && !S.creating,
+      skeletons: [{ w1: "34%", w2: "58%" }, { w1: "28%", w2: "46%" }, { w1: "31%", w2: "52%" }],
+      retry: () => this.setState({ failed: "live" }),
+      endpoints, epCountLine: rows.length + " configured · newest first · no paging, every endpoint you own is listed",
+      healthNote: honest
+        ? "Health is worked out in your browser from the deliveries on this page, not stored anywhere. An endpoint with no deliveries reads as untested, because nothing has proven it works."
+        : "Health is worked out in your browser from the deliveries on this page, not stored anywhere. An endpoint with no deliveries currently reads as healthy — which is what the code does today, not what it should say.",
+
+      creating: S.creating,
+      startCreate: () => this.setState({ creating: true, label: "", url: "", picked: [], open: null }),
+      cancelCreate: () => this.setState({ creating: false }),
+      formLabel: S.label, formUrl: S.url,
+      setLabel: (e) => this.setState({ label: e.target.value }),
+      setUrl: (e) => this.setState({ url: e.target.value }),
+      urlHint: S.url.trim() === "" ? "Must start with http:// or https://." : urlOk ? "Accepted." : "Rejected — the URL must start with http:// or https://.",
+      urlHintInk: S.url.trim() === "" ? "#475569" : urlOk ? "#34d399" : "#f87171",
+      pickedLine: S.picked.length === 0 ? "None picked — an endpoint with no events never receives anything" : S.picked.length + " picked",
+      pickChips: ROUTE_EVENTS.concat(BUS_EVENTS).map((t) => {
+        const on = S.picked.indexOf(t) >= 0;
+        const dead = t === DEAD;
+        return { t, ink: on ? "#f8fafc" : dead ? "#c2a63d" : "#94a3b8",
+          bg: on ? "rgba(0,120,212,.22)" : "transparent",
+          bd: on ? "rgba(0,120,212,.55)" : dead ? "rgba(194,166,61,.35)" : "rgba(255,255,255,.10)",
+          click: () => this.setState({ picked: on ? S.picked.filter((x) => x !== t) : S.picked.concat([t]) }) };
+      }),
+      createBg: canSubmit ? "#0078D4" : "rgba(255,255,255,.06)",
+      createInk: canSubmit ? "#fff" : "#475569",
+      createCur: canSubmit ? "pointer" : "default",
+      submitCreate: () => {
+        if (!canSubmit) return;
+        const v = mkSecret();
+        const id = "wh_new_" + (S.created.length + 1);
+        const row = { id, label: S.label.trim(), url: S.url.trim(), secretPrefix: v.slice(0, 14), events: S.picked.slice(), created: nowLine, updated: nowLine, owner: "Your account", active: true, deliveries: [] };
+        this.setState({ creating: false, copied: false, created: [row].concat(S.created), open: id, secret: { mode: "create", label: row.label, value: v } });
+      },
+
+      secretShow: !!S.secret,
+      secretTitle: S.secret && S.secret.mode === "rotate" ? "New secret for " + S.secret.label : "Signing secret for " + (S.secret ? S.secret.label : ""),
+      secretValue: S.secret ? S.secret.value : "",
+      copyLabel: S.copied ? "Copied" : "Copy",
+      copyInk: S.copied ? "#34d399" : "#cbd5e1",
+      copySecret: () => this.setState({ copied: true }),
+      secretNote: "Sign every incoming request against this value. It is stored on our side in plaintext, so treat it as a shared credential rather than a one-way hash.",
+      secretFoot: S.secret && S.secret.mode === "rotate" ? "The previous secret has already stopped working." : "The endpoint is live and will start receiving events.",
+      dismissSecret: () => this.setState({ secret: null, copied: false }),
+
+      confirmShow: !!C,
+      confirmTitle: cSpec ? cSpec.title : "", confirmBody: cSpec ? cSpec.body : "",
+      confirmNote: cSpec ? cSpec.note : "", confirmCta: cSpec ? cSpec.cta : "", confirmBg: cSpec ? cSpec.bg : "#0078D4",
+      confirmCancel: () => this.setState({ confirm: null }),
+      confirmGo: () => {
+        if (!C) return;
+        if (C.kind === "delete") this.setState({ confirm: null, open: null, deleted: { ...S.deleted, [C.id]: 1 } });
+        else if (C.kind === "rotate") {
+          const v = mkSecret();
+          this.setState({ confirm: null, copied: false, rotated: { ...S.rotated, [C.id]: v.slice(0, 14) }, secret: { mode: "rotate", label: C.label, value: v } });
+        } else this.setState({ confirm: null });
+      },
+
+      catalogOpen: S.catalog,
+      catalogToggle: S.catalog ? "Hide the list" : "Show the list",
+      toggleCatalog: () => this.setState({ catalog: !S.catalog }),
+      catalog: [
+        { label: "DECLARED BY THE WEBHOOKS ROUTE — 13", note: "Product events hardcoded alongside the platform list. All but one are dispatched from real call sites today.", items: ROUTE_EVENTS.map(evChip) },
+        { label: "FROM THE PLATFORM EVENT BUS — 28", note: "Account, tenant and document lifecycle events. The full list is served live by the API; these are the ones this design names outright, and the remaining msp.*, customer.*, user.*, service_account.*, dlq.* and impersonation events come from that response rather than being copied here — a hardcoded copy is how the older page drifted 20 events out of date.", items: BUS_EVENTS.map(evChip) },
+      ],
+
+      ledgerShow: P.showLedger !== false,
+      ledgerOpen: S.ledger,
+      ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger: [
+        { gap: "No reveal of a secret after the moment it is created or rotated — only the 14-character prefix is readable afterwards.", where: "§6" },
+        { gap: "No replay of a failed delivery. Nothing in the platform can re-attempt one, so a delivery that exhausts its three attempts is lost.", where: "§7" },
+        { gap: "No access to the payload that was sent. It is stored against every delivery but never served.", where: "§2" },
+        { gap: "No paging past the most recent 200 deliveries per endpoint.", where: "§2" },
+        { gap: "No stored health. The status on each row is computed in the browser from the deliveries fetched, and can change with the page size read.", where: "§3" },
+        { gap: "No validation of what you subscribe to. The API accepts any string, so a typo is accepted and simply never delivers.", where: "§3" },
+        { gap: "No rotation history and no grace period — one secret at a time, replaced destructively.", where: "§2" },
+        { gap: "No archive on delete. The endpoint and its whole delivery history are removed together.", where: "§2" },
+        { gap: "No shared taxonomy with alert preferences. Category names line up; event names do not, and no alert condition is ever dispatched.", where: "§4" },
+        { gap: "No distinction between an endpoint that does not exist and one that belongs to someone else — both answer identically.", where: "§2" },
+        { gap: "No platform-owned endpoints, despite the owner type existing. Nothing can create one.", where: "§3" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

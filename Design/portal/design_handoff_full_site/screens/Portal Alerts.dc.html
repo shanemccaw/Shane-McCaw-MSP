@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes alertIn{0%{opacity:0;transform:translateY(-10px)}60%{opacity:1}100%{opacity:1;transform:translateY(0)}}
+@keyframes livePulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</helmet>
+<section style="display:flex;align-items:flex-start;gap:72px;padding:56px;font-family:Inter,system-ui,sans-serif">
+
+  <div id="1a" style="width:1020px;flex:none;display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:baseline;gap:10px">
+      <span style="font-size:10.5px;font-weight:700;color:#020617;background:#94a3b8;border-radius:5px;padding:2px 7px">1a</span>
+      <span style="font-size:11px;font-weight:600;letter-spacing:.14em;color:#64748b">ALERTS DROPDOWN — ISSUE #1821</span>
+      <span style="margin-left:auto;font-size:11px;color:#475569">States: Tweaks panel · rows and Mark all read are clickable</span>
+    </div>
+    <div data-screen-label="Alerts dropdown" style="position:relative;height:768px;background:#020617;border:1px solid rgba(255,255,255,.09);border-radius:14px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+      <div style="position:absolute;inset:0;background:radial-gradient(700px 420px at 100% 0%, rgba(0,180,216,.05), transparent);pointer-events:none"></div>
+      <div style="position:relative;height:100%;display:flex;flex-direction:column">
+        <div style="height:56px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px 0 20px;border-bottom:1px solid rgba(255,255,255,.10)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700">S</div>
+            <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13.5px;font-weight:600;color:#f8fafc">Shane McCaw</span><span style="font-size:10px;color:#64748b;letter-spacing:.08em;text-transform:uppercase">Customer portal</span></div>
+          </div>
+          <div style="width:1px;height:20px;background:rgba(255,255,255,.10)"></div>
+          <span style="font-size:14px;font-weight:600;color:#f8fafc">Overview</span>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+            <div style="width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:rgba(255,255,255,.06)">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"></path><path d="m3 7 2 2 4-4"></path><path d="M13 6h8M13 12h8M13 18h8"></path></svg>
+            </div>
+            <div onClick="{{toggleOpen}}" style="position:relative;width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:{{bellBg}}" style-hover="background:rgba(255,255,255,.06)">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+              <sc-if value="{{badgeShow}}" hint-placeholder-val="{{ true }}"><span style="position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;border-radius:999px;background:#00B4D8;color:#020617;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px">{{unreadCount}}</span></sc-if>
+            </div>
+            <div style="width:1px;height:20px;background:rgba(255,255,255,.10);margin:0 6px"></div>
+            <div style="display:flex;align-items:center;gap:6px;padding:3px 6px 3px 3px;border-radius:999px;cursor:pointer" style-hover="background:rgba(255,255,255,.06)">
+              <div style="width:28px;height:28px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"></path></svg>
+              </div>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+            </div>
+          </div>
+        </div>
+        <div style="height:64px;flex:none;display:flex;border-bottom:1px solid rgba(255,255,255,.10)">
+          <sc-for list="{{pillars}}" as="p" hint-placeholder-count="6">
+            <div style="flex:1;display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.06)">
+              <div style="height:3px;background:{{p.band}}"></div>
+              <div style="flex:1;display:flex;align-items:center;gap:9px;padding:0 16px">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="{{p.primary}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{p.icon}}"></path></svg>
+                <span style="font-size:12.5px;font-weight:600;color:#cbd5e1">{{p.label}}</span>
+                <span style="margin-left:auto;font-size:13px;font-weight:700;color:#475569">—</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;margin:20px;border:1px dashed rgba(148,163,184,.12);border-radius:14px">
+          <span style="font-size:11px;letter-spacing:.16em;color:#1e293b;font-weight:600">PAGE CONTENT</span>
+        </div>
+      </div>
+      <sc-if value="{{open}}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;top:62px;right:52px;z-index:50;width:404px;background:rgba(11,17,32,.98);border:1px solid rgba(255,255,255,.10);border-radius:14px;box-shadow:0 18px 48px rgba(0,0,0,.55);display:flex;flex-direction:column;max-height:640px">
+        <div style="padding:13px 14px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.08)">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Alerts</span>
+          <span style="display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:#64748b;letter-spacing:.05em"><span style="width:6px;height:6px;border-radius:999px;background:#00B4D8;animation:livePulse 2.4s ease-in-out infinite"></span>LIVE</span>
+          <sc-if value="{{anyUnread}}" hint-placeholder-val="{{ true }}"><span style="font-size:10px;font-weight:600;color:#00B4D8;border:1px solid rgba(0,180,216,.45);border-radius:999px;padding:2px 8px">{{unreadPill}}</span></sc-if>
+          <sc-if value="{{calm}}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:#64748b">Up to date</span></sc-if>
+          <sc-if value="{{anyUnread}}" hint-placeholder-val="{{ true }}"><span onClick="{{markAll}}" style="margin-left:auto;font-size:11px;font-weight:600;color:#60a5fa;cursor:pointer">Mark all read</span></sc-if>
+        </div>
+        <div style="display:flex;gap:4px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08)">
+          <span onClick="{{pickPersonal}}" style="font-size:11.5px;font-weight:600;border-radius:999px;padding:4px 12px;cursor:pointer;color:{{tabPInk}};background:{{tabPBg}}">Personal</span>
+          <span onClick="{{pickAll}}" style="font-size:11.5px;font-weight:600;border-radius:999px;padding:4px 12px;cursor:pointer;color:{{tabAInk}};background:{{tabABg}}">All activity</span>
+        </div>
+        <div style="flex:1;overflow-y:auto;min-height:0;padding:6px">
+          <sc-if value="{{calm}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:26px 24px 22px;text-align:center">
+              <div style="width:38px;height:38px;border-radius:11px;background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.22);display:flex;align-items:center;justify-content:center">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+              </div>
+              <span style="font-size:13px;font-weight:600;color:#cbd5e1">Nothing needs your attention</span>
+              <span style="font-size:12px;color:#64748b;line-height:1.5;max-width:260px">New alerts land here live — no refresh needed. Your history stays below.</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{arrivedShow}}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{arrivalClick}}" style="animation:alertIn 480ms cubic-bezier(.2,.8,.2,1);border-left:2px solid #f87171;background:rgba(248,113,113,.05);display:flex;gap:10px;padding:9px 10px 9px 12px;border-radius:8px;cursor:pointer;margin-bottom:2px" style-hover="background:rgba(248,113,113,.09)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:13px;font-weight:600;color:#f8fafc">Oversharing detected</span><span style="margin-left:auto;font-size:10.5px;color:#00B4D8;font-weight:600">Just now</span></div>
+                <div style="display:flex;align-items:center;gap:7px"><span style="font-size:10px;color:#64748b;border:1px solid rgba(148,163,184,.25);border-radius:999px;padding:1.5px 8px">findings</span><sc-if value="{{arrivalUnread}}" hint-placeholder-val="{{ true }}"><span style="width:6px;height:6px;border-radius:999px;background:#00B4D8"></span></sc-if></div>
+              </div>
+            </div>
+          </sc-if>
+          <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+            <div style="display:flex;flex-direction:column">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#475569;padding:9px 12px 5px">{{g.label}}</span>
+              <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="4">
+                <div onClick="{{r.click}}" style="border-left:2px solid {{r.bandColor}};background:{{r.bg}};display:flex;gap:10px;padding:9px 10px 9px 12px;border-radius:8px;cursor:pointer;margin-bottom:2px" style-hover="background:rgba(255,255,255,.04)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{r.ink}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="{{r.p1}}"></path><path d="{{r.p2}}"></path><path d="{{r.p3}}"></path></svg>
+                  <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                    <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:13px;font-weight:{{r.titleWeight}};color:{{r.titleInk}}">{{r.t}}</span><span style="margin-left:auto;flex:none;font-size:10.5px;color:#475569;font-variant-numeric:tabular-nums">{{r.time}}</span></div>
+                    <sc-if value="{{r.hasBody}}" hint-placeholder-val="{{ true }}"><span style="font-size:12px;color:#94a3b8;line-height:1.45">{{r.body}}</span></sc-if>
+                    <div style="display:flex;align-items:center;gap:7px">
+                      <span style="font-size:10px;color:#64748b;border:1px solid rgba(148,163,184,.25);border-radius:999px;padding:1.5px 8px">{{r.cat}}</span>
+                      <sc-if value="{{r.unread}}" hint-placeholder-val="{{ false }}"><span style="width:6px;height:6px;border-radius:999px;background:#00B4D8"></span></sc-if>
+                      <sc-if value="{{r.linked}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto"><path d="m9 18 6-6-6-6"></path></svg></sc-if>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;padding:10px 14px;border-top:1px solid rgba(255,255,255,.08)">
+          <span onClick="{{pickAll}}" style="font-size:12px;color:#94a3b8;cursor:pointer" style-hover="color:#cbd5e1">Open activity feed</span>
+          <span style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;cursor:pointer" style-hover="color:#cbd5e1">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path></svg>
+            Alert preferences</span>
+        </div>
+      </div>
+      </sc-if>
+    </div>
+    <span style="font-size:11px;color:#475569;line-height:1.55;max-width:900px">All 23 catalogue deep links point at deleted portal-v2 routes today — rows without a live destination render with no chevron and no dead click. Unknown categories (here: message_center, one of 34 free-text values in the codebase) keep the same neutral chip; category never carries severity colour.</span>
+  </div>
+
+  <div id="1b" style="width:1400px;flex:none;display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:baseline;gap:10px">
+      <span style="font-size:10.5px;font-weight:700;color:#020617;background:#94a3b8;border-radius:5px;padding:2px 7px">1b</span>
+      <span style="font-size:11px;font-weight:600;letter-spacing:.14em;color:#64748b">ALERT PREFERENCES PAGE</span>
+      <span style="margin-left:auto;font-size:11px;color:#475569">Toggles, modes and Save are clickable · failure states in Tweaks</span>
+    </div>
+    <div data-screen-label="Alert preferences" style="position:relative;background:#020617;border:1px solid rgba(255,255,255,.09);border-radius:14px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.5)">
+      <div style="position:absolute;inset:0;background:radial-gradient(700px 420px at 100% 0%, rgba(0,180,216,.05), transparent);pointer-events:none"></div>
+      <div style="position:relative;display:flex;flex-direction:column">
+        <div style="height:56px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px 0 20px;border-bottom:1px solid rgba(255,255,255,.10)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700">S</div>
+            <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13.5px;font-weight:600;color:#f8fafc">Shane McCaw</span><span style="font-size:10px;color:#64748b;letter-spacing:.08em;text-transform:uppercase">Customer portal</span></div>
+          </div>
+          <div style="width:1px;height:20px;background:rgba(255,255,255,.10)"></div>
+          <span style="font-size:12.5px;color:#64748b">Settings</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+          <span style="font-size:14px;font-weight:600;color:#f8fafc">Alert preferences</span>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+            <div style="position:relative;width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+            </div>
+            <div style="width:28px;height:28px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"></path></svg>
+            </div>
+          </div>
+        </div>
+        <sc-if value="{{loadFail}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;justify-content:center;min-height:560px">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:12px;max-width:380px;text-align:center;border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:36px 40px;background:rgba(255,255,255,.02)">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+              <span style="font-size:13.5px;color:#cbd5e1;line-height:1.55">Unable to load alert preferences right now. Please try again shortly.</span>
+              <span style="font-size:12px;font-weight:600;color:#94a3b8;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:7px 18px;cursor:pointer" style-hover="background:rgba(255,255,255,.05)">Retry</span>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{loadOk}}" hint-placeholder-val="{{ true }}">
+        <div style="padding:26px 36px 32px;display:flex;flex-direction:column">
+          <div style="display:flex;align-items:flex-start;gap:16px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:21px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Alert preferences</span>
+              <span style="font-size:12.5px;color:{{savedInkColor}}">{{savedLine}}</span>
+            </div>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+              <span onClick="{{reset}}" style="font-size:12.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:8px 16px;cursor:pointer" style-hover="background:rgba(255,255,255,.05)">Reset to Balanced</span>
+              <span onClick="{{save}}" style="font-size:12.5px;font-weight:600;color:{{saveInk}};background:{{saveBg}};border-radius:6px;padding:8px 20px;cursor:{{saveCursor}}" style-hover="opacity:.92">Save changes</span>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 330px;gap:20px;margin-top:22px;align-items:start">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <sc-for list="{{cats}}" as="c" hint-placeholder-count="7">
+                <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 18px 14px">
+                  <div style="display:flex;align-items:center;gap:11px">
+                    <div style="width:30px;height:30px;flex:none;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);display:flex;align-items:center;justify-content:center">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{c.i1}}"></path><path d="{{c.i2}}"></path></svg>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:1px">
+                      <span style="font-size:13.5px;font-weight:600;color:#f8fafc">{{c.label}}</span>
+                      <span style="font-size:11px;color:#64748b">{{c.countLine}}</span>
+                    </div>
+                    <div onClick="{{c.togEn}}" style="margin-left:auto;width:30px;height:17px;border-radius:999px;background:{{c.enBg}};position:relative;cursor:pointer;transition:background 200ms;flex:none">
+                      <div style="position:absolute;top:2px;left:{{c.enLeft}};width:13px;height:13px;border-radius:999px;background:#fff;transition:left 200ms"></div>
+                    </div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px;opacity:{{c.ctrlOpacity}};transition:opacity 200ms">
+                    <span onClick="{{c.togEm}}" style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:{{c.emInk}};border:1px solid {{c.emBorder}};background:{{c.emBg}};border-radius:999px;padding:5px 12px;cursor:pointer">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="{{c.emInk}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"></path><path d="m22 7-10 6L2 7"></path></svg>
+                      {{c.emLabel}}</span>
+                    <div style="display:flex;border:1px solid rgba(255,255,255,.10);border-radius:8px;overflow:hidden">
+                      <sc-for list="{{c.modes}}" as="m" hint-placeholder-count="3">
+                        <span onClick="{{m.pick}}" style="font-size:11.5px;font-weight:600;padding:5px 13px;cursor:pointer;color:{{m.ink}};background:{{m.bg}}">{{m.label}}</span>
+                      </sc-for>
+                    </div>
+                    <span style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:#94a3b8;border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:5px 12px 5px 10px">
+                      <span style="font-size:9px;font-weight:700;letter-spacing:.1em;color:#475569">THRESHOLD</span>
+                      <span style="font-size:11px;font-weight:700;color:#00B4D8;font-family:ui-monospace,monospace">{{c.thrVal}}</span>
+                      <span style="color:#64748b">{{c.thrDesc}}</span>
+                    </span>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:12px;opacity:{{c.ctrlOpacity}};transition:opacity 200ms">
+                    <sc-for list="{{c.rules}}" as="r" hint-placeholder-count="3">
+                      <span style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:{{r.ink}};border:1px {{r.borderStyle}} {{r.borderColor}};background:{{r.bg}};border-radius:999px;padding:4px 11px">
+                        <span style="width:7px;height:7px;border-radius:999px;background:{{r.dotBg}};border:1.5px solid {{r.dotBorder}};box-sizing:border-box"></span>
+                        {{r.n}}
+                        <sc-if value="{{r.pending}}" hint-placeholder-val="{{ false }}"><span style="font-size:8.5px;font-weight:700;letter-spacing:.07em;color:#fbbf24;border:1px dashed rgba(251,191,36,.55);border-radius:999px;padding:2px 7px;white-space:nowrap">NO DETECTOR YET — CAN'T FIRE</span></sc-if>
+                      </span>
+                    </sc-for>
+                  </div>
+                  <sc-if value="{{c.hasNote}}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;border-top:1px solid rgba(255,255,255,.06);padding-top:11px">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.3 0C14.3 3.8 16.8 5 18.8 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>
+                      <span style="font-size:11.5px;color:#64748b;line-height:1.5">Findings you've accepted in the risk register don't alert while the risk decision is active — suppression happens at evaluation, so no count is shown here.</span>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+              <span style="font-size:11px;color:#475569;padding:2px 4px">All 23 seeded rules shown — 19 live, 4 awaiting detectors. The catalogue is fixed vocabulary; instances appear in the alerts dropdown.</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 18px 16px">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"></path></svg>
+                  <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Quiet hours</span>
+                  <div onClick="{{togQh}}" style="margin-left:auto;width:30px;height:17px;border-radius:999px;background:{{qhBg}};position:relative;cursor:pointer;transition:background 200ms">
+                    <div style="position:absolute;top:2px;left:{{qhLeft}};width:13px;height:13px;border-radius:999px;background:#fff;transition:left 200ms"></div>
+                  </div>
+                </div>
+                <div style="opacity:{{qhOpacity}};transition:opacity 200ms">
+                  <div style="display:flex;align-items:center;gap:8px;margin-top:13px">
+                    <span style="font-size:12px;font-weight:700;color:#cbd5e1;font-variant-numeric:tabular-nums;border:1px solid rgba(255,255,255,.10);border-radius:6px;padding:4px 10px">19:00</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                    <span style="font-size:12px;font-weight:700;color:#cbd5e1;font-variant-numeric:tabular-nums;border:1px solid rgba(255,255,255,.10);border-radius:6px;padding:4px 10px">07:30</span>
+                    <span style="font-size:11px;color:#64748b">overnight</span>
+                  </div>
+                  <div style="position:relative;height:26px;background:rgba(255,255,255,.04);border-radius:6px;overflow:hidden;margin-top:12px">
+                    <div style="position:absolute;top:0;bottom:0;left:0;width:31.25%;background:rgba(148,163,184,.16)"></div>
+                    <div style="position:absolute;top:0;bottom:0;left:79.16%;right:0;background:rgba(148,163,184,.16)"></div>
+                    <div style="position:absolute;top:0;bottom:0;left:12%;width:2px;background:#f87171"></div>
+                    <span style="position:absolute;left:6px;top:6px;font-size:9px;color:#475569">00:00</span>
+                    <span style="position:absolute;left:48%;top:6px;font-size:9px;color:#475569">12:00</span>
+                    <span style="position:absolute;right:6px;top:6px;font-size:9px;color:#475569">24:00</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px;margin-top:11px">
+                    <span style="display:flex;align-items:center;gap:7px;font-size:11px;color:#64748b"><span style="width:10px;height:10px;border-radius:3px;background:rgba(148,163,184,.16);flex:none"></span>Delivery pauses during the shaded window</span>
+                    <span style="display:flex;align-items:center;gap:7px;font-size:11px;color:#94a3b8"><span style="width:2px;height:12px;background:#f87171;flex:none;margin:0 4px"></span>Critical alerts break through — they deliver the moment they fire, even overnight</span>
+                  </div>
+                </div>
+              </div>
+              <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 18px 16px">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"></path><path d="M19 8v6"></path><path d="M22 11h-6"></path></svg>
+                  <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Additional recipients</span>
+                </div>
+                <span style="display:block;font-size:12px;color:#64748b;line-height:1.5;margin-top:10px">None yet — alerts reach your portal account only.</span>
+                <div style="display:flex;align-items:center;justify-content:center;gap:7px;border:1px dashed rgba(148,163,184,.3);border-radius:8px;padding:9px 0;margin-top:11px;cursor:pointer" style-hover="background:rgba(255,255,255,.03)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+                  <span style="font-size:12px;font-weight:600;color:#94a3b8">Add recipient</span>
+                </div>
+                <span style="display:block;font-size:11px;color:#475569;line-height:1.5;margin-top:10px">Each recipient carries a role and can be scoped to specific categories — unscoped means all categories.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+      </div>
+      <sc-if value="{{failToast}}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;bottom:22px;right:26px;z-index:60;display:flex;align-items:center;gap:10px;background:#0b1120;border:1px solid rgba(248,113,113,.45);border-radius:10px;padding:11px 14px;box-shadow:0 12px 32px rgba(0,0,0,.5);max-width:360px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+          <span style="font-size:12px;color:#cbd5e1;line-height:1.5">Unable to save alert preferences right now. Please try again shortly.</span>
+          <span onClick="{{dismissFail}}" style="font-size:14px;color:#64748b;cursor:pointer;flex:none;padding:0 2px">×</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{savedToast}}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;bottom:22px;right:26px;z-index:60;display:flex;align-items:center;gap:10px;background:#0b1120;border:1px solid rgba(0,180,216,.45);border-radius:10px;padding:11px 14px;box-shadow:0 12px 32px rgba(0,0,0,.5)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M20 6 9 17l-5-5"></path></svg>
+          <span style="font-size:12px;color:#cbd5e1">Preferences saved</span>
+        </div>
+      </sc-if>
+    </div>
+    <span style="font-size:11px;color:#475569;line-height:1.55;max-width:1100px">Threshold vocabularies are per-category and never normalised: high · worse · five · fourteen · waiting · all · mine. The four dashed rules carry the verbatim backend badge — two of them (MFA gap, Global Administrator added) are the catalogue's most alarming and cannot fire until their detectors exist.</span>
+  </div>
+
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;dropdownScenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Unread mix&quot;,&quot;All caught up&quot;,&quot;Critical arrives live&quot;],&quot;default&quot;:&quot;Unread mix&quot;,&quot;section&quot;:&quot;Alerts dropdown&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;prefsScenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Balanced — nothing saved&quot;,&quot;Save fails&quot;,&quot;Load failure&quot;],&quot;default&quot;:&quot;Balanced — nothing saved&quot;,&quot;section&quot;:&quot;Preferences page&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  state = { open: true, tab: "personal", readIds: {}, arrived: false,
+    en: { findings: 1, drift: 1, progress: 1, reviews: 1, remediation: 1, billing: 1, support: 1 },
+    em: { findings: 1, drift: 1, progress: 1, reviews: 1, remediation: 0, billing: 1, support: 1 },
+    mode: { findings: "immediate", drift: "immediate", progress: "daily", reviews: "daily", remediation: "daily", billing: "immediate", support: "immediate" },
+    qh: true, dirty: false, savedNow: false, failToast: false, savedToast: false };
+
+  componentDidMount() { this.syncArrival(); }
+  componentDidUpdate(prev) {
+    if (prev.dropdownScenario !== this.props.dropdownScenario) {
+      clearTimeout(this._t);
+      this.setState({ arrived: false, readIds: {} });
+      this.syncArrival();
+    }
+  }
+  componentWillUnmount() { clearTimeout(this._t); clearTimeout(this._t2); }
+  syncArrival() {
+    if ((this.props.dropdownScenario ?? "Unread mix") === "Critical arrives live")
+      this._t = setTimeout(() => this.setState({ arrived: true }), 1200);
+  }
+
+  renderVals() {
+    const S = this.state, scen = this.props.dropdownScenario ?? "Unread mix",
+      pscen = this.props.prefsScenario ?? "Balanced — nothing saved";
+    const P = "#0078D4";
+    const pillars = [
+      ["Governance", "#3B82F6", "#60A5FA", "M16 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM12 3v18M7 21h5M9 6h6M3 10h4M17 10h4"],
+      ["Security", "#8B5CF6", "#A78BFA", "M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.3 0C14.3 3.8 16.8 5 18.8 5a1 1 0 0 1 1 1z"],
+      ["Compliance", "#F3F4F6", "#D1D5DB", "M16 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"],
+      ["Licensing", "#14B8A6", "#2DD4BF", "M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76zM16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 18V6"],
+      ["Adoption", "#F97316", "#FB923C", "M18 21a8 8 0 0 0-16 0M10 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"],
+      ["Health", "#22C55E", "#4ADE80", "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"]
+    ].map(([label, primary, accent, icon]) => ({ label, primary, icon, band: `linear-gradient(90deg,${primary},${accent})` }));
+
+    const SEV = {
+      critical: { ink: "#f87171", p1: "M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z", p2: "M12 8v4", p3: "M12 16h.01" },
+      warning: { ink: "#fbbf24", p1: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 20h16a2 2 0 0 0 1.73-2z", p2: "M12 9v4", p3: "M12 17h.01" },
+      info: { ink: "#64748b", p1: "M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z", p2: "M12 16v-4", p3: "M12 8h.01" }
+    };
+    const NOTIFS = [
+      { id: "ov", t: "Oversharing detected", body: null, sev: "critical", cat: "findings", time: "09:41", unread: 1, linked: 1, day: "TODAY" },
+      { id: "og", t: "Ownerless group/team", body: "104 groups and teams have no owner after run 445", sev: "warning", cat: "findings", time: "09:40", unread: 1, linked: 1, day: "TODAY" },
+      { id: "sc", t: "Scan complete", body: "Run 445 finished — results are on your pillar pages", sev: "info", cat: "remediation", time: "09:38", unread: 1, linked: 1, day: "TODAY" },
+      { id: "tk", t: "Task awaiting customer", body: "A remediation step is waiting on your approval", sev: "warning", cat: "remediation", time: "08:12", unread: 1, linked: 1, day: "TODAY" },
+      { id: "in", t: "Invoice issued", body: "Your latest statement is available under Billing", sev: "info", cat: "billing", time: "Yesterday 16:04", unread: 0, linked: 1, day: "EARLIER" },
+      { id: "ca", t: "Conditional Access policy change", body: "A policy changed outside an approved change window", sev: "warning", cat: "drift", time: "Yesterday 11:26", unread: 0, linked: 1, day: "EARLIER" },
+      { id: "fx", t: "Fix verified", body: "A completed fix was re-checked and held", sev: "info", cat: "progress", time: "Aug 27 · 15:50", unread: 0, linked: 1, day: "EARLIER" },
+      { id: "mc", t: "Message center update", body: null, sev: "info", cat: "message_center", time: "Aug 27 · 09:12", unread: 0, linked: 0, act: 1, day: "EARLIER" },
+      { id: "ps", t: "Pillar score moved", body: "Governance moved after run 445", sev: "info", cat: "progress", time: "Aug 26 · 18:02", unread: 0, linked: 1, act: 1, day: "EARLIER" }
+    ];
+    const critScen = scen === "Critical arrives live", calmScen = scen === "All caught up";
+    let list = NOTIFS.filter(n => (this.state.tab === "all" || !n.act) && !(critScen && n.id === "ov"));
+    const rows = list.map(n => {
+      const unread = !calmScen && n.unread && !S.readIds[n.id], sv = SEV[n.sev];
+      return { ...n, ...sv, unread,
+        titleInk: unread ? "#f8fafc" : "#94a3b8", titleWeight: unread ? 600 : 500,
+        bandColor: unread && n.sev === "critical" ? "#f87171" : "transparent",
+        bg: unread && n.sev === "critical" ? "rgba(248,113,113,.05)" : "transparent",
+        hasBody: !!n.body, linked: !!n.linked,
+        click: () => this.setState(s => ({ readIds: { ...s.readIds, [n.id]: 1 } })) };
+    });
+    const groups = ["TODAY", "EARLIER"].map(label => ({ label, rows: rows.filter(r => r.day === label) })).filter(g => g.rows.length);
+    const arrivedShow = critScen && S.arrived, arrivalUnread = arrivedShow && !S.readIds.ov;
+    const unreadCount = rows.filter(r => r.unread).length + (arrivalUnread ? 1 : 0);
+    const anyUnread = unreadCount > 0;
+
+    const CATS = [
+      { k: "findings", label: "Findings", countLine: "7 rules · 5 live", thrVal: "high", thrDesc: "high-severity findings and above", hasNote: true,
+        i1: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z", i2: "m21 21-4.3-4.3",
+        rules: [["New critical finding", "critical"], ["New high finding", "warning"], ["Oversharing detected", "critical"], ["Ownerless group/team", "warning"], ["Standing privileged role", "warning"], ["MFA gap detected", "critical", 1], ["Global Administrator added", "critical", 1]] },
+      { k: "drift", label: "Drift", countLine: "3 rules · 2 live", thrVal: "worse", thrDesc: "only changes for the worse",
+        i1: "M6 3v12M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z", i2: "M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9",
+        rules: [["Unapproved drift", "warning"], ["Conditional Access policy change", "warning"], ["Drift regression", "warning", 1]] },
+      { k: "progress", label: "Progress", countLine: "2 rules · all live", thrVal: "five", thrDesc: "per-category batch value",
+        i1: "M22 7 13.5 15.5 8.5 10.5 2 17", i2: "M16 7h6v6",
+        rules: [["Fix verified", "info"], ["Pillar score moved", "info"]] },
+      { k: "reviews", label: "Reviews", countLine: "2 rules · all live", thrVal: "fourteen", thrDesc: "days before a review is due",
+        i1: "M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z", i2: "M12 6v6l4 2",
+        rules: [["Risk acceptance due for review", "info"], ["Policy decision due for review", "info"]] },
+      { k: "remediation", label: "Remediation", countLine: "3 rules · all live", thrVal: "waiting", thrDesc: "only tasks waiting on you",
+        i1: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z", i2: "",
+        rules: [["Scan complete", "info"], ["Remediation step completed", "info"], ["Task awaiting customer", "warning"]] },
+      { k: "billing", label: "Billing", countLine: "5 rules · 4 live", thrVal: "all", thrDesc: "every billing event",
+        i1: "M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z", i2: "M2 10h20",
+        rules: [["Statement of Work signed", "info"], ["Invoice issued", "info"], ["Renewal approaching", "info"], ["Payment failed", "warning"], ["Licence assignment changed", "info", 1]] },
+      { k: "support", label: "Support", countLine: "1 rule · live", thrVal: "mine", thrDesc: "only your own tickets",
+        i1: "M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", i2: "m4.93 4.93 4.24 4.24m5.66 0 4.24-4.24m-4.24 9.9 4.24 4.24m-9.9-4.24-4.24 4.24",
+        rules: [["Support ticket updated", "info"]] }
+    ];
+    const DOT = { critical: "#f87171", warning: "#fbbf24", info: "#64748b" };
+    const flip = (bag, k) => () => this.setState(s => ({ [bag]: { ...s[bag], [k]: s[bag][k] ? 0 : 1 }, dirty: true, savedNow: false }));
+    const cats = CATS.map(c => {
+      const on = !!S.en[c.k], email = !!S.em[c.k], md = S.mode[c.k];
+      return { ...c,
+        enBg: on ? P : "rgba(255,255,255,.14)", enLeft: on ? "15px" : "2px", togEn: flip("en", c.k),
+        ctrlOpacity: on ? 1 : 0.35,
+        emLabel: email ? "Email on" : "Email off",
+        emInk: email ? "#00B4D8" : "#64748b",
+        emBorder: email ? "rgba(0,180,216,.45)" : "rgba(255,255,255,.12)",
+        emBg: email ? "rgba(0,180,216,.07)" : "transparent", togEm: flip("em", c.k),
+        modes: ["immediate", "daily", "weekly"].map(m => ({ label: m[0].toUpperCase() + m.slice(1),
+          bg: md === m ? "rgba(0,120,212,.25)" : "transparent", ink: md === m ? "#f8fafc" : "#64748b",
+          pick: () => this.setState(s => ({ mode: { ...s.mode, [c.k]: m }, dirty: true, savedNow: false })) })),
+        rules: c.rules.map(([n, sev, pending]) => ({ n, pending: !!pending,
+          ink: pending ? "#64748b" : "#cbd5e1",
+          borderStyle: pending ? "dashed" : "solid",
+          borderColor: pending ? "rgba(148,163,184,.35)" : "rgba(255,255,255,.09)",
+          bg: pending ? "transparent" : "rgba(255,255,255,.02)",
+          dotBg: pending ? "transparent" : DOT[sev], dotBorder: DOT[sev] })) };
+    });
+
+    const loadFail = pscen === "Load failure";
+    const savedLine = S.savedNow ? "Saved just now." : S.dirty ? "Unsaved changes — Balanced defaults until you save." : "No preferences saved yet — Balanced defaults apply.";
+    return { pillars, groups, unreadCount, anyUnread, badgeShow: anyUnread, calm: !anyUnread,
+      unreadPill: unreadCount + " new", arrivedShow, arrivalUnread,
+      arrivalClick: () => this.setState(s => ({ readIds: { ...s.readIds, ov: 1 } })),
+      open: S.open, toggleOpen: () => this.setState(s => ({ open: !s.open })),
+      bellBg: S.open ? "rgba(255,255,255,.06)" : "transparent",
+      markAll: () => { const all = {}; NOTIFS.forEach(n => all[n.id] = 1); this.setState({ readIds: all }); },
+      tabPInk: S.tab === "personal" ? "#f8fafc" : "#64748b", tabPBg: S.tab === "personal" ? "rgba(255,255,255,.07)" : "transparent",
+      tabAInk: S.tab === "all" ? "#f8fafc" : "#64748b", tabABg: S.tab === "all" ? "rgba(255,255,255,.07)" : "transparent",
+      pickPersonal: () => this.setState({ tab: "personal" }), pickAll: () => this.setState({ tab: "all" }),
+      cats, loadFail, loadOk: !loadFail, savedLine,
+      savedInkColor: S.dirty ? "#fbbf24" : "#64748b",
+      saveBg: S.dirty ? P : "rgba(255,255,255,.06)", saveInk: S.dirty ? "#fff" : "#475569",
+      saveCursor: S.dirty ? "pointer" : "default",
+      save: () => { if (!S.dirty) return;
+        if (pscen === "Save fails") this.setState({ failToast: true });
+        else { this.setState({ dirty: false, savedNow: true, savedToast: true });
+          clearTimeout(this._t2); this._t2 = setTimeout(() => this.setState({ savedToast: false }), 2600); } },
+      reset: () => this.setState({ en: { findings: 1, drift: 1, progress: 1, reviews: 1, remediation: 1, billing: 1, support: 1 },
+        em: { findings: 1, drift: 1, progress: 1, reviews: 1, remediation: 0, billing: 1, support: 1 },
+        mode: { findings: "immediate", drift: "immediate", progress: "daily", reviews: "daily", remediation: "daily", billing: "immediate", support: "immediate" },
+        dirty: false, savedNow: false }),
+      dismissFail: () => this.setState({ failToast: false }),
+      failToast: S.failToast, savedToast: S.savedToast,
+      qhBg: S.qh ? P : "rgba(255,255,255,.14)", qhLeft: S.qh ? "15px" : "2px", qhOpacity: S.qh ? 1 : 0.35,
+      togQh: () => this.setState(s => ({ qh: !s.qh, dirty: true, savedNow: false })) };
+  }
+}
+</script>
+</body>
+</html>

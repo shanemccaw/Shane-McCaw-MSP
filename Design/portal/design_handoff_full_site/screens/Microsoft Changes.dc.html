@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes scanSlide{0%{transform:translateX(-110%)}100%{transform:translateX(360%)}}
+@keyframes washBreathe{0%,100%{opacity:.35}50%{opacity:.9}}
+</style>
+</helmet>
+<div style="position:relative;width:100%;height:{{rootH}};min-height:{{rootMinH}};background:#020617;overflow:hidden;font-family:Inter,system-ui,sans-serif">
+  <sc-if value="{{chromeShow}}" hint-placeholder-val="{{ true }}">
+  <div style="position:absolute;inset:0;background:radial-gradient(700px 420px at 100% 0%, rgba(0,180,216,.05), transparent);pointer-events:none"></div>
+  <div style="position:absolute;inset:0;background:radial-gradient(120% 90% at 0% 100%, rgba(0,120,212,.08), rgba(2,6,23,0) 62%);opacity:{{oNone}};transition:opacity 1800ms cubic-bezier(.4,0,.2,1);pointer-events:none"></div>
+  <div style="position:absolute;inset:0;background:radial-gradient(120% 90% at 0% 100%, rgba(52,211,153,.14), rgba(2,6,23,0) 62%);opacity:{{oHealthy}};transition:opacity 1800ms cubic-bezier(.4,0,.2,1);pointer-events:none"></div>
+  <div style="position:absolute;inset:0;background:radial-gradient(120% 90% at 0% 100%, rgba(251,191,36,.15), rgba(2,6,23,0) 62%);opacity:{{oAttention}};transition:opacity 1800ms cubic-bezier(.4,0,.2,1);pointer-events:none"></div>
+  <div style="position:absolute;inset:0;background:radial-gradient(120% 90% at 0% 100%, rgba(248,113,113,.18), rgba(2,6,23,0) 62%);opacity:{{oCritical}};transition:opacity 1800ms cubic-bezier(.4,0,.2,1);pointer-events:none"></div>
+  <sc-if value="{{scanRunning}}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;background:radial-gradient(90% 70% at 0% 100%, rgba(0,120,212,.10), rgba(2,6,23,0) 60%);animation:washBreathe 4s ease-in-out infinite;pointer-events:none"></div></sc-if>
+  </sc-if>
+  <div style="position:relative;height:100%;display:flex;flex-direction:column">
+    <sc-if value="{{chromeShow}}" hint-placeholder-val="{{ true }}">
+    <sc-if value="{{impersonated}}" hint-placeholder-val="{{ false }}">
+      <div style="height:36px;background:#0078D4;display:flex;align-items:center;gap:10px;padding:0 16px;flex:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"></path><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path></svg>
+        <span style="font-size:12.5px;font-weight:600;color:#fff">Impersonation active</span>
+        <span style="font-size:12px;color:rgba(255,255,255,.75)">An MSP operator is viewing this portal as the customer</span>
+        <span style="margin-left:auto;font-size:11.5px;font-weight:600;color:#fff;border:1px solid rgba(255,255,255,.55);border-radius:999px;padding:3px 12px;cursor:pointer">End session</span>
+      </div>
+    </sc-if>
+    <div style="height:56px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px 0 20px;border-bottom:1px solid rgba(255,255,255,.10)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700">S</div>
+        <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13.5px;font-weight:600;color:#f8fafc">Shane McCaw</span><span style="font-size:10px;color:#64748b;letter-spacing:.08em;text-transform:uppercase">Customer portal</span></div>
+      </div>
+      <div style="width:1px;height:20px;background:rgba(255,255,255,.10)"></div>
+      <span style="font-size:14px;font-weight:600;color:#f8fafc">Microsoft Changes</span>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+        <div onClick="{{toggleSop}}" style="position:relative;width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:{{sopBtnBg}}" style-hover="background:rgba(255,255,255,.06)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"></path><path d="m3 7 2 2 4-4"></path><path d="M13 6h8M13 12h8M13 18h8"></path></svg>
+          <sc-if value="{{sopBadge}}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;border-radius:999px;background:#00B4D8;color:#020617;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px">{{sopCount}}</span></sc-if>
+        </div>
+        <div onClick="{{toggleAlerts}}" style="position:relative;width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:{{bellBtnBg}}" style-hover="background:rgba(255,255,255,.06)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+          <sc-if value="{{alertsBadge}}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;border-radius:999px;background:#00B4D8;color:#020617;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px">2</span></sc-if>
+        </div>
+        <div style="width:1px;height:20px;background:rgba(255,255,255,.10);margin:0 6px"></div>
+        <div onClick="{{toggleUser}}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 6px 3px 3px;border-radius:999px;background:{{userBtnBg}}" style-hover="background:rgba(255,255,255,.06)">
+          <div style="width:28px;height:28px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center;box-shadow:{{avatarRing}}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"></path></svg>
+          </div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+        </div>
+      </div>
+    </div>
+    <div style="height:64px;flex:none;display:flex;border-bottom:1px solid rgba(255,255,255,.10)">
+      <sc-for list="{{pillars}}" as="p" hint-placeholder-count="6">
+        <div style="flex:1;display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.06);cursor:pointer" style-hover="background:rgba(255,255,255,.03)">
+          <div style="height:3px;background:{{p.band}}"></div>
+          <div style="flex:1;display:flex;align-items:center;gap:9px;padding:0 16px">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="{{p.primary}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{p.icon}}"></path></svg>
+            <span style="font-size:12.5px;font-weight:600;color:#cbd5e1">{{p.label}}</span>
+            <span style="margin-left:auto;font-size:13px;font-weight:700;color:#475569;font-variant-numeric:tabular-nums">{{scoreText}}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    </sc-if>
+    <div style="flex:1;display:flex;min-height:0">
+      <sc-if value="{{chromeShow}}" hint-placeholder-val="{{ true }}">
+      <div style="width:232px;flex:none;border-right:1px solid rgba(255,255,255,.10);display:flex;flex-direction:column;padding:14px 10px 12px">
+        <div style="display:flex;flex-direction:column;gap:1px;overflow-y:auto;min-height:0;margin-bottom:10px">
+          <sc-for list="{{modules}}" as="m" hint-placeholder-count="10">
+            <div style="display:flex;align-items:center;gap:10px;padding:5.5px 10px;border-radius:6px;cursor:pointer;background:{{m.rowBg}}" style-hover="background:rgba(255,255,255,.04)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{m.ink}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{m.p1}}"></path><path d="{{m.p2}}"></path><path d="{{m.p3}}"></path></svg>
+              <span style="font-size:13px;color:{{m.ink}};font-weight:{{m.weight}}">{{m.label}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top:auto;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:linear-gradient(135deg, rgba(0,120,212,.12), rgba(139,92,246,.10));padding:14px 14px 12px">
+          <div style="display:flex;align-items:center;gap:7px;padding-bottom:8px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="#00B4D8"><path d="M12 3l1.7 4.4L18 9l-4.3 1.6L12 15l-1.7-4.4L6 9l4.3-1.6zM18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path></svg>
+            <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">TENANT STATUS</span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:5px">
+            <span style="font-size:30px;font-weight:800;color:{{scoreInk}};line-height:1;font-variant-numeric:tabular-nums">{{scoreText}}</span>
+            <sc-if value="{{showScore}}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;color:#475569">/ 100</span></sc-if>
+          </div>
+          <div style="font-size:12.5px;font-weight:600;color:{{sevColor}};padding:5px 0 2px">{{sevLabel}}</div>
+          <div style="font-size:11.5px;color:#64748b;line-height:1.45">{{scanLine}}</div>
+          <sc-if value="{{scanRunning}}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:9px;height:3px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;position:relative"><div style="position:absolute;top:0;left:0;height:100%;width:34%;border-radius:999px;background:linear-gradient(90deg,#0078D4,#00B4D8);animation:scanSlide 1.8s ease-in-out infinite"></div></div>
+          </sc-if>
+          <sc-if value="{{showCta}}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{runScan}}" style="margin-top:10px;background:#0078D4;color:#fff;font-size:12.5px;font-weight:600;border-radius:6px;padding:8px 0;text-align:center;cursor:pointer" style-hover="background:#005A9E">Run first scan</div>
+          </sc-if>
+        </div>
+      </div>
+      </sc-if>
+      <div style="flex:1;min-width:0;overflow-y:auto">
+        <div style="max-width:1080px;margin:0 auto;padding:22px 28px 44px;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-size:18px;font-weight:700;color:#f8fafc">Microsoft Changes</span>
+            <span style="font-size:12px;color:#64748b">What Microsoft is changing in your tenant — and whether you have to do anything</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);border:1px solid rgba(255,255,255,.10);border-radius:14px;background:rgba(255,255,255,.02);overflow:hidden">
+            <div style="padding:14px 16px 12px;display:flex;flex-direction:column;gap:3px">
+              <span style="font-size:10px;font-weight:600;letter-spacing:.12em;color:#64748b">TRACKED</span>
+              <span style="font-size:24px;font-weight:800;color:#f8fafc;line-height:1.1;font-variant-numeric:tabular-nums">487</span>
+              <span style="font-size:11px;color:#64748b">475 in your services</span>
+            </div>
+            <div style="padding:14px 16px 12px;display:flex;flex-direction:column;gap:3px;border-left:1px solid rgba(255,255,255,.08)">
+              <span style="font-size:10px;font-weight:600;letter-spacing:.12em;color:#64748b">AFFECT YOUR TENANT</span>
+              <span style="font-size:24px;font-weight:800;color:{{cAffectInk}};line-height:1.1;font-variant-numeric:tabular-nums">{{cAffect}}</span>
+              <span style="font-size:11px;color:#64748b">{{cAffectSub}}</span>
+            </div>
+            <div style="padding:14px 16px 12px;display:flex;flex-direction:column;gap:3px;border-left:1px solid rgba(255,255,255,.08)">
+              <span style="font-size:10px;font-weight:600;letter-spacing:.12em;color:#64748b">NEED A DECISION</span>
+              <span style="font-size:24px;font-weight:800;color:{{cDecideInk}};line-height:1.1;font-variant-numeric:tabular-nums">{{cDecide}}</span>
+              <span style="font-size:11px;color:#64748b">{{cDecideSub}}</span>
+            </div>
+            <div style="padding:14px 16px 12px;display:flex;flex-direction:column;gap:3px;border-left:1px solid rgba(255,255,255,.08)">
+              <span style="font-size:10px;font-weight:600;letter-spacing:.12em;color:#64748b">DATE UNCLEAR</span>
+              <span style="font-size:24px;font-weight:800;color:#f8fafc;line-height:1.1;font-variant-numeric:tabular-nums">156</span>
+              <span style="font-size:11px;color:#64748b">no reliable date from Microsoft</span>
+            </div>
+          </div>
+          <sc-if value="{{dayOne}}" hint-placeholder-val="{{ true }}">
+            <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:11px 14px;display:flex;align-items:center;gap:10px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z"></path><path d="M12 16v-4M12 8h.01"></path></svg>
+              <span style="font-size:12px;color:#94a3b8;line-height:1.5">487 announcements are tracked for your tenant. None have been analysed yet — when your MSP interprets one, its measured impact on your tenant appears here. Not analysed means not looked at, never "no data".</span>
+            </div>
+          </sc-if>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">TRIAGE — NEEDS YOUR ATTENTION NOW</span>
+              <div style="flex:1;height:1px;background:rgba(255,255,255,.06)"></div>
+            </div>
+            <sc-if value="{{triageShow}}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid rgba(251,191,36,.30);border-radius:14px;background:linear-gradient(135deg, rgba(0,120,212,.10), rgba(139,92,246,.08));padding:16px 18px 15px;display:flex;flex-direction:column;gap:11px">
+                <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                  <span style="width:8px;height:8px;border-radius:999px;background:#fbbf24;flex:none"></span>
+                  <span style="font-size:14px;font-weight:600;color:#f8fafc">Shared calendars move to the REST-based model</span>
+                  <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px">MC1287370</span>
+                  <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px">CR-2026-183 · auto-approved</span>
+                  <span style="margin-left:auto;font-size:10.5px;font-weight:600;color:#fbbf24;border:1px solid rgba(251,191,36,.45);border-radius:999px;padding:3px 10px;flex:none">Needs a decision</span>
+                </div>
+                <div style="font-size:12.5px;color:#94a3b8;line-height:1.55;max-width:760px">Microsoft is upgrading shared calendars in Outlook and Exchange Online from the legacy MAPI model to the modern REST model — applied tenant-wide, server-side. Microsoft states it is seamless, requires no action, and has no opt-out.</div>
+                <div style="display:flex;align-items:stretch;gap:16px;flex-wrap:wrap">
+                  <div style="display:flex;align-items:baseline;gap:7px">
+                    <span style="font-size:26px;font-weight:800;color:#f8fafc;line-height:1;font-variant-numeric:tabular-nums">2</span>
+                    <div style="display:flex;flex-direction:column;gap:1px">
+                      <span style="font-size:12px;color:#cbd5e1;font-weight:600">shared mailboxes in your tenant</span>
+                      <span style="font-size:10.5px;color:#64748b">measured · monitor check</span>
+                    </div>
+                  </div>
+                  <div style="width:1px;background:rgba(255,255,255,.08)"></div>
+                  <div style="display:flex;flex-direction:column;gap:1px;justify-content:center">
+                    <span style="font-size:12px;color:#cbd5e1;font-weight:600">Microsoft rollout — by 30 October 2026</span>
+                    <span style="font-size:10.5px;color:#64748b">136 days notice given · <span style="color:#fbbf24;font-weight:600">62 days left</span></span>
+                  </div>
+                  <div style="width:1px;background:rgba(255,255,255,.08)"></div>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px">Exchange Online</span>
+                    <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px">Outlook</span>
+                  </div>
+                </div>
+                <div style="font-size:11px;color:#64748b;line-height:1.5">"Rollout begins in mid-October 2026 and is expected to complete by late November 2026" — Microsoft's own rollout schedule</div>
+                <div style="display:flex;align-items:center;gap:12px;padding-top:2px;flex-wrap:wrap">
+                  <span style="font-size:12px;font-weight:600;color:#fbbf24;border:1px solid rgba(251,191,36,.45);border-radius:6px;padding:7px 14px;cursor:pointer" style-hover="background:rgba(251,191,36,.08)">Decline — record risk acceptance</span>
+                  <span style="font-size:12px;font-weight:600;color:#60a5fa;cursor:pointer">View change request</span>
+                  <span style="margin-left:auto;font-size:10.5px;color:#64748b;max-width:320px;text-align:right">Declining does not stop Microsoft's rollout — it records that you accept the risk.</span>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{triageEmpty}}" hint-placeholder-val="{{ true }}">
+              <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:13px 16px;display:flex;align-items:center;gap:10px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><path d="m9 11 3 3L22 4"></path></svg>
+                <span style="font-size:13px;color:#cbd5e1;font-weight:600">Nothing needs a decision right now.</span>
+                <span style="font-size:11.5px;color:#64748b">Forced changes and action deadlines land here.</span>
+              </div>
+            </sc-if>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">HORIZON — WHAT'S COMING</span>
+              <div style="flex:1;height:1px;background:rgba(255,255,255,.06)"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:2px 2px 4px">
+              <div style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:999px;background:#f87171"></span><span style="font-size:11.5px;color:#94a3b8">Breaks something</span></div>
+              <div style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:999px;background:#fbbf24"></span><span style="font-size:11.5px;color:#94a3b8">Needs a decision</span></div>
+              <div style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:999px;background:#60a5fa"></span><span style="font-size:11.5px;color:#94a3b8">Your people will see it</span></div>
+              <div style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:999px;background:#64748b"></span><span style="font-size:11.5px;color:#94a3b8">Silent, no action</span></div>
+              <span style="margin-left:auto;font-size:10.5px;color:#475569">Rows are the services your tenant runs · click a wave to inspect it below</span>
+            </div>
+            <div style="border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.015);padding:12px 14px 10px;display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;gap:8px;align-items:stretch;padding-bottom:2px">
+                <div style="width:132px;flex:none;display:flex;align-items:flex-end"><span style="font-size:9.5px;font-weight:600;letter-spacing:.12em;color:#475569">WAVE</span></div>
+                <sc-for list="{{cols}}" as="c" hint-placeholder-count="4">
+                  <div onClick="{{c.onSel}}" style="box-sizing:border-box;flex:{{c.flex}};border:1px solid {{c.hdrBorder}};background:{{c.hdrBg}};border-radius:8px;padding:7px 10px 6px;cursor:pointer;display:flex;flex-direction:column;gap:2px;min-width:0" style-hover="border-color:rgba(0,120,212,.45)">
+                    <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:10.5px;font-weight:700;color:{{c.ink}};letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{c.label}}</span><span style="margin-left:auto;font-size:12.5px;font-weight:800;color:{{c.ink}};font-variant-numeric:tabular-nums">{{c.count}}</span></div>
+                    <div style="display:flex;align-items:center;gap:6px;min-width:0"><span style="font-size:9.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{c.span}}</span>
+                      <sc-if value="{{c.hasObj}}" hint-placeholder-val="{{ false }}"><span style="margin-left:auto;display:flex;align-items:center;gap:5px;flex:none"><span style="width:7px;height:7px;background:#fbbf24;transform:rotate(45deg)"></span><span style="font-size:10px;font-weight:700;color:#fbbf24;font-variant-numeric:tabular-nums">2 objects</span></span></sc-if>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+              <sc-for list="{{svcRows}}" as="sv" hint-placeholder-count="5">
+                <div style="display:flex;gap:8px;align-items:stretch;border-top:1px solid rgba(255,255,255,.05);padding-top:4px">
+                  <div style="width:132px;flex:none;display:flex;align-items:center;gap:7px;min-width:0"><span style="width:7px;height:7px;border-radius:2px;background:#64748b;flex:none"></span><span style="font-size:11.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{sv.name}}</span></div>
+                  <sc-for list="{{sv.cells}}" as="cl" hint-placeholder-count="4">
+                    <div onClick="{{cl.onSel}}" style="box-sizing:border-box;flex:{{cl.flex}};min-height:30px;display:flex;align-items:center;gap:7px;padding:3px 10px;border-radius:6px;background:{{cl.bg}};border:{{cl.border}};min-width:0;cursor:pointer" style-hover="border-color:rgba(0,120,212,.4)">
+                      <sc-for list="{{cl.glyphs}}" as="g" hint-placeholder-count="1">
+                        <span style="display:flex;align-items:center;gap:4px;flex:none">
+                          <sc-if value="{{g.isD}}" hint-placeholder-val="{{ false }}"><span style="width:8px;height:8px;background:#fbbf24;transform:rotate(45deg);flex:none"></span><span style="font-size:11px;font-weight:700;color:#f8fafc;font-variant-numeric:tabular-nums">{{g.count}}</span></sc-if>
+                          <sc-if value="{{g.isC}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+                          <sc-if value="{{g.isH}}" hint-placeholder-val="{{ false }}"><span style="width:9px;height:9px;border-radius:999px;border:1.5px solid #60a5fa;flex:none"></span></sc-if>
+                        </span>
+                      </sc-for>
+                      <span style="margin-left:auto;font-size:10.5px;color:#475569;font-variant-numeric:tabular-nums;flex:none">{{cl.agg}}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+              <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-top:5px;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="display:flex;align-items:center;gap:5px"><span style="width:7px;height:7px;background:#fbbf24;transform:rotate(45deg)"></span><span style="font-size:10px;font-weight:700;color:#f8fafc">2</span><span style="font-size:10.5px;color:#64748b">= objects measured in your tenant</span></span>
+                <span style="display:flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:999px;border:1.5px solid #60a5fa"></span><span style="font-size:10.5px;color:#64748b">= analysed, can't be measured here</span></span>
+                <span style="display:flex;align-items:center;gap:5px"><span style="font-size:10.5px;color:#475569;font-variant-numeric:tabular-nums">12</span><span style="font-size:10.5px;color:#64748b">= not yet analysed</span></span>
+                <span style="margin-left:auto;font-size:10.5px;color:#475569">Column widths are proportional to the time they cover</span>
+              </div>
+            </div>
+            <div style="border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.015);padding:12px 14px 12px;display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:baseline;gap:9px">
+                  <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">IN THIS WAVE</span>
+                  <span style="font-size:12.5px;font-weight:700;color:#cbd5e1">{{selLabel}}</span>
+                  <span style="font-size:10.5px;color:#475569">{{selSpan}}</span>
+                  <span style="margin-left:auto;font-size:11px;color:#64748b;font-variant-numeric:tabular-nums">{{selCount}} announcements</span>
+                  <sc-if value="{{selFilterActive}}" hint-placeholder-val="{{ false }}">
+                    <span onClick="{{clearSvcFilter}}" style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:#f8fafc;background:rgba(0,120,212,.16);border:1px solid rgba(0,120,212,.5);border-radius:999px;padding:3px 6px 3px 10px;cursor:pointer">{{selFilterLabel}}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></span>
+                  </sc-if>
+                  <span style="font-size:11px;font-weight:600;color:#94a3b8;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:4px 10px;cursor:pointer" style-hover="background:rgba(255,255,255,.05)">Brief this wave</span>
+                </div>
+                <sc-if value="{{selRowsEmpty}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;color:#64748b;font-size:12px">No announcements for {{selFilterLabel}} in this wave.</div>
+                </sc-if>
+                <sc-for list="{{selRows}}" as="r" hint-placeholder-count="2">
+                  <div style="display:flex;flex-direction:column">
+                    <sc-if value="{{r.isRef}}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;align-items:center;gap:9px;border:1px solid rgba(251,191,36,.22);border-radius:8px;padding:8px 12px">
+                        <span style="width:8px;height:8px;border-radius:999px;background:#fbbf24;flex:none"></span>
+                        <span style="font-size:12.5px;color:#f8fafc;font-weight:600">{{r.title}}</span>
+                        <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px">{{r.svc}}</span>
+                        <span style="margin-left:auto;font-size:11.5px;font-weight:600;color:#fbbf24">2 objects · in triage above</span>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{r.isNoImpact}}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;align-items:center;gap:9px;padding:7px 12px;border-radius:8px" style-hover="background:rgba(255,255,255,.03)">
+                        <span style="width:8px;height:8px;border-radius:999px;background:#64748b;flex:none"></span>
+                        <span style="font-size:12.5px;color:#94a3b8">{{r.title}}</span>
+                        <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px">{{r.svc}}</span>
+                        <span style="margin-left:auto;display:flex;align-items:center;gap:6px">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+                          <span style="font-size:11.5px;font-weight:600;color:#34d399">Doesn't affect you</span>
+                          <span style="font-size:10.5px;color:#64748b">· 0 objects found</span>
+                        </span>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{r.isUnm}}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;align-items:center;gap:9px;padding:7px 12px;border-radius:8px" style-hover="background:rgba(255,255,255,.03)">
+                        <span style="width:8px;height:8px;border-radius:999px;background:#60a5fa;flex:none"></span>
+                        <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                          <span style="font-size:12.5px;color:#cbd5e1">{{r.title}}</span>
+                          <span style="font-size:10.5px;color:#64748b">{{r.sub}}</span>
+                        </div>
+                        <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px">{{r.svc}}</span>
+                        <span style="margin-left:auto;font-size:10.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(148,163,184,.35);border-radius:999px;padding:2px 9px;flex:none">Can't be measured here</span>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{r.isAgg}}" hint-placeholder-val="{{ true }}">
+                      <div style="display:flex;align-items:center;gap:9px;border:1px dashed rgba(148,163,184,.22);border-radius:8px;padding:8px 12px">
+                        <span style="font-size:12px;color:#64748b;font-variant-numeric:tabular-nums">{{r.n}} announcements · not yet analysed</span>
+                        <span style="margin-left:auto;font-size:10.5px;color:#475569">tracked, awaiting interpretation</span>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+                <sc-if value="{{selFootShow}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:7px;padding:0 2px">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+                    <span style="font-size:11px;color:#64748b">{{selFoot}}</span>
+                  </div>
+                </sc-if>
+            </div>
+          </div>
+        </div>
+      </div>
+      <sc-if value="{{chromeShow}}" hint-placeholder-val="{{ true }}">
+      <div style="width:{{botW}};flex:none;border-left:1px solid rgba(255,255,255,.10);background:linear-gradient(120deg, rgba(0,120,212,.10), rgba(139,92,246,.08));transition:width 260ms cubic-bezier(.2,.8,.2,1);overflow:hidden;display:flex;flex-direction:column;min-height:0">
+        <sc-if value="{{botClosed}}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{toggleBot}}" style="flex:1;display:flex;flex-direction:column;align-items:center;padding:12px 0;cursor:pointer" style-hover="background:rgba(255,255,255,.03)">
+            <div style="width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path><path d="M12 8V4H8"></path></svg>
+            </div>
+            <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:600;letter-spacing:.18em;color:#64748b;margin:auto 0;text-transform:uppercase">ShaneBot</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>
+          </div>
+        </sc-if>
+        <sc-if value="{{botOpen}}" hint-placeholder-val="{{ false }}">
+          <div style="width:380px;height:100%;display:flex;flex-direction:column;min-height:0">
+            <div style="height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid rgba(255,255,255,.08)">
+              <div style="width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path><path d="M12 8V4H8"></path></svg>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;font-weight:600;color:#f8fafc">ShaneBot</span><span style="font-size:10.5px;color:#64748b">Answers from your own tenant</span></div>
+              <div onClick="{{toggleBot}}" style="margin-left:auto;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:rgba(255,255,255,.05)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+              </div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:0 28px;text-align:center">
+              <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path><path d="M12 8V4H8"></path></svg>
+              </div>
+              <span style="font-size:13px;font-weight:600;color:#cbd5e1">Ask about your tenant</span>
+              <span style="font-size:12px;color:#64748b;line-height:1.5">I answer from your own data — invoices, scores, subscriptions — and show a card when there's something real to show.</span>
+              <div style="display:flex;flex-direction:column;gap:6px;width:100%;padding-top:6px">
+                <span style="font-size:12px;color:#94a3b8;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:7px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">Which changes affect my tenant?</span>
+                <span style="font-size:12px;color:#94a3b8;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:7px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">What's due this month?</span>
+                <span style="font-size:12px;color:#94a3b8;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:7px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">What does declining actually do?</span>
+              </div>
+            </div>
+            <div style="flex:none;padding:12px 14px 14px;border-top:1px solid rgba(255,255,255,.08)">
+              <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:5px 5px 5px 14px">
+                <span style="flex:1;font-size:13px;color:#475569">Ask about your tenant…</span>
+                <div style="width:28px;height:28px;border-radius:999px;background:#0078D4;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:#005A9E">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7M12 19V5"></path></svg>
+                </div>
+              </div>
+              <div style="font-size:10.5px;color:#475569;padding:8px 4px 0">Answers draw only on your tenant's own data</div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+      </sc-if>
+    </div>
+  </div>
+  <sc-if value="{{overlayShow}}" hint-placeholder-val="{{ false }}"><div onClick="{{closeAll}}" style="position:fixed;inset:0;z-index:40"></div></sc-if>
+  <sc-if value="{{showUserPop}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;top:{{popTop}};right:16px;z-index:50;width:312px;background:rgba(11,17,32,.98);border:1px solid rgba(255,255,255,.10);border-radius:14px;box-shadow:0 18px 48px rgba(0,0,0,.55);overflow:hidden">
+      <sc-if value="{{impersonated}}" hint-placeholder-val="{{ false }}">
+        <div style="margin:10px 10px 0;border:1px solid rgba(0,180,216,.45);background:rgba(0,180,216,.08);border-radius:8px;padding:10px 12px;display:flex;gap:9px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"></path><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Impersonation session</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.45">An operator at Shane McCaw is viewing this portal as the customer.</span>
+            <span style="font-size:11.5px;font-weight:600;color:#00B4D8;padding-top:2px;cursor:pointer">End session</span>
+          </div>
+        </div>
+      </sc-if>
+      <div style="display:flex;align-items:center;gap:11px;padding:14px 14px 12px">
+        <div style="width:36px;height:36px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"></path></svg>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+          <span style="font-size:12px;color:#64748b">Name not provided</span>
+          <span style="font-size:12.5px;color:#94a3b8;border-bottom:1px dashed rgba(148,163,184,.35);padding-bottom:1px">signed-in email</span>
+        </div>
+        <span style="margin-left:auto;font-size:10px;font-weight:600;color:#94a3b8;border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:3px 8px;flex:none">Customer</span>
+      </div>
+      <sc-if value="{{mfaPending}}" hint-placeholder-val="{{ false }}">
+        <div style="margin:0 10px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.07);border-radius:8px;padding:9px 12px;display:flex;align-items:center;gap:9px;cursor:pointer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.3 0C14.3 3.8 16.8 5 18.8 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4M12 16h.01"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:1px">
+            <span style="font-size:12.5px;font-weight:600;color:#f8fafc">MFA setup pending</span>
+            <span style="font-size:11px;color:#94a3b8">Enrolment is enforced — set it up now</span>
+          </div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto"><path d="m9 18 6-6-6-6"></path></svg>
+        </div>
+      </sc-if>
+      <div style="padding:8px 6px 4px;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"></path><path d="M2 10h20"></path></svg>
+          <span style="font-size:13px;color:#cbd5e1">Billing</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"></path><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"></path><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"></path></svg>
+          <span style="font-size:13px;color:#cbd5e1">Webhooks</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path></svg>
+          <span style="font-size:13px;color:#cbd5e1">Settings</span>
+        </div>
+        <div style="height:1px;background:rgba(255,255,255,.08);margin:4px 10px"></div>
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v10H5z"></path><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Account security</span><span style="font-size:10.5px;color:#64748b">Password · MFA · active sessions</span></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5M12 15V3"></path></svg>
+          <span style="font-size:13px;color:#cbd5e1">Export my data</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M10 11v6M14 11v6"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Request deletion</span><span style="font-size:10.5px;color:#64748b">Starts a request — nothing is deleted immediately</span></div>
+        </div>
+        <div style="height:1px;background:rgba(255,255,255,.08);margin:4px 10px"></div>
+        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5M21 12H9"></path></svg>
+          <span style="font-size:13px;color:#cbd5e1">Sign out</span>
+        </div>
+      </div>
+      <div style="padding:9px 16px 11px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:7px">
+        <div style="width:16px;height:16px;border-radius:4px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:8px;font-weight:700">S</div>
+        <span style="font-size:10.5px;color:#64748b">Managed by Shane McCaw</span>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{showAlertsPop}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;top:{{popTop}};right:60px;z-index:50;width:380px;background:rgba(11,17,32,.98);border:1px solid rgba(255,255,255,.10);border-radius:14px;box-shadow:0 18px 48px rgba(0,0,0,.55);overflow:hidden">
+      <sc-if value="{{alertsEmpty}}" hint-placeholder-val="{{ true }}">
+        <div style="padding:13px 14px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.08)">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Alerts</span>
+          <span style="margin-left:auto;font-size:11px;color:#64748b">Up to date</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:30px 24px 26px;text-align:center">
+          <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+          </div>
+          <span style="font-size:13px;font-weight:600;color:#cbd5e1">Nothing needs your attention</span>
+          <span style="font-size:12px;color:#64748b;line-height:1.5;max-width:250px">Alerts land here when a scan, drift, or your MSP's work triggers one of your conditions.</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{alertsFull}}" hint-placeholder-val="{{ false }}">
+        <div style="padding:13px 14px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.08)">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Alerts</span>
+          <span style="font-size:10px;font-weight:600;color:#00B4D8;border:1px solid rgba(0,180,216,.45);border-radius:999px;padding:2px 8px">2 new</span>
+          <span style="margin-left:auto;font-size:11px;font-weight:600;color:#60a5fa;cursor:pointer">Mark all read</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;padding:6px 14px;border-bottom:1px solid rgba(255,255,255,.06)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"></path></svg>
+          <span style="font-size:10.5px;color:#64748b">Quiet hours 19:00 – 07:30 · critical breaks through</span>
+        </div>
+        <div style="display:flex;flex-direction:column;padding:6px">
+          <sc-for list="{{alerts}}" as="a" hint-placeholder-count="5">
+            <div style="display:flex;gap:10px;padding:9px 9px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.03)">
+              <div style="width:30px;height:30px;flex:none;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{a.iconInk}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{a.p1}}"></path><path d="{{a.p2}}"></path></svg>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-size:12.5px;font-weight:600;color:{{a.titleInk}}">{{a.title}}</span>
+                  <sc-if value="{{a.unread}}" hint-placeholder-val="{{ false }}"><span style="margin-left:auto;width:6px;height:6px;border-radius:999px;background:#00B4D8;flex:none"></span></sc-if>
+                </div>
+                <sc-if value="{{a.isDelta}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:baseline;gap:5px;font-variant-numeric:tabular-nums">
+                    <span style="font-size:11.5px;color:#64748b">Overall score</span>
+                    <span style="font-size:11.5px;color:#475569">46</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="align-self:center"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+                    <span style="font-size:11.5px;font-weight:700;color:#00B4D8">54</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{a.notDelta}}" hint-placeholder-val="{{ true }}"><span style="font-size:11.5px;color:#94a3b8">{{a.sub}}</span></sc-if>
+                <span style="font-size:10.5px;color:#64748b">{{a.meta}}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid rgba(255,255,255,.08);cursor:pointer" style-hover="background:rgba(255,255,255,.03)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path></svg>
+        <span style="font-size:12px;color:#94a3b8">Alert preferences — in Settings</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto"><path d="m9 18 6-6-6-6"></path></svg>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{showSopPop}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;top:{{popTop}};right:104px;z-index:50;width:380px;background:rgba(11,17,32,.98);border:1px solid rgba(255,255,255,.10);border-radius:14px;box-shadow:0 18px 48px rgba(0,0,0,.55);overflow:hidden">
+      <sc-if value="{{sopEmpty}}" hint-placeholder-val="{{ true }}">
+        <div style="padding:13px 14px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.08)">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">SOP activity</span>
+          <span style="margin-left:auto;font-size:11px;color:#64748b">Idle</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:30px 24px 26px;text-align:center">
+          <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"></path><path d="m3 7 2 2 4-4"></path><path d="M13 6h8M13 12h8M13 18h8"></path></svg>
+          </div>
+          <span style="font-size:13px;font-weight:600;color:#cbd5e1">Nothing running right now</span>
+          <span style="font-size:12px;color:#64748b;line-height:1.5;max-width:250px">When your MSP executes a procedure against your tenant, its live progress appears here.</span>
+          <span style="font-size:12px;font-weight:600;color:#60a5fa;cursor:pointer">View SOP library</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{sopFull}}" hint-placeholder-val="{{ false }}">
+        <div style="padding:13px 14px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.08)">
+          <span style="width:7px;height:7px;border-radius:999px;background:#00B4D8"></span>
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">SOP activity</span>
+          <span style="margin-left:auto;font-size:11px;color:#64748b">{{sopCount}} in queue</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:12px 12px 4px">
+          <sc-for list="{{sopsShown}}" as="s" hint-placeholder-count="2">
+            <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.02);padding:11px 12px 12px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:12.5px;font-weight:600;color:#f8fafc">{{s.title}}</span>
+                <span style="margin-left:auto;font-size:10px;font-weight:600;color:{{s.chipInk}};border:1px solid {{s.chipBorder}};background:{{s.chipBg}};border-radius:999px;padding:2px 9px;flex:none">{{s.chip}}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;padding:6px 0 7px">
+                <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px">{{s.mode}}</span>
+                <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px">{{s.cr}}</span>
+              </div>
+              <div style="font-size:11.5px;color:#94a3b8;padding-bottom:8px">{{s.step}}</div>
+              <div style="height:3px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden"><div style="height:100%;width:{{s.pctW}};border-radius:999px;background:linear-gradient(90deg,#0078D4,#00B4D8)"></div></div>
+              <div style="display:flex;align-items:center;gap:5px;padding-top:8px">
+                <span style="font-size:10.5px;color:#64748b">{{s.meta}} · run by</span>
+                <span style="font-size:10.5px;color:#64748b;border-bottom:1px dashed rgba(148,163,184,.35)">operator</span>
+                <span style="font-size:10.5px;color:#64748b">· owner</span>
+                <span style="font-size:10.5px;color:#64748b;border-bottom:1px dashed rgba(148,163,184,.35)">owner</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:9px 14px 12px;display:flex;align-items:center">
+          <span style="font-size:11px;color:#64748b">Steps continue even if you close this</span>
+          <span style="margin-left:auto;font-size:12px;font-weight:600;color:#60a5fa;cursor:pointer">Open Runbooks</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;analysedPosts&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Page demo&quot;},
+  &quot;severity&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;none&quot;, &quot;healthy&quot;, &quot;attention&quot;, &quot;critical&quot;], &quot;default&quot;: &quot;none&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Tenant state&quot;},
+  &quot;scanRunning&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Tenant state&quot;},
+  &quot;sopRuns&quot;: {&quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 0, &quot;min&quot;: 0, &quot;max&quot;: 3, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Activity&quot;},
+  &quot;impersonated&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Session&quot;},
+  &quot;mfaPending&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Session&quot;},
+  &quot;embedded&quot;: {&quot;editor&quot;: null, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;}
+}">
+class Component extends DCLogic {
+  state = { open: null, bot: false, demoScan: false, demoResult: null, selWave: 0, selSvc: null };
+  componentWillUnmount() { if (this._t) clearTimeout(this._t); }
+  renderVals() {
+    const chrome = !this.props.embedded;
+    const sev = this.state.demoResult || (this.props.severity ?? "none");
+    const scan = this.state.demoScan || !!this.props.scanRunning;
+    const sop = this.props.sopRuns ?? 0;
+    const imp = !!this.props.impersonated;
+    const mfa = !!this.props.mfaPending;
+    const analysed = !!this.props.analysedPosts;
+    const open = this.state.open;
+    const P = [
+      ["Governance", "#3B82F6", "#60A5FA", "M16 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM12 3v18M7 21h5M9 6h6M3 10h4M17 10h4"],
+      ["Security", "#8B5CF6", "#A78BFA", "M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.3 0C14.3 3.8 16.8 5 18.8 5a1 1 0 0 1 1 1z"],
+      ["Compliance", "#F3F4F6", "#D1D5DB", "M16 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"],
+      ["Licensing", "#14B8A6", "#2DD4BF", "M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76zM16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 18V6"],
+      ["Adoption", "#F97316", "#FB923C", "M18 21a8 8 0 0 0-16 0M10 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"],
+      ["Health", "#22C55E", "#4ADE80", "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"],
+    ];
+    const pillars = P.map(([label, primary, accent, icon]) => ({
+      label, primary, accent, icon,
+      band: `linear-gradient(90deg,${primary},${accent})`,
+    }));
+    const M = [
+      ["Overview", "M3 3h7v9H3z", "M14 3h7v5h-7z", "M14 12h7v9h-7zM3 16h7v5H3z"],
+      ["Microsoft Changes", "m3 11 18-5v12L3 14v-3z", "M11.6 16.8a3 3 0 1 1-5.8-1.6", "", true],
+      ["Change Control", "M9 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", "M21 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", "M13 6h3a2 2 0 0 1 2 2v7M6 9v12"],
+      ["Risk Register", "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z", "M12 9v4M12 17h.01", ""],
+      ["Remediation", "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z", "", ""],
+      ["SOPs", "M8 2h8v4H8z", "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2", "M12 11h4M12 16h4M8 11h.01M8 16h.01"],
+      ["Runbooks", "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z", "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z", ""],
+      ["Ownership / RACI", "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z", "M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"],
+      ["Policy Decisions", "m14 13-7.5 7.5a2.12 2.12 0 0 1-3-3L11 10", "M16 16l6-6M8 8l6-6M9 7l8 8M21 11l-8-8", ""],
+      ["Security Plan", "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", "M14 2v4a2 2 0 0 0 2 2h4", "m9 15 2 2 4-4"],
+    ];
+    const modules = M.map(([label, p1, p2, p3, active]) => ({
+      label, p1, p2, p3: p3 || "",
+      rowBg: active ? "rgba(255,255,255,.06)" : "transparent",
+      ink: active ? "#f8fafc" : "#94a3b8",
+      weight: active ? 600 : 400,
+    }));
+    const score = { healthy: "72", attention: "54", critical: "38", none: "—" }[sev];
+    const sevColor = { healthy: "#34d399", attention: "#fbbf24", critical: "#f87171", none: "#64748b" }[sev];
+    const sevLabel = { healthy: "Healthy", attention: "Attention required", critical: "Critical", none: "Not scanned yet" }[sev];
+    const alerts = [
+      { title: "New critical finding in Security", sub: "Legacy authentication remains enabled", meta: "Findings · 2h ago · broke through quiet hours", iconInk: "#f87171", unread: true, p1: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z", p2: "M12 9v4M12 17h.01" },
+      { title: "Scan complete", isDelta: true, meta: "Remediation · 6h ago", iconInk: "#00B4D8", unread: true, p1: "M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8", p2: "M21 3v5h-5" },
+      { title: "Fix verified", sub: "MFA gap closed on privileged roles", meta: "Progress · Yesterday", iconInk: "#00B4D8", unread: false, p1: "M22 11.08V12a10 10 0 1 1-5.93-9.14", p2: "m9 11 3 3L22 4" },
+      { title: "Invoice issued", sub: "Available in Billing", meta: "Billing · 3d ago", iconInk: "#94a3b8", unread: false, p1: "M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z", p2: "M2 10h20" },
+      { title: "Risk acceptance due", sub: "One signed acceptance expires soon", meta: "Reviews · 4d ago", iconInk: "#94a3b8", unread: false, p1: "M12 6v6l4 2", p2: "M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z" },
+    ].map((a) => ({ ...a, sub: a.sub || "", isDelta: !!a.isDelta, notDelta: !a.isDelta, titleInk: a.unread ? "#f8fafc" : "#94a3b8" }));
+    const allSops = [
+      { title: "Enforce MFA on privileged roles", chip: "Running", chipInk: "#00B4D8", chipBorder: "rgba(0,180,216,.45)", chipBg: "rgba(0,180,216,.10)", mode: "Assisted run", cr: "CR · Not recorded", step: "Step 2 of 5 · Verify conditional access baseline", pctW: "40%", meta: "Started 14 minutes ago" },
+      { title: "Quarterly access review", chip: "Queued", chipInk: "#94a3b8", chipBorder: "rgba(148,163,184,.35)", chipBg: "transparent", mode: "Scheduled", cr: "CR · Not recorded", step: "Queued · 5 steps in scope", pctW: "0%", meta: "Waiting for the run above" },
+      { title: "Baseline conditional access review", chip: "Queued", chipInk: "#94a3b8", chipBorder: "rgba(148,163,184,.35)", chipBg: "transparent", mode: "Scheduled", cr: "CR · Not recorded", step: "Queued · 3 steps in scope", pctW: "0%", meta: "Waiting for the queue" },
+    ];
+    const row = (o) => ({ isRef: false, isNoImpact: false, isUnm: false, isAgg: false, n: "", title: "", svc: "", sub: "", ...o });
+    const waves = analysed ? [
+      { label: "Next 30 days", span: "to 28 Sep", count: "40", hasFoot: true, foot: "Nothing analysed in this wave stops working here.", rows: [
+        row({ isNoImpact: true, title: "Legacy Exchange DN format retired", svc: "Exchange Online" }),
+        row({ isAgg: true, n: "39" }),
+      ]},
+      { label: "31 – 90 days", span: "29 Sep – 27 Nov", count: "76", hasFoot: false, foot: "", rows: [
+        row({ isRef: true, title: "Shared calendars move to the REST-based model", svc: "Exchange Online" }),
+        row({ isUnm: true, title: "New Teams chat experience becomes default", svc: "Teams", sub: "Client-side experience change — nothing to count in your tenant" }),
+        row({ isAgg: true, n: "74" }),
+      ]},
+      { label: "Beyond 90 days", span: "after 27 Nov", count: "215", hasFoot: false, foot: "", rows: [row({ isAgg: true, n: "215" })] },
+      { label: "No date yet", span: "date unclear — watched until Microsoft gives one", count: "156", hasFoot: false, foot: "", rows: [row({ isAgg: true, n: "156" })] },
+    ] : [
+      { label: "Next 30 days", span: "to 28 Sep", count: "41", hasFoot: false, foot: "", rows: [row({ isAgg: true, n: "41" })] },
+      { label: "31 – 90 days", span: "29 Sep – 27 Nov", count: "77", hasFoot: false, foot: "", rows: [row({ isAgg: true, n: "77" })] },
+      { label: "Beyond 90 days", span: "after 27 Nov", count: "213", hasFoot: false, foot: "", rows: [row({ isAgg: true, n: "213" })] },
+      { label: "No date yet", span: "date unclear — watched until Microsoft gives one", count: "156", hasFoot: false, foot: "", rows: [row({ isAgg: true, n: "156" })] },
+    ];
+    const selIdx = this.state.selWave;
+    const waveMeta = [
+      { label: "NEXT 30 DAYS", span: "29 Aug – 28 Sep · 30 days", flex: "1.15" },
+      { label: "31 – 90 DAYS", span: "29 Sep – 27 Nov · 60 days", flex: "2" },
+      { label: "BEYOND 90 DAYS", span: "after 27 Nov", flex: "2.6" },
+      { label: "NO DATE YET", span: "undated · watched", flex: "0 0 150px" },
+    ];
+    const counts = analysed ? ["40", "76", "215", "156"] : ["41", "77", "213", "156"];
+    const cols = waveMeta.map((wm, w) => ({
+      ...wm,
+      count: counts[w],
+      onSel: () => this.setState({ selWave: w }),
+      hdrBorder: selIdx === w ? "rgba(0,120,212,.55)" : "rgba(255,255,255,.10)",
+      hdrBg: selIdx === w ? "rgba(0,120,212,.10)" : "rgba(255,255,255,.02)",
+      ink: selIdx === w ? "#f8fafc" : "#cbd5e1",
+      hasObj: analysed && w === 1,
+    }));
+    const svcNames = ["Exchange Online", "SharePoint", "Teams", "OneDrive", "Entra ID"];
+    const aggDay = [[12, 8, 11, 4, 6], [18, 14, 23, 9, 13], [52, 38, 61, 27, 35], [38, 27, 44, 19, 28]];
+    const aggAn = [[11, 8, 11, 4, 6], [17, 14, 22, 9, 12], [52, 39, 62, 27, 35], [38, 27, 44, 19, 28]];
+    const aggs = analysed ? aggAn : aggDay;
+    const gl = (o) => ({ isD: false, isC: false, isH: false, count: "", ...o });
+    const glyphMap = analysed ? { "0-0": [gl({ isC: true })], "1-0": [gl({ isD: true, count: "2" })], "1-2": [gl({ isH: true })] } : {};
+    const hatch = "repeating-linear-gradient(45deg, rgba(148,163,184,.05) 0px, rgba(148,163,184,.05) 5px, transparent 5px, transparent 11px)";
+    const selSvc = this.state.selSvc;
+    const selectSvc = (w, name) => () => this.setState((s) => ({
+      selWave: w,
+      selSvc: (s.selSvc === name && s.selWave === w) ? null : name,
+    }));
+    const svcRows = svcNames.map((name, s) => ({
+      name,
+      cells: waveMeta.map((wm, w) => {
+        const active = selSvc === name && selIdx === w;
+        return {
+          flex: wm.flex,
+          bg: active ? "rgba(0,120,212,.16)" : (w === 3 ? hatch : "transparent"),
+          border: active ? "1px solid rgba(0,120,212,.55)" : "1px solid transparent",
+          agg: String(aggs[w][s]),
+          glyphs: glyphMap[w + "-" + s] || [],
+          onSel: selectSvc(w, name),
+        };
+      }),
+    }));
+    const selW = waves[selIdx];
+    const selRowsAll = selW.rows;
+    const selRowsFiltered = selSvc ? selRowsAll.filter((r) => r.svc === selSvc) : selRowsAll;
+    const landedJustNow = this.state.demoResult && !this.state.demoScan;
+    const toggle = (k) => () => this.setState((s) => ({ open: s.open === k ? null : k }));
+    return {
+      pillars, modules, alerts, cols, svcRows,
+      selLabel: selW.label, selSpan: selW.span, selCount: selW.count,
+      selRows: selRowsFiltered, selFootShow: selW.hasFoot && !selSvc, selFoot: selW.foot,
+      selFilterActive: !!selSvc,
+      selFilterLabel: selSvc || "",
+      selRowsEmpty: !!selSvc && selRowsFiltered.length === 0,
+      clearSvcFilter: () => this.setState({ selSvc: null }),
+      dayOne: !analysed,
+      triageShow: analysed,
+      triageEmpty: !analysed,
+      cAffect: analysed ? "2" : "—",
+      cAffectInk: analysed ? "#f8fafc" : "#475569",
+      cAffectSub: analysed ? "objects · 1 change · measured" : "none analysed yet",
+      cDecide: analysed ? "1" : "0",
+      cDecideInk: analysed ? "#fbbf24" : "#f8fafc",
+      cDecideSub: analysed ? "due 30 October" : "nothing pending",
+      sopsShown: allSops.slice(0, Math.max(sop, 0)),
+      oNone: sev === "none" ? 1 : 0,
+      oHealthy: sev === "healthy" ? 1 : 0,
+      oAttention: sev === "attention" ? 1 : 0,
+      oCritical: sev === "critical" ? 1 : 0,
+      scanRunning: scan,
+      impersonated: imp,
+      mfaPending: mfa,
+      sopBadge: sop > 0,
+      sopCount: String(sop),
+      scoreText: score,
+      scoreInk: sev === "none" ? "#475569" : "#f8fafc",
+      sevColor, sevLabel,
+      showScore: sev !== "none",
+      showCta: sev === "none" && !scan,
+      scanLine: scan
+        ? (sev === "none" ? "First scan in progress" : "Scan in progress")
+        : landedJustNow ? "First scan complete — just now"
+        : (sev === "none" ? "First scan establishes your baseline" : "Latest scan complete"),
+      avatarRing: imp ? "0 0 0 2px #00B4D8" : "none",
+      popTop: imp ? "100px" : "64px",
+      overlayShow: chrome && open !== null,
+      showUserPop: chrome && open === "user",
+      showAlertsPop: chrome && open === "alerts",
+      showSopPop: chrome && open === "sop",
+      chromeShow: chrome,
+      rootH: chrome ? "100vh" : "100%",
+      rootMinH: chrome ? "640px" : "0",
+      userBtnBg: open === "user" ? "rgba(255,255,255,.06)" : "transparent",
+      bellBtnBg: open === "alerts" ? "rgba(255,255,255,.06)" : "transparent",
+      sopBtnBg: open === "sop" ? "rgba(255,255,255,.06)" : "transparent",
+      alertsEmpty: sev === "none",
+      alertsFull: sev !== "none",
+      alertsBadge: sev !== "none",
+      sopEmpty: sop === 0,
+      sopFull: sop > 0,
+      botW: this.state.bot ? "380px" : "46px",
+      botOpen: this.state.bot,
+      botClosed: !this.state.bot,
+      toggleUser: toggle("user"),
+      toggleAlerts: toggle("alerts"),
+      toggleSop: toggle("sop"),
+      closeAll: () => this.setState({ open: null }),
+      toggleBot: () => this.setState((s) => ({ bot: !s.bot })),
+      runScan: () => {
+        this.setState({ demoScan: true });
+        this._t = setTimeout(() => this.setState({ demoScan: false, demoResult: "attention" }), 7000);
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

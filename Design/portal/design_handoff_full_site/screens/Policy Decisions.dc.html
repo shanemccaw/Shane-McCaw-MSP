@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
+@keyframes skelPulse{0%,100%{opacity:.5}50%{opacity:.9}}
+</style>
+</helmet>
+
+<div data-screen-label="Policy decisions" style="flex:1;min-width:0;height:{{rootH}};display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:24px 30px 56px;padding-right:max(30px, calc(100% - 1180px));display:flex;flex-direction:column;gap:18px">
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:9.5px;font-weight:700;letter-spacing:.16em;color:#475569">POLICY DECISIONS</span>
+        <div style="display:flex;align-items:center;gap:7px;border:1px solid {{stateBd}};background:{{stateBg}};border-radius:999px;padding:3px 10px">
+          <span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>
+          <span style="font-size:10px;font-weight:700;letter-spacing:.05em;color:{{stateInk}}">{{stateLine}}</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">
+        <span style="font-size:26px;font-weight:800;color:#f8fafc;letter-spacing:-.022em;line-height:1.1;max-width:720px">{{headline}}</span>
+      </div>
+      <span style="font-size:12.5px;color:#94a3b8;line-height:1.6;max-width:680px">{{subhead}}</span>
+    </div>
+
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{skeletons}}" as="s" hint-placeholder-count="3">
+          <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.02);padding:16px;display:flex;flex-direction:column;gap:9px;animation:skelPulse 1.6s ease-in-out infinite">
+            <div style="height:10px;width:{{s.w1}};border-radius:999px;background:rgba(255,255,255,.07)"></div>
+            <div style="height:9px;width:{{s.w2}};border-radius:999px;background:rgba(255,255,255,.05)"></div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isFail}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(248,113,113,.35);border-radius:14px;background:rgba(248,113,113,.05);padding:17px 19px;display:flex;flex-direction:column;gap:7px">
+        <div style="display:flex;align-items:center;gap:9px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Your positions could not be loaded</span>
+        </div>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">You may well have positions on record. This page cannot read them right now, and shows none rather than implying there are none.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isEmpty}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:30px 26px;display:flex;flex-direction:column;gap:9px;align-items:flex-start">
+        <span style="font-size:17px;font-weight:700;color:#f8fafc">Nothing has been decided yet</span>
+        <span style="font-size:12.5px;color:#94a3b8;line-height:1.65;max-width:660px">Your register read cleanly and holds no signed positions. Until one is recorded, every rule below applies to you as written.</span>
+        <div onClick="{{toggleForm}}" style="margin-top:6px;border:1px solid rgba(0,120,212,.5);border-radius:7px;background:rgba(0,120,212,.12);padding:8px 14px;cursor:pointer">
+          <span style="font-size:11.5px;font-weight:700;color:#93c5fd">Record your first decision</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{attnShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(194,166,61,.26);border-radius:13px;background:rgba(194,166,61,.04);padding:13px 16px 14px;display:flex;flex-direction:column;gap:10px">
+        <div onClick="{{attnToggle}}" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer" style-hover="opacity:.85">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;transform:{{attnChev}}"><path d="m9 18 6-6-6-6"></path></svg>
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.15em;color:#c2a63d">NEEDS REVISITING</span>
+          <span style="font-size:11.5px;font-weight:600;color:#e2e8f0">{{attnCount}}</span>
+          <span style="margin-left:auto;font-size:10.5px;font-weight:600;color:#64748b">{{attnToggleLabel}}</span>
+        </div>
+        <sc-if value="{{attnOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:26px;flex-wrap:wrap">
+            <sc-for list="{{attnItems}}" as="a" hint-placeholder-count="2">
+              <div onClick="{{a.pick}}" style="flex:1;min-width:250px;display:flex;flex-direction:column;gap:3px;cursor:pointer;border-left:2px solid {{a.accent}};padding-left:12px" style-hover="opacity:.75">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-size:8.5px;font-weight:800;letter-spacing:.1em;color:{{a.accent}}">{{a.tag}}</span>
+                  <span style="font-size:10px;color:#64748b">{{a.when}}</span>
+                </div>
+                <span style="font-size:12px;font-weight:600;color:#f8fafc;line-height:1.4">{{a.title}}</span>
+                <span style="font-size:10.5px;color:#64748b;line-height:1.45">{{a.why}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{hasRows}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.15em;color:#94a3b8">YOUR POSITIONS</span>
+          <span style="font-size:11px;color:#64748b">{{registerMeta}}</span>
+          <div onClick="{{toggleForm}}" style="margin-left:auto;display:flex;align-items:center;gap:7px;border:1px solid rgba(0,120,212,.5);border-radius:7px;background:rgba(0,120,212,.12);padding:6px 12px;cursor:pointer" style-hover="border-color:rgba(0,120,212,.85)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 5v14M5 12h14"></path></svg>
+            <span style="font-size:11.5px;font-weight:700;color:#93c5fd">{{formCta}}</span>
+          </div>
+        </div>
+
+        <sc-if value="{{formOpen}}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(0,120,212,.3);border-radius:14px;background:rgba(0,120,212,.04);padding:17px 20px 18px;display:flex;flex-direction:column;gap:13px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-size:14px;font-weight:700;color:#f8fafc">Record a decision, and sign it</span>
+              <span onClick="{{toggleForm}}" style="margin-left:auto;font-size:11px;font-weight:600;color:#60a5fa;cursor:pointer">Close</span>
+            </div>
+            <span style="font-size:12px;color:#94a3b8;line-height:1.65;max-width:760px">Recording and signing are one act. Your typed name and the confirmation are the signature; the time it was signed is set when it reaches the server.</span>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:11px">
+              <sc-for list="{{fields}}" as="f" hint-placeholder-count="8">
+                <div style="display:flex;flex-direction:column;gap:5px">
+                  <span style="font-size:11px;font-weight:600;color:#cbd5e1">{{f.label}} <span style="color:{{f.reqInk}};font-weight:500">{{f.req}}</span></span>
+                  <div style="border:1px solid rgba(255,255,255,.12);border-radius:6px;background:rgba(2,6,23,.6);padding:8px 10px;min-height:{{f.h}};display:flex">
+                    <span style="font-size:12px;color:#475569;line-height:1.5">{{f.ph}}</span>
+                  </div>
+                  <span style="font-size:10px;color:#64748b;line-height:1.5">{{f.hint}}</span>
+                </div>
+              </sc-for>
+            </div>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.65;max-width:760px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">A decision is revisited on a fixed cadence, or it waits on one thing to change. Pick whichever fits — never both. A dependency the platform can watch for you, such as a licence arriving, clears itself.</span>
+          </div>
+        </sc-if>
+
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="4">
+          <div style="border:1px solid {{r.border}};border-radius:14px;background:rgba(255,255,255,.018);overflow:hidden">
+            <div style="padding:15px 18px 4px;display:flex;flex-direction:column;gap:13px">
+
+              <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+                <span style="font-size:15px;font-weight:700;color:#f8fafc;line-height:1.35;min-width:0;flex:1;letter-spacing:-.012em">{{r.title}}</span>
+                <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;flex:none">
+                  <span style="font-size:9.5px;font-weight:700;letter-spacing:.05em;color:{{r.basisInk}};border:1px solid {{r.basisBorder}};border-radius:999px;padding:3px 9px">{{r.basisLabel}}</span>
+                  <span style="font-size:9.5px;font-weight:700;letter-spacing:.05em;color:{{r.authInk}};border:1px solid {{r.authBorder}};border-radius:999px;padding:3px 9px">{{r.authLabel}}</span>
+                  <span style="font-size:10px;font-weight:700;letter-spacing:.04em;color:{{r.clockInk}};background:{{r.clockBg}};border:1px solid {{r.clockBorder}};border-radius:999px;padding:3px 10px">{{r.clockLabel}}</span>
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 22px 1fr;gap:0;align-items:stretch">
+                <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.015);padding:12px 14px;display:flex;flex-direction:column;gap:6px">
+                  <span style="font-size:8.5px;font-weight:800;letter-spacing:.13em;color:#475569">{{r.ruleLabel}}</span>
+                  <span style="font-size:12.5px;color:#94a3b8;line-height:1.55">{{r.requirement}}</span>
+                  <span style="font-family:Menlo,monospace;font-size:10.5px;color:#94a3b8;line-height:1.4">{{r.obligation}}</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:center">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c2a63d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                </div>
+                <div style="border:1px solid rgba(194,166,61,.32);border-radius:10px;background:rgba(194,166,61,.05);padding:12px 14px;display:flex;flex-direction:column;gap:6px">
+                  <span style="font-size:8.5px;font-weight:800;letter-spacing:.13em;color:#c2a63d">WHAT YOU DO INSTEAD</span>
+                  <span style="font-size:12.5px;color:#e2e8f0;line-height:1.55;font-weight:500">{{r.position}}</span>
+                  <span style="font-size:10px;color:#8a7a37;line-height:1.4">{{r.chosenNote}}</span>
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:14px 24px">
+                <div style="display:flex;flex-direction:column;gap:5px">
+                  <span style="font-size:8.5px;font-weight:800;letter-spacing:.13em;color:#475569">WHY YOU CHOSE THIS</span>
+                  <span style="font-size:12px;color:#cbd5e1;line-height:1.6">{{r.statement}}</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:5px">
+                  <span style="font-size:8.5px;font-weight:800;letter-spacing:.13em;color:#34d399">WHAT HOLDS THE RISK DOWN</span>
+                  <span style="font-size:12px;color:#cbd5e1;line-height:1.6">{{r.control}}</span>
+                </div>
+              </div>
+
+              <div onClick="{{r.click}}" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.06);padding:11px 0 12px;cursor:pointer" style-hover="opacity:.8">
+                <span style="font-size:11px;color:#94a3b8">Signed by <span style="color:#e2e8f0;font-weight:600">{{r.signedBy}}</span> on {{r.signed}}</span>
+                <span style="font-size:11px;color:#64748b">{{r.ownerLine}}</span>
+                <span style="font-size:11px;color:{{r.clockInk}}">{{r.clockDetail}}</span>
+                <span style="margin-left:auto;display:flex;align-items:center;gap:6px">
+                  <span style="font-size:10.5px;font-weight:600;color:#64748b">{{r.moreLabel}}</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;transform:{{r.chev}}"><path d="m9 18 6-6-6-6"></path></svg>
+                </span>
+              </div>
+            </div>
+
+            <sc-if value="{{r.expanded}}" hint-placeholder-val="{{ false }}">
+              <div style="border-top:1px solid rgba(255,255,255,.07);background:rgba(2,6,23,.45);padding:15px 18px 16px;display:flex;flex-direction:column;gap:14px">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(252px,1fr));gap:14px 22px">
+                  <sc-for list="{{r.detail}}" as="d" hint-placeholder-count="4">
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <span style="font-size:8.5px;font-weight:800;letter-spacing:.13em;color:#475569">{{d.k}}</span>
+                      <span style="font-size:12px;color:{{d.ink}};line-height:1.55">{{d.v}}</span>
+                      <sc-if value="{{d.hasNote}}" hint-placeholder-val="{{ false }}">
+                        <span style="font-size:10.5px;color:#64748b;line-height:1.5">{{d.note}}</span>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.06);padding-top:13px">
+                  <sc-for list="{{r.actions}}" as="b" hint-placeholder-count="3">
+                    <div onClick="{{b.click}}" title="{{b.tip}}" style="display:flex;align-items:center;gap:8px;border:1px {{b.style}} {{b.border}};border-radius:7px;background:{{b.bg}};padding:7px 12px;cursor:{{b.cursor}};opacity:{{b.op}}">
+                      <span style="font-size:11.5px;font-weight:600;color:{{b.ink}}">{{b.label}}</span>
+                      <sc-if value="{{b.hasTag}}" hint-placeholder-val="{{ false }}">
+                        <span style="font-size:9px;font-weight:700;letter-spacing:.06em;color:#64748b;border:1px solid rgba(148,163,184,.28);border-radius:999px;padding:1px 6px">{{b.tag}}</span>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{showObligations}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.15em;color:#94a3b8">WHAT YOU ARE MEASURED AGAINST</span>
+          <span style="font-size:11px;color:#64748b">{{obligationMeta}}</span>
+        </div>
+        <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 18px 16px;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;gap:14px;padding:0 0 2px">
+            <span style="width:8px;flex:none"></span>
+            <span style="width:200px;flex:none;font-size:8.5px;font-weight:800;letter-spacing:.12em;color:#94a3b8">AUTHORITY</span>
+            <span style="flex:1;min-width:0;font-size:8.5px;font-weight:800;letter-spacing:.12em;color:#94a3b8">WHAT IT ASKS FOR</span>
+            <span style="width:158px;flex:none;font-size:8.5px;font-weight:800;letter-spacing:.12em;color:#94a3b8">WHY IT APPLIES</span>
+            <span style="width:132px;flex:none;text-align:right;font-size:8.5px;font-weight:800;letter-spacing:.12em;color:#94a3b8">YOUR POSITION</span>
+          </div>
+          <sc-for list="{{obligationGroups}}" as="g" hint-placeholder-count="2">
+            <div style="display:flex;flex-direction:column;gap:0">
+              <div style="display:flex;align-items:center;gap:9px;padding:0 0 9px">
+                <span style="width:5px;height:5px;border-radius:999px;background:{{g.accent}};flex:none"></span>
+                <span style="font-size:8.5px;font-weight:800;letter-spacing:.14em;color:{{g.accent}}">{{g.label}}</span>
+              </div>
+              <sc-for list="{{g.rows}}" as="o" hint-placeholder-count="4">
+                <div style="display:flex;align-items:flex-start;gap:14px;padding:10px 0;border-top:1px solid rgba(255,255,255,.05)">
+                  <span style="width:8px;flex:none;display:flex;justify-content:center;padding-top:5px">
+                    <span style="width:6px;height:6px;border-radius:999px;background:{{o.tone}}"></span>
+                  </span>
+                  <div style="width:200px;flex:none;display:flex;flex-direction:column;gap:3px">
+                    <span style="font-family:Menlo,monospace;font-size:11px;color:#e2e8f0;line-height:1.4">{{o.citation}}</span>
+                    <span style="font-size:9px;font-weight:700;letter-spacing:.07em;color:{{o.typeInk}}">{{o.type}}</span>
+                  </div>
+                  <span style="flex:1;min-width:0;font-size:11.5px;color:#94a3b8;line-height:1.55">{{o.requires}}</span>
+                  <span style="width:158px;flex:none;font-size:10.5px;color:#94a3b8;line-height:1.45">{{o.why}}</span>
+                  <span style="width:132px;flex:none;text-align:right;font-size:11px;color:{{o.stateInk}};line-height:1.45">{{o.state}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+          <span style="font-size:10.5px;color:#475569;line-height:1.65;max-width:800px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">{{obligationNote}}</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{showHow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:13px;background:rgba(255,255,255,.015);padding:13px 16px 14px;display:flex;flex-direction:column;gap:11px">
+        <div onClick="{{howToggle}}" style="display:flex;align-items:center;gap:10px;cursor:pointer" style-hover="opacity:.85">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;transform:{{howChev}}"><path d="m9 18 6-6-6-6"></path></svg>
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.15em;color:#94a3b8">HOW THIS REGISTER WORKS</span>
+          <span style="margin-left:auto;font-size:10.5px;font-weight:600;color:#64748b">{{howToggleLabel}}</span>
+        </div>
+        <sc-if value="{{howOpen}}" hint-placeholder-val="{{ false }}">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px 26px">
+            <sc-for list="{{how}}" as="h" hint-placeholder-count="5">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:11.5px;font-weight:700;color:#e2e8f0">{{h.head}}</span>
+                <span style="font-size:11.5px;color:#94a3b8;line-height:1.6">{{h.body}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:1000},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;live-empty&quot;,&quot;loading&quot;,&quot;read-failed&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;}}">
+const GRN = "#34d399", GOLD = "#c2a63d", BLU = "#60a5fa", TEAL = "#00B4D8", RED = "#f87171", SLT = "#64748b";
+
+class Component extends DCLogic {
+  state = { open: null, form: false, resolved: {}, attnOpen: true, howOpen: false };
+
+  renderVals() {
+    const S = this.state;
+    const ds = this.props.dataState ?? "live";
+    const isLoading = ds === "loading";
+    const isFail = ds === "read-failed";
+    const isEmpty = ds === "live-empty";
+    const isLive = ds === "live";
+
+    const REVIEW = {
+      on_track: ["Reviewed annually", GRN, "rgba(52,211,153,.34)", "rgba(52,211,153,.07)"],
+      due: ["Review due", BLU, "rgba(96,165,250,.34)", "rgba(96,165,250,.07)"],
+      overdue: ["Review overdue", GOLD, "rgba(194,166,61,.4)", "rgba(194,166,61,.07)"],
+    };
+    const AUTH = {
+      regulation: ["REGULATION", BLU, "rgba(96,165,250,.34)"],
+      certification: ["CERTIFICATION", "#a78bfa", "rgba(167,139,250,.34)"],
+      contract: ["CONTRACT", GRN, "rgba(52,211,153,.34)"],
+      insurance: ["INSURANCE", "#fb923c", "rgba(251,146,60,.4)"],
+      internal_schedule: ["INTERNAL SCHEDULE", "#94a3b8", "rgba(148,163,184,.3)"],
+      none: ["CITED AS TEXT", "#8494ab", "rgba(132,148,171,.4)"],
+    };
+
+    // requirement / position are the two halves of the departure: the authority's
+    // own wording, and the position signed against it.
+    const DEC = [
+      {
+        id: "41", title: "Teams chat is kept for one year, not the seven-year records period",
+        requirement: "Records covered by the schedule are retained for seven years, and personal data is kept no longer than necessary.",
+        position: "Teams chat is retained for one year. The seven-year period is held on the SharePoint document set instead.",
+        obligation: "GDPR Art. 5(1)(e) · Art. 32", obligationId: "3", obligationType: "regulation",
+        pillar: "Compliance", owner: "Anna Novak", signedBy: "Anna Novak", signedAt: "2026-07-14T10:22:00Z",
+        statement: "Chat is not the record of account. Holding it for the same term as the document set multiplies discovery cost without adding compliance.",
+        control: "SharePoint retention holds the seven-year period, eDiscovery hold is available on request, and chat exports are sampled quarterly.",
+        cadence: "Annual", dueAt: "2027-07-14T10:22:00Z", reviewState: "on_track",
+        dep: null, depType: null, depSku: null, basis: "required",
+      },
+      {
+        id: "38", title: "Two service accounts are exempt from multi-factor authentication",
+        requirement: "Multi-factor authentication is required on all interactive accounts, without exception.",
+        position: "Two unattended service accounts sign in without MFA. Every other account is covered.",
+        obligation: "Cyber insurance schedule §3", obligationId: "12", obligationType: "insurance",
+        pillar: "Security", owner: "Jordan Reid", signedBy: "Jordan Reid", signedAt: "2026-05-02T09:10:00Z",
+        statement: "Both accounts run integrations that cannot complete an interactive challenge. Replacing them with managed identities is scheduled, not done.",
+        control: "Sign-in is restricted to named IP ranges, passwords rotate every 30 days, and any interactive sign-in on either account raises an alert.",
+        cadence: "Quarterly", dueAt: "2026-08-02T09:10:00Z", reviewState: "overdue",
+        dep: null, depType: null, depSku: null, basis: "required",
+      },
+      {
+        id: "33", title: "Guest access reviews are paused until the Entra P2 licences arrive",
+        requirement: "External and guest access is reviewed on a defined cadence.",
+        position: "No access review cycle is running. Guest membership is exported and read by hand each month.",
+        obligation: "Internal records schedule §4.2", obligationId: null, obligationType: null,
+        pillar: "Governance", owner: "Jordan Reid", signedBy: "Jordan Reid", signedAt: "2026-06-19T13:05:00Z",
+        statement: "Access reviews need Entra ID P2. Until the licences are on the tenant there is no mechanism to review with, and a manual pass at that scale would be theatre.",
+        control: "Guest invitations are restricted to two named roles, and a monthly export of external members goes to the IT manager.",
+        cadence: null, dueAt: null, reviewState: null,
+        dep: "Entra ID P2 licences land on the tenant", depType: "license_sku", depSku: "AAD_PREMIUM_P2",
+        basis: "required",
+      },
+      {
+        id: "27", title: "Mailbox audit is kept for 90 days rather than twelve months",
+        requirement: "Audit and review records are retained for twelve months.",
+        position: "Mailbox audit logs are kept for 90 days. The twelve-month trail lives in the finance system.",
+        obligation: "SOX §802 · 17 CFR 210.2-06", obligationId: "1", obligationType: "regulation",
+        pillar: "Compliance", owner: "Anna Novak", signedBy: "Anna Novak", signedAt: "2026-03-19T14:41:00Z",
+        statement: "The twelve-month term applies to financial records, which are retained in the finance system. Mailbox audit beyond 90 days has never been used in an investigation here.",
+        control: "The finance system holds the twelve-month audit trail, and privileged mailbox activity is exported monthly.",
+        cadence: null, dueAt: null, reviewState: null,
+        dep: "Internal audit confirms the finance system's own twelve-month trail", depType: "manual", depSku: null,
+        basis: "practice",
+      },
+    ];
+
+    // Whether a regime actually binds this tenant is its own decision, and no tenant
+    // has recorded one yet. Anything not confirmed in scope is shown as a baseline
+    // followed by choice rather than as an obligation.
+    const BASIS = {
+      required: ["REQUIRED OF YOU", GOLD, "rgba(194,166,61,.4)", "WHAT THE RULE ASKS FOR", "WHAT IT ASKS FOR"],
+      practice: ["GOOD PRACTICE", "#7dd3fc", "rgba(125,211,252,.34)", "WHAT THE BASELINE RECOMMENDS", "WHAT IT RECOMMENDS"],
+    };
+
+    const fmtDay = v => v ? new Date(v).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "";
+
+    const rows = DEC.map(d => {
+      const expanded = S.open === d.id;
+      const dependency = d.dep !== null;
+      const cleared = !!S.resolved[d.id];
+      const rv = d.reviewState ? REVIEW[d.reviewState] : null;
+      const auth = AUTH[d.obligationType || "none"];
+      const canResolve = dependency && d.depType === "manual" && !cleared;
+
+      const clockLabel = dependency
+        ? (cleared ? "Ready to revisit" : "Waiting on one thing")
+        : (d.cadence === "Annual" ? "Reviewed annually" : d.reviewState === "overdue" ? "Review overdue" : d.cadence + " review");
+      const clockInk = dependency ? (cleared ? GRN : TEAL) : rv[1];
+      const clockBorder = dependency ? (cleared ? "rgba(52,211,153,.34)" : "rgba(0,180,216,.4)") : rv[2];
+      const clockBg = dependency ? (cleared ? "rgba(52,211,153,.07)" : "rgba(0,180,216,.06)") : rv[3];
+      const clockDetail = dependency
+        ? (cleared ? "The condition has been confirmed" : "Waits on: " + d.dep)
+        : (d.reviewState === "overdue" ? "Was due " + fmtDay(d.dueAt) : "Next review " + fmtDay(d.dueAt));
+
+      const detail = dependency
+        ? [
+          { k: "WHAT CLEARS IT", v: d.dep, ink: "#cbd5e1", hasNote: true,
+            note: d.depType === "license_sku"
+              ? "Your licence data is watched for " + d.depSku + ", so this clears on its own the moment it appears."
+              : "Nobody can watch this for you, so it stays open until someone records how it was confirmed." },
+          { k: "STATE", v: cleared ? "Confirmed" : "Not yet", ink: cleared ? GRN : "#94a3b8", hasNote: true,
+            note: "A decision waiting on a condition has no review date. A date here would be a deadline nobody set." },
+          { k: "AUTHORITY", v: d.obligation, ink: "#cbd5e1", hasNote: !d.obligationId,
+            note: "Cited as text — this one is not in the catalogue, so it is kept as written." },
+          { k: "OWNER", v: d.owner + " · " + d.pillar, ink: "#cbd5e1", hasNote: false, note: "" },
+        ]
+        : [
+          { k: "REVIEW CADENCE", v: d.cadence, ink: "#cbd5e1", hasNote: true, note: "Counted from the day it was signed." },
+          { k: "NEXT REVIEW", v: fmtDay(d.dueAt), ink: d.reviewState === "overdue" ? GOLD : "#cbd5e1", hasNote: true,
+            note: d.reviewState === "overdue" ? "That date has passed. The position still stands — only its review has lapsed." : "On track." },
+          { k: "AUTHORITY", v: d.obligation, ink: "#cbd5e1", hasNote: !d.obligationId,
+            note: "Cited as text — this one is not in the catalogue, so it is kept as written." },
+          { k: "OWNER", v: d.owner + " · " + d.pillar, ink: "#cbd5e1", hasNote: false, note: "" },
+        ];
+
+      const act = (label, enabled, tag, tip, onClick) => ({
+        label, tip, hasTag: !!tag, tag: tag || "",
+        ink: enabled ? "#93c5fd" : "#475569",
+        border: enabled ? "rgba(0,120,212,.5)" : "rgba(148,163,184,.18)",
+        style: enabled ? "solid" : "dashed",
+        bg: enabled ? "rgba(0,120,212,.1)" : "transparent",
+        op: enabled ? 1 : 0.55, cursor: enabled ? "pointer" : "not-allowed",
+        click: enabled ? onClick : () => {},
+      });
+
+      return {
+        title: d.title, requirement: d.requirement, position: d.position,
+        obligation: d.obligation, statement: d.statement, control: d.control,
+        signedBy: d.signedBy, signed: fmtDay(d.signedAt),
+        ownerLine: d.owner + " answers for it · " + d.pillar,
+        authLabel: auth[0], authInk: auth[1], authBorder: auth[2],
+        basisLabel: BASIS[d.basis][0], basisInk: BASIS[d.basis][1], basisBorder: BASIS[d.basis][2],
+        ruleLabel: BASIS[d.basis][3],
+        chosenNote: d.basis === "required" ? "Chosen and signed, not a gap we found" : "A deliberate deviation from a baseline, not a breach",
+        clockLabel, clockInk, clockBorder, clockBg, clockDetail,
+        border: expanded ? "rgba(0,120,212,.35)" : "rgba(255,255,255,.08)",
+        expanded, chev: expanded ? "rotate(90deg)" : "none",
+        moreLabel: expanded ? "Less" : "Signature and review",
+        click: () => this.setState(s => ({ open: s.open === d.id ? null : d.id })),
+        detail,
+        actions: [
+          act("Confirm the condition is met", canResolve, "",
+            canResolve ? "Records how the condition was confirmed and clears the decision."
+              : dependency ? (cleared ? "Already confirmed." : "This one clears on its own when the licences arrive.")
+                : "This decision runs on a review cadence, not a condition.",
+            () => this.setState(s => ({ resolved: Object.assign({}, s.resolved, { [d.id]: 1 }) }))),
+          act("Restate the position", false, "Not available", "Restating a position needs a new signed decision; there is no renew path yet."),
+          act("Withdraw", false, "Not available", "A signature is a fact and cannot be withdrawn from here."),
+        ],
+      };
+    });
+
+    const shown = isLive ? DEC : [];
+    const overdue = shown.filter(d => d.reviewState === "overdue");
+    const waiting = shown.filter(d => d.dep && !S.resolved[d.id]);
+
+    const attnItems = overdue.map(d => ({
+      tag: "REVIEW OVERDUE", accent: GOLD, when: "was due " + fmtDay(d.dueAt),
+      title: d.title, why: d.owner + " answers for it",
+      pick: () => this.setState({ open: d.id }),
+    })).concat(waiting.map(d => ({
+      tag: "WAITING", accent: TEAL, when: d.depType === "license_sku" ? "clears itself" : "needs confirming",
+      title: d.title, why: d.dep,
+      pick: () => this.setState({ open: d.id }),
+    })));
+
+    const OBL = [
+      ["Cyber insurance schedule §3", "Multi-factor authentication on all interactive accounts.", "insurance", "One position taken", "required", "Your own policy schedule"],
+      ["Internal records schedule §4.2", "External and guest access reviewed on a defined cadence.", "internal_schedule", "One position taken", "required", "Written by you"],
+      ["GDPR Art. 5(1)(e) · Art. 32", "Personal data kept no longer than necessary, held securely.", "regulation", "One position taken", "required", "You process EU personal data"],
+      ["GDPR Art. 15 · subject access", "A subject access request answered within one month.", "regulation", "Followed as written", "required", "You process EU personal data"],
+      ["GDPR Art. 30 · records of processing", "A maintained record of processing activities.", "regulation", "Followed as written", "required", "You process EU personal data"],
+      ["SOX §802 · 17 CFR 210.2-06", "Audit and review records retained seven years.", "regulation", "One position taken", "practice", "Scope never confirmed"],
+      ["SEC 17a-4(f) · FINRA 4511", "Records kept in a non-rewriteable, non-erasable format.", "regulation", "Followed as written", "practice", "Scope never confirmed"],
+      ["HIPAA §164.316(b)(2)(i)", "Documentation retained six years from creation or last effect.", "regulation", "Followed as written", "practice", "Scope never confirmed"],
+      ["PCI DSS v4.0", "Cardholder data protected in storage and in transit.", "regulation", "Followed as written", "practice", "Scope never confirmed"],
+    ];
+
+    return {
+      rootH: this.props.embedded ? "100%" : "100vh",
+      isLoading, isFail, isEmpty,
+      hasRows: isLive,
+      showObligations: !isLoading && !isFail,
+      showHow: !isLoading && !isFail,
+      skeletons: [{ w1: "44%", w2: "66%" }, { w1: "36%", w2: "58%" }, { w1: "52%", w2: "48%" }],
+
+      headline: isFail ? "Your positions are unavailable"
+        : isEmpty ? "No positions on record"
+          : "Four places where you have chosen to do something different",
+      subhead: isFail ? ""
+        : isEmpty ? ""
+          : "Each one departs from a rule you are bound by or a security baseline you follow, taken deliberately and signed by the person who answers for it. Nothing here is an oversight.",
+      stateLine: isLoading ? "LOADING" : isFail ? "UNAVAILABLE" : isEmpty ? "NONE ON RECORD" : DEC.length + " SIGNED",
+      stateInk: isLoading ? SLT : isFail ? RED : isEmpty ? BLU : GRN,
+      stateDot: isLoading ? SLT : isFail ? RED : isEmpty ? BLU : GRN,
+      stateBd: isFail ? "rgba(248,113,113,.4)" : isEmpty ? "rgba(96,165,250,.4)" : "rgba(52,211,153,.36)",
+      stateBg: isFail ? "rgba(248,113,113,.07)" : isEmpty ? "rgba(96,165,250,.07)" : "rgba(52,211,153,.07)",
+
+      attnShow: attnItems.length > 0,
+      attnItems,
+      attnCount: overdue.length + " overdue · " + waiting.length + " waiting",
+      attnOpen: S.attnOpen !== false,
+      attnChev: S.attnOpen === false ? "none" : "rotate(90deg)",
+      attnToggleLabel: S.attnOpen === false ? "Show" : "Hide",
+      attnToggle: () => this.setState({ attnOpen: S.attnOpen === false }),
+
+      registerMeta: "newest first · signed when recorded",
+      rows,
+
+      formOpen: S.form,
+      formCta: S.form ? "Close" : "Record a decision",
+      toggleForm: () => this.setState(s => ({ form: !s.form })),
+      fields: [
+        { label: "What you have decided", req: "required", ph: "Teams chat is kept for one year", hint: "the position, in a sentence", h: "auto", reqInk: GOLD },
+        { label: "The rule it departs from", req: "required", ph: "GDPR Art. 5(1)(e) · Art. 32", hint: "pick from the catalogue, or write it in", h: "auto", reqInk: GOLD },
+        { label: "Who answers for it", req: "required", ph: "Anna Novak", hint: "a named person, not a team", h: "auto", reqInk: GOLD },
+        { label: "Area", req: "optional", ph: "Compliance", hint: "", h: "auto", reqInk: SLT },
+        { label: "Revisit on a cadence", req: "one of two", ph: "Monthly · Quarterly · Semi-annual · Annual · Biennial", hint: "counted from the day you sign", h: "auto", reqInk: TEAL },
+        { label: "Or wait on one thing", req: "one of two", ph: "Entra ID P2 licences land on the tenant", hint: "a licence arriving can be watched for you", h: "auto", reqInk: TEAL },
+        { label: "What holds the risk down", req: "required", ph: "What protects you in the meantime", hint: "", h: "54px", reqInk: GOLD },
+        { label: "Why, and your name", req: "required", ph: "The reasoning, and who is signing", hint: "the confirmation is the signature", h: "54px", reqInk: GOLD },
+      ],
+
+      obligationMeta: OBL.filter(o => o[4] === "required").length + " apply to you · "
+        + OBL.filter(o => o[4] === "practice").length + " followed as good practice",
+      obligationNote: "Whether a regime binds you is its own decision, and none has been recorded for your tenant. The four below sit here as security baselines your MSP measures you against — not as rules you are subject to.",
+      obligationGroups: [
+        { label: "APPLIES TO YOU", accent: GOLD, key: "required" },
+        { label: "FOLLOWED AS GOOD PRACTICE", accent: "#7dd3fc", key: "practice" },
+      ].map(g => ({
+        label: g.label, accent: g.accent,
+        rows: OBL.filter(o => o[4] === g.key).map(([citation, requires, type, state, basis, why]) => {
+          const a = AUTH[type];
+          const taken = state === "One position taken";
+          return {
+            citation, requires, why,
+            state: taken ? "A position is taken" : basis === "required" ? "Followed as written" : "Followed as recommended",
+            stateInk: taken ? GOLD : "#64748b",
+            tone: taken ? GOLD : basis === "required" ? GRN : "#334155",
+            type: a[0], typeInk: a[1],
+          };
+        }),
+      })).filter(g => g.rows.length > 0),
+
+      howOpen: S.howOpen === true,
+      howChev: S.howOpen === true ? "rotate(90deg)" : "none",
+      howToggleLabel: S.howOpen === true ? "Hide" : "Show",
+      howToggle: () => this.setState({ howOpen: S.howOpen !== true }),
+      how: [
+        { head: "A position is signed the moment it is recorded", body: "There is no draft and no separate approval step. The name, the reasoning and the confirmation are captured together, and the time is set on the server." },
+        { head: "Every position names who answers for it", body: "One person, not a team. That name travels with the decision and appears on your security plan when it is sealed." },
+        { head: "Each one is revisited, or waits on something", body: "A fixed cadence, or a single condition that clears it. Never both. A licence arriving can be watched for you; anything else needs someone to confirm it." },
+        { head: "A lapsed review does not undo the decision", body: "Overdue describes the review, not the position. The signature stays true; it just has not been looked at when it was meant to be." },
+        { head: "Restating a position means signing a new one", body: "Positions cannot be edited or withdrawn, because the record is the signature. To change one, record the position you hold now." },
+        { head: "Standing policies are separate and not shown here", body: "Target settings your MSP holds for you — mailbox sizes, VIP handling — are operated on their console. They carry no authority and no signature, so they are not positions." },
+      ],
+    };
+  }
+}
+
+</script>
+</body>
+</html>

@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes skelPulse{0%,100%{opacity:.5}50%{opacity:.9}}
+</style>
+</helmet>
+<div data-screen-label="Risk register" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:24px 30px 56px;padding-right:max(30px, calc(100% - 990px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Risk register</span>
+      <span title="Risks your MSP has recorded against your tenant, and the ones you have signed to accept. Signing transfers the named exposure to you." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+    </div>
+
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{skeletons}}" as="s" hint-placeholder-count="4">
+          <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.02);padding:16px;display:flex;flex-direction:column;gap:9px;animation:skelPulse 1.6s ease-in-out infinite">
+            <div style="height:10px;width:{{s.w1}};border-radius:999px;background:rgba(255,255,255,.07)"></div>
+            <div style="height:9px;width:{{s.w2}};border-radius:999px;background:rgba(255,255,255,.05)"></div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isFailed}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:14px 16px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">Your register could not be read</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:620px">This is a failed read, not an empty register. Risks may well stand against your tenant right now, and a signature you have already given is unaffected.</span>
+          <span onClick="{{retry}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">Try again</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isEmpty}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:32px 26px;display:flex;flex-direction:column;gap:8px;align-items:center;text-align:center">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">No risks recorded</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:560px">Your MSP has raised nothing against your tenant, and you have signed nothing. Your MSP records risks here; there is no self-service way to add one.</span>
+        <span style="font-size:11.5px;color:#c2a63d;line-height:1.55;max-width:560px">One caveat we would rather state than hide: this is also the answer given when your tenant cannot be identified. An empty register and an unreadable tenant look identical from here.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{hasRows}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:min(300px,100%);border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 18px 14px;display:flex;flex-direction:column;gap:11px">
+          <div style="display:flex;align-items:baseline;gap:9px">
+            <span style="font-size:24px;font-weight:800;color:#f8fafc;letter-spacing:-.01em;font-variant-numeric:tabular-nums">{{riskCount}}</span>
+            <span style="font-size:12px;color:#94a3b8">risks on your register</span>
+          </div>
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <sc-for list="{{statusChips}}" as="c" hint-placeholder-count="4">
+              <span style="font-size:10.5px;font-weight:600;color:{{c.ink}};border:1px solid {{c.bd}};background:{{c.bg}};border-radius:999px;padding:3px 9px">{{c.label}} {{c.n}}</span>
+            </sc-for>
+          </div>
+          <span style="font-size:11.5px;color:#64748b;line-height:1.5">{{liabilityLine}}</span>
+        </div>
+        <div style="flex:1;min-width:min(300px,100%);border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 18px 14px;display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;align-items:baseline;gap:9px">
+            <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Three clocks, kept apart</span>
+          </div>
+          <sc-for list="{{clocks}}" as="c" hint-placeholder-count="3">
+            <div style="display:flex;align-items:flex-start;gap:9px">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.07em;color:{{c.ink}};border:1px solid {{c.bd}};background:{{c.bg}};border-radius:4px;padding:3px 6px;width:82px;text-align:center;flex:none">{{c.tag}}</span>
+              <span style="font-size:11.5px;color:#94a3b8;line-height:1.5">{{c.note}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 14px;display:flex;gap:26px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">LIKELIHOOD × IMPACT</span>
+          <div style="display:flex;gap:9px">
+            <div style="display:flex;flex-direction:column;justify-content:space-between;padding:1px 0">
+              <sc-for list="{{yLabels}}" as="y" hint-placeholder-count="5"><span style="font-size:9.5px;color:#475569;height:34px;display:flex;align-items:center">{{y.t}}</span></sc-for>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(5,34px);grid-auto-rows:34px;gap:3px">
+              <sc-for list="{{cells}}" as="c" hint-placeholder-count="25">
+                <div title="{{c.tip}}" style="border-radius:4px;background:{{c.bg}};border:1px solid {{c.bd}};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:{{c.ink}}">{{c.n}}</div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;gap:3px;padding-left:31px">
+            <sc-for list="{{xLabels}}" as="x" hint-placeholder-count="5"><span style="font-size:9.5px;color:#475569;width:34px;text-align:center">{{x.t}}</span></sc-for>
+          </div>
+        </div>
+        <div style="flex:1;min-width:min(240px,100%);display:flex;flex-direction:column;gap:7px;justify-content:center">
+          <span style="font-size:12.5px;font-weight:600;color:#f8fafc">{{plotLine}}</span>
+          <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:420px">{{unplottedLine}}</span>
+          <span style="font-size:10.5px;color:#475569;line-height:1.5;max-width:420px">Coordinates are recorded per risk by your MSP. A risk without both is left off the map rather than placed at a guessed position.</span>
+        </div>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:6px 20px 14px">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 0 8px">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Register</span>
+          <span style="font-size:11px;color:#64748b">newest first</span>
+          <span style="margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:84px;text-align:center;flex:none">RISK</span>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:92px;text-align:center;flex:none">ACCEPT</span>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:74px;text-align:center;flex:none">REVIEW</span>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:64px;text-align:right;flex:none">EXPOSURE</span>
+          <span style="width:13px;flex:none"></span>
+        </div>
+        <sc-for list="{{risks}}" as="r" hint-placeholder-count="6">
+          <div style="border-top:1px solid rgba(255,255,255,.06)">
+            <div onClick="{{r.toggle}}" style="display:flex;align-items:center;gap:12px;padding:11px 0;cursor:pointer" style-hover="opacity:.88">
+              <span title="{{r.sevTip}}" style="width:3px;height:30px;border-radius:2px;background:{{r.sevInk}};flex:none"></span>
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+                <span style="font-size:12.5px;font-weight:600;color:#e2e8f0">{{r.title}}</span>
+                <span style="font-size:10.5px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{r.subLine}}</span>
+              </div>
+              <span style="font-size:10px;font-weight:600;color:{{r.rsInk}};background:{{r.rsBg}};border:1px solid {{r.rsBd}};border-radius:999px;padding:3px 0;width:84px;text-align:center;flex:none">{{r.riskStatus}}</span>
+              <span style="font-size:10px;font-weight:600;color:{{r.acInk}};background:{{r.acBg}};border:1px solid {{r.acBd}};border-radius:999px;padding:3px 0;width:92px;text-align:center;flex:none">{{r.acLabel}}</span>
+              <span style="font-size:10px;font-weight:600;color:{{r.rvInk}};background:{{r.rvBg}};border:1px solid {{r.rvBd}};border-radius:999px;padding:3px 0;width:74px;text-align:center;flex:none">{{r.rvLabel}}</span>
+              <span style="font-size:11.5px;color:#cbd5e1;width:64px;text-align:right;flex:none;font-variant-numeric:tabular-nums">{{r.liability}}</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;transform:{{r.chev}}"><path d="m9 18 6-6-6-6"></path></svg>
+            </div>
+
+            <sc-if value="{{r.open}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:15px;padding:4px 0 20px">
+                <div style="display:flex;gap:22px;flex-wrap:wrap">
+                  <sc-for list="{{r.facts}}" as="f" hint-placeholder-count="6">
+                    <div style="display:flex;flex-direction:column;gap:4px;min-width:150px;max-width:250px">
+                      <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">{{f.k}}</span>
+                      <span style="font-size:12px;color:{{f.ink}};line-height:1.45">{{f.v}}</span>
+                      <sc-if value="{{f.hasNote}}" hint-placeholder-val="{{ false }}"><span style="font-size:10.5px;color:#64748b;line-height:1.5">{{f.note}}</span></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:9px;border-top:1px solid rgba(255,255,255,.06);padding-top:13px">
+                  <div style="display:flex;flex-direction:column;gap:4px">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">WHAT IT IS</span>
+                    <span style="font-size:12.5px;color:#cbd5e1;line-height:1.6;max-width:700px">{{r.what}}</span>
+                  </div>
+                  <sc-if value="{{r.hasOutcome}}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">IF IT HAPPENS</span>
+                      <span style="font-size:12.5px;color:#cbd5e1;line-height:1.6;max-width:700px">{{r.outcome}}</span>
+                    </div>
+                  </sc-if>
+                  <div style="display:flex;gap:22px;flex-wrap:wrap;padding-top:2px">
+                    <div style="display:flex;flex-direction:column;gap:5px;min-width:min(260px,100%);flex:1">
+                      <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">COMPENSATING CONTROLS</span>
+                      <sc-if value="{{r.hasControls}}" hint-placeholder-val="{{ true }}">
+                        <sc-for list="{{r.controls}}" as="c" hint-placeholder-count="2">
+                          <span style="font-size:12px;color:#cbd5e1;line-height:1.5">{{c.t}}</span>
+                        </sc-for>
+                      </sc-if>
+                      <sc-if value="{{r.noControls}}" hint-placeholder-val="{{ false }}">
+                        <span style="font-size:12px;color:#c2a63d;line-height:1.5">None recorded. Nothing is reducing this risk today.</span>
+                      </sc-if>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:5px;min-width:min(220px,100%);flex:1">
+                      <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">PLAN &amp; EVIDENCE</span>
+                      <span style="font-size:12px;color:{{r.planInk}};line-height:1.5">{{r.plan}}</span>
+                      <span style="font-size:11.5px;color:#64748b;line-height:1.5">{{r.evidence}}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <sc-if value="{{r.signed}}" hint-placeholder-val="{{ false }}">
+                  <div style="border:1px solid rgba(52,211,153,.28);background:rgba(52,211,153,.05);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:9px">
+                    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                      <span style="font-size:12.5px;font-weight:600;color:#f8fafc">{{r.signedHead}}</span>
+                      <span style="font-size:10px;font-weight:600;color:{{r.acInk}};border:1px solid {{r.acBd}};background:{{r.acBg}};border-radius:999px;padding:2px 9px">{{r.acLabel}}</span>
+                    </div>
+                    <span style="font-size:12.5px;color:#cbd5e1;line-height:1.6;max-width:700px;border-left:2px solid rgba(52,211,153,.4);padding-left:11px">{{r.statement}}</span>
+                    <div style="display:flex;gap:22px;flex-wrap:wrap">
+                      <sc-for list="{{r.signFacts}}" as="f" hint-placeholder-count="3">
+                        <div style="display:flex;flex-direction:column;gap:3px;min-width:150px">
+                          <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">{{f.k}}</span>
+                          <span style="font-size:12px;color:#cbd5e1;line-height:1.45">{{f.v}}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <span style="font-size:10.5px;color:#475569;line-height:1.5;max-width:700px">{{r.signedFoot}}</span>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{r.canSign}}" hint-placeholder-val="{{ false }}">
+                  <div style="border:1px solid rgba(0,120,212,.42);background:rgba(0,120,212,.05);border-radius:12px;padding:15px 17px 14px;display:flex;flex-direction:column;gap:12px">
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Accept this risk</span>
+                      <span style="font-size:11.5px;color:#94a3b8;line-height:1.6;max-width:640px">Signing records that you have read this line and are keeping the exposure named above rather than remediating it. It cannot be signed twice, it does not lapse, and neither you nor your MSP can renew or reissue it later.</span>
+                    </div>
+                    <div style="display:flex;gap:13px;flex-wrap:wrap">
+                      <div style="flex:1;min-width:min(200px,100%);display:flex;flex-direction:column;gap:5px">
+                        <span style="font-size:11px;font-weight:600;color:#94a3b8">Your full name</span>
+                        <input onInput="{{r.setName}}" value="{{r.nameVal}}" placeholder="Name as you sign it" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;font-size:12.5px;color:#f8fafc;font-family:inherit;outline:none">
+                        <span style="font-size:10.5px;color:#475569">Recorded as typed. It is not checked against your account name.</span>
+                      </div>
+                      <div style="flex:2;min-width:min(260px,100%);display:flex;flex-direction:column;gap:5px">
+                        <span style="font-size:11px;font-weight:600;color:#94a3b8">Your statement</span>
+                        <textarea onInput="{{r.setStatement}}" value="{{r.stmtVal}}" placeholder="Why you are accepting this rather than fixing it" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;font-size:12.5px;color:#f8fafc;font-family:inherit;outline:none;min-height:62px;resize:vertical"></textarea>
+                        <span style="font-size:10.5px;color:#475569">Kept word for word with your signature. {{r.stmtCount}}</span>
+                      </div>
+                    </div>
+                    <div onClick="{{r.toggleConfirm}}" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+                      <span style="width:16px;height:16px;border-radius:4px;border:1px solid {{r.cbBd}};background:{{r.cbBg}};flex:none;margin-top:1px;display:flex;align-items:center;justify-content:center">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{{r.cbInk}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"></path></svg>
+                      </span>
+                      <span style="font-size:12px;color:#cbd5e1;line-height:1.5;max-width:620px">I accept this risk on behalf of my organisation and understand the exposure stays with us until a change discharges it.</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px">
+                      <span style="font-size:10.5px;color:#475569;line-height:1.5;max-width:440px">{{r.authorityFoot}}</span>
+                      <span onClick="{{r.sign}}" style="margin-left:auto;font-size:12.5px;font-weight:600;color:{{r.signInk}};background:{{r.signBg}};border-radius:6px;padding:9px 16px;cursor:{{r.signCur}};flex:none">Sign and accept</span>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{r.blocked}}" hint-placeholder-val="{{ false }}">
+                  <div style="border:1px solid {{r.blockBd}};background:{{r.blockBg}};border-radius:12px;padding:14px 16px;display:flex;gap:11px">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{r.blockInk}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+                    <div style="display:flex;flex-direction:column;gap:5px">
+                      <span style="font-size:12.5px;font-weight:600;color:#f8fafc">{{r.blockHead}}</span>
+                      <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:640px">{{r.blockBody}}</span>
+                      <sc-if value="{{r.hasBlockLink}}" hint-placeholder-val="{{ false }}">
+                        <span onClick="{{r.blockLink}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">{{r.blockLinkLabel}}</span>
+                      </sc-if>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <div style="border:1px solid rgba(255,255,255,.07);border-radius:12px;background:rgba(255,255,255,.015)">
+                  <div style="display:flex;align-items:baseline;gap:10px;padding:11px 14px 9px;border-bottom:1px solid rgba(255,255,255,.06)">
+                    <span style="font-size:12px;font-weight:600;color:#e2e8f0">Signed document</span>
+                    <span style="font-size:10.5px;color:#64748b">{{r.docLine}}</span>
+                  </div>
+                  <sc-if value="{{r.noDoc}}" hint-placeholder-val="{{ false }}">
+                    <div style="padding:15px 14px;display:flex;flex-direction:column;gap:5px">
+                      <span style="font-size:12px;font-weight:600;color:#e2e8f0">No document prepared yet</span>
+                      <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:600px">The full risk decision document is prepared by your MSP, never generated on request from here — so it always carries a real author. Until they prepare it, there is nothing to read or sign as a whole.</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{r.hasDoc}}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-direction:column">
+                      <sc-for list="{{r.versions}}" as="v" hint-placeholder-count="3">
+                        <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.04)">
+                          <span style="font-size:11.5px;font-weight:600;color:#cbd5e1;width:74px;flex:none">Version {{v.n}}</span>
+                          <span style="font-size:10px;font-weight:600;color:{{v.ink}};background:{{v.bg}};border:1px solid {{v.bd}};border-radius:999px;padding:3px 9px;flex:none">{{v.label}}</span>
+                          <span style="font-size:11px;color:#64748b;min-width:0;flex:1;line-height:1.45">{{v.note}}</span>
+                          <span style="font-size:11px;color:#64748b;flex:none;white-space:nowrap">{{v.when}}</span>
+                        </div>
+                      </sc-for>
+                      <sc-if value="{{r.needsDocSign}}" hint-placeholder-val="{{ false }}">
+                        <div style="padding:12px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                          <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:520px">The current version widened what it covers, so it needs a fresh signature. A version that only narrowed its scope carries the previous signature forward instead of asking again.</span>
+                          <span onClick="{{r.signDoc}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer;flex:none" style-hover="background:#005A9E">Read and sign the document</span>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Decisions recorded against these risks</span>
+          <span style="font-size:11px;color:#64748b">{{decCountLine}}</span>
+        </div>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">These are decisions that only exist because a risk was raised here — the record of what was chosen about a finding. Standing policies you author on their own live on the Policy decisions page and come from a different register; the two are never merged.</span>
+        <div style="display:flex;flex-direction:column;padding-top:2px">
+          <sc-for list="{{decisions}}" as="d" hint-placeholder-count="3">
+            <div onClick="{{d.click}}" style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid rgba(255,255,255,.05);cursor:pointer" style-hover="opacity:.85">
+              <span style="font-size:10px;font-weight:600;color:{{d.stInk}};background:{{d.stBg}};border:1px solid {{d.stBd}};border-radius:999px;padding:3px 0;width:74px;text-align:center;flex:none">{{d.state}}</span>
+              <span style="font-size:12px;color:#cbd5e1;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{d.title}}</span>
+              <span style="font-size:11px;color:#64748b;flex:none;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{d.obligation}}</span>
+              <span style="font-size:11px;color:{{d.revInk}};width:96px;text-align:right;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{d.review}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <span style="font-size:10.5px;color:#475569;line-height:1.5;padding-top:4px">A review falling due is a flag on a decision that stays live. Nothing here lapses on a date, and no decision is ever removed for going unreviewed.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+        </div>
+        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none">{{l.where}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <span style="font-size:10.5px;color:#475569;line-height:1.55;padding-top:4px">The last two are open questions rather than settled positions, and are shown here so nobody has to discover them from a blank field.</span>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{modalShow}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:60;background:rgba(2,6,23,.72);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="width:480px;max-width:100%;background:#0b1120;border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);padding:20px 22px 18px;display:flex;flex-direction:column;gap:11px">
+        <span style="font-size:14.5px;font-weight:700;color:#f8fafc">{{modalTitle}}</span>
+        <span style="font-size:12.5px;color:#94a3b8;line-height:1.6">{{modalBody}}</span>
+        <span style="font-size:11.5px;color:#c2a63d;line-height:1.55">{{modalNote}}</span>
+        <div style="display:flex;align-items:center;gap:9px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px">
+          <span onClick="{{modalCancel}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#94a3b8;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 14px;cursor:pointer">{{modalCancelLabel}}</span>
+          <span onClick="{{modalGo}}" style="font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer">{{modalCta}}</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:980},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;live-empty&quot;,&quot;loading&quot;,&quot;fetch-failed&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;signerIsAccountable&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;openPanel&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(spec: any) =&gt; void&quot;}}">
+class Component extends DCLogic {
+  state = { open: null, names: {}, stmts: {}, confirmed: {}, signedNow: {}, modal: null, ledger: true, failed: null };
+
+  renderVals() {
+    const S = this.state;
+    const P = this.props;
+    const ds = S.failed !== null ? S.failed : (P.dataState || "live");
+    const iAmAccountable = P.signerIsAccountable !== false;
+
+    const SEV = { Critical: "#f87171", High: "#fbbf24", Medium: "#38bdf8", Low: "#34d399" };
+    const RS = {
+      Open: { ink: "#f87171", bg: "rgba(248,113,113,.10)", bd: "rgba(248,113,113,.28)" },
+      Mitigating: { ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" },
+      Accepted: { ink: "#38bdf8", bg: "rgba(56,189,248,.10)", bd: "rgba(56,189,248,.28)" },
+      Closed: { ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" },
+    };
+    const AC = {
+      none: { l: "Not signed", ink: "#94a3b8", bg: "transparent", bd: "rgba(148,163,184,.25)" },
+      active: { l: "Signed", ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" },
+      pending_signature: { l: "Awaiting yours", ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" },
+      revoked: { l: "Revoked", ink: "#f87171", bg: "rgba(248,113,113,.10)", bd: "rgba(248,113,113,.28)" },
+    };
+    const RV = {
+      on_track: { l: "On track", ink: "#64748b", bg: "transparent", bd: "rgba(148,163,184,.22)" },
+      due: { l: "Due", ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" },
+      overdue: { l: "Overdue", ink: "#f87171", bg: "rgba(248,113,113,.10)", bd: "rgba(248,113,113,.28)" },
+      none: { l: "No clock", ink: "#475569", bg: "transparent", bd: "rgba(148,163,184,.16)" },
+    };
+
+    const RISKS = [
+      { id: "RR-2026-016", title: "Teams sites with no retention policy", pillar: "Data", framework: "CIS M365", control: "3.4 Retention", inherent: "High", residual: "High",
+        riskStatus: "Open", acc: null, review: "none", reviewCopy: null, likelihood: 3, impact: 4, liability: 96000,
+        owner: "Not recorded", register: "Not recorded", obligation: "Master services agreement, sched. 4", obligationType: null,
+        workload: "SharePoint", holders: [], spawn: null, discharge: null, instances: null,
+        what: "Fourteen Teams sites hold customer-facing documents with no retention policy applied, so nothing is preserved on deletion and nothing expires on schedule.",
+        outcome: "A deletion request or a legal hold arriving today could not be answered for these sites.",
+        controls: [], plan: null, evidence: "Configuration snapshot, run 445", versions: [] },
+      { id: "RR-2026-014", title: "Guest accounts without sponsor review", pillar: "Identity", framework: "NIST 800-53", control: "AC-2(3)", inherent: "Critical", residual: "High",
+        riskStatus: "Open", acc: null, review: "on_track", reviewCopy: "Review due 14 Nov 2026", likelihood: 4, impact: 4, liability: 180000,
+        owner: "Dana Whitfield", register: "RR-2026-014", obligation: "ISO 27001:2022 A.5.16", obligationType: "certification",
+        workload: "Identity & access", holders: ["Dana Whitfield", "Marcus Lein"], spawn: null, discharge: null, instances: null,
+        what: "Sixty-one guest accounts have had access for more than 180 days with no sponsor attestation, and eleven of those have never signed in.",
+        outcome: "An unreviewed guest keeps standing access to whatever was shared with them, including after leaving the partner organisation.",
+        controls: ["Guest access is limited to two SharePoint sites.", "Sign-in risk policy blocks unfamiliar locations."],
+        plan: "Sponsor attestation cycle proposed for Q4.", evidence: "Access review export, 29 Aug 2026",
+        versions: [{ n: 1, state: "unsigned-required", note: "First version — a signature has never been captured for this risk.", when: "30 Aug 2026" }] },
+      { id: "RR-2026-011", title: "MFA gaps on privileged accounts", pillar: "Identity", framework: "CIS M365", control: "1.1.1", inherent: "Critical", residual: "Medium",
+        riskStatus: "Accepted", acc: { status: "active", by: "Priya Raman", on: "18 Aug 2026, 14:22", register: "RR-2026-011", statement: "Two break-glass accounts are held in a sealed envelope in the safe and are excluded from MFA by design. We accept the residual exposure and review it quarterly.", authorizedBy: "Dana Whitfield, as Accountable for Identity & access at the time of signing" },
+        review: "overdue", reviewCopy: "Review was due 1 Sep 2026", likelihood: 2, impact: 5, liability: 240000,
+        owner: "Priya Raman", register: "RR-2026-011", obligation: "Cyber insurance schedule, cl. 7.2", obligationType: "insurance",
+        workload: "Identity & access", holders: ["Dana Whitfield", "Marcus Lein"], spawn: null, discharge: null, instances: 22,
+        what: "Two break-glass administrator accounts are excluded from the MFA conditional access policy.",
+        outcome: "A compromise of either account is a full tenant compromise with no second factor in the way.",
+        controls: ["Credentials held offline in a sealed envelope.", "Sign-in alerting on both accounts routes to the MSP."],
+        plan: "Reviewed each quarter against the insurer's schedule.", evidence: "Conditional access export, 18 Aug 2026",
+        versions: [
+          { n: 3, state: "unsigned-required", note: "Scope widened — this version covers two accounts that were not in version 2.", when: "31 Aug 2026" },
+          { n: 2, state: "inherited", note: "Scope narrowed only, so version 1's signature carried forward.", when: "24 Aug 2026" },
+          { n: 1, state: "signed", note: "Signed by Priya Raman.", when: "18 Aug 2026" } ] },
+      { id: "RR-2026-009", title: "Conditional access change declined", pillar: "Identity", framework: "Internal", control: "CHG-04", inherent: "High", residual: "Medium",
+        riskStatus: "Accepted", acc: { status: "active", by: "Priya Raman", on: "22 Aug 2026, 09:05", register: "RR-2026-009", statement: "We declined the proposed conditional access tightening because it blocks our field engineers' offline sign-in. We accept the exposure until the field app is replaced.", authorizedBy: "Dana Whitfield, as Accountable for Identity & access at the time of signing" },
+        review: "due", reviewCopy: "Review due 12 Sep 2026", likelihood: 3, impact: 3, liability: 64000,
+        owner: "Priya Raman", register: "RR-2026-009", obligation: "Not recorded", obligationType: null,
+        workload: "Identity & access", holders: ["Dana Whitfield", "Marcus Lein"], spawn: "CR-2026-142", discharge: null, instances: null,
+        what: "The change request to require compliant devices for admin sign-in was declined, leaving unmanaged devices able to reach admin roles.",
+        outcome: "An admin session from an unmanaged laptop is indistinguishable from a managed one.",
+        controls: ["Admin roles are eligible-only through PIM with approval."],
+        plan: "Revisit when the field application is replaced.", evidence: "Change request CR-2026-142",
+        versions: [{ n: 1, state: "signed", note: "Signed by Priya Raman.", when: "22 Aug 2026" }] },
+      { id: "RR-2026-007", title: "Licence spend above committed baseline", pillar: "Cost", framework: "Internal", control: "FIN-02", inherent: "Medium", residual: "Medium",
+        riskStatus: "Mitigating", acc: null, review: "on_track", reviewCopy: "Review due 30 Nov 2026", likelihood: 4, impact: 2, liability: 38000,
+        owner: "Not recorded", register: "Not recorded", obligation: "Not recorded", obligationType: null,
+        workload: null, holders: [], spawn: null, discharge: null, instances: null,
+        what: "Assigned licences exceed the committed baseline by 74 seats, of which 31 have had no activity in 90 days.",
+        outcome: "The overage bills monthly whether or not the seats are used.",
+        controls: ["Monthly seat report to your finance contact."],
+        plan: "Reclamation pass scheduled for October.", evidence: "Licence report, 1 Sep 2026", versions: [] },
+      { id: "RR-2026-004", title: "Retention gap on Teams chat", pillar: "Data", framework: "ISO 27001:2022", control: "A.5.33", inherent: "High", residual: "Medium",
+        riskStatus: "Open", acc: { status: "revoked", by: "Priya Raman", on: "2 Jul 2026, 11:40", register: "RR-2026-004", statement: "Chat retention is out of scope for this year's programme; we accept the gap.", authorizedBy: "Nobody held Accountable for the workload at the time of signing" },
+        review: "on_track", reviewCopy: "Review due 2 Jan 2027", likelihood: 2, impact: 3, liability: 52000,
+        owner: "Not recorded", register: "RR-2026-004", obligation: "ISO 27001:2022 A.5.33", obligationType: "certification",
+        workload: "SharePoint", holders: [], spawn: null, discharge: null, instances: null,
+        what: "Teams chat is not covered by any retention policy, so messages are neither preserved nor expired.",
+        outcome: "Chat cannot be produced for a legal hold, and cannot be shown to have been disposed of either.",
+        controls: [], plan: "Being scoped with your MSP.", evidence: "Not recorded", versions: [] },
+      { id: "RR-2026-002", title: "Unreviewed OAuth app consent", pillar: "Security", framework: "CIS M365", control: "5.1.5", inherent: "High", residual: "Low",
+        riskStatus: "Closed", acc: { status: "active", by: "Priya Raman", on: "14 Jun 2026, 16:10", register: "RR-2026-002", statement: "Accepted for the pilot period while app governance was configured.", authorizedBy: "Marcus Lein, as Accountable for Security at the time of signing" },
+        review: "on_track", reviewCopy: "No further review — discharged", likelihood: null, impact: null, liability: 0,
+        owner: "Marcus Lein", register: "RR-2026-002", obligation: "Board security standard, s.4", obligationType: null,
+        workload: "Defender", holders: ["Marcus Lein"], spawn: null, discharge: "CR-2026-118", instances: null,
+        what: "Nineteen third-party applications held delegated consent with no review record.",
+        outcome: "A consented application keeps its granted scopes until the consent is withdrawn.",
+        controls: ["App governance policies now block new high-privilege consent."],
+        plan: "Discharged by CR-2026-118.", evidence: "App governance report, 20 Aug 2026", versions: [{ n: 1, state: "signed", note: "Signed by Priya Raman.", when: "14 Jun 2026" }] },
+    ];
+
+    const isLoading = ds === "loading";
+    const isFailed = ds === "fetch-failed";
+    const isEmpty = ds === "live-empty";
+    const hasRows = ds === "live";
+
+    const money = (n) => n === 0 ? "—" : "$" + (n >= 1000 ? Math.round(n / 1000) + "k" : String(n));
+    const VS = {
+      signed: { l: "Signed", ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" },
+      inherited: { l: "Carried forward", ink: "#38bdf8", bg: "rgba(56,189,248,.10)", bd: "rgba(56,189,248,.26)" },
+      "unsigned-required": { l: "Needs signing", ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" },
+    };
+
+    const risks = RISKS.map((r) => {
+      const signedNow = S.signedNow[r.id];
+      const acc = signedNow || r.acc;
+      const accSt = acc ? (acc.status || "active") : "none";
+      const a = AC[accSt];
+      const rs = RS[r.riskStatus] || RS.Open;
+      const rv = RV[r.review] || RV.none;
+      const name = S.names[r.id] || "";
+      const stmt = S.stmts[r.id] || "";
+      const conf = !!S.confirmed[r.id];
+      const noHolder = !!r.workload && r.holders.length === 0;
+      const notMine = !!r.workload && r.holders.length > 0 && !iAmAccountable;
+      const signable = !acc && r.riskStatus !== "Closed" && !noHolder && !notMine;
+      const canSubmit = signable && name.trim().length >= 2 && stmt.trim().length > 0 && conf;
+      const openTop = signedNow ? true : S.open === r.id;
+
+      const facts = [
+        { k: "SEVERITY", v: r.inherent + " inherent · " + r.residual + " residual", ink: "#cbd5e1", hasNote: true, note: "Residual is what stands after the controls below." },
+        { k: "POSITION", v: r.likelihood == null ? "Not recorded" : "Likelihood " + r.likelihood + " · impact " + r.impact, ink: r.likelihood == null ? "#c2a63d" : "#cbd5e1", hasNote: r.likelihood == null, note: "Left off the heat map rather than placed at a guess." },
+        { k: "OWNER", v: r.owner, ink: r.owner === "Not recorded" ? "#c2a63d" : "#cbd5e1", hasNote: true, note: "Display text on the risk. Who may sign is decided by the workload below, not by this name." },
+        { k: "AUTHORITY TO SIGN", v: r.workload ? (r.holders.length ? r.holders.join(", ") : "Nobody holds it") : "Not workload-owned", ink: r.workload && !r.holders.length ? "#c2a63d" : "#cbd5e1", hasNote: true,
+          note: r.workload ? "Accountable for " + r.workload + ". Any holder may sign; the order means nothing." : "This check spans workloads, so no single owner resolves and anyone signed in here may sign." },
+        { k: "OBLIGATION", v: r.obligation, ink: r.obligation === "Not recorded" ? "#c2a63d" : "#cbd5e1", hasNote: !!r.obligationType, note: r.obligationType ? "Matched to your " + r.obligationType + " catalogue." : "" },
+        { k: "REGISTER REF", v: r.register, ink: r.register === "Not recorded" ? "#c2a63d" : "#cbd5e1", hasNote: false, note: "" },
+        { k: "PROVENANCE", v: r.spawn ? "Raised by " + r.spawn : "Recorded by your MSP", ink: "#cbd5e1", hasNote: !!(r.spawn || r.discharge),
+          note: r.discharge ? "Discharged by " + r.discharge + "." : r.spawn ? "Declining that change request is what created this risk." : "" },
+        { k: "REVIEW", v: r.reviewCopy || "No review clock set", ink: r.review === "overdue" ? "#f87171" : r.reviewCopy ? "#cbd5e1" : "#c2a63d", hasNote: r.review === "overdue", note: "An overdue review does not lapse a signature — it stays valid." },
+      ];
+      if (r.instances) facts.push({ k: "AFFECTED OBJECTS", v: r.instances + " accounts", ink: "#cbd5e1", hasNote: true, note: "Counted by your MSP. The individual objects are not served to this page." });
+
+      return {
+        title: r.title, subLine: r.id + " · " + r.pillar + " · " + r.framework + " " + r.control,
+        sevInk: SEV[r.inherent], sevTip: r.inherent + " inherent risk",
+        riskStatus: r.riskStatus, rsInk: rs.ink, rsBg: rs.bg, rsBd: rs.bd,
+        acLabel: a.l, acInk: a.ink, acBg: a.bg, acBd: a.bd,
+        rvLabel: rv.l, rvInk: rv.ink, rvBg: rv.bg, rvBd: rv.bd,
+        liability: money(r.liability),
+        open: openTop, chev: openTop ? "rotate(90deg)" : "none",
+        toggle: () => this.setState({ open: S.open === r.id ? null : r.id }),
+        facts, what: r.what, outcome: r.outcome || "", hasOutcome: !!r.outcome,
+        controls: r.controls.map((t) => ({ t })), hasControls: r.controls.length > 0, noControls: r.controls.length === 0,
+        plan: r.plan || "No plan recorded", planInk: r.plan ? "#cbd5e1" : "#c2a63d",
+        evidence: r.evidence === "Not recorded" ? "Evidence not recorded" : "Evidence: " + r.evidence,
+
+        signed: !!acc,
+        signedHead: accSt === "revoked" ? "This acceptance was revoked" : "Accepted by " + acc0(acc) + " on " + (acc ? acc.on : ""),
+        statement: acc ? acc.statement : "",
+        signFacts: acc ? [
+          { k: "SIGNED BY", v: acc.by },
+          { k: "WHEN", v: acc.on },
+          { k: "REGISTER REF", v: acc.register || "Not recorded" },
+          { k: "BACKED BY", v: acc.authorizedBy },
+        ] : [],
+        signedFoot: accSt === "revoked"
+          ? "Revoking ends the acceptance; it does not remove it. The risk above is open again, and this signature cannot be reused or re-signed."
+          : "Recorded once and never rewritten, including the time, the signing address and who held authority at that moment. There is no expiry date and no renewal — a later change request is what discharges it.",
+
+        canSign: signable && !acc,
+        nameVal: name, stmtVal: stmt,
+        setName: (e) => this.setState({ names: { ...S.names, [r.id]: e.target.value } }),
+        setStatement: (e) => this.setState({ stmts: { ...S.stmts, [r.id]: e.target.value } }),
+        stmtCount: stmt.length > 0 ? stmt.length + " of 2,000 characters" : "Up to 2,000 characters.",
+        toggleConfirm: () => this.setState({ confirmed: { ...S.confirmed, [r.id]: !conf } }),
+        cbBg: conf ? "#0078D4" : "rgba(255,255,255,.04)", cbBd: conf ? "#0078D4" : "rgba(255,255,255,.18)", cbInk: conf ? "#fff" : "transparent",
+        signBg: canSubmit ? "#0078D4" : "rgba(255,255,255,.06)", signInk: canSubmit ? "#fff" : "#475569", signCur: canSubmit ? "pointer" : "default",
+        authorityFoot: r.workload
+          ? "You are signing as an Accountable holder for " + r.workload + ". Your MSP cannot sign this for you."
+          : "This check has no single workload owner, so any signed-in person here may sign it. Your MSP cannot sign it for you.",
+        sign: () => canSubmit && this.setState({ modal: { kind: "sign", id: r.id, name: name.trim(), stmt: stmt.trim(), workload: r.workload, holders: r.holders } }),
+
+        blocked: noHolder || notMine,
+        blockBd: noHolder ? "rgba(194,166,61,.42)" : "rgba(248,113,113,.38)",
+        blockBg: noHolder ? "rgba(194,166,61,.06)" : "rgba(248,113,113,.05)",
+        blockInk: noHolder ? "#c2a63d" : "#f87171",
+        blockHead: noHolder ? "Nobody can sign this yet" : "You are not the person who can sign this",
+        blockBody: noHolder
+          ? "Nobody currently holds Accountable for " + r.workload + ", and acceptance follows that role rather than a per-risk assignment. Assign a holder and this becomes signable — by them, or by you if it is you."
+          : "Accountable for " + r.workload + " is held by " + r.holders.join(" and ") + ". Any of them can sign this line; you cannot sign on their behalf, and neither can your MSP.",
+        hasBlockLink: true,
+        blockLinkLabel: noHolder ? "Open Ownership / RACI to assign a holder" : "See the current holders on Ownership / RACI",
+        blockLink: () => this.setState({ modal: { kind: "raci", workload: r.workload } }),
+
+        docLine: r.versions.length ? r.versions.length + (r.versions.length === 1 ? " version" : " versions") : "not prepared",
+        noDoc: r.versions.length === 0, hasDoc: r.versions.length > 0,
+        versions: r.versions.map((v) => ({ n: v.n, label: VS[v.state].l, ink: VS[v.state].ink, bg: VS[v.state].bg, bd: VS[v.state].bd, note: v.note, when: v.when })),
+        needsDocSign: r.versions.length > 0 && r.versions[0].state === "unsigned-required",
+        signDoc: () => this.setState({ modal: { kind: "doc", id: r.id } }),
+      };
+    });
+
+    function acc0(a) { return a ? a.by : ""; }
+
+    const counts = {};
+    RISKS.forEach((r) => { counts[r.riskStatus] = (counts[r.riskStatus] || 0) + 1; });
+    const statusChips = ["Open", "Mitigating", "Accepted", "Closed"].filter((k) => counts[k]).map((k) => ({ label: k, n: counts[k], ink: RS[k].ink, bg: RS[k].bg, bd: RS[k].bd }));
+    const acceptedTotal = RISKS.filter((r) => r.acc && r.acc.status === "active").reduce((s, r) => s + r.liability, 0);
+    const openTotal = RISKS.filter((r) => !r.acc || r.acc.status === "revoked").reduce((s, r) => s + r.liability, 0);
+
+    const plotted = RISKS.filter((r) => r.likelihood != null);
+    const cells = [];
+    for (let y = 5; y >= 1; y--) for (let x = 1; x <= 5; x++) {
+      const n = plotted.filter((r) => r.likelihood === y && r.impact === x).length;
+      const heat = y * x;
+      const base = heat >= 15 ? "248,113,113" : heat >= 9 ? "251,191,36" : heat >= 5 ? "56,189,248" : "148,163,184";
+      cells.push({ n: n || "", tip: n ? n + " risk at likelihood " + y + ", impact " + x : "Likelihood " + y + ", impact " + x,
+        bg: n ? "rgba(" + base + ",.20)" : "rgba(255,255,255,.02)", bd: n ? "rgba(" + base + ",.45)" : "rgba(255,255,255,.05)", ink: n ? "#f8fafc" : "transparent" });
+    }
+
+    const DEC = RISKS.filter((r) => r.acc).map((r) => {
+      const state = r.riskStatus === "Closed" ? "live" : r.acc.status === "revoked" ? "proposed" : r.review === "due" || r.review === "overdue" ? "due" : "live";
+      const ST = { live: { ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.26)" }, due: { ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.26)" }, proposed: { ink: "#94a3b8", bg: "transparent", bd: "rgba(148,163,184,.25)" } }[state];
+      return { state, stInk: ST.ink, stBg: ST.bg, stBd: ST.bd, title: r.title, obligation: r.obligation === "Not recorded" ? "No citation" : r.obligation,
+        review: r.reviewCopy || "No clock", revInk: r.review === "overdue" ? "#f87171" : "#64748b",
+        click: () => this.setState({ open: r.id }) };
+    });
+
+    const M = S.modal;
+    const mSpec = !M ? null : M.kind === "sign"
+      ? { title: "Sign this acceptance as " + M.name + "?", body: "The line is recorded as accepted the moment you confirm, along with your statement word for word, the time, your address and who held authority for the workload right now.", note: "It cannot be signed a second time and it does not expire. If your position changes later, your MSP revokes it and raises the risk again — the original signature stays on the record either way.", cta: "Confirm and sign", cancel: "Go back" }
+      : M.kind === "doc"
+      ? { title: "Signing the whole document", body: "This signs the current version of the risk decision document as one act, separately from the per-line acceptances above. It needs your drawn signature, so it opens the document view rather than completing here.", note: "This prototype does not carry the document view yet. The endpoint behind it is live, and refuses a version that has been superseded or already signed.", cta: "Understood", cancel: "Close" }
+      : { title: "Authority comes from Ownership / RACI", body: "Who may accept a risk follows whoever holds Accountable for " + (M.workload || "the workload") + " right now, not a per-risk assignment. Changing the holder there changes who can sign here immediately.", note: "Already-signed acceptances are unaffected — each one keeps the holders who backed it at the time.", cta: "Open Ownership / RACI", cancel: "Stay here" };
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      isLoading, isFailed, isEmpty, hasRows,
+      stateLine: isLoading ? "Reading your register" : isFailed ? "Could not read your register" : isEmpty ? "Live — 0 risks recorded" : "Live — " + RISKS.length + " risks",
+      stateDot: isFailed ? "#f87171" : isLoading ? "#475569" : "#34d399",
+      stateInk: isFailed ? "#f87171" : "#64748b",
+      skeletons: [{ w1: "42%", w2: "64%" }, { w1: "36%", w2: "52%" }, { w1: "39%", w2: "58%" }, { w1: "33%", w2: "48%" }],
+      retry: () => this.setState({ failed: "live" }),
+
+      riskCount: RISKS.length, statusChips,
+      liabilityLine: money(acceptedTotal) + " of named exposure sits with you under a signature · " + money(openTotal) + " is still open",
+      clocks: [
+        { tag: "RISK", note: "The risk's own state. It can be mitigating with nothing signed, or open again after a revoked signature.", ink: "#38bdf8", bg: "rgba(56,189,248,.10)", bd: "rgba(56,189,248,.26)" },
+        { tag: "ACCEPTANCE", note: "Your signature. Awaiting yours, signed, or revoked — and never expired, because a signature does not lapse.", ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.26)" },
+        { tag: "REVIEW", note: "The review clock. Falling overdue raises a flag; it never invalidates a signature or closes a risk.", ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.26)" },
+      ],
+      risks,
+      cells,
+      yLabels: [{ t: "L5" }, { t: "L4" }, { t: "L3" }, { t: "L2" }, { t: "L1" }],
+      xLabels: [{ t: "I1" }, { t: "I2" }, { t: "I3" }, { t: "I4" }, { t: "I5" }],
+      plotLine: plotted.length + " of " + RISKS.length + " risks are plotted",
+      unplottedLine: RISKS.length - plotted.length === 0 ? "Every risk carries both coordinates." : (RISKS.length - plotted.length) + " risk has no likelihood or impact recorded, so it appears in the register below but nowhere on this map.",
+
+      decisions: DEC, decCountLine: DEC.length + " derived from the risks above",
+
+      modalShow: !!M,
+      modalTitle: mSpec ? mSpec.title : "", modalBody: mSpec ? mSpec.body : "", modalNote: mSpec ? mSpec.note : "",
+      modalCta: mSpec ? mSpec.cta : "", modalCancelLabel: mSpec ? mSpec.cancel : "",
+      modalCancel: () => this.setState({ modal: null }),
+      modalGo: () => {
+        if (!M) return this.setState({ modal: null });
+        if (M.kind === "sign") {
+          this.setState({ modal: null, open: M.id, signedNow: { ...S.signedNow, [M.id]: { status: "active", by: M.name, on: "3 Sep 2026, just now", register: "Pending register entry", statement: M.stmt,
+            authorizedBy: M.workload ? (M.holders[0] || M.name) + ", as Accountable for " + M.workload + " at the time of signing" : "No workload owner resolved for this check at the time of signing" } } });
+        } else this.setState({ modal: null });
+      },
+
+      ledgerShow: P.showLedger !== false,
+      ledgerOpen: S.ledger,
+      ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger: [
+        { gap: "No second signature, on a line or on a document. Acceptance is written once and cannot be replaced, re-signed or amended.", where: "§9.3" },
+        { gap: "No renewal on your behalf. Your MSP has no path to re-accept or extend anything you signed, by design.", where: "§9.6" },
+        { gap: "No name check. The name you type is recorded as typed and is never matched against your account.", where: "§9.5" },
+        { gap: "No document produced on request. Your MSP prepares it so it always has a real author; before that a version has no readable document.", where: "§9.9" },
+        { gap: "No authority check on cross-cutting risks. Cost, governance and licence checks resolve to no workload owner, so anyone signed in here may sign them.", where: "§9.8" },
+        { gap: "No line items. A risk covering 22 accounts is one line here; the individual objects are tracked by your MSP and not served to this page.", where: "§6.2" },
+        { gap: "No structured owner on a risk. The owner shown is display text; the person who may sign is resolved through the workload instead.", where: "§4" },
+        { gap: "No fabricated values. Anything unrecorded reads \"Not recorded\" rather than a zero, a dash or a guessed default.", where: "§8" },
+        { gap: "No difference between an empty register and a tenant we cannot identify — both answer with an empty list.", where: "§8" },
+        { gap: "No provenance for a risk raised by a declined remediation step. The pointer exists in the database but is not served, so such a risk looks authored from scratch.", where: "§7.3" },
+        { gap: "Two separate registers use the name \"policy decisions\". This page shows only the risk-derived ones and links to the other rather than merging them.", where: "§0.1" },
+        { gap: "Whether a risk's own Expired state should still exist is unsettled, so no risk is shown as expired here.", where: "§2" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

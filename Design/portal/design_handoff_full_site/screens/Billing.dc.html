@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes skelPulse{0%,100%{opacity:.5}50%{opacity:.9}}
+</style>
+</helmet>
+<div data-screen-label="Billing" data-pv2-bill-receipts-source="{{sourceMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:24px 30px 56px;padding-right:max(30px, calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Billing</span>
+      <span title="What you have been charged, and where to change your payment details. This page shows money only — hours live on My Architect." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+      <span onClick="{{openStripe}}" style="margin-left:auto;font-size:12.5px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:#005A9E">Manage payment in Stripe</span>
+    </div>
+
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{skeletons}}" as="s" hint-placeholder-count="4">
+          <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.02);padding:16px;display:flex;flex-direction:column;gap:9px;animation:skelPulse 1.6s ease-in-out infinite">
+            <div style="height:10px;width:{{s.w1}};border-radius:999px;background:rgba(255,255,255,.07)"></div>
+            <div style="height:9px;width:{{s.w2}};border-radius:999px;background:rgba(255,255,255,.05)"></div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isFixture}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:14px 16px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">Your billing history could not be read</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:620px">This is a failed read, not a clean ledger. You may well have invoices — nothing is listed below because nothing could be fetched, and we would rather show you that than an empty table you would read as "never charged".</span>
+          <span onClick="{{retry}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">Try again</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isLive}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:6px 20px 14px">
+        <div style="display:flex;align-items:center;gap:12px;padding:13px 0 8px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Receipts</span>
+          <span style="font-size:11px;color:#64748b">{{receiptMeta}}</span>
+        </div>
+
+        <sc-if value="{{noReceipts}}" hint-placeholder-val="{{ false }}">
+          <div style="border-top:1px solid rgba(255,255,255,.06);padding:22px 0 8px;display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:13px;font-weight:600;color:#f8fafc">You have never been invoiced</span>
+            <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:620px">This is a real, successful read of your billing ledger: it holds no invoices for you. An empty ledger and a ledger we could not reach are different answers, and this is the first one.</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{hasReceipts}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:12px;padding-bottom:5px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:78px;flex:none">DATE</span>
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;min-width:0;flex:1">WHAT FOR</span>
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:74px;flex:none;text-align:right">AMOUNT</span>
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:66px;flex:none;text-align:center">STATUS</span>
+            <span style="width:70px;flex:none"></span>
+          </div>
+          <sc-for list="{{receipts}}" as="r" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06)">
+              <span style="font-size:11.5px;color:#94a3b8;width:78px;flex:none;white-space:nowrap">{{r.date}}</span>
+              <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                <span style="font-size:12.5px;color:#e2e8f0;line-height:1.4">{{r.what}}</span>
+                <span style="font-size:10.5px;color:#64748b;font-family:ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{r.ref}}</span>
+              </div>
+              <span style="font-size:12.5px;color:#e2e8f0;width:74px;flex:none;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">{{r.amount}}</span>
+              <span style="font-size:10px;font-weight:600;color:{{r.stInk}};background:{{r.stBg}};border:1px solid {{r.stBd}};border-radius:999px;padding:3px 0;width:66px;flex:none;text-align:center">{{r.status}}</span>
+              <sc-if value="{{r.downloadable}}" hint-placeholder-val="{{ true }}">
+                <span onClick="{{r.download}}" style="font-size:11px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:5px 0;width:70px;flex:none;text-align:center;cursor:pointer;white-space:nowrap" style-hover="background:rgba(255,255,255,.05)">Receipt</span>
+              </sc-if>
+              <sc-if value="{{r.noPdf}}" hint-placeholder-val="{{ false }}">
+                <span title="No PDF was ever generated for this invoice, so there is nothing to download. The charge itself is real." style="font-size:10.5px;color:#475569;width:70px;flex:none;text-align:center;cursor:help">No PDF</span>
+              </sc-if>
+            </div>
+          </sc-for>
+          <span style="display:block;font-size:10.5px;color:#475569;line-height:1.55;border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:2px">{{receiptFoot}}</span>
+        </sc-if>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:11px">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Your payment details</span>
+        </div>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:660px">Cards, billing address and past Stripe invoices are held by Stripe, not by this portal. The button above opens your own Stripe billing portal, where changing a card or downloading a Stripe invoice takes effect immediately.</span>
+        <span style="font-size:11px;color:#475569;line-height:1.55;max-width:660px">A receipt in the list above and a Stripe invoice are not always the same document — the two ledgers do not hold identical sets, so a charge may appear in one and not the other.</span>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Monitoring plans</span>
+          <span style="font-size:10px;font-weight:600;color:#c2a63d;background:rgba(194,166,61,.10);border:1px solid rgba(194,166,61,.30);border-radius:999px;padding:3px 9px">Illustrative, not your account</span>
+        </div>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">These three tiers are what monitoring looks like as a shape. They are not read from your account and they are not quotes. Monitoring is priced per seat rather than at a flat monthly figure, so no card below can honestly show a price — and no tenant currently holds a monthly monitoring subscription for this page to read a live plan state from.</span>
+        <div style="display:flex;gap:11px;flex-wrap:wrap">
+          <sc-for list="{{tiers}}" as="t" hint-placeholder-count="3">
+            <div style="flex:1;min-width:min(210px,100%);border:1px solid {{t.bd}};background:{{t.bg}};border-radius:12px;padding:14px 15px 13px;display:flex;flex-direction:column;gap:8px">
+              <span style="font-size:13px;font-weight:700;color:#f8fafc">{{t.name}}</span>
+              <span style="font-size:12px;color:{{t.priceInk}};line-height:1.45">{{t.price}}</span>
+              <div style="display:flex;flex-direction:column;gap:5px;padding-top:2px">
+                <sc-for list="{{t.lines}}" as="l" hint-placeholder-count="3">
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.5">{{l.t}}</span>
+                </sc-for>
+              </div>
+              <span style="font-size:10.5px;color:#475569;line-height:1.5;padding-top:4px;margin-top:auto">{{t.foot}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px;flex-wrap:wrap">
+          <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:520px">Switching tier, changing to annual billing or adding an option are all conversations with your MSP rather than buttons here — a control that repriced a hypothetical would look like it was changing what you pay.</span>
+          <span onClick="{{contact}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:8px 14px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:rgba(255,255,255,.04)">Ask about monitoring</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+        </div>
+        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="7">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{modalShow}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:60;background:rgba(2,6,23,.72);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="width:470px;max-width:100%;background:#0b1120;border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);padding:20px 22px 18px;display:flex;flex-direction:column;gap:11px">
+        <span style="font-size:14.5px;font-weight:700;color:#f8fafc">{{modalTitle}}</span>
+        <span style="font-size:12.5px;color:#94a3b8;line-height:1.6">{{modalBody}}</span>
+        <span style="font-size:11.5px;color:#c2a63d;line-height:1.55">{{modalNote}}</span>
+        <div style="display:flex;align-items:center;gap:9px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px">
+          <span onClick="{{modalClose}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer">{{modalCta}}</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;live-empty&quot;,&quot;loading&quot;,&quot;fixture&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data honesty&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;},&quot;openPanel&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(spec: any) =&gt; void&quot;}}">
+class Component extends DCLogic {
+  state = { modal: null, ledger: true, failed: null };
+
+  renderVals() {
+    const S = this.state;
+    const P = this.props;
+    const ds = S.failed !== null ? S.failed : (P.dataState || "live");
+
+    const isLoading = ds === "loading";
+    const isFixture = ds === "fixture";
+    const isLive = ds === "live" || ds === "live-empty";
+    const noReceipts = ds === "live-empty";
+
+    const ROWS = [
+      { date: "29 Jul 2026", what: "Tenant monitoring — July", ref: "INV-2026-0714", amount: "$1,180.00", paid: true, pdf: true },
+      { date: "1 Jul 2026", what: "Architect retainer — Q3", ref: "INV-2026-0688", amount: "$4,500.00", paid: true, pdf: true },
+      { date: "24 Jun 2026", what: "Identity assessment", ref: "INV-2026-0651", amount: "$2,750.00", paid: true, pdf: true },
+      { date: "1 Jun 2026", what: "Tenant monitoring — June", ref: "INV-2026-0602", amount: "$1,180.00", paid: true, pdf: false },
+      { date: "18 May 2026", what: "Onboarding — one-off", ref: "inv_2148", amount: "$960.00", paid: false, pdf: false },
+    ];
+
+    const PAID = { ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" };
+    const PEND = { ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" };
+
+    const receipts = ROWS.map((r) => {
+      const st = r.paid ? PAID : PEND;
+      return { date: r.date, what: r.what, ref: r.ref, amount: r.amount,
+        status: r.paid ? "Paid" : "Pending", stInk: st.ink, stBg: st.bg, stBd: st.bd,
+        downloadable: r.pdf, noPdf: !r.pdf,
+        download: () => this.setState({ modal: { kind: "dl", ref: r.ref } }) };
+    });
+
+    const M = S.modal;
+    const mSpec = !M ? null : M.kind === "dl"
+      ? { title: "Downloading " + M.ref, body: "The PDF is served straight from your MSP's own store, which is why a receipt with no stored file shows no button rather than a link that fails.", note: "This prototype does not carry the file itself. The download path behind the button is live.", cta: "Close" }
+      : M.kind === "stripe"
+      ? { title: "Opening your Stripe billing portal", body: "This hands you to Stripe with a session scoped to your account. Cards, billing address and Stripe's own invoices are managed there, and anything you change takes effect immediately.", note: "This prototype stops at the handoff. The session behind the button is real.", cta: "Close" }
+      : { title: "Ask about monitoring", body: "Monitoring is priced per seat, so a quote depends on your seat count on the day. Your MSP prices it against your tenant rather than a card on this page.", note: "No pricing shown on this page is a quote, and nothing here can start or change a plan.", cta: "Close" };
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      sourceMarker: ds,
+      isLoading, isFixture, isLive, noReceipts, hasReceipts: isLive && !noReceipts,
+      stateLine: isLoading ? "Reading your billing history" : isFixture ? "Could not read your billing history" : noReceipts ? "Live — no invoices on your ledger" : "Live — " + ROWS.length + " invoices",
+      stateDot: isFixture ? "#f87171" : isLoading ? "#475569" : "#34d399",
+      stateInk: isFixture ? "#f87171" : "#64748b",
+      skeletons: [{ w1: "34%", w2: "58%" }, { w1: "28%", w2: "46%" }, { w1: "31%", w2: "52%" }, { w1: "26%", w2: "44%" }],
+      retry: () => this.setState({ failed: "live" }),
+
+      receipts,
+      receiptMeta: noReceipts ? "your ledger, read successfully" : "newest first · every invoice on your ledger",
+      receiptFoot: "One invoice with an unusable reference was dropped rather than listed as a row you could not open. Amounts are shown exactly as billed.",
+
+      openStripe: () => this.setState({ modal: { kind: "stripe" } }),
+      contact: () => this.setState({ modal: { kind: "ask" } }),
+
+      tiers: [
+        { name: "Foundation", price: "Priced per seat", priceInk: "#94a3b8", bd: "rgba(255,255,255,.09)", bg: "rgba(255,255,255,.015)",
+          lines: [{ t: "Drift and security signals, hourly" }, { t: "Monthly written summary" }, { t: "Business-hours response" }],
+          foot: "No flat monthly figure exists to show." },
+        { name: "Growth", price: "Priced per seat", priceInk: "#94a3b8", bd: "rgba(0,120,212,.35)", bg: "rgba(0,120,212,.04)",
+          lines: [{ t: "All six signal engines" }, { t: "Change control and remediation tracking" }, { t: "Named architect contact" }],
+          foot: "No flat monthly figure exists to show." },
+        { name: "Premier", price: "Priced per seat", priceInk: "#94a3b8", bd: "rgba(255,255,255,.09)", bg: "rgba(255,255,255,.015)",
+          lines: [{ t: "Everything in Growth" }, { t: "Signed security plan each quarter" }, { t: "Out-of-hours escalation" }],
+          foot: "Its monthly rate is unsettled internally, so none is quoted." },
+      ],
+
+      modalShow: !!M,
+      modalTitle: mSpec ? mSpec.title : "", modalBody: mSpec ? mSpec.body : "",
+      modalNote: mSpec ? mSpec.note : "", modalCta: mSpec ? mSpec.cta : "",
+      modalClose: () => this.setState({ modal: null }),
+
+      ledgerShow: P.showLedger !== false,
+      ledgerOpen: S.ledger,
+      ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger: [
+        { gap: "No prices on the monitoring cards. Monitoring is metered per seat and carries no flat monthly figure, so a number there would be invented.", where: "§8.1" },
+        { gap: "No tier switch, no annual toggle, no add-on picker. A control that repriced a hypothetical would read as changing what you pay.", where: "§8.2" },
+        { gap: "No live plan state. No tenant holds a monthly monitoring subscription today, so there is nothing real to show as your current plan.", where: "§1.6" },
+        { gap: "No pay button on a receipt. Paying an invoice from the portal is built but not surfaced here; the button on each row downloads the PDF.", where: "§1.3" },
+        { gap: "No invoice detail page. The endpoint exists and is unused — a receipt opens its PDF rather than a screen.", where: "§1.2" },
+        { gap: "No card details on this page. Cards and billing address live with Stripe, reached through the button at the top.", where: "§1.6" },
+        { gap: "No fake rows when the read fails. A failed fetch says so; an empty ledger says that instead, and the two never share a state.", where: "§5" },
+        { gap: "No retainer rate. Hours and their rate belong to My Architect, and this page shows money only from the invoice ledger.", where: "§7" },
+        { gap: "No download where no PDF was stored. A receipt without a file shows why rather than a link that would 404.", where: "§1.4" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

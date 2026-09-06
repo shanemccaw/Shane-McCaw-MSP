@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes skelPulse{0%,100%{opacity:.5}50%{opacity:.9}}
+</style>
+</helmet>
+<div data-screen-label="Remediation tracking" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;padding:24px 30px 48px;padding-right:max(30px, calc(100% - 1010px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Remediation tracking</span>
+      <span title="Three separate facts per item: what you claim, whether a re-scan agreed, and how it finally resolved. A tick on its own is never evidence." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+      <span style="margin-left:auto;font-size:11px;color:#64748b">{{scanMeta}}</span>
+    </div>
+
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{skeletons}}" as="s" hint-placeholder-count="3">
+          <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.02);padding:16px;display:flex;flex-direction:column;gap:9px;animation:skelPulse 1.6s ease-in-out infinite">
+            <div style="height:10px;width:{{s.w1}};border-radius:999px;background:rgba(255,255,255,.07)"></div>
+            <div style="height:9px;width:{{s.w2}};border-radius:999px;background:rgba(255,255,255,.05)"></div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{hasBody}}" hint-placeholder-val="{{ true }}">
+
+      <div style="display:flex;gap:7px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,.07);padding-bottom:1px">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+          <div onClick="{{t.click}}" style="display:flex;align-items:center;gap:7px;padding:8px 13px 9px;border-bottom:2px solid {{t.line}};cursor:pointer" style-hover="opacity:.85">
+            <span style="font-size:12.5px;font-weight:600;color:{{t.ink}}">{{t.label}}</span>
+            <span style="font-size:10.5px;font-weight:700;color:{{t.countInk}};border:1px solid {{t.countBorder}};border-radius:999px;padding:1px 6px;font-variant-numeric:tabular-nums">{{t.count}}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{tabChecklist}}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:14px">
+
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:11px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-size:13.5px;font-weight:600;color:#f8fafc">How each fix can be delivered</span>
+              <span style="font-size:11px;color:#64748b">resolved per item against your tenant, not a global setting</span>
+              <span style="margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.07em;color:{{ceilInk}};border:1px solid {{ceilBorder}};background:{{ceilBg}};border-radius:999px;padding:3px 9px">{{ceilLabel}}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">
+              <sc-for list="{{routeLegend}}" as="r" hint-placeholder-count="3">
+                <div style="border:1px solid {{r.border}};border-radius:11px;background:{{r.bg}};padding:11px 13px 12px;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:{{r.ink}}">{{r.name}}</span>
+                    <span style="margin-left:auto;font-size:10.5px;color:#64748b;font-variant-numeric:tabular-nums">{{r.n}}</span>
+                  </div>
+                  <span style="font-size:11px;color:#94a3b8;line-height:1.55;text-wrap:pretty">{{r.desc}}</span>
+                </div>
+              </sc-for>
+            </div>
+            <span style="font-size:10.5px;color:#475569;line-height:1.6;text-wrap:pretty">{{ceilNote}}</span>
+          </div>
+
+          <sc-if value="{{clHasItems}}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-size:13.5px;font-weight:600;color:#f8fafc">This scan's findings</span>
+                <span style="font-size:11px;color:#64748b">{{clMeta}}</span>
+              </div>
+              <sc-for list="{{clItems}}" as="c" hint-placeholder-count="5">
+                <div style="border:1px solid rgba(255,255,255,.09);border-radius:13px;background:rgba(255,255,255,.02);padding:13px 16px 14px;display:flex;flex-direction:column;gap:10px">
+                  <div style="display:flex;align-items:flex-start;gap:11px;flex-wrap:wrap">
+                    <span style="font-size:9.5px;font-weight:700;letter-spacing:.05em;color:{{c.sevInk}};border:1px solid {{c.sevBorder}};background:{{c.sevBg}};border-radius:999px;padding:2px 8px;flex:none;margin-top:2px">{{c.sevLabel}}</span>
+                    <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+                      <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                        <span style="font-size:13px;font-weight:600;color:#f8fafc;text-wrap:pretty">{{c.title}}</span>
+                        <span style="font-size:10px;font-family:ui-monospace,Menlo,monospace;color:#475569">{{c.checkKey}}</span>
+                      </div>
+                      <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;text-wrap:pretty">{{c.desc}}</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex:none;width:184px">
+                      <span style="font-size:10.5px;font-weight:600;color:{{c.statusInk}};border:1px solid {{c.statusBorder}};background:{{c.statusBg}};border-radius:999px;padding:2.5px 9px">{{c.statusLabel}}</span>
+                      <span style="font-size:10px;color:{{c.vInk}}">{{c.vLabel}}</span>
+                    </div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.05);padding-top:10px">
+                    <span style="font-size:9.5px;font-weight:700;letter-spacing:.06em;color:{{c.routeInk}};border:1px solid {{c.routeBorder}};background:{{c.routeBg}};border-radius:999px;padding:2.5px 9px">{{c.routeLabel}}</span>
+                    <sc-if value="{{c.capped}}" hint-placeholder-val="{{ false }}">
+                      <span title="{{c.cappedTip}}" style="font-size:10px;color:#c2a63d;cursor:help">capped by your write consent</span>
+                    </sc-if>
+                    <sc-if value="{{c.noContent}}" hint-placeholder-val="{{ false }}">
+                      <span style="font-size:10px;color:#8494ab;border:1px dashed rgba(132,148,171,.4);border-radius:999px;padding:2px 8px">no verified content yet</span>
+                    </sc-if>
+                    <div style="margin-left:auto;display:flex;gap:7px;flex-wrap:wrap">
+                      <div onClick="{{c.primaryClick}}" style="display:flex;align-items:center;gap:7px;border:1px solid {{c.primaryBorder}};border-radius:6px;background:{{c.primaryBg}};padding:6px 11px;cursor:pointer" style-hover="border-color:rgba(0,120,212,.55)">
+                        <span style="font-size:11.5px;font-weight:600;color:{{c.primaryInk}}">{{c.primaryLabel}}</span>
+                      </div>
+                      <div onClick="{{c.raiseClick}}" style="display:flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.12);border-radius:6px;background:rgba(255,255,255,.02);padding:6px 11px;cursor:pointer" style-hover="border-color:rgba(0,120,212,.5)">
+                        <span style="font-size:11.5px;font-weight:600;color:#cbd5e1">Raise a change request</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+              <span style="font-size:10.5px;color:#475569;line-height:1.6;text-wrap:pretty">Every row is a real adverse finding — critical or warning — from your latest scan, keyed by check. Titles and descriptions come from the finding itself, so they are yours, not a fixed catalogue. Marking one here writes the same claim the 28-step programme reads.</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{clEmpty}}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:26px 22px;display:flex;flex-direction:column;gap:8px;align-items:flex-start">
+              <span style="font-size:13.5px;font-weight:600;color:#f8fafc">{{clEmptyHead}}</span>
+              <span style="font-size:11.5px;color:#94a3b8;line-height:1.6;max-width:600px;text-wrap:pretty">{{clEmptyBody}}</span>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{tabProgramme}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:16px">
+
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:16px 20px 15px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Pillar scores</span>
+              <span style="font-size:11px;color:#64748b">{{scoreMeta}}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:13px">
+              <sc-for list="{{pillars}}" as="p" hint-placeholder-count="6">
+                <div onClick="{{p.click}}" style="border:1px solid rgba(255,255,255,.08);border-radius:11px;background:rgba(255,255,255,.02);padding:11px 12px 12px;display:flex;flex-direction:column;gap:7px;cursor:pointer" style-hover="border-color:rgba(0,120,212,.4)">
+                  <span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8">{{p.name}}</span>
+                  <div style="display:flex;align-items:baseline;gap:7px">
+                    <span style="font-size:24px;font-weight:800;color:{{p.nowInk}};letter-spacing:-.01em;font-variant-numeric:tabular-nums">{{p.now}}</span>
+                    <sc-if value="{{p.hasDelta}}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;font-weight:700;color:{{p.deltaInk}};font-variant-numeric:tabular-nums">{{p.delta}}</span></sc-if>
+                  </div>
+                  <span style="font-size:10.5px;color:#64748b;line-height:1.5">{{p.sub}}</span>
+                  <span style="font-size:9.5px;font-weight:700;letter-spacing:.07em;color:{{p.gateInk}};border:1px {{p.gateStyle}} {{p.gateBorder}};border-radius:999px;padding:2px 7px;align-self:flex-start">{{p.gateLabel}}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px;margin-top:13px;border-top:1px solid rgba(255,255,255,.05);padding-top:12px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{gateStroke}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                <span style="font-size:12.5px;font-weight:600;color:#e2e8f0">Copilot gate — {{gateHead}}</span>
+                <sc-for list="{{gateReasons}}" as="r" hint-placeholder-count="2"><span style="font-size:11.5px;color:#94a3b8;line-height:1.55">{{r.t}}</span></sc-for>
+              </div>
+            </div>
+            <span style="display:block;font-size:10.5px;color:#475569;margin-top:9px">A pillar with one scan has no before and no movement. A pillar with no scan has no score at all — neither is rendered as zero.</span>
+          </div>
+
+          <sc-if value="{{showPrice}}" hint-placeholder-val="{{ true }}">
+            <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:16px 20px 15px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Phases and fees</span>
+                <span style="font-size:11px;color:#64748b">a phase prices down only once every step in it reaches a terminal decision</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-top:13px">
+                <sc-for list="{{phases}}" as="ph" hint-placeholder-count="3">
+                  <div style="border:1px solid {{ph.border}};border-radius:11px;background:{{ph.bg}};padding:12px 13px 13px;display:flex;flex-direction:column;gap:8px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <span style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8">Phase {{ph.n}}</span>
+                      <span style="margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.07em;color:{{ph.readyInk}};border:1px solid {{ph.readyBorder}};border-radius:999px;padding:2px 7px">{{ph.readyLabel}}</span>
+                    </div>
+                    <span style="font-size:12px;color:#cbd5e1">{{ph.pillarLine}}</span>
+                    <div style="display:flex;align-items:baseline;gap:8px">
+                      <span style="font-size:22px;font-weight:800;color:#f8fafc;letter-spacing:-.01em;font-variant-numeric:tabular-nums">{{ph.fee}}</span>
+                      <sc-if value="{{ph.hasWas}}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#64748b;text-decoration:line-through;font-variant-numeric:tabular-nums">{{ph.was}}</span></sc-if>
+                    </div>
+                    <span style="font-size:11px;color:#94a3b8;line-height:1.55">{{ph.note}}</span>
+                    <div style="display:flex;height:5px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.05)">
+                      <div style="width:{{ph.verifiedW}};background:#34d399;flex:none"></div>
+                      <div style="width:{{ph.acceptedW}};background:#a78bfa;flex:none"></div>
+                      <div style="width:{{ph.claimedW}};background:rgba(52,211,153,.28);flex:none"></div>
+                    </div>
+                    <span style="font-size:10.5px;color:#64748b;font-variant-numeric:tabular-nums">{{ph.progressLine}}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:13px;border-top:1px solid rgba(255,255,255,.05);padding-top:13px">
+                <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                  <div style="display:flex;align-items:baseline;gap:8px">
+                    <span style="font-size:12.5px;font-weight:600;color:#e2e8f0">{{hireCta}}</span>
+                    <span style="font-size:16px;font-weight:800;color:#f8fafc;font-variant-numeric:tabular-nums">{{hirePrice}}</span>
+                    <span style="font-size:11.5px;color:#64748b;text-decoration:line-through;font-variant-numeric:tabular-nums">{{hireWas}}</span>
+                    <span style="font-size:11.5px;font-weight:600;color:#34d399;font-variant-numeric:tabular-nums">{{hireSaved}}</span>
+                  </div>
+                  <span style="font-size:11px;color:#94a3b8;line-height:1.55;max-width:620px">{{hireNote}}</span>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px">
+            <span style="font-size:13.5px;font-weight:600;color:#f8fafc">The 28-step programme</span>
+            <span style="font-size:11px;color:#64748b">{{stepMeta}}</span>
+            <div style="margin-left:auto;display:flex;gap:7px;flex-wrap:wrap">
+              <sc-for list="{{exports}}" as="e" hint-placeholder-count="3">
+                <div onClick="{{e.click}}" style="display:flex;align-items:center;gap:7px;border:1px solid {{e.border}};border-radius:6px;background:{{e.bg}};padding:6px 11px;cursor:{{e.cursor}};opacity:{{e.op}}" style-hover="border-color:rgba(0,120,212,.5)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{e.ink}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5M12 15V3"></path></svg>
+                  <span style="font-size:11.5px;font-weight:600;color:{{e.ink}}">{{e.label}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:14px;flex-wrap:wrap;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:9px 14px;background:rgba(255,255,255,.015)">
+            <sc-for list="{{vLegend}}" as="l" hint-placeholder-count="4">
+              <span title="{{l.tip}}" style="display:flex;align-items:center;gap:7px;font-size:11px;color:#94a3b8;cursor:help">
+                <span style="width:9px;height:9px;border-radius:999px;border:1.5px {{l.style}} {{l.dot}};background:{{l.fill}};flex:none"></span>{{l.k}} <span style="color:#64748b;font-variant-numeric:tabular-nums">{{l.n}}</span>
+              </span>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;align-items:flex-start;gap:9px;border:1px dashed rgba(148,163,184,.3);border-radius:10px;padding:10px 14px">
+            <span style="font-size:8.5px;font-weight:700;letter-spacing:.08em;color:#8494ab;border:1px solid rgba(132,148,171,.4);border-radius:999px;padding:2px 7px;flex:none;margin-top:1px">FIXED CATALOGUE</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">Step titles and descriptions are the same fixed 28 for every tenant. Only the status you set, whether a re-scan verified it, and how it resolved are yours. Your tenant's own findings are on the checklist tab.</span>
+          </div>
+
+          <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+            <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:6px 20px 14px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 0 6px">
+                <span style="font-size:12.5px;font-weight:700;color:#f8fafc">{{g.head}}</span>
+                <span style="font-size:11px;color:#64748b">{{g.sub}}</span>
+                <span style="margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.07em;color:{{g.readyInk}};border:1px solid {{g.readyBorder}};border-radius:999px;padding:2px 7px">{{g.readyLabel}}</span>
+              </div>
+              <sc-for list="{{g.pillars}}" as="pg" hint-placeholder-count="2">
+                <div style="display:flex;flex-direction:column;margin-top:6px">
+                  <div style="display:flex;align-items:center;gap:9px;padding:7px 0 5px;border-top:1px solid rgba(255,255,255,.06)">
+                    <span style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#8494ab">{{pg.name}}</span>
+                    <span style="font-size:10.5px;color:#475569">{{pg.count}}</span>
+                  </div>
+                  <sc-for list="{{pg.steps}}" as="s" hint-placeholder-count="5">
+                    <div style="display:flex;flex-direction:column;gap:8px;padding:10px 0;border-top:1px solid rgba(255,255,255,.04)">
+                      <div onClick="{{s.click}}" style="display:flex;align-items:flex-start;gap:11px;cursor:pointer" style-hover="opacity:.85">
+                        <span style="width:11px;height:11px;border-radius:999px;border:1.5px {{s.vStyle}} {{s.vDot}};background:{{s.vFill}};flex:none;margin-top:3px"></span>
+                        <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+                          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+                            <span style="font-size:10px;font-family:ui-monospace,Menlo,monospace;color:#475569;flex:none">{{s.id}}</span>
+                            <span style="font-size:12.5px;font-weight:600;color:{{s.titleInk}};text-wrap:pretty">{{s.title}}</span>
+                            <sc-if value="{{s.hasSev}}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-weight:700;letter-spacing:.05em;color:{{s.sevInk}};border:1px solid {{s.sevBorder}};border-radius:999px;padding:1.5px 7px;flex:none">{{s.sevLabel}}</span></sc-if>
+                          </div>
+                          <span style="font-size:11px;color:#64748b;line-height:1.5;text-wrap:pretty">{{s.problem}}</span>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex:none;width:196px">
+                          <span style="font-size:10.5px;font-weight:600;color:{{s.statusInk}};border:1px solid {{s.statusBorder}};background:{{s.statusBg}};border-radius:999px;padding:2.5px 9px;text-align:center">{{s.statusLabel}}</span>
+                          <span style="font-size:10px;color:{{s.vInk}};display:flex;align-items:center;gap:5px">{{s.vLabel}}</span>
+                          <span style="font-size:9.5px;font-weight:700;letter-spacing:.06em;color:{{s.termInk}}">{{s.termLabel}}</span>
+                        </div>
+                      </div>
+                      <div style="display:flex;gap:7px;flex-wrap:wrap;padding-left:22px">
+                        <sc-for list="{{s.actions}}" as="a" hint-placeholder-count="3">
+                          <div onClick="{{a.click}}" style="display:flex;align-items:center;gap:6px;border:1px solid {{a.border}};border-radius:6px;background:{{a.bg}};padding:5px 10px;cursor:pointer;opacity:{{a.op}}" style-hover="border-color:rgba(0,120,212,.5)">
+                            <span style="font-size:11px;font-weight:600;color:{{a.ink}}">{{a.label}}</span>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+
+          <span style="font-size:10.5px;color:#475569;line-height:1.6;text-wrap:pretty">28 steps. Steps 24 and 25 were removed from the catalogue and cannot be set. Three steps — s18, s27 and s30 — have no automated check and will never be verifiable; that is permanent, not pending. Exports record your claim; the evidence pack carries only what a re-scan confirmed.</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{tabBypass}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px;display:flex;flex-direction:column;gap:7px">
+            <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Fixed, but outside change control</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.6;max-width:720px;text-wrap:pretty">Where a re-scan verified a step and the same run also recorded a configuration change with no approved change request behind it. This is an observation, not a finding: nothing here is enforced, scored, or held against you. It exists so a verified fix and an unapproved change are not silently the same event.</span>
+          </div>
+
+          <sc-if value="{{bpHasItems}}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <sc-for list="{{bpItems}}" as="b" hint-placeholder-count="2">
+                <div style="border:1px solid rgba(255,255,255,.09);border-radius:13px;background:rgba(255,255,255,.02);padding:13px 16px 14px;display:flex;flex-direction:column;gap:9px">
+                  <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                    <span style="font-size:10px;font-family:ui-monospace,Menlo,monospace;color:#475569">{{b.stepId}}</span>
+                    <span style="font-size:13px;font-weight:600;color:#f8fafc;text-wrap:pretty">{{b.title}}</span>
+                    <span style="margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:{{b.verdictInk}};border:1px solid {{b.verdictBorder}};background:{{b.verdictBg}};border-radius:999px;padding:2px 8px">{{b.verdictLabel}}</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px">
+                    <sc-for list="{{b.rows}}" as="r" hint-placeholder-count="3">
+                      <div style="display:flex;flex-direction:column;gap:2px">
+                        <span style="font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#64748b">{{r.k}}</span>
+                        <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;text-wrap:pretty">{{r.v}}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{bpEmpty}}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:26px 22px;display:flex;flex-direction:column;gap:8px;align-items:flex-start">
+              <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Nothing to correlate</span>
+              <span style="font-size:11.5px;color:#94a3b8;line-height:1.6;max-width:620px;text-wrap:pretty">This is the common case, and it is a real answer rather than a blank panel: either no step is verified yet, no verified step is drift-tracked, or no unapproved change landed in the same run. Nothing is inferred when the join comes back empty.</span>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:15px 20px 16px;display:flex;flex-direction:column;gap:9px;margin-top:4px">
+        <span style="font-size:12.5px;font-weight:600;color:#e2e8f0">What this page does not do</span>
+        <sc-for list="{{ledger}}" as="l" hint-placeholder-count="5">
+          <div style="display:flex;align-items:flex-start;gap:9px">
+            <span style="width:5px;height:5px;border-radius:999px;background:#475569;flex:none;margin-top:6px"></span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.6;text-wrap:pretty">{{l.t}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{lpOpen}}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{lpClose}}" style="position:absolute;inset:0;z-index:20;background:rgba(2,6,23,.35)"></div>
+    <div style="position:absolute;z-index:21;top:0;right:0;bottom:0;width:368px;border-left:1px solid rgba(255,255,255,.10);background:#0b1120;box-shadow:-18px 0 48px rgba(0,0,0,.5);display:flex;flex-direction:column;min-height:0">
+      <div style="flex:none;display:flex;align-items:center;gap:10px;padding:16px 18px 14px;border-bottom:1px solid rgba(255,255,255,.08)">
+        <div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:14px;font-weight:600;color:#f8fafc">{{lpTitle}}</span><span style="font-size:11.5px;color:#64748b">{{lpState}}</span></div>
+        <div onClick="{{lpClose}}" style="margin-left:auto;width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:rgba(255,255,255,.06)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </div>
+      </div>
+      <div style="flex:1;overflow-y:auto;min-height:0;padding:16px 18px 20px;display:flex;flex-direction:column;gap:14px">
+        <sc-if value="{{lpHasRows}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:4px 14px 10px">
+            <sc-for list="{{lpRows}}" as="r" hint-placeholder-count="3">
+              <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.06)">
+                <span style="width:6px;height:6px;border-radius:999px;background:#64748b;flex:none;margin-top:5px"></span>
+                <div style="display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-size:12px;font-weight:600;color:#e2e8f0">{{r.k}}</span><span style="font-size:11px;color:#64748b;line-height:1.5">{{r.v}}</span></div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{lpHasNote}}" hint-placeholder-val="{{ false }}"><span style="font-size:11.5px;color:#94a3b8;line-height:1.55">{{lpNote}}</span></sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{shOpen}}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{shClose}}" style="position:absolute;inset:0;z-index:30;background:rgba(2,6,23,.62);display:flex;align-items:flex-start;justify-content:center;padding:44px 20px"></div>
+    <div style="position:absolute;z-index:31;top:44px;left:50%;transform:translateX(-50%);width:min(560px, calc(100% - 40px));max-height:calc(100% - 88px);border:1px solid rgba(255,255,255,.12);border-radius:14px;background:#0b1120;box-shadow:0 24px 64px rgba(0,0,0,.6);display:flex;flex-direction:column;min-height:0">
+      <div style="flex:none;display:flex;align-items:flex-start;gap:10px;padding:16px 18px 14px;border-bottom:1px solid rgba(255,255,255,.08)">
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+          <span style="font-size:14.5px;font-weight:600;color:#f8fafc;text-wrap:pretty">{{shTitle}}</span>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">{{shSub}}</span>
+        </div>
+        <div onClick="{{shClose}}" style="margin-left:auto;width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none" style-hover="background:rgba(255,255,255,.06)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </div>
+      </div>
+      <div style="flex:1;overflow-y:auto;min-height:0;padding:16px 18px 18px;display:flex;flex-direction:column;gap:13px">
+        <sc-if value="{{shHasBanner}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:flex-start;gap:10px;border:1px solid {{shBannerBorder}};background:{{shBannerBg}};border-radius:10px;padding:11px 13px">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.07em;color:{{shBannerInk}};border:1px solid {{shBannerBorder}};border-radius:999px;padding:2px 8px;flex:none;margin-top:1px">{{shBannerTag}}</span>
+            <span style="font-size:11.5px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">{{shBannerText}}</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{shHasRows}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:4px 14px 10px">
+            <sc-for list="{{shRows}}" as="r" hint-placeholder-count="3">
+              <div style="display:flex;flex-direction:column;gap:2px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.06)">
+                <span style="font-size:11.5px;font-weight:600;color:#e2e8f0;text-wrap:pretty">{{r.k}}</span>
+                <span style="font-size:11px;color:#8b98a9;line-height:1.55;text-wrap:pretty">{{r.v}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{shHasCode}}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:10px;background:rgba(2,6,23,.6);padding:12px 14px;display:flex;flex-direction:column;gap:5px;overflow-x:auto">
+            <sc-for list="{{shCode}}" as="c" hint-placeholder-count="3">
+              <span style="font-size:11px;font-family:ui-monospace,Menlo,monospace;color:{{c.ink}};white-space:pre;line-height:1.6">{{c.t}}</span>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{shForm}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:11px;font-weight:600;color:#cbd5e1">Your full name</span>
+              <input value="{{fName}}" onInput="{{setName}}" placeholder="As it should appear on the record" style="font-family:Inter,system-ui,sans-serif;font-size:12.5px;color:#f8fafc;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.13);border-radius:6px;padding:9px 11px;outline:none" style-focus="border-color:#0078D4">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:11px;font-weight:600;color:#cbd5e1">Why this risk is being accepted</span>
+              <textarea value="{{fStatement}}" onInput="{{setStatement}}" rows="4" placeholder="The reasoning that will be read at review, in your words" style="font-family:Inter,system-ui,sans-serif;font-size:12.5px;color:#f8fafc;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.13);border-radius:6px;padding:9px 11px;outline:none;resize:vertical;line-height:1.55" style-focus="border-color:#0078D4"></textarea>
+              <span style="font-size:10.5px;color:#475569">{{fCount}}</span>
+            </div>
+            <div onClick="{{toggleConfirm}}" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;border:1px solid {{fBoxBorder}};background:{{fBoxBg}};border-radius:10px;padding:11px 13px" style-hover="border-color:rgba(0,120,212,.45)">
+              <span style="width:15px;height:15px;border-radius:4px;border:1.5px solid {{fBoxTick}};background:{{fBoxFill}};flex:none;margin-top:1px;display:flex;align-items:center;justify-content:center">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="{{fTickInk}}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+              </span>
+              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">I accept this risk on behalf of my organisation. This is a permanent signed record with no expiry — it can be superseded, never deleted.</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{shHasNote}}" hint-placeholder-val="{{ false }}">
+          <span style="font-size:11px;color:#64748b;line-height:1.6;text-wrap:pretty">{{shNote}}</span>
+        </sc-if>
+      </div>
+      <sc-if value="{{shHasActions}}" hint-placeholder-val="{{ false }}">
+        <div style="flex:none;display:flex;align-items:center;gap:9px;padding:13px 18px;border-top:1px solid rgba(255,255,255,.08)">
+          <span style="font-size:10.5px;color:#475569;min-width:0;text-wrap:pretty">{{shFootNote}}</span>
+          <div onClick="{{shClose}}" style="margin-left:auto;border:1px solid rgba(255,255,255,.12);border-radius:6px;background:rgba(255,255,255,.02);padding:7px 13px;cursor:pointer;flex:none" style-hover="border-color:rgba(148,163,184,.4)">
+            <span style="font-size:11.5px;font-weight:600;color:#cbd5e1">{{shCancelLabel}}</span>
+          </div>
+          <sc-if value="{{shHasSubmit}}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{shSubmit}}" style="border:1px solid {{shSubmitBorder}};border-radius:6px;background:{{shSubmitBg}};padding:7px 14px;cursor:{{shSubmitCursor}};opacity:{{shSubmitOp}};flex:none" style-hover="border-color:rgba(0,120,212,.7)">
+              <span style="font-size:11.5px;font-weight:600;color:{{shSubmitInk}}">{{shSubmitLabel}}</span>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1080,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;clean-scan&quot;,&quot;single-scan&quot;,&quot;insufficient-data&quot;,&quot;loading&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data honesty&quot;},&quot;showPricing&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;},&quot;openPanel&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(spec: object) =&gt; void&quot;}}">
+class Component extends DCLogic {
+  state = { lp: null, tab: "checklist", sheet: null, fName: "", fStatement: "", fConfirm: false, declined: {} };
+
+  openP(spec) { if (this.props.openPanel) this.props.openPanel(spec); else this.setState({ lp: spec }); }
+  openSheet(sheet) { this.setState({ sheet, fName: "", fStatement: "", fConfirm: false }); }
+
+  renderVals() {
+    const ds = this.props.dataState ?? "live";
+    const isLoading = ds === "loading";
+    const oneScan = ds === "single-scan", noScan = ds === "insufficient-data", cleanScan = ds === "clean-scan";
+    const money = (n) => "$" + n.toLocaleString("en-US");
+    const S = this.state;
+
+    const STATUS = {
+      not_started: ["Not started", "#94a3b8", "rgba(148,163,184,.3)", "transparent"],
+      completed: ["Completed", "#34d399", "rgba(52,211,153,.4)", "rgba(52,211,153,.08)"],
+      already_handled: ["Already handled another way", "#60a5fa", "rgba(96,165,250,.35)", "rgba(96,165,250,.07)"],
+      not_applicable: ["Not applicable to this tenant", "#94a3b8", "rgba(148,163,184,.3)", "rgba(148,163,184,.05)"],
+      deferred: ["Deferring to a later phase", "#c2a63d", "rgba(194,166,61,.4)", "rgba(194,166,61,.07)"],
+      shane_handles: ["Have Shane do this one", "#00B4D8", "rgba(0,180,216,.4)", "rgba(0,180,216,.07)"],
+      accepted_risk: ["Accepted as a risk — signed", "#a78bfa", "rgba(167,139,250,.42)", "rgba(167,139,250,.08)"],
+    };
+    const READY = new Set(["completed", "already_handled", "not_applicable", "deferred", "accepted_risk"]);
+    const VSTATE = {
+      verified: ["Verified on re-scan", "#34d399", "solid", "#34d399", "#34d399", "A real scan found every mapped check clean."],
+      drift: ["Drifted — verification withdrawn", "#f87171", "solid", "#f87171", "#f87171", "A real scan found a problem on a mapped check, despite the claim."],
+      unverified: ["Not yet scanned", "#64748b", "solid", "#64748b", "transparent", "A claim exists; no scan has spoken to it yet. Any write resets to this."],
+      nocheck: ["No automated check exists", "#8494ab", "dashed", "#8494ab", "transparent", "Nothing maps to this step — it can never be verified. Permanent, not pending."],
+    };
+    const TERM = { verified: ["RESOLVED · VERIFIED", "#34d399"], accepted: ["RESOLVED · ACCEPTED", "#a78bfa"], outstanding: ["OUTSTANDING", "#8494ab"] };
+    const SEV = { critical: ["critical · 3", "#f87171", "rgba(248,113,113,.35)", "rgba(248,113,113,.07)"], warning: ["warning · 2", "#c2a63d", "rgba(194,166,61,.4)", "rgba(194,166,61,.07)"], info: ["info · 1", "#60a5fa", "rgba(96,165,250,.3)", "rgba(96,165,250,.06)"] };
+    const ROUTE = {
+      we_can_run: ["WE CAN RUN IT", "#34d399", "rgba(52,211,153,.4)", "rgba(52,211,153,.07)", "execute", "Run the fix"],
+      you_must_run: ["YOU RUN THE SCRIPT", "#00B4D8", "rgba(0,180,216,.4)", "rgba(0,180,216,.07)", "copy", "Get the script"],
+      admin_center_only: ["ADMIN CENTRE ONLY", "#94a3b8", "rgba(148,163,184,.32)", "rgba(148,163,184,.05)", "link", "Open admin centre"],
+    };
+
+    // ── checklist: real adverse findings from the latest scan, keyed by check ──
+    // [checkKey, sev, title, description, findingCeiling, fixRoute, hasWritePack, kb, status, verification, reveal]
+    const CL = [
+      ["sharing:anyone-links", "critical", "External sharing defaults to anyone with the link", "Six sites share to anyone with the link, and none of those links expire.", "we_can_run", "we_can_run", true, true, "not_started", "unverified", null],
+      ["entra:standing-ga", "critical", "Five accounts hold permanent Global Administrator", "Global Administrator is assigned outright rather than activated when needed.", "you_must_run", "you_must_run", false, true, "not_started", "unverified", "no-cr"],
+      ["entra:legacy-auth", "critical", "Legacy authentication is still enabled", "Legacy protocols bypass Conditional Access entirely, and two service accounts still use them.", "you_must_run", "you_must_run", false, true, "not_started", "unverified", "approved"],
+      ["defender:safe-links-off", "critical", "Safe Links is off for Teams and Office apps", "Links are rewritten in mail only, so the same URL is unchecked everywhere else.", "we_can_run", "we_can_run", true, true, "not_started", "unverified", null],
+      ["entra:mfa-privileged", "critical", "Three privileged accounts can sign in with a password alone", "No Conditional Access policy requires MFA for directory roles.", "we_can_run", "we_can_run", true, true, "completed", "verified", null],
+      ["oauth:unreviewed-consents", "warning", "41 third-party applications hold unreviewed permissions", "Delegated and application grants have accumulated with no consent review behind them.", "you_must_run", "you_must_run", false, true, "not_started", "unverified", "pending"],
+      ["groups:ownerless", "warning", "104 groups and teams have no owner", "Nobody approves membership or lifecycle for these workspaces.", "we_can_run", "we_can_run", true, true, "completed", "unverified", null],
+      ["onedrive:sync-errors", "warning", "OneDrive sync is failing on 38 devices", "Those devices have unsynced local files, so nothing on them is protected.", "we_can_run", "we_can_run", true, true, "completed", "drift", null],
+      ["teams:guest-policy", "warning", "Guest access on Teams has no recorded decision", "Guests can be invited tenant-wide with no policy or owner recorded against it.", "you_must_run", "you_must_run", false, false, "not_started", "unverified", "approved-no-content"],
+      ["purview:no-retention", "warning", "No retention policy covers mail, sites or Teams chat", "Deletion is permanent and unrecorded across every workload.", "admin_center_only", "admin_center_only", false, true, "not_started", "unverified", null],
+      ["licensing:disabled-with-licence", "warning", "22 disabled accounts still hold paid licences", "Licences are not removed as part of offboarding.", "we_can_run", "you_must_run", false, true, "already_handled", "unverified", "no-cr"],
+      ["exchange:audit-off", "warning", "Unified audit logging is off", "Activity before it is switched on cannot be recovered later.", "we_can_run", "we_can_run", true, true, "completed", "verified", null],
+    ];
+
+    const REVEAL = {
+      "no-cr": ["WITHHELD", "#f87171", "rgba(248,113,113,.4)", "rgba(248,113,113,.07)",
+        "No change request has been raised for this check, so the script is not released. Raise one and the gate re-evaluates on approval.", "403"],
+      "pending": ["WITHHELD", "#c2a63d", "rgba(194,166,61,.4)", "rgba(194,166,61,.07)",
+        "CR-2026-0244 exists for this check but is still pending approval. Pending is not approved — the gate stays closed.", "403"],
+      "approved": ["RELEASED", "#34d399", "rgba(52,211,153,.4)", "rgba(52,211,153,.07)",
+        "CR-2026-0231 is approved for this exact check, so the script is released to you. This release is written to the change record.", "200"],
+      "approved-no-content": ["APPROVED, NOTHING TO GIVE", "#8494ab", "rgba(132,148,171,.42)", "rgba(132,148,171,.06)",
+        "The change request is approved — the gate passed. There is no published, verified script for this check yet, which is a content gap rather than a permission one.", "404"],
+    };
+
+    const routeCounts = { we_can_run: 0, you_must_run: 0, admin_center_only: 0 };
+    CL.forEach((c) => { routeCounts[c[5]] += 1; });
+
+    const clItems = CL.map((c) => {
+      const [key, sev, title, desc, ceiling, route, pack, kb, status, verification, reveal] = c;
+      const R = ROUTE[route], SV = SEV[sev], ST = STATUS[status], V = VSTATE[verification];
+      const capped = ceiling !== route;
+      const revealSheet = () => this.openSheet({ kind: "reveal", key, title, reveal, kb });
+      const primaryClick = route === "you_must_run"
+        ? revealSheet
+        : () => this.openSheet({ kind: "affordance", key, title, route, pack, kb });
+      return {
+        checkKey: key, title, desc,
+        sevLabel: SV[0].split(" · ")[0], sevInk: SV[1], sevBorder: SV[2], sevBg: SV[3],
+        statusLabel: ST[0], statusInk: ST[1], statusBorder: ST[2], statusBg: ST[3],
+        vLabel: V[0], vInk: V[1],
+        routeLabel: R[0], routeInk: R[1], routeBorder: R[2], routeBg: R[3],
+        capped, cappedTip: "The finding itself could be run for you, but your tenant's write-back consent caps this check at a script you run.",
+        noContent: !kb,
+        primaryLabel: route === "you_must_run" ? "Get the script" : R[5],
+        primaryInk: route === "admin_center_only" ? "#cbd5e1" : "#0b1120",
+        primaryBg: route === "admin_center_only" ? "rgba(255,255,255,.02)" : route === "we_can_run" ? "#34d399" : "#00B4D8",
+        primaryBorder: route === "admin_center_only" ? "rgba(255,255,255,.12)" : "transparent",
+        primaryClick,
+        raiseClick: () => this.openSheet({ kind: "raise", key, title, sev }),
+      };
+    });
+
+    // ── the 28-step programme ──
+    const CAT = {
+      governance: [
+        ["s1", "Name an owner for every group and team", "104 groups and teams have no owner, so nobody approves their membership or lifecycle.", "Assign at least two owners per group; set the ownerless-group policy to block creation without one.", "completed", "verified", null],
+        ["s2", "Restrict who can create Microsoft 365 groups", "Any user can create a group, and each one carries a SharePoint site and a Teams team with it.", "Limit creation to a security group and record the approval route.", "completed", "verified", null],
+        ["s3", "Set an expiry policy on collaboration groups", "No group has an expiry, so abandoned workspaces keep their content and access indefinitely.", "Enable the group expiration policy with owner renewal at 180 days.", "already_handled", "unverified", null],
+        ["s4", "Document the guest-access decision", "Guest access is on tenant-wide with no recorded decision behind it.", "Record the decision and its owner, or restrict guest invitations to named roles.", "not_applicable", "unverified", null],
+        ["s5", "Turn on a naming policy for new groups", "Group names are unconstrained, which makes ownership and purpose unreadable at scale.", "Apply a prefix/suffix naming policy and a blocked-word list.", "completed", "drift", "warning"],
+      ],
+      security: [
+        ["s6", "Require MFA on every privileged role", "Three accounts holding privileged roles can sign in with a password alone.", "Apply a Conditional Access policy requiring MFA for all directory roles.", "completed", "verified", null],
+        ["s7", "Remove standing Global Administrator assignments", "Five accounts hold permanent Global Administrator instead of activating it when needed.", "Move the role to eligible-only assignment with approval and a time limit.", "completed", "verified", "critical"],
+        ["s8", "Block legacy authentication protocols", "Legacy protocols bypass Conditional Access entirely and are still enabled.", "Block legacy auth in Conditional Access after confirming no service account depends on it.", "completed", "verified", null],
+        ["s9", "Review consented OAuth applications", "41 third-party applications hold delegated or application permissions nobody has reviewed.", "Review each consent grant, revoke the unused, and require admin consent for new ones.", "deferred", "unverified", "warning"],
+        ["s10", "Restrict external sharing on SharePoint and OneDrive", "Sharing defaults to anyone-with-the-link, and links do not expire.", "Set the tenant sharing level to authenticated guests and add a link expiry.", "completed", "drift", "critical"],
+        ["s11", "Enable self-service password reset with writeback", "Password resets go through the helpdesk, and reset attempts are not recorded per user.", "Enable SSPR for all users with two methods and confirm writeback for hybrid accounts.", "already_handled", "unverified", null],
+      ],
+      compliance: [
+        ["s12", "Set a retention policy on Exchange and SharePoint", "No retention policy exists, so deletion is permanent and unrecorded.", "Publish a retention policy covering mail, sites and Teams chat.", "completed", "unverified", null],
+        ["s13", "Enable unified audit logging", "Audit search is off, so activity before it is switched on cannot be recovered later.", "Turn on unified audit logging and confirm the first entries land.", "completed", "verified", null],
+        ["s14", "Record the data-residency position", "Where tenant data is stored has never been written down or agreed.", "Record the current residency per workload and who signed it off.", "not_started", "unverified", "info"],
+        ["s15", "Publish a sensitivity-label set", "There are no labels, so no document carries a classification.", "Publish a starter label set and pilot it with one department.", "shane_handles", "unverified", null],
+        ["s16", "Review eDiscovery and legal-hold access", "Four accounts can place holds and export content with no review of who they are.", "Restrict the eDiscovery Manager role and record the review.", "accepted_risk", "unverified", "warning"],
+      ],
+      licensing: [
+        ["s17", "Reclaim licences from disabled accounts", "22 disabled accounts still hold paid licences.", "Remove licences on disable as part of the offboarding runbook.", "completed", "verified", null],
+        ["s18", "Reconcile licence counts against the reseller agreement", "Assigned seats and contracted seats have never been compared.", "Reconcile the two counts and record the difference each renewal.", "completed", "nocheck", null],
+        ["s19", "Remove duplicate service plans", "Overlapping bundles pay twice for the same service plan on 60 users.", "Identify the overlap and drop the redundant plan at renewal.", "not_started", "unverified", "info"],
+        ["s20", "Right-size E5 assignments against real usage", "E5 features are assigned far more widely than they are used.", "Compare assignment against usage and step down where nothing is used.", "deferred", "unverified", null],
+      ],
+      adoption: [
+        ["s21", "Retire unused Teams and channels", "Teams with no activity for six months still hold files and members.", "Archive the inactive teams after owner confirmation.", "not_started", "unverified", null],
+        ["s22", "Set a default Teams meeting policy", "Meeting settings are per-user defaults nobody chose.", "Apply a tenant meeting policy covering recording, lobby and external presenters.", "not_started", "unverified", null],
+        ["s23", "Publish a OneDrive known-folder-move plan", "Desktop and Documents are unsynced on most devices, so local files are unprotected.", "Roll out known-folder move by policy in waves.", "not_started", "unverified", null],
+        ["s26", "Measure Copilot readiness by department", "Copilot readiness is only known tenant-wide, not where the work happens.", "Break the readiness measure down per department before any rollout.", "not_started", "unverified", null],
+      ],
+      health: [
+        ["s27", "Agree a monthly service review cadence", "There is no recurring review, so findings are only ever read once.", "Book a standing monthly review with a named attendee on both sides.", "not_started", "nocheck", null],
+        ["s28", "Confirm backup coverage for Exchange and SharePoint", "Retention is not backup, and no backup product covers this tenant today.", "Confirm what is covered, by what, and how a restore is tested.", "completed", "verified", null],
+        ["s29", "Clear the Microsoft 365 service health backlog", "Advisories are acknowledged but never closed out against your tenant.", "Work the open advisories down and record the ones that do not apply.", "not_started", "unverified", "info"],
+        ["s30", "Assign an escalation contact for tenant incidents", "No named person owns escalation when a tenant-wide incident starts.", "Name a primary and a deputy, with out-of-hours contact recorded.", "already_handled", "nocheck", null],
+      ],
+    };
+    const STEP_CHECKS = {
+      s1: ["groups:ownerless"], s5: ["groups:naming-policy"], s6: ["entra:mfa-privileged"],
+      s7: ["entra:standing-ga"], s8: ["entra:legacy-auth"], s10: ["sharing:anyone-links"],
+      s13: ["exchange:audit-off"], s16: ["purview:ediscovery-roles"], s17: ["licensing:disabled-with-licence"],
+      s28: ["onedrive:sync-errors"],
+    };
+    const PILLARS = ["governance", "security", "compliance", "licensing", "adoption", "health"];
+    const PHASE_PILLARS = { 1: ["governance", "security"], 2: ["compliance", "licensing"], 3: ["adoption", "health"] };
+    const PILLAR_FEE = 4900;
+
+    const SCORES = {
+      governance: { dayOne: 41, before: 58, now: 66, scans: 6 },
+      security: { dayOne: 37, before: 62, now: 71, scans: 6 },
+      compliance: { dayOne: 54, before: null, now: 54, scans: 1 },
+      licensing: { dayOne: null, before: null, now: null, scans: 0 },
+      adoption: { dayOne: 22, before: 30, now: 28, scans: 4 },
+      health: { dayOne: 61, before: null, now: 61, scans: 1 },
+    };
+    const scoreOf = (k) => {
+      const s = SCORES[k];
+      if (noScan) return { dayOne: null, before: null, now: null, scans: 0, status: "insufficient_data" };
+      if (oneScan) return { dayOne: s.now, before: null, now: s.now, scans: 1, status: "single_scan" };
+      return Object.assign({}, s, { status: s.scans === 0 ? "insufficient_data" : s.scans === 1 ? "single_scan" : "scored" });
+    };
+
+    const pillars = PILLARS.map((k) => {
+      const s = scoreOf(k);
+      const scored = s.status === "scored";
+      const delta = scored ? s.now - s.before : null;
+      const gate = { scored: ["SCORED", "#34d399", "rgba(52,211,153,.35)", "solid"], single_scan: ["SINGLE SCAN", "#c2a63d", "rgba(194,166,61,.4)", "solid"], insufficient_data: ["NO SCORE", "#8494ab", "rgba(132,148,171,.4)", "dashed"] }[s.status];
+      return {
+        name: k, now: s.now === null ? "—" : String(s.now),
+        nowInk: s.now === null ? "#475569" : "#f8fafc",
+        hasDelta: delta !== null, delta: delta === null ? "" : (delta > 0 ? "+" + delta : String(delta)),
+        deltaInk: delta === null ? "#64748b" : delta > 0 ? "#34d399" : delta < 0 ? "#f87171" : "#94a3b8",
+        sub: s.status === "insufficient_data" ? "never scanned" : s.status === "single_scan" ? "one scan · nothing to compare" : "day one " + s.dayOne + " · before " + s.before,
+        gateLabel: gate[0], gateInk: gate[1], gateBorder: gate[2], gateStyle: gate[3],
+        click: () => this.openP({
+          title: k.charAt(0).toUpperCase() + k.slice(1) + " pillar",
+          state: s.scans + (s.scans === 1 ? " snapshot" : " snapshots") + " · " + s.status.replace("_", " "),
+          rows: [
+            { k: "Now · " + (s.now === null ? "no score" : s.now), v: s.now === null ? "Zero snapshots exist for this pillar. There is no score to show and none is implied." : "The latest scan's real score." },
+            { k: "Before · " + (s.before === null ? "none" : s.before), v: s.before === null ? "Fewer than two snapshots — nothing to compare against yet." : "The prior scan's stamped score, not recomputed here." },
+            { k: "Day one · " + (s.dayOne === null ? "none" : s.dayOne), v: s.dayOne === null ? "No first scan has happened." : "The tenant's very first real score, kept permanently." },
+            { k: "Delta · " + (delta === null ? "none" : (delta > 0 ? "+" + delta : delta)), v: delta === null ? "Requires a before value." : "now minus before." },
+          ],
+          note: "A missing number here is a missing scan, never a zero. The tracker does not invent its own scores.",
+        }),
+      };
+    });
+
+    const gateReady = !noScan && !oneScan;
+    const gateHead = noScan ? "Cannot be computed" : oneScan ? "Cannot be computed yet" : "Not ready";
+    const gateReasons = (noScan
+      ? ["No pillar has been scanned, so the gate has no inputs. This is not a failing score."]
+      : oneScan
+        ? ["Every pillar has exactly one snapshot. The gate needs movement between two scans before it will report."]
+        : ["Governance is at 66 and adoption at 28 — both below the readiness threshold.", "Licensing has never been scanned, so it cannot be assessed at all."]
+    ).map((t) => ({ t }));
+
+    const vFor = (v) => (noScan && v !== "nocheck") ? "unverified" : v;
+    const statusFor = (id, raw) => this.state.declined[id] ? "accepted_risk" : raw;
+    const termFor = (status, v) => v === "verified" ? "verified" : status === "accepted_risk" ? "accepted" : "outstanding";
+
+    const phases = [1, 2, 3].map((n) => {
+      const ps = PHASE_PILLARS[n];
+      const steps = ps.reduce((a, p) => a.concat(CAT[p]), []);
+      const total = steps.length;
+      const st = (s) => statusFor(s[0], s[4]);
+      const ready = steps.every((s) => READY.has(st(s)));
+      const verified = steps.filter((s) => vFor(s[5]) === "verified").length;
+      const accepted = steps.filter((s) => st(s) === "accepted_risk" && vFor(s[5]) !== "verified").length;
+      const claimed = steps.filter((s) => READY.has(st(s))).length;
+      const outstanding = total - verified - accepted;
+      const flat = PILLAR_FEE * ps.length;
+      const fee = ready ? Math.round(flat * (outstanding / total)) : flat;
+      return {
+        n: String(n), total, ready, verified, accepted, claimed, fee, flat,
+        pillarLine: ps[0] + " + " + ps[1],
+        feeDisplay: money(fee), wasDisplay: money(flat),
+        note: ready
+          ? "Every step has reached a terminal decision. The fee now tracks what is actually resolved — " + verified + " verified, " + accepted + " accepted as risk."
+          : "Flat fee until every step in both pillars reaches a terminal decision. A hand-off to Shane leaves the work outstanding; a signed risk acceptance does not.",
+        verifiedW: Math.round((verified / total) * 100) + "%",
+        acceptedW: Math.round((accepted / total) * 100) + "%",
+        claimedW: Math.round(((claimed - verified - accepted) / total) * 100) + "%",
+        progressLine: verified + " verified · " + accepted + " accepted as risk · " + (claimed - verified - accepted) + " claimed, unverified · " + (total - claimed) + " untouched",
+      };
+    }).map((p) => ({
+      n: p.n, pillarLine: p.pillarLine, fee: p.feeDisplay,
+      hasWas: p.fee !== p.flat, was: p.wasDisplay, note: p.note,
+      verifiedW: p.verifiedW, acceptedW: p.acceptedW, claimedW: p.claimedW, progressLine: p.progressLine,
+      readyLabel: p.ready ? "PHASE READY" : "NOT READY",
+      readyInk: p.ready ? "#34d399" : "#94a3b8",
+      readyBorder: p.ready ? "rgba(52,211,153,.4)" : "rgba(148,163,184,.3)",
+      border: p.ready ? "rgba(52,211,153,.25)" : "rgba(255,255,255,.08)",
+      bg: p.ready ? "rgba(52,211,153,.04)" : "rgba(255,255,255,.02)",
+      _fee: p.fee, _flat: p.flat,
+    }));
+    const hireNow = phases.reduce((a, p) => a + p._fee, 0);
+    const hireWas = phases.reduce((a, p) => a + p._flat, 0);
+    const anyDiscount = hireNow < hireWas;
+
+    const allSteps = PILLARS.reduce((a, p) => a.concat(CAT[p]), []);
+    const verifiedCount = allSteps.filter((s) => vFor(s[5]) === "verified").length;
+    const acceptedCount = allSteps.filter((s) => statusFor(s[0], s[4]) === "accepted_risk").length;
+    const counts = {
+      verified: verifiedCount,
+      drift: allSteps.filter((s) => vFor(s[5]) === "drift").length,
+      unverified: allSteps.filter((s) => vFor(s[5]) === "unverified").length,
+      nocheck: allSteps.filter((s) => s[5] === "nocheck").length,
+    };
+    const vLegend = ["verified", "drift", "unverified", "nocheck"].map((k) => {
+      const v = VSTATE[k];
+      return { k: v[0], n: counts[k], dot: v[3], fill: v[4], style: v[2], tip: v[5] };
+    });
+
+    const mkStep = (row) => {
+      const [id, title, problem, fix, rawStatus, vRaw, sev] = row;
+      const status = statusFor(id, rawStatus);
+      const v = vFor(vRaw), V = VSTATE[v], ST = STATUS[status];
+      const term = termFor(status, v);
+      const checks = STEP_CHECKS[id] || [];
+      const claimed = status !== "not_started";
+      const actions = [];
+      if (v === "nocheck") {
+        actions.push({ label: "Why this can never be verified", ink: "#8494ab", border: "rgba(132,148,171,.35)", bg: "transparent", op: "1",
+          click: () => this.openSheet({ kind: "nocheck", id, title }) });
+      } else {
+        actions.push({ label: "Re-verify now", ink: "#cbd5e1", border: "rgba(255,255,255,.12)", bg: "rgba(255,255,255,.02)", op: claimed ? "1" : ".65",
+          click: () => this.openSheet({ kind: "verify", id, title, checks, claimed }) });
+        actions.push({ label: "How to check it yourself", ink: "#cbd5e1", border: "rgba(255,255,255,.12)", bg: "rgba(255,255,255,.02)", op: "1",
+          click: () => this.openSheet({ kind: "guide", id, title, checks }) });
+      }
+      if (status === "accepted_risk") {
+        actions.push({ label: "Signed acceptance", ink: "#a78bfa", border: "rgba(167,139,250,.42)", bg: "rgba(167,139,250,.07)", op: "1",
+          click: () => this.openSheet({ kind: "accepted", id, title }) });
+      } else {
+        actions.push({ label: "Decline and accept the risk", ink: "#cbd5e1", border: "rgba(255,255,255,.12)", bg: "rgba(255,255,255,.02)", op: "1",
+          click: () => this.openSheet({ kind: "decline", id, title, checks }) });
+      }
+      return {
+        id, title, problem, actions,
+        titleInk: status === "not_started" ? "#cbd5e1" : "#f8fafc",
+        statusLabel: ST[0], statusInk: ST[1], statusBorder: ST[2], statusBg: ST[3],
+        vLabel: V[0], vInk: V[1], vStyle: V[2], vDot: V[3], vFill: V[4],
+        termLabel: TERM[term][0], termInk: TERM[term][1],
+        hasSev: !!sev, sevLabel: sev ? SEV[sev][0] : "", sevInk: sev ? SEV[sev][1] : "", sevBorder: sev ? SEV[sev][2] : "",
+        click: () => this.openP({
+          title: title, state: id + " · " + ST[0] + " · " + V[0],
+          rows: [
+            { k: "The problem", v: problem },
+            { k: "The fix", v: fix },
+            { k: "Your claim · " + ST[0], v: status === "accepted_risk" ? "Set by a signed risk acceptance, not by a plain status change. It cannot be set any other way." : "Set by you or your MSP. Changing it resets verification to not-scanned, because a changed claim invalidates whatever the last scan confirmed." },
+            { k: "Verification · " + V[0], v: V[5] },
+            { k: "How it resolved · " + TERM[term][0], v: term === "verified" ? "A real scan confirmed it. Verification outranks everything else." : term === "accepted" ? "A signed acceptance closed it without a fix. It counts as resolved for phase pricing." : "Neither confirmed nor formally accepted, whatever the claim says." },
+            { k: "Mapped checks", v: checks.length ? checks.join(", ") : "None. Nothing this step claims can be confirmed by a scan." },
+          ],
+          note: v === "nocheck"
+            ? "No check maps to this step, so no scan can ever verify it. It will not resolve on the next run."
+            : "Titles and prose here are the same for every tenant. Only the claim, the verification state and how it resolved are yours.",
+        }),
+      };
+    };
+
+    const groups = [1, 2, 3].map((n) => {
+      const ps = PHASE_PILLARS[n];
+      const steps = ps.reduce((a, p) => a.concat(CAT[p]), []);
+      const ready = steps.every((s) => READY.has(statusFor(s[0], s[4])));
+      return {
+        head: "Phase " + n,
+        sub: ps[0] + " + " + ps[1] + " · " + steps.length + " steps",
+        readyLabel: ready ? "PHASE READY" : "NOT READY",
+        readyInk: ready ? "#34d399" : "#94a3b8",
+        readyBorder: ready ? "rgba(52,211,153,.4)" : "rgba(148,163,184,.3)",
+        pillars: ps.map((p) => ({ name: p, count: CAT[p].length + " steps", steps: CAT[p].map(mkStep) })),
+      };
+    });
+
+    const expNote = (kind) => this.openP({
+      title: kind === "evidence" ? "Evidence pack" : "Export",
+      state: kind === "evidence" ? verifiedCount + " verified steps qualify" : "28 steps · claim only",
+      rows: kind === "evidence"
+        ? [{ k: "Included", v: "Only steps a real re-scan verified, with the verifying run, who claimed it and the clean finding titles." }, { k: "Excluded", v: "Everything claimed but unverified, and every signed risk acceptance. A tick on its own is not evidence, and neither is a decision not to fix." }]
+        : [{ k: "Included", v: "Every catalogue step with its status, completion time and last update." }, { k: "Not included", v: "Verification. This file is a record of the claim, not proof of the fix." }, { k: "Known rough edge", v: "A step accepted as a risk prints the raw value accepted_risk in the status column — the export's label table has no entry for it yet." }],
+      note: kind === "evidence" && verifiedCount === 0
+        ? "Nothing verified yet. Entries appear once a phase is re-scanned."
+        : undefined,
+    });
+    const evOff = verifiedCount === 0;
+    const exports = [
+      { label: "Export CSV", ink: "#cbd5e1", border: "rgba(255,255,255,.12)", bg: "rgba(255,255,255,.02)", cursor: "pointer", op: "1", click: () => expNote("csv") },
+      { label: "Export PDF", ink: "#cbd5e1", border: "rgba(255,255,255,.12)", bg: "rgba(255,255,255,.02)", cursor: "pointer", op: "1", click: () => expNote("pdf") },
+      { label: evOff ? "Evidence pack — nothing verified" : "Evidence pack · " + verifiedCount, ink: evOff ? "#64748b" : "#34d399", border: evOff ? "rgba(148,163,184,.25)" : "rgba(52,211,153,.4)", bg: evOff ? "transparent" : "rgba(52,211,153,.07)", cursor: evOff ? "default" : "pointer", op: evOff ? ".7" : "1", click: () => expNote("evidence") },
+    ];
+
+    // ── fixed outside change control ──
+    const BP = [
+      { stepId: "s10", title: "Restrict external sharing on SharePoint and OneDrive", verdict: "attributed_unapproved",
+        rows: [
+          { k: "Verified", v: "Run 445 · 31 Aug 2026, every mapped check clean" },
+          { k: "Change seen", v: "Tenant sharing level set to authenticated guests" },
+          { k: "Attributed to", v: "admin@northbridge.co.uk, 30 Aug 2026 · 22:14" },
+          { k: "Change request", v: "None — no approved CR covers this window" },
+        ] },
+      { stepId: "s8", title: "Block legacy authentication protocols", verdict: "unattributed",
+        rows: [
+          { k: "Verified", v: "Run 445 · 31 Aug 2026, every mapped check clean" },
+          { k: "Change seen", v: "Conditional Access policy 'Block legacy auth' enabled" },
+          { k: "Attributed to", v: "No actor recorded in the audit log for this change" },
+          { k: "Change request", v: "None — no approved CR covers this window" },
+        ] },
+    ];
+    const VERDICT = {
+      attributed_unapproved: ["OUTSIDE CHANGE CONTROL", "#c2a63d", "rgba(194,166,61,.4)", "rgba(194,166,61,.07)"],
+      unattributed: ["UNATTRIBUTED CHANGE", "#8494ab", "rgba(132,148,171,.42)", "rgba(132,148,171,.06)"],
+    };
+    const bpItems = BP.map((b) => ({
+      stepId: b.stepId, title: b.title, rows: b.rows,
+      verdictLabel: VERDICT[b.verdict][0], verdictInk: VERDICT[b.verdict][1],
+      verdictBorder: VERDICT[b.verdict][2], verdictBg: VERDICT[b.verdict][3],
+    }));
+    const bpShown = (noScan || cleanScan) ? [] : bpItems;
+
+    // ── sheets ──
+    const sh = S.sheet;
+    let shTitle = "", shSub = "", shRows = [], shCode = [], shForm = false, shNote = "", shFoot = "";
+    let shBanner = null, shSubmitLabel = "", shSubmitReady = false, shSubmitFn = null, shCancel = "Close";
+    if (sh) {
+      if (sh.kind === "verify") {
+        const blocked = !sh.checks.length ? "no mapped check" : !sh.claimed ? "nothing claimed yet" : null;
+        shTitle = "Re-verify " + sh.id;
+        shSub = sh.title;
+        if (blocked) {
+          shBanner = ["CANNOT RUN", "#c2a63d", "rgba(194,166,61,.4)", "rgba(194,166,61,.07)",
+            blocked === "no mapped check"
+              ? "No check maps to this step, so there is nothing for a scan to look at."
+              : "Nothing has been claimed on this step yet. A re-verification confirms a claim; it does not make one."];
+        } else if (S.sheet.fired) {
+          shBanner = ["QUEUED", "#34d399", "rgba(52,211,153,.4)", "rgba(52,211,153,.07)",
+            "Requested. This runs as its own recorded job, and the verdict lands on this step when it finishes — there is nothing to wait on here."];
+        }
+        shRows = [
+          { k: "Checks this will read", v: sh.checks.length ? sh.checks.join(", ") : "None" },
+          { k: "What it can return", v: "Verified if every mapped check comes back clean, or drifted if any one of them does not. It never returns a score." },
+          { k: "What it will not do", v: "Change your claim, fix anything, or write to your tenant. It reads and reports." },
+        ];
+        shNote = "A re-verification needs a connected Microsoft 365 tenant. Without one the request is refused rather than queued and quietly dropped.";
+        if (!blocked && !S.sheet.fired) {
+          shSubmitLabel = "Request re-verification"; shSubmitReady = true;
+          shSubmitFn = () => this.setState({ sheet: Object.assign({}, sh, { fired: true }) });
+          shCancel = "Cancel";
+        }
+      } else if (sh.kind === "guide") {
+        shTitle = "How to check " + sh.id + " yourself";
+        shSub = sh.title;
+        if (!sh.checks.length) {
+          shBanner = ["NO GUIDANCE", "#8494ab", "rgba(132,148,171,.42)", "rgba(132,148,171,.06)",
+            "No check maps to this step, so there is no validation step, command or expected outcome to show."];
+        } else {
+          shRows = [
+            { k: "Validation step", v: "In the Entra admin centre, open Conditional Access and confirm the policy is enabled and scoped to all directory roles." },
+            { k: "Expected outcome", v: "Every account holding a directory role is required to complete MFA, with no exclusions beyond a documented break-glass account." },
+          ];
+          shCode = [
+            { t: "Connect-MgGraph -Scopes Policy.Read.All", ink: "#8b98a9" },
+            { t: "Get-MgIdentityConditionalAccessPolicy |", ink: "#cbd5e1" },
+            { t: "  Where-Object { $_.State -eq 'enabled' } |", ink: "#cbd5e1" },
+            { t: "  Select-Object DisplayName, State", ink: "#cbd5e1" },
+          ];
+          shNote = "Only published, reviewed guidance appears here. Where none exists yet the step says so rather than showing a draft.";
+        }
+      } else if (sh.kind === "nocheck") {
+        shTitle = sh.id + " cannot be verified";
+        shSub = sh.title;
+        shBanner = ["PERMANENT", "#8494ab", "rgba(132,148,171,.42)", "rgba(132,148,171,.06)",
+          "No automated check maps to this step, and none is planned. This is a permanent state, not a scan that has not happened yet."];
+        shRows = [
+          { k: "What you can still do", v: "Claim it, and record how you satisfied it. The claim stands on its own record." },
+          { k: "What will never happen", v: "A scan confirming it. It will not appear in the evidence pack, because the pack carries only what a re-scan verified." },
+        ];
+      } else if (sh.kind === "decline") {
+        shTitle = "Accept the risk on " + sh.id;
+        shSub = sh.title;
+        if (S.sheet.done) {
+          shBanner = ["SIGNED", "#a78bfa", "rgba(167,139,250,.42)", "rgba(167,139,250,.08)",
+            "Recorded as RBD-2026-0117 on your risk register, signed in your name. The step now reads as accepted rather than outstanding."];
+          shRows = [
+            { k: "Where it lives now", v: "Your risk register, as its own line with a review date. It is not a note on this page." },
+            { k: "Review", v: "It comes back for review on a real clock. Accepting is not the same as closing." },
+            { k: "Permanence", v: "The signature has no expiry and cannot be deleted. A later decision supersedes it; nothing erases it." },
+          ];
+          shNote = "No monetary exposure and no technical detail are attached to this record — neither is known, so neither is invented.";
+        } else {
+          shForm = true;
+          shRows = [
+            { k: "What this does", v: "Closes the step without fixing it, by putting a signed acceptance on your risk register in its place." },
+            { k: "What it counts as", v: "A terminal decision. The step stops being outstanding, and its phase can price down." },
+          ];
+          shNote = "Accepting a risk is a decision your organisation signs for, so it takes a name and a reason rather than a status change.";
+          shFoot = "Permanent once signed";
+          shSubmitLabel = "Sign and accept";
+          shSubmitReady = S.fName.trim().length >= 2 && S.fStatement.trim().length > 0 && S.fConfirm;
+          shSubmitFn = () => {
+            if (!(S.fName.trim().length >= 2 && S.fStatement.trim().length > 0 && S.fConfirm)) return;
+            const d = Object.assign({}, S.declined); d[sh.id] = true;
+            this.setState({ declined: d, sheet: Object.assign({}, sh, { done: true }) });
+          };
+          shCancel = "Cancel";
+        }
+      } else if (sh.kind === "accepted") {
+        shTitle = "Signed acceptance on " + sh.id;
+        shSub = sh.title;
+        shBanner = ["RBD-2026-0117", "#a78bfa", "rgba(167,139,250,.42)", "rgba(167,139,250,.08)",
+          "Signed and active on your risk register. This step reads as accepted, not fixed."];
+        shRows = [
+          { k: "Signed by", v: "Elaine Whitcombe, Operations Director · 2 Sep 2026" },
+          { k: "Their reasoning", v: "\u201CThe four accounts are named individuals in the legal team and their access is reviewed at each matter close. We are accepting this until the eDiscovery role model is redesigned in Q4.\u201D" },
+          { k: "Next review", v: "2 Dec 2026" },
+          { k: "Cannot be undone", v: "A signed acceptance is permanent. Fixing the underlying problem later supersedes it; it does not remove it." },
+        ];
+      } else if (sh.kind === "reveal") {
+        const R = REVEAL[sh.reveal] || REVEAL["no-cr"];
+        shTitle = "The script for this fix";
+        shSub = sh.title;
+        shBanner = [R[0], R[1], R[2], R[3], R[4]];
+        if (sh.reveal === "approved") {
+          shRows = [
+            { k: "Released under", v: "CR-2026-0231 — approved 1 Sep 2026" },
+            { k: "Before you run it", v: "A Global Administrator session and confirmation that no service account still depends on legacy authentication." },
+            { k: "Expected outcome", v: "Legacy authentication is blocked tenant-wide, and the two service accounts move to modern auth." },
+          ];
+          shCode = [
+            { t: "# Blocks legacy auth via Conditional Access", ink: "#64748b" },
+            { t: "Connect-MgGraph -Scopes Policy.ReadWrite.ConditionalAccess", ink: "#cbd5e1" },
+            { t: "New-MgIdentityConditionalAccessPolicy -BodyParameter $policy", ink: "#cbd5e1" },
+            { t: "# Confirm with:", ink: "#64748b" },
+            { t: "Get-MgIdentityConditionalAccessPolicy | ft DisplayName,State", ink: "#cbd5e1" },
+          ];
+          shNote = "This release is recorded against the change request, including who read it and when.";
+        } else if (sh.reveal === "pending") {
+          shRows = [
+            { k: "The change request", v: "CR-2026-0244 — raised 2 Sep 2026, awaiting approval" },
+            { k: "What unlocks it", v: "Approval on that change request. Nothing here needs to be re-requested afterwards." },
+          ];
+        } else if (sh.reveal === "approved-no-content") {
+          shRows = [
+            { k: "The change request", v: "CR-2026-0238 — approved 1 Sep 2026" },
+            { k: "What is missing", v: "Reviewed, published steps for this check. Until they exist there is nothing to hand over, and an unreviewed draft is not offered in their place." },
+          ];
+        } else {
+          shRows = [
+            { k: "Why it is withheld", v: "A script that changes your tenant is released against an approved change request, never on request alone." },
+            { k: "What to do", v: "Raise a change request from this item. When it is approved, the script is released here." },
+          ];
+        }
+      } else if (sh.kind === "raise") {
+        shTitle = "Change request raised";
+        shSub = sh.title;
+        shBanner = ["CR-2026-0251", "#34d399", "rgba(52,211,153,.4)", "rgba(52,211,153,.07)",
+          "Raised against this finding and waiting for approval. It carries the check key, so an approval releases exactly this fix and nothing else."];
+        shRows = [
+          { k: "Classification", v: sh.sev === "critical" ? "Normal change · high risk" : "Standard change · medium risk" },
+          { k: "Workload", v: sh.key.split(":")[0] },
+          { k: "Freeze windows", v: "None active — no exception was needed" },
+          { k: "Linked risk", v: "None discharged by this request" },
+        ];
+        shNote = "A change request can only be raised while the finding is still open on your latest scan. Once it is resolved, this route closes rather than raising an empty request.";
+      } else if (sh.kind === "affordance") {
+        const R = ROUTE[sh.route];
+        shTitle = R[4] === "execute" ? "We can run this for you" : "Open the admin centre";
+        shSub = sh.title;
+        if (R[4] === "execute") {
+          shBanner = ["READY TO RUN", "#34d399", "rgba(52,211,153,.4)", "rgba(52,211,153,.07)",
+            "Your tenant has granted write-back consent and a reviewed pack exists for this check, so this one can be run for you."];
+          shRows = [
+            { k: "What runs", v: "A reviewed configuration pack scoped to this check alone." },
+            { k: "Still gated", v: "Execution goes through change control. Consent makes it possible; approval makes it happen." },
+          ];
+        } else {
+          shBanner = ["MANUAL ONLY", "#94a3b8", "rgba(148,163,184,.32)", "rgba(148,163,184,.05)",
+            "This setting has no scriptable route at all. It is changed by hand in the admin centre."];
+          shRows = [
+            { k: "Where", v: "Microsoft Purview · Data lifecycle management · Retention policies" },
+            { k: "What to confirm", v: "A published policy covering mail, sites and Teams chat, with its retention period recorded." },
+          ];
+        }
+      }
+    }
+
+    const tabs = [
+      { key: "checklist", label: "Your findings", count: cleanScan || noScan ? "0" : String(CL.length) },
+      { key: "programme", label: "28-step programme", count: "28" },
+      { key: "bypass", label: "Fixed outside change control", count: String(bpShown.length) },
+    ].map((t) => ({
+      label: t.label, count: t.count,
+      ink: S.tab === t.key ? "#f8fafc" : "#94a3b8",
+      line: S.tab === t.key ? "#0078D4" : "transparent",
+      countInk: S.tab === t.key ? "#cbd5e1" : "#64748b",
+      countBorder: S.tab === t.key ? "rgba(255,255,255,.16)" : "rgba(255,255,255,.09)",
+      click: () => this.setState({ tab: t.key }),
+    }));
+
+    const clShown = (cleanScan || noScan) ? [] : clItems;
+    const lp = this.state.lp;
+
+    return {
+      rootH: this.props.embedded ? "100%" : "100vh",
+      isLoading, hasBody: !isLoading,
+      stateLine: isLoading ? "Loading" : noScan ? "No scan history" : cleanScan ? "Latest scan clean" : oneScan ? "One scan only" : "Live",
+      stateDot: isLoading ? "#64748b" : noScan ? "#8494ab" : cleanScan ? "#34d399" : oneScan ? "#c2a63d" : "#34d399",
+      skeletons: [{ w1: "34%", w2: "70%" }, { w1: "26%", w2: "82%" }, { w1: "42%", w2: "60%" }],
+      scanMeta: noScan ? "No scan has run for this tenant" : oneScan ? "First scan · 31 Aug 2026" : "Latest scan run 445 · 31 Aug 2026 · 09:38",
+      tabs, tabChecklist: S.tab === "checklist", tabProgramme: S.tab === "programme", tabBypass: S.tab === "bypass",
+
+      ceilLabel: "WRITE CONSENT GRANTED",
+      ceilInk: "#34d399", ceilBorder: "rgba(52,211,153,.4)", ceilBg: "rgba(52,211,153,.07)",
+      ceilNote: "Consent sets the ceiling, not the outcome: an item only reads as ours to run when a reviewed pack exists for that specific check. Where the pack is missing, the same item drops to a script you run, even with consent granted.",
+      routeLegend: [
+        { name: "We can run it", n: routeCounts.we_can_run + " items", desc: "A reviewed pack exists and your consent allows us to apply it, through change control.", ink: "#34d399", border: "rgba(52,211,153,.25)", bg: "rgba(52,211,153,.04)" },
+        { name: "You run the script", n: routeCounts.you_must_run + " items", desc: "We hand over the exact script — but only against an approved change request.", ink: "#00B4D8", border: "rgba(0,180,216,.25)", bg: "rgba(0,180,216,.04)" },
+        { name: "Admin centre only", n: routeCounts.admin_center_only + " items", desc: "No scriptable route exists. This one is changed by hand and confirmed by scan.", ink: "#94a3b8", border: "rgba(255,255,255,.08)", bg: "rgba(255,255,255,.02)" },
+      ],
+      clItems: clShown, clHasItems: clShown.length > 0, clEmpty: clShown.length === 0,
+      clMeta: clShown.length + " open findings from run 445 · critical and warning only",
+      clEmptyHead: noScan ? "No scan has run yet" : "Nothing adverse on the latest scan",
+      clEmptyBody: noScan
+        ? "This list is built from your tenant's own findings, so it stays empty until the first scan completes. Nothing is filled in from a template in the meantime."
+        : "Run 445 returned no critical or warning findings, so there is nothing to work. This is a real result rather than an empty list waiting to load.",
+
+      scoreMeta: noScan ? "no snapshots" : oneScan ? "one snapshot per pillar" : "6 snapshots · governance and security since day one",
+      pillars, gateHead, gateReasons, gateStroke: gateReady ? "#c2a63d" : "#8494ab",
+      showPrice: this.props.showPricing ?? true,
+      phases,
+      hireCta: anyDiscount ? "Have Shane do what is left" : "Have Shane do the whole programme",
+      hirePrice: money(hireNow), hireWas: money(hireWas), hireSaved: anyDiscount ? money(hireWas - hireNow) + " off" : "",
+      hireNote: anyDiscount
+        ? "Phase 1 has priced down against what is genuinely resolved. Phases 2 and 3 stay at full fee until every step in them reaches a terminal decision."
+        : "Nothing has been confirmed by a re-scan and nothing has been formally accepted, so nothing has priced down. Completing a step is not the same as confirming it.",
+      stepMeta: verifiedCount + " verified by a re-scan · " + acceptedCount + " accepted as a signed risk · " + counts.nocheck + " can never be verified",
+      exports, vLegend, groups,
+
+      bpItems: bpShown, bpHasItems: bpShown.length > 0, bpEmpty: bpShown.length === 0,
+
+      ledger: [
+        { t: "It never sets a step to accepted-as-risk from a plain status change. That value only exists behind a signed acceptance with a name and a reason." },
+        { t: "It never releases a tenant-changing script without an approved change request, and a pending request counts as no request." },
+        { t: "It never names a person as the subject of a risk. Unapproved changes are recorded against a change, not against an individual." },
+        { t: "It never treats a tick as evidence. The evidence pack carries only what a re-scan confirmed, and signed acceptances are excluded from it." },
+        { t: "It never invents a pillar score, a checklist item or a correlation. An empty result is shown as an empty result." },
+        { t: "Two rough edges we know about: an item marked from your own findings list can currently be set to accepted-as-risk without a signature behind it, and an accepted step prints its raw status value in the CSV and PDF exports. Both are filed." },
+      ],
+
+      lpOpen: !!lp,
+      lpTitle: lp ? lp.title : "", lpState: lp && lp.state ? lp.state : "",
+      lpRows: lp && lp.rows ? lp.rows : [], lpHasRows: !!(lp && lp.rows && lp.rows.length),
+      lpNote: lp && lp.note ? lp.note : "", lpHasNote: !!(lp && lp.note),
+      lpClose: () => this.setState({ lp: null }),
+
+      shOpen: !!sh, shTitle, shSub,
+      shRows, shHasRows: shRows.length > 0,
+      shCode, shHasCode: shCode.length > 0,
+      shHasBanner: !!shBanner,
+      shBannerTag: shBanner ? shBanner[0] : "", shBannerInk: shBanner ? shBanner[1] : "",
+      shBannerBorder: shBanner ? shBanner[2] : "transparent", shBannerBg: shBanner ? shBanner[3] : "transparent",
+      shBannerText: shBanner ? shBanner[4] : "",
+      shForm, shNote, shHasNote: !!shNote,
+      shFootNote: shFoot,
+      shHasActions: !!sh, shCancelLabel: shCancel,
+      shHasSubmit: !!shSubmitLabel, shSubmitLabel,
+      shSubmitInk: shSubmitReady ? "#0b1120" : "#64748b",
+      shSubmitBg: shSubmitReady ? "#0078D4" : "rgba(255,255,255,.03)",
+      shSubmitBorder: shSubmitReady ? "transparent" : "rgba(255,255,255,.1)",
+      shSubmitCursor: shSubmitReady ? "pointer" : "default",
+      shSubmitOp: shSubmitReady ? "1" : ".6",
+      shSubmit: () => { if (shSubmitFn) shSubmitFn(); },
+      shClose: () => this.setState({ sheet: null }),
+
+      fName: S.fName, fStatement: S.fStatement,
+      fCount: S.fStatement.trim().length + " of 2000 characters",
+      setName: (e) => this.setState({ fName: e.target.value }),
+      setStatement: (e) => this.setState({ fStatement: e.target.value }),
+      toggleConfirm: () => this.setState({ fConfirm: !S.fConfirm }),
+      fBoxBorder: S.fConfirm ? "rgba(167,139,250,.42)" : "rgba(255,255,255,.12)",
+      fBoxBg: S.fConfirm ? "rgba(167,139,250,.07)" : "rgba(255,255,255,.02)",
+      fBoxTick: S.fConfirm ? "#a78bfa" : "rgba(148,163,184,.45)",
+      fBoxFill: S.fConfirm ? "#a78bfa" : "transparent",
+      fTickInk: S.fConfirm ? "#0b1120" : "transparent",
+    };
+  }
+}
+</script>
+</body>
+</html>

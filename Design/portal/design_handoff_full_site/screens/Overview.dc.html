@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div data-screen-label="Overview" data-portal-dashboard-state="{{stateKey}}" style="flex:1;min-width:0;height:{{rootH}};display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:20px 26px 56px;padding-right:max(26px, calc(100% - 1420px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <span style="font-size:21px;font-weight:800;color:#f8fafc;letter-spacing:-.02em">{{tenantLine}}</span>
+      <div style="display:flex;align-items:center;gap:7px;border:1px solid {{stateBorder}};background:{{stateFill}};border-radius:999px;padding:4px 11px">
+        <span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>
+        <span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;color:{{stateInk}}">{{stateLine}}</span>
+      </div>
+      <span style="font-size:11.5px;color:#64748b">{{tenantSub}}</span>
+      <div style="margin-left:auto;display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap">
+        <sc-for list="{{inboxChips}}" as="c" hint-placeholder-count="2">
+          <a href="{{c.href}}" style="display:flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:5px 10px" style-hover="border-color:rgba(0,120,212,.5)">
+            <span style="font-size:13px;font-weight:800;color:{{c.ink}}">{{c.value}}</span>
+            <span style="font-size:11px;color:#94a3b8">{{c.label}}</span>
+          </a>
+        </sc-for>
+        <sc-if value="{{showStates}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:3px;border:1px solid rgba(255,255,255,.09);border-radius:8px;padding:3px">
+            <sc-for list="{{stateTabs}}" as="t" hint-placeholder-count="6">
+              <span onClick="{{t.pick}}" title="{{t.hint}}" style="font-size:10px;font-weight:600;padding:4px 8px;border-radius:6px;cursor:pointer;white-space:nowrap;background:{{t.bg}};color:{{t.ink}}">{{t.label}}</span>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <sc-if value="{{isError}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:12px;border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.07);border-radius:11px;padding:13px 16px;flex-wrap:wrap">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Unable to load dashboard data.</span>
+        <span onClick="{{retry}}" style="margin-left:auto;font-size:11px;font-weight:700;color:#f8fafc;border:1px solid rgba(255,255,255,.16);border-radius:7px;padding:6px 12px;cursor:pointer" style-hover="background:rgba(255,255,255,.06)">Try again</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isPayload}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:16px">
+
+        <div ref="{{cardRef}}" onMouseLeave="{{unhoverAll}}" style="position:relative;border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 18px 16px;display:flex;flex-direction:column;gap:10px">
+          <sc-if value="{{popOpen}}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;left:{{popX}};top:{{popY}};transform:{{popTransform}};z-index:30;width:300px;pointer-events:none;border:1px solid rgba(255,255,255,.14);border-radius:11px;background:rgba(2,6,23,.97);box-shadow:0 12px 32px rgba(2,6,23,.7);padding:12px 14px 13px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:6px;height:6px;border-radius:999px;background:{{popColor}};flex:none"></span>
+                <span style="font-size:8.5px;font-weight:800;letter-spacing:.13em;color:{{popColor}}">{{popKind}}</span>
+                <span style="font-size:9.5px;color:#64748b;margin-left:auto;white-space:nowrap">{{popWhen}}</span>
+              </div>
+              <span style="font-size:12.5px;font-weight:700;color:#f8fafc;line-height:1.4">{{popTitle}}</span>
+              <div style="display:flex;flex-direction:column;gap:0">
+                <sc-for list="{{popRows}}" as="r" hint-placeholder-count="3">
+                  <div style="display:flex;gap:10px;padding:5px 0;border-top:1px solid rgba(255,255,255,.06)">
+                    <span style="font-size:10px;color:#64748b;width:86px;flex:none">{{r.k}}</span>
+                    <span style="font-size:10.5px;color:#cbd5e1;min-width:0;flex:1;line-height:1.45">{{r.v}}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <span style="font-size:10px;font-weight:600;color:#60a5fa">{{popLinkLabel}}</span>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#94a3b8">TIMELINE</span>
+            <span style="font-size:11px;color:#64748b">{{windowLabel}}</span>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:3px;border:1px solid rgba(255,255,255,.09);border-radius:8px;padding:3px">
+              <sc-for list="{{windowTabs}}" as="w" hint-placeholder-count="3">
+                <span onClick="{{w.pick}}" style="font-size:10px;font-weight:700;letter-spacing:.03em;padding:4px 9px;border-radius:6px;cursor:pointer;background:{{w.bg}};color:{{w.ink}}">{{w.label}}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:0;padding-bottom:2px">
+            <span style="width:128px;flex:none"></span>
+            <div style="flex:1;min-width:0;position:relative;height:15px">
+              <sc-for list="{{ticks}}" as="t" hint-placeholder-count="6">
+                <span style="position:absolute;left:{{t.left}};top:0;transform:translateX(-50%);font-size:9.5px;font-weight:600;letter-spacing:.04em;color:{{t.ink}};white-space:nowrap">{{t.label}}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:0">
+            <sc-for list="{{markerLanes}}" as="lane" hint-placeholder-count="5">
+              <div style="display:flex;align-items:stretch;gap:0">
+                <div style="width:128px;flex:none;display:flex;align-items:center;gap:7px;padding-right:12px">
+                  <span style="width:5px;height:5px;border-radius:999px;background:{{lane.color}};flex:none"></span>
+                  <span style="font-size:11px;font-weight:600;color:#cbd5e1;min-width:0">{{lane.label}}</span>
+                </div>
+                <div style="flex:1;min-width:0;position:relative;height:34px;border-top:1px solid rgba(255,255,255,.05)">
+                  <sc-for list="{{gridLines}}" as="g" hint-placeholder-count="6">
+                    <span style="position:absolute;left:{{g.left}};top:0;bottom:0;width:1px;background:rgba(255,255,255,.045)"></span>
+                  </sc-for>
+                  <span style="position:absolute;left:{{nowLeft}};top:0;bottom:0;width:1px;background:rgba(0,180,216,.55)"></span>
+                  <sc-for list="{{lane.items}}" as="m" hint-placeholder-count="4">
+                    <span onMouseEnter="{{m.enter}}" onMouseMove="{{m.enter}}" onMouseLeave="{{m.leave}}" style="position:absolute;left:{{m.left}};top:{{m.top}};transform:translateX(-50%);display:flex;align-items:center;justify-content:center;min-width:{{m.w}};height:{{m.h}};padding:{{m.pad}};border-radius:999px;background:{{m.fill}};border:1px solid {{m.color}};font-size:{{m.fs}};font-weight:800;color:{{m.color}};cursor:help">{{m.badge}}</span>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+
+            <sc-for list="{{barLanes}}" as="lane" hint-placeholder-count="2">
+              <div style="display:flex;align-items:stretch;gap:0">
+                <div style="width:128px;flex:none;display:flex;align-items:center;gap:7px;padding-right:12px">
+                  <span style="width:5px;height:5px;border-radius:999px;background:{{lane.color}};flex:none"></span>
+                  <span style="font-size:11px;font-weight:600;color:#cbd5e1;min-width:0">{{lane.label}}</span>
+                </div>
+                <div style="flex:1;min-width:0;position:relative;height:{{lane.height}};border-top:1px solid rgba(255,255,255,.05)">
+                  <sc-for list="{{gridLines}}" as="g" hint-placeholder-count="6">
+                    <span style="position:absolute;left:{{g.left}};top:0;bottom:0;width:1px;background:rgba(255,255,255,.045)"></span>
+                  </sc-for>
+                  <span style="position:absolute;left:{{nowLeft}};top:0;bottom:0;width:1px;background:rgba(0,180,216,.55)"></span>
+                  <sc-for list="{{lane.bars}}" as="b" hint-placeholder-count="2">
+                    <div onMouseEnter="{{b.enter}}" onMouseMove="{{b.enter}}" onMouseLeave="{{b.leave}}" style="position:absolute;left:{{b.left}};width:{{b.width}};top:{{b.top}};height:20px;border-radius:{{b.radius}};background:{{b.track}};border:1px solid {{b.border}};overflow:hidden;cursor:help">
+                      <div style="position:absolute;left:{{b.phaseLeft}};width:{{b.phaseWidth}};top:0;bottom:0;background:{{b.phaseFill}}"></div>
+                      <span style="position:absolute;left:0;top:0;bottom:0;width:5px;display:{{b.edgeL}};background:repeating-linear-gradient(45deg,rgba(226,232,240,.8) 0 2px,transparent 2px 4px)"></span>
+                      <span style="position:absolute;right:0;top:0;bottom:0;width:5px;display:{{b.edgeR}};background:repeating-linear-gradient(45deg,rgba(226,232,240,.8) 0 2px,transparent 2px 4px)"></span>
+                      <span style="position:relative;display:block;padding:0 8px;line-height:20px;font-size:10px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{b.labelInside}}</span>
+                    </div>
+                  </sc-for>
+                  <sc-for list="{{lane.labels}}" as="lb" hint-placeholder-count="2">
+                    <span style="position:absolute;left:{{lb.connLeft}};top:{{lb.connTop}};height:{{lb.connH}};width:1px;background:rgba(148,163,184,.35);pointer-events:none"></span>
+                  </sc-for>
+                  <sc-for list="{{lane.labels}}" as="lb" hint-placeholder-count="2">
+                    <span style="position:absolute;left:{{lb.left}};top:{{lb.top}};line-height:12px;font-size:9.5px;font-weight:700;color:#cbd5e1;white-space:nowrap;pointer-events:none">{{lb.text}}</span>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.06);padding-top:10px">
+            <sc-for list="{{legend}}" as="l" hint-placeholder-count="7">
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="width:7px;height:7px;border-radius:2px;background:{{l.color}}"></span>
+                <span style="font-size:10px;color:#64748b">{{l.label}}</span>
+              </div>
+            </sc-for>
+            <span style="margin-left:auto;font-size:10px;color:#475569;font-family:Menlo,monospace">{{sourceLine}}</span>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(316px,1fr));gap:14px;align-items:start">
+
+          <div style="border:1px solid rgba(248,113,113,.22);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#fca5a5">NEEDS YOU</span>
+              <span style="font-size:10.5px;font-weight:700;color:#64748b;margin-left:auto">{{needsCount}}</span>
+            </div>
+
+            <sc-if value="{{hasNeeds}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <sc-for list="{{needRows}}" as="n" hint-placeholder-count="5">
+                  <div style="border:1px solid rgba(255,255,255,.07);border-left:2px solid {{n.accent}};border-radius:9px;background:rgba(255,255,255,.02);padding:10px 12px;display:flex;flex-direction:column;gap:7px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <span style="font-size:8.5px;font-weight:800;letter-spacing:.1em;color:{{n.accent}}">{{n.tag}}</span>
+                      <span style="font-family:Menlo,monospace;font-size:9.5px;color:#475569;margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">{{n.meta}}</span>
+                    </div>
+                    <span style="font-size:12.5px;font-weight:600;color:{{n.ink}};line-height:1.4">{{n.title}}</span>
+                    <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                      <a href="{{n.href}}" style="font-size:10.5px;font-weight:700;color:#f8fafc;border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:5px 10px" style-hover="background:rgba(255,255,255,.06)">{{n.action}}</a>
+                      <a href="{{n.altHref}}" style="font-size:10.5px;font-weight:600;color:#60a5fa;padding:5px 2px">{{n.alt}}</a>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{noNeeds}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12px;color:#94a3b8">{{noNeedsLine}}</span>
+            </sc-if>
+          </div>
+
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#94a3b8">COMING UP</span>
+              <span style="font-size:10.5px;color:#64748b;margin-left:auto">{{comingCount}}</span>
+            </div>
+
+            <sc-if value="{{hasComing}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:0">
+                <sc-for list="{{comingRows}}" as="c" hint-placeholder-count="7">
+                  <a href="{{c.href}}" style="display:flex;gap:11px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)" style-hover="background:rgba(255,255,255,.025)">
+                    <div style="width:56px;flex:none;display:flex;flex-direction:column;gap:1px">
+                      <span style="font-size:11px;font-weight:700;color:#e2e8f0">{{c.day}}</span>
+                      <span style="font-size:9.5px;color:#64748b">{{c.rel}}</span>
+                    </div>
+                    <span style="width:5px;height:5px;border-radius:999px;background:{{c.color}};flex:none;margin-top:5px"></span>
+                    <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:2px">
+                      <span style="font-size:12px;font-weight:600;color:#e2e8f0;line-height:1.4">{{c.title}}</span>
+                      <span style="font-size:10.5px;color:#64748b">{{c.sub}}</span>
+                    </div>
+                  </a>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{noComing}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12px;color:#94a3b8">{{noComingLine}}</span>
+            </sc-if>
+          </div>
+
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#94a3b8">HAPPENED</span>
+              <span style="font-size:10.5px;color:#64748b;margin-left:auto">{{timelineMeta}}</span>
+            </div>
+
+            <sc-if value="{{hasEvents}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:0">
+                <sc-for list="{{eventRows}}" as="v" hint-placeholder-count="8">
+                  <div style="display:flex;gap:11px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+                    <div style="width:56px;flex:none;display:flex;flex-direction:column;gap:1px">
+                      <span style="font-size:11px;font-weight:700;color:#e2e8f0">{{v.day}}</span>
+                      <span style="font-size:9.5px;color:#64748b">{{v.time}}</span>
+                    </div>
+                    <span style="width:5px;height:5px;border-radius:999px;background:{{v.dot}};flex:none;margin-top:5px"></span>
+                    <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:2px">
+                      <span style="font-size:12px;font-weight:600;color:#e2e8f0;line-height:1.4">{{v.title}}</span>
+                      <span style="font-size:10.5px;color:#64748b;line-height:1.5">{{v.desc}}</span>
+                    </div>
+                  </div>
+                </sc-for>
+                <sc-if value="{{hasCursor}}" hint-placeholder-val="{{ true }}">
+                  <span onClick="{{loadOlder}}" style="align-self:flex-start;margin-top:11px;font-size:10.5px;font-weight:700;color:#f8fafc;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:6px 11px;cursor:pointer" style-hover="background:rgba(255,255,255,.06)">Older</span>
+                </sc-if>
+              </div>
+            </sc-if>
+            <sc-if value="{{noEvents}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12px;color:#94a3b8">No events across any of the five sources.</span>
+            </sc-if>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;align-items:start">
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#94a3b8">WORK IN FLIGHT</span>
+            <sc-if value="{{hasProjects}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:11px">
+                <sc-for list="{{projectRows}}" as="p" hint-placeholder-count="2">
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <div style="display:flex;align-items:baseline;gap:9px">
+                      <span style="font-size:12px;font-weight:600;color:#e2e8f0;min-width:0;flex:1;line-height:1.4">{{p.title}}</span>
+                      <span style="font-size:10.5px;font-weight:700;color:{{p.stepInk}};flex:none;font-family:Menlo,monospace">{{p.steps}}</span>
+                    </div>
+                    <div style="height:4px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden">
+                      <div style="height:4px;width:{{p.pct}};background:{{p.barInk}};border-radius:999px"></div>
+                    </div>
+                    <span style="font-size:10.5px;color:#94a3b8">{{p.step}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{noProjects}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12px;color:#94a3b8">No active project.</span>
+            </sc-if>
+          </div>
+
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#94a3b8">PORTAL COUNTS</span>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(94px,1fr));gap:11px 14px">
+              <sc-for list="{{countRows}}" as="c" hint-placeholder-count="6">
+                <a href="{{c.href}}" style="display:flex;flex-direction:column;gap:2px">
+                  <span style="font-size:19px;font-weight:800;color:{{c.ink}};line-height:1;letter-spacing:-.02em">{{c.value}}</span>
+                  <span style="font-size:10.5px;color:#94a3b8;line-height:1.35">{{c.label}}</span>
+                </a>
+              </sc-for>
+            </div>
+            <sc-if value="{{countsNote}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:10.5px;color:#fbbf24">{{countsNoteLine}}</span>
+            </sc-if>
+          </div>
+
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#94a3b8">REPORTS</span>
+            <sc-if value="{{hasReports}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:0">
+                <sc-for list="{{reportRows}}" as="r" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+                    <span style="font-size:12px;color:#e2e8f0;min-width:0;flex:1">{{r.title}}</span>
+                    <span style="font-size:10.5px;color:#64748b;flex:none;font-family:Menlo,monospace">{{r.period}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{noReports}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12px;color:#94a3b8">No reports yet.</span>
+            </sc-if>
+          </div>
+        </div>
+
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;responseState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live_paid&quot;,&quot;live_unpaid&quot;,&quot;never_scanned&quot;,&quot;onboarding&quot;,&quot;no_tenant_scope&quot;,&quot;error&quot;],&quot;default&quot;:&quot;live_paid&quot;,&quot;tsType&quot;:&quot;\&quot;live_paid\&quot; | \&quot;live_unpaid\&quot; | \&quot;never_scanned\&quot; | \&quot;onboarding\&quot; | \&quot;no_tenant_scope\&quot; | \&quot;error\&quot;&quot;,&quot;section&quot;:&quot;Response state&quot;},&quot;changeControlEntitled&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Response state&quot;}}">
+const DAY = 86400000;
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+class Component extends DCLogic {
+  state = { st: null, page: 1, win: null, pop: null, popX: 0, popY: 0 };
+  cardRef = React.createRef();
+
+  hover = pop => e => {
+    const el = this.cardRef.current;
+    if (!el || !pop) return;
+    const r = el.getBoundingClientRect();
+    const anchorY = e.clientY - r.top;
+    // The popover is 330px wide including padding and border, so half-width is 165.
+    const halfW = 165;
+    // Estimated height: header + title + one 22px row each + the source line.
+    const estH = 92 + (pop.rows ? pop.rows.length : 0) * 22;
+    const above = anchorY - estH - 16 >= 4;
+    this.setState({
+      pop,
+      popX: Math.max(halfW + 4, Math.min(Math.max(halfW + 4, r.width - halfW - 4), e.clientX - r.left)),
+      popY: above ? anchorY - 14 : anchorY + 16,
+      popAbove: above,
+    });
+  };
+
+  unhover = () => { if (this.state.pop) this.setState({ pop: null }); };
+
+  renderVals() {
+    const st = this.state.st ?? this.props.responseState ?? "live_paid";
+    const entitled = this.props.changeControlEntitled ?? true;
+    const paid = st === "live_paid" || st === "onboarding" || st === "no_tenant_scope";
+    const error = st === "error";
+    const never = st === "never_scanned";
+    const onboarding = st === "onboarding";
+    const noScope = st === "no_tenant_scope";
+
+    const NOW = new Date(2026, 8, 4, 14, 30);
+    const WINDOWS = [
+      { key: "2w", label: "2 WKS", back: 7, fwd: 7, step: 2 },
+      { key: "5w", label: "5 WKS", back: 14, fwd: 21, step: 7 },
+      { key: "q", label: "QUARTER", back: 30, fwd: 60, step: 14 },
+    ];
+    const win = WINDOWS.find(w => w.key === (this.state.win ?? "5w")) || WINDOWS[1];
+    const start = new Date(NOW.getTime() - win.back * DAY);
+    const end = new Date(NOW.getTime() + win.fwd * DAY);
+    const span = end - start;
+    const pct = d => ((d - start) / span) * 100;
+    const inWin = d => d >= start && d <= end;
+    const fmt = d => d.getDate() + " " + MON[d.getMonth()];
+    const rel = d => {
+      const days = Math.round((d - NOW) / DAY);
+      if (days === 0) return "today";
+      if (days === 1) return "tomorrow";
+      return "in " + days + "d";
+    };
+
+    const ticks = [];
+    const gridLines = [];
+    for (let t = -win.back; t <= win.fwd; t += win.step) {
+      const d = new Date(NOW.getTime() + t * DAY);
+      const p = pct(d);
+      ticks.push({ left: p.toFixed(2) + "%", label: fmt(d), ink: t === 0 ? "#7dd3fc" : "#475569" });
+      gridLines.push({ left: p.toFixed(2) + "%" });
+    }
+
+    const D = (m, day, h, mi) => new Date(2026, m - 1, day, h || 0, mi || 0);
+    const RED = "#f87171", AMB = "#fbbf24", GRN = "#34d399", BLU = "#60a5fa", TEAL = "#00B4D8", VIO = "#a78bfa";
+
+    // ── past, from the timeline endpoint's own five sources
+    const SCANS = [
+      [D(8, 18, 7, 20), RED, "!", "Security scan couldn't complete", "07:20", [
+        ["Outcome", "failed"], ["Coverage", "no checks graded"], ["Source", "msp_diagnostic_runs"],
+      ]],
+      [D(8, 29, 6, 30), AMB, "19", "Scan finished with limited coverage", "06:30", [
+        ["Outcome", "partial"], ["Coverage", "19 of 42 checks passed"], ["Licence gaps", "12 checks unreadable"],
+      ]],
+      [D(9, 4, 9, 12), GRN, "38", "Security scan completed", "09:12", [
+        ["Outcome", "completed"], ["Coverage", "38 of 42 checks passed"], ["Run", "latest"],
+      ]],
+    ];
+    const FINDINGS = [
+      [D(8, 27, 8, 15), AMB, "1", "Legacy authentication still permitted", "08:15", [
+        ["Severity", "warning"], ["Check", "identity:legacy-auth"], ["Raised by", "scan of 27 Aug"],
+      ]],
+      [D(9, 4, 9, 12), RED, "2", "2 critical findings raised", "09:12", [
+        ["Severity", "critical"], ["Checks", "identity:admin-mfa, sharing:anonymous-links"], ["Raised by", "scan of 4 Sep"],
+      ]],
+    ];
+    // ── future, dated in the modules each lane links to
+    const MSCHANGES = [
+      [D(9, 5), "Teams: external access default tightens", "MC-914722", "Teams"],
+      [D(9, 6), "SharePoint: anyone-link expiry enforced at 30 days", "MC-915108", "SharePoint"],
+      [D(9, 9), "Exchange: basic auth retirement, second wave", "MC-913980", "Exchange Online"],
+      [D(9, 10), "Entra: legacy MFA registration policy retires", "MC-916003", "Entra ID"],
+      [D(9, 18), "Purview: retention label scope change", "MC-916440", "Purview"],
+      [D(9, 24), "Copilot: agent consent model update", "MC-917201", "Copilot"],
+    ];
+    const WINDOWS_CC = [
+      [D(9, 6, 22, 0), D(9, 7, 2, 0), "Conditional Access pilot ring enforcement", "22:00–02:00, approved", "one-off", "CR-2291"],
+      [D(9, 20, 22, 0), D(9, 21, 1, 0), "Monthly patch window", "recurring, 22:00–01:00", "monthly, 3rd Sunday", "standing"],
+    ];
+    const POLICIES = [
+      [D(8, 30), RED, "Guest access standing policy", "review overdue", "5 days overdue"],
+      [D(9, 12), AMB, "Privileged role assignment policy", "review due", "within the 14-day lead window"],
+      [D(9, 16), AMB, "Data retention baseline", "review due", "within the 14-day lead window"],
+    ];
+
+    // Adjacent days collide at these track widths, so points are clustered before
+    // they are drawn: a lone point keeps its own badge (or stays a plain dot when it
+    // has none), and a collision becomes one capsule carrying the group count.
+    const DOT = { w: "9px", h: "9px", pad: "0", fs: "0px", top: "12px" };
+    const CAP = { w: "16px", h: "16px", pad: "0 4px", fs: "9px", top: "9px" };
+    const cluster = rows => {
+      const pts = rows.filter(r => inWin(r.d)).map(r => Object.assign({}, r, { p: pct(r.d) }))
+        .sort((a, b) => a.p - b.p);
+      const out = [];
+      let i = 0;
+      while (i < pts.length) {
+        let j = i + 1;
+        const thresh = pts[i].badge ? 4.2 : 2.2;
+        while (j < pts.length && pts[j].p - pts[i].p < thresh) j++;
+        const grp = pts.slice(i, j);
+        const at = (grp[0].p + grp[grp.length - 1].p) / 2;
+        if (grp.length === 1) {
+          const g = grp[0];
+          const shape = g.badge ? CAP : DOT;
+          out.push(Object.assign({}, shape, {
+            left: at.toFixed(2) + "%", color: g.color, fill: g.fill, badge: g.badge,
+            enter: this.hover(g.pop), leave: this.unhover,
+          }));
+        } else {
+          const g = grp[0];
+          out.push(Object.assign({}, CAP, {
+            left: at.toFixed(2) + "%", color: g.color, fill: g.fill, badge: String(grp.length),
+            enter: this.hover({
+              kind: g.pop.kind, color: g.color,
+              title: grp.length + " " + g.pop.noun,
+              when: fmt(grp[0].d) + " – " + fmt(grp[grp.length - 1].d),
+              rows: grp.map(m => [fmt(m.d), m.pop.title]),
+              link: g.pop.link, linkLabel: g.pop.linkLabel,
+            }),
+            leave: this.unhover,
+          }));
+        }
+        i = j;
+      }
+      return out;
+    };
+
+    const scanItems = never ? [] : SCANS.map(r => ({
+      d: r[0], color: r[1], fill: "rgba(52,211,153,.14)", badge: r[2],
+      pop: { kind: "SCAN", noun: "scans", color: r[1], title: r[3], when: fmt(r[0]) + " · " + r[4], rows: r[5], link: "Remediation Tracking.dc.html", linkLabel: "Findings from this run" },
+    }));
+    const findItems = never ? [] : FINDINGS.map(r => ({
+      d: r[0], color: r[1], fill: "rgba(248,113,113,.14)", badge: r[2],
+      pop: { kind: "FINDING", noun: "findings", color: r[1], title: r[3], when: fmt(r[0]) + " · " + r[4], rows: r[5], link: "Remediation Tracking.dc.html", linkLabel: "Open in tracker" },
+    }));
+    const msItems = noScope ? [] : MSCHANGES.map(r => ({
+      d: r[0], color: BLU, fill: "rgba(96,165,250,.28)", badge: "",
+      pop: {
+        kind: "MICROSOFT 365", noun: "Microsoft changes", color: BLU, title: r[1],
+        when: "Effective " + fmt(r[0]) + " · " + rel(r[0]),
+        rows: [["Message", r[2]], ["Workload", r[3]], ["Source", "Message Center"]],
+        link: "Microsoft Changes.dc.html", linkLabel: "Read the change",
+      },
+    }));
+    const polItems = noScope ? [] : POLICIES.map(r => ({
+      d: r[0], color: r[1], fill: "rgba(251,191,36,.3)", badge: "",
+      pop: {
+        kind: "POLICY REVIEW", noun: "policy reviews", color: r[1], title: r[2],
+        when: fmt(r[0]) + " · " + r[3],
+        rows: [["Clock", r[4]], ["Register", "policy_decisions"], ["Advanced by", "review clock, 14-day lead"]],
+        link: "Policy Decisions.dc.html", linkLabel: "Open the decision",
+      },
+    }));
+
+    const markerLanes = [
+      { label: "Scans", color: GRN, items: cluster(scanItems) },
+      { label: "Findings", color: RED, items: cluster(findItems) },
+      { label: "Microsoft changes", color: BLU, items: cluster(msItems) },
+      { label: "Policy reviews", color: AMB, items: cluster(polItems) },
+    ];
+
+    // A bar narrower than ~6% of the track cannot hold its own label, so the label
+    // moves outside it; a bar clamped by the window edge is squared off and hatched
+    // on that side, so "continues past the window" never reads as "ends here".
+    const mkBar = o => {
+      const rawL = pct(o.s), rawR = pct(o.e);
+      const clampL = rawL < 0, clampR = rawR > 100;
+      const l = Math.max(0, rawL);
+      const w = Math.max(0.7, Math.min(100, rawR) - l);
+      const inside = w > 6;
+      const nearRight = l + w > 78;
+      const hasPhase = o.ps != null;
+      return {
+        left: l.toFixed(2) + "%", width: w.toFixed(2) + "%", top: o.top,
+        radius: (clampL ? "0" : "5px") + " " + (clampR ? "0" : "5px") + " " + (clampR ? "0" : "5px") + " " + (clampL ? "0" : "5px"),
+        track: o.track, border: o.border,
+        edgeL: clampL ? "block" : "none",
+        edgeR: clampR ? "block" : "none",
+        phaseLeft: hasPhase ? (((Math.max(l, pct(o.ps)) - l) / w) * 100).toFixed(2) + "%" : "0%",
+        phaseWidth: hasPhase ? (((Math.min(100, pct(o.pe)) - Math.max(l, pct(o.ps))) / w) * 100).toFixed(2) + "%" : "0%",
+        phaseFill: hasPhase ? o.phaseFill : "transparent",
+        labelInside: inside ? o.label : "",
+        labelOutside: inside ? "" : o.label,
+        anchor: l + w / 2,
+        enter: this.hover(o.pop), leave: this.unhover,
+      };
+    };
+
+    // A bar too narrow to hold its label gets that label on a stacked row beneath
+    // the lane, tied back to its own bar by a connector. Labels are packed greedily
+    // so two narrow bars can never print over each other.
+    const layoutLabels = (bars, barBottom) => {
+      const rowEnds = [];
+      const labels = [];
+      bars.filter(b => b.labelOutside).map(b => {
+        const wpc = Math.min(58, b.labelOutside.length * 0.82);
+        return { text: b.labelOutside, wpc, anchor: b.anchor, left: Math.max(0, Math.min(100 - wpc, b.anchor - wpc / 2)) };
+      }).sort((a, b) => a.left - b.left).forEach(it => {
+        let r = 0;
+        while (rowEnds[r] != null && rowEnds[r] > it.left - 1) r++;
+        rowEnds[r] = it.left + it.wpc;
+        const top = barBottom + 5 + r * 14;
+        labels.push({
+          text: it.text, left: it.left.toFixed(2) + "%", top: top + "px",
+          connLeft: it.anchor.toFixed(2) + "%", connTop: barBottom + "px",
+          connH: (top - barBottom + 1) + "px",
+        });
+      });
+      return { labels, height: rowEnds.length ? barBottom + 5 + rowEnds.length * 14 + 3 : 0 };
+    };
+
+    const ccBars = (noScope || !entitled) ? [] : WINDOWS_CC.filter(r => r[1] >= start && r[0] <= end).map(r => mkBar({
+      s: r[0], e: r[1], top: "7px",
+      track: "rgba(0,180,216,.24)", border: "rgba(0,180,216,.55)",
+      label: r[2],
+      pop: {
+        kind: "CHANGE WINDOW", color: TEAL, title: r[2],
+        when: fmt(r[0]) + " · " + r[3] + " · " + rel(r[0]),
+        rows: [["Cadence", r[4]], ["Change request", r[5]], ["Entitlement", "change_control"]],
+        link: "Change Control.dc.html", linkLabel: "Open the window",
+      },
+    }));
+
+    const PROJECTS = [
+      {
+        title: "Conditional Access baseline rollout", s: D(8, 11), e: D(10, 2),
+        ps: D(8, 28), pe: D(9, 14), step: 4, total: 11, phase: "Pilot ring enforcement",
+      },
+      {
+        title: "Guest access remediation", s: D(8, 25), e: D(9, 26),
+        ps: null, pe: null, step: null, total: 14, phase: "No task in progress",
+      },
+    ];
+    const projBars = PROJECTS.filter(p => p.e >= start && p.s <= end).map((p, i) => mkBar({
+      s: p.s, e: p.e, top: (5 + i * 26) + "px",
+      track: "rgba(0,120,212,.16)", border: "rgba(0,120,212,.45)",
+      ps: p.ps, pe: p.pe, phaseFill: "rgba(0,120,212,.62)",
+      label: p.title,
+      pop: {
+        kind: "PROJECT", color: "#0078D4", title: p.title,
+        when: fmt(p.s) + " → " + fmt(p.e),
+        rows: p.ps != null
+          ? [["Current phase", p.phase], ["Phase runs", fmt(p.ps) + " → " + fmt(p.pe)], ["Step", p.step + " of " + p.total]]
+          : [["Current phase", p.phase], ["Tasks", p.total + " total, none in progress"], ["Status", "active"]],
+        link: "Change Control.dc.html", linkLabel: "Project detail",
+      },
+    }));
+
+    const ccLayout = layoutLabels(ccBars, 27);
+    const projBase = projBars.length ? 5 + (projBars.length - 1) * 26 + 20 : 34;
+    const projLayout = layoutLabels(projBars, projBase);
+
+    const barLanes = [
+      {
+        label: "Change windows", color: TEAL, bars: ccBars, labels: ccLayout.labels,
+        height: Math.max(34, ccLayout.height) + "px",
+      },
+      {
+        label: "Projects", color: "#0078D4", bars: projBars, labels: projLayout.labels,
+        height: Math.max(34, projBase + 6, projLayout.height) + "px",
+      },
+    ];
+
+    // ── needs you
+    const NEEDS = [];
+    if (!never) {
+      NEEDS.push({
+        tag: "CRITICAL", accent: RED, meta: "identity:admin-mfa",
+        title: paid ? "Global administrators without multi-factor authentication" : "Finding withheld on your tier",
+        ink: paid ? "#f8fafc" : "#94a3b8",
+        action: "Raise change request", href: "Change Control.dc.html",
+        alt: "Remediation", altHref: "Remediation Tracking.dc.html",
+      });
+      NEEDS.push({
+        tag: "CRITICAL", accent: RED, meta: "sharing:anonymous-links",
+        title: paid ? "Anonymous sharing links enabled tenant-wide" : "Finding withheld on your tier",
+        ink: paid ? "#f8fafc" : "#94a3b8",
+        action: "Raise change request", href: "Change Control.dc.html",
+        alt: "Remediation", altHref: "Remediation Tracking.dc.html",
+      });
+    }
+    if (!noScope) {
+      // Ownership acceptances. No field on the dashboard payload carries these yet —
+      // they need a seventh overviewCounts entry plus a pending-acceptance read.
+      NEEDS.push({
+        tag: "ACCEPT OR DECLINE", accent: VIO, meta: "accountable · SharePoint",
+        title: "You have been named accountable for SharePoint and OneDrive", ink: "#f8fafc",
+        action: "Accept or decline", href: "Ownership RACI.dc.html",
+        alt: "Who owns what", altHref: "Ownership RACI.dc.html",
+      });
+      NEEDS.push({
+        tag: "ACCEPT OR DECLINE", accent: VIO, meta: "responsible · year-end freeze",
+        title: "You have been named responsible for the year-end finance freeze", ink: "#f8fafc",
+        action: "Accept or decline", href: "Ownership RACI.dc.html",
+        alt: "Who owns what", altHref: "Ownership RACI.dc.html",
+      });
+      NEEDS.push({
+        tag: "SIGNATURE", accent: AMB, meta: "2 risk decisions",
+        title: "Risk acceptances waiting for your signature", ink: "#f8fafc",
+        action: "Review and sign", href: "Risk Register.dc.html",
+        alt: "Risk register", altHref: "Risk Register.dc.html",
+      });
+      NEEDS.push({
+        tag: "OUTSTANDING", accent: AMB, meta: "9 steps",
+        title: "Remediation steps neither verified nor accepted", ink: "#f8fafc",
+        action: "Open tracker", href: "Remediation Tracking.dc.html",
+        alt: "Policy decisions", altHref: "Policy Decisions.dc.html",
+      });
+    }
+
+    // ── coming up: the dated rows behind the forward counts
+    const COMING = [];
+    if (!noScope) {
+      MSCHANGES.forEach(r => COMING.push([r[0], BLU, r[1], "Microsoft 365 · " + r[2], "Microsoft Changes.dc.html"]));
+      if (entitled) WINDOWS_CC.forEach(r => COMING.push([r[0], TEAL, r[2], "Change window · " + r[3], "Change Control.dc.html"]));
+      POLICIES.filter(r => r[0] >= NOW).forEach(r => COMING.push([r[0], AMB, r[2], "Policy · " + r[3], "Policy Decisions.dc.html"]));
+    }
+    COMING.sort((a, b) => a[0] - b[0]);
+    const comingRows = COMING.slice(0, 8).map(([d, color, title, sub, href]) => ({
+      day: fmt(d), rel: rel(d), color, title, sub, href,
+    }));
+
+    const EVENTS = [
+      ["4 Sep", "09:12", GRN, "Security scan completed", "38 of 42 checks passed"],
+      ["4 Sep", "09:12", RED, "Global administrators without MFA", "Critical finding raised"],
+      ["3 Sep", "17:40", AMB, "Architecture Health score declined", "71 → 64"],
+      ["2 Sep", "11:05", GRN, "Q3 tenant posture review", "Document delivered"],
+      ["1 Sep", "14:22", BLU, "Conditional Access baseline rollout", "Offer sent"],
+      ["29 Aug", "06:30", AMB, "Scan finished with limited coverage", "19 of 42 checks passed"],
+      ["27 Aug", "08:15", AMB, "Legacy authentication still permitted", "Warning finding raised"],
+    ];
+    const OLDER = [
+      ["21 Aug", "16:44", GRN, "SLA Engine score improved", "88 → 96"],
+      ["18 Aug", "07:20", AMB, "Security scan couldn't complete", ""],
+      ["12 Aug", "13:37", GRN, "Signal intelligence snapshot", "Document delivered"],
+    ];
+    const feed = this.state.page > 1 ? EVENTS.concat(OLDER) : EVENTS;
+    const eventRows = feed.map(([day, time, dot, title, desc]) => ({ day, time, dot, title, desc }));
+
+    const COUNTS = [
+      [2, "RACI roles awaiting you", "Ownership RACI.dc.html", VIO],
+      [2, "Risk decisions waiting", "Risk Register.dc.html", AMB],
+      [7, "Risk acceptances active", "Risk Register.dc.html", "#e2e8f0"],
+      [4, "MS changes this week", "Microsoft Changes.dc.html", BLU],
+      [entitled ? 1 : 0, "Change windows this week", "Change Control.dc.html", BLU],
+      [9, "Remediation outstanding", "Remediation Tracking.dc.html", RED],
+      [3, "Policies due for review", "Policy Decisions.dc.html", AMB],
+    ];
+
+    return {
+      rootH: this.props.embedded ? "100%" : "100vh",
+      showStates: !this.props.embedded,
+      stateKey: st,
+      stateTabs: [
+        ["live_paid", "Live", "Scored tenant, paid tier"],
+        ["live_unpaid", "Unpaid", "Finding text withheld server-side, scores not"],
+        ["never_scanned", "No scan", "Zero engine snapshots and no diagnostic run"],
+        ["onboarding", "Onboarding", "tenants.status = onboarding"],
+        ["no_tenant_scope", "No scope", "#2922 — resolveTenantScope null, all six counts a true 0"],
+        ["error", "500", "Either endpoint failed"],
+      ].map(([k, label, hint]) => ({
+        label, hint,
+        bg: st === k ? "rgba(0,120,212,.24)" : "transparent",
+        ink: st === k ? "#f8fafc" : "#64748b",
+        pick: () => this.setState({ st: k, page: 1 }),
+      })),
+
+      windowTabs: WINDOWS.map(w => ({
+        label: w.label,
+        bg: w.key === win.key ? "rgba(0,120,212,.24)" : "transparent",
+        ink: w.key === win.key ? "#f8fafc" : "#64748b",
+        pick: () => this.setState({ win: w.key }),
+      })),
+      cardRef: this.cardRef,
+      unhoverAll: this.unhover,
+      popOpen: !!this.state.pop,
+      popX: this.state.popX + "px",
+      popY: this.state.popY + "px",
+      popTransform: this.state.popAbove ? "translate(-50%,-100%)" : "translate(-50%,0)",
+      popKind: this.state.pop ? this.state.pop.kind : "",
+      popColor: this.state.pop ? this.state.pop.color : "#64748b",
+      popTitle: this.state.pop ? this.state.pop.title : "",
+      popWhen: this.state.pop ? this.state.pop.when : "",
+      popRows: this.state.pop ? (this.state.pop.rows || []).map(r => ({ k: r[0], v: r[1] })) : [],
+      popLinkLabel: this.state.pop && this.state.pop.linkLabel ? "→ " + this.state.pop.linkLabel : "",
+
+      windowLabel: fmt(start) + " → " + fmt(end),
+      ticks, gridLines,
+      nowLeft: pct(NOW).toFixed(2) + "%",
+      markerLanes, barLanes,
+      legend: [
+        { color: GRN, label: "Scan" }, { color: RED, label: "Critical" },
+        { color: AMB, label: "Warning / due" }, { color: BLU, label: "Microsoft" },
+        { color: TEAL, label: "Change window" }, { color: "#0078D4", label: "Project" },
+        { color: "rgba(0,180,216,.55)", label: "Now" },
+        { color: "repeating-linear-gradient(45deg,#94a3b8 0 2px,transparent 2px 4px)", label: "Continues past window" },
+      ],
+      sourceLine: "diagnostic runs · findings · message center · maintenance windows · projects · policy decisions",
+
+      tenantLine: error ? "Your tenant" : "Jane Jane",
+      tenantSub: error ? "" : onboarding ? "First collection running" : noScope ? "mccawsoft2.onmicrosoft.com" : "mccawsoft2.onmicrosoft.com · last scan 4 Sep 09:12",
+      stateLine: error ? "READ FAILED" : onboarding ? "COLLECTING" : never ? "NEVER SCANNED" : noScope ? "SCOPE UNRESOLVED" : paid ? "MONITORED" : "TEXT WITHHELD",
+      stateInk: error ? RED : (onboarding || noScope || !paid) ? AMB : GRN,
+      stateDot: error ? RED : (onboarding || noScope || !paid) ? AMB : GRN,
+      stateBorder: error ? "rgba(248,113,113,.4)" : (onboarding || noScope || !paid) ? "rgba(251,191,36,.4)" : "rgba(52,211,153,.4)",
+      stateFill: error ? "rgba(248,113,113,.08)" : (onboarding || noScope || !paid) ? "rgba(251,191,36,.08)" : "rgba(52,211,153,.08)",
+
+      inboxChips: [
+        { value: "3", label: "notifications", ink: "#f8fafc", href: "Portal Alerts.dc.html" },
+        { value: "5", label: "messages", ink: "#f8fafc", href: "ShaneBot.dc.html" },
+      ],
+
+      isError: error,
+      isPayload: !error,
+      retry: () => this.setState({ st: "live_paid", page: 1 }),
+
+      hasNeeds: NEEDS.length > 0,
+      noNeeds: NEEDS.length === 0,
+      noNeedsLine: never ? "No scan has run and no register carries an item for you." : "Nothing waiting on you.",
+      needRows: NEEDS,
+      needsCount: NEEDS.length ? NEEDS.length + " open" : "clear",
+
+      hasComing: comingRows.length > 0,
+      noComing: comingRows.length === 0,
+      noComingLine: noScope ? "No resolvable tenant identifier to schedule against." : "Nothing scheduled.",
+      comingRows,
+      comingCount: comingRows.length ? "next " + comingRows.length : "",
+
+      hasEvents: !never,
+      noEvents: never,
+      eventRows,
+      timelineMeta: this.state.page > 1 ? "10 events" : "7 events",
+      hasCursor: this.state.page === 1,
+      loadOlder: () => this.setState({ page: 2 }),
+
+      hasProjects: true,
+      noProjects: false,
+      projectRows: [
+        { title: "Conditional Access baseline rollout", steps: "4/11", stepInk: "#7dd3fc", pct: "36%", barInk: "#0078D4", step: "Pilot ring enforcement" },
+        { title: "Guest access remediation", steps: "—/14", stepInk: "#64748b", pct: "0%", barInk: "#475569", step: "No task in progress" },
+      ],
+
+      countRows: COUNTS.map(([value, label, href, ink]) => ({
+        value: noScope ? "0" : String(value),
+        label, href, ink: noScope || value === 0 ? "#475569" : ink,
+      })),
+      countsNote: noScope || !entitled,
+      countsNoteLine: noScope ? "Tenant identifier unresolvable — every count is a real 0." : "Change windows: no change_control entitlement.",
+
+      hasReports: true,
+      noReports: false,
+      reportRows: [
+        { title: "Monthly posture summary", period: "Aug 2026" },
+        { title: "Monthly posture summary", period: "Jul 2026" },
+        { title: "Signal intelligence snapshot", period: "Jun 2026" },
+      ],
+    };
+  }
+}
+
+</script>
+</body>
+</html>

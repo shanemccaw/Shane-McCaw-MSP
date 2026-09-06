@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes skelPulse{0%,100%{opacity:.5}50%{opacity:.9}}
+</style>
+</helmet>
+<div data-screen-label="Change control" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;padding:24px 30px 48px;padding-right:max(30px, calc(100% - 1030px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Change control</span>
+      <span title="Every change to your tenant exists here as a change request first. An approved request is what authorises a write, and the execution stamps its reference back onto the change it made." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+      <span style="margin-left:auto;font-size:11px;color:#64748b">{{approverLine}}</span>
+    </div>
+
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{skeletons}}" as="s" hint-placeholder-count="4">
+          <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.02);padding:16px;display:flex;flex-direction:column;gap:9px;animation:skelPulse 1.6s ease-in-out infinite">
+            <div style="height:10px;width:{{s.w1}};border-radius:999px;background:rgba(255,255,255,.07)"></div>
+            <div style="height:9px;width:{{s.w2}};border-radius:999px;background:rgba(255,255,255,.05)"></div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{showFail}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid {{failBorder}};border-radius:14px;background:{{failBg}};padding:18px 20px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:center;gap:9px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{failInk}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4M12 17h.01"></path></svg>
+          <span style="font-size:14px;font-weight:600;color:#f8fafc">{{failHead}}</span>
+        </div>
+        <span style="font-size:12.5px;color:#94a3b8;line-height:1.6;max-width:720px">{{failBody}}</span>
+        <span style="font-size:11px;color:#64748b;line-height:1.6;max-width:720px">{{failMeta}}</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{showStats}}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">
+        <sc-for list="{{stats}}" as="c" hint-placeholder-count="4">
+          <div style="border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.02);padding:13px 14px 14px;display:flex;flex-direction:column;gap:7px">
+            <span style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#94a3b8">{{c.label}}</span>
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span style="font-size:26px;font-weight:800;color:{{c.ink}};letter-spacing:-.015em;font-variant-numeric:tabular-nums">{{c.value}}</span>
+              <sc-if value="{{c.hasSub}}" hint-placeholder-val="{{ false }}"><span style="font-size:11.5px;color:#94a3b8">{{c.sub}}</span></sc-if>
+            </div>
+            <span style="font-size:10.5px;color:#64748b;line-height:1.5">{{c.note}}</span>
+            <sc-if value="{{c.hasTag}}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-weight:700;letter-spacing:.07em;color:{{c.tagInk}};border:1px {{c.tagStyle}} {{c.tagBorder}};border-radius:999px;padding:2px 7px;align-self:flex-start">{{c.tag}}</span></sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <span style="display:block;font-size:10.5px;color:#475569;line-height:1.65;max-width:840px;margin-top:-4px">{{statsFootnote}}</span>
+    </sc-if>
+
+    <sc-if value="{{freezeActive}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(0,180,216,.35);border-radius:14px;background:rgba(0,180,216,.05);padding:16px 19px;display:flex;gap:12px">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 2v20M2 12h20M5 5l14 14M19 5 5 19"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+            <span style="font-size:13.5px;font-weight:600;color:#f8fafc">{{freezeHead}}</span>
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.07em;color:#34d399;border:1px solid rgba(52,211,153,.35);border-radius:999px;padding:2px 7px">ENFORCED AT SUBMIT</span>
+          </div>
+          <span style="font-size:12.5px;color:#cbd5e1;line-height:1.65;max-width:780px">{{freezeBody}}</span>
+          <span style="font-size:11.5px;color:#94a3b8;line-height:1.65;max-width:780px">A change whose own booked window overlaps a freeze is refused too, not only one raised during it. The refusal happens on the server, so it cannot be clicked past.</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{showRegister}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Register</span>
+        <span style="font-size:11px;color:#64748b">{{registerMeta}}</span>
+        <div onClick="{{toggleWizard}}" style="margin-left:auto;display:flex;align-items:center;gap:7px;border:1px solid rgba(0,120,212,.5);border-radius:6px;background:rgba(0,120,212,.12);padding:6px 12px;cursor:pointer" style-hover="border-color:rgba(0,120,212,.8)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 5v14M5 12h14"></path></svg>
+          <span style="font-size:11.5px;font-weight:600;color:#93c5fd">{{wizardCta}}</span>
+        </div>
+      </div>
+
+      <sc-if value="{{wizardOpen}}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(0,120,212,.3);border-radius:14px;background:rgba(0,120,212,.04);padding:17px 20px 18px;display:flex;flex-direction:column;gap:13px">
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+            <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Raise a change request</span>
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.07em;color:#34d399;border:1px solid rgba(52,211,153,.35);border-radius:999px;padding:2px 7px">CURRENT</span>
+            <span style="font-size:11px;color:#64748b">creation is ungated — a real change produces a real CR whether or not the add-on is bought</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:11px">
+            <sc-for list="{{fields}}" as="f" hint-placeholder-count="9">
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <span style="font-size:11px;font-weight:600;color:#cbd5e1">{{f.label}} <span style="color:{{f.reqInk}};font-weight:500">{{f.req}}</span></span>
+                <div style="border:1px solid rgba(255,255,255,.12);border-radius:6px;background:rgba(2,6,23,.6);padding:8px 10px;min-height:{{f.h}};display:flex">
+                  <span style="font-size:12px;color:#475569;line-height:1.5">{{f.ph}}</span>
+                </div>
+                <span style="font-size:10px;color:#64748b">{{f.limit}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="border-top:1px solid rgba(255,255,255,.07);padding-top:12px;display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:11.5px;font-weight:600;color:#e2e8f0">Decided for you on submit — not fields on this form</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.65;max-width:780px">Risk and workload are computed server-side from what you typed; a risk named by the client is ignored, because risk decides how many approvals the change needs. Status is always <b style="color:#e2e8f0;font-weight:600">Pending approval</b>, and the approval stages it needs are created with it. Requester comes from your sign-in, tenant details from your connected tenant, and the backup flag is written <b style="color:#e2e8f0;font-weight:600">false</b> with an empty hash — a snapshot is captured at execution, not from the JSON you paste.</span>
+            <span style="font-size:11px;color:#64748b;line-height:1.6">Submitting during a freeze is refused unless you include a written justification. With no connected tenant it is refused outright rather than filed against a blank tenant.</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+          <div style="border:1px solid {{r.border}};border-radius:13px;background:{{r.bg}};overflow:hidden">
+            <div onClick="{{r.click}}" style="padding:13px 16px 14px;display:flex;flex-direction:column;gap:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.02)">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-family:Menlo,monospace;font-size:11px;color:#94a3b8">{{r.code}}</span>
+                <span style="font-size:13.5px;font-weight:600;color:#f8fafc">{{r.title}}</span>
+                <span style="margin-left:auto;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                  <sc-if value="{{r.isRouted}}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;font-weight:700;letter-spacing:.05em;color:#7dd3fc;border:1px solid rgba(0,180,216,.4);border-radius:999px;padding:2px 8px">{{r.routedTag}}</span></sc-if>
+                  <sc-if value="{{r.breached}}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;font-weight:700;letter-spacing:.05em;color:#f87171;border:1px solid rgba(248,113,113,.42);border-radius:999px;padding:2px 8px">SLA BREACHED</span></sc-if>
+                  <span style="font-size:10px;font-weight:700;letter-spacing:.05em;color:{{r.classInk}};border:1px {{r.classStyle}} {{r.classBorder}};border-radius:999px;padding:2px 8px">{{r.changeClass}}</span>
+                  <span style="font-size:10px;font-weight:700;letter-spacing:.05em;color:{{r.riskInk}};border:1px solid {{r.riskBorder}};border-radius:999px;padding:2px 8px">{{r.risk}}</span>
+                  <span style="font-size:10.5px;font-weight:700;letter-spacing:.04em;color:{{r.statusInk}};background:{{r.statusBg}};border:1px solid {{r.statusBorder}};border-radius:999px;padding:2px 9px">{{r.status}}</span>
+                </span>
+              </div>
+              <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:11px;color:#64748b">
+                <span>{{r.workload}}</span>
+                <span style="color:#94a3b8">{{r.target}}</span>
+                <span style="font-variant-numeric:tabular-nums">{{r.impacted}}</span>
+                <span>{{r.window}}</span>
+                <span style="color:{{r.stageInk}};font-weight:600">{{r.stageLine}}</span>
+              </div>
+            </div>
+            <sc-if value="{{r.expanded}}" hint-placeholder-val="{{ false }}">
+              <div style="border-top:1px solid rgba(255,255,255,.07);background:rgba(2,6,23,.45);padding:15px 16px 16px;display:flex;flex-direction:column;gap:13px">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px">
+                  <sc-for list="{{r.detail}}" as="d" hint-placeholder-count="8">
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <span style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8">{{d.k}}</span>
+                      <span style="font-size:12px;color:{{d.ink}};line-height:1.6;font-family:{{d.font}};white-space:{{d.wrap}}">{{d.v}}</span>
+                      <sc-if value="{{d.hasNote}}" hint-placeholder-val="{{ false }}"><span style="font-size:10.5px;color:#64748b;line-height:1.55">{{d.note}}</span></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:9px;border-top:1px solid rgba(255,255,255,.06);padding-top:13px">
+                  <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                    <span style="font-size:11px;font-weight:600;color:#cbd5e1">Approval record</span>
+                    <span style="font-size:10.5px;color:#64748b">{{r.approvalMeta}}</span>
+                  </div>
+                  <sc-for list="{{r.stages}}" as="s" hint-placeholder-count="2">
+                    <div style="display:flex;align-items:flex-start;gap:10px;border:1px {{s.style}} {{s.border}};border-radius:9px;background:{{s.bg}};padding:9px 12px">
+                      <span style="width:8px;height:8px;border-radius:999px;border:1.5px solid {{s.dot}};background:{{s.fill}};flex:none;margin-top:4px"></span>
+                      <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+                          <span style="font-size:12px;font-weight:600;color:#e2e8f0">Stage {{s.stage}} · {{s.decisionLabel}}</span>
+                          <span style="font-size:10.5px;color:#64748b">{{s.roleLabel}}</span>
+                        </div>
+                        <span style="font-size:11.5px;color:#94a3b8;line-height:1.6">{{s.who}}</span>
+                        <span style="font-size:10.5px;color:{{s.timeInk}};line-height:1.55">{{s.timing}}</span>
+                        <sc-if value="{{s.hasReason}}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:#cbd5e1;line-height:1.6">{{s.reason}}</span></sc-if>
+                      </div>
+                    </div>
+                  </sc-for>
+                  <span style="font-size:10.5px;color:#64748b;line-height:1.65;max-width:800px">{{r.approvalNote}}</span>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:9px;border-top:1px solid rgba(255,255,255,.06);padding-top:13px">
+                  <span style="font-size:11px;font-weight:600;color:#cbd5e1">Actions</span>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <sc-for list="{{r.actions}}" as="b" hint-placeholder-count="5">
+                      <div onClick="{{b.click}}" title="{{b.tip}}" style="display:flex;align-items:center;gap:8px;border:1px {{b.style}} {{b.border}};border-radius:6px;background:{{b.bg}};padding:6px 11px;cursor:{{b.cursor}};opacity:{{b.op}}">
+                        <span style="font-size:11.5px;font-weight:600;color:{{b.ink}}">{{b.label}}</span>
+                        <sc-if value="{{b.hasTag}}" hint-placeholder-val="{{ false }}"><span style="font-size:9px;font-weight:700;letter-spacing:.06em;color:{{b.tagInk}};border:1px solid {{b.tagBorder}};border-radius:999px;padding:1px 6px">{{b.tag}}</span></sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <span style="font-size:10.5px;color:#64748b;line-height:1.65;max-width:800px">{{r.actionNote}}</span>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:9px;border-top:1px solid rgba(255,255,255,.06);padding-top:13px">
+                  <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                    <span style="font-size:11px;font-weight:600;color:#cbd5e1">Timeline</span>
+                    <span style="font-size:10.5px;color:#64748b">system events are appended, never written by hand</span>
+                  </div>
+                  <sc-for list="{{r.timeline}}" as="t" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:baseline;gap:11px;flex-wrap:wrap">
+                      <span style="width:6px;height:6px;border-radius:999px;background:{{t.dot}};flex:none;margin-top:5px"></span>
+                      <span style="font-size:11px;color:#64748b;min-width:112px;font-variant-numeric:tabular-nums">{{t.when}}</span>
+                      <span style="font-size:11.5px;color:{{t.ink}};flex:1;min-width:220px;line-height:1.6">{{t.text}}</span>
+                      <span style="font-size:10px;font-weight:700;letter-spacing:.05em;color:#475569">{{t.kind}}</span>
+                    </div>
+                  </sc-for>
+                  <div style="display:flex;align-items:center;gap:9px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:rgba(2,6,23,.6);padding:8px 11px;margin-top:2px">
+                    <span style="font-size:12px;color:#475569;flex:1">Add a comment — up to 4,000 characters</span>
+                    <span onClick="{{r.addComment}}" style="font-size:11px;font-weight:600;color:#60a5fa;cursor:pointer">Post</span>
+                  </div>
+                  <span style="font-size:10.5px;color:#475569;line-height:1.65;max-width:800px">Comments and attachments are yours to add; events are the record of what the platform did. The stored rollback command is deliberately never sent to the browser and is not shown here.</span>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{showEmpty}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:26px 22px;display:flex;flex-direction:column;gap:8px;align-items:flex-start">
+        <span style="font-size:14px;font-weight:600;color:#f8fafc">This tenant has no change requests yet</span>
+        <span style="font-size:12.5px;color:#94a3b8;line-height:1.65;max-width:640px">Your tenant resolved and the register really is empty — this is your own answer, not a failure. The four counters above are genuine zeros.</span>
+        <div onClick="{{toggleWizard}}" style="margin-top:5px;display:flex;align-items:center;gap:7px;border:1px solid rgba(0,120,212,.5);border-radius:6px;background:rgba(0,120,212,.12);padding:7px 13px;cursor:pointer">
+          <span style="font-size:11.5px;font-weight:600;color:#93c5fd">Raise the first change request</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{showCatalog}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Standard changes you can run</span>
+        <span style="font-size:11px;color:#64748b">pre-approved catalogue items · running one still produces a real, auto-approved change request</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:10px">
+        <sc-for list="{{catalog}}" as="c" hint-placeholder-count="3">
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:13px;background:rgba(255,255,255,.02);padding:15px 16px 16px;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:12.5px;font-weight:600;color:#e2e8f0">{{c.name}}</span>
+              <span style="margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.07em;color:{{c.tagInk}};border:1px {{c.tagStyle}} {{c.tagBorder}};border-radius:999px;padding:2px 7px">{{c.tag}}</span>
+            </div>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.6">{{c.summary}}</span>
+            <span style="font-size:11px;color:#64748b">{{c.meta}}</span>
+            <div onClick="{{c.run}}" style="align-self:flex-start;margin-top:2px;display:flex;align-items:center;gap:7px;border:1px {{c.btnStyle}} {{c.btnBorder}};border-radius:6px;background:{{c.btnBg}};padding:6px 11px;cursor:{{c.cursor}};opacity:{{c.op}}">
+              <span style="font-size:11.5px;font-weight:600;color:{{c.btnInk}}">{{c.cta}}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <span style="display:block;font-size:10.5px;color:#475569;line-height:1.65;max-width:840px">A standard change needs no human approval stage: the ledger records one inherited approval, whose approver is the real party that catalogued it, never &ldquo;the system&rdquo;. Revoking the catalogue item is the control — it is not permanent by accident.</span>
+    </sc-if>
+
+    <sc-if value="{{showFreezeCal}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Freeze calendar</span>
+        <span style="font-size:11px;color:#64748b">one row per standing rule — a one-off span or a recurring cadence, not one row per occurrence</span>
+      </div>
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 18px 16px;display:flex;flex-direction:column;gap:9px">
+        <sc-for list="{{freezes}}" as="f" hint-placeholder-count="3">
+          <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,.04);padding-bottom:9px">
+            <span style="width:8px;height:8px;border-radius:999px;background:{{f.dot}};flex:none;margin-top:5px"></span>
+            <span style="font-size:12px;font-weight:600;color:#e2e8f0;min-width:190px">{{f.name}}</span>
+            <span style="font-size:11.5px;color:#94a3b8;flex:1;min-width:200px;line-height:1.55">{{f.reason}}</span>
+            <span style="font-size:11px;color:#64748b;font-variant-numeric:tabular-nums">{{f.span}}</span>
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.06em;color:{{f.scopeInk}};border:1px solid {{f.scopeBorder}};border-radius:999px;padding:1px 7px">{{f.scope}}</span>
+          </div>
+        </sc-for>
+        <span style="display:block;font-size:10.5px;color:#475569;line-height:1.65;max-width:840px;margin-top:2px">A freeze blocks raising a change while it is in effect, and blocks a change booked to run inside it. The only way through is a written justification submitted with the change itself.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{showNotBuilt}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Not on this page yet</span>
+        <span style="font-size:11px;color:#64748b">what the module still owes you</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:10px">
+        <sc-for list="{{stubs}}" as="s" hint-placeholder-count="3">
+          <div style="border:1px dashed rgba(148,163,184,.32);border-radius:13px;background:rgba(255,255,255,.012);padding:15px 16px 16px;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:12.5px;font-weight:600;color:#e2e8f0">{{s.title}}</span>
+              <span style="margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.07em;color:#c2a63d;border:1px solid rgba(194,166,61,.4);border-radius:999px;padding:2px 7px">{{s.tag}}</span>
+            </div>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.6">{{s.now}}</span>
+            <span style="font-size:11.5px;color:#64748b;line-height:1.6">{{s.target}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1080,&quot;height&quot;:920},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;live-empty&quot;,&quot;loading&quot;,&quot;read-failed&quot;,&quot;no-tenant&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data honesty&quot;},&quot;canApproveChanges&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Your authority&quot;},&quot;showCatalog&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Sections&quot;},&quot;showNotBuilt&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Sections&quot;},&quot;openPanel&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(spec: object) =&gt; void&quot;}}">
+class Component extends DCLogic {
+  state = { open: null, wizard: false, decided: {}, comments: {} };
+  renderVals() {
+    const ds = this.props.dataState ?? "live";
+    const isLoading = ds === "loading";
+    const isEmpty = ds === "live-empty";
+    const isFail = ds === "read-failed";
+    const noTenant = ds === "no-tenant";
+    const live = ds === "live";
+    const canApproveChanges = this.props.canApproveChanges ?? true;
+
+    const CLS = {
+      Standard: ["#60a5fa", "rgba(96,165,250,.35)", "dashed"],
+      Normal: ["#94a3b8", "rgba(148,163,184,.3)", "solid"],
+      Emergency: ["#f87171", "rgba(248,113,113,.4)", "solid"],
+    };
+    const RISK = { Low: ["#34d399", "rgba(52,211,153,.35)"], Medium: ["#c2a63d", "rgba(194,166,61,.4)"], High: ["#fb923c", "rgba(251,146,60,.4)"], Critical: ["#f87171", "rgba(248,113,113,.42)"] };
+    const ST = {
+      "Pending approval": ["#c2a63d", "rgba(194,166,61,.4)", "rgba(194,166,61,.07)"],
+      Approved: ["#34d399", "rgba(52,211,153,.38)", "rgba(52,211,153,.07)"],
+      Scheduled: ["#60a5fa", "rgba(96,165,250,.35)", "rgba(96,165,250,.07)"],
+      "In window": ["#00B4D8", "rgba(0,180,216,.4)", "rgba(0,180,216,.08)"],
+      Implemented: ["#cbd5e1", "rgba(203,213,225,.28)", "rgba(255,255,255,.04)"],
+      Rejected: ["#94a3b8", "rgba(148,163,184,.28)", "transparent"],
+      "Rolled back": ["#f87171", "rgba(248,113,113,.35)", "rgba(248,113,113,.05)"],
+    };
+    const DEC = {
+      approved: ["Approved", "#34d399", "#34d399", "solid", "rgba(52,211,153,.35)", "rgba(52,211,153,.05)"],
+      pending: ["Awaiting a decision", "#c2a63d", "transparent", "solid", "rgba(194,166,61,.38)", "rgba(194,166,61,.04)"],
+      rejected: ["Rejected", "#f87171", "#f87171", "solid", "rgba(248,113,113,.4)", "rgba(248,113,113,.05)"],
+      superseded: ["Superseded", "#8494ab", "transparent", "dashed", "rgba(132,148,171,.35)", "transparent"],
+    };
+    const ROLE = { customer: "your side", msp: "your MSP", catalog_inherited: "inherited from the catalogue", microsoft_forced: "forced by Microsoft" };
+
+    const SAT = "Saturday maintenance window, 02:00–05:00";
+    const CRS = [
+      { code: "CR-2026-118", title: "Block legacy authentication protocols", changeClass: "Normal", status: "Pending approval", workload: "Conditional Access",
+        target: "Conditional Access — all cloud apps", ticket: "PSA-8841", requester: "m.okafor@contoso.com", window: SAT,
+        scheduledStart: "2026-09-05T01:00:00Z", scheduledEnd: "2026-09-05T04:00:00Z", risk: "High", impactedUsersCount: 412,
+        rationale: "Legacy protocols bypass Conditional Access entirely and are still enabled on this tenant.",
+        pre: "{\n  \"legacyAuthBlocked\": false\n}", post: "{\n  \"legacyAuthBlocked\": true,\n  \"excludedServiceAccounts\": 2\n}",
+        executedAt: null, backupVerified: false, linkedFinding: "MFA gap detected — legacy auth enabled", remediationCheckKey: "security:legacy-auth-enabled",
+        executorRunId: null, createdAt: "2026-09-01T09:14:22Z",
+        approvals: [
+          { stage: 1, decision: "approved", role: "customer", name: "Jordan Reid", onBehalfOf: null, reason: null, decidedAt: "2026-09-01T15:02:00Z", dueAt: "2026-09-03T09:14:22Z", breached: false },
+          { stage: 2, decision: "pending", role: "customer", name: null, onBehalfOf: null, reason: null, decidedAt: null, dueAt: "2026-09-03T09:14:22Z", breached: true },
+        ] },
+      { code: "CR-2026-117", title: "Raise the SharePoint external link expiry to 30 days", changeClass: "Normal", status: "Pending approval", workload: "SharePoint",
+        target: "SharePoint Online — tenant sharing level", ticket: "PSA-8838", requester: "j.reid@contoso.com", window: SAT,
+        scheduledStart: "2026-09-05T01:00:00Z", scheduledEnd: "2026-09-05T04:00:00Z", risk: "Medium", impactedUsersCount: 890,
+        rationale: "Anonymous links do not expire, so a link shared once stays live indefinitely.",
+        pre: "{\n  \"linkExpiryDays\": null\n}", post: "{\n  \"linkExpiryDays\": 30\n}",
+        executedAt: null, backupVerified: false, linkedFinding: "Oversharing detected", remediationCheckKey: null,
+        executorRunId: null, createdAt: "2026-08-31T10:05:00Z",
+        approvals: [
+          { stage: 1, decision: "pending", role: "customer", name: null, onBehalfOf: null, reason: null, decidedAt: null, dueAt: "2026-09-05T10:05:00Z", breached: false },
+        ] },
+      { code: "CR-2026-115", title: "Restrict who can create Microsoft 365 groups", changeClass: "Standard", status: "Approved", workload: "Identity",
+        target: "Entra ID — group creation setting", ticket: "No ticket reference", requester: "j.reid@contoso.com", window: "Standing standard-change window",
+        scheduledStart: null, scheduledEnd: null, risk: "Medium", impactedUsersCount: 1240,
+        rationale: "Raised from the standard-change catalogue.", pre: "{}", post: "{\n  \"groupCreationRestricted\": true,\n  \"allowedSecurityGroup\": \"grp-m365-creators\"\n}",
+        executedAt: null, backupVerified: false, linkedFinding: null, remediationCheckKey: null, executorRunId: null, createdAt: "2026-08-27T16:02:10Z",
+        approvals: [
+          { stage: 1, decision: "approved", role: "catalog_inherited", name: "Shane McCaw", onBehalfOf: null, reason: "Catalogued standard change — approved when the item was published.", decidedAt: "2026-08-27T16:02:10Z", dueAt: null, breached: false },
+        ] },
+      { code: "CR-2026-113", title: "Teams meeting policy defaults change", changeClass: "Normal", status: "Scheduled", workload: "Teams",
+        target: "Microsoft Teams — meeting policy (global)", ticket: "No ticket reference", requester: "microsoft@service", window: "Microsoft rollout window",
+        scheduledStart: "2026-09-18T00:00:00Z", scheduledEnd: null, risk: "Medium", impactedUsersCount: 1240,
+        rationale: "Microsoft is changing meeting policy defaults on this tenant.", pre: "{}", post: "{\n  \"lobbyBypass\": \"organizerOnly\"\n}",
+        executedAt: null, backupVerified: false, linkedFinding: "Message centre · MC914722", remediationCheckKey: null, executorRunId: null, createdAt: "2026-08-25T08:00:00Z",
+        intake: "Informed", implementer: "Microsoft", sourceGraphMessageId: "MC914722",
+        approvals: [
+          { stage: 1, decision: "approved", role: "microsoft_forced", name: "Microsoft", onBehalfOf: null, reason: "A forced change the tenant cannot refuse — recorded, not approved by anyone here.", decidedAt: "2026-08-25T08:00:00Z", dueAt: null, breached: false },
+        ] },
+      { code: "CR-2026-109", title: "Remove mailbox forwarding rules on compromised accounts", changeClass: "Emergency", status: "Implemented", workload: "Exchange / mail",
+        target: "Exchange Online — 6 mailboxes", ticket: "PSA-8790", requester: "m.okafor@contoso.com", window: "Immediately, during the incident call",
+        scheduledStart: "2026-08-21T07:40:00Z", scheduledEnd: "2026-08-21T08:10:00Z", risk: "Critical", impactedUsersCount: 6,
+        rationale: "Six mailboxes were forwarding externally after a credential compromise.", pre: "{\n  \"forwardingRules\": 6,\n  \"externalRecipients\": 4\n}", post: "{\n  \"forwardingRules\": 0\n}",
+        executedAt: "Aug 21, shortly after the incident call", backupVerified: true, linkedFinding: null, remediationCheckKey: null, executorRunId: 4471, createdAt: "2026-08-21T07:55:48Z",
+        approvals: [
+          { stage: 1, decision: "approved", role: "msp", name: "Shane McCaw", onBehalfOf: "Anna Novak", reason: "Retrospective sign-off on the incident call.", decidedAt: "2026-08-21T08:30:00Z", dueAt: "2026-08-22T07:55:48Z", breached: false },
+        ] },
+      { code: "CR-2026-104", title: "Enable Defender for Office safe links tenant-wide", changeClass: "Normal", status: "Rejected", workload: "Defender",
+        target: "Defender for Office 365 — safe links policy", ticket: "PSA-8744", requester: "j.reid@contoso.com", window: "Next month's window — to be agreed",
+        scheduledStart: null, scheduledEnd: null, risk: "Medium", impactedUsersCount: 1240,
+        rationale: "Links in mail are not rewritten or checked at click time.", pre: "{}", post: "{\n  \"safeLinksPolicy\": \"Standard\"\n}",
+        executedAt: null, backupVerified: false, linkedFinding: null, remediationCheckKey: null, executorRunId: null, createdAt: "2026-08-14T13:20:31Z",
+        approvals: [
+          { stage: 1, decision: "rejected", role: "customer", name: "Anna Novak", onBehalfOf: null, reason: "Deferred to the mail-flow project; the residual risk is accepted on the register until then.", decidedAt: "2026-08-15T10:04:00Z", dueAt: "2026-08-19T13:20:31Z", breached: false },
+        ] },
+    ];
+
+    const fmt = (iso) => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) + " " + d.toISOString().slice(11, 16) + " UTC";
+    };
+    const fmtDay = (iso) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    const requiredStages = (cls, risk) => cls === "Standard" ? 0 : cls === "Emergency" ? 1 : (risk === "High" || risk === "Critical" ? 2 : 1);
+    const slaDays = (cls, risk) => cls === "Standard" ? null : cls === "Emergency" ? 1 : risk === "Critical" ? 1 : risk === "High" ? 2 : risk === "Medium" ? 5 : 7;
+
+    const rows = CRS.map((cr) => {
+      const cls = CLS[cr.changeClass], rk = RISK[cr.risk], st = ST[cr.status];
+      const expanded = this.state.open === cr.code;
+      const localDecision = this.state.decided[cr.code];
+      const appr = cr.approvals.map((a) => {
+        if (localDecision && a.decision === "pending") {
+          return Object.assign({}, a, { decision: localDecision.kind, name: "You", decidedAt: new Date().toISOString(), breached: false, reason: localDecision.reason || a.reason });
+        }
+        return a;
+      });
+      const required = requiredStages(cr.changeClass, cr.risk);
+      const cleared = appr.filter((a) => a.decision === "approved").length;
+      const pending = appr.filter((a) => a.decision === "pending").length;
+      const rejectedTerminal = appr.some((a) => a.decision === "rejected");
+      const breached = appr.some((a) => a.decision === "pending" && a.breached);
+      const complete = !rejectedTerminal && (required === 0 ? cleared > 0 : cleared >= required && pending === 0);
+      const nextStage = pending > 0 ? Math.min.apply(null, appr.filter((a) => a.decision === "pending").map((a) => a.stage)) : null;
+      const isRequester = cr.requester === "j.reid@contoso.com";
+      const canApproveNow = canApproveChanges && nextStage !== null && !rejectedTerminal && !isRequester;
+      const isRouted = !!cr.implementer;
+
+      const stageLine = required === 0
+        ? "pre-approved · no human stage"
+        : complete ? "approvals complete" : rejectedTerminal ? "rejected at stage " + appr.filter((a) => a.decision === "rejected")[0].stage
+        : cleared + " of " + required + " stages cleared";
+
+      const stages = appr.map((a) => {
+        const d = DEC[a.decision];
+        return {
+          stage: a.stage, decisionLabel: d[0], dot: d[1], fill: d[2], style: d[3], border: d[4], bg: d[5],
+          roleLabel: ROLE[a.role],
+          who: a.name ? (a.onBehalfOf ? a.name + " — acting for " + a.onBehalfOf + " under a delegation" : a.name) : "Nobody has taken this stage yet",
+          timing: a.decidedAt ? "Decided " + fmt(a.decidedAt) : a.dueAt ? (a.breached ? "Due " + fmt(a.dueAt) + " — past its SLA" : "Due " + fmt(a.dueAt)) : "No SLA applies to a pre-approved change",
+          timeInk: a.breached && a.decision === "pending" ? "#f87171" : "#64748b",
+          hasReason: !!a.reason, reason: a.reason || "",
+        };
+      });
+
+      const timeline = [
+        { when: fmt(cr.createdAt), text: "Raised by " + cr.requester + " · risk computed as " + cr.risk + ", " + (required === 0 ? "no human approval required" : required + " approval stage" + (required > 1 ? "s" : "") + " created"), kind: "EVENT", dot: "#60a5fa", ink: "#cbd5e1" },
+      ]
+        .concat(appr.filter((a) => a.decidedAt).map((a) => ({
+          when: fmt(a.decidedAt), text: "Stage " + a.stage + " " + a.decision + " by " + (a.name || "—") + (a.onBehalfOf ? " for " + a.onBehalfOf : ""), kind: "EVENT",
+          dot: a.decision === "approved" ? "#34d399" : a.decision === "rejected" ? "#f87171" : "#64748b", ink: "#cbd5e1",
+        })))
+        .concat(cr.executorRunId ? [{ when: "Aug 21 08:41 UTC", text: "Executed by run " + cr.executorRunId + " · reference stamped onto the change it made", kind: "EVENT", dot: "#cbd5e1", ink: "#cbd5e1" }] : [])
+        .concat((this.state.comments[cr.code] || []).map((c) => ({ when: "just now", text: c, kind: "COMMENT", dot: "#00B4D8", ink: "#94a3b8" })));
+
+      const act = (label, enabled, tag, tip, onClick) => ({
+        label, tip, hasTag: !!tag, tag: tag || "",
+        tagInk: "#c2a63d", tagBorder: "rgba(194,166,61,.35)",
+        ink: enabled ? "#93c5fd" : "#475569",
+        border: enabled ? "rgba(0,120,212,.5)" : "rgba(148,163,184,.18)",
+        style: enabled ? "solid" : "dashed",
+        bg: enabled ? "rgba(0,120,212,.1)" : "transparent",
+        op: enabled ? 1 : 0.55, cursor: enabled ? "pointer" : "not-allowed",
+        click: enabled ? onClick : () => {},
+      });
+      const decide = (kind, reason) => () => this.setState((s) => ({ decided: Object.assign({}, s.decided, { [cr.code]: { kind, reason } }) }));
+
+      const actions = [
+        act("Approve", canApproveNow, "", canApproveNow ? "Records a real approval on stage " + nextStage + ". Stages are decided in order and the server re-checks your authority." : rejectedTerminal ? "This change is terminally rejected — no further decision can be recorded." : nextStage === null ? "No stage is pending on this change." : isRequester ? "You raised this change, and your tenant requires a separate approver." : "You do not hold the approve-changes capability.", decide("approved")),
+        act("Reject with a reason", canApproveNow, "", canApproveNow ? "A reason is required. Your rejection assigns the residual risk to your side and records it on the register; an MSP rejection leaves the finding open instead." : rejectedTerminal ? "This change is already terminally rejected." : nextStage === null ? "No stage is pending on this change." : isRequester ? "You raised this change, and your tenant requires a separate approver." : "You do not hold the approve-changes capability.", decide("rejected", "Rejected here — the residual risk is recorded on your register.")),
+        act("Add a comment", true, "", "Comments are yours; the event history is the platform's.", () => this.setState((s) => ({ comments: Object.assign({}, s.comments, { [cr.code]: (s.comments[cr.code] || []).concat(["Comment recorded against this change."]) }) }))),
+      ]
+        .concat(isRouted ? [act("Decline this Microsoft change", true, "", "Declining a routed Microsoft change is declining a remediation: the change goes to rejected and the residual risk becomes yours, recorded as an accepted risk linked back to this CR.", decide("rejected", "Declined — recorded as an accepted risk against your register."))] : [])
+        .concat([
+          act("Change window", false, "DECIDED #1504", "The booked window is a real instant now, but rescheduling an existing change — with collision detection on the target resource and blocked-by dependencies — is decided and not built."),
+          act("Roll back", false, "DECIDED #1499", "Rollback is decided as an inverse change request with its own approval and a verified-at stamp, not a button that undoes this row. No rollback path exists yet."),
+        ]);
+
+      return {
+        code: cr.code, title: cr.title, changeClass: cr.changeClass, status: cr.status, risk: cr.risk,
+        workload: cr.workload, target: cr.target, window: cr.window, ticket: cr.ticket, requester: cr.requester,
+        impacted: cr.impactedUsersCount.toLocaleString("en-US") + (cr.impactedUsersCount === 1 ? " user" : " users"),
+        classInk: cls[0], classBorder: cls[1], classStyle: cls[2],
+        riskInk: rk[0], riskBorder: rk[1],
+        statusInk: st[0], statusBorder: st[1], statusBg: st[2],
+        isRouted, routedTag: isRouted ? cr.implementer.toUpperCase() + " · " + cr.intake.toUpperCase() : "",
+        breached,
+        stageLine, stageInk: breached ? "#f87171" : complete ? "#34d399" : "#94a3b8",
+        border: expanded ? "rgba(0,120,212,.35)" : "rgba(255,255,255,.08)",
+        bg: expanded ? "rgba(255,255,255,.03)" : "rgba(255,255,255,.018)",
+        expanded,
+        click: () => this.setState((s) => ({ open: s.open === cr.code ? null : cr.code })),
+        stages,
+        approvalMeta: required === 0 ? "no human stage · one inherited approval on record" : required + " stage" + (required > 1 ? "s" : "") + " required · SLA " + slaDays(cr.changeClass, cr.risk) + " day" + (slaDays(cr.changeClass, cr.risk) === 1 ? "" : "s") + " from raising",
+        approvalNote: "How many stages a change needs comes from its class and its computed risk, floored up by your tenant's own signatures setting — never down. A pending stage past its SLA is flagged and escalated; the person who raised a change cannot approve it while your policy requires a separate approver.",
+        detail: [
+          { k: "Rationale", v: cr.rationale, ink: "#cbd5e1", font: "inherit", wrap: "normal", hasNote: false, note: "" },
+          { k: "Before · pre-change snapshot", v: cr.pre, ink: cr.pre === "{}" ? "#64748b" : "#cbd5e1", font: "Menlo,monospace", wrap: "pre-wrap", hasNote: cr.pre === "{}", note: "Empty, not missing: no pre-change state was captured." },
+          { k: "After · proposed payload", v: cr.post, ink: "#cbd5e1", font: "Menlo,monospace", wrap: "pre-wrap", hasNote: false, note: "" },
+          { k: "Booked window", v: cr.scheduledStart ? (fmt(cr.scheduledStart) + (cr.scheduledEnd ? " → " + fmt(cr.scheduledEnd) : " · start only")) : "No real instant booked", ink: cr.scheduledStart ? "#cbd5e1" : "#64748b", font: "inherit", wrap: "normal", hasNote: true,
+            note: cr.scheduledStart ? "A real instant, so this change can be date-ordered and checked against the freeze calendar. The label above it is what a human typed." : "Only the free-text label exists, so this change cannot be date-ordered or freeze-checked on its own window." },
+          { k: "Executed", v: cr.executedAt || "Not executed", ink: cr.executedAt ? "#cbd5e1" : "#64748b", font: "inherit", wrap: "normal", hasNote: !!cr.executorRunId, note: cr.executorRunId ? "Carried out by run " + cr.executorRunId + ", which stamped this change's reference onto the configuration it changed." : "" },
+          { k: "Backup verified", v: cr.backupVerified ? "Yes — captured at execution" : "No", ink: "#94a3b8", font: "inherit", wrap: "normal", hasNote: !cr.backupVerified, note: "Recorded false with an empty hash until a real execution captures a snapshot. A verified-looking hash is never fabricated." },
+          { k: "Raised from", v: cr.linkedFinding || "Raised directly — no linked finding", ink: cr.linkedFinding ? "#cbd5e1" : "#64748b", font: "inherit", wrap: "normal", hasNote: !!cr.remediationCheckKey, note: cr.remediationCheckKey ? "Structured link: " + cr.remediationCheckKey + " — this CR is the one authorising that remediation item." : "" },
+          { k: "Raised", v: fmtDay(cr.createdAt), ink: "#cbd5e1", font: "inherit", wrap: "normal", hasNote: false, note: "" },
+        ],
+        actions,
+        actionNote: canApproveNow
+          ? "You hold the approve-changes capability, so approve and reject are live on this change. The server re-checks the capability, the stage order and separation of duties on every decision — the buttons only decide what is offered."
+          : "Approve and reject are not offered on this change: " + (rejectedTerminal ? "it is terminally rejected." : nextStage === null ? "no stage is pending." : isRequester ? "you raised it, and a separate approver is required." : "you do not hold the approve-changes capability."),
+        timeline,
+        addComment: () => this.setState((s) => ({ comments: Object.assign({}, s.comments, { [cr.code]: (s.comments[cr.code] || []).concat(["Comment recorded against this change."]) }) })),
+      };
+    });
+
+    const openStatuses = new Set(["Pending approval", "Approved", "Scheduled", "In window"]);
+    const openRows = CRS.filter((c) => openStatuses.has(c.status));
+    const zero = isEmpty || noTenant;
+    const upcoming = openRows.filter((c) => c.scheduledStart && new Date(c.scheduledStart) >= new Date("2026-09-03T00:00:00Z"))
+      .sort((a, b) => new Date(a.scheduledStart) - new Date(b.scheduledStart));
+    const dateOrdered = !zero && upcoming.length > 0;
+    const nextGroup = dateOrdered ? upcoming.filter((c) => c.scheduledStart === upcoming[0].scheduledStart) : [];
+    const S = {
+      open: zero ? 0 : openRows.length,
+      awaiting: zero ? 0 : CRS.filter((c) => c.status === "Pending approval").length,
+      winCount: zero ? 0 : (dateOrdered ? nextGroup.length : 0),
+      winLabel: zero ? "No window booked" : dateOrdered ? nextGroup[0].window : "No window booked",
+      emergency: zero ? 0 : CRS.filter((c) => c.changeClass === "Emergency").length,
+      snapshots: zero ? 0 : CRS.filter((c) => c.executedAt).length,
+    };
+    const stats = [
+      { label: "Open changes", value: String(S.open), hasSub: false, sub: "", note: "Pending approval, approved, scheduled or in window.", hasTag: false, ink: "#f8fafc" },
+      { label: "Awaiting approval", value: String(S.awaiting), hasSub: false, sub: "", note: "A stage is pending a decision.", hasTag: false, ink: S.awaiting > 0 ? "#c2a63d" : "#f8fafc" },
+      { label: "Next window", value: String(S.winCount), hasSub: true, sub: S.winLabel, note: dateOrdered ? "The earliest upcoming booked instant, and how many changes share it." : "No open change carries a real instant.",
+        hasTag: true, tag: dateOrdered ? "DATE-ORDERED" : "STRING-GROUPED †", tagInk: dateOrdered ? "#34d399" : "#c2a63d", tagBorder: dateOrdered ? "rgba(52,211,153,.35)" : "rgba(194,166,61,.4)", tagStyle: "solid", ink: "#f8fafc" },
+      { label: "Emergency · 90 days", value: String(S.emergency), hasSub: true, sub: S.snapshots + (S.snapshots === 1 ? " snapshot held" : " snapshots held"), note: "Emergency changes raised in the last 90 days. Snapshots are kept 90 days.",
+        hasTag: true, tag: "SUBSTITUTE METRIC †", tagInk: "#c2a63d", tagBorder: "rgba(194,166,61,.4)", tagStyle: "solid", ink: S.emergency > 0 ? "#f87171" : "#f8fafc" },
+    ];
+
+    const FIELDS = [
+      ["Title", "required", "Block legacy authentication protocols", "1–200 characters", "auto"],
+      ["Target resource", "required", "Conditional Access — all cloud apps", "1–500 characters", "auto"],
+      ["Change class", "required", "Standard · Normal · Emergency", "one of three", "auto"],
+      ["Impacted users", "required", "412", "0 – 10,000,000", "auto"],
+      ["Window label", "required", "Saturday maintenance window, 02:00–05:00", "1–200 characters · what a human reads", "auto"],
+      ["Booked start and end", "optional", "5 Sep 2026, 02:00 → 05:00 UTC", "a real instant — what a freeze check can evaluate", "auto"],
+      ["PSA ticket", "optional", "PSA-8841", "up to 120 characters", "auto"],
+      ["Before · pre-change state", "optional", "Paste the current configuration", "up to 20,000 characters", "62px"],
+      ["After · proposed payload", "required", "Paste the configuration you want", "up to 20,000 characters", "62px"],
+    ];
+
+    const CAT = [
+      { name: "Restrict Microsoft 365 group creation", summary: "Limits group creation to a named security group and records the approval route.", meta: "Identity · no human approval stage · revocable", tag: "PRE-APPROVED", live: true },
+      { name: "Add a mailbox to the litigation hold set", summary: "Places a named mailbox on hold and records the request against your PSA ticket.", meta: "Exchange / mail · no human approval stage · revocable", tag: "PRE-APPROVED", live: true },
+      { name: "Enable self-service password reset for a group", summary: "Turns SSPR on for one security group with two methods required.", meta: "Identity · no human approval stage · revocable", tag: "PRE-APPROVED", live: true },
+    ].map((c) => Object.assign({}, c, {
+      tagInk: "#34d399", tagBorder: "rgba(52,211,153,.35)", tagStyle: "solid",
+      cta: "Run it — raises an auto-approved change",
+      btnInk: "#93c5fd", btnBorder: "rgba(0,120,212,.5)", btnStyle: "solid", btnBg: "rgba(0,120,212,.1)", cursor: "pointer", op: 1,
+      run: () => {},
+    }));
+
+    const FRZ = [
+      { name: "Year-end finance close", reason: "No changes to mail flow or Exchange while the ledger is closing.", span: "28 Dec – 6 Jan · annually", scope: "TENANT", active: true },
+      { name: "Monthly payroll run", reason: "Identity and Conditional Access frozen for the payroll window.", span: "26th – 28th · monthly", scope: "WORKLOAD", active: false },
+      { name: "MSP platform maintenance", reason: "Platform-wide freeze while the MSP's own change window runs.", span: "13 Sep, 22:00 – 02:00 · one-off", scope: "GLOBAL", active: false },
+    ].map((f) => ({
+      name: f.name, reason: f.reason, span: f.span, scope: f.scope,
+      dot: f.active ? "#00B4D8" : "rgba(148,163,184,.45)",
+      scopeInk: f.active ? "#7dd3fc" : "#8494ab",
+      scopeBorder: f.active ? "rgba(0,180,216,.4)" : "rgba(132,148,171,.35)",
+    }));
+    const activeFreeze = FRZ.filter((f) => f.dot === "#00B4D8")[0];
+
+    return {
+      rootH: this.props.embedded ? "100%" : "100vh",
+      isLoading,
+      skeletons: [{ w1: "42%", w2: "68%" }, { w1: "56%", w2: "50%" }, { w1: "34%", w2: "72%" }, { w1: "48%", w2: "60%" }],
+      stateInk: isLoading ? "#64748b" : isFail ? "#f87171" : noTenant ? "#c2a63d" : isEmpty ? "#60a5fa" : "#34d399",
+      stateDot: isLoading ? "#64748b" : isFail ? "#f87171" : noTenant ? "#c2a63d" : isEmpty ? "#60a5fa" : "#34d399",
+      stateLine: isLoading ? "Loading the register" : isFail ? "Couldn't load the register" : noTenant ? "No connected M365 tenant · fails closed" : isEmpty ? "Live · genuinely empty" : "Live · " + CRS.length + " change requests on your tenant",
+      approverLine: canApproveChanges ? "You may approve changes · change control add-on active" : "You may not approve changes · change control add-on active",
+
+      showFail: isFail || noTenant,
+      failHead: isFail ? "Couldn't load the change register" : "No connected M365 tenant",
+      failBody: isFail
+        ? "The register did not load. Nothing is shown in its place — an empty register would read as “no changes on your tenant”, which is a different and much worse claim."
+        : "Your account has no resolvable Microsoft 365 tenant, so the register fails closed to empty rather than matching every other unidentified row. The counters below are the fail-closed envelope, not your tenant's answer.",
+      failMeta: isFail ? "Retry, or contact Shane McCaw if it persists." : "Connect a tenant to see your own register. Raising a change is refused until then.",
+      failInk: isFail ? "#f87171" : "#c2a63d",
+      failBorder: isFail ? "rgba(248,113,113,.35)" : "rgba(194,166,61,.35)",
+      failBg: isFail ? "rgba(248,113,113,.05)" : "rgba(194,166,61,.05)",
+
+      showStats: !isLoading && !isFail,
+      stats,
+      statsFootnote: dateOrdered
+        ? "† Next window is genuinely chronological here, because open changes carry a real booked instant. Where none does, it falls back to grouping identical window text and says so. Snapshots held measures retention from when a change was raised, because the executed-at stamp is still free text, and the emergency count is measured off creation rather than execution."
+        : "† No open change carries a real booked instant, so Next window falls back to the largest group of changes sharing the same window text — not the soonest date. Snapshots held measures retention from when a change was raised, because the executed-at stamp is still free text.",
+
+      freezeActive: live && !!activeFreeze,
+      freezeHead: activeFreeze ? "A freeze is in effect: " + activeFreeze.name : "",
+      freezeBody: activeFreeze ? activeFreeze.reason + " Raising a change now is refused unless you submit a written justification with it, and the exception is recorded against the change." : "",
+
+      showRegister: live,
+      showEmpty: isEmpty,
+      registerMeta: "newest first · " + CRS.length + " requests · approvals, freezes and comments are live",
+      rows,
+      wizardOpen: this.state.wizard,
+      wizardCta: this.state.wizard ? "Close" : "Raise a change",
+      toggleWizard: () => this.setState((s) => ({ wizard: !s.wizard })),
+      fields: FIELDS.map(([label, req, ph, limit, h]) => ({ label, req, ph, limit, h, reqInk: req === "required" ? "#c2a63d" : "#64748b" })),
+
+      showCatalog: (this.props.showCatalog ?? true) && !isLoading && !isFail,
+      catalog: CAT,
+      showFreezeCal: !isLoading && !isFail,
+      freezes: FRZ,
+
+      showNotBuilt: (this.props.showNotBuilt ?? true) && !isLoading,
+      stubs: [
+        { title: "Rollback as an inverse change", tag: "DECIDED #1499", now: "The rollback affordance appears on an implemented change and no rollback path exists. The stored rollback command is never sent to the browser.", target: "Target: rollback raised as its own inverse change request, with its own approval and a verified-at stamp." },
+        { title: "Rescheduling and collisions", tag: "DECIDED #1504", now: "A booked window is now a real instant, but an existing change cannot be moved from here.", target: "Target: maintenance windows, collision detection on the target resource, and blocked-by dependencies between changes." },
+        { title: "CAB and emergency CAB", tag: "MSP-SIDE ONLY", now: "CAB membership, meetings and agendas exist on your MSP's console, not on this page. Nothing customer-facing reads them yet.", target: "Target: your own view of the agenda items that concern your tenant, and retrospective approval for emergency changes." },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

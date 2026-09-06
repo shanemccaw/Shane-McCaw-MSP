@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
+@keyframes skelPulse{0%,100%{opacity:.5}50%{opacity:.9}}
+</style>
+</helmet>
+
+<div data-screen-label="Ownership / RACI" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+
+  <sc-if value="{{browseOpen}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:40;display:flex;justify-content:flex-end">
+      <div onClick="{{closeBrowse}}" style="position:absolute;inset:0;background:rgba(2,6,23,.6)"></div>
+      <div style="position:relative;width:372px;max-width:88%;height:100%;background:#060d1f;border-left:1px solid rgba(255,255,255,.12);box-shadow:-18px 0 44px rgba(2,6,23,.7);display:flex;flex-direction:column">
+        <div style="padding:16px 18px 13px;border-bottom:1px solid rgba(255,255,255,.09);display:flex;flex-direction:column;gap:11px">
+          <div style="display:flex;align-items:flex-start;gap:10px">
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+              <span style="font-size:9px;font-weight:800;letter-spacing:.14em;color:#94a3b8">ADD A HOLDER</span>
+              <span style="font-size:13.5px;font-weight:700;color:#f8fafc;line-height:1.35">{{browseTitle}}</span>
+            </div>
+            <span onClick="{{closeBrowse}}" style="font-size:16px;font-weight:600;color:#64748b;cursor:pointer;flex:none;line-height:1;padding:2px 4px" style-hover="color:#f8fafc">×</span>
+          </div>
+          <input type="text" value="{{browseQuery}}" onChange="{{onPickQuery}}" placeholder="Search name, role or team" style="border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(2,6,23,.8);padding:9px 12px;font-size:12.5px;font-family:Inter,system-ui,sans-serif;color:#f8fafc;outline:none;width:100%;box-sizing:border-box">
+          <span style="font-size:10.5px;color:#64748b">{{browseCount}}</span>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:8px 10px 20px;display:flex;flex-direction:column;gap:12px">
+          <sc-for list="{{browseGroups}}" as="g" hint-placeholder-count="4">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:8.5px;font-weight:800;letter-spacing:.14em;color:#475569;padding:6px 8px 5px">{{g.label}}</span>
+              <sc-for list="{{g.people}}" as="p" hint-placeholder-count="3">
+                <div onClick="{{p.pick}}" style="display:flex;align-items:center;gap:10px;border-radius:8px;padding:7px 8px;cursor:pointer" style-hover="background:rgba(255,255,255,.05)">
+                  <span style="width:26px;height:26px;border-radius:999px;background:{{p.avBg}};color:{{p.avInk}};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex:none">{{p.initials}}</span>
+                  <div style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1">
+                    <span style="font-size:12px;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{p.name}}</span>
+                    <span style="font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{p.meta}}</span>
+                  </div>
+                  <sc-if value="{{p.heldShow}}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:9px;font-weight:700;letter-spacing:.06em;color:#34d399;flex:none">ALREADY HERE</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:22px 28px 56px;padding-right:max(28px, calc(100% - 1400px));display:flex;flex-direction:column;gap:15px">
+
+    <div style="display:flex;align-items:center;gap:13px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:800;color:#f8fafc;letter-spacing:-.018em">Who owns what</span>
+      <div style="display:flex;align-items:center;gap:7px;border:1px solid {{stateBd}};background:{{stateBg}};border-radius:999px;padding:3px 10px">
+        <span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>
+        <span style="font-size:10px;font-weight:700;letter-spacing:.05em;color:{{stateInk}}">{{stateLine}}</span>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+        <span style="font-size:10.5px;color:#94a3b8">{{gateLine}}</span>
+        <div onClick="{{addRow}}" style="display:flex;align-items:center;gap:6px;border:1px solid rgba(0,120,212,.5);border-radius:7px;background:rgba(0,120,212,.12);padding:6px 11px;cursor:pointer" style-hover="border-color:rgba(0,120,212,.85)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 5v14M5 12h14"></path></svg>
+          <span style="font-size:11px;font-weight:700;color:#93c5fd">{{addCta}}</span>
+        </div>
+      </div>
+    </div>
+
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{skeletons}}" as="s" hint-placeholder-count="4">
+          <div style="border:1px solid rgba(255,255,255,.07);border-radius:12px;background:rgba(255,255,255,.02);padding:15px;display:flex;flex-direction:column;gap:9px;animation:skelPulse 1.6s ease-in-out infinite">
+            <div style="height:10px;width:{{s.w1}};border-radius:999px;background:rgba(255,255,255,.07)"></div>
+            <div style="height:9px;width:{{s.w2}};border-radius:999px;background:rgba(255,255,255,.05)"></div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isLive}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:15px">
+
+        <sc-if value="{{mineShow}}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid rgba(0,120,212,.28);border-radius:12px;background:rgba(0,120,212,.05);padding:13px 16px 15px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.15em;color:#93c5fd">YOUR PLACE ON THIS MATRIX</span>
+              <span style="font-size:11.5px;font-weight:700;color:{{mineCountInk}}">{{mineCount}}</span>
+            </div>
+
+            <sc-if value="{{mineHasPending}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <sc-for list="{{minePending}}" as="m" hint-placeholder-count="2">
+                  <div style="border:1px solid rgba(194,166,61,.3);border-radius:10px;background:rgba(194,166,61,.05);padding:11px 13px;display:flex;flex-direction:column;gap:10px">
+                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                      <span style="width:22px;height:22px;border-radius:6px;background:rgba(194,166,61,.16);border:1px solid rgba(194,166,61,.4);color:#c2a63d;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex:none">{{m.letter}}</span>
+                      <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                        <span style="font-size:12.5px;font-weight:600;color:#f8fafc;line-height:1.4">You have been named <span style="color:#c2a63d">{{m.role}}</span> for {{m.object}}</span>
+                        <span style="font-size:10.5px;color:#94a3b8">{{m.sub}}</span>
+                      </div>
+                      <sc-if value="{{m.declining}}" hint-placeholder-val="{{ false }}">
+                        <span style="font-size:10.5px;color:#94a3b8;flex:none">Declining needs a reason</span>
+                      </sc-if>
+                      <div style="display:flex;gap:8px;flex:none">
+                        <span onClick="{{m.accept}}" style="font-size:11px;font-weight:700;color:#022c22;background:#34d399;border-radius:7px;padding:6px 13px;cursor:pointer">Accept</span>
+                        <span onClick="{{m.startDecline}}" style="font-size:11px;font-weight:700;color:#f87171;border:1px solid rgba(248,113,113,.4);border-radius:7px;padding:6px 13px;cursor:pointer">Decline</span>
+                      </div>
+                    </div>
+                    <sc-if value="{{m.declining}}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid rgba(255,255,255,.08);padding-top:11px">
+                        <span style="font-size:10.5px;color:#94a3b8">Your words are stored with the decline and shown to whoever assigned it.</span>
+                        <input type="text" value="{{reasonValue}}" onChange="{{onReason}}" placeholder="Why this is not yours to hold" style="border:1px solid rgba(255,255,255,.14);border-radius:7px;background:rgba(2,6,23,.7);padding:9px 11px;font-size:12px;font-family:Inter,system-ui,sans-serif;color:#f8fafc;outline:none;width:100%;box-sizing:border-box">
+                        <div style="display:flex;gap:8px">
+                          <span onClick="{{m.confirmDecline}}" style="font-size:11px;font-weight:700;color:#f8fafc;background:rgba(248,113,113,.22);border:1px solid rgba(248,113,113,.45);border-radius:7px;padding:6px 13px;cursor:pointer">Confirm decline</span>
+                          <span onClick="{{m.cancelDecline}}" style="font-size:11px;font-weight:600;color:#94a3b8;padding:6px 6px;cursor:pointer">Cancel</span>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{mineHasSettled}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <sc-for list="{{mineSettled}}" as="m" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:9px;border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:5px 12px 5px 6px">
+                    <span style="width:19px;height:19px;border-radius:5px;background:rgba(255,255,255,.05);border:1px solid {{m.accent}};color:{{m.accent}};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;flex:none">{{m.letter}}</span>
+                    <span style="font-size:11px;color:#e2e8f0">{{m.object}}</span>
+                    <span style="font-size:10px;color:{{m.accent}}">{{m.stateLabel}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{gapShow}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;border:1px solid rgba(194,166,61,.24);border-radius:11px;background:rgba(194,166,61,.04);padding:11px 16px">
+            <sc-for list="{{gaps}}" as="g" hint-placeholder-count="4">
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <span style="font-size:16px;font-weight:800;color:{{g.ink}};line-height:1;font-variant-numeric:tabular-nums">{{g.n}}</span>
+                <span style="font-size:11px;color:#94a3b8">{{g.label}}</span>
+              </div>
+            </sc-for>
+            <span style="margin-left:auto;font-size:10.5px;color:#64748b">{{peopleMeta}}</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{noTenant}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:10px;border:1px solid rgba(194,166,61,.3);border-radius:11px;background:rgba(194,166,61,.05);padding:11px 15px;flex-wrap:wrap">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c2a63d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4M12 17h.01"></path></svg>
+            <span style="font-size:12px;color:#e2e8f0">Workloads, Microsoft changes and change requests are read through your tenant identifier, which could not be resolved. They are absent for that reason, not because you have none.</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{addOpen}}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(0,120,212,.3);border-radius:12px;background:rgba(0,120,212,.04);padding:14px 16px 15px;display:flex;flex-direction:column;gap:11px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:12.5px;font-weight:700;color:#f8fafc">Add a row</span>
+              <span onClick="{{addRow}}" style="margin-left:auto;font-size:11px;font-weight:600;color:#60a5fa;cursor:pointer">Close</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(216px,1fr));gap:11px">
+              <sc-for list="{{addFields}}" as="f" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;gap:5px">
+                  <span style="font-size:11px;font-weight:600;color:#cbd5e1">{{f.label}} <span style="color:{{f.reqInk}};font-weight:500">{{f.req}}</span></span>
+                  <div style="border:1px solid rgba(255,255,255,.12);border-radius:6px;background:rgba(2,6,23,.6);padding:8px 10px;display:flex">
+                    <span style="font-size:12px;color:#64748b;line-height:1.5">{{f.ph}}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <span style="font-size:10.5px;color:#94a3b8;line-height:1.6">A row you add holds cells exactly like a live one. It does not create the underlying object, and no cell is filled in for you.</span>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          <sc-for list="{{filterChips}}" as="f" hint-placeholder-count="7">
+            <div onClick="{{f.pick}}" style="display:flex;align-items:center;gap:8px;border:1px solid {{f.border}};background:{{f.bg}};border-radius:999px;padding:6px 12px;cursor:pointer" style-hover="border-color:rgba(255,255,255,.28)">
+              <span style="width:6px;height:6px;border-radius:999px;background:{{f.dot}};flex:none"></span>
+              <span style="font-size:11.5px;font-weight:600;color:{{f.ink}}">{{f.chip}}</span>
+              <span style="font-size:10px;font-weight:700;color:{{f.nInk}};font-variant-numeric:tabular-nums">{{f.n}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="border:1px solid rgba(255,255,255,.09);border-radius:13px;background:rgba(255,255,255,.015);overflow:hidden">
+
+          <div style="display:grid;grid-template-columns:minmax(228px,1.5fr) repeat(4,minmax(132px,1fr));border-bottom:1px solid rgba(255,255,255,.1);border-left:3px solid transparent;background:rgba(255,255,255,.03)">
+            <div style="padding:11px 16px;display:flex;align-items:center">
+              <span style="font-size:8.5px;font-weight:800;letter-spacing:.13em;color:#94a3b8">SERVICE OR OBJECT</span>
+            </div>
+            <sc-for list="{{heads}}" as="h" hint-placeholder-count="4">
+              <div title="{{h.tip}}" style="padding:11px 12px;display:flex;flex-direction:column;gap:2px;border-left:1px solid rgba(255,255,255,.06);cursor:help">
+                <span style="font-size:12px;font-weight:800;color:{{h.ink}};letter-spacing:.04em">{{h.letter}}</span>
+                <span style="font-size:9px;font-weight:700;letter-spacing:.1em;color:#64748b">{{h.word}}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <sc-for list="{{items}}" as="it" hint-placeholder-count="10">
+            <div style="display:flex;flex-direction:column">
+
+              <sc-if value="{{it.isGroup}}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:10px;padding:11px 16px 10px;background:{{it.bandBg}};border-top:1px solid rgba(255,255,255,.1);border-bottom:1px solid rgba(255,255,255,.08);border-left:3px solid {{it.accent}};margin-top:{{it.gapTop}}">
+                  <span style="font-size:9.5px;font-weight:800;letter-spacing:.15em;color:#f8fafc">{{it.label}}</span>
+                  <span style="font-size:9px;font-weight:700;letter-spacing:.06em;color:{{it.tagInk}};border:1px {{it.tagStyle}} {{it.tagBorder}};border-radius:999px;padding:1px 7px">{{it.tag}}</span>
+                  <span style="margin-left:auto;font-size:10px;color:#cbd5e1">{{it.count}}</span>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{it.isEmpty}}" hint-placeholder-val="{{ false }}">
+                <div style="padding:11px 16px 13px;border-left:3px solid {{it.accent}};opacity:.75">
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">{{it.emptyNote}}</span>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{it.isRow}}" hint-placeholder-val="{{ true }}">
+                <div style="display:grid;grid-template-columns:minmax(228px,1.5fr) repeat(4,minmax(132px,1fr));border-top:1px solid rgba(255,255,255,.05);border-left:3px solid {{it.accent}};background:{{it.rowBg}}">
+
+                  <div onClick="{{it.click}}" style="padding:11px 16px 12px;display:flex;flex-direction:column;gap:4px;cursor:pointer" style-hover="background:rgba(255,255,255,.025)">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                      <span style="font-size:12.5px;font-weight:600;color:{{it.nameInk}};line-height:1.35;min-width:0">{{it.name}}</span>
+                      <sc-if value="{{it.pillShow}}" hint-placeholder-val="{{ false }}">
+                        <span style="font-size:8.5px;font-weight:800;letter-spacing:.07em;color:{{it.pillInk}};border:1px {{it.pillStyle}} {{it.pillBorder}};border-radius:999px;padding:1px 7px">{{it.pill}}</span>
+                      </sc-if>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:7px">
+                      <span style="font-size:10px;color:#64748b;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{it.sub}}</span>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;transform:{{it.chev}}"><path d="m9 18 6-6-6-6"></path></svg>
+                    </div>
+                  </div>
+
+                  <sc-for list="{{it.cells}}" as="c" hint-placeholder-count="4">
+                    <div style="padding:10px 12px 11px;border-left:1px solid rgba(255,255,255,.05);display:flex;flex-wrap:wrap;gap:5px;align-content:flex-start">
+                      <sc-for list="{{c.holders}}" as="h" hint-placeholder-count="1">
+                        <div title="{{h.tip}}" style="display:flex;align-items:center;gap:6px;border:1px solid {{h.border}};background:{{h.bg}};border-radius:999px;padding:2px 9px 2px 2px;max-width:100%">
+                          <span style="width:19px;height:19px;border-radius:999px;background:{{h.avBg}};border:1.5px solid {{h.ring}};color:{{h.avInk}};display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:800;flex:none">{{h.initials}}</span>
+                          <span style="font-size:10.5px;font-weight:600;color:#e2e8f0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{h.short}}</span>
+                        </div>
+                      </sc-for>
+                      <sc-if value="{{c.emptyShow}}" hint-placeholder-val="{{ false }}">
+                        <span onClick="{{c.add}}" style="font-size:10.5px;font-weight:600;color:{{c.emptyInk}};border:1px dashed {{c.emptyBorder}};border-radius:999px;padding:3px 10px;cursor:pointer" style-hover="border-color:rgba(0,120,212,.6)">{{c.emptyLabel}}</span>
+                      </sc-if>
+                      <sc-if value="{{c.addShow}}" hint-placeholder-val="{{ false }}">
+                        <span onClick="{{c.add}}" title="Add another holder" style="width:21px;height:21px;border-radius:999px;border:1px dashed rgba(148,163,184,.32);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#64748b;cursor:pointer;flex:none" style-hover="border-color:rgba(0,120,212,.6);color:#93c5fd">+</span>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+
+                  <sc-if value="{{it.picking}}" hint-placeholder-val="{{ false }}">
+                    <div style="grid-column:1 / -1;border-top:1px solid rgba(255,255,255,.07);background:rgba(2,6,23,.5);padding:12px 16px 14px;display:flex;flex-direction:column;gap:9px">
+                      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                        <span style="font-size:11.5px;font-weight:700;color:#f8fafc">{{it.pickHead}}</span>
+                        <span style="font-size:10.5px;color:#94a3b8">{{it.pickNote}}</span>
+                        <span onClick="{{it.closePick}}" style="margin-left:auto;font-size:11px;font-weight:600;color:#60a5fa;cursor:pointer">Close</span>
+                      </div>
+                      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:stretch">
+                        <sc-for list="{{it.suggestions}}" as="p" hint-placeholder-count="4">
+                          <div onClick="{{p.pick}}" style="display:flex;align-items:center;gap:8px;border:1px solid {{p.border}};border-radius:9px;background:{{p.bg}};padding:6px 11px;cursor:pointer" style-hover="border-color:rgba(0,120,212,.55)">
+                            <span style="width:21px;height:21px;border-radius:999px;background:{{p.avBg}};color:{{p.avInk}};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;flex:none">{{p.initials}}</span>
+                            <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                              <span style="font-size:11.5px;font-weight:600;color:#e2e8f0">{{p.name}}</span>
+                              <span style="font-size:9.5px;color:#94a3b8">{{p.meta}}</span>
+                            </div>
+                          </div>
+                        </sc-for>
+                        <div onClick="{{it.browseAll}}" style="display:flex;align-items:center;gap:8px;border:1px dashed rgba(148,163,184,.35);border-radius:9px;padding:6px 13px;cursor:pointer" style-hover="border-color:rgba(0,120,212,.6)">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#93c5fd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg>
+                          <span style="font-size:11.5px;font-weight:700;color:#93c5fd">{{it.browseLabel}}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </sc-if>
+
+                  <sc-if value="{{it.expanded}}" hint-placeholder-val="{{ false }}">
+                    <div style="grid-column:1 / -1;border-top:1px solid rgba(255,255,255,.07);background:rgba(2,6,23,.4);padding:13px 16px 15px;display:flex;flex-direction:column;gap:13px">
+
+                      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                        <span style="font-size:11.5px;color:#94a3b8">{{it.sub}}</span>
+                        <sc-if value="{{it.isWorkload}}" hint-placeholder-val="{{ false }}">
+                          <span onClick="{{it.toggleTracked}}" title="{{it.trackTip}}" style="display:flex;align-items:center;gap:7px;border:1px {{it.trackStyle}} {{it.trackBorder}};border-radius:999px;background:{{it.trackBg}};padding:3px 10px;cursor:pointer">
+                            <span style="width:6px;height:6px;border-radius:999px;background:{{it.trackDot}}"></span>
+                            <span style="font-size:9.5px;font-weight:700;letter-spacing:.06em;color:{{it.trackInk}}">{{it.trackLabel}}</span>
+                          </span>
+                        </sc-if>
+                        <span style="margin-left:auto;font-size:11px;font-weight:600;color:#60a5fa">{{it.link}}</span>
+                      </div>
+
+                      <sc-if value="{{it.hasHistory}}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex;flex-direction:column;gap:0">
+                          <span style="font-size:8.5px;font-weight:800;letter-spacing:.13em;color:#475569;padding-bottom:7px">HISTORY</span>
+                          <sc-for list="{{it.history}}" as="e" hint-placeholder-count="2">
+                            <div style="display:flex;align-items:flex-start;gap:11px;flex-wrap:wrap;padding:6px 0;border-top:1px solid rgba(255,255,255,.05)">
+                              <span style="width:6px;height:6px;border-radius:999px;background:{{e.dot}};flex:none;margin-top:5px"></span>
+                              <span style="font-size:10.5px;color:#94a3b8;width:60px;flex:none">{{e.when}}</span>
+                              <span style="font-size:11.5px;color:#cbd5e1;flex:1;min-width:200px;line-height:1.5">{{e.text}}</span>
+                              <span style="font-size:9px;font-weight:700;letter-spacing:.06em;color:#64748b;flex:none">{{e.kind}}</span>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
+          <sc-for list="{{legend}}" as="l" hint-placeholder-count="5">
+            <span title="{{l.tip}}" style="display:flex;align-items:center;gap:7px;font-size:10.5px;color:#94a3b8;cursor:help">
+              <span style="width:11px;height:11px;border-radius:999px;border:1.5px {{l.style}} {{l.dot}};background:{{l.fill}};flex:none"></span>{{l.k}}
+            </span>
+          </sc-for>
+        </div>
+
+        <div style="border:1px solid rgba(255,255,255,.07);border-radius:12px;background:rgba(255,255,255,.015);padding:12px 16px 13px;display:flex;flex-direction:column;gap:11px">
+          <div onClick="{{howToggle}}" style="display:flex;align-items:center;gap:10px;cursor:pointer" style-hover="opacity:.85">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;transform:{{howChev}}"><path d="m9 18 6-6-6-6"></path></svg>
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.15em;color:#94a3b8">HOW THIS MATRIX WORKS</span>
+            <span style="margin-left:auto;font-size:10.5px;font-weight:600;color:#64748b">{{howToggleLabel}}</span>
+          </div>
+          <sc-if value="{{howOpen}}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(296px,1fr));gap:12px 26px">
+              <sc-for list="{{how}}" as="h" hint-placeholder-count="6">
+                <div style="display:flex;flex-direction:column;gap:3px">
+                  <span style="font-size:11.5px;font-weight:700;color:#e2e8f0">{{h.head}}</span>
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.6">{{h.body}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:940},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;no-m365-tenant&quot;,&quot;loading&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;gateMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;loose&quot;,&quot;strict&quot;],&quot;default&quot;:&quot;loose&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;}}">
+const GRN = "#34d399", GOLD = "#c2a63d", RED = "#f87171", BLU = "#60a5fa", TEAL = "#00B4D8", SLT = "#64748b", GREY = "#8494ab";
+
+class Component extends DCLogic {
+  state = {
+    pick: null, extra: {}, acc: {}, untracked: {}, open: null, addOpen: false,
+    howOpen: false, filter: null, declining: null, reason: "", reasons: {}, pickQuery: "",
+    browse: false,
+  };
+
+  onReason = e => this.setState({ reason: e.target.value });
+  onPickQuery = e => this.setState({ pickQuery: e.target.value });
+
+  renderVals() {
+    const S = this.state;
+    const ds = this.props.dataState ?? "live";
+    const isLoading = ds === "loading";
+    const noTenant = ds === "no-m365-tenant";
+    const isLive = ds === "live" || noTenant;
+    const strict = this.props.gateMode === "strict";
+    const TENANT = "Contoso Ltd";
+    const UNSCOPED = { workload: 1, cr: 1 };
+    const ME = "u12";
+
+    const PEOPLE = [
+      { id: "u12", name: "Jordan Reid", role: "IT Manager", team: "IT Leadership", side: TENANT },
+      { id: "u38", name: "Elena Petrova", role: "Change Manager", team: "IT Leadership", side: TENANT },
+      { id: "u18", name: "Maya Okafor", role: "Service Desk Lead", team: "Service Desk", side: TENANT },
+      { id: "u25", name: "Priya Raman", role: "Identity Engineer", team: "Platform", side: TENANT },
+      { id: "u26", name: "Tom Beasley", role: "Messaging Engineer", team: "Platform", side: TENANT },
+      { id: "u27", name: "Sofia Marchetti", role: "Collaboration Lead", team: "Platform", side: TENANT },
+      { id: "u28", name: "Dev Patel", role: "Security Analyst", team: "Security", side: TENANT },
+      { id: "u29", name: "Grace Lin", role: "Security Engineer", team: "Security", side: TENANT },
+      { id: "u30", name: "Owen Wright", role: "Compliance Officer", team: "Risk and Compliance", side: TENANT },
+      { id: "u31", name: "Hana Suzuki", role: "Records Manager", team: "Risk and Compliance", side: TENANT },
+      { id: "u24", name: "Anna Novak", role: "Finance Director", team: "Finance", side: TENANT },
+      { id: "u32", name: "Marcus Bell", role: "Endpoint Engineer", team: "Endpoint", side: TENANT },
+      { id: "u33", name: "Ruth Adeyemi", role: "Endpoint Lead", team: "Endpoint", side: TENANT },
+      { id: "u34", name: "Lars Pedersen", role: "Data Engineer", team: "Data", side: TENANT },
+      { id: "u35", name: "Chen Wei", role: "Data Governance Lead", team: "Data", side: TENANT },
+      { id: "u36", name: "Nadia Haddad", role: "HR Systems Lead", team: "HR", side: TENANT },
+      { id: "u37", name: "Peter Osei", role: "Applications Lead", team: "Applications", side: TENANT },
+      { id: "u39", name: "Shane McCaw", role: "Principal Architect", team: "MSP", side: "MSP" },
+      { id: "u42", name: "Dana Cruz", role: "Service Manager", team: "MSP", side: "MSP" },
+      { id: "u41", name: "Rodney Whitfield", role: "Operator", team: "MSP", side: "MSP" },
+      { id: "u43", name: "Kofi Mensah", role: "Security Engineer", team: "MSP", side: "MSP" },
+      { id: "u44", name: "Ines Ferreira", role: "Identity Engineer", team: "MSP", side: "MSP" },
+      { id: "u45", name: "Bo Nielsen", role: "Endpoint Engineer", team: "MSP", side: "MSP" },
+      { id: "u46", name: "Talia Grant", role: "Compliance Analyst", team: "MSP", side: "MSP" },
+    ];
+    const byId = {};
+    PEOPLE.forEach(p => { byId[p.id] = p; });
+    const initials = n => n.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+    const shortName = n => { const p = n.split(" "); return p[0] + " " + p[1][0] + "."; };
+    const sideStyle = side => side === "MSP"
+      ? { border: "rgba(0,180,216,.3)", bg: "rgba(0,180,216,.06)", avBg: "rgba(0,180,216,.18)", avInk: "#7dd3fc" }
+      : { border: "rgba(255,255,255,.11)", bg: "rgba(255,255,255,.03)", avBg: "rgba(96,165,250,.16)", avInk: "#93c5fd" };
+
+    const OBJ = [
+      { type: "workload", id: "wl-exchange", name: "Exchange Online", sub: "Exchange Online Plan 2 · enabled", link: "Open the workload",
+        r: ["u18"], a: ["u12", "u39"], c: [], i: [], tracked: true,
+        history: [
+          { when: "27 Aug", text: "Maya Okafor assigned Responsible by Jordan Reid", kind: "ASSIGNED", dot: BLU },
+          { when: "27 Aug", text: "Maya Okafor accepted Responsible", kind: "ACCEPTED", dot: GRN },
+          { when: "28 Aug", text: "Shane McCaw added as a second Accountable holder", kind: "ASSIGNED", dot: BLU },
+        ] },
+      { type: "workload", id: "wl-sharepoint", name: "SharePoint and OneDrive", sub: "SharePoint Plan 2, OneDrive Plan 2 · enabled", link: "Open the workload",
+        r: ["u27"], a: ["u12"], c: [], i: [], tracked: true, pend: ["u12"], declinedNote: "Anna Novak declined Accountable",
+        history: [
+          { when: "24 Aug", text: "Anna Novak assigned Accountable by Jordan Reid", kind: "ASSIGNED", dot: BLU },
+          { when: "25 Aug", text: "Anna Novak declined — \u201cSharePoint governance sits with IT, not finance\u201d", kind: "DECLINED", dot: RED },
+        ] },
+      { type: "workload", id: "wl-powerplatform", name: "Power Platform", sub: "Power Apps, Power Automate · enabled", link: "Open the workload",
+        r: [], a: [], c: [], i: [], tracked: false,
+        history: [{ when: "1 Sep", text: "Untracked by Jordan Reid — finding raised: untracked while still enabled", kind: "UNTRACKED", dot: GOLD }] },
+      { type: "workload", id: "wl-defender", name: "Defender for Office 365", sub: "Defender P2 · enabled", link: "Open the workload",
+        r: ["u41"], a: ["u39"], c: ["u12"], i: [], tracked: true, history: [] },
+      { type: "service", id: "svc-12", name: "Tenant Monitoring", sub: "Active · 120 seats", link: "Open the service",
+        r: ["u41"], a: ["u39"], c: [], i: ["u12"], history: [] },
+      { type: "service", id: "svc-19", name: "Architect Retainer", sub: "Active", link: "Open the service",
+        r: [], a: ["u39"], c: [], i: [], history: [] },
+      { type: "cr", id: "CR-2026-118", name: "Block legacy authentication", sub: "Pending approval · Saturday window", link: "Open the change request",
+        r: ["u12"], a: [], c: [], i: [], history: [] },
+      { type: "cr", id: "CR-2026-115", name: "Restrict who can create groups", sub: "Approved · standard-change window", link: "Open the change request",
+        r: ["u12"], a: ["u39"], c: [], i: [], history: [] },
+      { type: "freeze", id: "hold-fin-ye", name: "Year-end finance freeze", sub: "Open · no close date recorded", link: "Open the hold window",
+        r: ["u12"], a: ["u24"], c: [], i: [], pend: ["u12"], history: [] },
+      { type: "control", id: "own-ca-baseline", name: "Conditional Access baseline", sub: "Added by Jordan Reid", link: "Hand-added row", hand: true,
+        r: [], a: [], c: [], i: [], history: [] },
+    ];
+
+    const ROLE = {
+      r: ["R", "RESPONSIBLE", "Does the work.", "#93c5fd"],
+      a: ["A", "ACCOUNTABLE", "Answers for the outcome. Several people may hold it; any holder can act.", "#f8fafc"],
+      c: ["C", "CONSULTED", "Asked before the change. Never guessed — an empty C means nobody is recorded.", "#c4b5fd"],
+      i: ["I", "INFORMED", "Told afterwards. Never guessed either.", "#7dd3fc"],
+    };
+    const ACC = {
+      accepted: ["Accepted", GRN],
+      pending: ["Awaiting acceptance", GOLD],
+      declined: ["Declined", RED],
+      none: ["No acceptance asked", SLT],
+    };
+
+    const key = (id, rk) => id + ":" + rk;
+    const holdersOf = (o, rk) => (o[rk] || []).concat(S.extra[key(o.id, rk)] || []);
+    const accOf = (o, rk, pid) => {
+      if (rk === "c" || rk === "i") return "none";
+      const local = S.acc[key(o.id, rk) + ":" + pid];
+      if (local) return local;
+      if ((o.pend || []).indexOf(pid) >= 0) return "pending";
+      return (o[rk] || []).indexOf(pid) >= 0 ? "accepted" : "pending";
+    };
+
+    const GROUPS = [
+      { k: "workload", label: "MICROSOFT 365", chip: "Microsoft 365", tag: "LIVE", accent: "#0078D4" },
+      { k: "service", label: "PURCHASED SERVICES", chip: "Purchased services", tag: "LIVE", accent: "#00B4D8" },
+      { k: "cr", label: "CHANGE REQUESTS", chip: "Change requests", tag: "LIVE", accent: "#a78bfa" },
+      { k: "freeze", label: "HOLD WINDOWS", chip: "Hold windows", tag: "LIVE", accent: "#fb923c" },
+      { k: "control", label: "CONTROLS", chip: "Controls", tag: "ADDED BY HAND", accent: "#60a5fa" },
+      { k: "incident", label: "INCIDENTS", chip: "Incidents", tag: "NOT STORED YET", accent: GREY },
+    ];
+    const filter = S.filter || null;
+    const visible = GROUPS.filter(g => !filter || g.k === filter);
+    const TAGC = {
+      LIVE: [GRN, "rgba(52,211,153,.34)", "solid"],
+      "ADDED BY HAND": [BLU, "rgba(96,165,250,.34)", "solid"],
+      "NOT STORED YET": [GREY, "rgba(132,148,171,.4)", "dashed"],
+      "NOT SERVED": [GOLD, "rgba(194,166,61,.4)", "dashed"],
+    };
+
+    // Suggestions are the people already carrying cells elsewhere on this matrix,
+    // most-held first. It is a real signal off the data, not a guess about org charts.
+    const freq = {};
+    OBJ.forEach(o => ["r", "a", "c", "i"].forEach(rk => holdersOf(o, rk).forEach(pid => {
+      freq[pid] = (freq[pid] || 0) + 1;
+    })));
+    const addHolder = (o, rk, pid) => this.setState(s => {
+      const k = key(o.id, rk);
+      const cur = (s.extra[k] || []);
+      if (holdersOf(o, rk).indexOf(pid) >= 0) return { pick: null, browse: false, pickQuery: "" };
+      return {
+        extra: Object.assign({}, s.extra, { [k]: cur.concat([pid]) }),
+        pick: null, browse: false, pickQuery: "",
+      };
+    });
+    const suggestFor = (o, rk) => {
+      const already = holdersOf(o, rk);
+      return PEOPLE
+        .filter(p => already.indexOf(p.id) < 0)
+        .sort((a, b) => (freq[b.id] || 0) - (freq[a.id] || 0))
+        .slice(0, 4)
+        .map(p => Object.assign({
+          name: p.name, meta: p.role + " · " + p.team, initials: initials(p.name),
+          held: (freq[p.id] || 0) > 0 ? (freq[p.id] === 1 ? "holds 1 cell" : "holds " + freq[p.id] + " cells") : "no cells yet",
+          pick: () => addHolder(o, rk, p.id),
+        }, sideStyle(p.side)));
+    };
+
+    const items = [];
+    let gapsNoA = 0, gapsNoR = 0, pendingCount = 0, declinedCount = 0, untrackedCount = 0;
+
+    visible.forEach((g, gi) => {
+      const unscoped = noTenant && !!UNSCOPED[g.k];
+      const rows = unscoped ? [] : OBJ.filter(o => o.type === g.k);
+      const tag = unscoped ? "NOT SERVED" : g.tag;
+      const t = TAGC[tag];
+      items.push({
+        isGroup: true, isRow: false, isEmpty: false,
+        label: g.label, tag, tagInk: t[0], tagBorder: t[1], tagStyle: t[2],
+        accent: g.accent,
+        bandBg: "linear-gradient(90deg, " + g.accent + "24, rgba(255,255,255,.02) 55%)",
+        gapTop: gi === 0 ? "0" : "14px",
+        count: rows.length ? rows.length + (rows.length === 1 ? " row" : " rows") : "",
+      });
+
+      if (rows.length === 0) {
+        items.push({
+          isGroup: false, isRow: false, isEmpty: true,
+          accent: g.accent,
+          emptyNote: unscoped
+            ? "Not shown on this request — these rows are read through your tenant identifier."
+            : g.k === "control" ? "No control register is stored yet. Rows you add by hand appear here."
+              : "Nothing is stored for this type yet.",
+        });
+        return;
+      }
+
+      rows.forEach(o => {
+        const picking = S.pick && S.pick.split(":")[0] === o.id;
+        const pickRole = picking ? S.pick.split(":")[1] : null;
+        const untracked = o.type === "workload" && (S.untracked[o.id] !== undefined ? S.untracked[o.id] : !o.tracked);
+        if (untracked) untrackedCount++;
+        if (o.declinedNote) declinedCount++;
+
+        const cells = ["r", "a", "c", "i"].map(rk => {
+          const ids = holdersOf(o, rk);
+          if (ids.length === 0 && !untracked) {
+            if (rk === "a") gapsNoA++;
+            if (rk === "r") gapsNoR++;
+          }
+          const holders = ids.map(pid => {
+            const person = byId[pid];
+            const acc = accOf(o, rk, pid);
+            if (acc === "pending") pendingCount++;
+            const a = ACC[acc];
+            const ss = sideStyle(person.side);
+            return {
+              initials: initials(person.name), short: shortName(person.name),
+              tip: person.name + " · " + person.role + " · " + person.side + " · " + a[0],
+              ring: a[1], avBg: ss.avBg, avInk: ss.avInk,
+              border: acc === "declined" ? "rgba(248,113,113,.35)" : ss.border,
+              bg: acc === "declined" ? "rgba(248,113,113,.05)" : ss.bg,
+            };
+          });
+          const isGap = ids.length === 0 && (rk === "r" || rk === "a") && !untracked;
+          return {
+            holders,
+            emptyShow: ids.length === 0,
+            emptyLabel: isGap ? "No owner" : "None",
+            emptyInk: isGap ? GOLD : SLT,
+            emptyBorder: isGap ? "rgba(194,166,61,.42)" : "rgba(148,163,184,.24)",
+            addShow: ids.length > 0,
+            add: () => this.setState(s => ({ pick: s.pick === key(o.id, rk) ? null : key(o.id, rk), open: null })),
+          };
+        });
+
+        const pending = [];
+        ["r", "a"].forEach(rk => {
+          holdersOf(o, rk).forEach(pid => {
+            if (pid === ME && accOf(o, rk, pid) === "pending") {
+              pending.push({
+                text: "You have been named " + ROLE[rk][1].toLowerCase() + " for this",
+                accept: () => this.setState(s => ({ acc: Object.assign({}, s.acc, { [key(o.id, rk) + ":" + pid]: "accepted" }) })),
+                decline: () => this.setState(s => ({ acc: Object.assign({}, s.acc, { [key(o.id, rk) + ":" + pid]: "declined" }) })),
+              });
+            }
+          });
+        });
+
+        items.push({
+          isGroup: false, isRow: true, isEmpty: false,
+          accent: g.accent,
+          name: o.name, sub: o.sub, link: o.link,
+          nameInk: untracked ? "#94a3b8" : "#f8fafc",
+          rowBg: untracked ? "rgba(194,166,61,.025)" : "transparent",
+          pillShow: !!o.hand || untracked || !!o.declinedNote,
+          pill: untracked ? "UNTRACKED" : o.hand ? "ADDED BY HAND" : "DECLINED",
+          pillInk: untracked ? GOLD : o.hand ? BLU : RED,
+          pillBorder: untracked ? "rgba(194,166,61,.4)" : o.hand ? "rgba(96,165,250,.34)" : "rgba(248,113,113,.34)",
+          pillStyle: untracked ? "dashed" : "solid",
+          cells,
+          expanded: S.open === o.id,
+          chev: S.open === o.id ? "rotate(90deg)" : "none",
+          click: () => this.setState(s => ({ open: s.open === o.id ? null : o.id, pick: null })),
+          isWorkload: o.type === "workload",
+          trackLabel: untracked ? "UNTRACKED" : "TRACKED",
+          trackInk: untracked ? GOLD : GRN,
+          trackBorder: untracked ? "rgba(194,166,61,.4)" : "rgba(52,211,153,.34)",
+          trackBg: untracked ? "rgba(194,166,61,.06)" : "rgba(52,211,153,.05)",
+          trackStyle: untracked ? "dashed" : "solid",
+          trackDot: untracked ? GOLD : GRN,
+          trackTip: untracked
+            ? "Untracking removes this workload from the matrix only. Scanning and alerting continue, and the missing owner is recorded as a finding."
+            : "Tracked: it appears here and can hold owners.",
+          pendingShow: pending.length > 0, pending,
+          hasHistory: (o.history || []).length > 0, history: o.history || [],
+          picking,
+          pickHead: picking ? "Who holds " + ROLE[pickRole][1].charAt(0) + ROLE[pickRole][1].slice(1).toLowerCase() + " on " + o.name + "?" : "",
+          pickNote: picking && (pickRole === "c" || pickRole === "i")
+            ? "several holders allowed · no acceptance is asked for C or I"
+            : "several holders allowed · they will be asked to accept",
+          suggestions: picking ? suggestFor(o, pickRole) : [],
+          browseAll: () => this.setState({ browse: true, pickQuery: "" }),
+          browseLabel: "Browse all " + PEOPLE.length,
+          closePick: () => this.setState({ pick: null, pickQuery: "" }),
+        });
+      });
+    });
+
+    // Every cell the signed-in person is named in, across all groups — the one place
+    // acceptance is answered from, so it is not buried in a row that has to be found.
+    const ROLEWORD = { r: "Responsible", a: "Accountable", c: "Consulted", i: "Informed" };
+    const mine = [];
+    OBJ.forEach(o => {
+      ["r", "a", "c", "i"].forEach(rk => {
+        if (holdersOf(o, rk).indexOf(ME) < 0) return;
+        const st = accOf(o, rk, ME);
+        const k = key(o.id, rk) + ":" + ME;
+        mine.push({
+          objId: o.id, rk, st, k,
+          role: ROLEWORD[rk], letter: ROLE[rk][0], object: o.name, sub: o.sub,
+          accent: st === "accepted" ? GRN : st === "declined" ? RED : st === "pending" ? GOLD : SLT,
+          stateLabel: st === "accepted" ? "You accepted" : st === "declined" ? "You declined" : st === "pending" ? "Waiting on you" : "No answer needed",
+          declining: S.declining === k,
+          accept: () => this.setState(s => ({ acc: Object.assign({}, s.acc, { [k]: "accepted" }), declining: null })),
+          startDecline: () => this.setState({ declining: k, reason: "" }),
+          cancelDecline: () => this.setState({ declining: null, reason: "" }),
+          confirmDecline: () => this.setState(s => ({
+            acc: Object.assign({}, s.acc, { [k]: "declined" }),
+            reasons: Object.assign({}, s.reasons, { [k]: s.reason }),
+            declining: null, reason: "",
+          })),
+          reason: (S.reasons || {})[k] || "",
+          reasonShow: !!(S.reasons || {})[k],
+        });
+      });
+    });
+    const minePending = mine.filter(m => m.st === "pending");
+    const mineSettled = mine.filter(m => m.st !== "pending");
+
+    const gaps = [
+      { n: String(gapsNoA), label: "with no accountable owner", ink: gapsNoA ? GOLD : GRN },
+      { n: String(gapsNoR), label: "with nobody responsible", ink: gapsNoR ? GOLD : GRN },
+      { n: String(pendingCount), label: "awaiting acceptance", ink: pendingCount ? GOLD : GRN },
+      { n: String(untrackedCount), label: "untracked but still enabled", ink: untrackedCount ? GOLD : GRN },
+    ];
+
+    return {
+      rootH: this.props.embedded ? "100%" : "100vh",
+      isLoading, noTenant, isLive,
+      skeletons: [{ w1: "38%", w2: "64%" }, { w1: "52%", w2: "44%" }, { w1: "30%", w2: "70%" }, { w1: "46%", w2: "58%" }],
+      stateLine: isLoading ? "LOADING" : noTenant ? "PARTLY SERVED" : TENANT.toUpperCase(),
+      stateInk: isLoading ? SLT : noTenant ? GOLD : GRN,
+      stateDot: isLoading ? SLT : noTenant ? GOLD : GRN,
+      stateBd: noTenant ? "rgba(194,166,61,.4)" : "rgba(52,211,153,.36)",
+      stateBg: noTenant ? "rgba(194,166,61,.07)" : "rgba(52,211,153,.07)",
+      gateLine: strict ? "A cell counts once accepted" : "A cell counts as soon as it is placed",
+
+      heads: ["r", "a", "c", "i"].map(rk => ({
+        letter: ROLE[rk][0], word: ROLE[rk][1], tip: ROLE[rk][2], ink: ROLE[rk][3],
+      })),
+
+      browseOpen: !!S.browse && !!S.pick,
+      browseTitle: (() => {
+        if (!S.pick) return "";
+        const [oid, rk] = S.pick.split(":");
+        const o = OBJ.filter(x => x.id === oid)[0];
+        return o ? ROLEWORD[rk] + " on " + o.name : "";
+      })(),
+      browseCount: (() => {
+        const q = (S.pickQuery || "").trim().toLowerCase();
+        const n = PEOPLE.filter(p => !q || p.name.toLowerCase().indexOf(q) >= 0
+          || p.role.toLowerCase().indexOf(q) >= 0 || p.team.toLowerCase().indexOf(q) >= 0).length;
+        return n + " of " + PEOPLE.length + " people";
+      })(),
+      browseGroups: (() => {
+        if (!S.browse || !S.pick) return [];
+        const [oid, rk] = S.pick.split(":");
+        const o = OBJ.filter(x => x.id === oid)[0];
+        if (!o) return [];
+        const already = holdersOf(o, rk);
+        const q = (S.pickQuery || "").trim().toLowerCase();
+        const match = p => !q || p.name.toLowerCase().indexOf(q) >= 0
+          || p.role.toLowerCase().indexOf(q) >= 0 || p.team.toLowerCase().indexOf(q) >= 0;
+        const mk = p => Object.assign({
+          name: p.name, meta: p.role + " · " + p.team, initials: initials(p.name),
+          heldShow: already.indexOf(p.id) >= 0,
+          pick: () => addHolder(o, rk, p.id),
+        }, sideStyle(p.side));
+        const teams = [];
+        PEOPLE.filter(p => p.side === TENANT && match(p)).forEach(p => {
+          let t = teams.filter(x => x.label === p.team.toUpperCase())[0];
+          if (!t) { t = { label: p.team.toUpperCase(), people: [] }; teams.push(t); }
+          t.people.push(mk(p));
+        });
+        const msp = PEOPLE.filter(p => p.side === "MSP" && match(p)).map(mk);
+        if (msp.length) teams.push({ label: "YOUR MSP", people: msp });
+        return teams;
+      })(),
+      browseQuery: S.pickQuery,
+      onPickQuery: this.onPickQuery,
+      closeBrowse: () => this.setState({ browse: false, pickQuery: "" }),
+
+      mineShow: mine.length > 0,
+      minePending, mineSettled,
+      mineHasPending: minePending.length > 0,
+      mineHasSettled: mineSettled.length > 0,
+      mineCount: minePending.length
+        ? minePending.length + (minePending.length === 1 ? " needs your answer" : " need your answer")
+        : "nothing waiting on you",
+      mineCountInk: minePending.length ? GOLD : GRN,
+      reasonValue: S.reason,
+      onReason: this.onReason,
+
+      gapShow: !filter,
+      gaps,
+      filterChips: [{ k: null, chip: "All", accent: "#94a3b8", n: OBJ.length }].concat(
+        GROUPS.map(g => ({
+          k: g.k, chip: g.chip, accent: g.accent,
+          n: (noTenant && UNSCOPED[g.k]) ? 0 : OBJ.filter(o => o.type === g.k).length,
+        }))
+      ).map(c => ({
+        chip: c.chip,
+        n: String(c.n),
+        bg: filter === c.k ? c.accent + "26" : "transparent",
+        border: filter === c.k ? c.accent + "88" : "rgba(255,255,255,.1)",
+        ink: filter === c.k ? "#f8fafc" : "#94a3b8",
+        dot: c.accent,
+        nInk: filter === c.k ? "#f8fafc" : "#64748b",
+        pick: () => this.setState({ filter: c.k, open: null, pick: null }),
+      })),
+      peopleMeta: PEOPLE.filter(p => p.side === TENANT).length + " of your people · "
+        + PEOPLE.filter(p => p.side === "MSP").length + " from your MSP can hold a cell",
+
+      items,
+
+      legend: [
+        { k: "Accepted", tip: "The holder has accepted this role.", dot: GRN, fill: GRN, style: "solid" },
+        { k: "Awaiting acceptance", tip: "Named, not yet answered. R and A are asked; C and I are not.", dot: GOLD, fill: "transparent", style: "solid" },
+        { k: "Declined", tip: "The holder declined, with a reason. Recorded, not erased.", dot: RED, fill: "transparent", style: "solid" },
+        { k: "No owner recorded", tip: "Never filled with a guess.", dot: "rgba(148,163,184,.5)", fill: "transparent", style: "dashed" },
+        { k: "Your MSP", tip: "Your MSP's admins and operators can hold any cell and are seeded into none.", dot: TEAL, fill: "rgba(0,180,216,.28)", style: "solid" },
+      ],
+
+      addOpen: S.addOpen,
+      addCta: S.addOpen ? "Close" : "Add a row",
+      addRow: () => this.setState(s => ({ addOpen: !s.addOpen })),
+      addFields: [
+        { label: "Row name", req: "required", ph: "Conditional Access baseline", reqInk: GOLD },
+        { label: "Type", req: "required", ph: "workload · service · change request · hold · control", reqInk: GOLD },
+        { label: "Sub-line", req: "optional", ph: "What this row is, in one line", reqInk: SLT },
+      ],
+
+      howOpen: S.howOpen,
+      howChev: S.howOpen ? "rotate(90deg)" : "none",
+      howToggleLabel: S.howOpen ? "Hide" : "Show",
+      howToggle: () => this.setState(s => ({ howOpen: !s.howOpen })),
+      how: [
+        { head: "A letter can hold several people", body: "All four do. Accountable is listed in order, but any holder can act — nothing waits on one named individual." },
+        { head: "Declining is a real answer", body: "It is recorded with who declined and when, not removed quietly. The cell reads as unowned until someone else takes it." },
+        { head: "Consulted and Informed are never guessed", body: "An empty C or I means nobody has been recorded — not \u201cthe MSP\u201d and not \u201ceveryone else\u201d." },
+        { head: strict ? "You have asked for acceptance first" : "Acceptance is asked for, not required", body: strict ? "A named holder does not count as the owner until they accept. The same rule applies to your MSP's staff." : "Switching this to strict makes an unaccepted cell read as unowned. The setting is yours and applies to both sides." },
+        { head: "Untracking is not suppression", body: "It removes the owner and nothing else. Scans and alerts keep running, and the missing owner becomes a finding while the service stays enabled." },
+        { head: "A decline reaches whoever assigned it", body: "It does not travel further up a management line, because nothing here records who reports to whom." },
+      ],
+    };
+  }
+}
+
+</script>
+</body>
+</html>
