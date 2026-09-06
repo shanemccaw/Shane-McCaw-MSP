@@ -1799,23 +1799,40 @@ namespace BuildConsole
                 return;
             }
 
-            _stickyNotes = new StickyNotesWindow { Owner = this };
-            _stickyNotes.SendRequested += StickyNotes_SendRequested;
-            _stickyNotes.Closed += (s, e) =>
+            // Git #2076 — deliberately NOT Owner = this (same fix as #2074's
+            // FloatingChatWindow). An owned window's activation/z-order is coupled to
+            // its owner in WPF, which is very likely why interacting with this floaty
+            // was pulling MainWindow into view. The window is already Topmost="True"
+            // in its own XAML, so always-on-top doesn't depend on Owner. The only real
+            // behavior Owner provided that still needs replacing is auto-close-with-app,
+            // done explicitly below via MainWindow's own Closed event instead.
+            var win = new StickyNotesWindow();
+            win.SendRequested += StickyNotes_SendRequested;
+            win.Closed += (s, e) =>
             {
-                _stickyNotes = null;
+                if (ReferenceEquals(_stickyNotes, win)) _stickyNotes = null;
                 BuildConsole.Services.ActivityLog.Log("sticky-notes", "close");
             };
-            _stickyNotes.Show();
+            this.Closed += (_, _) =>
+            {
+                try { if (win.IsLoaded) win.Close(); } catch { }
+            };
+            _stickyNotes = win;
+            win.Show();
             BuildConsole.Services.ActivityLog.Log("sticky-notes", "open");
         }
 
         /// <summary>
-        /// Git #980 — toggles the floaty 8-slot Build Watch window. Same
-        /// open-or-close-on-toggle + Owner=this lifecycle as the Sticky Notes
-        /// (#937) and LinkedIn (#973) floaties, so it closes cleanly with the app
-        /// and never orphans. Passes the shared build-tracker API client so the
-        /// window can watch the same queue every other panel reads.
+        /// Git #980 — toggles the floaty 8-slot Build Watch window.
+        ///
+        /// Git #2076 — deliberately NOT Owner = this (same fix as #2074's
+        /// FloatingChatWindow / this file's Sticky Notes toggle above). This window
+        /// used to set Owner = this purely for auto-close-with-app, but that also
+        /// coupled its activation/z-order to MainWindow, which is very likely why
+        /// interacting with Build Watch could pull MainWindow into view. Replaced with
+        /// an explicit MainWindow.Closed hook, same pattern as the other floaties.
+        /// Passes the shared build-tracker API client so the window can watch the same
+        /// queue every other panel reads.
         /// </summary>
         private void ToggleBuildWatch()
         {
@@ -1825,13 +1842,18 @@ namespace BuildConsole
                 return;
             }
 
-            _buildWatch = new BuildWatchWindow(_buildTrackerApi, _queueWatcher, _queueDb) { Owner = this };
-            _buildWatch.Closed += (s, e) =>
+            var win = new BuildWatchWindow(_buildTrackerApi, _queueWatcher, _queueDb);
+            win.Closed += (s, e) =>
             {
-                _buildWatch = null;
+                if (ReferenceEquals(_buildWatch, win)) _buildWatch = null;
                 BuildConsole.Services.ActivityLog.Log("build-watch", "close");
             };
-            _buildWatch.Show();
+            this.Closed += (_, _) =>
+            {
+                try { if (win.IsLoaded) win.Close(); } catch { }
+            };
+            _buildWatch = win;
+            win.Show();
             BuildConsole.Services.ActivityLog.Log("build-watch", "open");
         }
 

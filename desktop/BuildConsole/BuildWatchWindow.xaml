@@ -95,12 +95,12 @@
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                             VerticalAlignment="Center">
                     <Ellipse Width="10" Height="10" Margin="0,0,4,0"
-                             Fill="{StaticResource GreenBrush}" VerticalAlignment="Center"/>
+                             Fill="{StaticResource StatusSuccessBrush}" VerticalAlignment="Center"/>
                     <TextBlock Text="done" Margin="0,0,12,0" FontSize="11"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource Subtext1Brush}"/>
                     <Ellipse Width="10" Height="10" Margin="0,0,4,0"
-                             Fill="{StaticResource RedBrush}" VerticalAlignment="Center"/>
+                             Fill="{StaticResource StatusErrorBrush}" VerticalAlignment="Center"/>
                     <TextBlock Text="failed" Margin="0,0,12,0" FontSize="11"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource Subtext1Brush}"/>
@@ -115,12 +115,12 @@
             <!-- Waiting-for-a-slot banner (only visible when >8 builds run at once) -->
             <Border x:Name="WaitingBannerBorder" Grid.Row="1"
                     Background="{StaticResource Surface0Brush}"
-                    BorderBrush="{StaticResource PeachBrush}"
+                    BorderBrush="{StaticResource StatusWarningBrush}"
                     BorderThickness="1" CornerRadius="4"
                     Padding="8,5" Margin="2,0,2,8"
                     Visibility="Collapsed">
                 <TextBlock x:Name="WaitingBanner" FontSize="12" TextWrapping="Wrap"
-                           Foreground="{StaticResource PeachBrush}"/>
+                           Foreground="{StaticResource StatusWarningBrush}"/>
             </Border>
 
             <!-- Slot grid. 8 slot visuals are built once in code-behind, but the

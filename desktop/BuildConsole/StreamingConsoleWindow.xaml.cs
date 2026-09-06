@@ -94,9 +94,9 @@ namespace BuildConsole
             var svc = ShaneAppStreamService.Instance;
             if (svc.IsRunning)
             {
-                StatusDot.Foreground = (Brush)FindResource("GreenBrush");
+                StatusDot.Foreground = (Brush)FindResource("StatusRunningBrush");
                 StatusLabel.Text = "RUNNING";
-                ActiveBadge.BorderBrush = (Brush)FindResource("GreenBrush");
+                ActiveBadge.BorderBrush = (Brush)FindResource("StatusRunningBrush");
                 ActiveBadge.Background = new SolidColorBrush(Color.FromArgb(0x33, 0xA6, 0xE3, 0xA1));
 
                 var elapsed = svc.Elapsed;
@@ -159,9 +159,9 @@ namespace BuildConsole
             // Level Tag
             var tagBrush = entry.Level switch
             {
-                ShaneAppLogLevel.Success => SafeBrush("GreenBrush", Brushes.LightGreen),
-                ShaneAppLogLevel.Error => SafeBrush("RedBrush", Brushes.Salmon),
-                ShaneAppLogLevel.Warning => SafeBrush("YellowBrush", Brushes.Khaki),
+                ShaneAppLogLevel.Success => SafeBrush("StatusSuccessBrush", Brushes.LightGreen),
+                ShaneAppLogLevel.Error => SafeBrush("StatusErrorBrush", Brushes.Salmon),
+                ShaneAppLogLevel.Warning => SafeBrush("StatusWarningBrush", Brushes.Khaki),
                 ShaneAppLogLevel.Sql => SafeBrush("SkyBrush", Brushes.SkyBlue),
                 ShaneAppLogLevel.PowerShell => SafeBrush("MauveBrush", Brushes.MediumPurple),
                 ShaneAppLogLevel.Test => SafeBrush("BlueBrush", Brushes.CornflowerBlue),
@@ -180,9 +180,9 @@ namespace BuildConsole
             // Message text
             var msgBrush = entry.Level switch
             {
-                ShaneAppLogLevel.Success => SafeBrush("GreenBrush", Brushes.LightGreen),
-                ShaneAppLogLevel.Error => SafeBrush("RedBrush", Brushes.Salmon),
-                ShaneAppLogLevel.Warning => SafeBrush("YellowBrush", Brushes.Khaki),
+                ShaneAppLogLevel.Success => SafeBrush("StatusSuccessBrush", Brushes.LightGreen),
+                ShaneAppLogLevel.Error => SafeBrush("StatusErrorBrush", Brushes.Salmon),
+                ShaneAppLogLevel.Warning => SafeBrush("StatusWarningBrush", Brushes.Khaki),
                 _ => SafeBrush("TextBrush", Brushes.White)
             };
 

@@ -447,6 +447,19 @@ namespace BuildConsole
             return $"{(int)t.TotalSeconds}s";
         }
 
+        /// <summary>Git #2230 — the raw GitHub open/closed state stays the honest display signal
+        /// (mirrors <see cref="BatterUpRow.OpenBlockedByNumbers"/>), but a blocker open on GitHub and
+        /// already satisfied by a verified DONE bookend is called out distinctly rather than lumped in
+        /// with a genuinely-open one — the whole point being this map no longer disagrees with what the
+        /// #1600 launch gate will actually do.</summary>
+        private static string BlockerStateLabel(QueueMapBlocker b)
+        {
+            if (b.IsOpenOnGitHub == false) return "cleared";
+            if (b.SatisfiedByDoneBookend) return "open, verified DONE bookend";
+            if (b.IsOpenOnGitHub == null) return "unknown";
+            return "open";
+        }
+
         private static string BuildTooltip(BuildQueueMapItem it)
         {
             var lines = new List<string>
@@ -460,7 +473,7 @@ namespace BuildConsole
             if (it.IsError) lines.Add("⚠ Error: " + ErrorLabel(it.ErrorKind));
             if (it.Blockers.Count > 0)
                 lines.Add("Blockers: " + string.Join(", ", it.Blockers.Select(b =>
-                    "#" + b.Number + (b.StillBlocking ? " (open)" : " (cleared)") + (b.IsQueueItem ? " [queued]" : ""))));
+                    "#" + b.Number + " (" + BlockerStateLabel(b) + ")" + (b.IsQueueItem ? " [queued]" : ""))));
             return string.Join("\n", lines);
         }
 

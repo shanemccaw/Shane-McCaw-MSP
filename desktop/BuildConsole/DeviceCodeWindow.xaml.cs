@@ -120,7 +120,7 @@ namespace BuildConsole
         /// green and auto-dismisses shortly after so it doesn't linger.</summary>
         public void MarkSignedIn(string message)
         {
-            StatusText.Foreground = (Brush)FindResource("GreenBrush");
+            StatusText.Foreground = (Brush)FindResource("StatusSuccessBrush");
             StatusText.Text = string.IsNullOrWhiteSpace(message) ? "Signed in — continuing." : "✓ " + message;
             AutoDismiss(TimeSpan.FromSeconds(4));
         }
@@ -128,7 +128,7 @@ namespace BuildConsole
         /// <summary>Executor gave up waiting (the extended device-code window elapsed). Turns the status red.</summary>
         public void MarkTimedOut(string message)
         {
-            StatusText.Foreground = (Brush)FindResource("RedBrush");
+            StatusText.Foreground = (Brush)FindResource("StatusErrorBrush");
             StatusText.Text = string.IsNullOrWhiteSpace(message) ? "Timed out waiting for sign-in." : "⚠ " + message;
         }
 

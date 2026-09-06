@@ -51,7 +51,7 @@
         <TextBlock x:Name="StatusText"
                    Grid.Row="4"
                    FontSize="11"
-                   Foreground="{StaticResource RedBrush}"
+                   Foreground="{StaticResource StatusErrorBrush}"
                    TextWrapping="Wrap"
                    VerticalAlignment="Top"
                    Margin="0,8,0,0"

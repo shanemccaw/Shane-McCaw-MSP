@@ -40,7 +40,7 @@
                     <Border x:Name="ActiveBadge" Background="#2A7C8CF0" BorderBrush="{StaticResource BlueBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="6,1" Margin="12,0,0,0" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock x:Name="StatusDot" Text="●" FontSize="9" Foreground="{StaticResource GreenBrush}" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="StatusDot" Text="●" FontSize="9" Foreground="{StaticResource StatusRunningBrush}" Margin="0,0,4,0" VerticalAlignment="Center"/>
                             <TextBlock x:Name="StatusLabel" Text="IDLE" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Border>
