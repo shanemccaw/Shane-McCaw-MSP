@@ -11,6 +11,7 @@ import ComingSoon from "@/pages/coming-soon";
 import SupportPage from "@/pages/support";
 import AccountSecurityPage from "@/pages/account-security";
 import BillingPage from "@/pages/billing";
+import ConfigStatePage from "@/pages/config-state";
 import LoginPage from "@/pages/login";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
@@ -76,6 +77,7 @@ function ProtectedRoutes() {
           <Route path="/support" component={SupportPage} />
           <Route path="/account-security" component={AccountSecurityPage} />
           <Route path="/billing" component={BillingPage} />
+          <Route path="/config-state" component={ConfigStatePage} />
           <Route path="/notification-preferences" component={NotificationPreferencesPage} />
           <Route path="/sops" component={SopsPage} />
           <Route path="/runbooks" component={RunbooksPage} />

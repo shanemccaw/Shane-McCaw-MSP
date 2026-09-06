@@ -1,0 +1,84 @@
+{
+  "issue": 3004,
+  "feature": "Configuration State - the real artifacts/portal '/config-state' page (src/pages/config-state.tsx), part of #3002/#1485. Wires GET /api/portal/config-state/{snapshots,snapshots/current,snapshots/:id,changes,changes/:diffId} via configStateLive.ts, per docs/configuration-state-contract-pack.md and the landed 'Configuration State.dc.html' export (#3003). The design's own tenant-specific commentary (workload notes, group notes, history notes) is deliberately NOT copied verbatim - see config-state.tsx's own header comment for why - and is instead derived live from real per-request data (most-common unread reason, largest resource by volume, real notComparableReason breakdowns) via configStateWire.ts's pure helpers.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "WHAT THIS COVERS: the full real customer-facing config-state read surface is auth-gated as documented, and a logged-in customer gets the real payload shapes configStateLive.ts consumes for the current snapshot, snapshot history, and the change report + attribution roll-up.",
+    "WHAT THIS DOES NOT COVER, AND WHY (no portal login page yet): artifacts/portal has no login page today (#1648) - App.tsx's RequireAuth renders an honest 'Sign in required' panel for an unauthenticated visitor, the same structural gap test-manifests/portal/billing.json (#2998) and account-security-data-rights.json (#2996) already document. The uiSteps below only assert what is honestly reachable today. apiTests exercise the full real backend directly with a real bearer token.",
+    "There is no ?tenantId= parameter on any of these routes by design (portal-config-state.ts's own header) - scoping is entirely from the JWT customerId claim, so no apiTest attempts to pass one.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use).",
+    "NOT YET RUN via shaneapp://runTest as of this build (2026-09-06, session for #3004): BuildConsole's local instance resolves test-manifests/ and UI routes against the dev-server checkout, which does not yet have this page/route merged/deployed (this branch is not yet picked up). Same structural gap #2921's/#2996's/#2998's own manifests document for their uiSteps run. Verified instead by: a real `tsc -p tsconfig.json --noEmit` pass (0 errors) and a real `vite build` (succeeds) against artifacts/portal with this page + route added, plus direct reading of portal-config-state.ts/config-state-views.ts/config-change-attribution.ts confirming the shapes configStateWire.ts/configStateLive.ts assert against. Re-run this manifest via shaneapp://runTest once the dev-server merge/restart cycle has picked up this branch."
+  ],
+
+  "apiTests": [
+    {
+      "name": "AUTH-GATE-1 - GET /api/portal/config-state/snapshots/current with no Authorization header returns 401 (requireAuth)",
+      "method": "GET",
+      "path": "/api/portal/config-state/snapshots/current",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-2 - GET /api/portal/config-state/snapshots with no Authorization header returns 401 (requireAuth)",
+      "method": "GET",
+      "path": "/api/portal/config-state/snapshots",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-3 - GET /api/portal/config-state/changes with no Authorization header returns 401 (requireAuth)",
+      "method": "GET",
+      "path": "/api/portal/config-state/changes",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP - log in as the designated testbed portal account to obtain a real client bearer; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "CURRENT-1 - an authenticated GET /api/portal/config-state/snapshots/current returns 200 with a real 'collected' boolean, never a fixture substitution",
+      "method": "GET",
+      "path": "/api/portal/config-state/snapshots/current",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.collected", "exists": true }
+    },
+    {
+      "name": "HISTORY-1 - an authenticated GET /api/portal/config-state/snapshots returns a real snapshots array + paging envelope",
+      "method": "GET",
+      "path": "/api/portal/config-state/snapshots?limit=10",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.snapshots", "isArray": true }
+    },
+    {
+      "name": "CHANGES-1 - an authenticated GET /api/portal/config-state/changes returns 200 with a real 'available' boolean",
+      "method": "GET",
+      "path": "/api/portal/config-state/changes",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.available", "exists": true }
+    },
+    {
+      "name": "SCOPING-1 - an out-of-scope snapshot id returns 404, not 403 (portal-config-state.ts's own entitlement rule)",
+      "method": "GET",
+      "path": "/api/portal/config-state/snapshots/999999999",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 404 }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/config-state" },
+    {
+      "name": "Unauthenticated visit: the shell route mounts and RequireAuth's honest sign-in-required panel renders (no portal login page exists yet - see notes)",
+      "action": "expect",
+      "selector": "h1",
+      "state": "visible",
+      "textContains": "Sign in required",
+      "critical": true
+    }
+  ]
+}

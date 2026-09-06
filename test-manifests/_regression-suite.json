@@ -96,6 +96,7 @@
     "portal/notification-preferences.json",
     "portal/billing.json",
     "portal/sops-runbooks.json",
-    "portal/microsoft-changes.json"
+    "portal/microsoft-changes.json",
+    "portal/config-state.json"
   ]
 }
