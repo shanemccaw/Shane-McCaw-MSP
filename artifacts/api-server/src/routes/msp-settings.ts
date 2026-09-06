@@ -70,9 +70,10 @@ import {
   MSP_EMAIL_TEMPLATE_KEYS,
   type MspEmailTemplateKey,
   type MspConnectorMode,
+  type MspRole,
 } from "@workspace/db";
 import { eq, and, desc, isNull, inArray, gte, lt, count } from "drizzle-orm";
-import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireRole, roleIndex, effectiveMspRole } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
 import { randomBytes, createHash, randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
@@ -98,6 +99,28 @@ function apiError(res: Response, status: number, message: string) {
   res.status(status).json({ error: message });
 }
 
+// Target-role ceiling check for the credential/security-action routes below
+// (Git #3032). requireRole("MSPAdmin") only enforces a FLOOR on the caller —
+// it says nothing about the target — and every one of these routes' target
+// lookup was `mspId`-ownership only, which let any real MSPAdmin reset the
+// password / clear the MFA / suspend a PlatformAdmin at the same MSP (full
+// privilege escalation, no interaction with the target needed). Mirrors the
+// existing pattern that already keeps PlatformAdmin unassignable through this
+// surface (`updateRoleSchema`/`createInviteSchema` above only ever enumerate
+// `["MSPAdmin", "MSPOperator"]`), generalized to a real role-index ceiling so
+// a peer or higher-privileged target is rejected regardless of which two
+// tiers are involved, not just the PlatformAdmin case.
+function targetOutranksOrEqualsCaller(req: Request, targetRole: MspRole | null | undefined): boolean {
+  return roleIndex(targetRole ?? undefined) >= roleIndex(effectiveMspRole(req.user!));
+}
+
+function rejectIfTargetOutranksCaller(req: Request, res: Response, targetRole: MspRole | null | undefined): boolean {
+  if (targetOutranksOrEqualsCaller(req, targetRole)) {
+    apiError(res, 403, "Cannot perform this action on a user with equal or higher privileges");
+    return true;
+  }
+  return false;
+}
 
 function writeAuditLog(params: {
   req: Request;
@@ -808,11 +831,12 @@ router.post("/msp/settings/users/:userId/reset-password", requireRole("MSPAdmin"
 
   // Ownership check: the target user must belong to the caller's MSP.
   const [target] = await db
-    .select({ id: usersTable.id, email: usersTable.email, name: usersTable.name })
+    .select({ id: usersTable.id, email: usersTable.email, name: usersTable.name, mspRole: usersTable.mspRole })
     .from(usersTable)
     .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
+  if (rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
 
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + MSP_RESET_TOKEN_TTL_MS);
@@ -845,11 +869,12 @@ router.post("/msp/settings/users/:userId/temp-password", requireRole("MSPAdmin")
 
   // Ownership check: the target user must belong to the caller's MSP.
   const [target] = await db
-    .select({ id: usersTable.id })
+    .select({ id: usersTable.id, mspRole: usersTable.mspRole })
     .from(usersTable)
     .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
+  if (rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
 
   const tempPassword = `Temp-${randomBytes(6).toString("hex").toUpperCase()}!9`;
   const passwordHash = await bcrypt.hash(tempPassword, 12);
@@ -873,11 +898,12 @@ router.post("/msp/settings/users/:userId/reset-mfa", requireRole("MSPAdmin"), as
 
   // Ownership check: the target user must belong to the caller's MSP.
   const [target] = await db
-    .select({ id: usersTable.id, email: usersTable.email, name: usersTable.name })
+    .select({ id: usersTable.id, email: usersTable.email, name: usersTable.name, mspRole: usersTable.mspRole })
     .from(usersTable)
     .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
+  if (rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
 
   const enrollments = await db
     .select({ method: mfaEnrollmentsTable.method })
@@ -928,6 +954,15 @@ router.patch("/msp/settings/users/:userId/mfa-enforcement", requireRole("MSPAdmi
 
   const { enforced } = req.body as { enforced?: boolean };
 
+  // Ownership check: the target user must belong to the caller's MSP.
+  const [target] = await db
+    .select({ id: usersTable.id, mspRole: usersTable.mspRole })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
+    .limit(1);
+  if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
+  if (rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
+
   await db
     .update(usersTable)
     .set({ mfaEnforced: !!enforced, updatedAt: new Date() })
@@ -957,6 +992,15 @@ router.patch("/msp/settings/users/:userId/status", requireRole("MSPAdmin"), asyn
     apiError(res, 400, "Cannot suspend your own account");
     return;
   }
+
+  // Ownership check: the target user must belong to the caller's MSP.
+  const [target] = await db
+    .select({ id: usersTable.id, mspRole: usersTable.mspRole })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
+    .limit(1);
+  if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
+  if (rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
 
   await db
     .update(usersTable)

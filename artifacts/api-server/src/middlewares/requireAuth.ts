@@ -88,9 +88,21 @@ const ROLE_ORDER: MspRole[] = [
   "PlatformAdmin",
 ];
 
-function roleIndex(role: MspRole | undefined): number {
+// Exported so routes that need a target-role ceiling check (e.g. "the target
+// of this action must outrank neither the caller nor a fixed floor") can
+// reuse the exact same ordering/index logic requireRole() enforces on the
+// caller side, instead of hand-rolling a second comparison (Git #3032).
+export function roleIndex(role: MspRole | undefined): number {
   if (!role) return -1;
   return ROLE_ORDER.indexOf(role);
+}
+
+// Same legacy-admin normalization requireRole() applies to the caller —
+// exported so a route can compute "what role does this caller effectively
+// hold" itself when it needs to compare against a target's role, not just
+// against a fixed minimum.
+export function effectiveMspRole(user: Pick<AuthUser, "role" | "mspRole">): MspRole | undefined {
+  return user.role === "admin" ? "PlatformAdmin" : user.mspRole;
 }
 
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
