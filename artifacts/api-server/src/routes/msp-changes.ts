@@ -11,8 +11,9 @@ import { CHANGE_REQUEST_CATEGORIES, workloadForCategory } from "../lib/portal-ch
 import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "../lib/portal-change-freeze-store.ts";
 import { maintenanceCoverageForBookedSpan } from "../lib/portal-change-maintenance-store.ts";
 import { collidingChangeRequestForSubmit } from "../lib/portal-change-collision-store.ts";
-import { loadApprovalPolicy, materializeApprovalsForChange, NO_POLICY } from "../lib/portal-change-approvals-store.ts";
+import { loadApprovalPolicy, materializeApprovalsForChange, NO_POLICY, type ApproverIdentity } from "../lib/portal-change-approvals-store.ts";
 import { requiredStages, summarizeApprovals } from "../lib/portal-change-approvals.ts";
+import { recordRejection } from "../lib/portal-change-rejection.ts";
 import { personIdForUser } from "../lib/portal-ownership.ts";
 import {
   addAttachment,
@@ -71,6 +72,10 @@ const patchChangeRequestSchema = z.object({
   status: z.enum(["pending_approval", "scheduled", "in_progress", "completed", "rolled_back", "rejected"]).optional(),
   approvedBy: z.string().nullable().optional(),
   executedAt: z.string().nullable().optional(),
+  // #3033 — carried through to `recordRejection` when `status: "rejected"`. Optional
+  // because not every MSP-console reject action names one; recordRejection itself
+  // falls back to a generic default when this is omitted.
+  reason: z.string().trim().min(1).max(2_000).optional(),
 });
 
 // Helper to format numeric ID to human readable CR-2026-XXX
@@ -372,6 +377,48 @@ router.patch(
 
       if (!existing) {
         apiError(res, 404, ApiErrorCode.NOT_FOUND, "Change request not found");
+        return;
+      }
+
+      // #3033 — a REJECTION through this generic PATCH must go through the SAME
+      // `recordRejection` every other rejection path in this module uses (the
+      // customer register's own reject flow, and the CAB's
+      // `POST /msp/change-control/cab/agenda/:id/decision` reject branch via
+      // `portal-cab-store.ts`), not the generic `updateData` write below. Only
+      // `recordRejection` marks the earliest pending `cr_approvals` stage
+      // `rejected` (and any later pending stage `superseded`), and — for a routed
+      // Microsoft change — flips `m365_change_routings.decision` via
+      // `declineRoutedChangeToRisk`. It also writes the CR's terminal `status` and
+      // its own `cr_events` "rejected" row itself, so this branch returns before
+      // any of the generic status-update / timeline-event code below runs.
+      if (parsedBody.data.status === "rejected" && existing.status !== "rejected") {
+        // Mirrors `operatorIdentity()` in `msp-change-control-cab.ts` exactly: no
+        // customer context on this surface, so `customerId: 0` — the established
+        // "no MSP/customer context" sentinel — which also means
+        // `resolveDelegatedAuthority` can never match a real delegation against
+        // it, correctly, since an MSP-side decision is never "on behalf of" a
+        // customer delegation.
+        const approver: ApproverIdentity = {
+          personId: req.user ? personIdForUser(req.user.id) : "unknown",
+          name: (req.user?.email ?? "").trim() || `User ${req.user?.id ?? "unknown"}`,
+          email: req.user?.email ?? "",
+          customerId: 0,
+          role: "msp",
+        };
+        const reason = parsedBody.data.reason?.trim() || "Rejected via the MSP console.";
+
+        const result = await recordRejection(existing, approver, reason);
+        if (!result.ok) {
+          const errorCode =
+            result.code === 409 ? ApiErrorCode.CONFLICT : result.code === 403 ? ApiErrorCode.FORBIDDEN : ApiErrorCode.VALIDATION;
+          apiError(res, result.code, errorCode, result.error);
+          return;
+        }
+
+        res.json({
+          id: crIdStr,
+          message: "Change request updated successfully",
+        });
         return;
       }
 
