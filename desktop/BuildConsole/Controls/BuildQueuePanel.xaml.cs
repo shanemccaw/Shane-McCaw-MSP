@@ -149,6 +149,15 @@ namespace BuildConsole.Controls
         /// UNKNOWN — the header falls back to the old declared-blocker heuristic and marks
         /// itself provisional (see <see cref="UpdateQueueStatusCounts"/>).</summary>
         private HashSet<int>? _openIssues;
+        /// <summary>Git #2107 — when <see cref="_openIssues"/> was last populated, whether by a
+        /// Git Board refresh (<see cref="ApplyOpenIssueSet"/>) or this panel's own event-triggered
+        /// recheck (<see cref="AutoRecheckOpenIssuesOnTransitionToVerifyingAsync"/>). Surfaced in
+        /// the QUEUE header tooltip so "the badge might be stale" is visible even between
+        /// transitions, instead of a silent assumption of freshness (issue's suggested option 1).</summary>
+        private DateTime? _openIssuesRefreshedUtc;
+        /// <summary>Git #2107 — guards <see cref="AutoRecheckOpenIssuesOnTransitionToVerifyingAsync"/>
+        /// so an overlapping RefreshAsync tick can't fire a second concurrent `gh` call.</summary>
+        private bool _autoRecheckInFlight;
         private string _filter = "Running";
         private readonly HashSet<int> _manuallyHiddenQueueIds = new();
         /// <summary>Git #1834 — set by clicking a row in the build-set rollup summary;
@@ -799,6 +808,9 @@ namespace BuildConsole.Controls
             int myGeneration = ++_refreshGeneration;
             try
             {
+                // Git #2107 — snapshot BEFORE the reassignment below so the auto-recheck call
+                // near the bottom of this method can diff old vs. new status per item id.
+                var previousItems = _lastItems;
                 if (_db != null)
                 {
                     _lastItems = await _db.GetQueueAsync();
@@ -817,6 +829,13 @@ namespace BuildConsole.Controls
                 CheckPriorityBuildSetCompletion(_lastItems);
                 CheckExclusiveBuildSetCompletion(_lastItems);
                 ReportActiveBuildSets(_lastItems);
+                // Git #2107 — fire-and-forget: a queue item that just transitioned into
+                // Verifying/Done is the real moment a declared blocker is most likely to have
+                // just closed (this local-DB poll runs regardless; only the `gh` call inside
+                // is gated to fire on a genuine transition, not every tick). Never awaited here
+                // so a slow/unreachable `gh` call can't stall the local queue poll this method
+                // otherwise runs on.
+                _ = AutoRecheckOpenIssuesOnTransitionAsync(previousItems, _lastItems);
 
                 string restartSignature;
                 try { restartSignature = System.Text.Json.JsonSerializer.Serialize(MainWindow.GetPersistedQueueDisplayItems()); }
@@ -1120,8 +1139,57 @@ namespace BuildConsole.Controls
         {
             if (open == null || open.Count == 0) return; // empty == "couldn't determine", not "all closed"
             _openIssues = open;
+            _openIssuesRefreshedUtc = DateTime.UtcNow;
             UpdateQueueStatusCounts();
             try { if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(ApplyFilter(_lastItems)); } catch { }
+        }
+
+        /// <summary>
+        /// Git #2107 — confirmed root cause: <see cref="_openIssues"/> is only ever populated by
+        /// <see cref="ApplyOpenIssueSet"/>, fed exclusively by Git Board's own manual/tab-open
+        /// GitHub fetch (<c>LeftSidebar.GitBoardOpenIssuesRefreshed</c>) — so the 🔒 BLOCKED badge
+        /// itself, not just the "waiting on" text #2070 already fixed, can sit stale for an entire
+        /// session unless Shane happens to open the Issues tab or click manual refresh. Real
+        /// evidence in the issue: #1582 and #2105 both showed 🔒 BLOCKED long after their real
+        /// blocker had closed.
+        ///
+        /// Reintroducing periodic GitHub polling would directly reverse the 2026-08-14
+        /// manual-only decision (background polling was killing Shane's git connections — see
+        /// memory note buildconsole-github-manual-only-refresh), so this is deliberately
+        /// event-triggered instead (the issue's own suggested option 3): a queue item just
+        /// transitioning into Verifying or a terminal status is exactly the moment a declared
+        /// blocker is most likely to have just closed. On that real transition — never on a
+        /// timer — fire ONE lightweight one-shot `gh issue list` call, the same mechanism
+        /// BuildWatchWindow's manual "Recheck closures" button already uses
+        /// (<see cref="GitHubIssuesService.GetOpenIssueNumbersAsync"/>), not a new poll loop.
+        /// </summary>
+        private async System.Threading.Tasks.Task AutoRecheckOpenIssuesOnTransitionAsync(List<QueueItem> previous, List<QueueItem> current)
+        {
+            if (_autoRecheckInFlight) return;
+
+            var previousStatusById = previous.ToDictionary(i => i.Id, i => i.Status);
+            bool justTransitioned(QueueItem item) =>
+                (item.Status == BuildQueuePostgresClient.VerifyingStatus || item.Status == "done") &&
+                (!previousStatusById.TryGetValue(item.Id, out var oldStatus) || oldStatus != item.Status);
+            if (!current.Any(justTransitioned)) return;
+
+            _autoRecheckInFlight = true;
+            try
+            {
+                var open = await GitHubIssuesService.GetOpenIssueNumbersAsync(1000);
+                if (open.Count == 0) return; // "couldn't determine" — same fail-safe every other consumer uses
+                ActivityLog.Log("github",
+                    "Build Queue: auto-recheck open issues (Git #2107) — a queue item just transitioned to Verifying/Done, one-shot `gh` call, not a poll.");
+                ApplyOpenIssueSet(open);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("github", $"Build Queue auto-recheck FAILED (will retry on the next transition): {ex.Message}");
+            }
+            finally
+            {
+                _autoRecheckInFlight = false;
+            }
         }
 
         /// <summary>Git #1862 — the four reconciled buckets shown in the QUEUE header.</summary>
@@ -1197,12 +1265,28 @@ namespace BuildConsole.Controls
             else
             {
                 QueueStatusCountsText.Foreground = (Brush)Application.Current.FindResource("TextBrush");
-                QueueStatusBorder.ToolTip = "Live queue status — click for the next builds to run, in real claim order.";
+                // Git #2107 — _openIssues (and therefore the 🔒 BLOCKED badge itself) is only as
+                // fresh as the last Git Board refresh or auto-recheck; say so plainly rather than
+                // implying it's live.
+                string freshness = _openIssuesRefreshedUtc.HasValue
+                    ? $"blockers last checked {FormatAgo(DateTime.UtcNow - _openIssuesRefreshedUtc.Value)}"
+                    : "blockers not yet checked this session";
+                QueueStatusBorder.ToolTip = $"Live queue status ({freshness}) — click for the next builds to run, in real claim order.";
             }
 
             QueueActiveSlotsText.Text = $" ({active} active)";
 
             if (QueueNextPopup?.IsOpen == true) _ = RenderNextToRunAsync();
+        }
+
+        /// <summary>Git #2107 — human "2h ago" style relative time for the QUEUE header's
+        /// blockers-last-checked tooltip. Same rounding convention as LeftSidebar.RelativeTime.</summary>
+        private static string FormatAgo(TimeSpan span)
+        {
+            if (span.TotalSeconds < 45) return "just now";
+            if (span.TotalMinutes < 60) return $"{Math.Max(1, (int)span.TotalMinutes)}m ago";
+            if (span.TotalHours < 24) return $"{(int)span.TotalHours}h ago";
+            return $"{(int)span.TotalDays}d ago";
         }
 
         private async void QueueStatusBorder_Click(object sender, MouseButtonEventArgs e)
