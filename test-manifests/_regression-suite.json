@@ -13,6 +13,7 @@
     "portal/customer-requests.json",
     "portal/scan-status-progress.json",
     "portal/risk-register.json",
+    "portal/ownership.json",
     "chat/support-chat-active-cards.json",
     "crm/zoho-lead-and-invoice-sync.json",
     "crm/zoho-lead-field-verification.json",

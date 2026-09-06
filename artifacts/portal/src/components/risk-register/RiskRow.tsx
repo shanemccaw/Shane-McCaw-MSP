@@ -27,7 +27,6 @@ import {
   severitySwatch,
 } from "@/lib/risk-register-visuals";
 import { cn } from "@/lib/utils";
-import { comingSoonHref } from "@/components/shell/moduleNav";
 import { RiskDocumentPanel } from "./RiskDocumentPanel";
 
 const STATEMENT_MAX = 2000;
@@ -70,7 +69,8 @@ export function RiskRow({ risk, open, onToggle }: { risk: WireRisk; open: boolea
   const signable = !risk.isAccepted && risk.status !== "Closed" && !noHolder && !notMine;
   const canSubmit = signable && name.trim().length >= 2 && statement.trim().length > 0 && confirmed;
 
-  const raciHref = comingSoonHref("Ownership / RACI", "module");
+  // #3040 wired the real page — no longer a coming-soon destination.
+  const raciHref = "/ownership";
 
   const handleConfirmSign = () => {
     setShowConfirm(false);

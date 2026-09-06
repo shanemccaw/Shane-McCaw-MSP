@@ -1,0 +1,81 @@
+{
+  "issue": 3040,
+  "feature": "Ownership / RACI -- the real customer-facing read surface in artifacts/portal (/ownership), wired to GET /api/portal/ownership -- see docs/ownership-raci-contract-pack.md §1a. No fixture module: every row, person and honest-empty state on screen comes from that one endpoint. This build is READ-ONLY by design: the five write routes (assign/reorder/accept/decline/delegations/rows, contract pack §1b) are sibling issue #3041's scope and are not exercised here.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "TBD-fill-at-DONE",
+
+  "notes": [
+    "DISCOVERED, NOT REUSED: test-manifests/portal/portal-v2-ownership.json already covers GET /api/portal/ownership, but its entire uiSteps block drives the retired portal-v2 UI (/portal-v2/ownership, pv2-own-* testids, a second nested slug router) which CLAUDE.md now forbids building against and which no longer exists as a route in artifacts/portal's App.tsx. Reusing that file would mean asserting dead selectors against a live page; this is a genuinely different component tree with its own testids, so it gets its own file per the discover-before-create rule's own instruction to create a new one when nothing matches the real route/feature.",
+    "AUTH CORE HAS LANDED since risk-register.json's own note was written (that note said no #email/#password form existed yet for artifacts/portal) -- login.tsx now ships real #email/#password inputs and a login-submit testid (verified this session, login.tsx:230/248/257), so this manifest drives a real login rather than only asserting the honest sign-in-required gate.",
+    "WHY NO WRITE APITEST HERE: the five write routes are real and already wired server-side (contract pack §1b), but nothing in this build's own frontend calls them -- assign/reorder/accept/decline/delegate/add-row are #3041's scope. Exercising them here would test code this build didn't ship.",
+    "TIER GATE: the route is wrapped in requireTierFeature(PORTAL_TIER_MODULE_KEYS.ownership) (portal-ownership.ts:426) -- a 402 with code TIER_UPGRADE_REQUIRED if the signed-in tenant's plan doesn't bundle Ownership. The UI's own distinct 'Not included in your current plan' state (ownership.tsx) is not asserted here since it depends on which plan the TEST_PORTAL account currently carries; A1 below simply asserts whatever the real account's real entitlement returns.",
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated testbed portal account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- the route answers 200 for a CustomerUser whose plan bundles Ownership (the real, most common state for this test account); take the first real row's id/name to assert against the DOM.",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.objects", "isArray": true },
+      "extract": { "as": "firstObjectId", "jsonPath": "$.objects[0].id" }
+    },
+    {
+      "name": "A2 -- ...and its real name, the value OWN3 below proves reached the DOM.",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.objects", "isArray": true },
+      "extract": { "as": "firstObjectName", "jsonPath": "$.objects[0].name" }
+    },
+    {
+      "name": "A3 -- the eight-source honesty list is always exactly present, and the control register is always stated as not-built rather than omitted (contract pack §6) -- found by type, not by index, since #2008 has already reordered this array once.",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.sources[?(@.type=='control')].live", "value": false }
+    },
+    {
+      "name": "A4 -- the write overlay is always served as arrays, even empty ones -- what this build's UI reads to render saved assignments/delegations/added rows.",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overlay.assignments", "isArray": true }
+    },
+    {
+      "name": "A5 -- the signed-in user resolved to a real person id on their own roster.",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.currentUserId", "exists": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the real Ownership page.", "action": "goto", "target": "/portal/ownership" },
+    { "name": "OWN1 -- the page resolved to Ownership.", "action": "expect", "selector": "[data-testid='ownership-page-title']", "textContains": "Who owns what", "critical": true },
+    { "name": "OWN2 -- a live-state line renders (loading/live/partly-served/error, never a blank header).", "action": "expect", "selector": "[data-testid='ownership-live-state']", "state": "visible" },
+    { "name": "OWN3 -- THE REAL-DATA ASSERTION. The row the ENDPOINT returned first is on screen, under its own real name. A page falling back to fixture/placeholder text has no element with this id at all.", "action": "expect", "selector": "[data-testid='ownership-rowname-{{firstObjectId}}']", "textContains": "{{firstObjectName}}", "critical": true },
+    { "name": "OWN4 -- that row's four RACI cells are all present, proving the matrix renders a full row rather than a partial one.", "action": "expect", "selector": "[data-testid='ownership-cell-{{firstObjectId}}-r']", "state": "visible" },
+    { "name": "OWN5 -- ...Accountable...", "action": "expect", "selector": "[data-testid='ownership-cell-{{firstObjectId}}-a']", "state": "visible" },
+    { "name": "OWN6 -- ...Consulted...", "action": "expect", "selector": "[data-testid='ownership-cell-{{firstObjectId}}-c']", "state": "visible" },
+    { "name": "OWN7 -- ...and Informed.", "action": "expect", "selector": "[data-testid='ownership-cell-{{firstObjectId}}-i']", "state": "visible" },
+    { "name": "OWN8 -- the ledger of what this read-only build deliberately does not do is on screen, naming that write actions land with #3041 rather than silently omitting them.", "action": "expect", "selector": "body", "textContains": "wires only the read surface" }
+  ]
+}

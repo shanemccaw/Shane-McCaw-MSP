@@ -46,7 +46,7 @@ export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [
   { key: "remediation", label: "Remediation", icon: Wrench, builtPath: null },
   { key: "sops", label: "SOPs", icon: BookOpen, builtPath: "/sops" },
   { key: "runbooks", label: "Runbooks", icon: BookOpenCheck, builtPath: "/runbooks" },
-  { key: "raci", label: "Ownership / RACI", icon: Users, builtPath: null },
+  { key: "raci", label: "Ownership / RACI", icon: Users, builtPath: "/ownership" },
   { key: "policy", label: "Policy Decisions", icon: Scale, builtPath: null },
   { key: "config-state", label: "Configuration State", icon: Layers, builtPath: "/config-state" },
   { key: "security-plan", label: "Security Plan", icon: FileCheck2, builtPath: null },
