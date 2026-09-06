@@ -542,6 +542,12 @@ export default defineConfig({
       // untouched. Both skip cleanly with no DATABASE_URL.
       "src/lib/retention/purgers/tenant-scope-coverage.live-db.test.ts",
       "src/lib/retention/purgers/post-termination-purge.live-db.test.ts",
+      // #2936 — Shane's decision that an MSP's own lapsed platform subscription cascades
+      // to its customers: gate + 7-year clock through the SAME #2765 mechanism, the
+      // un-cascade when the MSP pays, and the deploy-safety property that an MSP with no
+      // msp_subscriptions row is not a lapse. Live Postgres, because the sweep's SQL
+      // predicate and the TypeScript resolver have to agree row for row.
+      "src/lib/retention/msp-cascade.live-db.test.ts",
     ],
     coverage: {
       provider: "v8",

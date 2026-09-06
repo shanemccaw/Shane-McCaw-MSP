@@ -296,3 +296,61 @@ describe("#2765 — the tenant-data purger registry", () => {
     expect(listTenantDataPurgers().map((p) => p.key)).toEqual(["a", "b"]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Git #2936 — limited access, not a hard lockout
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("#2936 — the gated customer's four capabilities", () => {
+  it("download, delete-my-data, request-reinstatement and session all stay reachable", () => {
+    // Shane's decision (2026-09-05): "they can still log in, download their data, delete
+    // their own data, and request reinstatement." Export and session were already here;
+    // the other two are what #2936 added. Losing either turns limited access back into
+    // the hard lockout the decision explicitly rejected.
+    expect(isGateAllowedPath("/portal/data-export")).toBe(true);
+    expect(isGateAllowedPath("/portal/deletion-request")).toBe(true);
+    expect(isGateAllowedPath("/portal/retention/reinstatement")).toBe(true);
+    expect(isGateAllowedPath("/auth/login")).toBe(true);
+  });
+
+  it("and nothing else was widened along with them", () => {
+    expect(isGateAllowedPath("/portal/retention/policy")).toBe(false);
+    expect(isGateAllowedPath("/portal/deletion")).toBe(false);
+    expect(isGateAllowedPath("/portal/reinstatement")).toBe(false);
+  });
+});
+
+describe("#2936 — the wall can tell the customer WHOSE lapse closed them", () => {
+  it("a cascaded customer's body reports the MSP, not their own subscription", () => {
+    const body = subscriptionGateBody(
+      state({
+        // Their own billing is current; the MSP above them is what lapsed.
+        status: "active",
+        billingSource: "msp_subscription",
+        subscriptionStatus: "active",
+        mspLapsed: true,
+        mspSubscriptionStatus: "past_due",
+        mspDunningState: "access_revoked",
+      }),
+    );
+    expect(body.billingSource).toBe("msp_subscription");
+    expect(body.mspLapsed).toBe(true);
+    expect(body.mspDunningState).toBe("access_revoked");
+    // The reinstatement route is offered by the same allowlist the screen renders from,
+    // so the button cannot drift away from what the gate actually permits.
+    expect(body.allowedPaths).toContain("/portal/retention/reinstatement");
+    expect(body.allowedPaths).toContain("/portal/deletion-request");
+  });
+
+  it("a customer who cancelled under a lapsed MSP still leads with their own cancellation", () => {
+    const body = subscriptionGateBody(state({ mspLapsed: true, mspSubscriptionStatus: "canceled" }));
+    expect(body.billingSource).toBe("subscription");
+    expect(body.mspLapsed).toBe(true);
+  });
+
+  it("the ordinary direct lapse reports no MSP involvement at all", () => {
+    const body = subscriptionGateBody(state());
+    expect(body.mspLapsed).toBe(false);
+    expect(body.mspDunningState).toBeNull();
+  });
+});
