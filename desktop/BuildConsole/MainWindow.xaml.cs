@@ -2752,7 +2752,7 @@ namespace BuildConsole
                     return;
                 }
 
-                var resp = await _buildTrackerApi.LinkChatToIssueAsync(conversationId, issueNumber, defaultTitle);
+                var resp = await _buildTrackerApi.LinkChatToIssueAsync(conversationId, issueNumber, defaultTitle, isEpicOrIssue: true);
                 if (resp.IsSuccessStatusCode)
                 {
                     BuildConsole.Services.ActivityLog.Log("git-board.chat", $"associated chat {conversationId} -> {issueType} #{issueNumber} — BoardChat upserted (HTTP {(int)resp.StatusCode}); refreshing Chats panel");

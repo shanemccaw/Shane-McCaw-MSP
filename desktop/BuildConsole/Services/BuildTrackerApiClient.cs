@@ -557,7 +557,15 @@ namespace BuildConsole.Services
         /// <summary>
         /// Links a chat to any GitHub issue/epic/milestone number via many-to-many join table bt_chat_issues.
         /// </summary>
-        public Task<HttpResponseMessage> LinkChatToIssueAsync(string conversationId, int issueNumber, string? title = null) =>
+        /// <param name="isEpicOrIssue">
+        /// Git #2075 — the server can't safely self-heal <paramref name="issueNumber"/> against a
+        /// live GitHub fetch when it's ambiguous whether the number is a real issue/epic or a
+        /// GitHub Milestone number (a separate number namespace sharing this same wire parameter).
+        /// Set <c>true</c> only from a genuine issue/epic assign call site; leave <c>false</c>
+        /// (default) for a milestone-assign call site, matching the direct-Postgres path's
+        /// <c>resolveLive</c> callback, which is likewise never passed there.
+        /// </param>
+        public Task<HttpResponseMessage> LinkChatToIssueAsync(string conversationId, int issueNumber, string? title = null, bool isEpicOrIssue = false) =>
             TrackAsync($"POST chats/assign-issue ({conversationId} -> #{issueNumber})", () => _http.PostAsJsonAsync("api/admin/build-tracker/chats/assign-issue", new
             {
                 conversation_id = conversationId,
@@ -566,16 +574,19 @@ namespace BuildConsole.Services
                 // Git #1480 — only actually applied server-side when this call creates a NEW
                 // bt_chats row; re-linking an existing chat never overwrites its stamped account.
                 account = BuildConsoleSettings.CurrentAccountLabel(),
+                is_epic_or_issue = isEpicOrIssue,
             }));
 
         /// <summary>
         /// Unlinks a chat from a specific GitHub issue/epic/milestone number in bt_chat_issues.
         /// </summary>
-        public Task<HttpResponseMessage> UnlinkChatFromIssueAsync(string conversationId, int issueNumber) =>
+        /// <param name="isEpicOrIssue">See <see cref="LinkChatToIssueAsync"/>'s param doc (Git #2075).</param>
+        public Task<HttpResponseMessage> UnlinkChatFromIssueAsync(string conversationId, int issueNumber, bool isEpicOrIssue = false) =>
             TrackAsync($"POST chats/unassign-issue ({conversationId} -x #{issueNumber})", () => _http.PostAsJsonAsync("api/admin/build-tracker/chats/unassign-issue", new
             {
                 conversation_id = conversationId,
                 issue_number = issueNumber,
+                is_epic_or_issue = isEpicOrIssue,
             }));
 
         /// <summary>

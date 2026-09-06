@@ -1059,7 +1059,7 @@ async function upsertEpicRow(gh: GitHubIssuePayload, parentEpicId: number | null
   return row.id;
 }
 
-async function upsertIssueRow(gh: GitHubIssuePayload, epicId: number): Promise<void> {
+async function upsertIssueRow(gh: GitHubIssuePayload, epicId: number | null): Promise<void> {
   const milestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
   const labels = gh.labels.map((l) => l.name);
   const [existing] = await db
@@ -2190,6 +2190,78 @@ router.post("/admin/build-tracker/chats/unassign-epic", ingestAuth, async (req: 
 });
 
 /**
+ * Git #2075 — server-side counterpart to the desktop direct-Postgres path's
+ * ResolveAndPersistChatLinkAsync (BuildQueuePostgresClient.cs, Git #2068). Checks
+ * the local bt_epics/bt_issues tables first (unchanged prior behavior — a plain
+ * `github_number` match); if both miss AND the caller has told us via
+ * `isEpicOrIssue` that this number is a genuine GitHub issue/epic (never a
+ * milestone number — see assign-issue's doc comment below for why a blind live
+ * fetch keyed only on the raw number isn't safe without that signal), fetches it
+ * live from GitHub and upserts a minimal row so the chat link self-heals instead
+ * of silently stranding. Bounded scope, same as the desktop version: a plain
+ * issue's parent epic is only resolved from the LOCAL table, not a live fetch of
+ * the parent too.
+ */
+async function resolveChatEpicOrIssue(
+  issueNumber: number,
+  isEpicOrIssue: boolean,
+): Promise<{ epicId: number | null; issueId: number | null }> {
+  const [epic] = await db
+    .select({ id: btEpicsTable.id })
+    .from(btEpicsTable)
+    .where(eq(btEpicsTable.githubNumber, issueNumber))
+    .limit(1);
+  if (epic) return { epicId: epic.id, issueId: null };
+
+  const [issue] = await db
+    .select({ id: btIssuesTable.id, epicId: btIssuesTable.epicId })
+    .from(btIssuesTable)
+    .where(eq(btIssuesTable.githubNumber, issueNumber))
+    .limit(1);
+  if (issue) return { epicId: issue.epicId ?? null, issueId: issue.id };
+
+  if (!isEpicOrIssue || !process.env.GITHUB_TOKEN) {
+    return { epicId: null, issueId: null };
+  }
+
+  try {
+    const gh = await ghFetchIssue(issueNumber);
+    if (!gh) return { epicId: null, issueId: null };
+
+    const isEpic = !!(gh.sub_issues_summary && gh.sub_issues_summary.total > 0);
+    if (isEpic) {
+      const epicId = await upsertEpicRow(gh, null);
+      log.info({ issueNumber }, "chats: live-fetch self-heal upserted bt_epics for not-yet-synced epic (Git #2075)");
+      return { epicId, issueId: null };
+    }
+
+    // Same bounded scope as the desktop version — only the LOCAL table is
+    // checked for the parent epic, not a further live fetch of the parent.
+    let parentEpicId: number | null = null;
+    const parentNum = getParentNumber(gh.parent_issue_url);
+    if (parentNum !== null) {
+      const [parentRow] = await db
+        .select({ id: btEpicsTable.id })
+        .from(btEpicsTable)
+        .where(eq(btEpicsTable.githubNumber, parentNum))
+        .limit(1);
+      parentEpicId = parentRow?.id ?? null;
+    }
+    await upsertIssueRow(gh, parentEpicId);
+    const [newIssue] = await db
+      .select({ id: btIssuesTable.id, epicId: btIssuesTable.epicId })
+      .from(btIssuesTable)
+      .where(eq(btIssuesTable.githubNumber, issueNumber))
+      .limit(1);
+    log.info({ issueNumber }, "chats: live-fetch self-heal upserted bt_issues for not-yet-synced issue (Git #2075)");
+    return { epicId: newIssue?.epicId ?? null, issueId: newIssue?.id ?? null };
+  } catch (fetchErr) {
+    log.warn({ fetchErr, issueNumber }, "chats: live-fetch self-heal failed (Git #2075)");
+    return { epicId: null, issueId: null };
+  }
+}
+
+/**
  * POST /admin/build-tracker/chats/assign-issue
  *
  * Many-to-many link between a chat and a real GitHub issue/epic/milestone number.
@@ -2197,11 +2269,12 @@ router.post("/admin/build-tracker/chats/unassign-epic", ingestAuth, async (req: 
  * Auth: ingestAuth
  */
 router.post("/admin/build-tracker/chats/assign-issue", ingestAuth, async (req: Request, res: Response) => {
-  const { conversation_id, issue_number, title, account } = req.body as {
+  const { conversation_id, issue_number, title, account, is_epic_or_issue } = req.body as {
     conversation_id?: string;
     issue_number?: number;
     title?: string;
     account?: string;
+    is_epic_or_issue?: boolean;
   };
   if (!conversation_id?.trim() || typeof issue_number !== "number") {
     res.status(400).json({ error: "conversation_id and numeric issue_number are required" });
@@ -2246,45 +2319,32 @@ router.post("/admin/build-tracker/chats/assign-issue", ingestAuth, async (req: R
     // bt_chat_issues (above) still got its row, but bt_chats.epic_id/issue_id were
     // never set, and the response still said `ok: true` with no signal anything was
     // incomplete — same local-table-staleness class #1362 fixed on the read/grouping
-    // side, unaddressed here until now. `resolved` below makes that failure honest
-    // instead of silent.
+    // side. `resolved` below makes that failure honest instead of silent.
     //
-    // Deliberately NOT adding a live-GitHub-fetch fallback here (unlike the desktop
-    // direct-Postgres path's LinkChatToIssueAsync, which self-heals from its caller's
-    // own already-fetched Git Board data): this endpoint's own doc comment above says
-    // issue_number can legitimately be "a real GitHub issue/epic/milestone number" —
-    // three different GitHub number namespaces sharing one wire parameter. A live
-    // GitHub fetch keyed only on the raw number can't tell a not-yet-synced epic/issue
-    // apart from an unrelated real issue that happens to share a milestone's number,
-    // and would risk syncing/linking the WRONG target. Filed as a follow-up (needs an
-    // explicit signal from the caller, e.g. an `isEpicOrIssue` flag, before it's safe
-    // to add) rather than guessed at here.
-    const [epic] = await db
-      .select({ id: btEpicsTable.id })
-      .from(btEpicsTable)
-      .where(eq(btEpicsTable.githubNumber, issue_number))
-      .limit(1);
+    // Git #2075 — now also self-heals via a live GitHub fetch, same as the desktop
+    // direct-Postgres path's LinkChatToIssueAsync, but ONLY when the caller sets
+    // `is_epic_or_issue: true` — this endpoint's own doc comment above says
+    // issue_number can legitimately be "a real GitHub issue/epic/milestone number",
+    // three different GitHub number namespaces sharing one wire parameter, and a
+    // blind fetch keyed only on the raw number can't tell a not-yet-synced
+    // epic/issue apart from an unrelated real issue that happens to share a
+    // milestone's number. Callers that assign a chat to a real milestone (not an
+    // issue/epic) must leave this false/unset.
+    const { epicId, issueId } = await resolveChatEpicOrIssue(issue_number, is_epic_or_issue === true);
 
     let resolved = false;
-    if (epic) {
+    if (issueId) {
       await db
         .update(btChatsTable)
-        .set({ epicId: epic.id, issueId: null, updatedAt: new Date() })
+        .set({ issueId, epicId, updatedAt: new Date() })
         .where(eq(btChatsTable.id, chat.id));
       resolved = true;
-    } else {
-      const [issue] = await db
-        .select({ id: btIssuesTable.id, epicId: btIssuesTable.epicId })
-        .from(btIssuesTable)
-        .where(eq(btIssuesTable.githubNumber, issue_number))
-        .limit(1);
-      if (issue) {
-        await db
-          .update(btChatsTable)
-          .set({ issueId: issue.id, epicId: issue.epicId, updatedAt: new Date() })
-          .where(eq(btChatsTable.id, chat.id));
-        resolved = true;
-      }
+    } else if (epicId) {
+      await db
+        .update(btChatsTable)
+        .set({ epicId, issueId: null, updatedAt: new Date() })
+        .where(eq(btChatsTable.id, chat.id));
+      resolved = true;
     }
 
     log.info({ conversationId: convId, issueNumber: issue_number, chatId: chat.id, resolved }, "assigned chat to issue");
@@ -2302,7 +2362,11 @@ router.post("/admin/build-tracker/chats/assign-issue", ingestAuth, async (req: R
  * Auth: ingestAuth
  */
 router.post("/admin/build-tracker/chats/unassign-issue", ingestAuth, async (req: Request, res: Response) => {
-  const { conversation_id, issue_number } = req.body as { conversation_id?: string; issue_number?: number };
+  const { conversation_id, issue_number, is_epic_or_issue } = req.body as {
+    conversation_id?: string;
+    issue_number?: number;
+    is_epic_or_issue?: boolean;
+  };
   if (!conversation_id?.trim() || typeof issue_number !== "number") {
     res.status(400).json({ error: "conversation_id and numeric issue_number are required" });
     return;
@@ -2338,35 +2402,29 @@ router.post("/admin/build-tracker/chats/unassign-issue", ingestAuth, async (req:
         .where(eq(btChatsTable.id, existing[0].id));
     } else {
       // Git #2068 — same local-table-only lookup as assign-issue above, same
-      // `resolved` honesty fix; see that route's comment for why a live-GitHub-fetch
-      // fallback isn't added here.
+      // `resolved` honesty fix.
+      //
+      // Git #2075 — same live-GitHub-fetch self-heal as assign-issue above, gated
+      // the same way on the caller's `is_epic_or_issue` signal (see that route's
+      // comment): the remaining number could itself legitimately be a milestone,
+      // so this only fetches/upserts live when the caller has told us it's a real
+      // issue/epic.
       const nextIssueNum = remaining[0].issueNumber;
-      const [epic] = await db
-        .select({ id: btEpicsTable.id })
-        .from(btEpicsTable)
-        .where(eq(btEpicsTable.githubNumber, nextIssueNum))
-        .limit(1);
+      const { epicId, issueId } = await resolveChatEpicOrIssue(nextIssueNum, is_epic_or_issue === true);
 
       resolved = false;
-      if (epic) {
+      if (issueId) {
         await db
           .update(btChatsTable)
-          .set({ epicId: epic.id, issueId: null, updatedAt: new Date() })
+          .set({ issueId, epicId, updatedAt: new Date() })
           .where(eq(btChatsTable.id, existing[0].id));
         resolved = true;
-      } else {
-        const [issue] = await db
-          .select({ id: btIssuesTable.id, epicId: btIssuesTable.epicId })
-          .from(btIssuesTable)
-          .where(eq(btIssuesTable.githubNumber, nextIssueNum))
-          .limit(1);
-        if (issue) {
-          await db
-            .update(btChatsTable)
-            .set({ issueId: issue.id, epicId: issue.epicId, updatedAt: new Date() })
-            .where(eq(btChatsTable.id, existing[0].id));
-          resolved = true;
-        }
+      } else if (epicId) {
+        await db
+          .update(btChatsTable)
+          .set({ epicId, issueId: null, updatedAt: new Date() })
+          .where(eq(btChatsTable.id, existing[0].id));
+        resolved = true;
       }
     }
 

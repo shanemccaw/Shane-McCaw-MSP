@@ -3986,7 +3986,11 @@ namespace BuildConsole.Controls
                     else
                     {
                         if (_api == null) return;
-                        var res = await _api.LinkChatToIssueAsync(chat.ConversationId, targetNumber);
+                        // Git #2075 — targetNumber came from a combined issue+milestone picker, so
+                        // it's only safe to tell the server it can live-fetch/upsert this number
+                        // when it actually matches a real board issue/epic, not a milestone.
+                        bool isEpicOrIssue = _lastBoardIssues.Any(i => i.Number == targetNumber);
+                        var res = await _api.LinkChatToIssueAsync(chat.ConversationId, targetNumber, isEpicOrIssue: isEpicOrIssue);
                         if (!res.IsSuccessStatusCode)
                         {
                             var body = await res.Content.ReadAsStringAsync();
@@ -4033,7 +4037,10 @@ namespace BuildConsole.Controls
                             else
                             {
                                 if (_api == null) return;
-                                var res = await _api.UnlinkChatFromIssueAsync(chat.ConversationId, issueNum);
+                                // Git #2075 — same picker-derived ambiguity as the assign path above:
+                                // only mark isEpicOrIssue true when issueNum is a real board issue/epic.
+                                bool isEpicOrIssue = _lastBoardIssues.Any(i => i.Number == issueNum);
+                                var res = await _api.UnlinkChatFromIssueAsync(chat.ConversationId, issueNum, isEpicOrIssue: isEpicOrIssue);
                                 if (!res.IsSuccessStatusCode)
                                 {
                                     var body = await res.Content.ReadAsStringAsync();
@@ -4342,7 +4349,10 @@ namespace BuildConsole.Controls
                         ToastEngine.Error("Assign to Issue", "Build Tracker API not configured — see Settings.");
                         return;
                     }
-                    var res = await _api.LinkChatToIssueAsync(conversationId, targetNumber, chatTitle);
+                    // Git #2075 — same combined issue+milestone picker as AssignEpicDialog above;
+                    // only safe to signal isEpicOrIssue true when targetNumber is a real board issue/epic.
+                    bool isEpicOrIssue = _lastBoardIssues.Any(i => i.Number == targetNumber);
+                    var res = await _api.LinkChatToIssueAsync(conversationId, targetNumber, chatTitle, isEpicOrIssue: isEpicOrIssue);
                     if (!res.IsSuccessStatusCode)
                     {
                         var body = await res.Content.ReadAsStringAsync();
@@ -6236,7 +6246,10 @@ namespace BuildConsole.Controls
                         }
                         else
                         {
-                            var res = await _api.LinkChatToIssueAsync(conversationId, issue.IssueNumber, $"[#{issue.IssueNumber}] {issue.RawTitle}");
+                            // Git #2075 — issue.IssueNumber is always a real board issue/epic here
+                            // (same reasoning as the Git #2068 comment below), so it's safe to tell
+                            // the server this number can be live-fetched/upserted if not yet synced.
+                            var res = await _api.LinkChatToIssueAsync(conversationId, issue.IssueNumber, $"[#{issue.IssueNumber}] {issue.RawTitle}", isEpicOrIssue: true);
                             if (!res.IsSuccessStatusCode)
                             {
                                 var body = await res.Content.ReadAsStringAsync();
