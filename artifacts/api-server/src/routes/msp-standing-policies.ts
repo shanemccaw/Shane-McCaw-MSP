@@ -2,9 +2,10 @@
  * msp-standing-policies.ts — MSP-side authoring of the Policy Engine's
  * declarative object (#1547).
  *
- *   GET  /api/msp/standing-policies                       — this MSP's standing policies
- *   POST /api/msp/standing-policies                       — author a new standing policy
- *   GET  /api/msp/standing-policies/:id/evaluations       — its continuous-evaluation run history (#1549)
+ *   GET   /api/msp/standing-policies                       — this MSP's standing policies
+ *   POST  /api/msp/standing-policies                       — author a new standing policy
+ *   PATCH /api/msp/standing-policies/:id                   — edit / deactivate an existing one (#3034)
+ *   GET   /api/msp/standing-policies/:id/evaluations       — its continuous-evaluation run history (#1549)
  *
  * ── What a standing policy is ────────────────────────────────────────────────
  * DECLARATIVE and operationally live: it states a target state; it cites no
@@ -237,6 +238,157 @@ router.post(
       res.status(201).json(toWireStandingPolicy(inserted));
     } catch (err: unknown) {
       log.error({ err }, "POST /api/msp/standing-policies failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+// ── Edit / deactivate (#3034) ─────────────────────────────────────────────
+// Deactivate-only for now, per this issue's own body: `isActive` can be
+// flipped and the authorable fields edited, but there is no DELETE here —
+// the real FK cascade to `policy_evaluation_runs` (cascade) and set-null to
+// `msp_diagnostic_findings.standing_policy_id` is a separate design question
+// this issue explicitly leaves open, not resolved by this route.
+const patchSchema = z
+  .object({
+    ouId: z.number().int().positive(),
+    title: z.string().trim().min(1).max(200),
+    description: z.string().trim().max(2_000),
+    targetKind: z.enum(STANDING_POLICY_TARGET_KIND),
+    targetState: z.record(z.string(), z.unknown()),
+    // Explicit null clears the binding — same optional-then-nullable shape
+    // the wire contract already serves for these two fields.
+    catalogItemId: z.number().int().positive().nullable(),
+    sopId: z.string().trim().min(1).max(200).nullable(),
+    isActive: z.boolean(),
+  })
+  .partial()
+  .refine((body) => Object.keys(body).length > 0, { message: "At least one field is required" });
+
+router.patch(
+  "/msp/standing-policies/:id",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "MSP context required");
+        return;
+      }
+
+      const policyId = Number(req.params.id);
+      if (!Number.isInteger(policyId) || policyId <= 0) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid standing policy id");
+        return;
+      }
+
+      const parsed = patchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid standing policy edit", parsed.error.flatten());
+        return;
+      }
+
+      // The policy must be this MSP's own — never edit across an MSP boundary.
+      const [existing] = await db
+        .select()
+        .from(standingPoliciesTable)
+        .where(and(eq(standingPoliciesTable.id, policyId), eq(standingPoliciesTable.mspId, mspId)))
+        .limit(1);
+      if (!existing) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, `Standing policy '${policyId}' does not exist for this MSP`);
+        return;
+      }
+
+      const data = parsed.data;
+
+      // If the OU is being re-pointed, it must still be a real container.
+      let ouTenantId = (
+        await db
+          .select({ tenantId: activeDirectoryOusTable.tenantId })
+          .from(activeDirectoryOusTable)
+          .where(eq(activeDirectoryOusTable.id, existing.ouId))
+          .limit(1)
+      )[0]?.tenantId ?? null;
+      if (data.ouId !== undefined) {
+        const [ou] = await db
+          .select({ id: activeDirectoryOusTable.id, tenantId: activeDirectoryOusTable.tenantId })
+          .from(activeDirectoryOusTable)
+          .where(eq(activeDirectoryOusTable.id, data.ouId))
+          .limit(1);
+        if (!ou) {
+          apiError(res, 400, ApiErrorCode.VALIDATION, `Organizational unit '${data.ouId}' does not exist`);
+          return;
+        }
+        ouTenantId = ou.tenantId;
+      }
+
+      // Same ownership checks POST already applies, re-run for any field
+      // actually being changed.
+      if (data.catalogItemId !== undefined && data.catalogItemId !== null) {
+        const [item] = await db
+          .select({ id: changeCatalogItemsTable.id })
+          .from(changeCatalogItemsTable)
+          .where(and(eq(changeCatalogItemsTable.id, data.catalogItemId), eq(changeCatalogItemsTable.mspId, mspId)))
+          .limit(1);
+        if (!item) {
+          apiError(res, 400, ApiErrorCode.VALIDATION, `Catalog item '${data.catalogItemId}' does not exist for this MSP`);
+          return;
+        }
+      }
+
+      if (data.sopId !== undefined && data.sopId !== null) {
+        const [sop] = await db
+          .select({ sopId: mspSopsTable.sopId })
+          .from(mspSopsTable)
+          .where(and(eq(mspSopsTable.mspId, mspId), eq(mspSopsTable.sopId, data.sopId)))
+          .limit(1);
+        if (!sop) {
+          apiError(res, 400, ApiErrorCode.VALIDATION, `SOP '${data.sopId}' does not exist for this MSP`);
+          return;
+        }
+      }
+
+      const [updated] = await db
+        .update(standingPoliciesTable)
+        .set({
+          ...(data.ouId !== undefined ? { ouId: data.ouId } : {}),
+          ...(data.title !== undefined ? { title: data.title } : {}),
+          ...(data.description !== undefined ? { description: data.description } : {}),
+          ...(data.targetKind !== undefined ? { targetKind: data.targetKind } : {}),
+          ...(data.targetState !== undefined ? { targetState: data.targetState } : {}),
+          ...(data.catalogItemId !== undefined ? { catalogItemId: data.catalogItemId } : {}),
+          ...(data.sopId !== undefined ? { sopId: data.sopId } : {}),
+          ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(standingPoliciesTable.id, policyId), eq(standingPoliciesTable.mspId, mspId)))
+        .returning();
+
+      log.info(
+        { mspId, standingPolicyId: updated.id, changedFields: Object.keys(data) },
+        "standing policy edited",
+      );
+
+      // Same #1549 EVENT trigger the author route fires — a policy edited
+      // active (freshly activated, or already active and its target-state
+      // re-declared) is real signal continuous evaluation shouldn't wait on
+      // the next hourly sweep for. Fire-and-forget, same as POST.
+      if (updated.isActive && ouTenantId !== null) {
+        void fireWorkflowsForEvent("policy.standing_policy.activated", {
+          customerId: ouTenantId,
+          standingPolicyId: updated.id,
+          mspId,
+          ouId: updated.ouId,
+          targetKind: updated.targetKind,
+        }).catch((err: unknown) => {
+          log.error({ err, standingPolicyId: updated.id }, "policy.standing_policy.activated dispatch failed (non-fatal)");
+        });
+      }
+
+      res.json(toWireStandingPolicy(updated));
+    } catch (err: unknown) {
+      log.error({ err }, "PATCH /api/msp/standing-policies/:id failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },

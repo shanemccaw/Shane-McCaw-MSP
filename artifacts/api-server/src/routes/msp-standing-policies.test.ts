@@ -27,13 +27,18 @@ function mspToken(opts: { mspId?: number; mspRole?: "MSPOperator" | "MSPAdmin" |
 }
 
 vi.mock("@workspace/db", () => ({
-  db: { select: vi.fn(), insert: vi.fn() },
+  db: { select: vi.fn(), insert: vi.fn(), update: vi.fn() },
   standingPoliciesTable: { id: "id", mspId: "mspId", ouId: "ouId", targetKind: "targetKind" },
-  activeDirectoryOusTable: { id: "id" },
+  activeDirectoryOusTable: { id: "id", tenantId: "tenantId" },
   changeCatalogItemsTable: { id: "id", mspId: "mspId" },
+  mspSopsTable: { mspId: "mspId", sopId: "sopId" },
   tenantsTable: { id: "id", mspId: "mspId", consent: "consent", policyEngineOptIn: "policyEngineOptIn" },
+  policyEvaluationRunsTable: { id: "id", standingPolicyId: "standingPolicyId" },
   STANDING_POLICY_TARGET_KIND: ["mailbox_attribute", "group_membership", "service_policy"],
 }));
+
+vi.mock("../lib/workflow-executor.ts", () => ({ fireWorkflowsForEvent: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("../lib/policy-compliance-evaluator", () => ({ evaluateStandingPolicyForCustomer: vi.fn() }));
 
 vi.mock("drizzle-orm", async (importOriginal) => {
   const actual = await importOriginal<typeof import("drizzle-orm")>();
@@ -54,6 +59,7 @@ import { db } from "@workspace/db";
 import router from "./msp-standing-policies";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;
+const mockUpdate = (db as unknown as { update: ReturnType<typeof vi.fn> }).update;
 
 /** Drizzle-style fluent chain, thenable at any point, resolving to `rows`. */
 function buildChain(rows: unknown[]) {
@@ -73,13 +79,38 @@ function makeApp() {
   return app;
 }
 
+/** Drizzle-style update chain: db.update(...).set(...).where(...).returning() -> rows. */
+function buildUpdateChain(rows: unknown[]) {
+  const chain: Record<string, unknown> = {};
+  for (const m of ["set", "where"]) {
+    chain[m] = vi.fn().mockReturnValue(chain);
+  }
+  chain["returning"] = vi.fn().mockResolvedValue(rows);
+  return chain;
+}
+
 beforeEach(() => {
   mockSelect.mockReset();
+  mockUpdate.mockReset();
 });
 
 const MSP_ID = 900;
 
-const POLICY = { id: 7, mspId: MSP_ID, ouId: 1, targetKind: "group_membership", sopId: "SOP-VIP-GROUPS", catalogItemId: 55, isActive: true };
+const POLICY = {
+  id: 7,
+  mspId: MSP_ID,
+  ouId: 1,
+  title: "VIP mailbox retention",
+  description: "",
+  targetKind: "group_membership",
+  targetState: {},
+  sopId: "SOP-VIP-GROUPS",
+  catalogItemId: 55,
+  isActive: true,
+  createdByName: "staff@test.com",
+  createdAt: new Date("2026-01-01T00:00:00Z"),
+  updatedAt: new Date("2026-01-01T00:00:00Z"),
+};
 
 describe("GET /msp/standing-policies/:id/enactment", () => {
   it("rejects unauthenticated requests", async () => {
@@ -184,5 +215,84 @@ describe("GET /msp/standing-policies/:id/enactment", () => {
     expect(res.status).toBe(200);
     expect(res.body.route).toBe("not_evaluated");
     expect(res.body.reason).toBe("policy_inactive");
+  });
+});
+
+describe("PATCH /msp/standing-policies/:id (#3034)", () => {
+  it("rejects unauthenticated requests", async () => {
+    const res = await request(makeApp()).patch("/api/msp/standing-policies/7").send({ isActive: false });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects roles below MSPOperator", async () => {
+    const res = await request(makeApp())
+      .patch("/api/msp/standing-policies/7")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID, mspRole: "CustomerUser" })}`)
+      .send({ isActive: false });
+    expect(res.status).toBe(403);
+  });
+
+  it("400s an empty body", async () => {
+    const res = await request(makeApp())
+      .patch("/api/msp/standing-policies/7")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("404s a policy that does not belong to this MSP, without disclosing it exists", async () => {
+    mockSelect.mockReturnValueOnce(buildChain([])); // existing-policy lookup scoped to caller's mspId -> no match
+
+    const res = await request(makeApp())
+      .patch("/api/msp/standing-policies/7")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`)
+      .send({ isActive: false });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("deactivates a policy (isActive: false) — the off-switch this issue exists for", async () => {
+    mockSelect
+      .mockReturnValueOnce(buildChain([POLICY])) // existing policy
+      .mockReturnValueOnce(buildChain([{ tenantId: 1 }])); // current ou's tenantId (always read)
+    mockUpdate.mockReturnValueOnce(buildUpdateChain([{ ...POLICY, isActive: false }]));
+
+    const res = await request(makeApp())
+      .patch("/api/msp/standing-policies/7")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`)
+      .send({ isActive: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body.isActive).toBe(false);
+  });
+
+  it("rejects a sopId that does not belong to this MSP", async () => {
+    mockSelect
+      .mockReturnValueOnce(buildChain([POLICY])) // existing policy
+      .mockReturnValueOnce(buildChain([{ tenantId: 1 }])) // current ou's tenantId
+      .mockReturnValueOnce(buildChain([])); // sop lookup scoped to caller's mspId -> no match
+
+    const res = await request(makeApp())
+      .patch("/api/msp/standing-policies/7")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`)
+      .send({ sopId: "SOP-NOT-MINE" });
+
+    expect(res.status).toBe(400);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("edits an authorable field (title) without touching isActive", async () => {
+    mockSelect
+      .mockReturnValueOnce(buildChain([POLICY]))
+      .mockReturnValueOnce(buildChain([{ tenantId: 1 }]));
+    mockUpdate.mockReturnValueOnce(buildUpdateChain([{ ...POLICY, title: "Renamed" }]));
+
+    const res = await request(makeApp())
+      .patch("/api/msp/standing-policies/7")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`)
+      .send({ title: "Renamed" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe("Renamed");
   });
 });
