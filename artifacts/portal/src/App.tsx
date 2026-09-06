@@ -15,6 +15,7 @@ import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
 import AccountSetupPage from "@/pages/account-setup";
 import SignInHelpPage from "@/pages/sign-in-help";
+import NotificationPreferencesPage from "@/pages/notification-preferences";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -66,6 +67,7 @@ function ProtectedRoutes() {
           <Route path="/" component={IndexPage} />
           <Route path="/support" component={SupportPage} />
           <Route path="/account-security" component={AccountSecurityPage} />
+          <Route path="/notification-preferences" component={NotificationPreferencesPage} />
           <Route path="/coming-soon" component={ComingSoon} />
           <Route component={NotFound} />
         </Switch>
