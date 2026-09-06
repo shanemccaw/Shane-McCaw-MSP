@@ -9,26 +9,24 @@
  * retainer_work_log are keyed the same way admin-retainer.ts already
  * established) uses — no admin privilege, no cross-tenant surface.
  *
- * `statusReports` (Git #1410) lives in a DIFFERENT id space — `status_reports.
- * clientUserId` is a `users.id`, not a `tenants.id`. That mismatch is the
- * foundation issue #1589 settled: `status_reports` STAYS user-scoped (its
- * clientUserId targets a specific person — every notification, email, audit row
- * and project link in `admin-status-reports.ts` depends on that users.id, and
- * realigning it to tenants.id would re-architect a working CRM table for no
- * customer-visible gain). What #1589 fixed is the DUAL tenant resolution: this
- * route now resolves the caller's tenant EXACTLY ONCE — `customerId`
- * (`resolveCustomerId`, the JWT's tenants.id claim) — and the users.id bridge
- * for `status_reports` is sourced from THAT same tenants.id via
- * `resolveCustomerUserIds(customerId)` (`tenant-signals.ts`'s canonical
- * tenants.id → users.id fan-out — all of the customer's linked logins, active
- * and inactive). Previously the two reads resolved the tenant independently
- * (`retainer_work_log` off the JWT claim, `status_reports` off
- * `req.user!.id`'s own `users.tenantId`), so a divergence between those two
- * could have put one customer's retainer ledger on a page beside another's
- * status reports. Both halves now derive from one `customerId`, so they cannot
- * disagree on whose data the page shows. Only `reportStatus: "sent"` rows are
- * returned — a draft the architect hasn't published yet is not the customer's
- * to see, the same rule `portal-projects.ts` already applies.
+ * `statusReports` (Git #1410) — #1589 had decided `status_reports` "stays
+ * user-scoped" (its `clientUserId` targets a specific person) and only fixed
+ * this route's tenant resolution to be single-sourced. **Git #1923 reversed
+ * that scoping decision**: a status report is a deliverable to the customer
+ * organisation, not a private message to one named person, so `status_reports`
+ * now carries a real `customerId` (`tenants.id`) and visibility derives from
+ * that column, not from `clientUserId` alone. This route matches on EITHER —
+ * `customerId` (the authoritative column going forward) OR `clientUserId`
+ * membership in the customer's linked logins (`resolveCustomerUserIds`,
+ * kept as a backward-compat fallback for any pre-#1923 row a migration
+ * couldn't backfill a `customerId` for) — so a report addressed to nobody in
+ * particular is still visible to the whole customer, and no pre-existing row
+ * regresses to invisible. `customerId` is resolved from the SAME `customerId`
+ * (tenants.id) that scopes the retainer ledger above — one tenant resolution
+ * for the whole route, no second independent one off `req.user!.id`. Only
+ * `reportStatus: "sent"` rows are returned — a draft the architect hasn't
+ * published yet is not the customer's to see, the same rule
+ * `portal-projects.ts` already applies.
  *
  * GET /api/portal/retainer — settings + this month's bucket + the full ledger
  * for the caller's own retainer, plus their own sent status reports.
@@ -41,7 +39,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, retainerSettingsTable, retainerWorkLogTable, statusReportsTable } from "@workspace/db";
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq, and, or, inArray, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { resolveCustomerId } from "../lib/portal-customer-scope.ts";
 import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
@@ -78,22 +76,24 @@ router.get("/portal/retainer", requireAuth, async (req: Request, res: Response) 
     const period = periodMonthOf(new Date());
     const bucket = computeMonthBucket(period, retainedMinutes, usedByPeriod);
 
-    // #1589: status_reports is user-scoped (clientUserId is a users.id), but the
-    // users.id set is derived from the SAME customerId (tenants.id) that scopes
-    // the retainer ledger above — one tenant resolution for the whole route, no
-    // second independent one off req.user!.id. Empty set (unclaimed customer) →
-    // inArray matches nothing → no reports, which fails closed correctly.
+    // #1923: status_reports.customerId (tenants.id) is now the authoritative scope
+    // — a report addressed to nobody in particular (clientUserId null) is still
+    // this customer's to see. clientUserId membership in the customer's own linked
+    // logins (resolveCustomerUserIds, sourced from the SAME customerId — one tenant
+    // resolution for the whole route) stays as an OR fallback for any pre-#1923 row
+    // a migration couldn't backfill a customerId for. Empty customerUserIds
+    // (unclaimed customer) + no customerId match → no reports, fails closed.
     const customerUserIds = await resolveCustomerUserIds(customerId);
-    const statusReports = customerUserIds.length === 0
-      ? []
-      : await db
-          .select()
-          .from(statusReportsTable)
-          .where(and(
-            inArray(statusReportsTable.clientUserId, customerUserIds),
-            eq(statusReportsTable.reportStatus, "sent"),
-          ))
-          .orderBy(desc(statusReportsTable.sentAt));
+    const statusReports = await db
+      .select()
+      .from(statusReportsTable)
+      .where(and(
+        eq(statusReportsTable.reportStatus, "sent"),
+        customerUserIds.length > 0
+          ? or(eq(statusReportsTable.customerId, customerId), inArray(statusReportsTable.clientUserId, customerUserIds))
+          : eq(statusReportsTable.customerId, customerId),
+      ))
+      .orderBy(desc(statusReportsTable.sentAt));
 
     res.json({
       configured: !!settings && settings.active,

@@ -11,13 +11,13 @@
  * And the scope guard: a session with no `customerId` claim gets 400, never a
  * DB read for someone else's ledger.
  *
- * Also covers `statusReports` (Git #1410, id-space settled by #1589) — it is
- * user-scoped (`status_reports.clientUserId` is a `users.id`), but the users.id
- * set is now derived from the SAME `customerId` (tenants.id) that scopes
- * settings/entries above, via `resolveCustomerUserIds(customerId)` — one tenant
- * resolution for the whole route, not a second independent one off
- * `req.user!.id`. Filtered to `reportStatus: "sent"` only. An unclaimed customer
- * (empty users.id set) does no status_reports DB read at all and returns `[]`.
+ * Also covers `statusReports` (Git #1410, id-space corrected by #1923 — #1589's
+ * "stays user-scoped" decision was reversed). `status_reports.customerId`
+ * (tenants.id) is the authoritative scope now; `clientUserId` membership in
+ * the customer's own linked logins (via `resolveCustomerUserIds(customerId)`
+ * — one tenant resolution for the whole route, not a second independent one
+ * off `req.user!.id`) stays only as an OR fallback for pre-#1923 rows.
+ * Filtered to `reportStatus: "sent"` only.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -54,6 +54,7 @@ vi.mock("@workspace/db", () => {
     },
     statusReportsTable: {
       id: col("id"),
+      customerId: col("customer_id"),
       clientUserId: col("client_user_id"),
       reportStatus: col("report_status"),
       sentAt: col("sent_at"),
@@ -84,6 +85,7 @@ vi.mock("../lib/logger", () => {
 vi.mock("drizzle-orm", () => ({
   eq: (l: unknown, r: unknown) => ({ eq: [l, r] }),
   and: (...conds: unknown[]) => ({ and: conds }),
+  or: (...conds: unknown[]) => ({ or: conds }),
   inArray: (l: unknown, r: unknown) => ({ inArray: [l, r] }),
   desc: (c: unknown) => ({ desc: c }),
 }));
@@ -185,7 +187,7 @@ describe("GET /api/portal/retainer", () => {
   });
 });
 
-describe("GET /api/portal/retainer — statusReports (Git #1410, id-space #1589)", () => {
+describe("GET /api/portal/retainer — statusReports (Git #1410, id-space corrected by #1923)", () => {
   it("scopes status_reports via resolveCustomerUserIds(customerId) — the SAME tenants.id that scopes the ledger, fanned out to its users.id set, NOT a second resolution off req.user.id", async () => {
     mockResolveCustomerUserIds.mockImplementation(async (customerId: number) => {
       expect(customerId).toBe(42); // the JWT's customerId (tenants.id), NOT the caller's users.id=7
@@ -251,19 +253,37 @@ describe("GET /api/portal/retainer — statusReports (Git #1410, id-space #1589)
     expect(res.body.statusReports).toHaveLength(1);
   });
 
-  it("fails closed for an unclaimed customer: empty users.id set → no status_reports DB read, returns []", async () => {
+  it("#1923: an unclaimed customer (empty users.id set) still gets its own customerId-scoped reports, not []", async () => {
     mockResolveCustomerUserIds.mockImplementation(async () => []); // customer has no linked logins
-    // Only settings + entries are read; status_reports is skipped entirely, so
-    // the queue carries exactly two results (a third would go unread).
+    // Unlike pre-#1923 (which short-circuited to [] when customerUserIds was
+    // empty), the status_reports query still runs — customerId alone is now
+    // enough to find reports, exactly the case clientUserId-only scoping made
+    // invisible: a customer with no linked portal login can still have real
+    // published reports.
     mockSelectResultsQueue = [
       [], // settings
       [], // entries
+      [
+        {
+          id: 9,
+          title: "Report for an unclaimed customer",
+          period: "other",
+          executiveSummary: null,
+          completedActivities: [],
+          keyOutcomes: null,
+          reportDate: null,
+          sentAt: new Date("2026-08-05T00:00:00Z"),
+          clientStatus: "pending",
+          clientQuestion: null,
+          adminReply: null,
+          replyThread: [],
+        },
+      ],
     ];
     const res = await request(makeApp({ id: 1, customerId: 42 })).get("/api/portal/retainer");
     expect(res.status).toBe(200);
     expect(mockResolveCustomerUserIds).toHaveBeenCalledWith(42);
-    expect(res.body.statusReports).toEqual([]);
-    // The status_reports query never ran, so nothing was shifted off the queue for it.
-    expect(mockSelectResultsQueue).toHaveLength(0);
+    expect(res.body.statusReports).toHaveLength(1);
+    expect(res.body.statusReports[0]).toMatchObject({ id: 9, title: "Report for an unclaimed customer" });
   });
 });

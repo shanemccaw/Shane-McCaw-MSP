@@ -12,9 +12,9 @@ import {
   servicesTable,
   invoicesTable,
 } from "@workspace/db";
-import { eq, and, asc, desc, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, or, asc, desc, inArray, isNotNull } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
-import { resolveSiblingUserIds } from "../lib/tenant-signals.ts";
+import { resolveSiblingUserIds, resolveCustomerIdForPortalUser } from "../lib/tenant-signals.ts";
 import { registerSSEClient } from "../lib/sse-channels.ts";
 import jwt from "jsonwebtoken";
 import { logger } from "../lib/logger.ts";
@@ -114,12 +114,21 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
   // Status reports for this project (sent only, visible to client).
   // #1397: for a client, match across every login of the customer account;
   // for an admin, scope to the project's own owning login.
+  // #1923: status_reports.customerId is now the authoritative scope — a report
+  // addressed to nobody in particular (clientUserId null) is still visible to
+  // the whole customer, not just invisible. reportScopeUserIds/clientUserId
+  // membership stays as an OR fallback for pre-#1923 rows.
   const reportScopeUserIds = isAdmin ? [project.clientUserId ?? userId] : siblingIds;
+  const reportScopeCustomerId = isAdmin
+    ? (project.clientUserId != null ? await resolveCustomerIdForPortalUser(project.clientUserId) : null)
+    : await resolveCustomerIdForPortalUser(userId);
   const statusReports = await db.select().from(statusReportsTable)
     .where(and(
       eq(statusReportsTable.projectId, id),
-      inArray(statusReportsTable.clientUserId, reportScopeUserIds),
       eq(statusReportsTable.reportStatus, "sent"),
+      reportScopeCustomerId != null
+        ? or(eq(statusReportsTable.customerId, reportScopeCustomerId), inArray(statusReportsTable.clientUserId, reportScopeUserIds))
+        : inArray(statusReportsTable.clientUserId, reportScopeUserIds),
     ))
     .orderBy(desc(statusReportsTable.sentAt));
 

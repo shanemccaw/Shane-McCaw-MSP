@@ -1344,6 +1344,23 @@ export type ContractTemplate = typeof contractTemplatesTable.$inferSelect;
 export const statusReportsTable = pgTable("status_reports", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").references(() => projectsTable.id),
+  /**
+   * The customer this report belongs to (Git #1923, corrects #1589's "stays
+   * user-scoped" decision). A status report is a deliverable to the customer
+   * organisation, not a private message to one named person — visibility and
+   * publish-notification fan-out derive from this column, not from
+   * `clientUserId` below. Nullable only because pre-#1923 rows may predate it
+   * and this is an additive migration; every new report is expected to carry
+   * one (backfilled server-side from `clientUserId` -> `users.tenantId` when
+   * an admin doesn't supply it directly).
+   */
+  customerId: integer("customer_id").references(() => tenantsTable.id, { onDelete: "set null" }),
+  /**
+   * Optional named addressee ("this one is for Dana") — kept, but no longer
+   * gates visibility or publish notification (#1923). A report with no
+   * addressee is valid and still notifies the whole customer via
+   * `customerId`.
+   */
   clientUserId: integer("client_user_id").references(() => usersTable.id),
   title: text("title").notNull(),
   period: text("period", { enum: ["weekly", "monthly", "executive_summary", "other"] }).notNull().default("monthly"),

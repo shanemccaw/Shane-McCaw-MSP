@@ -2,11 +2,18 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, statusReportsTable, usersTable, kanbanTasksTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
-import { createNotification } from "../lib/notification-center.ts";
+import { createNotification, notifyStatusReportPublished } from "../lib/notification-center.ts";
 import { sendEmailFromTemplate, getTenantHealthBlockHtml, statusReportReplyEmail, adminThreadReplyEmail, canSendAutomatedCustomerEmailForUser } from "../lib/mailer.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
+import { resolveCustomerIdForPortalUser } from "../lib/tenant-signals.ts";
+
+// Raw deep-link key from the #1827 resolvePortalDeepLink map (portal-deep-links.ts)
+// — NOT a real mounted route today. Using the dead "/portal/projects" literal here
+// would bypass that map entirely and resolve to nothing; this key resolves through
+// it to the honest /coming-soon fallback until the real page ships under #1485.
+const PROJECTS_DEEP_LINK = "/portal-v2/projects";
 
 const log = logger.child({ channel: "admin.status-reports" });
 
@@ -38,15 +45,12 @@ router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request
     .returning();
 
   if (report.clientUserId) {
-    const linkPath = report.projectId
-      ? `/portal/projects/${report.projectId}`
-      : "/portal/projects";
     await createNotification({
       title: `Reply to your question on: ${report.title}`,
       body: "Shane has replied to your question on a status report. View it in your portal.",
       notifType: "project_update",
       category: "project",
-      linkPath,
+      linkPath: PROJECTS_DEEP_LINK,
       recipient: { type: "customer_user", userId: report.clientUserId },
       // This route already sends its own branded "status-report-reply"
       // template email below — don't let createNotification's own
@@ -116,15 +120,12 @@ router.post("/admin/status-reports/:id/thread", requireAdmin, async (req: Reques
 
   // Notify client via in-app notification + email (fire-and-forget)
   if (report.clientUserId) {
-    const linkPath = report.projectId
-      ? `/portal/projects/${report.projectId}`
-      : "/portal/projects";
     void createNotification({
       title: `New reply on: ${report.title}`,
       body: "Shane has replied to your follow-up message on a status report.",
       notifType: "project_update",
       category: "project",
-      linkPath,
+      linkPath: PROJECTS_DEEP_LINK,
       recipient: { type: "customer_user", userId: report.clientUserId },
       // This route already sends its own branded "admin-thread-reply"
       // template email below — don't let createNotification's own
@@ -162,17 +163,29 @@ router.get("/admin/status-reports", requireAdmin, async (_req: Request, res: Res
 });
 
 router.post("/admin/status-reports", requireAdmin, async (req: Request, res: Response) => {
-  const { projectId, clientUserId, title, period, executiveSummary, completedActivities, keyOutcomes, nextSteps, reportDate } = req.body as {
-    projectId?: number; clientUserId?: number; title?: string; period?: string;
+  const { projectId, clientUserId, customerId, title, period, executiveSummary, completedActivities, keyOutcomes, nextSteps, reportDate } = req.body as {
+    projectId?: number; clientUserId?: number; customerId?: number; title?: string; period?: string;
     executiveSummary?: string; completedActivities?: Array<{ title: string; description: string }>;
     keyOutcomes?: string; nextSteps?: Array<{ label: string; title: string; description: string }>;
     reportDate?: string;
   };
   if (!title) { res.status(400).json({ error: "title is required" }); return; }
   const validPeriods = ["weekly", "monthly", "executive_summary", "other"];
+
+  // #1923: the report belongs to the customer, not the addressee. Callers that
+  // already hold a real customerId (a tenant picker) pass it straight in; the
+  // existing clientUserId-only form (no UI change shipped yet — #1745 is
+  // blocked on the contract pack) still works by deriving it from the
+  // addressee's own tenant, same bridge every other admin call site uses.
+  let resolvedCustomerId: number | null = customerId ?? null;
+  if (resolvedCustomerId == null && clientUserId != null) {
+    resolvedCustomerId = await resolveCustomerIdForPortalUser(clientUserId);
+  }
+
   const [report] = await db.insert(statusReportsTable).values({
     projectId: projectId ?? null,
     clientUserId: clientUserId ?? null,
+    customerId: resolvedCustomerId,
     title,
     period: (validPeriods.includes(period ?? "") ? period : "monthly") as "weekly" | "monthly" | "executive_summary" | "other",
     reportStatus: "draft",
@@ -189,11 +202,11 @@ router.patch("/admin/status-reports/:id", requireAdmin, async (req: Request, res
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
-  const { title, period, executiveSummary, completedActivities, keyOutcomes, nextSteps, reportDate } = req.body as {
+  const { title, period, executiveSummary, completedActivities, keyOutcomes, nextSteps, reportDate, customerId } = req.body as {
     title?: string; period?: string; executiveSummary?: string;
     completedActivities?: Array<{ title: string; description: string }>;
     keyOutcomes?: string; nextSteps?: Array<{ label: string; title: string; description: string }>;
-    reportDate?: string;
+    reportDate?: string; customerId?: number | null;
   };
 
   const updates: Partial<typeof statusReportsTable.$inferInsert> & { updatedAt: Date } = { updatedAt: new Date() };
@@ -204,6 +217,7 @@ router.patch("/admin/status-reports/:id", requireAdmin, async (req: Request, res
   if (keyOutcomes !== undefined) updates.keyOutcomes = keyOutcomes;
   if (nextSteps !== undefined) updates.nextSteps = nextSteps;
   if (reportDate !== undefined) updates.reportDate = reportDate ? new Date(reportDate) : null;
+  if (customerId !== undefined) updates.customerId = customerId;
 
   const [updated] = await db.update(statusReportsTable).set(updates).where(eq(statusReportsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
@@ -222,31 +236,40 @@ router.post("/admin/status-reports/:id/send", requireAdmin, async (req: Request,
     .where(eq(statusReportsTable.id, id))
     .returning();
 
-  if (report.clientUserId) {
-    await createNotification({
-      title: `New status report: ${report.title}`,
-      body: "Your consultant has sent you a project status report. View it in your portal.",
-      notifType: "project_update",
-      category: "project",
-      linkPath: "/portal/projects",
-      recipient: { type: "customer_user", userId: report.clientUserId },
+  // #1923: publication fans out to the whole customer (every subscribed portal
+  // login on report.customerId), not to the single named addressee. A report
+  // with no addressee (report.clientUserId null) is valid and still notifies —
+  // this no longer gates on clientUserId. A report that predates #1923's
+  // migration and has neither customerId nor a resolvable clientUserId truly
+  // cannot be routed to anyone; that is logged loudly rather than silently
+  // dropped, same as the bug this replaces.
+  if (report.customerId) {
+    const { notified } = await notifyStatusReportPublished({
+      customerId: report.customerId,
+      reportTitle: report.title,
+      addresseeUserId: report.clientUserId,
+      linkPath: PROJECTS_DEEP_LINK,
     });
+    log.info({ reportId: report.id, customerId: report.customerId, notified }, "status report publish: fanned out to customer");
+  } else {
+    log.warn({ reportId: report.id }, "status report published with no customerId — cannot fan out to subscribers");
   }
 
-  if (report.clientUserId) {
-    void createAuditLog({
-      actorUserId: req.user!.id,
-      actorName: req.user!.name ?? req.user!.email,
-      actorRole: "admin",
-      actionType: "status_report_published",
-      entityType: "status_report",
-      entityId: report.id,
-      entityLabel: report.title,
-      clientId: report.clientUserId,
-      projectId: report.projectId ?? null,
-      metadata: { period: report.period ?? null },
-    });
-  }
+  // Audited unconditionally now — a report addressed to nobody in particular
+  // still gets a real audit row (the old `if (report.clientUserId)` gate meant
+  // a null-addressee publish audited nothing, silently).
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin",
+    actionType: "status_report_published",
+    entityType: "status_report",
+    entityId: report.id,
+    entityLabel: report.title,
+    clientId: report.clientUserId ?? null,
+    projectId: report.projectId ?? null,
+    metadata: { period: report.period ?? null, customerId: report.customerId ?? null },
+  });
 
   res.json(updated);
 });
