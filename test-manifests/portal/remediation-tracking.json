@@ -1,15 +1,17 @@
 {
   "issue": 3037,
-  "feature": "Remediation Tracking: 28-step programme - the real artifacts/portal '/remediation-tracking' page (src/pages/remediation-tracking.tsx), part of #3037/Feature #1489. Wires GET /api/portal/remediation-tracker (steps + live pricing), PUT /api/portal/remediation-tracker/steps/:stepId, POST .../steps/:stepId/verify, GET .../steps/:stepId/verification-guide, POST .../steps/:stepId/decline-to-risk, per docs/remediation-tracking-contract-pack.md §1a and the landed 'Remediation Tracking.dc.html' export's 28-step programme tab. Does NOT cover the checklist/fix-routes/reveal/bypass-resolutions tabs (§1b-1e, #3038) or the pillar-scores panel / CSV / PDF / evidence-pack exports (§1f-1g, #3039) - those are separate real functional units under the same Feature.",
+  "feature": "Remediation Tracking: 28-step programme - the real artifacts/portal '/remediation-tracking' page (src/pages/remediation-tracking.tsx), part of #3037/#3039/Feature #1489. Wires GET /api/portal/remediation-tracker (steps + live pricing), PUT /api/portal/remediation-tracker/steps/:stepId, POST .../steps/:stepId/verify, GET .../steps/:stepId/verification-guide, POST .../steps/:stepId/decline-to-risk (§1a, #3037), plus GET .../pillar-scores and the export.csv/export.pdf/evidence-pack.pdf downloads (§1f-1g, #3039 - PillarScoresCard + RemediationExportControls, both mounted inside RemediationProgrammeTab on this same tab), per docs/remediation-tracking-contract-pack.md and the landed 'Remediation Tracking.dc.html' export's 28-step programme tab. Does NOT cover the checklist/fix-routes/reveal/bypass-resolutions tabs (§1b-1e, #3038) - a separate real functional unit under the same Feature, still in flight as of this edit.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "436675c12",
 
   "notes": [
     "WHAT THIS COVERS: the auth gate on every §1a route, the real 200 payload shape (steps[] + pricing.phases[3]/pricing.hire), the explicit 400 §1a's PUT returns when a client tries to set accepted_risk directly (the signed-only guard), 400s for an unknown stepId across PUT/verify/verification-guide, a 404 for verification-guide on a step with no mapped check, and a real, REVERSIBLE PUT round-trip (unlike Risk Register's accept, a status PUT is not a permanent signed action, so the write is undone at the end of the same test run to keep this manifest idempotent).",
     "WHY NO decline-to-risk HAPPY PATH IS DRIVEN HERE: same reason risk-register.json's own accept step is not driven - POST .../decline-to-risk creates a PERMANENT signed msp_risk_decisions row and 409s on a second attempt against the same step (§1a). Exercising it for real would either poison this manifest's re-runs or require a live SQL reset step outside the manifest's own scope. The 400 surface on the sibling PUT route (the same signed-only guard) is exercised instead, which is what proves the underlying contract.",
     "NO UI LOGIN FLOW ASSERTED (same structural note test-manifests/portal/config-state.json and risk-register.json already carry): the uiStep below only asserts the honest 'Sign in required' gate an unauthenticated visitor gets; apiTests exercise the real backend directly with a real bearer token.",
     "shaneapp://runTest WAS ACTUALLY INVOKED (2026-09-06, session for #3037), not skipped by assumption - two real attempts, both against this manifest AND against the pre-existing test-manifests/portal/risk-register.json (bare filename and full repo-relative path), all four returned the identical real envelope `{ ok:false, error:'manifest not found or unparseable: <file>' }`. Root cause confirmed directly, not guessed: BuildConsole's dev-server checkout (default `C:\\dev-server`) is on branch `dev-server` at commit 145ba36ad - `git log` there shows no test-manifests/ directory at all yet, hundreds of commits behind the origin/main HEAD this build pushes to (c51abcdf0 at push time). This is the SAME structural gap #3004's/#2996's/#2998's manifests already document (dev-server hasn't merged/restarted onto a current checkout), just with concrete evidence of exactly how stale rather than an assumption - not a runTest defect, and not specific to this file. Verified instead by a real `tsc -p tsconfig.json --noEmit` pass (0 errors) and a real `vite build` (succeeds) against artifacts/portal with this page/route/hooks added, plus direct reading of portal-remediation-tracker.ts confirming every status/error shape asserted below. Re-run via shaneapp://runTest once the dev-server merge/restart cycle has caught up.",
-    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use)."
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use).",
+    "sessionTag '3039-pillar-scores-export' marks every step added by #3039 (§1f-1g) - shaneapp://runTest?file=portal/remediation-tracking.json&onlyTag=3039-pillar-scores-export runs only these new steps. shaneapp://runTest was NOT reachable from this build session (no runTest/executeSql tool was exposed here) - not live-executed. Real verification performed instead: `tsc -p tsconfig.json --noEmit` clean and `vite build` clean on artifacts/portal with PillarScoresCard/RemediationExportControls added; the two backend route test files (portal-remediation-tracker-scores.test.ts, portal-remediation-tracker-export.test.ts, 17 tests) run green via `pnpm exec vitest run`; a live curl against the local dev api-server (port 8080) confirmed GET /api/portal/remediation-tracker/pillar-scores is a real, currently-running route that correctly 401s with no Authorization header; a direct query against the local DATABASE_URL confirmed 0 rows in tenant_pillar_snapshots today, i.e. the honest 'insufficient_data' empty state (never a fabricated score) is the real state a manual run would currently hit.",
+    "The export routes stream binary (CSV/PDF) bodies, not JSON - the sessionTag apiTests below only assert status 200, matching the pattern already used for other binary-export routes in this suite."
   ],
 
   "apiTests": [
@@ -95,6 +97,53 @@
       "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
       "body": { "status": "not_started" },
       "expect": { "status": 200, "jsonPath": "$.step.status", "equals": "not_started" }
+    },
+    {
+      "name": "PILLAR-SCORES-AUTH-GATE - GET pillar-scores with no Authorization header returns 401",
+      "sessionTag": "3039-pillar-scores-export",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/pillar-scores",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "PILLAR-SCORES-READ - an authenticated GET returns the real six-pillar record, never omitted",
+      "sessionTag": "3039-pillar-scores-export",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/pillar-scores",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars.governance.status", "exists": true }
+    },
+    {
+      "name": "PILLAR-SCORES-GATE - the Copilot gate result carries the real fixed threshold (82) rather than a client-guessed value",
+      "sessionTag": "3039-pillar-scores-export",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/pillar-scores",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.copilotGate.threshold", "equals": 82 }
+    },
+    {
+      "name": "EXPORT-CSV - GET export.csv streams a real file",
+      "sessionTag": "3039-pillar-scores-export",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/export.csv",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200 }
+    },
+    {
+      "name": "EXPORT-PDF - GET export.pdf streams a real file",
+      "sessionTag": "3039-pillar-scores-export",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/export.pdf",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200 }
+    },
+    {
+      "name": "EXPORT-EVIDENCE-PACK - GET evidence-pack.pdf streams a real file (honest-empty PDF when nothing is verified yet)",
+      "sessionTag": "3039-pillar-scores-export",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/evidence-pack.pdf",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200 }
     }
   ],
 

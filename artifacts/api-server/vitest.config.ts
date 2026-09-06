@@ -137,6 +137,7 @@ export default defineConfig({
       "src/routes/msp-sla-scope-creep.test.ts",
       "src/routes/msp-sla-operator-tasks.live-db.test.ts",
       "src/routes/msp-settings-user-security.live-db.test.ts",
+      "src/routes/msp-settings-target-role-ceiling.live-db.test.ts",
       "src/lib/ai-billing.test.ts",
       "src/lib/ai-billing-cost-broadcast.test.ts",
       "src/routes/admin-ai-billing.test.ts",

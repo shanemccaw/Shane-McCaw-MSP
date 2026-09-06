@@ -1,20 +1,34 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, CreditCard, Loader2 } from "lucide-react";
+import { AlertTriangle, CreditCard, Loader2, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { AddOwnershipRowDialog } from "@/components/ownership/AddOwnershipRowDialog";
+import { DeclineOwnershipDialog, type DeclineTarget } from "@/components/ownership/DeclineOwnershipDialog";
 import { MinePlaceCard } from "@/components/ownership/MinePlaceCard";
 import { OverlayExtrasCard } from "@/components/ownership/OverlayExtrasCard";
 import { OwnershipMatrixSection } from "@/components/ownership/OwnershipMatrixSection";
 import { SourcesCard } from "@/components/ownership/SourcesCard";
-import { useOwnership } from "@/lib/ownership-api";
-import { buildMatrixRows, buildMineEntries, computeGaps, groupByType } from "@/lib/ownership-matrix";
+import { useAssignOwnership, useOwnership } from "@/lib/ownership-api";
+import { buildCustomRows, buildMatrixRows, buildMineEntries, computeGaps, groupByType, type MatrixRow } from "@/lib/ownership-matrix";
+import { OWN_TYPE_LABEL } from "@/lib/ownership-types";
 import { cn } from "@/lib/utils";
 
+/**
+ * Ownership / RACI (#3040/#3041, Feature #1491). Adapted from
+ * `Design/portal/design_handoff_full_site/screens/Ownership RACI.dc.html`
+ * per that package's own README ("recreate these designs... using this
+ * codebase's existing... patterns") and wired per
+ * `docs/ownership-raci-contract-pack.md` against the real
+ * `/api/portal/ownership*` endpoints — the read surface (§1a) landed at
+ * #3040; this pass (#3041) wires the write overlay (§1b): assign, accept,
+ * decline and add-a-row, all real POSTs against the tables
+ * `ownership-matrix.ts`'s own header documents.
+ */
 const LEDGER: { gap: string; where: string }[] = [
   {
-    gap: "No assign/reorder/accept/decline/delegate/add-row actions yet. This build wires only the read surface (GET /api/portal/ownership); the five real write routes wire in #3041.",
-    where: "§1a/§1b",
+    gap: 'No reorder or handover ("delegation") controls. Both write routes are real and live (`POST /portal/ownership/reorder`, `/delegations`, `/delegations/end`), but the Design export draws no control for either anywhere on this screen, precedence carries no succession/activation logic to reorder for (§4), and #1491\'s own structured index still lists #1518/#1524 ("decide the fate of portal_ownership_delegations") as an open decision.',
+    where: "§1b/§4",
   },
   {
     gap: 'No "away" date or standing deputy on any person. No column records either yet, so both are always blank.',
@@ -29,7 +43,7 @@ const LEDGER: { gap: string; where: string }[] = [
     where: "§6",
   },
   {
-    gap: "Consulted and Informed are never guessed. An empty C or I means nobody has ever recorded one — not \"the MSP\" and not \"everyone else\".",
+    gap: 'Consulted and Informed are never guessed. An empty C or I means nobody has ever recorded one — not "the MSP" and not "everyone else". They can be placed the same way R/A can (the same write route), but nothing here fills one in for you.',
     where: "§2/§6",
   },
   {
@@ -45,21 +59,36 @@ const LEDGER: { gap: string; where: string }[] = [
     where: "§6, #2527",
   },
   {
-    gap: 'A row added by hand under "promoted from a coverage gap" carries no name or sub-line from this table — that descriptive text lives only in a client-side fixture this app does not carry.',
-    where: "§6",
+    gap: 'No "promote a coverage gap into a row" flow. That needs a client-side catalog of known-missing object types this app does not carry (contract pack §1b names this as the one place such a fixture would be legitimate) — the real write this page does wire is the design\'s own "Add a row" panel (`source: "custom"`), which renders as a full matrix row with its own RACI cells.',
+    where: "§1b",
   },
 ];
 
 export default function OwnershipPage() {
   const { data, isLoading, isError, error, refetch, isRefetching } = useOwnership();
   const [ledgerOpen, setLedgerOpen] = useState(true);
+  const [declineTarget, setDeclineTarget] = useState<DeclineTarget | null>(null);
+  const [addRowOpen, setAddRowOpen] = useState(false);
+  const assignMutation = useAssignOwnership();
 
   const tierBlocked = (error as (Error & { code?: string }) | null)?.code === "TIER_UPGRADE_REQUIRED";
 
-  const rows = useMemo(() => (data ? buildMatrixRows(data) : []), [data]);
+  const rows = useMemo<readonly MatrixRow[]>(
+    () => (data ? [...buildMatrixRows(data), ...buildCustomRows(data)] : []),
+    [data],
+  );
   const grouped = useMemo(() => groupByType(rows), [rows]);
   const gaps = useMemo(() => computeGaps(rows), [rows]);
   const mine = useMemo(() => (data ? buildMineEntries(rows, data.currentUserId) : []), [rows, data]);
+  const frequency = useMemo(() => {
+    const freq = new Map<string, number>();
+    for (const row of rows) {
+      for (const rk of ["r", "a", "c", "i"] as const) {
+        for (const holder of row.cells[rk]) freq.set(holder.personId, (freq.get(holder.personId) ?? 0) + 1);
+      }
+    }
+    return freq;
+  }, [rows]);
 
   const isEmpty = !isLoading && !isError && rows.length === 0;
   const hasRows = !isLoading && !isError && rows.length > 0;
@@ -95,6 +124,17 @@ export default function OwnershipPage() {
           <span className="text-[10.5px] text-muted-foreground">
             {data?.gateMode === "strict" ? "A cell counts once accepted" : "A cell counts as soon as it is placed"}
           </span>
+        )}
+        {!isLoading && !isError && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto h-7 gap-1.5 border-primary/40 text-[11px] text-primary hover:bg-primary/10"
+            onClick={() => setAddRowOpen(true)}
+            data-testid="ownership-add-row-open"
+          >
+            <Plus className="size-3" /> Add a row
+          </Button>
         )}
       </div>
 
@@ -150,7 +190,7 @@ export default function OwnershipPage() {
             <span className="text-[13.5px] font-semibold text-foreground">Nothing on your matrix yet</span>
             <span className="max-w-[560px] text-xs leading-relaxed text-muted-foreground">
               No workloads, services, Microsoft changes, change requests or hold windows resolved for your
-              tenant right now.
+              tenant right now, and no rows have been added by hand.
             </span>
           </div>
           <SourcesCard sources={data.sources} tenantScoped={data.tenantScoped} />
@@ -185,10 +225,19 @@ export default function OwnershipPage() {
             </Card>
           </div>
 
-          <MinePlaceCard entries={mine} />
+          <MinePlaceCard entries={mine} onDecline={setDeclineTarget} />
 
           {Array.from(grouped.entries()).map(([type, groupRows]) => (
-            <OwnershipMatrixSection key={type} type={type} rows={groupRows} people={data.people} />
+            <OwnershipMatrixSection
+              key={type}
+              type={type}
+              label={type === "control" ? "Added by hand" : OWN_TYPE_LABEL[type]}
+              rows={groupRows}
+              people={data.people}
+              frequency={frequency}
+              assignPending={assignMutation.isPending}
+              onAssign={(objectId, roleKey, personId) => assignMutation.mutate({ objectId, roleKey, ownerPersonId: personId })}
+            />
           ))}
 
           <OverlayExtrasCard delegations={data.overlay.delegations} rows={data.overlay.rows} people={data.people} />
@@ -222,6 +271,9 @@ export default function OwnershipPage() {
           )}
         </CardContent>
       </Card>
+
+      <AddOwnershipRowDialog open={addRowOpen} onOpenChange={setAddRowOpen} />
+      <DeclineOwnershipDialog target={declineTarget} onOpenChange={(open) => !open && setDeclineTarget(null)} />
     </div>
   );
 }
