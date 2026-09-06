@@ -155,6 +155,25 @@ export const CONFIG_COVERAGE_STATES = ["covered", "uncovered", "no_executor", "u
 export type ConfigCoverageState = typeof CONFIG_COVERAGE_STATES[number];
 
 /**
+ * How a resource sits inside the Graph collection that holds it (#2940).
+ *
+ * Deliberately NOT a coverage state, and deliberately not a value of `CONFIG_COVERAGE_STATES`
+ * above. A contained resource is still `covered` or `uncovered` on its own merits; containment
+ * is a second, orthogonal fact about it. The two vocabularies were kept apart on purpose,
+ * because the single thing #2940 must not do is let "its parent collection is covered" quietly
+ * become "it is covered" — that would hide 45 real Intune gaps behind one collection's check.
+ *
+ *  - `collection-member`  a GET on the parent path returns objects of this type, discriminated
+ *                         by `@odata.type`. One well-written check on the collection does
+ *                         retrieve these bytes; it just asserts nothing specific about them.
+ *  - `nested-child`       the parent enumerates containers and this object hangs off each one,
+ *                         reachable only by a further per-item GET the parent's check never
+ *                         makes. A strictly weaker reachability claim than the above.
+ */
+export const CONFIG_CONTAINMENT_KINDS = ["collection-member", "nested-child"] as const;
+export type ConfigContainmentKind = typeof CONFIG_CONTAINMENT_KINDS[number];
+
+/**
  * Classify one resource's coverage. Precedence, most-fundamental-exclusion first:
  *   1. `operation` — not configuration state at all; nothing else about the
  *      row (transport, availability, check count) can change that (#1929).
@@ -173,6 +192,13 @@ export type ConfigCoverageState = typeof CONFIG_COVERAGE_STATES[number];
  * `checkCoverageCount` should be passed as `effectiveCheckCoverageCount` (the
  * canonical group's coverage) wherever the caller has it — see that column's own
  * comment for why the per-row count alone cannot answer "is this covered".
+ *
+ * `containedInResourceId` (#2940) is deliberately NOT a parameter here and must never
+ * become one. A row whose parent collection is covered is still `uncovered`: a check on
+ * `/deviceManagement/deviceConfigurations` retrieves the bytes but asserts nothing about
+ * the MacOS-specific settings `IntuneDeviceConfigurationPolicyMacOS` describes, and
+ * letting containment promote it to `covered` would hide 45 real open gaps behind one
+ * collection's check. Surfaces show containment BESIDE the state, never instead of it.
  */
 export function coverageStateFor(
   transport: string | null | undefined,
@@ -536,6 +562,54 @@ export const configResourcesTable = pgTable("config_resources", {
    */
   effectiveCheckCoverageCount: integer("effective_check_coverage_count").notNull().default(0),
 
+  // ── Containment / specialisation (#2940) ───────────────────────────────────
+  /**
+   * The Graph COLLECTION this resource lives inside, or NULL when it is not modelled as
+   * living inside one.
+   *
+   * A different relationship from `canonicalResourceId`, and the distinction is load-bearing.
+   * `canonicalResourceId` asserts IDENTITY: the two rows are the same real tenant object, so a
+   * check reading one reads the other, and coverage credit is shared. This asserts CONTAINMENT
+   * or SPECIALISATION: `IntuneDeviceConfigurationPolicyMacOS` is one of the object types
+   * `/deviceManagement/deviceConfigurations` returns, and 42 of its siblings are others. They
+   * are distinct configurable objects discriminated by `@odata.type`, not duplicates.
+   *
+   * It therefore does NOT feed `effectiveCheckCoverageCount`, and `coverageStateFor` does not
+   * read it: a resource with a covered parent collection is still genuinely `uncovered`,
+   * because a check on the collection asserts nothing about the MacOS-specific settings this
+   * row describes. Folding this into identity would be #2821's original bug inverted — that
+   * one counted a single object as two; this would count 46 objects as one, and hide 45 real,
+   * open gaps behind one collection's check.
+   *
+   * What it IS good for: telling a check author that one well-written check on a collection
+   * serves 42 rows, and letting a coverage surface say "uncovered — parent collection IS
+   * covered" instead of a flat "uncovered" with no route to closing it.
+   */
+  containedInResourceId: integer("contained_in_resource_id")
+    .references((): AnyPgColumn => configResourcesTable.id, { onDelete: "set null" }),
+  /**
+   * `collection-member` — a GET on the parent path returns objects of this type, so one check
+   * on the collection does reach these bytes even though it asserts nothing specific about
+   * them. `nested-child` — the parent enumerates containers and this object hangs off each one
+   * (`AADCrossTenantIdentitySyncPolicyPartner` reads each partner's `identitySynchronization`),
+   * so the parent's check does NOT return it and the reachability claim is weaker still.
+   */
+  containmentKind: text("containment_kind", { enum: CONFIG_CONTAINMENT_KINDS }),
+  /**
+   * How the edge was established: `dsc-literal-collection-uri` (the DSC module's own `.psm1`
+   * GETs that path) | `dsc-cmdlet-collection-walk` (#2821's SDK-cmdlet path walk resolved it,
+   * gated on the parent's Graph entity type being declared `Abstract`).
+   */
+  containmentBasis: text("containment_basis"),
+  /** The exact evidence string the edge matched on, so the claim traces back to published source. */
+  containmentMatchedOn: text("containment_matched_on"),
+  /**
+   * Why a row that #2821 already declared a canonical residue on ALSO got no containment edge.
+   * Same labelling discipline as `canonicalGapReason`: the residue stays reviewable instead of
+   * silently shrinking.
+   */
+  containmentGapReason: text("containment_gap_reason"),
+
   /** Human-readable provenance, e.g. the DSC resource directory the row was read from. */
   sourceRef: text("source_ref"),
   notes: text("notes"),
@@ -554,6 +628,8 @@ export const configResourcesTable = pgTable("config_resources", {
   index("config_resources_service_key_idx").on(t.serviceKey),
   index("config_resources_canonical_idx").on(t.canonicalResourceId),
   index("config_resources_effective_coverage_idx").on(t.effectiveCheckCoverageCount),
+  index("config_resources_contained_in_idx").on(t.containedInResourceId),
+  index("config_resources_containment_kind_idx").on(t.containmentKind),
 ]);
 
 export type ConfigResource = typeof configResourcesTable.$inferSelect;
