@@ -119,6 +119,7 @@ router.post("/admin/projects", requireAdmin, async (req: Request, res: Response)
     title?: string; description?: string; status?: string; phase?: string; progress?: number; clientUserId?: number; startDate?: string; endDate?: string; projectType?: string; workflowTemplateId?: number;
   };
   if (!title) { res.status(400).json({ error: "title is required" }); return; }
+  if (!clientUserId) { res.status(400).json({ error: "clientUserId is required" }); return; }
 
   const validStatuses = ["active", "on_hold", "completed"];
   const [project] = await db.insert(projectsTable).values({
@@ -127,7 +128,7 @@ router.post("/admin/projects", requireAdmin, async (req: Request, res: Response)
     status: (validStatuses.includes(status ?? "") ? status : "active") as "active" | "on_hold" | "completed",
     phase: phase ?? null,
     progress: progress ?? 0,
-    clientUserId: clientUserId ?? null,
+    clientUserId,
     startDate: startDate ? new Date(startDate) : null,
     endDate: endDate ? new Date(endDate) : null,
     projectType: (["retainer", "quick_win"].includes(projectType ?? "") ? projectType : "project") as "project" | "retainer" | "quick_win",
