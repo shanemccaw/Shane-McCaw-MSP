@@ -103,6 +103,28 @@ namespace BuildConsole.Services
             bool reached = live == null || live.Success; // no blockers to check is trivially "reached"
             string? blockerError = (live != null && !live.Success) ? live.Error : null;
 
+            // Git #2230 — mirror SelectClaimCandidatesAsync's own bookend check (commit 878117c89):
+            // a blocker GitHub still reports OPEN can nonetheless be safe to build on if a real
+            // git-verified DONE bookend for it already landed on origin/main. Computed ONCE across
+            // every still-open blocker in this snapshot, and only when GitHub was actually reachable
+            // — same single-pass, fail-closed discipline as the live open-issue check above.
+            var satisfiedByDoneBookend = new HashSet<int>();
+            if (live != null && live.Success)
+            {
+                var stillOpenAcrossAll = distinctBlockers.Where(b => live.OpenNumbers.Contains(b)).Distinct().ToList();
+                if (stillOpenAcrossAll.Count > 0)
+                {
+                    try
+                    {
+                        satisfiedByDoneBookend = await DoneBookendVerifier.GetSatisfiedAsync(stillOpenAcrossAll);
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("watcher", $"Git #2230: DONE-bookend blocker check threw ({ex.Message}) while building the queue map — treating all still-open blockers as unsatisfied this pass (fail closed).");
+                    }
+                }
+            }
+
             // Which included items carry each issue number, so a blocker that IS another queue item is
             // linked back to it (cross-item dependency, the substrate for chains and cycles).
             var itemsByIssue = new Dictionary<int, int>(); // issue number → first item id owning it
@@ -143,6 +165,7 @@ namespace BuildConsole.Services
                     IsOpenOnGitHub = live == null ? (bool?)null
                                     : !live.Success ? (bool?)null
                                     : live.OpenNumbers.Contains(num),
+                    SatisfiedByDoneBookend = satisfiedByDoneBookend.Contains(num),
                     IsQueueItem = itemsByIssue.ContainsKey(num),
                     BlockingQueueItemId = itemsByIssue.TryGetValue(num, out var oid) ? oid : (int?)null,
                 }).ToList();

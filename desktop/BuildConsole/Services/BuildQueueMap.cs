@@ -60,9 +60,19 @@ namespace BuildConsole.Services
         /// <see cref="IsQueueItem"/> is true; otherwise null.</summary>
         public int? BlockingQueueItemId { get; init; }
 
-        /// <summary>Open OR unknown both hold the dependent (fail-closed). Only a blocker GitHub
-        /// explicitly reports CLOSED releases it.</summary>
-        public bool StillBlocking => IsOpenOnGitHub != false;
+        /// <summary>Git #2230 — true when this blocker, although still OPEN on GitHub, is already
+        /// satisfied by a real git-verified DONE bookend on origin/main (see
+        /// <see cref="BuildConsole.Services.DoneBookendVerifier"/>) — mirroring the live #1600 launch
+        /// gate's own bookend check in <c>SelectClaimCandidatesAsync</c> (commit 878117c89) and
+        /// <see cref="BatterUpRow.SatisfiedByBookendNumbers"/>. <see cref="IsOpenOnGitHub"/> is kept
+        /// untouched alongside this as the honest raw GitHub open/closed display signal.</summary>
+        public bool SatisfiedByDoneBookend { get; init; }
+
+        /// <summary>Genuinely still blocking: open (or unknown/fail-closed) on GitHub AND not yet
+        /// satisfied by a verified DONE bookend. This — not raw open/closed — is what the map now
+        /// means by "blocked", so it can never disagree with the #1600 launch gate that actually
+        /// decides whether a dependent build launches.</summary>
+        public bool StillBlocking => IsOpenOnGitHub != false && !SatisfiedByDoneBookend;
     }
 
     /// <summary>Git #2109 — a genuine dependency CYCLE (deadlock) in the blocked-by graph:
