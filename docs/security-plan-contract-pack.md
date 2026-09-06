@@ -36,7 +36,7 @@ Schema: `lib/db/src/schema/msp.ts:6163-6170` (`ClientApprover`, shared with `msp
 Seed/DDL migrations: `lib/db/migrations/manual/2026-08-21-portal-v2-security-plan.sql`,
 `2026-08-31-security-plan-versioning-1561.sql`, `2026-08-31-security-plan-prose-1566.sql`,
 `2026-09-01-tenants-business-unit-2085.sql`, `2026-09-04-drop-legacy-portal-security-plans.sql`
-(destructive, not yet run locally — §0.2)
+(destructive, run locally 2026-09-06 — §0.2)
 Customer-facing page: **none currently in the live portal build** — see §0.1.
 
 ---
@@ -53,17 +53,16 @@ the "regenerate" step; Design has not run yet. The shell nav placeholder
 (`artifacts/portal/src/components/shell/moduleNav.ts:52`,
 `{ key: "security-plan", ..., builtPath: null }`) is unchanged.
 
-### 0.2 The legacy `portal_security_plans` model — code path removed, tables not yet dropped
+### 0.2 The legacy `portal_security_plans` model — code path removed, tables now dropped
 
 `portal-security-plan.ts` no longer references `portal_security_plans` or its three child tables
 at all (#2576 bridged the route onto `assembledPlan`; #2829 removed the legacy read path and
-`plan` field entirely — `portal-security-plan.ts:13-32`'s own header documents both). The four
+`plan` field entirely — `portal-security-plan.ts:13-32`'s own header documents both). Shane has
+since run `lib/db/migrations/manual/2026-09-04-drop-legacy-portal-security-plans.sql`; the four
 `portal_security_plan*` tables (`portal_security_plans`, `portal_security_plan_sections`,
-`portal_security_plan_rows`, `portal_security_plan_versions`) still physically exist in the local
-DB, all reporting 0 rows (confirmed again at this pack's extraction — §0.4), because dropping them
-is destructive DDL and per CLAUDE.md's Database section that is Shane's to run, not self-executed
-in a build. `lib/db/migrations/manual/2026-09-04-drop-legacy-portal-security-plans.sql` is the
-real, already-written file for that drop; nothing in this pack changes that state.
+`portal_security_plan_rows`, `portal_security_plan_versions`) no longer exist in the local DB
+(confirmed live at this correction — §0.4). This closes the open item this pack previously carried
+at §7.
 
 ### 0.3 The endpoint map, current
 
@@ -95,14 +94,15 @@ Queried directly against the local `DATABASE_URL` at this pack's extraction:
 |---|---|
 | `msp_security_plan_versions` | 0 |
 | `msp_security_plan_drafts` | 0 |
-| `portal_security_plans` / `_sections` / `_rows` / `_versions` (legacy, §0.2) | 0 (all four) |
+| `portal_security_plans` / `_sections` / `_rows` / `_versions` (legacy, §0.2) | dropped — table does not exist |
 
 `simulator_migration_runs` confirms three real migrations have run
 (`2026-08-21-portal-v2-security-plan.sql`, `2026-08-31-security-plan-versioning-1561.sql`,
 `2026-08-31-security-plan-prose-1566.sql`); the `2085` business-unit migration and the `2026-09-04`
-drop migration are separate files not queried again here (§0.2 already covers the drop). No
-version has ever been sealed for either seeded tenant on this database — every wire shape below is
-verified against route/schema code, not against a live row.
+drop migration are separate files not re-queried in that table (§0.2 already covers the drop, and
+the drop was reconfirmed live against `information_schema.tables` for this correction — zero of
+the four legacy tables returned). No version has ever been sealed for either seeded tenant on this
+database — every wire shape below is verified against route/schema code, not against a live row.
 
 ---
 
@@ -450,14 +450,11 @@ never used that vocabulary.
 
 ## 7. Open, flagged — not resolved
 
-1. **The legacy `portal_security_plan*` tables (4, all 0 rows) are not yet dropped** — §0.2. The
-   migration file exists (`2026-09-04-drop-legacy-portal-security-plans.sql`) but is destructive
-   DDL, so it is Shane's to run per CLAUDE.md's Database section, not this pack's to execute.
-2. **Whether the MSP-side proxy-sign path (§3.6) should eventually be deprecated now that a real
+1. **Whether the MSP-side proxy-sign path (§3.6) should eventually be deprecated now that a real
    customer sign path exists is an open product call, not settled here** — §2.6. Nothing currently
    schedules that decision; flagged so Design/#1495 sees it rather than assuming one path was meant
    to replace the other.
-3. **Carried forward, still genuinely open, nothing since has touched them:** #1527 (Policy
+2. **Carried forward, still genuinely open, nothing since has touched them:** #1527 (Policy
    Decisions `decision_state` carrying `expired`), #1507 (Risk Register review-clock split), #1511
    (role-based acceptance authority), #1556/#1557 (SOPs/Runbooks unification), #1496 (Change
    Control's dead buttons). See the #1731 pack's §4 for the original per-module citation — none of
