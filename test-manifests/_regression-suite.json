@@ -14,6 +14,7 @@
     "portal/scan-status-progress.json",
     "portal/risk-register.json",
     "portal/ownership.json",
+    "portal/security-plan.json",
     "chat/support-chat-active-cards.json",
     "crm/zoho-lead-and-invoice-sync.json",
     "crm/zoho-lead-field-verification.json",
@@ -99,6 +100,7 @@
     "portal/sops-runbooks.json",
     "portal/microsoft-changes.json",
     "portal/config-state.json",
-    "portal/pillar-pages.json"
+    "portal/pillar-pages.json",
+    "portal/remediation-tracking.json"
   ]
 }

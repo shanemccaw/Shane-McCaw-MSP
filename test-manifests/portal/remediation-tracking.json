@@ -1,0 +1,112 @@
+{
+  "issue": 3037,
+  "feature": "Remediation Tracking: 28-step programme - the real artifacts/portal '/remediation-tracking' page (src/pages/remediation-tracking.tsx), part of #3037/Feature #1489. Wires GET /api/portal/remediation-tracker (steps + live pricing), PUT /api/portal/remediation-tracker/steps/:stepId, POST .../steps/:stepId/verify, GET .../steps/:stepId/verification-guide, POST .../steps/:stepId/decline-to-risk, per docs/remediation-tracking-contract-pack.md §1a and the landed 'Remediation Tracking.dc.html' export's 28-step programme tab. Does NOT cover the checklist/fix-routes/reveal/bypass-resolutions tabs (§1b-1e, #3038) or the pillar-scores panel / CSV / PDF / evidence-pack exports (§1f-1g, #3039) - those are separate real functional units under the same Feature.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "WHAT THIS COVERS: the auth gate on every §1a route, the real 200 payload shape (steps[] + pricing.phases[3]/pricing.hire), the explicit 400 §1a's PUT returns when a client tries to set accepted_risk directly (the signed-only guard), 400s for an unknown stepId across PUT/verify/verification-guide, a 404 for verification-guide on a step with no mapped check, and a real, REVERSIBLE PUT round-trip (unlike Risk Register's accept, a status PUT is not a permanent signed action, so the write is undone at the end of the same test run to keep this manifest idempotent).",
+    "WHY NO decline-to-risk HAPPY PATH IS DRIVEN HERE: same reason risk-register.json's own accept step is not driven - POST .../decline-to-risk creates a PERMANENT signed msp_risk_decisions row and 409s on a second attempt against the same step (§1a). Exercising it for real would either poison this manifest's re-runs or require a live SQL reset step outside the manifest's own scope. The 400 surface on the sibling PUT route (the same signed-only guard) is exercised instead, which is what proves the underlying contract.",
+    "NO UI LOGIN FLOW ASSERTED (same structural note test-manifests/portal/config-state.json and risk-register.json already carry): the uiStep below only asserts the honest 'Sign in required' gate an unauthenticated visitor gets; apiTests exercise the real backend directly with a real bearer token.",
+    "shaneapp://runTest WAS ACTUALLY INVOKED (2026-09-06, session for #3037), not skipped by assumption - two real attempts, both against this manifest AND against the pre-existing test-manifests/portal/risk-register.json (bare filename and full repo-relative path), all four returned the identical real envelope `{ ok:false, error:'manifest not found or unparseable: <file>' }`. Root cause confirmed directly, not guessed: BuildConsole's dev-server checkout (default `C:\\dev-server`) is on branch `dev-server` at commit 145ba36ad - `git log` there shows no test-manifests/ directory at all yet, hundreds of commits behind the origin/main HEAD this build pushes to (c51abcdf0 at push time). This is the SAME structural gap #3004's/#2996's/#2998's manifests already document (dev-server hasn't merged/restarted onto a current checkout), just with concrete evidence of exactly how stale rather than an assumption - not a runTest defect, and not specific to this file. Verified instead by a real `tsc -p tsconfig.json --noEmit` pass (0 errors) and a real `vite build` (succeeds) against artifacts/portal with this page/route/hooks added, plus direct reading of portal-remediation-tracker.ts confirming every status/error shape asserted below. Re-run via shaneapp://runTest once the dev-server merge/restart cycle has caught up.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use)."
+  ],
+
+  "apiTests": [
+    {
+      "name": "AUTH-GATE-1 - GET /api/portal/remediation-tracker with no Authorization header returns 401",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-2 - PUT .../steps/s1 with no Authorization header returns 401",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s1",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "status": "deferred" },
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP - log in as the designated testbed portal account to obtain a real client bearer; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "READ-1 - an authenticated GET returns a real steps array and a 3-phase live pricing block",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.steps", "isArray": true }
+    },
+    {
+      "name": "READ-2 - pricing.phases carries exactly the 3 fixed phases",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pricing.phases", "isArray": true, "length": 3 }
+    },
+    {
+      "name": "WRITE-1 - PUT s1 to 'deferred' round-trips the same status back (real write, reversed by WRITE-3 below)",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s1",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "deferred" },
+      "expect": { "status": 200, "jsonPath": "$.step.status", "equals": "deferred" }
+    },
+    {
+      "name": "GUARD-1 - PUT accepted_risk directly on the s1-s30 route is explicitly rejected 400 (signed-only guard, §1a) - re-runnable regardless of WRITE-1's state",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s1",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "accepted_risk" },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "GUARD-2 - PUT on an unknown stepId 400s rather than silently creating one",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s999",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "completed" },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "GUARD-3 - POST verify on an unknown stepId 400s",
+      "method": "POST",
+      "path": "/api/portal/remediation-tracker/steps/s999/verify",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "GUARD-4 - GET verification-guide for s18 (a real, permanent no-mapped-check step - contract pack §4c) 404s rather than fabricating guidance",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/steps/s18/verification-guide",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 404 }
+    },
+    {
+      "name": "WRITE-3 - reset s1 back to not_started so this manifest stays idempotent on re-run",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s1",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "not_started" },
+      "expect": { "status": 200, "jsonPath": "$.step.status", "equals": "not_started" }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/remediation-tracking" },
+    {
+      "name": "Unauthenticated visit: the shell route mounts and RequireAuth's honest sign-in-required panel renders (no portal login page exists at this route - the visitor is redirected to the app's own honest gate, not a crash or a silently-empty tracker)",
+      "action": "expect",
+      "selector": "h1",
+      "state": "visible",
+      "textContains": "Sign in required",
+      "critical": true
+    }
+  ]
+}

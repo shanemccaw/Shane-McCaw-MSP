@@ -1,0 +1,90 @@
+{
+  "issue": 3027,
+  "feature": "Security Plan (#3027, Feature #1495) -- the real customer-facing Security Plan page in artifacts/portal (/security-plan), wired to GET /api/portal/security-plan, GET /api/portal/security-plan/versions, GET /api/portal/security-plan/versions/current, POST /api/portal/security-plan/versions/:versionUid/sign, and the new GET /api/portal/security-plan/drift (added this build, reusing security-plan-drift.ts's own computeSecurityPlanDrift) -- see docs/security-plan-contract-pack.md. No fixture module: every row on screen comes from these endpoints.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "TBD-fill-at-DONE",
+
+  "notes": [
+    "WHAT THIS COVERS: the plan-of-record honest-null contract (assembledPlan: null when nothing has ever been signed), the review-before-sign tri-state on GET .../versions/current (404 never-sealed / 200 unsigned / 200 signed), the new GET .../drift endpoint's honest hasLastSignedVersion:false when there is no baseline yet, and the sign route's real guardrails (400 on a too-short name, 404 on a versionUid belonging to another tenant or that does not exist).",
+
+    "REAL LOCAL DB STATE AT THIS BUILD: msp_security_plan_versions has 0 rows for every tenant (confirmed via direct query against DATABASE_URL, matching docs/security-plan-contract-pack.md §0.4) -- no version has ever been sealed on this database. A1/A2/A3 below assert the real, honest empty-state responses this produces; they are not placeholders standing in for real data. Sealing a version is an MSP-side action (msp-security-plan.ts's freeze/prose/seal sequence), out of scope for this customer-facing manifest -- once a version is sealed and signed on the testbed tenant, A2 should be extended with a 200 assertion on the newly-real content.",
+
+    "WHY NO HAPPY-PATH SIGN IS DRIVEN HERE: signing is guarded to fire exactly once per version (409 on a second attempt) and there is no sealed version to sign against on this database yet (see above) -- A5 below proves the 400 (name too short) and A6 proves the 404 (nonexistent versionUid) guardrails without needing a real sealed version to exist.",
+
+    "NO UI LOGIN FLOW EXISTS YET FOR artifacts/portal -- same known, already-documented cross-cutting gap test-manifests/portal/risk-register.json's own notes describe. UI1/UI2 below only assert what is honestly reachable today: the route mounts and RequireAuth's honest 'Sign in required' panel renders for an unauthenticated visitor.",
+
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated testbed portal account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- the plan of record fails closed to null when nothing has ever been signed (contract pack §5.1) -- not a 500, not a fabricated plan.",
+      "method": "GET",
+      "path": "/api/portal/security-plan",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.assembledPlan", "equals": null }
+    },
+    {
+      "name": "A2 -- the full seal chain answers 200 with an array, honestly empty on this database (0 rows in msp_security_plan_versions).",
+      "method": "GET",
+      "path": "/api/portal/security-plan/versions",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.versions", "isArray": true }
+    },
+    {
+      "name": "A3 -- the current-version review read 404s honestly when nothing has ever been sealed (contract pack §5.2) -- distinct from a real, unsigned version, which would 200.",
+      "method": "GET",
+      "path": "/api/portal/security-plan/versions/current",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 404, "jsonPath": "$.error.code", "equals": "NOT_FOUND" }
+    },
+    {
+      "name": "A4 -- the new drift endpoint (added at #3027) answers 200 with hasLastSignedVersion:false when there is no signed baseline -- distinct from 'signed and nothing has moved since'.",
+      "method": "GET",
+      "path": "/api/portal/security-plan/drift",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.drift.hasLastSignedVersion", "equals": false },
+      "sessionTag": "security-plan-drift-3027"
+    },
+    {
+      "name": "A5 -- signing with a too-short name is refused 400 before any version lookup happens (contract pack §5.3).",
+      "method": "POST",
+      "path": "/api/portal/security-plan/versions/11111111-1111-1111-1111-111111111111/sign",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "fullName": "J" },
+      "expect": { "status": 400, "jsonPath": "$.error.code", "equals": "VALIDATION" }
+    },
+    {
+      "name": "A6 -- a nonexistent versionUid 404s exactly like one belonging to another tenant would (no ID-probing signal, contract pack §5.3).",
+      "method": "POST",
+      "path": "/api/portal/security-plan/versions/00000000-0000-0000-0000-000000000000/sign",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "fullName": "Regression Runner" },
+      "expect": { "status": 404, "jsonPath": "$.error.code", "equals": "NOT_FOUND" }
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "UI1 -- an unauthenticated visitor to /security-plan sees the app's own honest sign-in-required panel (no login page exists yet -- see notes), not a crash or a silently-empty plan.",
+      "action": "goto",
+      "target": "/portal/security-plan"
+    },
+    {
+      "name": "UI2 -- the honest gate renders.",
+      "action": "expect",
+      "selector": "body",
+      "textContains": "Sign in required",
+      "critical": true
+    }
+  ]
+}

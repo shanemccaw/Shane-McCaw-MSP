@@ -22,6 +22,8 @@ import SopsPage from "@/pages/sops";
 import RunbooksPage from "@/pages/runbooks";
 import RiskRegisterPage from "@/pages/risk-register";
 import OwnershipPage from "@/pages/ownership";
+import SecurityPlanPage from "@/pages/security-plan";
+import RemediationTrackingPage from "@/pages/remediation-tracking";
 import MicrosoftChangesPage from "@/pages/microsoft-changes";
 import PillarPage from "@/pages/pillar";
 import NotFound from "@/pages/not-found";
@@ -85,6 +87,8 @@ function ProtectedRoutes() {
           <Route path="/runbooks" component={RunbooksPage} />
           <Route path="/risk-register" component={RiskRegisterPage} />
           <Route path="/ownership" component={OwnershipPage} />
+          <Route path="/security-plan" component={SecurityPlanPage} />
+          <Route path="/remediation-tracking" component={RemediationTrackingPage} />
           <Route path="/microsoft-changes" component={MicrosoftChangesPage} />
           <Route path="/pillars/:pillar" component={PillarPage} />
           <Route path="/coming-soon" component={ComingSoon} />
