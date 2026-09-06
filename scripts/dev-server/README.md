@@ -68,6 +68,30 @@ node scripts/dev-server/bootstrap-server.mjs --link --launch
     `node_modules`: every third-party entry junctioned from main as before, but
     each `@workspace/<pkg>` junctioned directly at this worktree's own `lib/<pkg>`.
     Hosts with no `@workspace` scope stay a single wholesale junction.
+  * **This is the consolidated fix for the whole `@workspace/db` shared-junction
+    family — Git #2088 / #2089 / #2094 / #2097 / #2121.** All five were one root
+    cause: a worktree's `@workspace/db` was a shared link into main (or, under a
+    provisioning race, into an *unrelated sibling worktree*), so a worktree's own
+    `lib/db` schema edit was invisible to its consumers and the shared link
+    dangled cross-worktree. Per-package linking makes each worktree write **only
+    its own** links, so provisioning can never repoint main's link or a peer's.
+    Note the isolation holds **regardless of pnpm's hoist layout**: even a
+    consumer host that currently has *no* `@workspace` scope in its own
+    `node_modules` (pnpm hoists `@workspace` to the root `node_modules`, so
+    `artifacts/api-server` is wholesale-junctioned today) still resolves
+    `@workspace/db` to the worktree's **own** `lib/db` via the root
+    `node_modules`' per-package link and Node's normal upward resolution.
+  * **Verifying a worktree-local `lib/*` edit — no `paths`-override needed
+    anymore.** Because of #2152 + #2117, a worktree's normal `tsc` / `tsx` /
+    `vitest` / `node` already resolve `@workspace/db` (and its freshly-built
+    `dist`) to that worktree's own edited source. The throwaway `tsconfig`
+    `paths`-override that earlier sessions improvised (#2089/#2094/#2097) is
+    obsolete — run the ordinary typecheck/test. If you ever need to confirm the
+    junctions are healthy from inside a worktree, resolve it directly:
+    `cd artifacts/api-server && node -e 'import.meta.resolve("@workspace/db").then(u=>console.log(u))'`
+    should print a path under **your** worktree, not `C:\Source\...` or another
+    `C:\wt\...`. `store-doctor.mjs` (below) is the main-checkout-side scanner for
+    the poison that used to cause this.
 * `--launch` starts `dev-all.mjs`. Re-running bootstrap is safe/idempotent.
 
 Default server worktree: `C:\dev-server` (short path — the deep `Design/_ds/...`
@@ -396,6 +420,26 @@ extra restart, real cross-process concurrency (N concurrent CLI calls → all
 commits land, restarts < N), merge-conflict abort leaving a clean checkout, and
 stale-lock recovery.
 
+## Verify worktree `@workspace` isolation (Git #2121)
+
+```
+node scripts/dev-server/worktree-isolation.selftest.mjs
+```
+
+The automated regression guard for the per-package `@workspace` linking above —
+the consolidated fix for #2088 / #2089 / #2094 / #2097 / #2121. It builds a
+faithful throwaway workspace fixture in `os.tmpdir()` (a main checkout with a
+shared store, plus two "worktrees" each carrying their own distinctly-marked
+`lib/db`), runs the **real** `linkDeps()`, and asserts the end-user OUTCOME with
+Node's real resolver: a worktree consumer (both an `@workspace`-scope host and a
+wholesale-junctioned one) resolves + executes its **own** `lib/db`, main's own
+links are never repointed at a worktree, two concurrent worktrees never see each
+other's `lib/db`, third-party deps still come from the shared store, and cleanup
+leaves no junction that would delete THROUGH into the store. Windows-only (SKIPs
+cleanly elsewhere); touches nothing real. Because it asserts the marker the
+consumer actually executes, the OLD wholesale-junction bug (consumer resolves
+main's `lib/db`) makes it go red — it is a real guard, not a rubber stamp.
+
 ## Files
 
 | File | Role |
@@ -417,6 +461,7 @@ stale-lock recovery.
 | `link-deps.mjs` | Junction `node_modules` into a worktree (Windows recipe) and build `lib/*/dist` from that worktree's own source (`buildLibDist`, Git #2117). |
 | `store-doctor.mjs` | **Git #1988/#1980** — scan the shared main-checkout `node_modules` for links/`.bin` shims that resolve into a worktree or dangle. `--repair` is the standalone CLI entry point; `provision-worktree.mjs` and `worktree-lifecycle.mjs` also call `repairSharedStore()` directly the moment their own scan finds poisoning. |
 | `selftest.mjs` | Cross-process verification of the whole mechanism. |
+| `worktree-isolation.selftest.mjs` | **Git #2121** — regression guard for per-package `@workspace` isolation (#2088/#2089/#2094/#2097/#2121): real `linkDeps()` over a throwaway fixture, asserts a worktree consumer resolves + executes its own `lib/db`, no cross-worktree bleed, no delete-through. |
 | `worktree-sweep.selftest.mjs` | **Git #2537 / #1958** — sweep decision self-test: a live/recently-active worktree is retained (#2537), and an aged-out worktree that still holds uncommitted/unpushed work is retained-for-resume rather than removed (#1958), while `--force` still reclaims it. |
 | `worktree-reprovision.selftest.mjs` | **Git #1958** — pause/resume guards: `detectWorktreeWork` (shared dirty/unpushed truth, markers filtered), `findOrphanedRescueBranches` + `writeReprovisionMarker` (tell a resumed session its prior work was rescued to `rescued/<name>-*` instead of silently handing it a clean tree). |
 | `verify-branch-merged.mjs` | **Git #1447 Part 1** — `git merge-base --is-ancestor` check a session runs before writing a DONE bookend, to confirm its own branch actually landed on main (not just that the local worktree looks clean). |
