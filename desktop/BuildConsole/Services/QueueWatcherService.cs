@@ -1633,7 +1633,14 @@ namespace BuildConsole.Services
                         try { buildSetExpected = await _db.CountBuildSetMembersAsync(item.BuildSet); }
                         catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't count build-set members for '{item.BuildSet}': {ex.Message}"); }
                     }
-                    try { await LaunchItem(item, buildSetExpected); }
+                    // Git #2096 — TickAsync fires on the UI thread (DispatcherTimer.Tick), same as the
+                    // Click handlers #1881 fixed via SafeLaunch's Task.Run wrap. LaunchItem's tail
+                    // (RedirectedProcessLauncher.Launch, a synchronous Win32 CreateProcess call) and any
+                    // synchronous prefix before its first await ran directly on that UI thread here too —
+                    // unnoticed only because nobody is usually clicking when a background timer fires.
+                    // Wrapping in Task.Run hands the whole LaunchItem body to a thread-pool thread so a
+                    // real multi-item pickup can't sequentially stutter the UI thread once per item.
+                    try { await Task.Run(() => LaunchItem(item, buildSetExpected)); }
                     catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't launch queue item {item.Id} ({item.Title}): {ex.Message}"); }
                 }
             }

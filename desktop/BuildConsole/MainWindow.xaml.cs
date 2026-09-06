@@ -6346,6 +6346,40 @@ namespace BuildConsole
                 BuildConsole.Services.ActivityLog.Log("watcher",
                     "Auto-queue grace period stopped by user (#1884) — queue paused for this session, same as the manual pause toggle.");
             }
+            else
+            {
+                // Git #3005 — the launch gate has just lifted; this is the exact moment the
+                // queue's FIRST real claim tick runs. That claim's Git #1600/#1904 blocker
+                // re-check reads GitHub's live open-issue set, and if the shared #2815
+                // rate-limit circuit is open it holds every blocker-bearing build fail-closed.
+                //
+                // Investigation (this issue, ruling out the AllSettled/MarkShellReady lead in
+                // the body): the readiness chain fires on its own in ~2-4s every startup, so
+                // that is NOT why the queue sits idle. The real coupling is that the Git Board's
+                // GitHub open-issue fetch is manual-only (Shane, 2026-08-14 — the background
+                // poll was removed) and its ONE automatic fetch runs at ~3s, ~87s BEFORE this
+                // gate lifts — so its BoardRefreshCompleted → RequestImmediateReevaluation was
+                // gated out and wasted, and nothing re-fetches afterward. That left the only
+                // reliable way to (a) recover the #2815 circuit with a fresh successful GitHub
+                // call and (b) kick an immediate re-evaluation being Shane manually opening /
+                // refreshing the Git Board — the exact workaround this issue reports (confirmed
+                // in the real logs: queue recovery repeatedly coincides with a manual Refresh
+                // click, never an automatic one).
+                //
+                // Fix: automate that action at the right moment. A forceFresh board refresh here
+                // re-fetches GitHub open issues (an HTTP probe that also recovers the #2815
+                // circuit if it had tripped) and, via BoardRefreshCompleted, triggers an
+                // immediate queue re-evaluation against current data — no manual panel open
+                // required. Fire-and-forget and silent (PopulateGitTrackerBoardAsync catches its
+                // own network errors, and the watcher's own 10s poll remains the backstop for the
+                // rarer case where the circuit is still deep in a backoff window at this instant).
+                try { LeftSidebar.PopulateGitTrackerBoard(forceFresh: true); }
+                catch (Exception ex)
+                {
+                    BuildConsole.Services.ActivityLog.Log("watcher",
+                        $"Git #3005: couldn't kick a post-readiness Git Board refresh: {ex.Message}");
+                }
+            }
         }
 
         private void BtnAutoQueueStartNow_Click(object sender, RoutedEventArgs e) => ResolveAutoQueueGrace(pauseQueue: false);
