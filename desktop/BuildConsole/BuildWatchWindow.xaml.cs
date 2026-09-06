@@ -1733,6 +1733,7 @@ namespace BuildConsole
             {
                 try
                 {
+                    int originalQueueId = slot.QueueItemId;
                     var queued = await _db.QueueBuildAsync(
                         $"Continue: {slot.Title}",
                         text,
@@ -1745,6 +1746,18 @@ namespace BuildConsole
                         buildSet: slot.BuildSet, cli: slot.Cli, account: slot.Account);
 
                     int newQueueId = queued.Id;
+                    // Git #2120 — same fix as #2119's Reply flow: resolve the ORIGINAL slot row so
+                    // it doesn't sit stuck showing stale active status forever while the resumed
+                    // work runs under this new "Continue: …" row (originals here are typically
+                    // verifying/queued, which MarkSupersededByReplyAsync's guard already allows).
+                    try
+                    {
+                        await _db.MarkSupersededByReplyAsync(originalQueueId, newQueueId);
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("build-watch", $"Couldn't mark original #{originalQueueId} superseded by continuation #{newQueueId}: {ex.Message}");
+                    }
                     slot.QueueItemId = newQueueId;
                     slot.Pane.SetChecklistBuild(newQueueId);
                     slot.InteractiveCursor = 0;

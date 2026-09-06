@@ -976,7 +976,12 @@ namespace BuildConsole.Controls
                     {
                         var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
                         string? resumeSessionId = string.IsNullOrEmpty(item.SessionId) ? null : item.SessionId;
-                        await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, resumeSessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
+                        var recovered = await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, resumeSessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
+                        // Git #2120 — resolve the orphaned ORIGINAL the same as the per-item "▶ Resume
+                        // Session (crash recovery)" action does, whether this one was resumed or
+                        // restarted from scratch. Without this, every recovered original stayed at
+                        // failed/exit_code -2 and kept re-appearing in the orphan banner/Crashed filter.
+                        await _db.MarkOrphanSupersededByResumeAsync(item.Id, recovered.Id);
                         if (resumeSessionId != null) resumed++; else retried++;
                     }
                     catch (Exception ex)
@@ -4937,7 +4942,16 @@ namespace BuildConsole.Controls
                         try
                         {
                             var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
-                            await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, item.SessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
+                            var resumed = await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, item.SessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
+                            // Git #2120 — resolve the orphaned ORIGINAL (failed, exit_code -2) so it
+                            // stops satisfying UpdateOrphanRecoveryBanner/Crashed-filter's ExitCode==-2
+                            // test forever after being recovered. Same shape as #2119's Reply fix, but
+                            // via the orphan-specific transition since MarkSupersededByReplyAsync's
+                            // guard deliberately leaves a real `failed` row untouched.
+                            int superseded = await _db.MarkOrphanSupersededByResumeAsync(item.Id, resumed.Id);
+                            ActivityLog.Log("build-queue",
+                                $"Resumed orphaned queue #{item.Id} ({item.Title}) → new row #{resumed.Id}" +
+                                (superseded > 0 ? $"; original #{item.Id} marked superseded → #{resumed.Id}." : $"; original #{item.Id} left as-is (not a live orphan sentinel)."));
                             ToastEngine.Success("Resuming", $"Resuming from where it left off: {item.Title}");
                             await RefreshAsync();
                         }

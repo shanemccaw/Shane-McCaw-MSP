@@ -2213,6 +2213,23 @@ namespace BuildConsole.Controls
                         buildSet: _associatedBuild?.BuildSet, cli: _associatedBuild?.Cli, account: _associatedBuild?.Account);
                     newQueueId = queued.Id;
 
+                    // Git #2120 — same fix as #2119's Reply flow: resolve the ORIGINAL
+                    // _buildPaneItemId row so it doesn't sit stuck showing stale active status
+                    // forever while the resumed work runs under this new "Continue: …" row
+                    // (originals here are typically verifying/queued, which
+                    // MarkSupersededByReplyAsync's guard already allows).
+                    if (_buildPaneItemId > 0)
+                    {
+                        try
+                        {
+                            await db.MarkSupersededByReplyAsync(_buildPaneItemId, newQueueId);
+                        }
+                        catch (Exception ex)
+                        {
+                            ActivityLog.Log(Channel, $"Couldn't mark original #{_buildPaneItemId} superseded by continuation #{newQueueId}: {ex.Message}");
+                        }
+                    }
+
                     try
                     {
                         var claimed = await db.ForceClaimAsync(newQueueId);

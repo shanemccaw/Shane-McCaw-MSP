@@ -958,6 +958,43 @@ namespace BuildConsole.Services
             return await cmd.ExecuteNonQueryAsync();
         }
 
+        // ── MarkOrphanSupersededByResumeAsync ──────────────────────────────────────
+        /// <summary>
+        /// Git #2120 — the crash-recovery counterpart to <see cref="MarkSupersededByReplyAsync"/>.
+        /// That method's guard deliberately leaves a genuinely-<c>failed</c> row untouched (a real
+        /// final outcome must not be silently overwritten), which is correct for the Reply flow but
+        /// makes it a no-op for the one case that DOES need resolving: an orphan row (<c>failed</c>
+        /// with the crash sentinel <c>exit_code = -2</c>, written by
+        /// <c>RecoverOrphanedRunningItemsAsync</c>) that "▶ Resume Session (crash recovery)" or
+        /// "Recover All" has just re-queued into a fresh row. Left at <c>failed</c>, the recovered
+        /// original keeps satisfying <c>status == "failed" &amp;&amp; ExitCode == -2</c> forever —
+        /// which is exactly what <c>UpdateOrphanRecoveryBanner</c> and the Crashed filter test, so the
+        /// banner/filter never clear even though the build has genuinely been picked back up.
+        ///
+        /// Narrowly scoped to that one sentinel (<c>status = 'failed' AND exit_code = -2</c>) rather
+        /// than widening the general guard — a plain non-orphan failure (a real bug, a bad exit) must
+        /// still show as failed, never get silently relabeled superseded. Returns the number of rows
+        /// changed (0 if the row wasn't actually an orphan, e.g. already recovered concurrently).
+        /// </summary>
+        public async Task<int> MarkOrphanSupersededByResumeAsync(int originalId, int replacementId)
+        {
+            if (originalId == replacementId) return 0;
+
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status           = @superseded,
+                       superseded_by_id = @replacementId,
+                       updated_at       = NOW()
+                 WHERE id = @originalId
+                   AND status = 'failed'
+                   AND exit_code = -2", conn);
+            cmd.Parameters.AddWithValue("@superseded", SupersededStatus);
+            cmd.Parameters.AddWithValue("@replacementId", replacementId);
+            cmd.Parameters.AddWithValue("@originalId", originalId);
+            return await cmd.ExecuteNonQueryAsync();
+        }
+
         // ── False-done reconciliation (Git #2685 / #2775) ─────────────────────────
         /// <summary>
         /// Git #2685, widened by #2775 — every issue-linked queue row currently sitting in a
