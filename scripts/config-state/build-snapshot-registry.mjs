@@ -79,9 +79,18 @@ const EXECUTOR_BACKED = new Set(["graph", "powershell", "sharepoint-admin", "dns
  * in `child-worker.ps1` (only `exchange`/`compliance`/`teams` exist), so there is zero
  * live capability-survey evidence any of them even work app-only yet. Per #1961's own
  * discipline (proven-OK entries only, real DEV deployment + health check before use),
- * none are added here on a guess — building the PnP session type + module + survey is
- * real follow-up work of its own, filed separately. This set stays Exchange/Compliance/
- * Teams cmdlets only until that lands.
+ * none are added here on a guess. This set stays Exchange/Compliance/Teams cmdlets only.
+ *
+ * Git #2943 — and it should STAY that way: the follow-up #2873 anticipated (build the
+ * PnP session type) was investigated and rejected. PnP.PowerShell is a client for the
+ * SharePoint tenant-admin CSOM endpoint, and this platform already speaks that protocol
+ * in Node (artifacts/api-server/src/lib/sharepoint-admin.ts, certificate app-only +
+ * Sites.FullControl.All, already consented on the testbed tenant). A live read-only
+ * probe returned 200 on every probed endpoint, including a single CSOM read yielding
+ * 325 tenant properties. The real gap is that config-snapshot-collector.ts routes
+ * `sharepoint-admin` into the PowerShell container instead of that client. Do not add
+ * PnP cmdlets to this set; see docs/sharepoint-admin-transport-decision-2943.md and
+ * reproduce with scripts/config-state/probe-sharepoint-admin-transport.mjs.
  */
 const PS_CATALOG_CMDLETS = new Set([
   "Get-AcceptedDomain", "Get-ActiveSyncDeviceAccessRule", "Get-AddressBookPolicy",
@@ -341,9 +350,21 @@ async function main() {
         reason = "no_executor";
         const named = (Array.isArray(res.read_cmdlets) ? res.read_cmdlets : [])
           .filter((c) => !PS_NON_READ_HELPER_CMDLETS.has(c));
-        const gitRef = res.read_transport === "sharepoint-admin" ? "#2873" : "#2841";
-        notes = `No ps-execution catalog entry invokes this resource's read cmdlet unfiltered — needs ` +
-          `${named.length > 0 ? named.join(", ") : "(no read cmdlet recorded)"} (Git ${gitRef})`;
+        const namedList = named.length > 0 ? named.join(", ") : "(no read cmdlet recorded)";
+        notes = res.read_transport === "sharepoint-admin"
+          // Git #2943: the gate stays (nothing collects these yet), but the REASON
+          // #2873 recorded is about the wrong component. These rows are not
+          // unreachable — a live read-only probe against the testbed tenant returned
+          // 200 for every one of them over the CSOM/REST client the platform already
+          // has in artifacts/api-server/src/lib/sharepoint-admin.ts. What is missing
+          // is the collector wiring, not a PnP module in the ps-execution container.
+          // See docs/sharepoint-admin-transport-decision-2943.md.
+          ? `Reachable today over SharePoint tenant-admin CSOM/REST (sharepoint-admin.ts), NOT via ` +
+            `ps-execution: config-snapshot-collector.ts routes this transport to the PowerShell ` +
+            `container, which has no PnP module and cannot serve ${namedList}. Needs the collector ` +
+            `wired to the existing Node client — see docs/sharepoint-admin-transport-decision-2943.md (Git #2943)`
+          : `No ps-execution catalog entry invokes this resource's read cmdlet unfiltered — needs ` +
+            `${namedList} (Git #2841)`;
       } else if (identity.strategy === "unresolved") {
         reason = "identity_unresolved";
       } else if (res.graph_container_kind === "function") {
