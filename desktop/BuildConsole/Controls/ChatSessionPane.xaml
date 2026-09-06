@@ -546,8 +546,11 @@
                         Padding="{Binding ActualWidth, ElementName=Root, Converter={StaticResource FluidPad}, ConverterParameter='14,36'}">
                     <StackPanel>
 
-                        <!-- Interactive / Continuation: real input shell remains available -->
-                        <Border Visibility="{Binding Mode, Converter={StaticResource ModeVis}, ConverterParameter=InteractiveOrTerminal}"
+                        <!-- Interactive / Continuation / Git #2095 AdoptedReadOnly: real input shell remains
+                             available — for AdoptedReadOnly, OwnsInteractive is always false, so Send here
+                             always falls through to the same resume continuation branch Terminal mode uses
+                             (never a live-stdin write). -->
+                        <Border Visibility="{Binding Mode, Converter={StaticResource ModeVis}, ConverterParameter='Interactive,Terminal,AdoptedReadOnly'}"
                                 BorderBrush="{StaticResource ChatPane.BorderStrong}" BorderThickness="1" CornerRadius="10" Background="{StaticResource ChatPane.Surface}"
                                 Padding="10,7,7,7">
                             <Grid>
@@ -620,16 +623,19 @@
                                    Text="Streaming output — read-only (not launched by this app instance)" Foreground="{StaticResource ChatPane.Muted6}"
                                    FontStyle="Italic" FontSize="12.5" Margin="2,4"/>
 
-                        <!-- Git #1839 — Adopted after a console restart: streaming + Stop stay, but stdin is gone. -->
+                        <!-- Git #1839 — Adopted after a console restart: streaming + Stop stay, but stdin is gone.
+                             Git #2095 — Stop now lives on the composer above (shared with Interactive/Terminal),
+                             so this note keeps only the explanation + the one-click "no typing needed" path;
+                             typing into the composer above and hitting Send is the "with guidance" path,
+                             both landing on the same resume continuation. -->
                         <Grid Visibility="{Binding Mode, Converter={StaticResource ModeVis}, ConverterParameter=AdoptedReadOnly}" Margin="2,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center"
                                        Foreground="{StaticResource ChatPane.Muted6}" FontStyle="Italic" FontSize="12.5"
-                                       Text="Adopted after a console restart — its live input channel is gone. Streaming and Stop still work; use Resume Session to talk to it again."/>
+                                       Text="Adopted after a console restart — its live input channel is gone. Type above and Send to resume with instructions, or use Resume Session to pick back up with no changes."/>
                             <!-- Git #1878 — one-click resume, no trip to Build Queue's context menu required. -->
                             <Button Grid.Column="1" Click="ResumeButton_Click"
                                     Height="36" Padding="14,0" Margin="10,0,0,0" VerticalAlignment="Center"
@@ -644,23 +650,6 @@
                                 </Button.Template>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="▶ Resume Session" Foreground="White" FontWeight="SemiBold" FontSize="13"/>
-                                </StackPanel>
-                            </Button>
-                            <Button Grid.Column="2" Click="StopButton_Click" IsEnabled="{Binding CanStop}"
-                                    Visibility="{Binding CanStop, Converter={StaticResource BoolVis}}"
-                                    Height="36" Padding="14,0" Margin="10,0,0,0" VerticalAlignment="Center"
-                                    Background="{StaticResource ChatPane.DangerFill}" BorderBrush="{StaticResource ChatPane.DangerBorder}" BorderThickness="1"
-                                    Cursor="Hand">
-                                <Button.Template>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
-                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Button.Template>
-                                <StackPanel Orientation="Horizontal">
-                                    <Path Data="{StaticResource Icon.Square}" Fill="{StaticResource ChatPane.Danger}" Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Stop" Foreground="{StaticResource ChatPane.Danger}" FontWeight="SemiBold" FontSize="13" Margin="6,0,0,0"/>
                                 </StackPanel>
                             </Button>
                         </Grid>

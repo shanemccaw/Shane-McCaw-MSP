@@ -1087,7 +1087,11 @@ namespace BuildConsole
                         ? (slotAdopted ? ComposerMode.AdoptedReadOnly : ComposerMode.Interactive)
                         : ComposerMode.ReadOnlyRunning;
                     vm.CanStop = slot.InteractiveBound;
-                    vm.PlaceholderText = "Type to guide Claude mid-task — Shift+Enter for new line";
+                    // Git #2095 — adopted has no live stdin, so typed text always becomes a fresh
+                    // --resume continuation rather than a mid-task nudge; word the placeholder accordingly.
+                    vm.PlaceholderText = slotAdopted
+                        ? "Type instructions and Send to resume with them — Shift+Enter for new line"
+                        : "Type to guide Claude mid-task — Shift+Enter for new line";
                     slot.CompletedAtUtc = null;
                     slot.Container.BorderBrush = _emptyBorder;
                     slot.Container.BorderThickness = new Thickness(1);
@@ -1680,6 +1684,13 @@ namespace BuildConsole
                     slot.StatusLine!.Spinning = false;
                     break;
             }
+
+            // Git #2095 — the switch above writes wording tuned for the LIVE-stdin case ("goes
+            // straight to its stdin"). Adopted has no live stdin at all: typed text always becomes
+            // a fresh --resume continuation, never a mid-task nudge. Override with wording that
+            // matches what Send will actually do here.
+            if (adopted)
+                slot.Pane.ViewModel.PlaceholderText = "Type instructions and Send to resume with them — Shift+Enter for new line";
         }
 
         /// <summary>Send clicked / Enter pressed (raised by ChatSessionPane.SendRequested) — handles live stdin input or launches a seamless continuation build with --resume.</summary>

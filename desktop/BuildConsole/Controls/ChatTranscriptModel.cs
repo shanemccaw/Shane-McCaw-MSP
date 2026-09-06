@@ -234,7 +234,11 @@ namespace BuildConsole.Controls
         private string _draft = "";
         public string Draft { get => _draft; set { if (SetProperty(ref _draft, value)) OnPropertyChanged(nameof(CanSend)); } }
 
-        public bool CanSend => (Mode is ComposerMode.Interactive or ComposerMode.Terminal) && !string.IsNullOrWhiteSpace(Draft);
+        // Git #2095 — AdoptedReadOnly's stdin is gone, but typed text can still become a real
+        // --resume follow-up (the same SendSlotInput/HandleBuildSend continuation branch Terminal
+        // mode already uses, since OwnsInteractive is always false for an adopted build). Only the
+        // live-stdin path (branch 1 of that continuation) is actually unavailable in this mode.
+        public bool CanSend => (Mode is ComposerMode.Interactive or ComposerMode.Terminal or ComposerMode.AdoptedReadOnly) && !string.IsNullOrWhiteSpace(Draft);
 
         private string _placeholderText = "Reply to Claude — Shift+Enter for a new line";
         public string PlaceholderText { get => _placeholderText; set => SetProperty(ref _placeholderText, value); }

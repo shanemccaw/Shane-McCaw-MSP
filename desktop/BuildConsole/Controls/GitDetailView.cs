@@ -2405,6 +2405,9 @@ namespace BuildConsole.Controls
                 var astate = w.GetInteractiveState(_buildPaneItemId) ?? InteractiveInputState.Working;
                 vm.Mode = ComposerMode.AdoptedReadOnly;
                 vm.CanStop = true;
+                // Git #2095 — no live stdin here; typed text always becomes a fresh --resume
+                // continuation (HandleBuildSend's branch 2), never a mid-task nudge.
+                vm.PlaceholderText = "Type instructions and Send to resume with them — Shift+Enter for new line";
                 EnsureStatusLine();
                 if (astate == InteractiveInputState.WaitingForInput)
                 {
