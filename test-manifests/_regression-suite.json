@@ -101,6 +101,7 @@
     "portal/microsoft-changes.json",
     "portal/config-state.json",
     "portal/pillar-pages.json",
-    "portal/remediation-tracking.json"
+    "portal/remediation-tracking.json",
+    "portal/remediation-tracking-checklist.json"
   ]
 }
