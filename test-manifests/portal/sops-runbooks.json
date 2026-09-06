@@ -4,7 +4,7 @@
   "lastVerifiedAgainstCommit": "PENDING_COMMIT",
   "notes": [
     "artifacts/msp-portal (the old '/portal-v2/*' surface, including test-manifests/portal/portal-v2-sops.json) was retired for artifacts/portal in f40438cdc (#1921). This manifest covers the REPLACEMENT pages at the new, un-slugged routes /portal/sops and /portal/runbooks -- it is not an update of portal-v2-sops.json, which tests a page that no longer exists in the tree.",
-    "NO LOGIN PAGE EXISTS YET IN artifacts/portal (see App.tsx's own RequireAuth comment: 'Until a login page is rebuilt under its own issue, an unauthenticated visitor sees an honest sign-in-required panel'). So unlike the old portal-v2-* manifests, this one CANNOT drive a real #email/#password uiSteps login -- there is no form to fill in. The uiSteps below therefore assert the one thing that IS real and reachable without auth: that /portal/sops and /portal/runbooks resolve to the app's own RequireAuth gate (data-testid='require-auth-panel'), not a 404 or a route that doesn't exist. Once a real login page ships for this app, add an authenticated uiSteps block here following the same #email/#password/login-submit pattern test-manifests/portal/portal-v2-overview.json already proves, then assert the real page content (data-testid='sops-page' / 'runbooks-page' and their tab/row testids, all already present in the shipped components).",
+    "Real login (#2991, Feature #1648) landed in artifacts/portal concurrently with this build -- /portal/login, data-testid login-email/login-password/login-submit, POST /api/auth/login under the hood. The uiSteps below drive that real form rather than asserting only the unauthenticated RequireAuth gate. The testbed account (TEST_PORTAL_EMAIL) has no MFA enrolled, so login navigates straight to '/' with no MFA phase.",
     "apiTests below ARE fully authenticated (via the real POST /api/auth/login + Bearer token, same as every other portal manifest) and were hand-verified live against this environment before being written: GET /api/portal/sops returned 15 real msp_sops rows for the testbed account (customerId 1), GET /api/portal/sop-runs returned an empty queue + 15 real 'Version published' audit rows, GET /api/portal/runbooks returned a genuinely empty {runbooks:[],holds:[],summary:{...,text:'No hold windows'}} for this tenant (0 rows in portal_runbooks/portal_hold_windows at verification time -- a live-empty state, not a bug), and both POST /api/portal/sops and POST /api/portal/sops/:sopId/custom-steps were exercised for real and their written rows re-read back correctly shaped.",
     "A3c/A3d create a real 'ours'-source SOP row and a real custom-step overlay row on it, same pattern portal-v2-sops.json's own A3c/A3d used -- these are additive, idempotent-safe re-runs (a fresh row each time, never deleted), not destructive.",
     "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
@@ -118,15 +118,82 @@
       "critical": true
     },
     {
-      "name": "U3 -- /portal/runbooks resolves the same way.",
+      "name": "goto the real login page.",
       "action": "goto",
-      "target": "/portal/runbooks"
+      "target": "/portal/login"
     },
     {
-      "name": "U4 -- same real gate on the Runbooks route.",
+      "name": "WAIT for the login form to hydrate.",
       "action": "expect",
-      "selector": "[data-testid='require-auth-panel']",
+      "selector": "[data-testid='login-email']",
+      "state": "visible"
+    },
+    {
+      "action": "input",
+      "selector": "[data-testid='login-email']",
+      "value": "{{TEST_PORTAL_EMAIL}}"
+    },
+    {
+      "action": "input",
+      "selector": "[data-testid='login-password']",
+      "value": "{{TEST_PORTAL_PASSWORD}}"
+    },
+    {
+      "name": "Primary login. The testbed account has no MFA enrolled, so this lands straight on '/'.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true
+    },
+    {
+      "name": "goto the SOPs page.",
+      "action": "goto",
+      "target": "/portal/sops",
+      "critical": true
+    },
+    {
+      "name": "U5 -- the real page renders, not the sign-in gate.",
+      "action": "expect",
+      "selector": "[data-testid='sops-page']",
       "state": "visible",
+      "critical": true
+    },
+    {
+      "name": "U6 -- a real, seeded library row (#1560's IAM-01, msp_sops) is on screen -- proves this is GET /api/portal/sops, not a fixture.",
+      "action": "expect",
+      "selector": "[data-testid='sops-row-SOP-SEED-IAM-01']",
+      "state": "visible",
+      "critical": true
+    },
+    {
+      "name": "Switch to the Queue tab.",
+      "action": "click",
+      "selector": "[data-testid='sops-tab-queue']"
+    },
+    {
+      "name": "U7 -- the honest empty-queue state renders for this tenant (0 msp_sop_runs rows) rather than a fabricated row.",
+      "action": "expect",
+      "selector": "[data-testid='sops-page']",
+      "textContains": "Nothing running or queued",
+      "critical": true
+    },
+    {
+      "name": "goto Active Runbooks.",
+      "action": "goto",
+      "target": "/portal/runbooks",
+      "critical": true
+    },
+    {
+      "name": "U8 -- the real page renders.",
+      "action": "expect",
+      "selector": "[data-testid='runbooks-page']",
+      "state": "visible",
+      "critical": true
+    },
+    {
+      "name": "U9 -- the honest empty state renders for this tenant (0 portal_runbooks rows) rather than a fabricated card.",
+      "action": "expect",
+      "selector": "[data-testid='runbooks-page']",
+      "textContains": "No active runbooks",
       "critical": true
     }
   ]
