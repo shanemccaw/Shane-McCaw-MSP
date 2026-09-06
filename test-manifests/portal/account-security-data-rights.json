@@ -2,7 +2,7 @@
   "issue": 2996,
   "feature": "Account security - the real artifacts/portal '/account-security' page (src/pages/account-security.tsx), part of #1595. This manifest covers #2996's own scope specifically: the two data-rights endpoints traced in Design/portal/design_handoff_full_site/docs/account-security-contract-pack.md - GET /api/portal/data-export (portal-privacy.ts, right to portability, requireAuth) and POST /api/portal/deletion-request (portal-privacy.ts, right to erasure, requireAuth) - plus the page's read-only supporting reads (GET /api/auth/mfa/enrollments, GET /api/auth/sessions, GET /api/auth/login-history) needed to render the page honestly. Change-password (#1675) and MFA self-service enrollment are a different sibling issue's scope and are deliberately left inert on this page per the design's own 'Not wired yet' copy - not covered here.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "a30324372fd0be616c7206a5ea3c9940a89d6fce",
 
   "notes": [
     "WHAT THIS COVERS: all four reads (mfa/enrollments, sessions, login-history, data-export) and the deletion-request write are auth-gated as documented, and a logged-in customer gets the real payload shapes the page's useAccountSecurityLive hook consumes.",
