@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
-import { useServices, resolvePublicServicePriceCents, type PublicService } from "@/hooks/useServices";
 import { RetainerCheckout, type RetainerTier } from "./work-with-me/RetainerCheckout";
 
 /**
@@ -22,29 +21,43 @@ import { RetainerCheckout, type RetainerTier } from "./work-with-me/RetainerChec
  * checkout (RetainerCheckout), per Design/fractional_architecture/README.md §1
  * and Work With Me.dc.html.
  *
- * Prices, hours and tier names come from the live `services` catalog
- * (`/api/services?type=retainer`), never a literal in this file. The fixed
- * display order and the design's marketing "fit" line / tag are mapped by slug.
+ * Prices/hours/names for the four fixed tiers are HARDCODED below (#2964) — a
+ * deliberate, explicit, temporary exception to this project's standing
+ * "no fixture data" rule (Shane's direction), scoped only to this retainer
+ * pricing for this release. This is the SAME source `public-retainer-payment.ts`
+ * (the route that actually charges Stripe) reads from; the two must never drift
+ * apart. Do not reintroduce a live `services` fetch for these four tiers.
  */
 
 const KEYFRAMES = `@keyframes smcSpin{to{transform:rotate(360deg)}}`;
 
 /** The four fixed tiers, in the design's order, with the design's verbatim
- *  marketing copy. Prices/hours/names are NOT here — they come from the catalog
- *  row matched by slug. A catalog row without a matching entry here is skipped
- *  (the two discovery-call scoped retainers are shown separately). */
-const TIER_META: Record<string, { fit: string; tag?: string }> = {
+ *  marketing copy AND the hardcoded price/hours/name (#2964) — identical values
+ *  to HARDCODED_RETAINER_TIERS in artifacts/api-server/src/routes/public-retainer-payment.ts. */
+const TIER_META: Record<string, { name: string; priceCents: number; hours: string; fit: string; tag?: string }> = {
   "architect-advisory-retainer": {
+    name: "Architect Advisory Retainer",
+    priceCents: 90_000,
+    hours: "5",
     fit: "A standing second opinion. Architecture questions answered before they become tickets.",
     tag: "Start here",
   },
   "architect-essentials-retainer": {
+    name: "Architect Essentials Retainer",
+    priceCents: 150_000,
+    hours: "8",
     fit: "A monthly review plus one live piece of work, every month.",
   },
   "architect-growth-retainer": {
+    name: "Architect Growth Retainer",
+    priceCents: 300_000,
+    hours: "16",
     fit: "Two days a month. Roadmap ownership plus hands-on configuration in your tenant.",
   },
   "architect-enterprise-retainer": {
+    name: "Architect Enterprise Retainer",
+    priceCents: 550_000,
+    hours: "30",
     fit: "Roughly a day a week. Shane as your fractional lead architect.",
   },
 };
@@ -93,30 +106,24 @@ interface ResolvedTier extends RetainerTier {
 }
 
 export default function WorkWithMe() {
-  const { services } = useServices({ type: "retainer" });
-
   const tiers: ResolvedTier[] = useMemo(() => {
-    const bySlug = new Map(services.filter((s) => s.slug).map((s) => [s.slug as string, s]));
     const out: ResolvedTier[] = [];
     TIER_ORDER.forEach((slug, i) => {
-      const svc = bySlug.get(slug);
       const meta = TIER_META[slug];
-      if (!svc || !meta) return;
-      const cents = resolvePublicServicePriceCents(svc);
-      if (cents == null || cents <= 0) return; // no self-serve price → not shown as a buyable tier
+      if (!meta) return;
       out.push({
         slug,
-        name: svc.name,
-        priceText: formatCents(cents),
-        hoursText: svc.hoursPerMonth ?? "",
-        payLabel: `Start retainer · ${formatCents(cents)}/mo`,
+        name: meta.name,
+        priceText: formatCents(meta.priceCents),
+        hoursText: meta.hours,
+        payLabel: `Start retainer · ${formatCents(meta.priceCents)}/mo`,
         index: String(i + 1).padStart(2, "0"),
         fit: meta.fit,
         tag: meta.tag,
       });
     });
     return out;
-  }, [services]);
+  }, []);
 
   const [openTier, setOpenTier] = useState<string | null>(null);
 
