@@ -417,6 +417,8 @@ stale-lock recovery.
 | `link-deps.mjs` | Junction `node_modules` into a worktree (Windows recipe) and build `lib/*/dist` from that worktree's own source (`buildLibDist`, Git #2117). |
 | `store-doctor.mjs` | **Git #1988/#1980** — scan the shared main-checkout `node_modules` for links/`.bin` shims that resolve into a worktree or dangle. `--repair` is the standalone CLI entry point; `provision-worktree.mjs` and `worktree-lifecycle.mjs` also call `repairSharedStore()` directly the moment their own scan finds poisoning. |
 | `selftest.mjs` | Cross-process verification of the whole mechanism. |
+| `worktree-sweep.selftest.mjs` | **Git #2537 / #1958** — sweep decision self-test: a live/recently-active worktree is retained (#2537), and an aged-out worktree that still holds uncommitted/unpushed work is retained-for-resume rather than removed (#1958), while `--force` still reclaims it. |
+| `worktree-reprovision.selftest.mjs` | **Git #1958** — pause/resume guards: `detectWorktreeWork` (shared dirty/unpushed truth, markers filtered), `findOrphanedRescueBranches` + `writeReprovisionMarker` (tell a resumed session its prior work was rescued to `rescued/<name>-*` instead of silently handing it a clean tree). |
 | `verify-branch-merged.mjs` | **Git #1447 Part 1** — `git merge-base --is-ancestor` check a session runs before writing a DONE bookend, to confirm its own branch actually landed on main (not just that the local worktree looks clean). |
 | `check-stranded-branches.mjs` | **Git #1447 Part 2** — sweeps every `agent/*` branch against main and reports which have commits main doesn't have ("stranded"). Deliberately separate from the worktree-lifecycle orphan sweep above — different question, different terminology. |
 

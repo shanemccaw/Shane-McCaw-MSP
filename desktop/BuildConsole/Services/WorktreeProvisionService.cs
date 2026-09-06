@@ -16,6 +16,11 @@ namespace BuildConsole.Services
         public bool Reused { get; set; }
         public string? Error { get; set; }
         public string RawOutput { get; set; } = string.Empty;
+        /// <summary>Git #1958 — non-empty when this (re-)provisioned worktree does NOT contain a
+        /// prior session's rescued work; each entry is a <c>rescued/&lt;name&gt;-*</c> branch the
+        /// earlier session's uncommitted/unpushed work was preserved to. A resumed build must not
+        /// trust a clean <c>git status</c> when this is set.</summary>
+        public List<string> PriorWorkRescued { get; set; } = new();
     }
 
     /// <summary>
@@ -104,6 +109,11 @@ namespace BuildConsole.Services
                     if (root.TryGetProperty("branch", out var b) && b.ValueKind == JsonValueKind.String) res.Branch = b.GetString();
                     if (root.TryGetProperty("reused", out var r) && r.ValueKind != JsonValueKind.Null) res.Reused = r.ValueKind == JsonValueKind.True;
                     if (root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String) res.Error = e.GetString();
+                    // Git #1958 — capture the rescued-branch list so a re-provision over prior
+                    // work is durably visible in the activity log, not just in the worktree marker.
+                    if (root.TryGetProperty("priorWorkRescued", out var pw) && pw.ValueKind == JsonValueKind.Array)
+                        foreach (var el in pw.EnumerateArray())
+                            if (el.ValueKind == JsonValueKind.String) res.PriorWorkRescued.Add(el.GetString()!);
                 }
                 catch
                 {
@@ -119,6 +129,11 @@ namespace BuildConsole.Services
                     ActivityLog.Log(LogChannel, $"{actionDescription}: ok (path={res.Path}, reused={res.Reused}) in {sw.ElapsedMilliseconds}ms.{slow}");
                 else
                     ActivityLog.Log(LogChannel, $"{actionDescription}: FAILED in {sw.ElapsedMilliseconds}ms — {res.Error}");
+                // Git #1958 — a re-provision over prior work is a data-loss-adjacent event: the
+                // resumed build's checkout is missing an earlier session's work (now on rescued/*).
+                // Log it loudly and durably so it's discoverable from the activity log alone.
+                if (res.Ok && res.PriorWorkRescued.Count > 0)
+                    ActivityLog.Log(LogChannel, $"{actionDescription}: ⚠ RE-PROVISION over prior work (Git #1958) — this checkout does NOT contain it; rescued to: {string.Join(", ", res.PriorWorkRescued)}. See {res.Path}\\.worktree-reprovisioned.json.");
                 return res;
             }
             catch (Exception ex)

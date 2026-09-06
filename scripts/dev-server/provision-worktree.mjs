@@ -38,6 +38,8 @@ import {
   getWorktreeRecord,
   updateWorktreeRecord,
   normalizePath,
+  findOrphanedRescueBranches,
+  writeReprovisionMarker,
 } from "./worktree-lifecycle.mjs";
 
 function parse(argv) {
@@ -160,6 +162,13 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
       // queued build failed before claude.exe was ever started. envFiles is returned on
       // the result instead; only main()'s human-readable (non --json) path prints it.
       const envResult = copyEnvFiles(repo, wtPath);
+      // Git #1958 — even on the reuse path, surface any prior-session work that a sweep
+      // rescued under this same name but the reused checkout doesn't contain, so a resumed
+      // session is never silently handed a clean tree over discarded work.
+      const orphanedReuse = findOrphanedRescueBranches(config, name, wtPath);
+      const priorWorkRescued = orphanedReuse.length
+        ? (writeReprovisionMarker(config, wtPath, orphanedReuse), orphanedReuse.map((o) => o.branch))
+        : null;
       return {
         ok: true,
         name,
@@ -172,6 +181,7 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
         recordId: rec?.id || null,
         envFiles: envResult,
         storeHealth,
+        priorWorkRescued,
       };
     }
     // Git #2720 (the confirmed real cause of #2118's "empty unprovisioned worktree"
@@ -251,6 +261,15 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
     creatorPid,
   });
 
+  // Git #1958 — a FRESH create for a name that already has `rescued/<name>-*` branches is
+  // the exact #1550 shape: a prior worktree was swept/removed (its branch deleted), and this
+  // resume re-created the branch off a newer origin/main, orphaning the earlier work. Drop a
+  // visible marker + report it so the resumed session doesn't trust its clean checkout.
+  const orphanedFresh = findOrphanedRescueBranches(config, name, wtPath);
+  const priorWorkRescued = orphanedFresh.length
+    ? (writeReprovisionMarker(config, wtPath, orphanedFresh), orphanedFresh.map((o) => o.branch))
+    : null;
+
   return {
     ok: true,
     name,
@@ -264,6 +283,7 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
     envFiles: envResult,
     storeHealth,
     libsBuilt,
+    priorWorkRescued,
   };
 }
 
@@ -332,6 +352,14 @@ function main() {
   // the human-readable path prints this, so --json output stays pure JSON.
   if (res.envFiles) logEnvCopy(res.envFiles);
   logStoreHealth(res.storeHealth);
+
+  // Git #1958 — loudest possible signal to a resuming human/session that this worktree
+  // does NOT contain a prior session's rescued work (a clean git status here is a trap).
+  if (res.priorWorkRescued && res.priorWorkRescued.length) {
+    console.warn(`  !!! PRIOR WORK RESCUED ELSEWHERE (Git #1958) — this checkout does NOT contain it:`);
+    for (const b of res.priorWorkRescued) console.warn(`      -> ${b}`);
+    console.warn(`      See ${res.path}\\.worktree-reprovisioned.json for recovery steps.`);
+  }
 
   console.log(res.reused ? `Reused existing worktree` : `Created worktree`);
   console.log(`  path   : ${res.path}`);

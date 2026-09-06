@@ -83,12 +83,25 @@ async function main() {
     ok(!inList(s1.removed, liveWt),
       "recordless but freshly-active agent/* worktree is NOT a removal candidate");
 
-    // --- Non-regression: the same worktree, once its activity ages past the grace, IS still
-    //     reclaimable — the fix protects LIVE work, it does not permanently leak dead worktrees.
-    //     A 1 ms grace makes even just-written activity "too old", exercising the expiry branch. ---
+    // --- Git #1958 — the SAME worktree, once its activity ages past the grace (maxAgeMs:1),
+    //     STILL holds the untracked WIP file, i.e. real uncommitted work. Before #1958 the
+    //     non-force sweep removed it here; that is the exact silent data loss #1958 filed (even
+    //     the #1971 rescue-to-branch tears down the tree a paused build would resume into). It
+    //     is now RETAINED for resume instead. We assert on the retain REASON so a mere
+    //     grace-window retention (which would read "active recently") can't false-pass this. ---
     const s2 = sweepWorktrees(config, { dryRun: true, maxAgeMs: 1 });
-    ok(inList(s2.removed, liveWt),
-      "an agent/* worktree with no recent activity (grace expired) is still a removal candidate — no permanent leak");
+    const r2 = s2.retained.find((r) => norm(path.resolve(r.path)) === norm(path.resolve(liveWt)));
+    ok(r2 && /1958/.test(r2.reason || ""),
+      "an aged-out worktree that STILL holds uncommitted work is RETAINED for resume (Git #1958)");
+    ok(!inList(s2.removed, liveWt),
+      "an aged-out work-bearing worktree is NOT a non-force removal candidate (Git #1958)");
+
+    // --- #2537 no-permanent-leak guarantee preserved: an explicit force/--all sweep STILL
+    //     reclaims the work-bearing worktree (removeWorktreeSafe rescues to rescued/* first),
+    //     so retained-for-resume never becomes an unbounded leak. ---
+    const s3 = sweepWorktrees(config, { dryRun: true, maxAgeMs: 1, force: true });
+    ok(inList(s3.removed, liveWt),
+      "a force/--all sweep still reclaims the work-bearing worktree — no permanent leak (#2537 preserved)");
 
     console.log(failures === 0 ? "\nAll worktree-sweep self-tests passed." : `\n${failures} assertion(s) FAILED.`);
   } finally {

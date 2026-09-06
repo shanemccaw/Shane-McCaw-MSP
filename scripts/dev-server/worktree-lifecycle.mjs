@@ -51,6 +51,13 @@ import { scanSharedStore, repairSharedStore } from "./store-doctor.mjs";
 // BuildConsole bookkeeping, never real work, so preservation must not count it as "dirty".
 const STALE_MARKER_NAME = ".stale-worktree.json";
 
+// Git #1958 — dropped into a freshly (re-)provisioned worktree when a prior session's
+// work was rescued elsewhere (pause/resume or sweep), so a resumed session is never
+// silently handed a clean `git status` over discarded work. Also BuildConsole
+// bookkeeping, never real work — filtered from dirty detection exactly like the stale
+// marker above.
+export const REPROVISION_MARKER_NAME = ".worktree-reprovisioned.json";
+
 export function normalizePath(p) {
   if (!p) return "";
   const resolved = path.resolve(p);
@@ -232,6 +239,85 @@ export function markWorktreeStale(config, nameOrPath, { reason = "build error / 
 }
 
 /**
+ * Git #1958 — find `rescued/<name>-*` branches whose tip is NOT already reachable from
+ * the given worktree HEAD, i.e. a prior session's work that a re-provision left orphaned.
+ * These are the branches preserveWorktreeWork() stamped when an earlier same-named worktree
+ * was swept/removed. A resumed build that re-provisions a fresh worktree off a newer
+ * origin/main needs to know they exist so it never silently trusts a clean `git status`.
+ *
+ * @returns {Array<{ branch: string, tip: string }>}
+ */
+export function findOrphanedRescueBranches(config, name, wtPath) {
+  try {
+    const safe = sanitizeId(name);
+    const prefix = `rescued/${safe}-`;
+    const r = git(config.mainRepoRoot, [
+      "for-each-ref",
+      "--format=%(refname:short) %(objectname)",
+      `refs/heads/${prefix}*`,
+    ]);
+    if (r.code !== 0) return [];
+    const head = wtPath && existsSync(wtPath) && isGitRepo(wtPath) ? revParse(wtPath, "HEAD") : null;
+    const out = [];
+    for (const line of (r.stdout || "").split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t) continue;
+      const sp = t.lastIndexOf(" ");
+      if (sp < 0) continue;
+      const branch = t.slice(0, sp).trim();
+      const tip = t.slice(sp + 1).trim();
+      if (!branch.startsWith(prefix) || !tip) continue;
+      // Orphaned only if the new worktree HEAD does not already contain the rescued tip
+      // (a resumed session that already cherry-picked/merged it shouldn't be re-warned).
+      const reachable = head ? isAncestor(config.mainRepoRoot, tip, head) : false;
+      if (!reachable) out.push({ branch, tip });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Git #1958 — drop a visible, untracked marker into a freshly (re-)provisioned worktree
+ * telling a resumed session its prior work was rescued to another branch and is NOT in
+ * this checkout. This is the "at minimum, tell the resumed session" the issue asks for:
+ * a silently-clean `git status` over discarded work is the exact failure #1958 filed.
+ * Returns the marker object (or null if nothing to warn about / write failed).
+ */
+export function writeReprovisionMarker(config, wtPath, orphaned) {
+  if (!wtPath || !existsSync(wtPath) || !Array.isArray(orphaned) || orphaned.length === 0) return null;
+  const marker = {
+    reprovisionedAt: Date.now(),
+    iso: new Date().toISOString(),
+    reason:
+      "This worktree was (re-)provisioned fresh — likely after a pause/resume or a cleanup sweep. " +
+      "A prior session's uncommitted/unpushed work was RESCUED to the branch(es) listed below (Git #1971) " +
+      "and is NOT present in this checkout. Do not trust a clean `git status` as proof no prior work existed.",
+    rescuedBranches: orphaned.map((o) => o.branch),
+    howToRecover:
+      "Inspect: git log <branch> --stat   |   Restore files: git checkout <branch> -- <path>   |   " +
+      "Replay a commit: git cherry-pick <branch>. See Git #1958.",
+  };
+  try {
+    writeFileSync(path.join(wtPath, REPROVISION_MARKER_NAME), JSON.stringify(marker, null, 2));
+    appendCleanupLog(config, {
+      action: "reprovision_marker_written",
+      path: wtPath,
+      rescuedBranches: marker.rescuedBranches,
+    });
+    console.warn(
+      `[worktree-provision] !!! RE-PROVISION over prior work (Git #1958): ${wtPath}\n` +
+        `    Prior session work was rescued to: ${marker.rescuedBranches.join(", ")}\n` +
+        `    A '${REPROVISION_MARKER_NAME}' marker was written here so the resumed session sees it.`
+    );
+    return marker;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Git #1971 — PRESERVE a worktree's unpublished work before it is destroyed.
  *
  * The single silent-data-loss hazard this whole file exists to prevent came back from the
@@ -256,28 +342,46 @@ export function markWorktreeStale(config, nameOrPath, { reason = "build error / 
  *
  * @returns {{ preserved: boolean, reason: string, wip?: string|null, rescueBranch?: string|null }}
  */
+/**
+ * Git #1958 — the single source of truth for "does this worktree still hold real work?"
+ * (uncommitted changes and/or commits not yet on the base ref). Used both by the removal
+ * rescue (preserveWorktreeWork below) and by the sweep's retain-in-place decision, so the
+ * two can never disagree about what counts as work. BuildConsole's own untracked markers
+ * (stale / re-provision) are bookkeeping, never real work, and are filtered out.
+ *
+ * @returns {{ dirty: boolean, unpushed: boolean, hasWork: boolean, head: string|null }}
+ */
+export function detectWorktreeWork(config, wtPath) {
+  if (!existsSync(wtPath) || !isGitRepo(wtPath)) {
+    return { dirty: false, unpushed: false, hasWork: false, head: null };
+  }
+  // Uncommitted changes (the stale-debug / re-provision markers are bookkeeping, not real work).
+  const status = git(wtPath, ["status", "--porcelain"]);
+  const dirtyLines = (status.stdout || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .filter((l) => !l.endsWith(STALE_MARKER_NAME) && !l.endsWith(REPROVISION_MARKER_NAME));
+  const dirty = status.code === 0 && dirtyLines.length > 0;
+
+  // Unpushed commits: the branch tip isn't yet an ancestor of the base ref (origin/main).
+  // If the base can't be resolved, err toward "has work" rather than discarding.
+  const head = revParse(wtPath, "HEAD");
+  const base =
+    resolveCommit(config.mainRepoRoot, config.baseRef) ||
+    revParse(config.mainRepoRoot, config.baseRef);
+  const unpushed = head ? (base ? !isAncestor(wtPath, head, base) : true) : false;
+
+  return { dirty, unpushed, hasWork: dirty || unpushed, head };
+}
+
 export function preserveWorktreeWork(config, wtPath, rec) {
   try {
     if (!existsSync(wtPath) || !isGitRepo(wtPath)) {
       return { preserved: false, reason: "path gone or not a git worktree" };
     }
 
-    // Uncommitted changes (the stale-debug marker is BuildConsole bookkeeping, not real work).
-    const status = git(wtPath, ["status", "--porcelain"]);
-    const dirtyLines = (status.stdout || "")
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0)
-      .filter((l) => !l.endsWith(STALE_MARKER_NAME));
-    const dirty = status.code === 0 && dirtyLines.length > 0;
-
-    // Unpushed commits: the branch tip isn't yet an ancestor of the base ref (origin/main).
-    // If the base can't be resolved, err toward preserving rather than discarding.
-    const head = revParse(wtPath, "HEAD");
-    const base =
-      resolveCommit(config.mainRepoRoot, config.baseRef) ||
-      revParse(config.mainRepoRoot, config.baseRef);
-    const unpushed = head ? (base ? !isAncestor(wtPath, head, base) : true) : false;
+    const { dirty, unpushed } = detectWorktreeWork(config, wtPath);
 
     if (!dirty && !unpushed) {
       return { preserved: false, reason: "nothing to preserve (clean tree, branch already on origin/main)" };
@@ -686,6 +790,41 @@ export function sweepWorktrees(config, opts = {}) {
           continue;
         }
       } catch {}
+    }
+
+    // Check 4 (Git #1958): does this worktree still hold genuine uncommitted or unpushed
+    // work? A worktree that reaches this point has a dead/inactive owner and no active-grace
+    // retention — the exact profile of a PAUSED, resumable build whose owner pid died during
+    // the pause. Removing it here (even with the #1971 rescue-to-branch that runs on removal)
+    // tears down the precise tree a resumed build would reuse and hands the resumed session a
+    // silently-clean checkout — which is the data-loss #1958 filed.
+    //
+    // So grant such a worktree ONE bounded debug window for resume: the first time we see it
+    // holding work we mark it stale (starting the 24h debugMaxAgeMs clock Check 3 / the on-disk
+    // marker check honour) and retain it. Reaching Check 4 while it is ALREADY parked (record
+    // keepForDebug, or an on-disk stale marker) means that window has now expired — so we do
+    // NOT re-mark (re-marking would reset lastActiveAt / markedStaleAt every sweep and leak the
+    // worktree forever on the non-force path, defeating #2537). We let it fall through to
+    // removal, which rescues the work to rescued/* first. `--force`/`--all` still reclaims
+    // immediately, rescuing first, exactly as before.
+    if (!force) {
+      const alreadyParked =
+        !!(rec && rec.keepForDebug) || existsSync(path.join(wt.path, ".stale-worktree.json"));
+      if (!alreadyParked) {
+        const work = detectWorktreeWork(config, wt.path);
+        if (work.hasWork) {
+          const kind = work.dirty && work.unpushed ? "uncommitted+unpushed" : work.dirty ? "uncommitted" : "unpushed";
+          if (!dryRun) {
+            try {
+              markWorktreeStale(config, rec ? rec.id : wt.path, {
+                reason: `paused/resumable: still holds ${kind} work — retained for resume (Git #1958)`,
+              });
+            } catch {}
+          }
+          retained.push({ path: wt.path, reason: `holds ${kind} work — retained in place for resume (Git #1958)` });
+          continue;
+        }
+      }
     }
 
     candidates.push({
