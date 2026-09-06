@@ -101,6 +101,57 @@ namespace BuildConsole.Services
             return await RunScriptAsync(repoRoot, args, $"Mark stale worktree '{pathOrName}'");
         }
 
+        /// <summary>
+        /// Git #2796 — real, ongoing repo housekeeping: prune `agent/*` branches verified as real
+        /// ancestors of main, run `git gc` once loose objects cross a threshold, and reconcile
+        /// `C:\wt\*` against `git worktree list` to reclaim stray leftover dirs. Dispatches to
+        /// scripts/dev-server/git-maintenance.mjs — see that script's own header for the full
+        /// safety model of each of its three independent sweeps.
+        /// </summary>
+        public static async Task<WorktreeCleanupResult> RunGitMaintenanceAsync(bool dryRun = false)
+        {
+            string? repoRoot = BuildTrackerConfig.FindRepoRoot();
+            if (repoRoot == null)
+            {
+                ActivityLog.Log(LogChannel, "Cannot run git-maintenance: repo root not found.");
+                return new WorktreeCleanupResult { Ok = false, Error = "Repo root not found" };
+            }
+
+            string scriptPath = Path.Combine(repoRoot, "scripts", "dev-server", "git-maintenance.mjs");
+            if (!File.Exists(scriptPath))
+            {
+                ActivityLog.Log(LogChannel, $"git-maintenance script missing at {scriptPath}");
+                return new WorktreeCleanupResult { Ok = false, Error = "Script not found" };
+            }
+
+            string args = $"\"{scriptPath}\" --json";
+            if (dryRun) args += " --dry-run";
+
+            var result = await RunScriptAsync(repoRoot, args, "Git maintenance sweep");
+
+            // The script's top-level JSON shape (branches/gc/strays sub-objects) differs from the
+            // flat inspected/removed/retained shape SweepWorktreesAsync parses, so re-parse counts
+            // from the real fields for a meaningful log line rather than leaving them at 0.
+            try
+            {
+                using var doc = JsonDocument.Parse(result.RawOutput);
+                var root = doc.RootElement;
+                int deletedBranches = root.TryGetProperty("branches", out var b) && b.TryGetProperty("deletedCount", out var dc) ? dc.GetInt32() : 0;
+                int removedStrays = root.TryGetProperty("strays", out var s) && s.TryGetProperty("removedCount", out var rc) ? rc.GetInt32() : 0;
+                bool gcRan = root.TryGetProperty("gc", out var g) && g.TryGetProperty("ran", out var gr) && gr.GetBoolean();
+                if (result.Ok)
+                {
+                    ActivityLog.Log(LogChannel, $"Git maintenance sweep succeeded: {deletedBranches} agent/* branch(es) pruned (verified ancestors of main), gc ran={gcRan}, {removedStrays} stray C:\\wt dir(s) reclaimed.");
+                }
+            }
+            catch
+            {
+                // RunScriptAsync already logged success/failure; a parse miss here is cosmetic only.
+            }
+
+            return result;
+        }
+
         private static async Task<WorktreeCleanupResult> RunScriptAsync(string repoRoot, string scriptAndArgs, string actionDescription)
         {
             try

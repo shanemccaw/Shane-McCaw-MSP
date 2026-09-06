@@ -254,6 +254,9 @@ namespace BuildConsole.Services
         private bool _ticking;
         /// <summary>Git #1371 — throttles the background worktree cleanup sweep run from TickAsync.</summary>
         private DateTime _lastWorktreeSweepUtc = DateTime.MinValue;
+        /// <summary>Git #2796 — throttles the periodic git-maintenance sweep (merged agent/* branch
+        /// prune, loose-object gc, stray C:\wt\* dir reconcile) run from TickAsync.</summary>
+        private DateTime _lastGitMaintenanceUtc = DateTime.MinValue;
         /// <summary>Git #2891 — throttles the periodic "is this `running` row's real process actually
         /// still alive?" sweep run from TickAsync (see <see cref="SweepStuckRunningRowsAsync"/>).</summary>
         private DateTime _lastStuckRunningSweepUtc = DateTime.MinValue;
@@ -803,6 +806,24 @@ namespace BuildConsole.Services
             _ = WorktreeCleanupService.SweepWorktreesAsync(force: false, dryRun: false);
         }
 
+        /// <summary>Git #2796 — throttled periodic repo housekeeping (at most once every 6 hours),
+        /// distinct from <see cref="MaybeSweepWorktrees"/>: that sweep only reclaims agent worktrees
+        /// this coordinator tracked itself; this one is the real, ongoing fix for the un-bounded
+        /// re-accumulation the issue documented (355 stale `agent/*` branches, ~10k loose objects,
+        /// ~23 stray `C:\wt\*` dirs that were never registered as worktrees at all — a prior
+        /// one-time manual cleanup was not a mechanism). Dispatches to
+        /// scripts/dev-server/git-maintenance.mjs, whose own three sweeps are each independently
+        /// safe: branch deletion only fires on a verified `merge-base --is-ancestor` of main, gc
+        /// only runs past a loose-object threshold, and the stray-dir reconcile only touches
+        /// directories NOT in `git worktree list`, past an age grace, with no uncommitted/unpushed
+        /// work, and never one whose name marks it a deliberate manual backup.</summary>
+        private void MaybeRunGitMaintenance()
+        {
+            if ((DateTime.UtcNow - _lastGitMaintenanceUtc).TotalHours < 6) return;
+            _lastGitMaintenanceUtc = DateTime.UtcNow;
+            _ = WorktreeCleanupService.RunGitMaintenanceAsync(dryRun: false);
+        }
+
         /// <summary>Git #2891 — how often the phantom-running liveness sweep runs (throttled well below
         /// the 10s tick so it isn't a per-tick full-queue fetch; a stuck row is not urgent to the
         /// second, only that it never stays stuck indefinitely).</summary>
@@ -994,6 +1015,9 @@ namespace BuildConsole.Services
             // gated + non-force, so a live build from a concurrently-open instance (its worktree's
             // creator pid still alive) is retained.
             MaybeSweepWorktrees();
+            // Git #2796 — real, ongoing repo housekeeping (merged agent/* branch prune, loose-object
+            // gc, stray C:\wt\* dir reconcile); throttled to at most once per 6h internally.
+            MaybeRunGitMaintenance();
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
             _timer.Tick += async (_, _) => await TickAsync();
             _timer.Start();
@@ -1658,6 +1682,10 @@ namespace BuildConsole.Services
                 // build's worktree, an unrelated/harness worktree, or one still inside its grace
                 // window; it only sweeps up agent/* worktrees whose build process is gone.
                 MaybeSweepWorktrees();
+
+                // Git #2796 — real, ongoing repo housekeeping (merged agent/* branch prune,
+                // loose-object gc, stray C:\wt\* dir reconcile); throttled to at most once per 6h.
+                MaybeRunGitMaintenance();
 
                 // Git #2891 — periodic phantom-running liveness sweep. The reap loop above only
                 // reaps builds tracked in this instance's in-memory _running dict (authoritative
