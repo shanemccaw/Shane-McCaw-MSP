@@ -4367,6 +4367,80 @@ export const activeDirectoryOuAssignmentsTable = pgTable("active_directory_ou_as
 export type InsertActiveDirectoryOuAssignment = typeof activeDirectoryOuAssignmentsTable.$inferInsert;
 export type ActiveDirectoryOuAssignment = typeof activeDirectoryOuAssignmentsTable.$inferSelect;
 
+// ── Active Directory — customer OU-assignment REQUESTS (Git #2524) ──────────
+// #2148 gave the MSP an operator-facing "set" route for `active_directory_ou_
+// assignments` — the customer never sets this directly. Shane's decision on
+// #2148 (2026-09-03) splits the customer's own capability out as this issue:
+// read the current assignment, and REQUEST a change. MSP approves.
+//
+// THE CR-PIPELINE-VS-DEDICATED-TABLE QUESTION #2524 FLAGS, DECIDED HERE:
+// `msp_change_requests` models a real M365 tenant CONFIGURATION WRITE — it
+// carries a pre-change snapshot, a rollback script, freeze-window gating, and
+// the `executor_run_id` write-authorization claim that lets the config-pack
+// engine treat an approved row as permission to write to the tenant. An OU
+// assignment change is not that: `msp-active-directory.ts`'s own POST/PATCH
+// never issue a Graph WRITE at all — they verify the object exists via a Graph
+// READ, then write only our own bookkeeping row. Routing a request for this
+// through the CR table would mean fabricating meaningless values for
+// `target_resource`/`psa_ticket_id`/`backup_hash`/`rollback_script_snippet`,
+// and would misfile an internal-grouping request alongside real tenant-config
+// changes in the customer's Change Control register. This is a genuinely
+// smaller, lighter object — closer to a ticket than a change record — so it
+// gets its own table rather than being forced into the heavier one.
+//
+// Current-state per request, not a full audit trail: one row per ask, moved
+// through `status` to a terminal state by the MSP side
+// (`msp-active-directory.ts`'s resolve route) — matching
+// `active_directory_ou_assignments` itself, which is also "current value, no
+// history" rather than an append-only log.
+export const ACTIVE_DIRECTORY_OU_ASSIGNMENT_REQUEST_STATUSES = ["pending", "approved", "rejected", "fulfilled"] as const;
+export type ActiveDirectoryOuAssignmentRequestStatus = (typeof ACTIVE_DIRECTORY_OU_ASSIGNMENT_REQUEST_STATUSES)[number];
+
+export const activeDirectoryOuAssignmentRequestsTable = pgTable("active_directory_ou_assignment_requests", {
+  id: serial("id").primaryKey(),
+  /** Denormalized owning MSP, same convention as `activeDirectoryOuAssignmentsTable.mspId`. */
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** tenants.id — the customer raising the request. No FK, matching every other customer_id column on this surface. */
+  customerId: integer("customer_id").notNull(),
+  /** The real Graph tenant id, denormalized so a resolver never needs to join back to `tenants`. */
+  tenantId: text("tenant_id").notNull(),
+  /** The real Graph object (AAD user) this request is about. Free text, not FK'd to a
+   * live Graph resolution at request time — the customer may be asking about an object
+   * the platform has never resolved yet, which is exactly the case a manual assignment
+   * exists to correct. */
+  objectUpn: text("object_upn").notNull(),
+  objectDisplayName: text("object_display_name"),
+  /** The object's currently-known OU (if any), captured at request time for the MSP's
+   * own context — not re-derived later, so a since-changed assignment doesn't silently
+   * rewrite what the customer was actually looking at when they asked. */
+  currentOuId: integer("current_ou_id").references((): AnyPgColumn => activeDirectoryOusTable.id, { onDelete: "set null" }),
+  /** The OU the customer is asking to move into, when a real OU exists to name. */
+  requestedOuId: integer("requested_ou_id").references((): AnyPgColumn => activeDirectoryOusTable.id, { onDelete: "set null" }),
+  /** Free-text fallback when the customer doesn't know (or there isn't) a matching real
+   * OU to select — never fabricated as a fake OU row just to have an id to point at.
+   * Route-level validation requires at least one of `requestedOuId`/`requestedOuName`. */
+  requestedOuName: text("requested_ou_name"),
+  /** The customer's own reason/description — required; a request with no stated ask
+   * gives the MSP nothing to act on. */
+  note: text("note").notNull(),
+  status: text("status", { enum: ACTIVE_DIRECTORY_OU_ASSIGNMENT_REQUEST_STATUSES }).notNull().default("pending"),
+  requestedByUserId: integer("requested_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  /** Set when an MSP staff member moves this off `pending`. */
+  resolvedByUserId: integer("resolved_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  /** The MSP's own reply — why approved/rejected, or what was actually done for `fulfilled`. */
+  resolutionNote: text("resolution_note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("active_directory_ou_assignment_requests_customer_id_idx").on(t.customerId),
+  index("active_directory_ou_assignment_requests_msp_id_idx").on(t.mspId),
+  index("active_directory_ou_assignment_requests_status_idx").on(t.status),
+]);
+
+export type InsertActiveDirectoryOuAssignmentRequest = typeof activeDirectoryOuAssignmentRequestsTable.$inferInsert;
+export type ActiveDirectoryOuAssignmentRequest = typeof activeDirectoryOuAssignmentRequestsTable.$inferSelect;
+
 // ── User Entitlement Overrides (Active Directory Phase 7) ───────────────────
 //
 // Phase 2's deriveEntitlements() derives entitlements purely from the linked

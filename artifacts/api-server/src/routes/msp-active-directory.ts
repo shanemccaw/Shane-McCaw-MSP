@@ -40,12 +40,36 @@
  * node another MSP's customer might also share. Every MSP-side assignment
  * therefore requires `ou.tenantId === the target customerId` — never the
  * platform-wide null-tenant case.
+ *
+ * ── #2524 addition: the MSP side of the customer's own request-change loop ──
+ * `portal-active-directory.ts` lets a customer RAISE a request (dedicated
+ * `active_directory_ou_assignment_requests` table — see that table's schema
+ * comment for why this isn't routed through `msp_change_requests`). These two
+ * routes are where the MSP actually sees and resolves it — without them the
+ * request would be a write with no read, a black hole:
+ *
+ *   GET   /api/msp/active-directory/ou-assignment-requests
+ *   PATCH /api/msp/active-directory/ou-assignment-requests/:id
+ *
+ * Same `requireRole("MSPOperator")` + ownership/staff-scoping discipline as
+ * every route above. Approving (or fulfilling) a request that named a real
+ * `requestedOuId` immediately applies it — upserts the real
+ * `active_directory_ou_assignments` row via the exact same Graph-verified
+ * assign path the POST above uses — so "approved" always means "actually
+ * true," never a status flip that leaves the real assignment stale.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, activeDirectoryOusTable, activeDirectoryOuAssignmentsTable } from "@workspace/db";
-import { eq, asc } from "drizzle-orm";
-import { requireAuth, requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
+import {
+  db,
+  activeDirectoryOusTable,
+  activeDirectoryOuAssignmentsTable,
+  activeDirectoryOuAssignmentRequestsTable,
+  ACTIVE_DIRECTORY_OU_ASSIGNMENT_REQUEST_STATUSES,
+  type ActiveDirectoryOuAssignmentRequest,
+} from "@workspace/db";
+import { eq, asc, desc, inArray, and } from "drizzle-orm";
+import { requireAuth, requireRole, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
@@ -336,6 +360,165 @@ router.delete(
     } catch (err) {
       log.error({ err, assignmentId, mspId }, "Failed to delete OU assignment");
       apiError(res, 500, ApiErrorCode.INTERNAL, "Failed to delete OU assignment");
+    }
+  },
+);
+
+// ── GET /msp/active-directory/ou-assignment-requests ──────────────────────────
+// Every real customer-raised request against the caller's MSP book, most
+// recent first. Optional `?status=pending` narrows to one real status
+// (`ACTIVE_DIRECTORY_OU_ASSIGNMENT_REQUEST_STATUSES`) — an unrecognised value
+// is ignored rather than 400ing, since this is a display filter, not a write.
+router.get(
+  "/msp/active-directory/ou-assignment-requests",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    const mspId = resolveMspIdStrict(req);
+    if (mspId === null) {
+      apiError(res, 403, ApiErrorCode.FORBIDDEN, "MSP context required");
+      return;
+    }
+
+    const statusFilter = ACTIVE_DIRECTORY_OU_ASSIGNMENT_REQUEST_STATUSES.find((s) => s === req.query.status);
+
+    try {
+      const scopedCustomerIds = await resolveStaffScopedCustomerIds(req.user!);
+      const conditions = [eq(activeDirectoryOuAssignmentRequestsTable.mspId, mspId)];
+      if (scopedCustomerIds !== null) conditions.push(inArray(activeDirectoryOuAssignmentRequestsTable.customerId, scopedCustomerIds));
+      if (statusFilter) conditions.push(eq(activeDirectoryOuAssignmentRequestsTable.status, statusFilter));
+
+      const rows = await db
+        .select()
+        .from(activeDirectoryOuAssignmentRequestsTable)
+        .where(and(...conditions))
+        .orderBy(desc(activeDirectoryOuAssignmentRequestsTable.createdAt));
+      res.json(rows);
+    } catch (err) {
+      log.error({ err, mspId }, "Failed to load OU assignment requests");
+      apiError(res, 500, ApiErrorCode.INTERNAL, "Failed to load OU assignment requests");
+    }
+  },
+);
+
+const RESOLVABLE_STATUSES = ["approved", "rejected", "fulfilled"] as const;
+
+// ── PATCH /msp/active-directory/ou-assignment-requests/:id ────────────────────
+// Body: { status: "approved" | "rejected" | "fulfilled", resolutionNote?: string }.
+// Moves a request off `pending`. Approving/fulfilling a request that named a
+// real `requestedOuId` immediately applies it — the exact same Graph-verified
+// upsert the POST .../ou/:id/assignments route above performs — so the
+// request's terminal status and the real assignment table can never disagree.
+// A request with only a free-text `requestedOuName` (no real OU to apply)
+// still moves to the chosen status; the MSP does the actual OU creation/
+// assignment through the routes above first, in that case.
+router.patch(
+  "/msp/active-directory/ou-assignment-requests/:id",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    const mspId = resolveMspIdStrict(req);
+    if (mspId === null) {
+      apiError(res, 403, ApiErrorCode.FORBIDDEN, "MSP context required");
+      return;
+    }
+
+    const requestId = Number(req.params.id);
+    if (!Number.isInteger(requestId)) {
+      apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid request id");
+      return;
+    }
+    const status = req.body?.status;
+    if (!RESOLVABLE_STATUSES.includes(status)) {
+      apiError(res, 400, ApiErrorCode.VALIDATION, `status must be one of: ${RESOLVABLE_STATUSES.join(", ")}`);
+      return;
+    }
+    const resolutionNote = typeof req.body?.resolutionNote === "string" ? req.body.resolutionNote.trim() || null : null;
+
+    try {
+      const [existing] = await db
+        .select()
+        .from(activeDirectoryOuAssignmentRequestsTable)
+        .where(eq(activeDirectoryOuAssignmentRequestsTable.id, requestId))
+        .limit(1);
+      if (!existing) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Request not found");
+        return;
+      }
+      if (!(await assertCustomerAccess(req.user!, existing.customerId))) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Request not found");
+        return;
+      }
+      if (existing.status !== "pending") {
+        apiError(res, 409, ApiErrorCode.CONFLICT, `Request is already '${existing.status}'`);
+        return;
+      }
+
+      let appliedAssignment: unknown = null;
+      if ((status === "approved" || status === "fulfilled") && existing.requestedOuId !== null) {
+        const [ou] = await db.select().from(activeDirectoryOusTable).where(eq(activeDirectoryOusTable.id, existing.requestedOuId)).limit(1);
+        if (!ou || ou.tenantId === null || ou.tenantId !== existing.customerId) {
+          apiError(res, 400, ApiErrorCode.VALIDATION, "The requested OU no longer belongs to this customer — resolve manually first");
+          return;
+        }
+        const graphUser = await resolveGraphUserByUpn(existing.tenantId, existing.objectUpn);
+        if (!graphUser.ok) {
+          apiError(res, 400, ApiErrorCode.VALIDATION, graphUser.error);
+          return;
+        }
+        const [assignment] = await db
+          .insert(activeDirectoryOuAssignmentsTable)
+          .values({
+            mspId: existing.mspId,
+            ouId: existing.requestedOuId,
+            customerId: existing.customerId,
+            tenantId: existing.tenantId,
+            objectId: graphUser.id,
+            objectUpn: graphUser.userPrincipalName,
+            objectDisplayName: graphUser.displayName,
+            assignedByUserId: req.user!.id,
+          })
+          .onConflictDoUpdate({
+            target: [activeDirectoryOuAssignmentsTable.customerId, activeDirectoryOuAssignmentsTable.objectId],
+            set: {
+              ouId: existing.requestedOuId,
+              objectUpn: graphUser.userPrincipalName,
+              objectDisplayName: graphUser.displayName,
+              assignedByUserId: req.user!.id,
+              updatedAt: new Date(),
+            },
+          })
+          .returning();
+        appliedAssignment = assignment;
+
+        await createAuditLog({
+          ...auditActor(req),
+          actionType: "active_directory.ou_assignment.set",
+          entityType: "active_directory_ou",
+          entityId: existing.requestedOuId,
+          metadata: { customerId: existing.customerId, objectId: graphUser.id, objectUpn: graphUser.userPrincipalName, ouName: ou.name, actorSurface: "msp", fromRequestId: requestId },
+        });
+      }
+
+      const [updated] = await db
+        .update(activeDirectoryOuAssignmentRequestsTable)
+        .set({ status, resolutionNote, resolvedByUserId: req.user!.id, resolvedAt: new Date(), updatedAt: new Date() })
+        .where(eq(activeDirectoryOuAssignmentRequestsTable.id, requestId))
+        .returning();
+
+      await createAuditLog({
+        ...auditActor(req),
+        actionType: "active_directory.ou_assignment_request.resolved",
+        entityType: "active_directory_ou_assignment_request",
+        entityId: requestId,
+        metadata: { customerId: existing.customerId, status, resolutionNote, appliedAssignment: appliedAssignment !== null },
+      });
+      log.info({ requestId, status, mspId }, "MSP staff resolved an OU assignment request");
+
+      res.json({ request: updated as ActiveDirectoryOuAssignmentRequest, appliedAssignment });
+    } catch (err) {
+      log.error({ err, requestId, mspId }, "Failed to resolve OU assignment request");
+      apiError(res, 500, ApiErrorCode.INTERNAL, "Failed to resolve OU assignment request");
     }
   },
 );

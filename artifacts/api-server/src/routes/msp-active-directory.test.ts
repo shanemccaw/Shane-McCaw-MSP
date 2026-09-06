@@ -50,6 +50,25 @@ vi.mock("@workspace/db", () => ({
     objectDisplayName: "objectDisplayName",
     assignedByUserId: "assignedByUserId",
   },
+  activeDirectoryOuAssignmentRequestsTable: {
+    id: "id",
+    mspId: "mspId",
+    customerId: "customerId",
+    tenantId: "tenantId",
+    objectUpn: "objectUpn",
+    objectDisplayName: "objectDisplayName",
+    currentOuId: "currentOuId",
+    requestedOuId: "requestedOuId",
+    requestedOuName: "requestedOuName",
+    note: "note",
+    status: "status",
+    resolutionNote: "resolutionNote",
+    resolvedByUserId: "resolvedByUserId",
+    resolvedAt: "resolvedAt",
+    createdAt: "createdAt",
+    updatedAt: "updatedAt",
+  },
+  ACTIVE_DIRECTORY_OU_ASSIGNMENT_REQUEST_STATUSES: ["pending", "approved", "rejected", "fulfilled"],
   tenantsTable: { id: "id", mspId: "mspId" },
   mspStaffCustomerScopesTable: { customerId: "customerId", staffUserId: "staffUserId" },
 }));
@@ -58,6 +77,8 @@ vi.mock("drizzle-orm", () => ({
   eq: (c: unknown, v: unknown) => ({ eq: [c, v] }),
   and: (...args: unknown[]) => ({ and: args }),
   asc: (c: unknown) => ({ asc: c }),
+  desc: (c: unknown) => ({ desc: c }),
+  inArray: (c: unknown, v: unknown) => ({ inArray: [c, v] }),
 }));
 
 vi.mock("../lib/logger", () => {
@@ -362,5 +383,135 @@ describe("DELETE /msp/active-directory/ou-assignments/:id", () => {
     expect(mockCreateAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({ actionType: "active_directory.ou_assignment.clear" }),
     );
+  });
+});
+
+// ── Git #2524 — the MSP side of the customer's own request-change loop ──────
+describe("GET /msp/active-directory/ou-assignment-requests", () => {
+  it("rejects roles below MSPOperator", async () => {
+    const res = await request(makeApp())
+      .get("/msp/active-directory/ou-assignment-requests")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID, mspRole: "CustomerUser" })}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns real customer-raised requests scoped to the caller's MSP", async () => {
+    const rows = [{ id: 1, mspId: MSP_ID, customerId: 42, status: "pending", objectUpn: "user@customer.com" }];
+    mockSelect
+      .mockReturnValueOnce(selectChain([])) // unrestricted staff scope
+      .mockReturnValueOnce(selectChain(rows)); // requests
+    const res = await request(makeApp())
+      .get("/msp/active-directory/ou-assignment-requests")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(rows);
+  });
+});
+
+describe("PATCH /msp/active-directory/ou-assignment-requests/:id", () => {
+  const PENDING = { id: 9, mspId: MSP_ID, customerId: 42, tenantId: "tenant-guid", objectUpn: "user@customer.com", status: "pending", requestedOuId: 5 };
+
+  it("400s an unrecognised status", async () => {
+    const res = await request(makeApp())
+      .patch("/msp/active-directory/ou-assignment-requests/9")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`)
+      .send({ status: "not-a-real-status" });
+    expect(res.status).toBe(400);
+  });
+
+  it("404s when the request does not exist", async () => {
+    mockSelect.mockReturnValueOnce(selectChain([]));
+    const res = await request(makeApp())
+      .patch("/msp/active-directory/ou-assignment-requests/9")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`)
+      .send({ status: "approved" });
+    expect(res.status).toBe(404);
+  });
+
+  it("404s a request belonging to a different MSP's customer, without disclosing it", async () => {
+    mockSelect
+      .mockReturnValueOnce(selectChain([PENDING])) // request lookup
+      .mockReturnValueOnce(selectChain([])); // tenant ownership -> no match
+    const res = await request(makeApp())
+      .patch("/msp/active-directory/ou-assignment-requests/9")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`)
+      .send({ status: "approved" });
+    expect(res.status).toBe(404);
+  });
+
+  it("409s a request that is already resolved", async () => {
+    mockSelect
+      .mockReturnValueOnce(selectChain([{ ...PENDING, status: "approved" }])) // request lookup
+      .mockReturnValueOnce(selectChain([{ id: 42 }])) // tenant ownership
+      .mockReturnValueOnce(selectChain([])); // unrestricted staff
+    const res = await request(makeApp())
+      .patch("/msp/active-directory/ou-assignment-requests/9")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`)
+      .send({ status: "approved" });
+    expect(res.status).toBe(409);
+  });
+
+  it("approving a request with a real requestedOuId applies the real assignment too", async () => {
+    const ou = { id: 5, name: "VIP Users", tenantId: 42 };
+    const graphUser = { ok: true, id: "aad-guid", userPrincipalName: "user@customer.com", displayName: "A User" };
+    const assignment = { id: 1, ouId: 5, customerId: 42, objectId: "aad-guid" };
+    const updatedRequest = { ...PENDING, status: "approved" };
+
+    mockSelect
+      .mockReturnValueOnce(selectChain([PENDING])) // request lookup
+      .mockReturnValueOnce(selectChain([{ id: 42 }])) // tenant ownership
+      .mockReturnValueOnce(selectChain([])) // unrestricted staff
+      .mockReturnValueOnce(selectChain([ou])); // requestedOuId lookup
+    mockResolveGraphUserByUpn.mockResolvedValueOnce(graphUser);
+    mockInsert.mockReturnValueOnce(insertChain([assignment]));
+    mockUpdate.mockReturnValueOnce(updateChain([updatedRequest]));
+
+    const res = await request(makeApp())
+      .patch("/msp/active-directory/ou-assignment-requests/9")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`)
+      .send({ status: "approved", resolutionNote: "Looks right" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ request: updatedRequest, appliedAssignment: assignment });
+    expect(mockCreateAuditLog).toHaveBeenCalledWith(expect.objectContaining({ actionType: "active_directory.ou_assignment.set" }));
+    expect(mockCreateAuditLog).toHaveBeenCalledWith(expect.objectContaining({ actionType: "active_directory.ou_assignment_request.resolved" }));
+  });
+
+  it("rejecting a request never touches the real assignment table", async () => {
+    const updatedRequest = { ...PENDING, status: "rejected" };
+    mockSelect
+      .mockReturnValueOnce(selectChain([PENDING])) // request lookup
+      .mockReturnValueOnce(selectChain([{ id: 42 }])) // tenant ownership
+      .mockReturnValueOnce(selectChain([])); // unrestricted staff
+    mockUpdate.mockReturnValueOnce(updateChain([updatedRequest]));
+
+    const res = await request(makeApp())
+      .patch("/msp/active-directory/ou-assignment-requests/9")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`)
+      .send({ status: "rejected", resolutionNote: "Not needed" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ request: updatedRequest, appliedAssignment: null });
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockResolveGraphUserByUpn).not.toHaveBeenCalled();
+  });
+
+  it("approving a request with only a free-text requestedOuName leaves the assignment table untouched", async () => {
+    const NAME_ONLY = { ...PENDING, requestedOuId: null, requestedOuName: "Somewhere else" };
+    const updatedRequest = { ...NAME_ONLY, status: "approved" };
+    mockSelect
+      .mockReturnValueOnce(selectChain([NAME_ONLY])) // request lookup
+      .mockReturnValueOnce(selectChain([{ id: 42 }])) // tenant ownership
+      .mockReturnValueOnce(selectChain([])); // unrestricted staff
+    mockUpdate.mockReturnValueOnce(updateChain([updatedRequest]));
+
+    const res = await request(makeApp())
+      .patch("/msp/active-directory/ou-assignment-requests/9")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`)
+      .send({ status: "approved" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ request: updatedRequest, appliedAssignment: null });
+    expect(mockInsert).not.toHaveBeenCalled();
   });
 });
