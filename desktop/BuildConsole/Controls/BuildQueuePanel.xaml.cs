@@ -211,6 +211,15 @@ namespace BuildConsole.Controls
         /// single refresh tick (just staggered), hammering `gh` for a number that keeps failing.</summary>
         private static readonly Dictionary<int, DateTime> _titleFetchCooldownUntil = new();
         private static readonly TimeSpan TitleFetchRetryCooldown = TimeSpan.FromSeconds(60);
+        /// <summary>Git #2817 — consecutive transient-failure count per issue number, since #2890's flat
+        /// 60s cooldown still retried a persistently-failing number (e.g. one only ever hit during a
+        /// rate-limit storm) forever, once per minute, for as long as it stayed in the warm-up set. After
+        /// <see cref="MaxTransientFailuresBeforeGiveUp"/> straight failures the cooldown escalates to
+        /// <see cref="TitleFetchGiveUpCooldown"/> instead — a real give-up, not an unbounded retry — while
+        /// still self-healing: a later success (e.g. the circuit closes) clears the count immediately.</summary>
+        private static readonly Dictionary<int, int> _titleFetchConsecutiveFailures = new();
+        private const int MaxTransientFailuresBeforeGiveUp = 5;
+        private static readonly TimeSpan TitleFetchGiveUpCooldown = TimeSpan.FromHours(1);
 
         private const double IssueRowTitleReserve = 50;
         private const double MinIssueRowTitleWidth = 24;
@@ -5273,11 +5282,22 @@ namespace BuildConsole.Controls
         {
             if (_lastItems == null || _lastItems.Count == 0) return;
 
-            // Git #2062 — also warm the cache for declared blocker numbers, not just
-            // AssociatedIssueNumbers (own issue + linked chat/epic numbers). A blocker that
-            // isn't itself a live queue node still needs its real title fetched once so its
-            // ghost card (BuildBlockerGhostCard) can show it instead of "(fetching title…)".
+            // Git #2817 — GetQueueAsync returns EVERY row ever created (no status filter, no
+            // time bound), so without this a done/canceled/failed row from days or weeks ago
+            // keeps contributing its own issue number (and its blockers') to this warm-up on
+            // every single refresh, forever — the real root cause behind #2133/#2815/#2736
+            // being re-queried "every tick with no dedupe/give-up" even after #2890's cooldown
+            // capped the damage. A terminal row's own number already has its title from the
+            // local `title` column (no `gh` call ever needed for that); nobody is looking at a
+            // finished row's blocker ghost card anymore either. Only rows still "in motion"
+            // (queued/running/verifying/limit-paused/parked) need their associated numbers'
+            // titles kept warm.
             var issueNumbers = _lastItems
+                .Where(i => !BuildQueuePostgresClient.IsTerminalStatus(i.Status))
+                // Git #2062 — also warm the cache for declared blocker numbers, not just
+                // AssociatedIssueNumbers (own issue + linked chat/epic numbers). A blocker that
+                // isn't itself a live queue node still needs its real title fetched once so its
+                // ghost card (BuildBlockerGhostCard) can show it instead of "(fetching title…)".
                 .SelectMany(i => i.AssociatedIssueNumbers.Concat(CleanBlockers(i)))
                 .Where(n => n > 0) // Git #1645 — never background-query a non-positive number (a --notGit local build's negative sentinel); it can only fail against `gh`.
                 .Distinct()
@@ -5320,6 +5340,35 @@ namespace BuildConsole.Controls
             }
         }
 
+        /// <summary>
+        /// Git #2817 — the real dedupe/give-up for a number whose title fetch keeps failing
+        /// transiently. #2890's flat <see cref="TitleFetchRetryCooldown"/> alone still retried a
+        /// persistently-unreachable number every 60s forever; this counts consecutive failures and,
+        /// past <see cref="MaxTransientFailuresBeforeGiveUp"/>, escalates the cooldown to
+        /// <see cref="TitleFetchGiveUpCooldown"/> instead of the normal 60s — a real give-up rather
+        /// than an unbounded per-tick retry, while staying self-healing (a later success resets the
+        /// count to zero immediately, see the success branch above).
+        /// </summary>
+        private static void ApplyEscalatingTitleFetchCooldown(int issueNumber)
+        {
+            int failures;
+            lock (_titleFetchConsecutiveFailures)
+            {
+                failures = _titleFetchConsecutiveFailures.TryGetValue(issueNumber, out var n) ? n + 1 : 1;
+                _titleFetchConsecutiveFailures[issueNumber] = failures;
+            }
+            var cooldown = failures >= MaxTransientFailuresBeforeGiveUp ? TitleFetchGiveUpCooldown : TitleFetchRetryCooldown;
+            lock (_titleFetchCooldownUntil)
+            {
+                _titleFetchCooldownUntil[issueNumber] = DateTime.UtcNow + cooldown;
+            }
+            if (failures == MaxTransientFailuresBeforeGiveUp)
+            {
+                Services.ActivityLog.Log("github",
+                    $"gh issue view #{issueNumber} failed {failures} times in a row — giving up for {TitleFetchGiveUpCooldown.TotalMinutes:F0}m instead of retrying every {TitleFetchRetryCooldown.TotalSeconds:F0}s.");
+            }
+        }
+
         private async System.Threading.Tasks.Task FetchAndCacheIssueTitleAsync(int issueNumber)
         {
             try
@@ -5342,6 +5391,13 @@ namespace BuildConsole.Controls
                         lock (_titleFetchCooldownUntil)
                         {
                             _titleFetchCooldownUntil.Remove(issueNumber);
+                        }
+                        // Git #2817 — a real success clears the give-up counter immediately, so a
+                        // number that failed during a rate-limit storm resumes normal-cadence
+                        // retries the moment it actually succeeds, rather than staying escalated.
+                        lock (_titleFetchConsecutiveFailures)
+                        {
+                            _titleFetchConsecutiveFailures.Remove(issueNumber);
                         }
                         _ = Dispatcher.BeginInvoke(new Action(() =>
                         {
@@ -5372,11 +5428,10 @@ namespace BuildConsole.Controls
                         // refresh rather than permanently blanking a real title on a network/auth/rate-limit
                         // blip. Git #2890 — but put it on a retry cooldown so it isn't re-attempted on the
                         // very next tick; bounded concurrency alone would still re-fire every failing number
-                        // every single refresh, hammering `gh` while the circuit is open.
-                        lock (_titleFetchCooldownUntil)
-                        {
-                            _titleFetchCooldownUntil[issueNumber] = DateTime.UtcNow + TitleFetchRetryCooldown;
-                        }
+                        // every single refresh, hammering `gh` while the circuit is open. Git #2817 —
+                        // escalate to a real give-up after repeated straight failures instead of retrying
+                        // an unreachable number every 60s forever.
+                        ApplyEscalatingTitleFetchCooldown(issueNumber);
                     }
                 }
                 finally
@@ -5388,11 +5443,8 @@ namespace BuildConsole.Controls
             {
                 Services.ActivityLog.Log("github", $"Failed to fetch title for issue #{issueNumber}: {ex.Message}");
                 // Git #2890 — an exception is also a transient failure; cooldown it so a broken number
-                // isn't re-spawned on every tick.
-                lock (_titleFetchCooldownUntil)
-                {
-                    _titleFetchCooldownUntil[issueNumber] = DateTime.UtcNow + TitleFetchRetryCooldown;
-                }
+                // isn't re-spawned on every tick. Git #2817 — same escalating give-up as above.
+                ApplyEscalatingTitleFetchCooldown(issueNumber);
             }
             finally
             {
