@@ -2,7 +2,7 @@
   "issue": 2921,
   "feature": "Customer Home / Overview - the real artifacts/portal '/' page (src/pages/index.tsx), wired to the two real endpoints traced in docs/customer-home-and-timeline-contract-pack.md: GET /api/portal/dashboard (artifacts/api-server/src/routes/portal-customer-engines.ts, requireAuth) and GET /api/portal/customer/timeline (portal-customer-timeline.ts, requireRole CustomerUser). Backs the page's header state banner, Needs You / Coming Up / Happened / Work In Flight / Portal Counts / Reports panels - see src/components/overview/ for the data hooks and src/pages/index.tsx's own header comment for the one deliberate design departure (no gantt/calendar strip - see that comment for why).",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "19154ce7d",
+  "lastVerifiedAgainstCommit": "PENDING-3049-COMMIT",
 
   "notes": [
     "WHAT THIS COVERS: both endpoints are auth-gated as documented, a logged-in customer gets the real dashboard shape (scores/telemetryStatus/results/projects/reports/overviewCounts, including the #2922 six roll-up counts) and the real timeline shape (events[]/nextCursor), and the timeline's cursor param actually narrows the result.",
@@ -42,6 +42,14 @@
       "path": "/api/portal/dashboard",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.overviewCounts.rbdWaiting", "exists": true }
+    },
+    {
+      "sessionTag": "3049-raci-pending-acceptance",
+      "name": "DASHBOARD-RACI - overviewCounts.raciPendingAcceptance (#3049) is a real number field, honest 0 for the testbed account with no pending Ownership/RACI acceptance rows named to it",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overviewCounts.raciPendingAcceptance", "exists": true }
     },
     {
       "name": "DASHBOARD-PROJECTS - projects is a real array (possibly empty), never a fixture substitution",

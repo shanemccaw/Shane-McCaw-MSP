@@ -9,6 +9,7 @@ import {
   GRN,
   BLU,
   NEUTRAL,
+  VIO,
   TIMELINE_STATUS_COLOR,
   formatDay,
   formatTime,
@@ -110,6 +111,19 @@ export default function OverviewPage() {
       altHref: "/remediation-tracking",
     });
   }
+  if (d && d.overviewCounts.raciPendingAcceptance > 0) {
+    needRows.push({
+      tag: "ACCEPT OR DECLINE",
+      accent: VIO,
+      meta: `${d.overviewCounts.raciPendingAcceptance} RACI role${d.overviewCounts.raciPendingAcceptance === 1 ? "" : "s"}`,
+      title: "You have been named to Ownership/RACI roles awaiting your acceptance",
+      ink: "#f8fafc",
+      action: "Accept or decline",
+      href: "/ownership",
+      alt: "Who owns what",
+      altHref: "/ownership",
+    });
+  }
   if (d && d.overviewCounts.rbdWaiting > 0) {
     needRows.push({
       tag: "SIGNATURE",
@@ -147,6 +161,7 @@ export default function OverviewPage() {
 
   const portalCounts = d
     ? [
+        { value: d.overviewCounts.raciPendingAcceptance, label: "RACI roles awaiting you", href: "/ownership", ink: VIO },
         { value: d.overviewCounts.rbdWaiting, label: "Risk decisions waiting", href: comingSoonHref("Risk Register", "module"), ink: AMB },
         { value: d.overviewCounts.rbdActive, label: "Risk acceptances active", href: comingSoonHref("Risk Register", "module"), ink: NEUTRAL },
         { value: d.overviewCounts.microsoftChangesThisWeek, label: "MS changes this week", href: comingSoonHref("Microsoft Changes", "module"), ink: BLU },

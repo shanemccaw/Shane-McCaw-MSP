@@ -8,6 +8,7 @@ export const GRN = "#34d399";
 export const BLU = "#60a5fa";
 export const TEAL = "#00B4D8";
 export const NEUTRAL = "#e2e8f0";
+export const VIO = "#a78bfa";
 
 export const TIMELINE_STATUS_COLOR: Readonly<Record<TimelineStatus, string>> = {
   success: GRN,
