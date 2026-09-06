@@ -815,7 +815,16 @@ namespace BuildConsole
             // LeftSidebar.RefreshGitBoardWithLoadingFeedbackAsync — awaited here so the
             // strip has genuinely finished before the rest of this cascade runs, and
             // BuildQueuePanel's own button is disabled for that same real span.
-            BuildQueuePanel.FullGitRefreshRequested += async (s, e) =>
+            // Git #2976 — assigned (not +=) because FullGitRefreshRequested is now a single-
+            // subscriber awaitable Func<Task>, so BuildQueuePanel can genuinely await the WHOLE
+            // cascade before it toasts "Refreshed!". The board fetch alone was never enough:
+            // RefreshGitBoardWithLoadingFeedbackAsync fires BoardRefreshCompleted, whose Batter Up /
+            // AI Batter Up handlers each kick off their OWN independent GitHub fetch fire-and-forget
+            // (async void), so awaiting only the board left those two still loading. We therefore
+            // explicitly await both here too — coalesced onto whatever in-flight refresh the
+            // BoardRefreshCompleted cascade already started (Git #2976 coalescing wrapper), so this
+            // is the real completion, not a duplicate fetch.
+            BuildQueuePanel.FullGitRefreshRequested = async () =>
             {
                 BuildQueuePanel.SetGitHubTilesRefreshInProgress(true);
                 try
@@ -829,6 +838,10 @@ namespace BuildConsole
                         _homeView.RenderDashboardState(LeftSidebar.CurrentBoardIssues, LeftSidebar.CurrentMilestones);
                     }
                     RefreshOpenGitDetailTabs();
+                    // Wait out the Batter Up / AI Batter Up refreshes the board cascade started.
+                    await System.Threading.Tasks.Task.WhenAll(
+                        _batterUpPanel.RefreshAsync(),
+                        _aiBatterUpPanel.RefreshAsync());
                 }
                 finally
                 {
