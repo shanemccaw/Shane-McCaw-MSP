@@ -1446,6 +1446,13 @@
       "when": 1788564307220,
       "tag": "0192_rename_sales_offers_tenant_id",
       "breakpoints": true
+    },
+    {
+      "idx": 202,
+      "version": "7",
+      "when": 1788704982996,
+      "tag": "0201_drop_service_page_trigger_keys",
+      "breakpoints": true
     }
   ]
 }

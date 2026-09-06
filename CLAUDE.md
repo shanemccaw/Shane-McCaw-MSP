@@ -778,6 +778,50 @@ uses the same reserved naming, and gets documented the same way.
 - No literal prices, tier names, or seat counts hardcoded in `.tsx` files outside API response handling (no-hardcoding rule) — these should flow through the Products Catalog / API responses, not be baked into UI code. Verifiable by grep.
 - **Neon MCP server for schema/migration work is now stale.** The Neon MCP server (`https://mcp.neon.tech/mcp`) registered in `.mcp.json` was tied to the same now-abandoned hosted Neon project — with that project's compute suspended on quota exhaustion, its schema/migration tools (`complete_database_migration`, `compare_database_schema`, `create_branch`) have nothing live to operate against. Until/unless a new Neon project is provisioned for this purpose, do schema/migration work via the manual-SQL-file workflow above against the local PostgreSQL 18 install instead.
 
+### Destructive-migration gate (`lib/db/drizzle/*.sql`) — Git #2930
+
+`scripts/post-merge.sh` runs `migrate-dev` on **every** merge, and `migrate-prod` too when
+a prod DB env var is set, both with no human review step. That used to mean a destructive
+Drizzle migration could not be registered in `_journal.json` at all without scheduling it to
+run unattended — which is why `0201_drop_service_page_trigger_keys.sql` sat orphaned for six
+weeks, permanently reddening `check-drift`.
+
+The gate closes that. Both runners now evaluate every pending migration **before executing
+anything**, and **fail closed** — a destructive statement is never applied automatically:
+
+```sql
+-- @migration-gate: manual
+-- @gate-reason: <why, with real evidence — commit sha, row count, issue number>
+
+DROP TABLE IF EXISTS some_dead_table;
+```
+
+- **`manual`** — never auto-applied. The runners report it as HELD and exit **3**, which
+  post-merge.sh treats as a loud warning rather than a broken merge. Run the SQL by hand
+  against each real target, then record it (no SQL is executed by this):
+  `pnpm --filter @workspace/scripts run migrate-mark-applied <tag> [--prod]`.
+- **`auto-approved`** — an explicit, reasoned sign-off that this file is safe unattended.
+  Use sparingly; the five historical files carrying it are all already-applied migrations
+  retained only for fresh-database replay.
+- **No header at all, but destructive** — also held, and `check-drift` fails. Forgetting the
+  marker cannot silently execute a `DROP`.
+- `@gate-reason` is required with either disposition. A missing or unrecognised value is
+  itself a hold.
+
+**Destructive means exactly what this file's Database section already says** — "dropping
+columns/tables, bulk rewrites": `DROP TABLE` / `COLUMN` / `SCHEMA` / `DATABASE` / `TYPE` /
+`SEQUENCE` / `MATERIALIZED VIEW`, `TRUNCATE`, and `DELETE`/`UPDATE` with no `WHERE`.
+Deliberately **not** destructive, because each is reversible and loses no data: `DROP
+CONSTRAINT`, `DROP INDEX`, `DROP DEFAULT`, `DROP NOT NULL`, `DROP TRIGGER`, `DROP FUNCTION`,
+`DROP POLICY`, plain `DROP VIEW`, and any `RENAME`. `IF EXISTS` softens nothing.
+
+Implementation: `scripts/src/lib/destructive-migration-gate.ts`. Harness (classifier +
+a real `migrate-dev` run against the real dev database):
+`pnpm --filter @workspace/scripts run test-gate`.
+
+This gate covers `lib/db/drizzle/` only — `lib/db/migrations/manual/` is not touched by any
+automatic runner, so the rules immediately below still govern it.
+
 ### Manual migration files (`lib/db/migrations/manual/`)
 
 - Do not run `drizzle-kit push` / `push --force` against these.

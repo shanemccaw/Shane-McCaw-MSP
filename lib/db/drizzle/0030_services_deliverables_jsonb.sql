@@ -1,3 +1,6 @@
+-- @migration-gate: auto-approved
+-- @gate-reason: Historical, already applied (dev __drizzle_migrations 2026-06-21). The DROP COLUMN is the last step of an in-file services.deliverables text -> jsonb conversion that copies every value first, and is guarded by a column-type check; retained only for fresh-database replay. Reviewed under #2930.
+
 -- Migrate services.deliverables from text → jsonb string[]
 -- Idempotent: skips if the column is already jsonb
 -- Trims each item; rows that were non-null but all-whitespace become '[]'::jsonb

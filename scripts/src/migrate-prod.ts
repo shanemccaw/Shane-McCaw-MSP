@@ -16,6 +16,18 @@
  *     New entries produced by `pnpm --filter @workspace/db run generate` are picked
  *     up automatically on the next migrate-prod run — no manual update needed.
  *
+ * Destructive-migration gate (Git #2930): in Phase 2, every pending migration is
+ * passed through `evaluateMigrationGate` before a single statement is executed.
+ * A file marked `-- @migration-gate: manual`, or one containing an irreversible
+ * statement with no gate header at all, is HELD — not executed, not recorded —
+ * and reported. See scripts/src/lib/destructive-migration-gate.ts.
+ *
+ * Exit codes:
+ *   0 — all pending migrations applied (or nothing to do)
+ *   1 — a migration failed
+ *   2 — neither PROD_DATABASE_URL nor DATABASE_URL_PROD is set
+ *   3 — ran cleanly, but one or more migrations were HELD at the gate
+ *
  * Run:
  *   pnpm --filter @workspace/scripts run migrate-prod
  */
@@ -25,6 +37,13 @@ import path from "path";
 import { fileURLToPath } from "url";
 import pg from "pg";
 import type { PoolClient } from "pg";
+import {
+  GATE_HELD_EXIT_CODE,
+  evaluateMigrationGate,
+  formatHeldSummary,
+  formatHoldNotice,
+  type MigrationGateVerdict,
+} from "./lib/destructive-migration-gate";
 
 const { Pool } = pg;
 
@@ -484,7 +503,7 @@ interface Journal {
   entries: JournalEntry[];
 }
 
-async function applyDrizzleMigrations(client: PoolClient): Promise<void> {
+async function applyDrizzleMigrations(client: PoolClient): Promise<MigrationGateVerdict[]> {
   await client.query(`
     CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
       "tag"        text        PRIMARY KEY,
@@ -495,7 +514,7 @@ async function applyDrizzleMigrations(client: PoolClient): Promise<void> {
   const journalPath = path.join(DRIZZLE_DIR, "meta/_journal.json");
   if (!fs.existsSync(journalPath)) {
     console.log("[drizzle] No journal found at lib/db/drizzle/meta/_journal.json — skipping auto-apply.");
-    return;
+    return [];
   }
 
   const journal: Journal = JSON.parse(fs.readFileSync(journalPath, "utf-8"));
@@ -530,6 +549,7 @@ async function applyDrizzleMigrations(client: PoolClient): Promise<void> {
   const appliedTags = new Set(rows.map((r) => r.tag));
 
   let appliedCount = 0;
+  const held: MigrationGateVerdict[] = [];
   for (const entry of entries) {
     if (appliedTags.has(entry.tag)) {
       console.log(`[drizzle] ${entry.tag} — already applied.`);
@@ -545,6 +565,16 @@ async function applyDrizzleMigrations(client: PoolClient): Promise<void> {
     }
 
     const rawSql = fs.readFileSync(sqlPath, "utf-8");
+
+    // Destructive-migration gate (#2930) — decided from the RAW file, before any
+    // rewriting, and before a single statement reaches the production database.
+    const verdict = evaluateMigrationGate(entry.tag, rawSql);
+    if (verdict.action === "hold") {
+      console.warn(formatHoldNotice(verdict));
+      held.push(verdict);
+      continue;
+    }
+
     const sql = rawSql.replace(/--> statement-breakpoint/g, "");
 
     // These specific migrations target tables that are absent from the production
@@ -584,11 +614,14 @@ async function applyDrizzleMigrations(client: PoolClient): Promise<void> {
     appliedCount++;
   }
 
-  if (appliedCount === 0) {
+  if (appliedCount === 0 && held.length === 0) {
     console.log("[drizzle] All Drizzle SQL migrations are already applied.");
   } else {
-    console.log(`[drizzle] Applied ${appliedCount} new Drizzle migration(s).`);
+    if (appliedCount > 0) console.log(`[drizzle] Applied ${appliedCount} new Drizzle migration(s).`);
+    if (held.length > 0) console.log(`[drizzle] Held ${held.length} migration(s) at the destructive gate.`);
   }
+
+  return held;
 }
 
 // ---------------------------------------------------------------------------
@@ -597,6 +630,7 @@ async function applyDrizzleMigrations(client: PoolClient): Promise<void> {
 
 async function main(): Promise<void> {
   const client = await pool.connect();
+  let held: MigrationGateVerdict[] = [];
   try {
     console.log("=== Phase 1: Legacy hand-crafted migrations ===");
     for (const migration of legacyMigrations) {
@@ -606,12 +640,23 @@ async function main(): Promise<void> {
     }
 
     console.log("\n=== Phase 2: Drizzle-generated SQL migrations ===");
-    await applyDrizzleMigrations(client);
+    held = await applyDrizzleMigrations(client);
 
-    console.log("\nAll migrations applied to production successfully.");
+    if (held.length === 0) {
+      console.log("\nAll migrations applied to production successfully.");
+    } else {
+      console.log(
+        `\nAll auto-appliable migrations applied to production; ${held.length} HELD at the gate.`
+      );
+    }
   } finally {
     client.release();
     await pool.end();
+  }
+
+  if (held.length > 0) {
+    console.warn(formatHeldSummary(held, "production"));
+    process.exit(GATE_HELD_EXIT_CODE);
   }
 }
 

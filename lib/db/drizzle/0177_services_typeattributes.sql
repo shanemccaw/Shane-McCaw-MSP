@@ -1,3 +1,6 @@
+-- @migration-gate: auto-approved
+-- @gate-reason: Historical, already applied (dev __drizzle_migrations 2026-07-12). Drops retired flat services columns and the script-set tables superseded by services.type_attributes; retained only for fresh-database replay. Reviewed under #2930.
+
 -- Services catalog schema cleanup: drop retired flat columns, drop script-set
 -- tables, add typeAttributes jsonb.  All product-type-specific data (seat ranges,
 -- tier capabilities, AI credit allowances, etc.) now lives in typeAttributes.
