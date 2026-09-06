@@ -48,8 +48,10 @@
  * customer's own signed compliance position — misattributing consent on a real,
  * customer-facing compliance record. That is a genuine product/trust decision (money,
  * entitlement and customer-promise territory per this repo's own stop-and-ask rule), not
- * a missing-column gap this build can settle on its own — filed as a real finding rather
- * than guessed at; see the sibling issue this build filed under #1685.
+ * a missing-column gap this build can settle on its own — this is settled, real decision,
+ * not an open finding: no MSP-side create/author route for `policy_decisions` will be built,
+ * for the same reason already established for Remediation's decline-to-risk and Security
+ * Plan's customer-sign (see Git #3035, which is the real, settled answer — not #1685).
  *
  * The one MUTATING action built here — manual clearance resolve — is safe to extend to MSP
  * staff because it is not a policy position: it is a plain, already-established action

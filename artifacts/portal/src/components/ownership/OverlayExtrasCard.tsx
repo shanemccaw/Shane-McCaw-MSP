@@ -4,11 +4,21 @@ import { personById } from "@/lib/ownership-visuals";
 
 /**
  * Read-only listing of the two overlay shapes that don't fit inside the
- * typed matrix: standing handovers, and rows a customer added by hand. Both
- * are part of surface A's own payload (contract pack §1b: "seeded into the
- * client on every load of surface A") — this build reads and displays them;
- * *writing* new ones (`POST /portal/ownership/delegations`,
- * `POST /portal/ownership/rows`) is #3041's scope.
+ * typed matrix: standing handovers, and "coverage" rows (a promoted-but-
+ * unnamed gap — contract pack §1b: their `objType`/`name`/`sub` are
+ * genuinely blank in this table, since that descriptive text lives only in a
+ * client-side fixture this app does not carry). A `source: "custom"` row is
+ * NOT listed here (#3041) — it now renders as a real matrix row with its own
+ * RACI cells (`ownership-matrix.ts`'s `buildCustomRows`), since a row a
+ * customer adds "holds cells exactly like a live one" (the design's own
+ * copy) rather than being a second, cell-less listing of the same thing.
+ *
+ * Handovers stay read-only here: `POST /portal/ownership/delegations` and
+ * `/delegations/end` are real and live, but the Design export draws no
+ * control for either anywhere on this screen, and #1491's own structured
+ * index still lists #1518/#1524 ("decide the fate of
+ * portal_ownership_delegations") as an open decision — so this pass does not
+ * invent a handover control the design doesn't call for.
  */
 export function OverlayExtrasCard({
   delegations,
@@ -19,7 +29,8 @@ export function OverlayExtrasCard({
   rows: readonly WireOwnRow[];
   people: readonly WireOwnPerson[];
 }) {
-  if (delegations.length === 0 && rows.length === 0) return null;
+  const coverageRows = rows.filter((r) => r.source === "coverage");
+  if (delegations.length === 0 && coverageRows.length === 0) return null;
 
   return (
     <Card>
@@ -47,16 +58,14 @@ export function OverlayExtrasCard({
           </div>
         )}
 
-        {rows.length > 0 && (
+        {coverageRows.length > 0 && (
           <div className="flex flex-col gap-2">
-            <span className="text-[12.5px] font-semibold text-foreground">Rows added by hand</span>
-            {rows.map((r) => (
+            <span className="text-[12.5px] font-semibold text-foreground">Promoted from a coverage gap</span>
+            {coverageRows.map((r) => (
               <div key={r.rowId} className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-2.5 text-[11.5px]">
                 <span className="font-medium text-foreground">{r.name || "(no descriptive text recorded)"}</span>
                 {r.sub && <span className="text-muted-foreground">{r.sub}</span>}
-                <span className="ml-auto text-[10px] text-muted-foreground">
-                  {r.source === "coverage" ? "promoted from a coverage gap" : "custom row"}
-                </span>
+                <span className="ml-auto text-[10px] text-muted-foreground">no name/type recorded for this table (§1b)</span>
               </div>
             ))}
           </div>

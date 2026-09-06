@@ -1,7 +1,7 @@
 /**
  * Pure derivations that turn `WireOwnershipPayload` into the shapes the
- * Ownership / RACI page renders (#3040). Kept pure and separate from the
- * components for the same reason the backend's own mappers are
+ * Ownership / RACI page renders (#3040/#3041). Kept pure and separate from
+ * the components for the same reason the backend's own mappers are
  * (`portal-ownership.ts`'s own header): what a cell's real current holder IS
  * is testable without a component tree.
  *
@@ -10,12 +10,17 @@
  * directly) — everywhere else it is `overlay.assignments` or nothing
  * (contract pack §2/§5). A saved assignment for a cell always takes
  * precedence over that base seed.
+ *
+ * `buildCustomRows` (#3041) is the write-overlay's addition: a customer-added
+ * row holds cells exactly like a real object, so it is turned into the same
+ * shape and merged with `buildMatrixRows`'s output at the call site.
  */
 import type {
   OwnObjectType,
   OwnRoleKey,
   WireOwnAssignment,
   WireOwnObject,
+  WireOwnRow,
   WireOwnershipPayload,
 } from "@/lib/ownership-types";
 
@@ -107,6 +112,42 @@ export function buildMatrixRows(payload: WireOwnershipPayload): readonly MatrixR
   }));
 }
 
+/**
+ * A customer-added row (§1b, `POST /portal/ownership/rows`, `source:
+ * "custom"`), turned into the same `WireOwnObject` shape a real row has so it
+ * can hold cells "exactly like a live one" (the design's own copy) — its
+ * `rowId` becomes the `objectId` the write routes assign against. Excludes
+ * `source: "coverage"` rows: their `objType`/`name`/`sub` are genuinely blank
+ * in this table (contract pack §1b) — that descriptive text lives only in a
+ * client-side fixture this app does not carry, so there is nothing real to
+ * render for one yet.
+ */
+export function buildCustomRows(payload: WireOwnershipPayload): readonly MatrixRow[] {
+  const byCell = groupAssignments(payload.overlay.assignments);
+  const emptyBase = { r: "", a: "", c: "", i: "" } as const;
+  return payload.overlay.rows
+    .filter((row): row is WireOwnRow => row.source === "custom")
+    .map((row) => {
+      const object: WireOwnObject = {
+        type: "control",
+        id: row.rowId,
+        name: row.name || row.rowId,
+        sub: row.objType ? (row.sub ? `${row.objType} · ${row.sub}` : row.objType) : row.sub,
+        link: "Added by hand",
+        ...emptyBase,
+      };
+      return {
+        object,
+        cells: {
+          r: cellFor(object, "r", byCell),
+          a: cellFor(object, "a", byCell),
+          c: cellFor(object, "c", byCell),
+          i: cellFor(object, "i", byCell),
+        },
+      };
+    });
+}
+
 /** One "your place on the matrix" line — every cell the signed-in person holds. */
 export interface MineEntry {
   readonly object: WireOwnObject;
@@ -152,7 +193,7 @@ export function computeGaps(rows: readonly MatrixRow[]): MatrixGaps {
 
 /** Groups rows by object type, in the source's own fixed live-type order. */
 export function groupByType(rows: readonly MatrixRow[]): ReadonlyMap<OwnObjectType, MatrixRow[]> {
-  const order: readonly OwnObjectType[] = ["workload", "service", "change", "cr", "freeze"];
+  const order: readonly OwnObjectType[] = ["workload", "service", "change", "cr", "freeze", "control"];
   const map = new Map<OwnObjectType, MatrixRow[]>();
   for (const type of order) map.set(type, []);
   for (const row of rows) {
