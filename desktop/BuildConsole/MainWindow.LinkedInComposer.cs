@@ -30,14 +30,26 @@ namespace BuildConsole
                 return;
             }
 
-            _linkedInComposer = new LinkedInComposerWindow { Owner = this };
-            _linkedInComposer.SendRequested += LinkedInComposer_SendRequested;
-            _linkedInComposer.Closed += (s, e) =>
+            // Git #2076 — deliberately NOT Owner = this (same fix as #2074's
+            // FloatingChatWindow / this file's sibling Sticky Notes and Build Watch
+            // toggles). An owned window's activation/z-order is coupled to its owner
+            // in WPF, which is very likely why interacting with this floaty could pull
+            // MainWindow into view. The window is already Topmost="True" in its own
+            // XAML, so always-on-top doesn't depend on Owner. Auto-close-with-app is
+            // replaced with an explicit MainWindow.Closed hook instead.
+            var win = new LinkedInComposerWindow();
+            win.SendRequested += LinkedInComposer_SendRequested;
+            win.Closed += (s, e) =>
             {
-                _linkedInComposer = null;
+                if (ReferenceEquals(_linkedInComposer, win)) _linkedInComposer = null;
                 BuildConsole.Services.ActivityLog.Log("linkedin.prefill", "composer close");
             };
-            _linkedInComposer.Show();
+            this.Closed += (_, _) =>
+            {
+                try { if (win.IsLoaded) win.Close(); } catch { }
+            };
+            _linkedInComposer = win;
+            win.Show();
             BuildConsole.Services.ActivityLog.Log("linkedin.prefill", "composer open");
         }
 
