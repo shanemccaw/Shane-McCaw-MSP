@@ -153,6 +153,27 @@ export interface WritePermissionRule {
    * route can surface it as its own honest category.
    */
   appOnlyUnsupported?: boolean;
+  /**
+   * A permission this rule requests that Microsoft's own operation page does NOT
+   * list in either `documentedApplicationTiers` cell, together with the real
+   * evidence that it nevertheless authorises the call.
+   *
+   * THIS IS NOT AN ESCAPE HATCH FOR A GUESS (Git #2846). Every other rule in this
+   * table is derived from a quoted Microsoft Learn row and nothing else, and the
+   * `#1975` test enforces that. This field is the single sanctioned exception, and
+   * it costs a real, reproducible live call to use: Microsoft publishes
+   * contradictory pages for at least one operation — the permissions reference
+   * documents `Policy.ReadWrite.SecurityDefaults` while the operation page for the
+   * write it describes does not — and documentation alone cannot say which page is
+   * stale. The only thing that can is issuing the call and reading the status.
+   *
+   * The string must state the real observed result: which permissions were in the
+   * token's `roles` claim, what HTTP status came back, against which tenant and
+   * app registration, on what date. A future reader must be able to re-run it. The
+   * probe that produced the one existing entry is committed at
+   * `scripts/azure/securitydefaults-permission-probe-2846.mjs`.
+   */
+  confirmedByLiveTest?: string;
 }
 
 /**
@@ -615,20 +636,46 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
       leastPrivileged: "Policy.Read.All",
       higherPrivileged: "Policy.Read.All and Policy.ReadWrite.ConditionalAccess",
     },
-    permissions: ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"],
+    permissions: ["Policy.Read.All", "Policy.ReadWrite.SecurityDefaults"],
+    confirmedByLiveTest:
+      "Git #2846, 2026-09-06, live against mccawsoft2.onmicrosoft.com " +
+      "(tenant c4c814d4-3afe-441e-9145-62461d0a4fd3) with the DEV write app registration " +
+      "9f6f4772-b5be-421f-815e-b392336c373a. Four real PATCHes of " +
+      "/policies/identitySecurityDefaultsEnforcementPolicy, each sending the tenant's own current value " +
+      "(isEnabled: true) so only the authorisation decision was exercised and no tenant state changed. " +
+      "The app's appRoleAssignments were toggled between arms and restored exactly afterwards; the " +
+      "`roles` claim of each token was decoded and asserted before its call. Results: " +
+      "(1) Policy.Read.All + Policy.ReadWrite.ConditionalAccess -> 204. " +
+      "(2) Policy.Read.All alone, no CA-write, no SecurityDefaults -> 403 AccessDenied " +
+      "\"required scopes are missing in the token\" (request-id ccf1e3ed-600d-4caa-a79b-c7ca08240f29). " +
+      "(3) Policy.Read.All + Policy.ReadWrite.SecurityDefaults, CA-write ABSENT -> 204. " +
+      "(4) Policy.ReadWrite.SecurityDefaults alone, Policy.Read.All ABSENT -> 403 AccessDenied " +
+      "(request-id dfbee186-bd42-4da8-b28b-4423e5506c32). " +
+      "Re-runnable via scripts/azure/securitydefaults-permission-probe-2846.mjs.",
     justification:
       "quickstart-v1 step 5 (quickstart-v1.disable-security-defaults) turns off Security Defaults so the " +
       "baseline Conditional Access policy created in step 6 can take effect — the two are mutually " +
-      "exclusive in Entra. WHY A WRITE CARRIES Policy.Read.All (Git #1975): Microsoft's least-privileged " +
-      "Application cell for this PATCH is Policy.Read.All alone, which cannot authorise a write; the only " +
-      "usable tier is therefore the higher-privileged one, and that cell reads " +
-      "\"Policy.Read.All and Policy.ReadWrite.ConditionalAccess\" — one tier requiring BOTH, not two tiers " +
-      "concatenated. Policy.ReadWrite.ConditionalAccess is what authorises the write; Policy.Read.All is " +
-      "required alongside it by Microsoft's own table. Security Defaults sits under the Conditional Access " +
-      "write scope because Entra treats the two as one mutually-exclusive setting — the same reason step 5 " +
-      "has to run before step 6 at all. Verified against the v1.0 AND beta pages on 2026-09-04: both carry " +
-      "this identical table, and neither lists Policy.ReadWrite.SecurityDefaults, which does exist as a " +
-      "narrower Graph permission — see #2846 for whether it can replace the pair here.",
+      "exclusive in Entra. WHY THIS RULE DOES NOT MATCH ITS OWN DOC PAGE (Git #2846): Microsoft's " +
+      "operation page documents only Policy.Read.All (least, read-only and so unusable for a PATCH) and " +
+      "\"Policy.Read.All and Policy.ReadWrite.ConditionalAccess\" (higher). It has never listed " +
+      "Policy.ReadWrite.SecurityDefaults, even though the general Graph permissions reference documents " +
+      "that permission as \"Read and write security defaults policy\" — an exact description of this one " +
+      "operation. #1975 could not settle which page was stale from documentation alone, so #2846 settled " +
+      "it with the real call: Policy.ReadWrite.SecurityDefaults DOES authorise this PATCH, and the " +
+      "operation page is the stale one. See `confirmedByLiveTest` for the four measured arms. " +
+      "WHY Policy.Read.All IS STILL HERE: it is not ceremony and it is not the #1975 bug class — arm 4 of " +
+      "that same test removed it and got a real 403. The conjunction is genuine; only the write half of " +
+      "it changes. WHAT THIS CHANGES FOR A SECURITY REVIEWER: the honest answer to \"why does toggling " +
+      "Security Defaults require Conditional Access WRITE?\" is now \"it does not\" — this step needs a " +
+      "permission scoped to exactly the policy it touches. Policy.ReadWrite.ConditionalAccess remains in " +
+      "the platform's requested set, but only for the genuinely separate Conditional Access policy steps " +
+      "(quickstart-v1 step 6 and the CA-policy PATCH/DELETE rules below), not for this one. " +
+      "HONEST COST, stated plainly because the derived set is what every customer consents to: this " +
+      "narrowing ENLARGES DERIVED_WRITE_APP_PERMISSIONS by one (Policy.ReadWrite.SecurityDefaults) rather " +
+      "than shrinking it, because CA-write is still required by step 6 regardless. #2846's own body " +
+      "anticipated that — the gain is the justification, not the size of the consent screen. It also " +
+      "means both write app registrations must DECLARE and be CONSENTED to the new permission before " +
+      "this step's derivation matches reality; the PROD app registration side of that is gated to #1281.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/identitysecuritydefaultsenforcementpolicy-update",
   },
   {

@@ -66,7 +66,11 @@ describe("quickstart-v1 — every step maps to the permission Microsoft document
     ["POST", "/roleManagement/directory/roleAssignments", ["RoleManagement.ReadWrite.Directory"]],
     ["POST", "/groups", ["Group.Create"]],
     ["POST", "/groups/{{breakGlassGroupId}}/members/$ref", ["GroupMember.ReadWrite.All"]],
-    ["PATCH", "/policies/identitySecurityDefaultsEnforcementPolicy", ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"]],
+    // #2846 — step 5 no longer borrows Conditional Access WRITE. A real 204 with
+    // CA-write absent from the token proved Policy.ReadWrite.SecurityDefaults
+    // authorises this PATCH; a real 403 with Policy.Read.All absent proved the
+    // read half of the conjunction is still genuinely required.
+    ["PATCH", "/policies/identitySecurityDefaultsEnforcementPolicy", ["Policy.Read.All", "Policy.ReadWrite.SecurityDefaults"]],
     ["POST", "/identity/conditionalAccess/policies", ["Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"]],
     ["PATCH", "/organization/{{tenantId}}/branding/localizations/0", ["OrganizationalBranding.ReadWrite.All"]],
     ["PATCH", "/policies/authorizationPolicy", ["Policy.ReadWrite.Authorization"]],
@@ -163,7 +167,7 @@ describe("adding a service principal to a group needs the body-driven extra", ()
 });
 
 describe("the derived request set", () => {
-  it("is exactly the 24 permissions #1875/#1899/#1901/#2856 derived from the packs' real steps", () => {
+  it("is exactly the 25 permissions #1875/#1899/#1901/#2856/#2846 derived from the packs' real steps", () => {
     expect([...DERIVED_WRITE_APP_PERMISSIONS]).toEqual([
       "Application.ReadWrite.All",
       "DelegatedPermissionGrant.ReadWrite.All",
@@ -192,6 +196,13 @@ describe("the derived request set", () => {
       "Policy.ReadWrite.AuthenticationMethod",
       "Policy.ReadWrite.Authorization",
       "Policy.ReadWrite.ConditionalAccess",
+      // #2846 — quickstart-v1 step 5 (Security Defaults PATCH) now asks for the
+      // permission scoped to exactly that policy instead of leaning on CA-write.
+      // Confirmed by a real 204 against the testbed tenant with CA-write absent;
+      // see the rule's confirmedByLiveTest. This ENLARGES the set by one rather
+      // than shrinking it — CA-write is still required by step 6 — which #2846's
+      // body predicted and accepted, because the gain is the justification.
+      "Policy.ReadWrite.SecurityDefaults",
       "RoleManagement.ReadWrite.Directory",
       // #1901 — security-incident-response-v1 step 5.
       "SecurityIncident.ReadWrite.All",
@@ -226,8 +237,12 @@ describe("the derived request set", () => {
     ];
     // #2856 landed after #1901 and adds an 18th pre-existing member (Group.ReadWrite.All)
     // to the baseline this test isolates against, so its own 6-permission delta stays exact.
-    const beforeThisIssueAnd2856 = [...beforeThisIssue, "Group.ReadWrite.All"];
-    const added = DERIVED_WRITE_APP_PERMISSIONS.filter((p) => !beforeThisIssueAnd2856.includes(p));
+    // #2846 is later still and adds Policy.ReadWrite.SecurityDefaults for the same reason —
+    // both are excluded here so this assertion keeps measuring what #1901 alone cost.
+    const addedByLaterIssues = ["Group.ReadWrite.All", "Policy.ReadWrite.SecurityDefaults"];
+    const added = DERIVED_WRITE_APP_PERMISSIONS.filter(
+      (p) => !beforeThisIssue.includes(p) && !addedByLaterIssues.includes(p),
+    );
     expect(added).toEqual([
       "DeviceManagementApps.ReadWrite.All",
       "DeviceManagementConfiguration.ReadWrite.All",
@@ -261,8 +276,36 @@ describe("the derived request set", () => {
       "User.DeleteRestore.All", "User.ReadWrite.All", "User.RevokeSessions.All",
       "UserAuthenticationMethod.ReadWrite.All",
     ];
-    const added = DERIVED_WRITE_APP_PERMISSIONS.filter((p) => !afterThisIssue.includes(p));
+    // #2846 landed after #2856 and adds its own permission; excluded so this
+    // assertion keeps measuring #2856's real cost alone.
+    const added = DERIVED_WRITE_APP_PERMISSIONS.filter(
+      (p) => !afterThisIssue.includes(p) && p !== "Policy.ReadWrite.SecurityDefaults",
+    );
     expect(added).toEqual(["Group.ReadWrite.All"]);
+  });
+
+  it("#2846 added exactly 1 new permission (Policy.ReadWrite.SecurityDefaults) on top of #2856", () => {
+    // The Security Defaults PATCH stopped borrowing Conditional Access WRITE and
+    // asked for the permission scoped to the policy it touches — confirmed by a
+    // real 204 with CA-write absent from the token. CA-write does NOT leave the
+    // set, because quickstart-v1 step 6 genuinely needs it, so this is a +1 to
+    // the consent screen bought with a better justification. #2846's own body
+    // predicted and accepted that trade.
+    const afterPreviousIssue = [
+      "Application.ReadWrite.All", "DelegatedPermissionGrant.ReadWrite.All",
+      "DeviceManagementApps.ReadWrite.All", "DeviceManagementConfiguration.ReadWrite.All",
+      "DeviceManagementManagedDevices.ReadWrite.All", "Files.ReadWrite.All", "Group.Create",
+      "Group.ReadWrite.All", "GroupMember.ReadWrite.All", "LicenseAssignment.ReadWrite.All",
+      "OrganizationalBranding.ReadWrite.All", "Policy.Read.All",
+      "Policy.ReadWrite.AuthenticationMethod", "Policy.ReadWrite.Authorization",
+      "Policy.ReadWrite.ConditionalAccess", "RoleManagement.ReadWrite.Directory",
+      "SecurityIncident.ReadWrite.All", "SharePointTenantSettings.ReadWrite.All",
+      "TeamSettings.ReadWrite.All", "User-PasswordProfile.ReadWrite.All",
+      "User.DeleteRestore.All", "User.ReadWrite.All", "User.RevokeSessions.All",
+      "UserAuthenticationMethod.ReadWrite.All",
+    ];
+    const added = DERIVED_WRITE_APP_PERMISSIONS.filter((p) => !afterPreviousIssue.includes(p));
+    expect(added).toEqual(["Policy.ReadWrite.SecurityDefaults"]);
   });
 
   it("excludes the permissions deliberately not requested, and says why", () => {
@@ -338,10 +381,15 @@ describe("#1975 — no rule invents a permission its own Microsoft Learn page do
         ...namesIn(rule.documentedApplicationTiers.higherPrivileged),
       ]);
       for (const p of rule.permissions) {
+        // Git #2846 — the ONE sanctioned exception: a permission Microsoft's own
+        // operation page omits, kept only because a real call proved it works.
+        // The rule must carry that evidence; a bare mismatch still fails.
+        if (!documented.has(p) && rule.confirmedByLiveTest) continue;
         expect(
           documented.has(p),
           `${rule.method} ${rule.pattern} requests ${p}, which appears in neither tier of ` +
-            `${rule.docUrl}. Either the permission is wrong or the quoted row is stale — re-read the page.`,
+            `${rule.docUrl}. Either the permission is wrong or the quoted row is stale — re-read the page. ` +
+            `If a real live call proves the page is the stale one, record it in confirmedByLiveTest (#2846).`,
         ).toBe(true);
       }
     }
@@ -369,12 +417,16 @@ describe("#1975 — no rule invents a permission its own Microsoft Learn page do
     }
   });
 
-  it("the three Conditional-Access-family rules still hold the documented pair, and say why", () => {
+  it("the Conditional-Access-family rules still hold the documented pair, and say why", () => {
     // Removing Policy.Read.All from these would 403 at runtime — Microsoft's
     // known-issues page states the conditionalAccessPolicy API "currently requires
     // consent to the Policy.Read.All permission to call the POST and PATCH methods".
+    //
+    // #2846 removed PATCH /policies/identitySecurityDefaultsEnforcementPolicy from
+    // this list. It is no longer Conditional-Access family: a live 204 with
+    // CA-write absent from the token proved it never needed the CA half of the
+    // pair. Its own #2846 case is asserted separately below.
     const affected: [string, string][] = [
-      ["PATCH", "/policies/identitySecurityDefaultsEnforcementPolicy"],
       ["POST", "/identity/conditionalAccess/policies"],
       ["PATCH", "/identity/conditionalAccess/policies/{{policyId}}"],
     ];
@@ -388,6 +440,44 @@ describe("#1975 — no rule invents a permission its own Microsoft Learn page do
       expect(got.rule!.justification).toMatch(/Git #1975/);
       expect(got.rule!.documentedApplicationTiers.higherPrivileged + got.rule!.documentedApplicationTiers.leastPrivileged)
         .toContain("Policy.Read.All and Policy.ReadWrite.ConditionalAccess");
+    }
+  });
+
+  it("#2846 — the Security Defaults PATCH keeps a permission its own doc page omits, and carries the live evidence", () => {
+    const got = requiredPermissionsForWrite("PATCH", "/policies/identitySecurityDefaultsEnforcementPolicy");
+    expect(got.rule).not.toBeNull();
+    const rule = got.rule!;
+
+    // The narrowed set: the policy-specific write permission, plus the read half
+    // that arm 4 of the live test proved is still genuinely required.
+    expect(got.required.sort()).toEqual(["Policy.Read.All", "Policy.ReadWrite.SecurityDefaults"]);
+    expect(got.required).not.toContain("Policy.ReadWrite.ConditionalAccess");
+
+    // Microsoft's own page still does not list it. That mismatch is only allowed
+    // because a real call proved the page is the stale one — if someone deletes
+    // the evidence, the #1975 test above starts failing again, as it should.
+    const tiers = rule.documentedApplicationTiers.leastPrivileged + rule.documentedApplicationTiers.higherPrivileged;
+    expect(tiers).not.toContain("Policy.ReadWrite.SecurityDefaults");
+    expect(rule.confirmedByLiveTest).toBeDefined();
+    // The evidence has to state real observed statuses, not a conclusion.
+    expect(rule.confirmedByLiveTest).toContain("204");
+    expect(rule.confirmedByLiveTest).toContain("403");
+    expect(rule.confirmedByLiveTest).toContain("securitydefaults-permission-probe-2846.mjs");
+
+    // CA-write did not leave the platform's request — step 6 still needs it.
+    expect(DERIVED_WRITE_APP_PERMISSIONS).toContain("Policy.ReadWrite.ConditionalAccess");
+  });
+
+  it("#2846 — confirmedByLiveTest is used by exactly one rule, and never as a shortcut for a documented permission", () => {
+    const withEvidence = GRAPH_WRITE_PERMISSION_RULES.filter((r) => r.confirmedByLiveTest);
+    expect(withEvidence.map((r) => `${r.method} ${r.pattern}`)).toEqual([
+      "PATCH /policies/identitySecurityDefaultsEnforcementPolicy",
+    ]);
+    // A rule may only carry the field if it genuinely has an undocumented
+    // permission. Otherwise it is decoration, and the next reader will copy it.
+    for (const rule of withEvidence) {
+      const tiers = rule.documentedApplicationTiers.leastPrivileged + rule.documentedApplicationTiers.higherPrivileged;
+      expect(rule.permissions.some((p) => !tiers.includes(p))).toBe(true);
     }
   });
 
@@ -697,9 +787,13 @@ describe("#2858 — the unwired catalogue resolves to a documented permission", 
     // in its own notRequestedReason: a step no Config Pack ships must never
     // enlarge what every customer is asked to consent to. If a future rule here
     // needs a new permission, this fails and someone has to justify it against a
-    // real shipped product step. (24, not 23 — #2856 landed after #2858 and added
-    // Group.ReadWrite.All for a real shipped pack step, not for anything here.)
-    expect(DERIVED_WRITE_APP_PERMISSIONS).toHaveLength(24);
+    // real shipped product step. Both increases past #2858's own 23 came from
+    // one: #2856 added Group.ReadWrite.All for a real shipped pack step, and
+    // #2846 added Policy.ReadWrite.SecurityDefaults when the Security Defaults
+    // PATCH (quickstart-v1 step 5) swapped its borrowed Conditional Access WRITE
+    // for the permission scoped to the policy it actually touches. Neither is an
+    // unwired-catalogue rule sneaking one in, which is all this guards.
+    expect(DERIVED_WRITE_APP_PERMISSIONS).toHaveLength(25);
     for (const forbidden of [
       "Domain.ReadWrite.All",
       "DeviceManagementManagedDevices.PrivilegedOperations.All",
