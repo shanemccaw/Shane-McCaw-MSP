@@ -1,0 +1,87 @@
+{
+  "issue": 2921,
+  "feature": "Customer Home / Overview - the real artifacts/portal '/' page (src/pages/index.tsx), wired to the two real endpoints traced in docs/customer-home-and-timeline-contract-pack.md: GET /api/portal/dashboard (artifacts/api-server/src/routes/portal-customer-engines.ts, requireAuth) and GET /api/portal/customer/timeline (portal-customer-timeline.ts, requireRole CustomerUser). Backs the page's header state banner, Needs You / Coming Up / Happened / Work In Flight / Portal Counts / Reports panels - see src/components/overview/ for the data hooks and src/pages/index.tsx's own header comment for the one deliberate design departure (no gantt/calendar strip - see that comment for why).",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "WHAT THIS COVERS: both endpoints are auth-gated as documented, a logged-in customer gets the real dashboard shape (scores/telemetryStatus/results/projects/reports/overviewCounts, including the #2922 six roll-up counts) and the real timeline shape (events[]/nextCursor), and the timeline's cursor param actually narrows the result.",
+
+    "WHAT THIS DOES NOT COVER, AND WHY (no portal login page yet): artifacts/portal has no login page today (#1648) - App.tsx's RequireAuth renders an honest 'Sign in required' panel for an unauthenticated visitor. A real end-to-end UI login -> land on Overview -> see real customerName/counts flow cannot be exercised through the browser yet, the same structural gap test-manifests/portal/alerts-dropdown.json (#1821) and test-manifests/chat/support-chat-active-cards.json (#2519) already document. The uiSteps below only assert what is honestly reachable today (the shell route mounts and RequireAuth's honest empty state renders). apiTests exercise the full real backend directly with a real bearer token. Once a portal login page exists, extend this manifest with a real login block + goto '/' + assert on real rendered data-testids (overview-notifications-chip / overview-messages-chip are already on the page) - no code change needed on the page side.",
+
+    "LIVE RUN RESULT (2026-09-06, session for #2921, run via shaneapp://runTest against the real local dev api-server on :8080): 8 of 9 steps passed - every apiTests step (auth gates, real login, real dashboard shape incl. overviewCounts.rbdWaiting, real projects[]/reports[] arrays, real timeline events[]/nextCursor shape, the before= cursor param accepted) passed against live data. The one uiSteps navigate step failed with a Navigation Error because the artifacts/portal Vite dev server (:5173) was not running in that environment at run time (confirmed: curl to :5173 refused the connection, :8080 answered normally) - this branch's frontend had not yet gone through the dev-server merge/restart cycle that starts it. Not a code defect; re-run once the portal frontend dev server is up.",
+
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use)."
+  ],
+
+  "apiTests": [
+    {
+      "name": "AUTH-GATE-1 - GET /api/portal/dashboard with no Authorization header returns 401 (requireAuth)",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-2 - GET /api/portal/customer/timeline with no Authorization header returns 401 (requireRole CustomerUser)",
+      "method": "GET",
+      "path": "/api/portal/customer/timeline",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP - log in as the designated testbed portal account to obtain a real client bearer; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "DASHBOARD - an authenticated GET /api/portal/dashboard returns the real payload shape, including the #2922 overviewCounts roll-up",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overviewCounts.rbdWaiting", "exists": true }
+    },
+    {
+      "name": "DASHBOARD-PROJECTS - projects is a real array (possibly empty), never a fixture substitution",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.projects", "isArray": true }
+    },
+    {
+      "name": "DASHBOARD-REPORTS - reports is a real array (possibly empty)",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.reports", "isArray": true }
+    },
+    {
+      "name": "TIMELINE - an authenticated GET /api/portal/customer/timeline returns the real events[]/nextCursor shape (genuinely [] for a testbed account with no scan/finding/document/offer history yet - honest-empty, not a fixture substitution)",
+      "method": "GET",
+      "path": "/api/portal/customer/timeline?limit=8",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.events", "isArray": true }
+    },
+    {
+      "name": "TIMELINE-BEFORE - the before= cursor param is accepted and still returns the real shape (no assertion on narrowing a specific event: the designated testbed account has no timeline history to narrow against today)",
+      "method": "GET",
+      "path": "/api/portal/customer/timeline?limit=8&before=2026-01-01T00:00:00.000Z",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.events", "isArray": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/" },
+    {
+      "name": "Unauthenticated visit: the shell route mounts and RequireAuth's honest sign-in-required panel renders (no portal login page exists yet - see notes)",
+      "action": "expect",
+      "selector": "h1",
+      "state": "visible",
+      "textContains": "Sign in required",
+      "critical": true
+    }
+  ]
+}
