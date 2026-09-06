@@ -197,7 +197,9 @@ public sealed class GitDoctorService
 
     private async Task CheckDirtyWorktreeAsync(List<GitDoctorFinding> findings)
     {
-        var status = await GitAsync("status --porcelain=v1");
+        // Git #2988 — without --untracked-files=all, an entirely-untracked directory
+        // collapses to a single porcelain line, undercounting the real per-file total.
+        var status = await GitAsync("status --porcelain=v1 --untracked-files=all");
         if (status.Item1 != 0 || string.IsNullOrWhiteSpace(status.Item2)) return;
 
         var lines = status.Item2.Split('\n', StringSplitOptions.RemoveEmptyEntries);

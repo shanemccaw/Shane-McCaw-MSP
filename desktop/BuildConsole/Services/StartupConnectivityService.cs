@@ -217,7 +217,10 @@ namespace BuildConsole.Services
                         // into the parse loop and reported "main (clean)", a silent false success.
                         // SubprocessRunner retries a crash with backoff and, when it genuinely
                         // fails, we now surface an honest Degraded row instead of a fake-clean one.
-                        var res = SubprocessRunner.Run("git", "status --porcelain -b", repoRoot,
+                        // Git #2988 — without --untracked-files=all, an entirely-untracked
+                        // directory collapses to a single porcelain line, undercounting
+                        // "changed" here to 1 instead of the real per-file count.
+                        var res = SubprocessRunner.Run("git", "status --porcelain -b --untracked-files=all", repoRoot,
                             TimeSpan.FromSeconds(3), Channel);
                         sw.Stop();
 

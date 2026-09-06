@@ -7447,7 +7447,16 @@ namespace BuildConsole.Controls
                     var psi = new System.Diagnostics.ProcessStartInfo
                     {
                         FileName = "git",
-                        Arguments = "status --porcelain -b",
+                        // Git #2988 — without --untracked-files=all, git's own default
+                        // --porcelain behavior collapses an ENTIRELY untracked directory
+                        // into one line for the directory itself, not one line per real
+                        // file inside it (confirmed on a 66-file all-untracked Design pack
+                        // folder that showed as a single blank "CHANGES (1)" entry here
+                        // while VS Code, which always passes the equivalent flag, listed
+                        // all 66). This makes per-file staging/committing below actually
+                        // work on that kind of folder instead of only ever seeing one
+                        // directory-line entry.
+                        Arguments = "status --porcelain -b --untracked-files=all",
                         WorkingDirectory = RootWorkspacePath,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
