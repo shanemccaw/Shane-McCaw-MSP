@@ -28,7 +28,11 @@ namespace BuildConsole.Controls
     public partial class BatterUpPanel : UserControl
     {
         private Services.BuildQueuePostgresClient? _db;
-        private bool _refreshing;
+        // Git #2976 — the single in-flight refresh, if one is running. Overlapping callers are
+        // handed this SAME task rather than the old `if (_refreshing) return;` completed no-op,
+        // so a caller that awaits RefreshAsync (the manual Git Sync cascade) genuinely waits for
+        // the real fetch+render to finish instead of toasting "Refreshed!" while it's still going.
+        private System.Threading.Tasks.Task? _inFlightRefresh;
 
         // Git #2555 — the real fetched rows from the last RefreshAsync, in the order the board
         // refresh returned them. TxtFilter/BtnSortByState only narrow/reorder what's RENDERED
@@ -264,10 +268,17 @@ namespace BuildConsole.Controls
             await RefreshAsync();
         }
 
-        public async System.Threading.Tasks.Task RefreshAsync()
+        // Git #2976 — coalescing wrapper. Return the in-flight refresh (if any) so overlapping
+        // callers await the SAME real fetch instead of an early-return no-op that let the manual
+        // "Git Sync" toast fire before Batter Up actually repainted.
+        public System.Threading.Tasks.Task RefreshAsync()
         {
-            if (_refreshing) return; // a slow GitHub round-trip shouldn't stack on the next timer tick
-            _refreshing = true;
+            if (_inFlightRefresh is { IsCompleted: false }) return _inFlightRefresh;
+            return _inFlightRefresh = RefreshCoreAsync();
+        }
+
+        private async System.Threading.Tasks.Task RefreshCoreAsync()
+        {
             try
             {
                 var settings = Services.BuildConsoleSettings.Load();
@@ -353,7 +364,10 @@ namespace BuildConsole.Controls
             }
             finally
             {
-                _refreshing = false;
+                // Git #2976 — release the in-flight marker so the next RefreshAsync starts a fresh
+                // run. Runs on the UI thread at task completion, so it can't interleave with a
+                // concurrent RefreshAsync call (also UI-thread) mid-clear.
+                _inFlightRefresh = null;
             }
         }
 

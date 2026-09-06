@@ -480,11 +480,28 @@ function licenseGapFeatureFromProps(props: Record<string, unknown> | undefined):
   return typeof f === "string" && f.trim() ? f : "a required Microsoft 365 add-on";
 }
 
+/**
+ * #2925 (from #2837's live investigation): `classifyGraphError()`
+ * (graph.ts:711-716) maps Graph's "Account is not provisioned" 403 to
+ * `license_gap` with this exact feature string — but that response is what
+ * Microsoft returns when the tenant genuinely has Defender for Office 365
+ * licensed and the Security & Compliance portal (security.microsoft.com) has
+ * simply never been opened/onboarded by an admin, indistinguishable in the
+ * raw Graph response from a truly unlicensed tenant. `feature` is only ever
+ * this exact string when it came from that one branch, so it's a safe,
+ * narrow signal to render the accurate portal-onboarding copy instead of a
+ * false licensing claim. Keep in sync with diagnostics-runner.ts's
+ * buildFindingDescription license_gap branch if either copy changes. */
+const PORTAL_NOT_ONBOARDED_FEATURE = "Microsoft Defender for Office 365";
+
 /** The one customer-safe license-gap sentence — same wording as
  * diagnostics-runner.ts's buildFindingDescription license_gap branch (the scan
  * summary / CIO narrative already show this exact text; never invent a second
  * wording here). */
 function licenseGapMessage(feature: string): string {
+  if (feature === PORTAL_NOT_ONBOARDED_FEATURE) {
+    return "We couldn't evaluate this because the Microsoft 365 Defender / Security & Compliance portal (security.microsoft.com) hasn't been opened yet on your tenant. This isn't a licensing gap — Microsoft Defender for Office 365 is already licensed here. A Global Admin needs to sign into security.microsoft.com at least once to complete onboarding; we'll pick this check back up automatically once that's done.";
+  }
   return `We couldn't evaluate this because your Microsoft 365 tenant doesn't have ${feature}. This isn't a security problem — it means the capability isn't licensed on your tenant. Adding ${feature} would let us monitor and report on it.`;
 }
 

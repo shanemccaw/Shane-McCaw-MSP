@@ -425,9 +425,13 @@ async function getConditionValue(
         );
       case "review.policy_review_due":
         if (!tid) return 0;
+        // policy_decisions is Policy Decisions' own table (Git #2024) — not
+        // msp_risk_decisions, the Risk Register's table. 'expired' is not a
+        // valid decision_state (Git #1527 removed it); 'due' is the real
+        // signal, on either clock advancePolicyReviewClock maintains.
         return await count(
-          `SELECT COUNT(*)::text AS n FROM msp_risk_decisions
-           WHERE tenant_id = $1 AND decision_state IN ('due','expired')`,
+          `SELECT COUNT(*)::text AS n FROM policy_decisions
+           WHERE tenant_id = $1 AND (decision_state = 'due' OR review_state = 'due')`,
           [tid],
         );
 

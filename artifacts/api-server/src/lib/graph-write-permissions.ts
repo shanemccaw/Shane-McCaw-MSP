@@ -293,12 +293,16 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
       "quickstart-v1 step 1 (quickstart-v1.create-break-glass-account) creates the emergency-access admin, " +
       "and onboarding-v1 step 1 (action.create-user) creates a new starter. Microsoft's least-privileged " +
       "application permission for POST /users is User.Create; User.ReadWrite.All is the listed " +
-      "higher-privileged alternative and is required anyway by the user-update steps below. " +
-      "NOTE (Git #1975): Microsoft has since introduced narrower permissions on both pages — User.Create " +
-      "here and User.ReadUpdate.All on PATCH /users — so User.ReadWrite.All is no longer forced by the " +
-      "update step the way this justification originally reasoned. Narrowing it is a real least-privilege " +
-      "reduction but changes what the app must be granted, so it is tracked separately as #2845 rather " +
-      "than changed here.",
+      "higher-privileged alternative. RESOLVED, NOT NARROWED (Git #2845): #1975 flagged that Microsoft has " +
+      "since split this into User.Create + PATCH's own User.ReadUpdate.All, and asked whether that removes " +
+      "the forcing dependency this justification originally relied on. #2845 investigated and found it does " +
+      "NOT: DELETE /users/* (action.delete-user) and PUT /users/*/manager/$ref (action.update-manager), both " +
+      "added by #2858 after #2845 was filed, each document User.ReadWrite.All as their ONLY application " +
+      "permission with no narrower alternative at any tier — so User.ReadWrite.All is unconditionally in " +
+      "DERIVED_WRITE_APP_PERMISSIONS regardless of what this rule requests. Narrowing this rule to User.Create " +
+      "would therefore ADD a permission to the requested set without removing User.ReadWrite.All from it — " +
+      "the exact anti-pattern this same file already avoids on the assignLicense rule above (\"requesting the " +
+      "narrower one as well would add a permission without removing any\"). Retained as-is.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/user-post-users",
   },
   {
@@ -311,10 +315,21 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
     permissions: ["User.ReadWrite.All"],
     justification:
       "offboarding-v1 and security-incident-response-v1 disable a user's sign-in (action.disable-user-signin " +
-      "sets accountEnabled=false via PATCH /users/{id}). Microsoft's least-privileged application " +
-      "permission for this PATCH is now User.ReadUpdate.All, with User.ReadWrite.All listed as the " +
-      "higher-privileged alternative; User.ReadWrite.All is retained here because it is what the app is " +
-      "already granted — narrowing it is tracked as #2845 (Git #1975).",
+      "sets accountEnabled=false via PATCH /users/{id}). Microsoft's top-level Permissions table for this " +
+      "endpoint lists User.ReadUpdate.All as least-privileged, but that table is for the endpoint in general — " +
+      "the same page's per-property scenarios table is explicit that accountEnabled is scoped differently: " +
+      "\"User.EnableDisableAccount.All + User.Read.All is the least privileged combination of permissions " +
+      "required to update this property\" (quoted verbatim, checked 2026-09-06). User.ReadUpdate.All does NOT " +
+      "cover accountEnabled — confirmed via documentation alone, no live-tenant test needed (Git #2845, " +
+      "answering #1975's open question). The same property row also notes that in app-only scenarios the " +
+      "app must additionally be ASSIGNED a higher-privileged administrator directory role to write " +
+      "accountEnabled for privileged administrators — a role assignment, not a Graph consent, and out of an " +
+      "agent's reach per the production-change gate (Git #1913); any such assignment belongs in the #1918 " +
+      "PROD plan, not applied here. RESOLVED, NOT NARROWED (Git #2845): even setting the accountEnabled " +
+      "mismatch aside, User.ReadWrite.All is unconditionally required elsewhere in DERIVED_WRITE_APP_PERMISSIONS " +
+      "— DELETE /users/* and PUT /users/*/manager/$ref (both added by #2858, after #2845 was filed) document " +
+      "no narrower alternative at all. Swapping this rule to a different permission would add one to the " +
+      "requested set without removing User.ReadWrite.All from it. Retained as-is.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/user-update",
   },
 

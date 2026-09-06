@@ -100,7 +100,12 @@ namespace BuildConsole.Controls
         /// existing OpenGitDetailByNumberAsync (focus-or-fetch, no second issue-opening path).
         /// Tuple carries the real GitHub number plus whether to open it side-by-side.</summary>
         public event EventHandler<(int Number, bool SideBySide)>? OpenGitIssueRequested;
-        public event EventHandler? FullGitRefreshRequested;
+        /// <summary>Git #2976 — an awaitable delegate (NOT a fire-and-forget EventHandler) so
+        /// BtnRefreshGitHubTiles_Click can genuinely <c>await</c> the full Git Board + Batter Up +
+        /// AI Batter Up refresh and only fire its success toast / re-enable its button once that
+        /// real work has completed. Single subscriber (MainWindow); assigned with <c>=</c>, not
+        /// <c>+=</c>, so the awaited task is the real cascade's, not a multicast's last return.</summary>
+        public Func<System.Threading.Tasks.Task>? FullGitRefreshRequested;
         /// <summary>Git #1636 — fires exactly once, the moment every build in a Priority-marked
         /// build set reaches a terminal state. See <see cref="CheckPriorityBuildSetCompletion"/>.</summary>
         public event EventHandler<BuildSetPriorityCompletedEventArgs>? BuildSetPriorityCompleted;
@@ -6223,17 +6228,20 @@ namespace BuildConsole.Controls
         // Git #1816 — the single shared refresh control for Git Board + Batter Up + AI
         // Batter Up. FullGitRefreshRequested drives LeftSidebar.PopulateGitTrackerBoard
         // (forceFresh: true), whose completion fires BoardRefreshCompleted — #1813 already
-        // wired that event to also await BatterUpPanel.RefreshAsync() and
-        // AiBatterUpPanel.RefreshAsync(), so clicking this one icon cascades into both
-        // panels for free. Both are fire-and-forget from here (same as the Git Board fetch
-        // itself), so the toast below fires once THIS panel's own refresh work is done, not
-        // once every cascaded panel has repainted.
+        // wired that event to also refresh BatterUpPanel and AiBatterUpPanel.
+        // Git #2976 — FullGitRefreshRequested is now an awaitable Func<Task>, and MainWindow's
+        // handler genuinely awaits the board fetch AND the Batter Up / AI Batter Up refresh
+        // (coalesced onto their real in-flight tasks). We fold that awaitable into the WhenAll
+        // below so the success toast + the button re-enable only happen once every one of
+        // those panels has ACTUALLY repainted — not before, which is what made Shane click 2-3
+        // times: the toast used to fire the instant this panel's own local work finished while
+        // the real Board/Batter Up fetches were still in flight in the background.
         private async void BtnRefreshGitHubTiles_Click(object sender, RoutedEventArgs e)
         {
             ActivityLog.Log("github.manual-refresh",
                 "Build Queue panel [manual Refresh click]: re-fetching GitHub components (Board + Batter Up + AI Batter Up + Issues in Epic + In-Flight + Focus Progress).");
 
-            FullGitRefreshRequested?.Invoke(this, EventArgs.Empty);
+            var fullGitRefresh = FullGitRefreshRequested;
 
             // Git #2900 — Active Sessions + the dev-server rollback check used to re-run on their
             // own recurring 10s timer; now that they're manual-only, fold them into this same
@@ -6242,6 +6250,7 @@ namespace BuildConsole.Controls
             DevServerRollbackService.CheckForRollbacks(this);
 
             await System.Threading.Tasks.Task.WhenAll(
+                fullGitRefresh?.Invoke() ?? System.Threading.Tasks.Task.CompletedTask,
                 RefreshActiveChatEpicIssuesAsync(),
                 RefreshInFlightIssuesAsync("manual Refresh click"),
                 RefreshAsync());

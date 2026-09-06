@@ -18,14 +18,21 @@
  *      NOT tracked in the journal?  These will NOT be auto-applied by
  *      migrate-prod and may cause confusion.
  *
+ *   4. DESTRUCTIVE MIGRATION GATE (Git #2930): does every .sql file containing
+ *      an irreversible statement carry an explicit `-- @migration-gate:` header?
+ *      This is the merge-time half of the gate — it catches a missing header
+ *      while the author is still here, rather than at 3am on a post-merge run.
+ *
  * Exit codes:
  *   0 — clean (no errors; warnings are printed but don't fail CI)
- *   1 — schema drift detected or journal broken
+ *   1 — schema drift detected, journal broken, or a destructive migration is
+ *       missing its gate header
  *
  * How to fix each issue:
  *   Schema drift  → pnpm --filter @workspace/db run generate
  *   Broken journal → pnpm --filter @workspace/db run generate (or restore file)
  *   Orphaned SQL  → remove the file or incorporate it into a proper migration
+ *   Missing gate header → add `-- @migration-gate:` + `-- @gate-reason:` to the file
  *
  * Run:
  *   pnpm --filter @workspace/scripts run check-drift
@@ -35,11 +42,18 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import {
+  evaluateMigrationGate,
+  type MigrationGateVerdict,
+} from "./lib/destructive-migration-gate";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DRIZZLE_DIR = path.resolve(__dirname, "../../lib/db/drizzle");
+/** DRIZZLE_MIGRATIONS_DIR is the same test seam migrate-dev uses (see #2930). */
+const DRIZZLE_DIR = process.env["DRIZZLE_MIGRATIONS_DIR"]
+  ? path.resolve(process.env["DRIZZLE_MIGRATIONS_DIR"])
+  : path.resolve(__dirname, "../../lib/db/drizzle");
 const JOURNAL_PATH = path.join(DRIZZLE_DIR, "meta/_journal.json");
 const SCHEMA_HASH_PATH = path.join(DRIZZLE_DIR, "schema-hash.txt");
 const SCHEMA_PATH = path.resolve(__dirname, "../../lib/db/src/schema/index.ts");
@@ -191,9 +205,96 @@ function main(): void {
   }
 
   // =========================================================================
+  // Check 4: Destructive migration gate headers (Git #2930)
+  // =========================================================================
+  console.log(bold("\n4. Destructive migration gate"));
+
+  if (!fs.existsSync(DRIZZLE_DIR)) {
+    console.error(red(`   ERROR: migrations directory not found: ${DRIZZLE_DIR}`));
+    hasError = true;
+  } else {
+    const sqlFileNames = fs.readdirSync(DRIZZLE_DIR).filter((f) => f.endsWith(".sql")).sort();
+
+    const unheadered: MigrationGateVerdict[] = [];
+    const held: MigrationGateVerdict[] = [];
+    const autoApproved: MigrationGateVerdict[] = [];
+
+    for (const fileName of sqlFileNames) {
+      const tag = fileName.replace(/\.sql$/, "");
+      const sql = fs.readFileSync(path.join(DRIZZLE_DIR, fileName), "utf-8");
+      const verdict = evaluateMigrationGate(tag, sql);
+
+      if (verdict.holdCause === "unmarked-destructive" || verdict.holdCause === "malformed-header") {
+        unheadered.push(verdict);
+      } else if (verdict.holdCause === "marked-manual") {
+        held.push(verdict);
+      } else if (verdict.disposition === "auto-approved") {
+        autoApproved.push(verdict);
+      }
+    }
+
+    if (held.length > 0) {
+      console.log(
+        yellow(`   ${held.length} migration(s) marked @migration-gate: manual — never auto-applied:`)
+      );
+      for (const v of held) {
+        console.log(yellow(`     ⏸ ${v.tag}.sql`));
+        if (v.reason) console.log(dim(`        ${v.reason}`));
+      }
+      console.log(
+        dim(
+          `     Run these by hand against each real target, then record them with:\n` +
+            `       pnpm --filter @workspace/scripts run migrate-mark-applied <tag> [--prod]`
+        )
+      );
+    }
+
+    if (autoApproved.length > 0) {
+      console.log(
+        dim(
+          `   ${autoApproved.length} destructive migration(s) explicitly signed off as ` +
+            `@migration-gate: auto-approved.`
+        )
+      );
+    }
+
+    if (unheadered.length > 0) {
+      console.log("");
+      console.error(
+        red(bold(`   ERROR: ${unheadered.length} destructive migration(s) with no valid gate header:`))
+      );
+      for (const v of unheadered) {
+        console.error(red(`     ✗ ${v.tag}.sql`));
+        if (v.headerError) console.error(red(`        header: ${v.headerError}`));
+        for (const f of v.findings) {
+          console.error(red(`        line ${f.line}  [${f.kind}]  ${f.statement}`));
+        }
+      }
+      console.error(
+        red(
+          `\n     These would be HELD (not applied) by migrate-dev/migrate-prod anyway — the gate\n` +
+            `     fails closed. Declare the intent explicitly so the next reader knows why:\n` +
+            `       -- @migration-gate: manual          (hold it — the default for anything irreversible)\n` +
+            `       -- @gate-reason: <why this change is needed, with evidence>\n` +
+            `     ...or, for a reviewed change genuinely safe to run unattended:\n` +
+            `       -- @migration-gate: auto-approved\n` +
+            `       -- @gate-reason: <why unattended execution is safe here>\n`
+        )
+      );
+      hasError = true;
+    } else if (held.length === 0 && autoApproved.length === 0) {
+      console.log(
+        dim(`   ✓ No destructive statements found in any migration — nothing to gate.`)
+      );
+    } else {
+      console.log(green(`   ✓ Every destructive migration carries an explicit gate header.`));
+    }
+  }
+
+  // =========================================================================
   // Auto-apply reminder
   // =========================================================================
-  console.log(bold("\n3. Auto-apply coverage"));
+  console.log(bold("\n5. Auto-apply coverage"));
   console.log(dim(`   Dev  (DATABASE_URL):      pnpm --filter @workspace/scripts run migrate-dev`));
   console.log(dim(`   Prod (PROD_DATABASE_URL): pnpm --filter @workspace/scripts run migrate-prod`));
   console.log(dim(`   Both runners read _journal.json and track applied entries in`));

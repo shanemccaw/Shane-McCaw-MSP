@@ -35,6 +35,7 @@ import {
   normalizeGraphEndpoint, matchEndpointToResource, resolvePsCmdletCatalog,
 } from "./map-monitor-checks.mjs";
 import { applyCanonicalResolution, recomputeEffectiveCoverage } from "./resolve-canonical-resources.mjs";
+import { applyContainmentResolution } from "./resolve-containment-edges.mjs";
 import { reconcilePowershellAgainstSurvey } from "./reconcile-ps-survey.mjs";
 import { refreshSampleResourceLinks, applyLiveEvidence } from "./reconcile-live-evidence.mjs";
 
@@ -588,6 +589,20 @@ async function main() {
     console.log(`  ${canonical.links.length} resolved to a canonical resource `
       + `(${canonical.stats.sameGraphPath} same-graph-path, ${canonical.stats.cmdletWalk} dsc-cmdlet-path-walk)`);
     console.log(`  ${canonical.gaps.length} name a Graph SDK read cmdlet but could not be resolved — labelled, not dropped`);
+
+    // A DIFFERENT relationship, resolved from the evidence the step above rejected (Git
+    // #2940): "A is a polymorphic member of, or a child nested under, collection B". Both
+    // canonical rules resolve these rows to their parent collection before the name gate
+    // refuses to call them the same object, and that resolved parent used to go nowhere but
+    // a prose gap reason. It is recorded on its own columns and — deliberately — never feeds
+    // `effective_check_coverage_count`: crediting 46 distinct Intune objects with one
+    // collection's coverage would hide 46 real gaps, which is #2821's own mistake inverted.
+    console.log("── Resolving containment / specialisation edges ──────────────");
+    const containment = await applyContainmentResolution(client);
+    console.log(`  ${containment.edges.length} rows now name the collection they live in `
+      + `(${containment.stats.literalUri} dsc-literal-collection-uri, ${containment.stats.cmdletWalk} dsc-cmdlet-collection-walk)`);
+    console.log(`  ${containment.stats.nestedChild} of those are nested-child rather than collection-member`);
+    console.log(`  ${containment.gaps.length} residue rows labelled with why no containment edge was asserted`);
 
     // ── 4. Map the existing monitor_checks catalog onto the model ────────────
     console.log("── Mapping monitor_checks onto the resource model ────────────");

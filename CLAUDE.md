@@ -749,6 +749,25 @@ you into applying a change against the PROD app registration, production Key Vau
 `ca-ps-execution`, or a Staging/Production deploy (that is always a #1281 plan, never
 a same-session apply).
 
+### The sanctioned destructive-write test target (Git #2840)
+
+Because that tenant is also Shane's real production M365 tenant, a **destructive
+per-user Graph write** (delete a user's registered MFA methods, revoke sessions,
+disable sign-in, force a password reset) had no safe target by default — which is why
+#1899 shipped its DELETE fan-out unit-tested but never once fired. One dedicated,
+non-privileged, unlicensed synthetic identity now exists for exactly this:
+
+- **`zz-test-graphwrite-01@mccawsoft2.onmicrosoft.com`** — objectId
+  `bdb21dc3-146a-4d97-a128-a2b8ff618d35`. No directory roles, no group memberships,
+  no licences. Driven by `scripts/azure/testbed-test-user-2840.mjs`; full details in
+  [`docs/testbed-destructive-write-test-user-2840.md`](docs/testbed-destructive-write-test-user-2840.md).
+
+**`zz-test-*@mccawsoft2.onmicrosoft.com` is a reserved prefix for synthetic test
+identities.** Target one of those for this class of write — never Shane's own account,
+never a real employee, and never "no target at all." Provisioning a *further* test
+identity is still a real tenant mutation: it goes through the DEV app registration,
+uses the same reserved naming, and gets documented the same way.
+
 ## Database
 
 - **Why this section no longer points at hosted Neon:** the hosted Neon Postgres instance previously used for local dev hit its free-plan monthly data-transfer quota and went unreachable (compute suspended, real, confirmed) — a real operational lesson about relying on a shared/limited hosted resource for high-frequency local dev traffic (Git #1209). Shane has since installed PostgreSQL 18 locally, and local dev now reads/writes that instance instead. The underlying philosophy is unchanged: agents connect directly for routine local dev/query verification rather than deferring everything to Shane — only the connection target changed.
@@ -758,6 +777,50 @@ a same-session apply).
 - **Schema changes require manual SQL, not `drizzle-kit push`.** Do not run `drizzle-kit push` or `push --force` — interactive push surfaces large pre-existing schema drift unrelated to the change at hand. Instead: add the Drizzle TS schema definitions, then hand-write the equivalent `CREATE TABLE`/`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` SQL into a new file under `lib/db/migrations/manual/`. **Additive DDL — new tables, new nullable columns, new enum values — the agent runs itself against the local `DATABASE_URL` in the same session, and reports what it ran.** Waiting on Shane to run an additive migration blocks the build for no benefit and is the reason features stalled at 'no backend exists.' Destructive or irreversible changes (dropping columns/tables, bulk rewrites, anything production-affecting) still go to Shane to run himself.
 - No literal prices, tier names, or seat counts hardcoded in `.tsx` files outside API response handling (no-hardcoding rule) — these should flow through the Products Catalog / API responses, not be baked into UI code. Verifiable by grep.
 - **Neon MCP server for schema/migration work is now stale.** The Neon MCP server (`https://mcp.neon.tech/mcp`) registered in `.mcp.json` was tied to the same now-abandoned hosted Neon project — with that project's compute suspended on quota exhaustion, its schema/migration tools (`complete_database_migration`, `compare_database_schema`, `create_branch`) have nothing live to operate against. Until/unless a new Neon project is provisioned for this purpose, do schema/migration work via the manual-SQL-file workflow above against the local PostgreSQL 18 install instead.
+
+### Destructive-migration gate (`lib/db/drizzle/*.sql`) — Git #2930
+
+`scripts/post-merge.sh` runs `migrate-dev` on **every** merge, and `migrate-prod` too when
+a prod DB env var is set, both with no human review step. That used to mean a destructive
+Drizzle migration could not be registered in `_journal.json` at all without scheduling it to
+run unattended — which is why `0201_drop_service_page_trigger_keys.sql` sat orphaned for six
+weeks, permanently reddening `check-drift`.
+
+The gate closes that. Both runners now evaluate every pending migration **before executing
+anything**, and **fail closed** — a destructive statement is never applied automatically:
+
+```sql
+-- @migration-gate: manual
+-- @gate-reason: <why, with real evidence — commit sha, row count, issue number>
+
+DROP TABLE IF EXISTS some_dead_table;
+```
+
+- **`manual`** — never auto-applied. The runners report it as HELD and exit **3**, which
+  post-merge.sh treats as a loud warning rather than a broken merge. Run the SQL by hand
+  against each real target, then record it (no SQL is executed by this):
+  `pnpm --filter @workspace/scripts run migrate-mark-applied <tag> [--prod]`.
+- **`auto-approved`** — an explicit, reasoned sign-off that this file is safe unattended.
+  Use sparingly; the five historical files carrying it are all already-applied migrations
+  retained only for fresh-database replay.
+- **No header at all, but destructive** — also held, and `check-drift` fails. Forgetting the
+  marker cannot silently execute a `DROP`.
+- `@gate-reason` is required with either disposition. A missing or unrecognised value is
+  itself a hold.
+
+**Destructive means exactly what this file's Database section already says** — "dropping
+columns/tables, bulk rewrites": `DROP TABLE` / `COLUMN` / `SCHEMA` / `DATABASE` / `TYPE` /
+`SEQUENCE` / `MATERIALIZED VIEW`, `TRUNCATE`, and `DELETE`/`UPDATE` with no `WHERE`.
+Deliberately **not** destructive, because each is reversible and loses no data: `DROP
+CONSTRAINT`, `DROP INDEX`, `DROP DEFAULT`, `DROP NOT NULL`, `DROP TRIGGER`, `DROP FUNCTION`,
+`DROP POLICY`, plain `DROP VIEW`, and any `RENAME`. `IF EXISTS` softens nothing.
+
+Implementation: `scripts/src/lib/destructive-migration-gate.ts`. Harness (classifier +
+a real `migrate-dev` run against the real dev database):
+`pnpm --filter @workspace/scripts run test-gate`.
+
+This gate covers `lib/db/drizzle/` only — `lib/db/migrations/manual/` is not touched by any
+automatic runner, so the rules immediately below still govern it.
 
 ### Manual migration files (`lib/db/migrations/manual/`)
 

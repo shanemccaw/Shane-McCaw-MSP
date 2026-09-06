@@ -26,9 +26,30 @@ pnpm --filter @workspace/scripts run check-drift
 #     via savepoints — safe when the dev DB was patched by hand before tracking.
 #   - No interactive TTY prompts are required (push/push-force can hang or fail
 #     in non-interactive post-merge shells when schema changes need confirmation).
+#
+# Exit code 3 is the destructive-migration gate (Git #2930): the run itself was
+# clean, but one or more migrations were deliberately NOT executed because they
+# are irreversible. That is a loud warning, not a broken merge — the held SQL is
+# for a human to run by hand against each real target. Any other non-zero exit is
+# still a genuine failure and blocks.
+#
+# NOTE the invocation: `pnpm --dir ./scripts run`, not `pnpm --filter`. pnpm's
+# filtered/recursive runner collapses EVERY non-zero child exit code to 1
+# (verified: a script exiting 3 surfaces as ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL,
+# status 1), which would make the gate's exit 3 indistinguishable from a genuine
+# migration failure. `--dir` runs the script directly and propagates 3 intact.
 echo "Applying pending migrations to dev database…"
-if pnpm --filter @workspace/scripts run migrate-dev; then
+set +e
+pnpm --dir ./scripts run migrate-dev
+MIGRATE_DEV_STATUS=$?
+set -e
+if [ "$MIGRATE_DEV_STATUS" -eq 0 ]; then
   echo "Dev database migrations applied."
+elif [ "$MIGRATE_DEV_STATUS" -eq 3 ]; then
+  echo "WARNING: one or more migrations were HELD at the destructive-migration gate (see above)."
+  echo "         Nothing destructive was executed. Review the SQL, run it by hand against each"
+  echo "         real target, then record it:"
+  echo "           pnpm --filter @workspace/scripts run migrate-mark-applied <tag> [--prod]"
 else
   echo "ERROR: migrate-dev failed — see output above."
   echo "Fix the migration error, then run: pnpm --filter @workspace/scripts run migrate-dev"
@@ -51,8 +72,21 @@ fi
 # Both steps run when either PROD_DATABASE_URL or DATABASE_URL_PROD is set.
 # Skipped silently when neither is set (safe to run locally).
 if [ -n "$PROD_DATABASE_URL" ] || [ -n "$DATABASE_URL_PROD" ]; then
+  # Same gate, same exit-code contract, same `--dir` invocation reason as above:
+  # 3 means "clean run, N destructive migrations deliberately NOT applied to
+  # production" — the services sync still runs, because the schema the sync
+  # writes into is exactly as valid as it was before the held file existed.
   echo "Applying schema migrations to production database…"
-  if pnpm --filter @workspace/scripts run migrate-prod; then
+  set +e
+  pnpm --dir ./scripts run migrate-prod
+  MIGRATE_PROD_STATUS=$?
+  set -e
+  if [ "$MIGRATE_PROD_STATUS" -eq 3 ]; then
+    echo "WARNING: one or more migrations were HELD at the destructive-migration gate (production)."
+    echo "         Nothing destructive was executed against production. These need a human:"
+    echo "           pnpm --filter @workspace/scripts run migrate-mark-applied <tag> --prod"
+  fi
+  if [ "$MIGRATE_PROD_STATUS" -eq 0 ] || [ "$MIGRATE_PROD_STATUS" -eq 3 ]; then
     echo "Migrations applied. Syncing services catalogue to production database…"
     pnpm --filter @workspace/scripts run sync-services || \
       echo "WARNING: Services sync failed — see output above. Run manually: pnpm --filter @workspace/scripts run sync-services"

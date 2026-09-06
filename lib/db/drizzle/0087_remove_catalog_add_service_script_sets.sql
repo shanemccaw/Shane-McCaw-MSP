@@ -1,3 +1,6 @@
+-- @migration-gate: auto-approved
+-- @gate-reason: Historical, already applied (dev __drizzle_migrations 2026-06-28). Drops the retired script_catalog* tables replaced by Library + Script Packages; retained only for fresh-database replay. Reviewed under #2930.
+
 -- Migration: 0087_remove_catalog_add_service_script_sets
 -- Removes script catalog tables (replaced by Library + Script Packages)
 -- Adds library_script_id column to script_run_results

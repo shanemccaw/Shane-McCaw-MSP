@@ -13,6 +13,12 @@ export default defineConfig({
     testTimeout: 20_000,
     hookTimeout: 20_000,
     include: [
+      // #2881 — boot smoke test: imports the routes/index.ts aggregator
+      // (the ~150-module import graph #2876 documents) and asserts it
+      // evaluates without throwing, catching the whole "missing import /
+      // module-scope throw in any route file" failure class that reached
+      // main undetected as the missing-requireRole regression (dup #2874).
+      "src/routes/index.boot-smoke.test.ts",
       "src/lib/security-plan-assembly.test.ts",
       "src/lib/security-plan-drift.test.ts",
       "src/lib/security-plan-prose.test.ts",
@@ -169,6 +175,7 @@ export default defineConfig({
       "src/lib/monitor-evidence-capture-2923.test.ts",
       "src/lib/__tests__/service-availability.test.ts",
       "src/lib/__tests__/canonical-resource-resolution-2821.test.ts",
+      "src/lib/__tests__/containment-edge-resolution-2940.test.ts",
       "src/lib/__tests__/mfa-gap-monitor-check-1288.test.ts",
       "src/lib/sensitivity-label-severity-rules-470.test.ts",
       "src/lib/cert-secret-expiration-541.test.ts",
@@ -302,6 +309,10 @@ export default defineConfig({
       "src/routes/admin-write-actions.test.ts",
       "src/routes/admin-document-generator.test.ts",
       "src/lib/active-directory.test.ts",
+      // #2882 — verifyCaptchaToken() fails CLOSED (not open) when
+      // TURNSTILE_SECRET_KEY is missing/empty, matching the already-correct
+      // network-error fail-closed path.
+      "src/lib/captcha.test.ts",
       "src/routes/admin-active-directory-credential-ops.test.ts",
       "src/routes/mfa-admin-reset.test.ts",
       "src/routes/admin-active-directory-user-actions.test.ts",

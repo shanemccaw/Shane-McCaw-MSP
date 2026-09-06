@@ -6,8 +6,8 @@ This is the document a customer's security reviewer reads. Every permission belo
 requested because a specific, named product step cannot execute without it. Every entry
 cites the Microsoft Learn page whose own permissions table names it as the **least
 privileged Application permission** for that exact operation. Nothing here is requested
-for convenience, and two permissions that a real step genuinely needs are deliberately
-**not** requested — those are listed too, with the reasoning.
+for convenience, and one permission that a real step genuinely needs is deliberately
+**not** requested — it is listed too, with the reasoning.
 
 The list is **derived, not transcribed.** `REQUIRED_WRITE_APP_PERMISSIONS` is a union over
 the rule table in `graph-write-permissions.ts`, which maps each real
@@ -39,7 +39,7 @@ declared at that moment. A tenant can be `granted` and still refuse every write 
 
 ---
 
-## 2. The requested set (16)
+## 2. The requested set (17)
 
 | # | Permission | The step that needs it | Microsoft reference |
 |---|---|---|---|
@@ -60,6 +60,8 @@ declared at that moment. A tenant can be `granted` and still refuse every write 
 | 15 | `DelegatedPermissionGrant.ReadWrite.All` | `remediate-remove-risky-app-consent` revokes a risky delegated grant. `Directory.ReadWrite.All` is the alternative and is **not** requested. | [Delete oAuth2PermissionGrant](https://learn.microsoft.com/en-us/graph/api/oauth2permissiongrant-delete) |
 | 16 | `TeamSettings.ReadWrite.All` | `remediate-deactivate-ownerless-team` archives an ownerless Team. Microsoft's least-privileged option is `TeamSettings.ReadWrite.Group`, but that is resource-specific consent granted per-team by an owner — unusable tenant-wide. The alternatives (`Group.ReadWrite.All`, `Directory.ReadWrite.All`) are far broader. | [Archive team](https://learn.microsoft.com/en-us/graph/api/team-archive) |
 
+| 17 | `UserAuthenticationMethod.ReadWrite.All` | `mfa-enforcement-v1` step 1 (`action.require-security-info-reregistration`) forces MFA re-registration the way the Entra admin center's own button does: `GET /users/{id}/authentication/methods`, then `DELETE` each phone / Microsoft Authenticator / software OATH method individually (#1899). Live-verified end-to-end against the sanctioned test user on #2840. | [List methods](https://learn.microsoft.com/en-us/graph/api/authentication-list-methods), [Delete phoneMethod](https://learn.microsoft.com/en-us/graph/api/phoneauthenticationmethod-delete) |
+
 ### What is deliberately NOT in this list
 
 No `Directory.ReadWrite.All`, no `Group.ReadWrite.All`, no `Organization.ReadWrite.All`,
@@ -68,16 +70,25 @@ single broad grant. A test asserts their absence.
 
 ---
 
-## 3. Documented but deliberately not requested (2)
+## 3. Documented but deliberately not requested (1)
 
 These are permissions a real, sellable product step genuinely needs. We do not ask for
 them, so those products are **knowingly unavailable** rather than silently broken — the
 admin surface renders them as refused.
 
+**Was two, now one (#1899, confirmed live on #2840).** `UserAuthenticationMethod.ReadWrite.All`
+used to sit in this section on the grounds that `mfa-enforcement-v1` step 1's endpoint
+(`POST /users/{id}/authentication/methods`) is not a real Graph v1.0 collection. #1899
+replaced that with the real mechanism — enumerate the user's methods, then `DELETE` each
+phone / Microsoft Authenticator / software OATH method individually — so the permission is
+now genuinely requested (§2, entry 17), and is declared and admin-consented on the DEV
+write app. #2840 live-verified the full cycle against a real directory object
+(`GET` → `DELETE phoneMethods/{id}` → **204 OK**); see
+[`testbed-destructive-write-test-user-2840.md`](testbed-destructive-write-test-user-2840.md).
+
 | Permission | Needed by | Why we don't ask |
 |---|---|---|
 | `DeviceManagementManagedDevices.PrivilegedOperations.All` | `remediate-device-compliance-gap` ($29) — `POST /deviceManagement/managedDevices/{id}/syncDevice` | It is the only permission Microsoft documents for `syncDevice`, but it is the Intune *user-impacting remote actions* permission: the same grant confers remote **wipe**, **retire** and remote lock across every managed device in the tenant. Asking every customer for tenant-wide device wipe to ship a $29 "sync this device" action is not a trade a security review should accept. **Shane's decision:** request it and gain the product, or drop the product. |
-| `UserAuthenticationMethod.ReadWrite.All` | `mfa-enforcement-v1` step 1 (`action.require-security-info-reregistration`) | The template's endpoint, `POST /users/{id}/authentication/methods`, is not a real Graph v1.0 collection. Granting this today would grant for a call the platform cannot make. Request it together with the fix that corrects the endpoint. |
 
 ---
 

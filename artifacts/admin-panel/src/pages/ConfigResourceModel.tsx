@@ -81,8 +81,44 @@ interface ConfigResource {
    * coverage does not apply. `duplicate` marks a row that is another row's object.
    */
   coverageState: "covered" | "uncovered" | "no_executor" | "unavailable" | "operation" | "duplicate";
+  /**
+   * #2940 — the Graph COLLECTION this row lives inside, and a DIFFERENT relationship from
+   * `canonicalResourceId` above. That one says "same object as another row"; this says
+   * "one of the object types that collection returns". Note it is absent from
+   * `coverageState`, which is deliberate: a covered parent does not make this row covered,
+   * because a check on `/deviceManagement/deviceConfigurations` returns the bytes without
+   * asserting anything about the MacOS-specific settings this row describes. Rendered
+   * beside the coverage badge, never as it.
+   */
+  containedInResourceId: number | null;
+  containmentKind: "collection-member" | "nested-child" | null;
+  containmentBasis: string | null;
+  containmentMatchedOn: string | null;
+  /** Why a row #2821 already flagged as residue got no containment edge either. */
+  containmentGapReason: string | null;
   sourceRef: string | null;
   notes: string | null;
+}
+
+/**
+ * #2940 — one end of a containment edge: the collection a row lives inside, or one of the
+ * rows that live inside a collection. Deliberately a separate shape from `CanonicalRef`,
+ * because it carries its OWN `coverageState` — a contained member's coverage is never
+ * rolled up into its container's, which is exactly what makes this not a canonical link.
+ */
+interface ContainmentRef {
+  id: number;
+  resourceKey: string;
+  displayName: string;
+  origin: string;
+  surface: string;
+  graphPath: string | null;
+  graphEntityType: string | null;
+  containmentKind: "collection-member" | "nested-child" | null;
+  containmentBasis: string | null;
+  containmentMatchedOn: string | null;
+  effectiveCheckCoverageCount: number;
+  coverageState: "covered" | "uncovered" | "no_executor" | "unavailable" | "operation" | "duplicate";
 }
 
 /**
@@ -202,6 +238,21 @@ interface ModelSummary {
      * anything this platform's principal can ever be granted (#1917).
      */
     resourcesUnavailable: number;
+    /**
+     * #2940 — rows that name the Graph collection they live inside. NOT excluded from
+     * anything, unlike `resourcesDuplicates` above: these ARE independent resources that
+     * happen to share a polymorphic collection, so this number OVERLAPS the coverage
+     * buckets instead of partitioning with them.
+     */
+    resourcesContained: number;
+    /**
+     * #2940 — the subset of `resourcesEntirelyUncovered` whose parent collection IS
+     * covered. A labelled subset for reading, never a subtraction: these gaps are still
+     * open, they just have a read path already in place.
+     */
+    resourcesUncoveredUnderCoveredParent: number;
+    resourcesUncoveredCollectionMembers: number;
+    resourcesUncoveredNestedChildren: number;
     transportsWithNoExecutor: string[];
     checksMapped: number;
     checksUnmatched: number;
@@ -274,6 +325,12 @@ export default function ConfigResourceModel() {
   const [transport, setTransport] = useState(ALL);
   const [availability, setAvailability] = useState(ALL);
   const [coverage, setCoverage] = useState(ALL);
+  /**
+   * #2940 — an ORTHOGONAL filter to `coverage`, deliberately its own control rather than
+   * extra options on the coverage dropdown. Containment is not a coverage state, and the
+   * moment it appears in that list somebody reads "uncovered" as excluding it.
+   */
+  const [containment, setContainment] = useState(ALL);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<{
     properties: ResourceProperty[]; checks: MappedCheck[]; samples: ResourceSample[];
@@ -281,6 +338,10 @@ export default function ConfigResourceModel() {
     canonical: CanonicalRef | null;
     /** #2821 — the rows that resolve onto THIS one, when it is the canonical record. */
     duplicates: CanonicalRef[];
+    /** #2940 — the collection this row lives inside, when it lives inside one. */
+    containedIn: ContainmentRef | null;
+    /** #2940 — the rows that live inside THIS one, when it is the collection. */
+    containedMembers: ContainmentRef[];
   } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
@@ -302,6 +363,7 @@ export default function ConfigResourceModel() {
       if (transport !== ALL) params.set("transport", transport);
       if (availability !== ALL) params.set("availability", availability);
       if (coverage !== ALL) params.set("coverage", coverage);
+      if (containment !== ALL) params.set("containment", containment);
       const res = await fetchWithAuth(`/api/admin/config-resources?${params.toString()}`);
       const data = await res.json() as { resources: ConfigResource[]; total: number };
       setResources(data.resources ?? []);
@@ -311,7 +373,7 @@ export default function ConfigResourceModel() {
     } finally {
       setLoading(false);
     }
-  }, [fetchWithAuth, toast, search, surface, transport, availability, coverage]);
+  }, [fetchWithAuth, toast, search, surface, transport, availability, coverage, containment]);
 
   useEffect(() => { void loadSummary(); }, [loadSummary]);
   useEffect(() => { void loadResources(); }, [loadResources]);
@@ -340,6 +402,7 @@ export default function ConfigResourceModel() {
       const data = await res.json() as {
         properties: ResourceProperty[]; checks: MappedCheck[]; samples: ResourceSample[];
         canonical: CanonicalRef | null; duplicates: CanonicalRef[];
+        containedIn: ContainmentRef | null; containedMembers: ContainmentRef[];
       };
       setDetail({
         properties: data.properties ?? [],
@@ -347,6 +410,8 @@ export default function ConfigResourceModel() {
         samples: data.samples ?? [],
         canonical: data.canonical ?? null,
         duplicates: data.duplicates ?? [],
+        containedIn: data.containedIn ?? null,
+        containedMembers: data.containedMembers ?? [],
       });
     } catch {
       toast({ title: "Error", description: "Failed to load the resource detail", variant: "destructive" });
@@ -440,6 +505,23 @@ export default function ConfigResourceModel() {
               value={summary.totals.resourcesDuplicates}
               sub="the same real tenant object as another row, seen through the second extraction pipeline and resolved onto it; not a second resource to cover"
             />
+            {/*
+              #2940 — read this tile NEXT TO "Duplicates (excluded)", not as a variant of
+              it. A duplicate leaves the denominator because it is not a separate resource.
+              A contained resource stays in every bucket it was already in, because it IS
+              one: `IntuneDeviceConfigurationPolicyMacOS` and its 41 siblings are 42
+              distinct configurable objects sharing one polymorphic Graph collection. The
+              word "excluded" is deliberately absent from this label.
+            */}
+            <StatTile
+              label="Inside a collection"
+              value={summary.totals.resourcesContained}
+              sub={
+                summary.totals.resourcesUncoveredUnderCoveredParent > 0
+                  ? `${summary.totals.resourcesUncoveredUnderCoveredParent} of these are still uncovered while a check already reads their parent collection — real gaps with a read path already in place, not covered rows`
+                  : "rows that are a polymorphic member of, or nested under, a Graph collection; still counted in their own coverage bucket"
+              }
+            />
           </div>
 
           {/*
@@ -520,6 +602,12 @@ export default function ConfigResourceModel() {
             <FilterSelect label="Transport" value={transport} onChange={setTransport} options={transports} testId="config-model-transport" />
             <FilterSelect label="Availability" value={availability} onChange={setAvailability} options={availabilities} testId="config-model-availability" />
             <FilterSelect label="Coverage" value={coverage} onChange={setCoverage} options={["covered", "uncovered", "no_executor", "unavailable", "operation", "duplicate"]} testId="config-model-coverage" />
+            {/*
+              #2940 — a SEPARATE control so it composes with Coverage rather than replacing
+              it. "uncovered" + "uncovered-under-covered-parent" together is the query a
+              check author actually wants: open gaps that already have a read path.
+            */}
+            <FilterSelect label="Containment" value={containment} onChange={setContainment} options={["contained", "collection-member", "nested-child", "uncovered-under-covered-parent"]} testId="config-model-containment" />
             <Button variant="outline" onClick={() => { void loadResources(); void loadSummary(); }}>Refresh</Button>
           </div>
 
@@ -577,6 +665,22 @@ export default function ConfigResourceModel() {
                               : r.effectiveCheckCoverageCount > 0
                                 ? <Badge variant="outline">{r.effectiveCheckCoverageCount} check{r.effectiveCheckCoverageCount === 1 ? "" : "s"}</Badge>
                                 : <Badge variant="outline" className="bg-orange-50 text-orange-800 border-orange-200">uncovered</Badge>}
+                      {/*
+                        #2940 — rendered AFTER the coverage badge and never in place of it.
+                        A contained row still shows "uncovered" in orange above; this badge
+                        adds where it lives, so the operator can see the gap has a read
+                        path without the gap appearing to have been closed.
+                      */}
+                      {r.containedInResourceId && (
+                        <Badge
+                          variant="outline"
+                          className="bg-sky-50 text-sky-800 border-sky-200"
+                          title={r.containmentMatchedOn ?? undefined}
+                          data-testid={`config-resource-containment-badge-${r.id}`}
+                        >
+                          {r.containmentKind === "nested-child" ? "nested child" : "in collection"}
+                        </Badge>
+                      )}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {r.workload} · {r.propertyCount} propert{r.propertyCount === 1 ? "y" : "ies"}
@@ -653,6 +757,56 @@ export default function ConfigResourceModel() {
                             <Row
                               k="Duplicates of this"
                               v={detail!.duplicates.map((d) => d.resourceKey).join(", ")}
+                            />
+                          )}
+                        </dl>
+                      </div>
+                    )}
+
+                    {/*
+                      #2940 — the containment edge, shown as its OWN section directly below
+                      "Canonical record" so the two relationships read as the different
+                      things they are. Canonical answers "is this row the same object as
+                      another"; this answers "which collection does this object live in".
+                      The member list below deliberately prints each member's own coverage
+                      state: forty-two uncovered members under one covered collection is
+                      the honest picture, and rolling them up — the way the canonical group
+                      legitimately does — would hide forty-one real gaps.
+                    */}
+                    {(r.containedInResourceId || r.containmentGapReason || (detail?.containedMembers?.length ?? 0) > 0) && (
+                      <div className="mt-4" data-testid={`config-resource-containment-${r.id}`}>
+                        <h3 className="font-medium">Lives inside</h3>
+                        <dl className="mt-2 space-y-1 text-xs">
+                          {r.containedInResourceId ? (
+                            <>
+                              <Row
+                                k={r.containmentKind === "nested-child" ? "Nested under" : "Member of"}
+                                v={detail?.containedIn?.graphPath ?? detail?.containedIn?.resourceKey ?? `config_resources #${r.containedInResourceId}`}
+                              />
+                              {r.containmentBasis && <Row k="Basis" v={r.containmentBasis} />}
+                              {r.containmentMatchedOn && <Row k="Evidence" v={r.containmentMatchedOn} />}
+                              {detail?.containedIn && (
+                                <Row
+                                  k="Parent coverage"
+                                  v={
+                                    detail.containedIn.effectiveCheckCoverageCount > 0
+                                      ? `${detail.containedIn.effectiveCheckCoverageCount} check${detail.containedIn.effectiveCheckCoverageCount === 1 ? "" : "s"} read the parent collection. `
+                                        + (r.containmentKind === "nested-child"
+                                          ? "That check enumerates the containers, not this child — this row is still uncovered and closing it needs its own per-item read."
+                                          : "That check returns objects of this type but asserts nothing specific about them — this row is still uncovered, it just already has a read path.")
+                                      : "no check reads the parent collection either"
+                                  }
+                                />
+                              )}
+                            </>
+                          ) : (
+                            <Row k="No containment edge" v={r.containmentGapReason ?? ""} />
+                          )}
+                          {(detail?.containedMembers?.length ?? 0) > 0 && (
+                            <Row
+                              k={`Holds ${detail!.containedMembers.length} resource${detail!.containedMembers.length === 1 ? "" : "s"}`}
+                              v={`${detail!.containedMembers.filter((m) => m.coverageState === "uncovered").length} of them uncovered · `
+                                + detail!.containedMembers.map((m) => `${m.resourceKey} (${m.coverageState})`).join(", ")}
                             />
                           )}
                         </dl>
