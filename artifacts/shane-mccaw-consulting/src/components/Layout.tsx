@@ -3,7 +3,6 @@ import { Header } from "./Header";
 import { Footer } from "./Footer";
 import { BackToTop } from "./BackToTop";
 import { EngagementOfferPanel } from "./EngagementOfferPanel";
-import { PersistentChatBubble } from "./PersistentChatBubble";
 
 interface LayoutProps {
   children: ReactNode;
@@ -19,7 +18,6 @@ export function Layout({ children }: LayoutProps) {
       <Footer />
       <BackToTop />
       <EngagementOfferPanel />
-      <PersistentChatBubble />
     </div>
   );
 }
