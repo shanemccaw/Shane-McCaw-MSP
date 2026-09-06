@@ -13,6 +13,12 @@ export default defineConfig({
     testTimeout: 20_000,
     hookTimeout: 20_000,
     include: [
+      // #2881 — boot smoke test: imports the routes/index.ts aggregator
+      // (the ~150-module import graph #2876 documents) and asserts it
+      // evaluates without throwing, catching the whole "missing import /
+      // module-scope throw in any route file" failure class that reached
+      // main undetected as the missing-requireRole regression (dup #2874).
+      "src/routes/index.boot-smoke.test.ts",
       "src/lib/security-plan-assembly.test.ts",
       "src/lib/security-plan-drift.test.ts",
       "src/lib/security-plan-prose.test.ts",
