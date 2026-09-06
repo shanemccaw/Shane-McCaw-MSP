@@ -54,9 +54,10 @@ vi.mock("../lib/parse-m365-script-output.ts", () => ({
   normaliseProfileUpdates: vi.fn().mockReturnValue({}),
 }));
 
-vi.mock("../lib/logger.ts", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
+vi.mock("../lib/logger.ts", () => {
+  const stub = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  return { logger: { ...stub, child: vi.fn(() => stub) } };
+});
 
 // ── Import router under test ───────────────────────────────────────────────────
 // Dynamic import so mocks are applied first
