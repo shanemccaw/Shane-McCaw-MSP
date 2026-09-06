@@ -7,8 +7,7 @@
  * lives in `billingLive.ts`). `invoicesTable` is the platform's one real
  * billing-history ledger — every invoice, paid or not, direct-checkout or
  * onboarding — so it is what "Receipts" actually means once real money has
- * moved; `BILL_RECEIPTS` (billingData.ts) stays the design fixture for a
- * customer with no invoice history yet, or while the read is still loading.
+ * moved.
  *
  * Only the four fields the row actually renders (date, what, ref, amount) are
  * pulled from the wire row; the id is kept alongside so the page can wire the
@@ -58,7 +57,7 @@ function fmtAmount(raw: unknown): string {
   return "$" + n.toLocaleString("en-US", { minimumFractionDigits: hasCents ? 2 : 0, maximumFractionDigits: 2 });
 }
 
-/** "29 Jul 2026" — the fixture's own date style (billingData.ts BILL_RECEIPTS). */
+/** "29 Jul 2026" — the design's original date style. */
 function fmtDate(iso: unknown): string {
   const d = new Date(str(iso));
   if (Number.isNaN(d.getTime())) return "";

@@ -17,7 +17,8 @@
  *    `monitoring-{tier}-{size}`) carry NO flat price at all (price/price_cents
  *    both null; they're seat-metered via typeAttributes), so there is no live
  *    number to resolve it with, let alone wire the cards to. They stay on
- *    billingData.ts's fixture, unchanged.
+ *    the design's static mock data, unchanged (no wired data source exists
+ *    for them yet).
  *  - NO-BACKEND-TO-WIRE: the interval/tier-switch/add-on toggles are the
  *    design's own interactive hypothetical-repricing calculator (see
  *    portal-v2-billing.tsx's header comment) — "what would this cost if I
@@ -31,7 +32,8 @@
  * Receipts and the Stripe billing-portal link are different: `invoicesTable`
  * is the platform's one real billing-history ledger (real rows exist for real
  * tenants today), and the customer-portal endpoint is a real, already-built
- * Stripe action. Both are wired here; everything else keeps its fixture.
+ * Stripe action. Both are wired here; everything else stays on the design's
+ * static mock data for now.
  *
  * The wire shape + normalisation live in `billingWire.ts` — pure functions, no
  * React, so they're unit-tested directly. This file is only the fetching.
@@ -45,14 +47,18 @@ import { toBillingReceipts, type BillingReceiptRow, type WireInvoice } from "./b
 const INVOICES_URL = "/api/portal/invoices";
 const CUSTOMER_PORTAL_URL = "/api/portal/billing/customer-portal";
 
-/** Which of the two sources the Receipts section is currently rendering. */
+/** `"fixture"` is a legacy name kept for the value's shape, not its meaning —
+ *  there is no fixture module in this tree to fall back to (Git #3050); it
+ *  just marks "the read never resolved," which today renders as an empty
+ *  list rather than any fallback rows. */
 export type BillingDataState = "loading" | "live" | "fixture";
 
 export interface BillingLiveState {
   /** Real invoice rows, newest first — genuinely empty for a tenant with no
-   *  billing history yet. The page falls back to BILL_RECEIPTS only when the
-   *  read itself never resolved (`dataState === "fixture"`), not merely
-   *  because it resolved empty. */
+   *  billing history yet. `dataState` only flips to `"fixture"` when the
+   *  read itself never resolved, not merely because it resolved empty — but
+   *  today that state renders as an empty list, not a fixture fallback; see
+   *  `dataState`'s own doc comment on `BillingDataState` below. */
   readonly receipts: readonly BillingReceiptRow[];
   readonly dataState: BillingDataState;
   readonly loading: boolean;
@@ -72,15 +78,15 @@ export interface BillingLiveState {
    * success, or the reason it failed.
    */
   readonly downloadReceipt: (invoiceId: number) => Promise<string | null>;
-  /** Re-runs the invoices read — the design's "Try again" action on a failed
-   *  read (`dataState === "fixture"`), same `attempt`-counter pattern as
+  /** Re-runs the invoices read — the "Try again" action on a failed read
+   *  (`dataState === "fixture"`), same `attempt`-counter pattern as
    *  `useAccountSecurityLive`'s `refetch`. */
   readonly refetch: () => void;
 }
 
 /**
- * The Billing page's real invoice history, falling back to the design's
- * BILL_RECEIPTS fixture for a customer with no invoices yet or a failed read.
+ * The Billing page's real invoice history. Renders an empty list for a
+ * customer with no invoices yet, or when the read itself has failed.
  */
 export function useBillingLive(): BillingLiveState {
   const { fetchWithAuth } = useAuth();
@@ -162,9 +168,9 @@ export function useBillingLive(): BillingLiveState {
     // tenant genuinely has no billing history yet, which is a different fact
     // from "the read never came back." Collapsing the two into one "fixture"
     // state (Git #1463) meant a customer with zero real invoices was shown
-    // BILL_RECEIPTS's fake receipt rows as if they were their own, exactly
-    // the HARD RULE this strict pass exists to catch: `rows` is only ever
-    // null when the fetch itself failed or hasn't resolved.
+    // fabricated receipt rows as if they were their own, exactly the HARD
+    // RULE this strict pass exists to catch: `rows` is only ever null when
+    // the fetch itself failed or hasn't resolved.
     const dataState: BillingDataState = loading ? "loading" : rows !== null ? "live" : "fixture";
     return { receipts: rows ?? [], dataState, loading, error, openStripePortal, openingPortal, downloadReceipt, refetch };
   }, [rows, loading, error, openStripePortal, openingPortal, downloadReceipt, refetch]);
