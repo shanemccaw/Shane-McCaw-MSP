@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { MODULE_NAV_ITEMS, comingSoonHref } from "./moduleNav";
+import { useHoldBadge } from "@/components/holds/useHoldBadge";
 
 /**
  * The sidebar module nav (README "Layout" §4 / "Sidebar module list").
@@ -8,6 +9,11 @@ import { MODULE_NAV_ITEMS, comingSoonHref } from "./moduleNav";
  * scope for #1819 itself (see build-journal/1819.md), but the sidebar
  * reserves the `margin-top: auto` slot the design puts it in so that build
  * can drop the card in without re-touching this component's layout.
+ *
+ * The "Runbooks" row is the one nav item that carries a badge (#2994,
+ * `useHoldBadge`'s own header: "Badges are rare on purpose... the single
+ * place in the nav that says 'a decision is waiting'") — real, previously
+ * built but wired to nothing since no page existed to nest it under.
  */
 export function SidebarNav({ footerSlot }: { footerSlot?: ReactNode }) {
   const [location] = useLocation();
@@ -15,6 +21,7 @@ export function SidebarNav({ footerSlot }: { footerSlot?: ReactNode }) {
   const params = new URLSearchParams(search);
   const activeModuleFeature =
     location === "/coming-soon" && params.get("group") === "module" ? params.get("feature") : null;
+  const holdBadge = useHoldBadge();
 
   return (
     <div
@@ -41,6 +48,19 @@ export function SidebarNav({ footerSlot }: { footerSlot?: ReactNode }) {
               >
                 {item.label}
               </span>
+              {item.key === "runbooks" && holdBadge.label ? (
+                <span
+                  data-testid="sidebar-runbooks-badge"
+                  className="ml-auto flex-none rounded-full text-[9.5px] font-bold"
+                  style={{
+                    color: holdBadge.urgent ? "#f87171" : "#94a3b8",
+                    border: `1px solid ${holdBadge.urgent ? "rgba(248,113,113,.4)" : "rgba(148,163,184,.3)"}`,
+                    padding: "1.5px 7px",
+                  }}
+                >
+                  {holdBadge.label}
+                </span>
+              ) : null}
             </Link>
           );
         })}

@@ -17,6 +17,8 @@ import ResetPasswordPage from "@/pages/reset-password";
 import AccountSetupPage from "@/pages/account-setup";
 import SignInHelpPage from "@/pages/sign-in-help";
 import NotificationPreferencesPage from "@/pages/notification-preferences";
+import SopsPage from "@/pages/sops";
+import RunbooksPage from "@/pages/runbooks";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -43,7 +45,10 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-6">
+      <div
+        className="flex min-h-screen items-center justify-center bg-background px-6"
+        data-testid="require-auth-panel"
+      >
         <div className="max-w-md text-center">
           <h1 className="text-2xl font-extrabold text-foreground">Sign in required</h1>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -70,6 +75,8 @@ function ProtectedRoutes() {
           <Route path="/account-security" component={AccountSecurityPage} />
           <Route path="/billing" component={BillingPage} />
           <Route path="/notification-preferences" component={NotificationPreferencesPage} />
+          <Route path="/sops" component={SopsPage} />
+          <Route path="/runbooks" component={RunbooksPage} />
           <Route path="/coming-soon" component={ComingSoon} />
           <Route component={NotFound} />
         </Switch>

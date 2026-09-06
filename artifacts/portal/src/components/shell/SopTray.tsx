@@ -1,6 +1,5 @@
 import { ListChecks } from "lucide-react";
 import { Link } from "wouter";
-import { comingSoonHref } from "./moduleNav";
 import type { SopQueueItemWire } from "./useSopRuns";
 
 const HAIRLINE = "rgba(255,255,255,.08)";
@@ -121,7 +120,7 @@ export function SopTray({
               When your MSP executes a procedure against your tenant, its live progress appears here.
             </span>
             <Link
-              href={comingSoonHref("SOPs", "module")}
+              href="/sops"
               data-testid="sop-tray-view-library"
               className="text-xs font-semibold text-[#60a5fa]"
               onClick={onClose}
@@ -148,7 +147,7 @@ export function SopTray({
           <div className="flex items-center" style={{ padding: "9px 14px 12px" }}>
             <span className="text-[11px] text-[#64748b]">Steps continue even if you close this</span>
             <Link
-              href={comingSoonHref("Runbooks", "module")}
+              href="/runbooks"
               data-testid="sop-tray-open-runbooks"
               className="ml-auto text-xs font-semibold text-[#60a5fa]"
               onClick={onClose}

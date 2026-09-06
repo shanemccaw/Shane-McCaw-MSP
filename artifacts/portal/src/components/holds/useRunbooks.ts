@@ -64,6 +64,8 @@ export interface HoldWindow {
   readonly title: string;
   readonly gates: string;
   readonly gatesStepPosition: number | null;
+  /** The specific CYCLE this window gates (#1940). `null` for a legacy window raised before this column existed. */
+  readonly runId: number | null;
   readonly pillar: string;
   readonly why: string;
   readonly state: "running" | "closing" | "due" | "early";
@@ -89,13 +91,29 @@ export interface HoldWindow {
   readonly notificationsDue: readonly string[];
 }
 
+/** One past cycle's summary — no step detail, a permanent record (#1557). */
+export interface RunbookRunSummary {
+  readonly id: number;
+  readonly cycleNumber: number;
+  readonly startedOn: string;
+  readonly status: string;
+  readonly completedAt: string | null;
+  readonly checkedSteps: number;
+  readonly totalSteps: number;
+}
+
 export interface Runbook {
   readonly id: number;
   readonly runbookKey: string;
   readonly title: string;
   readonly context: string;
   readonly pillar: string;
-  readonly startedOn: string;
+  /** Whether finishing the current cycle spawns the next one automatically (#1557). */
+  readonly recurring: boolean;
+  /** The schedule's current cycle id, or `null` if it somehow has none. */
+  readonly currentRunId: number | null;
+  readonly cycleNumber: number;
+  readonly startedOn: string | null;
   readonly cycleDays: number;
   readonly daysElapsed: number;
   readonly daysLeft: number;
@@ -105,6 +123,8 @@ export interface Runbook {
   readonly statusLabel: string;
   readonly steps: readonly RunbookStep[];
   readonly hold: HoldWindow | null;
+  /** Past cycles, newest first (#1557). */
+  readonly runHistory: readonly RunbookRunSummary[];
 }
 
 /** One decision taken on a hold window — a row of the audit trail. */

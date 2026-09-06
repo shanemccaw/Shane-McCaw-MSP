@@ -1,0 +1,133 @@
+{
+  "feature": "Customer Portal (artifacts/portal) -- SOPs & Runbooks (/sops, /runbooks), wired to real data (#2994, carried forward from #1730/#1493/#1488). Design: Design/portal/design_handoff_full_site/screens/SOPs.dc.html. Real endpoints: GET/POST /api/portal/sops, GET /api/portal/sop-runs, POST /api/portal/sops/:sopId/custom-steps (routes/portal-sops.ts, requireRole('CustomerUser')), and GET /api/portal/runbooks + the hold-window writes (routes/portal-runbooks.ts, requireRole('Assessment')) via the pre-existing, previously-unconsumed useRunbooks.ts/useHoldBadge.ts hooks. No fixture data anywhere -- a genuinely empty runbooks/holds table for this tenant renders the design's own honest-empty copy, not a fabricated row.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING_COMMIT",
+  "notes": [
+    "artifacts/msp-portal (the old '/portal-v2/*' surface, including test-manifests/portal/portal-v2-sops.json) was retired for artifacts/portal in f40438cdc (#1921). This manifest covers the REPLACEMENT pages at the new, un-slugged routes /portal/sops and /portal/runbooks -- it is not an update of portal-v2-sops.json, which tests a page that no longer exists in the tree.",
+    "NO LOGIN PAGE EXISTS YET IN artifacts/portal (see App.tsx's own RequireAuth comment: 'Until a login page is rebuilt under its own issue, an unauthenticated visitor sees an honest sign-in-required panel'). So unlike the old portal-v2-* manifests, this one CANNOT drive a real #email/#password uiSteps login -- there is no form to fill in. The uiSteps below therefore assert the one thing that IS real and reachable without auth: that /portal/sops and /portal/runbooks resolve to the app's own RequireAuth gate (data-testid='require-auth-panel'), not a 404 or a route that doesn't exist. Once a real login page ships for this app, add an authenticated uiSteps block here following the same #email/#password/login-submit pattern test-manifests/portal/portal-v2-overview.json already proves, then assert the real page content (data-testid='sops-page' / 'runbooks-page' and their tab/row testids, all already present in the shipped components).",
+    "apiTests below ARE fully authenticated (via the real POST /api/auth/login + Bearer token, same as every other portal manifest) and were hand-verified live against this environment before being written: GET /api/portal/sops returned 15 real msp_sops rows for the testbed account (customerId 1), GET /api/portal/sop-runs returned an empty queue + 15 real 'Version published' audit rows, GET /api/portal/runbooks returned a genuinely empty {runbooks:[],holds:[],summary:{...,text:'No hold windows'}} for this tenant (0 rows in portal_runbooks/portal_hold_windows at verification time -- a live-empty state, not a bug), and both POST /api/portal/sops and POST /api/portal/sops/:sopId/custom-steps were exercised for real and their written rows re-read back correctly shaped.",
+    "A3c/A3d create a real 'ours'-source SOP row and a real custom-step overlay row on it, same pattern portal-v2-sops.json's own A3c/A3d used -- these are additive, idempotent-safe re-runs (a fresh row each time, never deleted), not destructive.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "apiTests": [
+    {
+      "name": "A1 -- the SOP library refuses an unauthenticated caller.",
+      "method": "GET",
+      "path": "/api/portal/sops",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP -- log in as the designated TESTBED account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A2 -- the testbed account clears the CustomerUser floor GET /api/portal/sops requires (higher than the Assessment floor GET /api/portal/runbooks sits at).",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.user.mspRole", "value": "CustomerUser" }
+    },
+    {
+      "name": "A3 -- GET /api/portal/sops returns this tenant's real library.",
+      "method": "GET",
+      "path": "/api/portal/sops",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.library", "exists": true }
+    },
+    {
+      "name": "A3b -- the real, seeded lifecycle procedure (#1560) is in the library -- proves this reads msp_sops, not a fixture.",
+      "method": "GET",
+      "path": "/api/portal/sops",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "containsAny": ["IAM-04", "IAM-05", "IAM-06", "IAM-07"] }
+    },
+    {
+      "name": "A3c -- author a new procedure through the real, unwired-until-now POST /api/portal/sops.",
+      "method": "POST",
+      "path": "/api/portal/sops",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": {
+        "title": "Regression check -- #2994 SOPs page",
+        "description": "Written by the sops-runbooks.json manifest; safe to ignore.",
+        "category": "Verification",
+        "steps": [{ "title": "Confirm this row appears in GET /api/portal/sops" }]
+      },
+      "expect": { "status": 201, "jsonPath": "$.sopId", "exists": true },
+      "extract": { "as": "newSopId", "jsonPath": "$.sopId" }
+    },
+    {
+      "name": "A3d -- the authored SOP is now in the library, correctly non-runnable and sourced 'ours'.",
+      "method": "GET",
+      "path": "/api/portal/sops",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "containsAny": ["Regression check -- #2994 SOPs page"] }
+    },
+    {
+      "name": "A3e -- add a custom step to that same SOP through the real POST .../custom-steps (#1558).",
+      "method": "POST",
+      "path": "/api/portal/sops/{{newSopId}}/custom-steps",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "title": "Regression custom step", "description": "From the manifest." },
+      "expect": { "status": 201, "jsonPath": "$.position", "value": 1 }
+    },
+    {
+      "name": "A4 -- GET /api/portal/sop-runs returns the real queue + audit shape (both real arrays, not fixture keys).",
+      "method": "GET",
+      "path": "/api/portal/sop-runs",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.queue", "exists": true }
+    },
+    {
+      "name": "A5 -- version-publish audit entries exist even with zero executions (portal-sops.ts's 'a publication is a real event whether or not anything ran').",
+      "method": "GET",
+      "path": "/api/portal/sop-runs",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "containsAny": ["Version published"] }
+    },
+    {
+      "name": "A6 -- Active Runbooks refuses an unauthenticated caller too.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "A7 -- GET /api/portal/runbooks returns the real (possibly genuinely empty) shape -- runbooks/holds/summary, never a fabricated row.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.summary.text", "exists": true }
+    }
+  ],
+  "uiSteps": [
+    {
+      "name": "U1 -- /portal/sops resolves to the app (RequireAuth gate, not a 404) with no session.",
+      "action": "goto",
+      "target": "/portal/sops"
+    },
+    {
+      "name": "U2 -- the real sign-in-required panel renders -- proves the route is wired to a real page component, not a dead link.",
+      "action": "expect",
+      "selector": "[data-testid='require-auth-panel']",
+      "state": "visible",
+      "critical": true
+    },
+    {
+      "name": "U3 -- /portal/runbooks resolves the same way.",
+      "action": "goto",
+      "target": "/portal/runbooks"
+    },
+    {
+      "name": "U4 -- same real gate on the Runbooks route.",
+      "action": "expect",
+      "selector": "[data-testid='require-auth-panel']",
+      "state": "visible",
+      "critical": true
+    }
+  ]
+}

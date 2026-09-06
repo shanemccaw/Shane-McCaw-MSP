@@ -92,6 +92,7 @@
     "portal/customer-home-overview.json",
     "portal/account-security-data-rights.json",
     "portal/notification-preferences.json",
-    "portal/billing.json"
+    "portal/billing.json",
+    "portal/sops-runbooks.json"
   ]
 }
