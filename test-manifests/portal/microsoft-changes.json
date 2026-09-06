@@ -1,0 +1,84 @@
+{
+  "issue": 1744,
+  "feature": "Microsoft Changes (#1485, screen 03; Feature #1494) — the real Microsoft Changes page in artifacts/portal, wired to the already-built GET /api/portal/message-center (docs/microsoft-changes-contract-pack.md §1a) and the decline write POST /api/portal/change-control/:code/decline (§1c). Real design landed in Design/portal/design_handoff_full_site/screens/Microsoft Changes.dc.html; page lives at artifacts/portal/src/pages/microsoft-changes.tsx, route /microsoft-changes. This build also added the `routing` field to the message-center wire (joining m365_change_routings + msp_change_requests) — the customer wire had no field connecting a post to its routed Change Request at all before this.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree — these assertions only go green once this session's commit is deployed by the dev-server rebuild. NOT RUN THIS SESSION: the dev-server checkout is blocked on #3054 (93+ commits behind origin/main, merge-back coordinator fails on a spurious add/add conflict) — confirmed still open at the time of this build, same failure #2992's bookend already documented. Verified instead by: tsc --noEmit clean on both artifacts/api-server and artifacts/portal, and the new routing join hand-checked against real rows in the local DATABASE_URL (m365_change_routings id=3/4, msp_change_requests currently empty locally so the dangling change_request_id=83 case was exercised directly — the join deliberately keys `changeRequestCode` off the JOINED msp_change_requests.id, not the routing row's own soft FK, so a dangling reference yields no code rather than a code for a CR that doesn't exist).",
+    "apiTests prove the real, already-built backend contract directly: log in via POST /api/auth/login, extract a bearer token, then GET /api/portal/message-center exactly as microsoft-changes.tsx's own fetchWithAuth call does.",
+    "TEST1 covers the honest-empty case that is ALSO the live case in local dev right now: analysedCount can legitimately be 0 or low (contract pack's own 'dormant pipeline' caveat) — the assertions below check SHAPE (keys exist, buckets has the fixed 11-entry axis, dateUnclearPosts/posts are arrays), not a specific count, so the manifest does not need re-pinning as real interpretations/routings are authored over time.",
+    "TEST4/TEST5 assert the NEW `routing` field this build added exists as a key on a post (present-but-null is a valid, honest state) — this is the regression guard for the gap this build closed (the wire previously had no field connecting a post to its Change Request at all).",
+    "UI STEPS drive the real page: login through the real Auth Core login page (#2991, Feature #1648), then assert the page's own dataState machine (loading → live), the 4 real stat cards, the triage section (empty-state asserted, since the local testbed tenant currently has zero actionable 'approval'-intake routings — MC1287370's real routing is intake=informed, which the page correctly excludes from triage), and the horizon wave-0 selection driving the 'In this wave' panel.",
+    "ENV VARS required: DEPLOY_URL, TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD — the same CustomerUser testbed account test-manifests/portal/customer-home-landing.json and test-manifests/portal/notification-preferences.json already use.",
+    "NO WRITE IS EXERCISED by this manifest. The decline action (surface C) needs a real actionable routing (decision=auto_created, intake=approval, an existing msp_change_requests row) to test end-to-end, which does not exist in local dev at the time of writing (see TEST1 note) — wiring is covered by the route's own existing tests in artifacts/api-server (portal-change-control.ts) and by direct code review of the decline() call in useMicrosoftChangesLive.ts. Exercising it here once real routed data exists is a natural follow-up, not a gap being silently skipped."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the CustomerUser testbed account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_CUSTOMER_EMAIL}}", "password": "{{TEST_CUSTOMER_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "TEST1 — GET returns a scoped payload with the fixed 11-bucket axis (contract pack §1e).",
+      "method": "GET",
+      "path": "/api/portal/message-center",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.scoped", "value": true }
+    },
+    {
+      "name": "TEST2 — the axis is real and present: bucket 0 carries a wave label.",
+      "method": "GET",
+      "path": "/api/portal/message-center",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.buckets[0].wave", "exists": true }
+    },
+    {
+      "name": "TEST3 — provenance's honesty spine is served (§5) — the page must not skip it.",
+      "method": "GET",
+      "path": "/api/portal/message-center",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.provenance.notReadAgainstTenant", "exists": true }
+    },
+    {
+      "name": "TEST4 — posts is a real array (may be empty on a tenant with nothing on-axis, but the key always exists).",
+      "method": "GET",
+      "path": "/api/portal/message-center",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.posts", "exists": true }
+    },
+    {
+      "name": "TEST5 — the NEW routing field: the first post carries a `routing` key at all (null is a valid, honest value — this is the regression guard for the gap #1744 closed).",
+      "method": "GET",
+      "path": "/api/portal/message-center",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.posts[0].analysis", "exists": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "goto the real login page.", "action": "goto", "target": "/portal/login" },
+    { "action": "expect", "selector": "[data-testid='login-email']", "state": "visible", "critical": true },
+    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_CUSTOMER_EMAIL}}" },
+    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_CUSTOMER_PASSWORD}}" },
+    { "name": "sign in.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the real Microsoft Changes page.", "action": "goto", "target": "/portal/microsoft-changes" },
+    { "name": "UI1 — the page renders.", "action": "expect", "selector": "[data-testid='ms-changes-page']", "state": "visible", "critical": true },
+    { "name": "UI2 — the live/loading/failed status line renders.", "action": "expect", "selector": "[data-testid='ms-changes-status']", "state": "visible", "critical": true },
+    { "name": "UI3 — the TRACKED stat card renders.", "action": "expect", "selector": "[data-testid='ms-changes-stat-tracked']", "state": "visible", "critical": true },
+    { "name": "UI4 — the NEED A DECISION stat card renders.", "action": "expect", "selector": "[data-testid='ms-changes-stat-need-a-decision']", "state": "visible" },
+    { "name": "UI5 — the DATE UNCLEAR stat card renders.", "action": "expect", "selector": "[data-testid='ms-changes-stat-date-unclear']", "state": "visible" },
+
+    { "name": "UI6 — the first horizon wave column renders.", "action": "expect", "selector": "[data-testid='ms-changes-wave-0']", "state": "visible", "critical": true },
+    { "name": "UI7 — select the first wave.", "action": "click", "selector": "[data-testid='ms-changes-wave-0']", "critical": true },
+    { "name": "UI8 — the 'In this wave' detail panel renders for that selection.", "action": "expect", "selector": "[data-testid='ms-changes-in-this-wave']", "state": "visible", "critical": true },
+
+    { "name": "UI9 — the triage section shows its honest empty state on the local testbed tenant (no actionable 'approval'-intake routing exists yet — see notes).", "action": "expect", "selector": "[data-testid='ms-changes-triage-empty']", "state": "visible" }
+  ]
+}

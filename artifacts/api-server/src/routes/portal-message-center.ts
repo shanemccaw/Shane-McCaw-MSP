@@ -70,6 +70,8 @@ import {
   db,
   m365ChangeInterpretationsTable,
   m365ChangeResolutionsTable,
+  m365ChangeRoutingsTable,
+  mspChangeRequestsTable,
   mspMessageCenterItemsTable,
 } from "@workspace/db";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
@@ -77,6 +79,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
+import { formatChangeRequestCode } from "../lib/portal-change-control";
 import { logger } from "../lib/logger";
 import {
   buildBuckets,
@@ -245,6 +248,28 @@ interface WireAnalysis {
  */
 const NOT_READ_AGAINST_TENANT =
   "Your tenant has not been read against this notice. What Microsoft published is above; the count of what it touches in your estate is not something this page has measured.";
+
+/**
+ * What the routing engine (#1534, `m365-change-router.ts`, surface D of the
+ * contract pack) decided this post BECOMES for this customer — the missing
+ * link the wire had no field for at all until this build. `m365_change_routings`
+ * and `msp_change_requests` already carry this (contract pack §1d/§4); this is
+ * that real join surfaced, not an invented field.
+ *
+ * Only present once a routing decision was actually taken (`decision !== "none"`
+ * is filtered out below — "none" means "not measured", which the post's own
+ * `analysis.measured` already states). `changeRequestCode`/`changeRequestStatus`
+ * are populated only when `decision === "auto_created"` produced a real CR row.
+ */
+interface WireRouting {
+  readonly decision: string;
+  readonly reason: string;
+  readonly intake: string | null;
+  readonly changeRequestCode: string | null;
+  readonly changeRequestStatus: string | null;
+  /** True once a customer (or MSP) decline turned this into an accepted risk (#1514). */
+  readonly declined: boolean;
+}
 
 function toWirePost(row: MessageCenterRow, buckets: readonly Bucket[], now: Date): WirePost {
   const when = effectiveDate(row);
@@ -426,6 +451,50 @@ router.get(
         });
       }
 
+      // ── What the routing engine (#1534, surface D) decided this post BECOMES ──
+      // Scoped by (mspId, customerId) same as the analysis join above, left-joined
+      // to the CR it created (if any) for a real code + live status. Rows with
+      // decision "none" are dropped — that means "not measured", already carried
+      // on `analysis.measured` — so only an actual routing outcome reaches the wire.
+      const routingRows = await db
+        .select({
+          graphMessageId: m365ChangeRoutingsTable.graphMessageId,
+          decision: m365ChangeRoutingsTable.decision,
+          reason: m365ChangeRoutingsTable.reason,
+          intake: m365ChangeRoutingsTable.intake,
+          riskDecisionId: m365ChangeRoutingsTable.riskDecisionId,
+          // Selected off the JOINED row, not `m365ChangeRoutingsTable.changeRequestId` —
+          // that FK is soft (no constraint, by the same discipline `tenant_id` follows
+          // elsewhere), so a routing can point at a CR id that no longer resolves.
+          // Keying presence off the join's own `id` means a dangling reference formats
+          // no code at all rather than a code for a CR that doesn't exist (which the
+          // decline endpoint would then 404 on).
+          crId: mspChangeRequestsTable.id,
+          crStatus: mspChangeRequestsTable.status,
+        })
+        .from(m365ChangeRoutingsTable)
+        .leftJoin(mspChangeRequestsTable, eq(mspChangeRequestsTable.id, m365ChangeRoutingsTable.changeRequestId))
+        .where(
+          and(
+            eq(m365ChangeRoutingsTable.mspId, scope.mspId),
+            eq(m365ChangeRoutingsTable.customerId, scope.customerId),
+            isNotNull(m365ChangeRoutingsTable.graphMessageId),
+          ),
+        );
+
+      const routingByMessageId = new Map<string, WireRouting>();
+      for (const row of routingRows) {
+        if (!row.graphMessageId || row.decision === "none") continue;
+        routingByMessageId.set(row.graphMessageId, {
+          decision: row.decision,
+          reason: row.reason,
+          intake: row.intake,
+          changeRequestCode: row.crId !== null ? formatChangeRequestCode(row.crId) : null,
+          changeRequestStatus: row.crStatus ?? null,
+          declined: row.riskDecisionId !== null || row.decision === "declined_risk" || row.crStatus === "rejected",
+        });
+      }
+
       // The budget is spent per WAVE, so no wave is starved by a busier one
       // earlier on the axis. See capPerWave's header for what went wrong with a
       // flat cap on the real tenant. A post carrying a confirmed interpretation
@@ -437,6 +506,8 @@ router.get(
         ...p,
         /** Null when no confirmed interpretation exists for this post — the page keeps the stated-absence copy. */
         analysis: analysisByMessageId.get(p.id) ?? null,
+        /** Null when no routing decision was taken for this post/customer — see WireRouting's own header. */
+        routing: routingByMessageId.get(p.id) ?? null,
       }));
 
       const lastSeen = corpus.reduce<Date | null>(
