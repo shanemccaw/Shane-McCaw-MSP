@@ -406,6 +406,66 @@ namespace BuildConsole.Services
         public void RequestImmediateReevaluation() => _ = TickAsync();
 
         /// <summary>
+        /// Git #3009 — the same live open-issue snapshot LeftSidebar's board refresh already
+        /// fetched (<c>GitBoardOpenIssuesRefreshed</c>), forwarded here by MainWindow off the exact
+        /// same event BuildWatch/BuildQueuePanel already consume (Git #1632/#1862) — no new `gh`
+        /// call to wire this up. Read by <see cref="BuildLiveOpenIssuesFetcher"/> below so
+        /// TickAsync's claim path (GetNextAsync) can reuse it instead of firing its OWN independent
+        /// `gh issue list` on every tick (the redundant-traffic complaint this fix exists for:
+        /// previously GetNextAsync always passed <c>presuppliedOpen: null</c>, unlike the read-only
+        /// PeekNextAsync, which already reused the panel's fetch).
+        /// </summary>
+        private HashSet<int>? _openIssuesSnapshot;
+        private DateTime? _openIssuesSnapshotUtc;
+
+        /// <summary>
+        /// Git #3009 — how old the forwarded Git Board snapshot may be before the claim path stops
+        /// trusting it and falls back to its own live `gh issue list` fetch. Long enough that a
+        /// non-empty queue with a free slot doesn't refire a live call on every single ~10s tick;
+        /// short enough that a claim decision (an irreversible build launch) is never made off a
+        /// snapshot that's many minutes old. Deliberately NOT unbounded like the board/BuildWatch/
+        /// BuildQueuePanel display consumers (Git #1632/#1862, which trust the snapshot indefinitely
+        /// since they only ever RENDER state) — this one gates GetNextAsync's Git #1600 fail-closed
+        /// claim check, so it needs its own, tighter freshness bound.
+        /// </summary>
+        private static readonly TimeSpan OpenIssuesSnapshotMaxAge = TimeSpan.FromSeconds(60);
+
+        /// <summary>
+        /// Git #3009 — wired by MainWindow to <c>LeftSidebar.GitBoardOpenIssuesRefreshed</c>, the
+        /// same event BuildWatch's/BuildQueuePanel's own <c>ApplyOpenIssueSet</c> already subscribe
+        /// to. Empty/null is treated as "couldn't determine" and ignored, same guard every other
+        /// consumer of this event already applies.
+        /// </summary>
+        public void ApplyOpenIssueSet(HashSet<int> open)
+        {
+            if (open == null || open.Count == 0) return;
+            _openIssuesSnapshot = open;
+            _openIssuesSnapshotUtc = DateTime.UtcNow;
+        }
+
+        /// <summary>
+        /// Git #3009 — the fetcher TickAsync hands to <see cref="BuildQueuePostgresClient.GetNextAsync"/>'s
+        /// existing <c>liveOpenIssuesFetcher</c> test seam. Returns the forwarded board snapshot
+        /// (zero-cost, no `gh` call) when it's still within <see cref="OpenIssuesSnapshotMaxAge"/>;
+        /// falls back to a genuine live fetch (the exact same GitHubIssuesService call GetNextAsync
+        /// used to make unconditionally) when the snapshot is missing or stale. Fail-closed behavior
+        /// (Git #1600) is unaffected either way — a live-fetch failure still surfaces as
+        /// LiveOpenIssuesResult.Failure and still holds every blocked candidate.
+        /// </summary>
+        private Func<Task<LiveOpenIssuesResult>> BuildLiveOpenIssuesFetcher()
+        {
+            return () =>
+            {
+                if (_openIssuesSnapshot != null && _openIssuesSnapshotUtc != null &&
+                    DateTime.UtcNow - _openIssuesSnapshotUtc.Value < OpenIssuesSnapshotMaxAge)
+                {
+                    return Task.FromResult(LiveOpenIssuesResult.Ok(_openIssuesSnapshot));
+                }
+                return GitHubIssuesService.TryGetOpenIssueNumbersAsync();
+            };
+        }
+
+        /// <summary>
         /// Global "Queue Paused / Running" toggle — a per-instance, in-memory
         /// switch, separate from any individual build's own Stop. While paused,
         /// TickAsync still REAPS builds that finish (so completions/slot-frees
@@ -1661,7 +1721,7 @@ namespace BuildConsole.Services
                 try
                 {
                     next = _db != null
-                        ? await _db.GetNextAsync(freeSlots)
+                        ? await _db.GetNextAsync(freeSlots, BuildLiveOpenIssuesFetcher())
                         : await _api.GetNextQueueItemsAsync(freeSlots, BuildConsoleSettings.Load().PausedBuildIds);
                 }
                 catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't poll/claim next queue item(s): {ex.Message}"); return; }
