@@ -92,6 +92,33 @@ node scripts/dev-server/bootstrap-server.mjs --link --launch
     should print a path under **your** worktree, not `C:\Source\...` or another
     `C:\wt\...`. `store-doctor.mjs` (below) is the main-checkout-side scanner for
     the poison that used to cause this.
+  * **A bare `tsc -p <artifact>/tsconfig.json --noEmit` is a DIFFERENT, still-real
+    trap — Git #2087.** #2121/#2152 fixed Node's own module resolution
+    (what `tsx`/`vitest`/`node` use), but a downstream artifact whose
+    `tsconfig.json` lists a composite `lib/*` package under `"references"`
+    (e.g. `artifacts/api-server` → `lib/db`) gets its cross-package types from
+    that package's **already-built `dist/*.d.ts`**, not live source — this is
+    TypeScript's own project-reference build model, entirely separate from
+    `node_modules` resolution, and #2121's junction fix does not touch it. A
+    same-session edit to a referenced `lib/*` package's schema/exports is
+    invisible to plain `tsc -p --noEmit` until that package's `dist` is
+    rebuilt, and will silently typecheck against the STALE pre-edit shape
+    instead of erroring loudly — worse than a resolution failure. **Use
+    `pnpm --filter <artifact> run typecheck` (or `pnpm run typecheck` from repo
+    root)**, never a bare `tsc -p ... --noEmit` invocation, when verifying a
+    worktree session's cross-package type change — every artifact whose
+    `tsconfig.json` references a composite `lib/*` package now carries a
+    matching `pretypecheck: tsc -b <same paths as its own "references">` script
+    (`api-server`, `admin-panel`, `msp-console`, `msp-website`, `portal`) that
+    npm/pnpm's script lifecycle runs automatically before `typecheck`, so the
+    referenced package's declarations are rebuilt from current worktree source
+    first. The repo-root `pnpm run typecheck` gets the same coverage via
+    `typecheck:libs` (`tsc --build` over root `tsconfig.json`'s `references`,
+    which lists every composite `lib/*` package actually consumed this way).
+    If you add a new `"references"` entry to an artifact's `tsconfig.json` (or a
+    new composite `lib/*` package), add/extend that artifact's `pretypecheck`
+    (and the root `tsconfig.json` references list) in the same change, or this
+    gap reopens silently for the new package.
 * `--launch` starts `dev-all.mjs`. Re-running bootstrap is safe/idempotent.
 
 Default server worktree: `C:\dev-server` (short path — the deep `Design/_ds/...`

@@ -10,6 +10,9 @@
       "path": "./lib/api-client-react"
     },
     {
+      "path": "./lib/copilot-scan-scene"
+    },
+    {
       "path": "./lib/api-zod"
     },
     {
