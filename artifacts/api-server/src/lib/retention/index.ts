@@ -27,3 +27,7 @@ export * from "./post-termination";
 // so importing this barrel anywhere cannot arm an irreversible destructive path as a side
 // effect. Until that call the registry is empty and `purgeTerminatedTenant()` refuses.
 export * from "./purgers";
+// #2936 — Shane's decision that an MSP's own lapse cascades to its customers, and the
+// limited-access half of that decision: a gated customer can still request reinstatement.
+export * from "./msp-cascade";
+export * from "./reinstatement";

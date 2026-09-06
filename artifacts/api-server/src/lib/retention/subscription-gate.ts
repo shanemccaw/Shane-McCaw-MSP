@@ -45,6 +45,7 @@
  */
 
 import type { MspRole } from "@workspace/db";
+import type { TenantBillingSource } from "../tenant-billing-rules";
 import type { TenantSubscriptionState } from "./subscription-state";
 
 /** The machine-readable code the gated response carries. The portal shell keys on it. */
@@ -53,12 +54,25 @@ export const SUBSCRIPTION_GATE_CODE = "subscription_inactive";
 /**
  * Everything a customer principal may still reach while the subscription is inactive.
  *
- * *"Export remains reachable; everything else is unreachable."* Four groups, and every
- * entry earns its place:
+ * #2765 read #1944 part 8 as *"export remains reachable; everything else is
+ * unreachable."* **#2936 widened that, deliberately.** Shane's decision (2026-09-05) is
+ * that a lapse — the customer's own, or their MSP's cascading down — is *"not a hard
+ * lockout: the customer retains real limited access: they can still log in, download
+ * their data, delete their own data, and request reinstatement. Everything else ... is
+ * gated."* So the list below is those four capabilities and nothing more; it is still an
+ * allowlist, and it is still the gate's own data rather than a flag any route consults.
  *
- *   - **Export.** The one real capability of the bare shell. All three real export
- *     endpoints, because a customer who is owed their data must not be told which
- *     module happens to hold it.
+ * Six groups, and every entry earns its place:
+ *
+ *   - **Export.** *"Download their data."* Both real export endpoints, because a
+ *     customer who is owed their data must not be told which module happens to hold it.
+ *   - **Deletion.** *"Delete their own data."* `/portal/deletion-request` is the real
+ *     right-to-erasure path that already existed (`portal-privacy.ts`); #2936 makes it
+ *     reachable from behind the wall rather than building a second one. A customer who
+ *     has been told their data is held for seven more years must be able to say no.
+ *   - **Reinstatement.** *"Request reinstatement."* The one capability #2936 had to add
+ *     — see `retention/reinstatement.ts` for what it does and, importantly, what it
+ *     deliberately does not decide.
  *   - **Session.** Without login/refresh/logout there is no session to render the wall
  *     to, and a customer would be locked out of their own export by the gate meant to
  *     hand it to them. Logout in particular must never be gated — trapping someone in a
@@ -84,6 +98,10 @@ export const SUBSCRIPTION_GATE_ALLOWED_PREFIXES: readonly string[] = [
   // serves /portal/customer/export. There is no third; none is listed speculatively.
   "/portal/data-export",
   "/portal/customer/export",
+  // ── Deletion — the customer's own right to erasure (#2936) ──
+  "/portal/deletion-request",
+  // ── Reinstatement — asking to be let back in (#2936) ──
+  "/portal/retention/reinstatement",
   // ── Session ──
   // One prefix covers login, refresh, logout, password reset and every /auth/mfa/*
   // challenge and enrollment route, which is the point: enumerating them is the
@@ -188,13 +206,27 @@ export interface SubscriptionGateBody {
   tenantId: number;
   status: string;
   /**
-   * Which rule closed the portal (#2847): `"subscription"` when a real
-   * `tenant_subscriptions` row is cancelled/unpaid, `"tenant_status"` when this customer
-   * has no subscription on record and `tenants.status` alone said so. The wall needs
-   * this to be honest — telling a customer their subscription ended when the platform
-   * holds no subscription record for them would be inventing a billing fact.
+   * Which rule closed the portal (#2847, extended by #2936): `"subscription"` when a
+   * real `tenant_subscriptions` row is cancelled/unpaid, `"tenant_status"` when this
+   * customer has no subscription on record and `tenants.status` alone said so, and
+   * `"msp_subscription"` when this customer's own billing was current and their MSP's
+   * platform subscription is what lapsed. The wall needs this to be honest — telling a
+   * customer their subscription ended when it did not, and it was their MSP that stopped
+   * paying, is inventing a billing fact about them.
    */
-  billingSource: "subscription" | "tenant_status";
+  billingSource: TenantBillingSource;
+  /**
+   * #2936 — the MSP above this customer has lapsed. True independently of
+   * `billingSource`: a customer whose own subscription ALSO ended reports
+   * `billingSource: "subscription"` (their own state is the more specific fact) while
+   * this stays true, so a surface can tell the difference between "you cancelled" and
+   * "you cancelled and so did your MSP".
+   */
+  mspLapsed: boolean;
+  /** The MSP's own platform subscription status, or null when the MSP has no row. */
+  mspSubscriptionStatus: string | null;
+  /** Where the MSP sits on its dunning ladder, or null when it is not on it. */
+  mspDunningState: string | null;
   /** The status of the subscription that ended, or null when there is none on record. */
   subscriptionStatus: string | null;
   /** What they had, as it was named at purchase. Null, never a placeholder. */
@@ -219,6 +251,9 @@ export function subscriptionGateBody(state: TenantSubscriptionState): Subscripti
     tenantId: state.tenantId,
     status: state.status,
     billingSource: state.billingSource,
+    mspLapsed: state.mspLapsed,
+    mspSubscriptionStatus: state.mspSubscriptionStatus,
+    mspDunningState: state.mspDunningState,
     subscriptionStatus: state.subscriptionStatus,
     planName: state.planName,
     lapsedAt: state.lapsedAt?.toISOString() ?? null,

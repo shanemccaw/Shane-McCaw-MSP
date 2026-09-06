@@ -30,8 +30,9 @@
  *   active  =  tenants.status is clock-running
  *              AND ( the tenant has NO subscription rows
  *                    OR at least one of them is in an active status )
+ *              AND the parent MSP's own platform subscription has not lapsed  (#2936)
  *
- * Two halves, each load-bearing:
+ * Three parts, each load-bearing:
  *
  * **`tenants.status` still participates.** An operator archiving or deactivating a
  * customer is a real end-of-relationship signal, and it is the behaviour that shipped
@@ -48,27 +49,42 @@
  * `source` on the resolved state says which of the two rules actually decided, so a
  * surface can be honest about it rather than implying a billing fact it does not have.
  *
+ * **An MSP's own lapse cascades (#2936).** `msp_subscriptions.dunning_state` reaching
+ * `access_revoked` closes the *MSP's* access (`msp-entitlement.ts`), and in the wholesale
+ * channel it is the MSP's card that funds every customer subscription underneath it. That
+ * left a real open question — those customers paid their MSP, and the gate does not merely
+ * lock a portal, it starts a 7-year purge clock — so #2847 refused to answer it and filed
+ * #2936. Shane's decision (2026-09-05): **yes, it cascades**, gate and clock both, *"since
+ * the real behavior ... is identical regardless of WHOSE lapse triggered it"* — but the
+ * gated screen is limited access, not a hard lockout: the customer can still log in,
+ * download their data, delete their own data, and request reinstatement
+ * (`retention/subscription-gate.ts`'s allowlist is where those three live).
+ *
+ * The cascade is this conjunct and nothing else. There is no second predicate, no
+ * "cascaded" flag on `tenants`, and no separate freeze path: a customer closed by their
+ * MSP's lapse is closed by exactly the mechanism #2765 built for a customer's own lapse,
+ * and reopens by exactly the mechanism #2765 built for their own return. `source` reports
+ * `"msp_subscription"` so a surface can say *which* lapse closed them without a second
+ * source of truth for whether they are closed at all.
+ *
  * ─────────────────────────────────────────────────────────────────────────────
  * What this module deliberately does NOT decide
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * **An MSP's own platform subscription lapsing does not cascade to its customers.**
- * `msp_subscriptions.dunning_state` reaching `access_revoked` closes the *MSP's* access
- * (`msp-entitlement.ts`), and in the wholesale channel it is the MSP's card that funds
- * every customer subscription underneath it — so there is a real argument that those
- * customers' portals should close too. There is an equally real argument that they
- * should not: those customers paid their MSP, and the retention gate does not merely
- * lock a portal — it starts a 7-year purge clock. Cascading would start that clock for
- * an entire book of business because one partner's card expired. That is a product
- * decision about money and a customer-facing promise, not a coding one, so it is not
- * made here and no cascade is implemented. Filed as a decision issue under #1944.
+ * **What happens to a reinstatement request once a customer makes one.** The request
+ * itself is recorded (`retention/reinstatement.ts`); who it reaches and what they can do
+ * about it — notify the delinquent MSP, raise a Zoho Desk ticket, or convert the customer
+ * to direct billing — is an unmade product decision about money, filed separately.
  */
 
 import { and, desc, eq, exists, inArray, isNotNull, notExists, or, sql, type SQL } from "drizzle-orm";
 import {
   db,
+  mspSubscriptionsTable,
   tenantsTable,
   tenantSubscriptionsTable,
+  type MspDunningState,
+  type MspSubscriptionStatus,
   type Tenant,
   type TenantSubscriptionBillingParty,
   type TenantSubscriptionSource,
@@ -81,22 +97,32 @@ import {
 // schema subpath is a plain module those mocks do not intercept. Values, not tables:
 // tables above stay on the root precisely so a test CAN mock them.
 import {
+  MSP_DUNNING_LAPSED_STATES,
+  MSP_SUBSCRIPTION_LAPSED_STATUSES,
   RETENTION_CLOCK_RUNNING_TENANT_STATUSES,
   TENANT_SUBSCRIPTION_ACTIVE_STATUSES,
 } from "@workspace/db/schema";
 import {
+  decideMspSubscriptionLapsed,
   decideTenantBillingActive,
   isActiveSubscriptionStatus,
+  isLapsedMspDunningState,
+  isLapsedMspSubscriptionStatus,
   isRunningTenantStatus,
+  type MspSubscriptionFacts,
   type TenantBillingSource,
 } from "./tenant-billing-rules";
 
 // The pure rule lives in `tenant-billing-rules.ts` (no database import, so it is
 // testable exhaustively). Re-exported here so callers have one place to import from.
 export {
+  decideMspSubscriptionLapsed,
   decideTenantBillingActive,
   isActiveSubscriptionStatus,
+  isLapsedMspDunningState,
+  isLapsedMspSubscriptionStatus,
   isRunningTenantStatus,
+  type MspSubscriptionFacts,
   type TenantBillingSource,
 };
 
@@ -111,6 +137,11 @@ type TenantStatus = Tenant["status"];
  */
 const RUNNING_TENANT_STATUSES: TenantStatus[] = [...RETENTION_CLOCK_RUNNING_TENANT_STATUSES];
 const ACTIVE_SUBSCRIPTION_STATUSES: TenantSubscriptionStatus[] = [...TENANT_SUBSCRIPTION_ACTIVE_STATUSES];
+// #2936 — the MSP-side half of the same trick: retyped as the column's own enum union so
+// adding a value to `MSP_SUBSCRIPTION_STATUSES` / `MSP_DUNNING_STATES` forces a decision
+// about whether it cascades, rather than silently defaulting to "not lapsed".
+const LAPSED_MSP_SUBSCRIPTION_STATUSES: MspSubscriptionStatus[] = [...MSP_SUBSCRIPTION_LAPSED_STATUSES];
+const LAPSED_MSP_DUNNING_STATES: MspDunningState[] = [...MSP_DUNNING_LAPSED_STATES];
 
 /** One customer subscription, as a surface needs to read it. */
 export interface TenantBillingSubscription {
@@ -152,6 +183,17 @@ export interface TenantBillingState {
    * recorded for this tenant.
    */
   latestSubscription: TenantBillingSubscription | null;
+  /**
+   * #2936 — true when the MSP above this customer has lapsed. Reported separately from
+   * `source` because the two answer different questions: `source` says what closed the
+   * portal, this says whether the MSP's lapse is a fact about this customer at all. Both
+   * can be true of a customer whose own subscription also ended.
+   */
+  mspLapsed: boolean;
+  /** The MSP's own platform subscription status, or null when the MSP has no row. */
+  mspSubscriptionStatus: MspSubscriptionStatus | null;
+  /** Where the MSP sits on the dunning ladder, or null when it is not on it. */
+  mspDunningState: MspDunningState | null;
 }
 
 /** The shape both the row select and the mapper agree on. */
@@ -189,11 +231,31 @@ function toBillingSubscription(row: SubscriptionRow): TenantBillingSubscription 
 }
 
 /**
+ * The parent MSP's own platform subscription facts, or null when that MSP has no
+ * `msp_subscriptions` row (#2936). One indexed lookup on a `msp_id`-unique column.
+ *
+ * Exported because the cascade needs the same fact for a whole MSP at once and must read
+ * it the same way this does — two different readings of "has the MSP lapsed" is exactly
+ * the second-source-of-truth problem the rest of this module exists to avoid.
+ */
+export async function readMspSubscriptionFacts(mspId: number): Promise<MspSubscriptionFacts | null> {
+  const [row] = await db
+    .select({
+      status: mspSubscriptionsTable.status,
+      dunningState: mspSubscriptionsTable.dunningState,
+    })
+    .from(mspSubscriptionsTable)
+    .where(eq(mspSubscriptionsTable.mspId, mspId))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
  * Resolve one customer's real billing state. Returns null when the tenant does not
  * exist — the caller decides what that means, because the callers want opposite things
  * from it (the gate denies, the sweep skips).
  *
- * Two indexed lookups rather than a join: joining would repeat the tenant row once per
+ * Three indexed lookups rather than a join: joining would repeat the tenant row once per
  * subscription for no gain, and the gate caches this for a few seconds so it runs far
  * less often than once per request.
  */
@@ -244,9 +306,14 @@ export async function resolveTenantBillingState(tenantId: number): Promise<Tenan
     return a > b ? r : best;
   }, null);
 
+  // #2936 — the MSP above this customer. `null` (no row) is not a lapse; see
+  // `MSP_SUBSCRIPTION_LAPSED_STATUSES` in `schema/msp.ts` for why that matters.
+  const msp = await readMspSubscriptionFacts(tenant.mspId);
+
   const decision = decideTenantBillingActive({
     tenantStatus: tenant.status,
     subscriptionStatuses: subscriptions.map((r) => r.status),
+    msp,
   });
 
   return {
@@ -259,6 +326,9 @@ export async function resolveTenantBillingState(tenantId: number): Promise<Tenan
     subscriptionCount: subscriptions.length,
     activeSubscription: activeRow ? toBillingSubscription(activeRow) : null,
     latestSubscription: subscriptions[0] ? toBillingSubscription(subscriptions[0]) : null,
+    mspLapsed: decision.mspLapsed,
+    mspSubscriptionStatus: (msp?.status as MspSubscriptionStatus | undefined) ?? null,
+    mspDunningState: (msp?.dunningState as MspDunningState | undefined) ?? null,
   };
 }
 
@@ -288,9 +358,27 @@ export function tenantBillingActiveCondition(): SQL {
       ),
     );
 
+  // #2936 — the parent MSP's own lapse. Phrased as NOT EXISTS(lapsed row) rather than
+  // EXISTS(healthy row) deliberately: an MSP with no `msp_subscriptions` row at all must
+  // read as NOT lapsed, and the positive form would gate every one of that MSP's
+  // customers and start their 7-year purge windows the moment this shipped.
+  const lapsedMspSubscription = db
+    .select({ one: sql`1` })
+    .from(mspSubscriptionsTable)
+    .where(
+      and(
+        eq(mspSubscriptionsTable.mspId, tenantsTable.mspId),
+        or(
+          inArray(mspSubscriptionsTable.status, LAPSED_MSP_SUBSCRIPTION_STATUSES),
+          inArray(mspSubscriptionsTable.dunningState, LAPSED_MSP_DUNNING_STATES),
+        ),
+      ),
+    );
+
   return and(
     inArray(tenantsTable.status, RUNNING_TENANT_STATUSES),
     or(notExists(anySubscription), exists(activeSubscription)),
+    notExists(lapsedMspSubscription),
   )!;
 }
 

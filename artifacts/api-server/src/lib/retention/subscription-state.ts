@@ -53,10 +53,23 @@
  *      than belt-and-braces: a customer who cancels stops making requests, so the gate
  *      will never fire for them again. Without the sweep, the one customer whose clocks
  *      most need freezing is the one whose clocks never would.
+ *
+ * (Since #2847 the left-hand column is the resolved billing state, not `tenants.status`
+ * alone; since #2936 that state also accounts for the parent MSP's own lapse. The table
+ * is unchanged in shape, and so is everything below it — a customer closed by their
+ * MSP's lapse freezes, stamps and reopens through exactly this reconciliation, with a
+ * fourth driver added: `msp-cascade.ts` calls it for a whole MSP's book the moment that
+ * MSP's billing state moves.)
  */
 
 import { and, eq, isNotNull, isNull, not, or } from "drizzle-orm";
-import { db, tenantsTable, type TenantSubscriptionStatus } from "@workspace/db";
+import {
+  db,
+  tenantsTable,
+  type MspDunningState,
+  type MspSubscriptionStatus,
+  type TenantSubscriptionStatus,
+} from "@workspace/db";
 import {
   isRunningTenantStatus,
   resolveTenantBillingState,
@@ -67,6 +80,7 @@ import { logger } from "../logger";
 import { postTerminationDueAt } from "./clock";
 import { freezeTenantClocks, resumeTenantClocks } from "./lifecycle";
 import { resolveRetentionPolicy } from "./policy";
+import { resolveOpenReinstatementRequests } from "./reinstatement";
 
 const log = logger.child({ channel: "system.core" });
 const auditLog = logger.child({ channel: "audit" });
@@ -113,6 +127,17 @@ export interface TenantSubscriptionState {
   subscriptionCount: number;
   /** The status of the subscription that decided it, or null when none exists. */
   subscriptionStatus: TenantSubscriptionStatus | null;
+  /**
+   * #2936 — true when the MSP above this customer has lapsed on its own platform
+   * subscription. When this is true and `billingSource` is `"msp_subscription"`, the
+   * customer's own billing was fine and it is the MSP's lapse that closed them; the wall
+   * says *"your MSP hasn't paid"* on that basis and on no other.
+   */
+  mspLapsed: boolean;
+  /** The MSP's own platform subscription status, or null when the MSP has no row. */
+  mspSubscriptionStatus: MspSubscriptionStatus | null;
+  /** Where the MSP sits on its dunning ladder, or null when it is not on it. */
+  mspDunningState: MspDunningState | null;
   /** The product name at purchase, from the deciding subscription. Null, never a placeholder. */
   planName: string | null;
   /**
@@ -172,6 +197,9 @@ export async function readTenantSubscriptionState(tenantId: number): Promise<Ten
     billingSource: billing?.source ?? "tenant_status",
     subscriptionCount: billing?.subscriptionCount ?? 0,
     subscriptionStatus: deciding?.status ?? null,
+    mspLapsed: billing?.mspLapsed ?? false,
+    mspSubscriptionStatus: billing?.mspSubscriptionStatus ?? null,
+    mspDunningState: billing?.mspDunningState ?? null,
     planName: deciding?.planName ?? null,
     currentPeriodEnd: billing?.activeSubscription?.currentPeriodEnd ?? null,
     lapsedAt: row.lapsedAt,
@@ -305,6 +333,12 @@ export async function syncTenantRetentionState(tenantId: number): Promise<Tenant
         // cancelled subscription from an operator flipping `tenants.status`.
         billingSource: billing?.source ?? "tenant_status",
         subscriptionStatus: billing?.latestSubscription?.status ?? null,
+        // #2936 — whose lapse this was. A cascaded freeze and a direct freeze are the
+        // same action on the same clock, so the audit trail is the only place the
+        // difference survives.
+        mspLapsed: billing?.mspLapsed ?? false,
+        mspSubscriptionStatus: billing?.mspSubscriptionStatus ?? null,
+        mspDunningState: billing?.mspDunningState ?? null,
         lapsedAt: now.toISOString(),
         clocksFrozen: clocksAffected,
         occurredAt: now.toISOString(),
@@ -343,6 +377,13 @@ export async function syncTenantRetentionState(tenantId: number): Promise<Tenant
     // only decides when.
     const clocksAffected = await resumeTenantClocks(tenantId);
     const frozenForDays = Math.floor((now.getTime() - row.lapsedAt.getTime()) / 86_400_000);
+
+    // #2936 — this is the only place in the platform that knows a customer is genuinely
+    // back in, and it does not care whether their own subscription resumed or their
+    // MSP's did. Closing the open reinstatement request here is what makes the
+    // *"self-service resume-if-MSP-resumes check"* real rather than a queue that fills
+    // up with requests for customers who are already inside. Never throws.
+    await resolveOpenReinstatementRequests(tenantId);
 
     auditLog.info(
       {

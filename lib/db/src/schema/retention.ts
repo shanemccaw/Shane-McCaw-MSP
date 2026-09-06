@@ -464,3 +464,87 @@ export const recordDeletionsTable = pgTable("record_deletions", {
 
 export type RecordDeletion = typeof recordDeletionsTable.$inferSelect;
 export type InsertRecordDeletion = typeof recordDeletionsTable.$inferInsert;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reinstatement requests (Git #2936)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Where a reinstatement request sits.
+ *
+ * Deliberately three values and not more. #2936 settled that a gated customer can
+ * *"request reinstatement"*; it did NOT settle what happens to that request — whether
+ * it notifies the (delinquent) MSP, raises a Zoho Desk ticket, or converts the customer
+ * to direct billing is an unmade product decision about money, filed separately. A
+ * vocabulary with `approved`/`declined` in it would be pretending that decision has
+ * been made and that somebody has the authority to act on it, which is exactly the kind
+ * of invented state this epic forbids.
+ *
+ * `resolved` is written by the platform itself, not by a human: when the portal actually
+ * reopens — because the customer's own subscription resumed, or because their MSP paid —
+ * the request has been satisfied and is closed with the real reason recorded.
+ */
+export const RETENTION_REINSTATEMENT_REQUEST_STATUSES = ["open", "resolved", "withdrawn"] as const;
+export type RetentionReinstatementRequestStatus = typeof RETENTION_REINSTATEMENT_REQUEST_STATUSES[number];
+
+/**
+ * A gated customer asking to be let back in.
+ *
+ * #2936's decision is that a lapse — the customer's own, or their MSP's cascading down —
+ * is *"not a hard lockout"*: the customer can still log in, download their data, delete
+ * their own data, and request reinstatement. This table is the durable record of that
+ * fourth action, and it is a record rather than a message on purpose. Every routing
+ * option still on the table (notify the MSP, open a support ticket, convert to direct
+ * billing) reads the same row; none of them can be built on a notification that was sent
+ * once and kept nowhere.
+ *
+ * The `lapse*` columns are a SNAPSHOT taken at request time, not a live join. What the
+ * customer was looking at when they asked is the thing a later reader needs, and by the
+ * time anyone reads this row the underlying billing state may well have moved — which is
+ * precisely the case where the snapshot matters most.
+ */
+export const retentionReinstatementRequestsTable = pgTable("retention_reinstatement_requests", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  /** Denormalised from the tenant, same as `record_deletions`, so an MSP-scoped queue is one index. */
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The customer user who asked. Plain integer, matching `msp_ai_purchases.purchased_by_user_id`. */
+  requestedByUserId: integer("requested_by_user_id"),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+  /** The customer's own words. Optional, never substituted with a generated sentence. */
+  note: text("note"),
+
+  // ── Snapshot of what they were gated by, at the moment they asked ──────────
+  /** `subscription` | `tenant_status` | `msp_subscription` — the resolved `billingSource`. */
+  lapseSource: text("lapse_source"),
+  /** True when the parent MSP's own platform subscription was the lapse (#2936's cascade). */
+  lapseWasMspCascade: boolean("lapse_was_msp_cascade").notNull().default(false),
+  /** `tenants.subscription_lapsed_at` as it stood. Null when no lapse instant was stamped yet. */
+  lapsedAt: timestamp("lapsed_at", { withTimezone: true }),
+
+  // ── Resolution ─────────────────────────────────────────────────────────────
+  status: text("status", { enum: RETENTION_REINSTATEMENT_REQUEST_STATUSES }).notNull().default("open"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  /**
+   * Why it closed, in machine terms — e.g. `portal_reopened`. Free text rather than an
+   * enum because the set of real reasons grows with the routing decision that has not
+   * been made yet, and guessing that vocabulary now is how a schema starts lying.
+   */
+  resolution: text("resolution"),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  /**
+   * At most ONE open request per customer. Partial, over `open` only, so a customer who
+   * lapses, is reinstated and lapses again can ask a second time — the constraint is
+   * against a wall that submits a duplicate on every click, not against asking twice.
+   */
+  uniqueIndex("retention_reinstatement_open_uidx").on(t.tenantId).where(sql`status = 'open'`),
+  /** The operator-side queue, whichever surface ends up owning it: newest first, per MSP. */
+  index("retention_reinstatement_msp_idx").on(t.mspId, t.requestedAt.desc()),
+  index("retention_reinstatement_tenant_idx").on(t.tenantId, t.requestedAt.desc()),
+]);
+
+export type RetentionReinstatementRequest = typeof retentionReinstatementRequestsTable.$inferSelect;
+export type InsertRetentionReinstatementRequest = typeof retentionReinstatementRequestsTable.$inferInsert;

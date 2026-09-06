@@ -10,6 +10,7 @@ import { db } from "@workspace/db";
 import { mspSubscriptionsTable, mspsTable, mspEventStoreTable, tenantsTable, servicesTable } from "@workspace/db";
 import { eq, and, isNotNull, sql, count } from "drizzle-orm";
 import { logger } from "./logger";
+import { cascadeMspSubscriptionToCustomers } from "./retention/msp-cascade";
 const log = logger.child({ channel: "billing" });
 
 // ── MSP Dunning State Machine ─────────────────────────────────────────────────
@@ -48,6 +49,11 @@ export async function handleMspDunningAdvance(
   let suspended = 0;
   let revoked = 0;
   let archived = 0;
+  // #2936 — customers closed by their MSP's lapse, summed across every MSP this run
+  // advanced. Reported in the node's result so the nightly run's own record shows the
+  // real blast radius rather than only the MSP-side counts.
+  let customersFrozen = 0;
+  let customersResumed = 0;
 
   for (const sub of overdue) {
     const failedAt = sub.paymentFailedAt!;
@@ -105,12 +111,33 @@ export async function handleMspDunningAdvance(
         log.warn({ err, mspId: sub.mspId }, "msp_dunning_advance: event store insert failed (non-fatal)");
       });
 
-      log.info({ mspId: sub.mspId, daysSince, prevState: sub.dunningState, newState: targetState }, "msp_dunning_advance: state advanced");
+      // #2936 — Shane's decision: an MSP reaching a lapsed/dunning-terminal state closes
+      // its customers' portals and starts their 7-year purge clocks, through the same
+      // #2765 mechanism a customer's own lapse uses. Called on EVERY advance, not only
+      // the terminal rungs, because the cascade is a reconciliation and not a transition
+      // hook — it settles each customer against whatever the rule now says, and calling
+      // it on a rung that does not cascade is a cheap no-op. Never throws; the daily
+      // retention sweep is the backstop if it does not complete.
+      const cascade = await cascadeMspSubscriptionToCustomers(sub.mspId);
+      customersFrozen += cascade.frozen;
+      customersResumed += cascade.resumed;
+
+      log.info(
+        {
+          mspId: sub.mspId,
+          daysSince,
+          prevState: sub.dunningState,
+          newState: targetState,
+          customersFrozen: cascade.frozen,
+          customersResumed: cascade.resumed,
+        },
+        "msp_dunning_advance: state advanced",
+      );
       advanced++;
     }
   }
 
-  const result = { checked: overdue.length, advanced, suspended, revoked, archived };
+  const result = { checked: overdue.length, advanced, suspended, revoked, archived, customersFrozen, customersResumed };
   log.info(result, "msp_dunning_advance: completed");
   return result;
 }

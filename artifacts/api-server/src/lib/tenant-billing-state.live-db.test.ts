@@ -28,6 +28,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, mspsTable, tenantsTable, tenantSubscriptionsTable } from "@workspace/db";
 import {
   decideTenantBillingActive,
+  readMspSubscriptionFacts,
   recordTenantSubscription,
   resolveTenantBillingState,
   tenantBillingActiveCondition,
@@ -169,6 +170,9 @@ describe.skipIf(!process.env.DATABASE_URL)("#2847 — per-customer billing state
       const pure = decideTenantBillingActive({
         tenantStatus: resolved!.tenantStatus,
         subscriptionStatuses: statuses.map((r) => r.status),
+        // #2936 — the MSP's real facts as the resolver read them, so this still closes
+        // the loop on all three forms of the rule now that it has a third conjunct.
+        msp: await readMspSubscriptionFacts(resolved!.mspId),
       });
       expect(pure.active).toBe(resolved!.active);
       expect(pure.source).toBe(resolved!.source);

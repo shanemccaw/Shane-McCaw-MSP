@@ -30,6 +30,7 @@ import type { TenantSubscriptionStatus } from "@workspace/db";
 import { getStripeKey } from "../lib/stripe.ts";
 import { syncTenantSubscriptionFromStripe } from "../lib/tenant-billing-state.ts";
 import { syncTenantsAfterStatusWrite } from "../lib/retention/subscription-state.ts";
+import { cascadeMspSubscriptionToCustomers } from "../lib/retention/msp-cascade.ts";
 import { enqueueZohoBooksInvoiceSync } from "../lib/zoho-books.ts";
 import { fireEventRule } from "../lib/alert-engine.ts";
 import { logger } from "../lib/logger.ts";
@@ -618,7 +619,24 @@ async function handleSubscriptionUpdated(subscription: import("stripe").Stripe.S
     updatedAt: now,
   }).where(eq(mspSubscriptionsTable.id, sub.id));
 
-  log.info({ subscriptionId: subscription.id, status: subscription.status, mspId: sub.mspId }, "msp-billing-webhook: subscription updated");
+  // #2936 — the MSP's own status just moved, in either direction. `canceled`/`unpaid`
+  // cascade the gate and the 7-year clock down to that MSP's customers; a move back to
+  // `active`/`trialing` reopens them through the same reconciliation. Called for every
+  // status because the cascade settles each customer against the current rule rather
+  // than reacting to a transition — a caller that guessed the direction wrong would be
+  // worse than one that did not call.
+  const cascaded = await cascadeMspSubscriptionToCustomers(sub.mspId);
+
+  log.info(
+    {
+      subscriptionId: subscription.id,
+      status: subscription.status,
+      mspId: sub.mspId,
+      customersFrozen: cascaded.frozen,
+      customersResumed: cascaded.resumed,
+    },
+    "msp-billing-webhook: subscription updated",
+  );
 }
 
 // ── customer.subscription.deleted ─────────────────────────────────────────────
@@ -662,7 +680,20 @@ async function handleSubscriptionDeleted(subscription: import("stripe").Stripe.S
     ownerType: "platform",
   });
 
-  log.info({ subscriptionId: subscription.id, mspId: sub.mspId }, "msp-billing-webhook: subscription deleted, MSP suspended");
+  // #2936 — `canceled` is a lapse. Every customer under this MSP is gated and has their
+  // 7-year post-termination window started here, by the same #2765 reconciliation a
+  // customer's own cancellation goes through.
+  const cascaded = await cascadeMspSubscriptionToCustomers(sub.mspId);
+
+  log.info(
+    {
+      subscriptionId: subscription.id,
+      mspId: sub.mspId,
+      customersFrozen: cascaded.frozen,
+      customersExamined: cascaded.customers,
+    },
+    "msp-billing-webhook: subscription deleted, MSP suspended, customers cascaded",
+  );
 }
 
 // ── invoice.payment_succeeded ─────────────────────────────────────────────────
@@ -711,6 +742,21 @@ async function handlePaymentSucceeded(invoice: import("stripe").Stripe.Invoice):
     });
 
     log.info({ subscriptionId, mspId: sub.mspId, clearedDunningState: sub.dunningState }, "msp-billing-webhook: dunning cleared on payment success");
+  }
+
+  // #2936's un-cascade. Unconditional — outside the `if (sub.dunningState)` block on
+  // purpose: an MSP whose `msp_subscriptions.status` was `canceled`/`unpaid` without ever
+  // being walked up the dunning ladder (a Stripe-side cancellation, or #2847's
+  // `handleSubscriptionDeleted` path) has lapsed customers underneath it and no dunning
+  // state to clear, and gating that resume on `dunningState` would leave them staring at
+  // a wall after their MSP has paid. The reconciliation is a no-op for customers who
+  // were never gated, so the unconditional call costs one indexed pass.
+  const cascaded = await cascadeMspSubscriptionToCustomers(sub.mspId);
+  if (cascaded.resumed > 0) {
+    log.info(
+      { subscriptionId, mspId: sub.mspId, customersResumed: cascaded.resumed, clocksResumed: cascaded.clocksResumed },
+      "msp-billing-webhook: MSP paid — cascaded customers reopened and their retention clocks resumed",
+    );
   }
 }
 

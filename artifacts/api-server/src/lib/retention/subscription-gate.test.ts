@@ -58,6 +58,12 @@ function state(overrides: Partial<TenantSubscriptionState> = {}): TenantSubscrip
     billingSource: "subscription",
     subscriptionCount: 1,
     subscriptionStatus: "canceled",
+    // #2936 — the default gated tenant is closed by its OWN cancellation, with a healthy
+    // MSP above it. The cascade case (`billingSource: "msp_subscription"`, `mspLapsed:
+    // true`) is asserted by overriding these, not by making it the default.
+    mspLapsed: false,
+    mspSubscriptionStatus: "active",
+    mspDunningState: null,
     planName: "Managed Security",
     currentPeriodEnd: null,
     lapsedAt: LAPSED_AT,

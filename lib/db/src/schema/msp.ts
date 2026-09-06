@@ -1525,6 +1525,39 @@ export type MspBillingInterval = typeof MSP_BILLING_INTERVALS[number];
 export const MSP_DUNNING_STATES = ["reminder_sent", "suspended", "access_revoked", "archival_flagged"] as const;
 export type MspDunningState = typeof MSP_DUNNING_STATES[number];
 
+// ── The MSP lapse that cascades to that MSP's customers (Git #2936) ───────────
+//
+// Shane's decision on #2936 (2026-09-05): an MSP's own lapsed platform
+// subscription DOES cascade — its customer tenants are gated and their 7-year
+// post-termination purge clocks start, using the same #2765 mechanism a customer's
+// own direct lapse uses. These two vocabularies are the "lapsed" half of that
+// rule, and they are the ONLY place it is defined: `tenant-billing-rules.ts`
+// (TypeScript) and `tenantBillingActiveCondition()` (SQL) both read them, so the
+// gate and the sweep cannot drift apart on who counts as lapsed.
+//
+// Why these exact values, and not a different rung of the ladder:
+//
+//   - `canceled` / `unpaid` are the terminal `msp_subscriptions.status` values.
+//     `trialing`/`active` are paying, and `past_due` is a retry in progress — a
+//     failed charge that Stripe is still retrying is not a lapse, and treating it
+//     as one would start an irreversible 7-year clock over a card that declines
+//     once.
+//   - `access_revoked` / `archival_flagged` are exactly the pair
+//     `msp-entitlement.ts` already uses to close the MSP's OWN access. Cascading on
+//     the same pair means a customer's portal can never close before their MSP's
+//     did. The earlier rungs deliberately do not cascade: `reminder_sent` is an
+//     email, and `suspended` still leaves the MSP itself fully entitled.
+//
+// ABSENCE OF A ROW IS NOT A LAPSE, for the same reason it is not one in
+// `tenant_subscriptions`: every MSP in the database predates `msp_subscriptions`,
+// and reading "no row" as "not paying" would gate every one of their customers and
+// start a 7-year purge window for all of them the moment this deployed.
+export const MSP_SUBSCRIPTION_LAPSED_STATUSES = ["canceled", "unpaid"] as const;
+export type MspSubscriptionLapsedStatus = typeof MSP_SUBSCRIPTION_LAPSED_STATUSES[number];
+
+export const MSP_DUNNING_LAPSED_STATES = ["access_revoked", "archival_flagged"] as const;
+export type MspDunningLapsedState = typeof MSP_DUNNING_LAPSED_STATES[number];
+
 export const mspSubscriptionsTable = pgTable("msp_subscriptions", {
   id: serial("id").primaryKey(),
   // The MSP organisation this subscription belongs to. One subscription per MSP.
