@@ -1257,6 +1257,21 @@ namespace BuildConsole.Services
                     {
                         var issue = n.Content;
                         if (issue == null) continue;
+                        // Git #1807 — `content { ... on Issue { ... } }` only matches when the item's
+                        // content is a real Issue. A Draft Issue or a Pull Request also returns a
+                        // non-null `content`, but every field inside the unmatched fragment comes back
+                        // null, so Number defaults to 0 and Title to null. That used to fall through to
+                        // the repository check below and get silently dropped there (Repository is also
+                        // null) with no log line distinguishing it from an ordinary wrong-repo skip.
+                        // Detect and log it explicitly instead of letting it blend into that generic
+                        // skip — default is skip+log, not adding a PullRequest fragment: nothing here
+                        // indicates PRs are meant to work in Batter Up.
+                        if (issue.Number == 0 && issue.Title == null)
+                        {
+                            ActivityLog.Log("git-board.data",
+                                $"{label} project scan: skipped a project item whose content matched no `... on Issue` fragment (Draft Issue or Pull Request, not a real Issue) — id={n.Id ?? "?"}.");
+                            continue;
+                        }
                         if (!string.Equals(issue.Repository?.NameWithOwner, $"{Owner}/{Repo}", StringComparison.OrdinalIgnoreCase)) continue;
                         if (!string.Equals(issue.State, state, StringComparison.OrdinalIgnoreCase)) continue;
                         if (!string.Equals(n.FieldValueByName?.OptionId, targetOptionId, StringComparison.OrdinalIgnoreCase)) continue;
