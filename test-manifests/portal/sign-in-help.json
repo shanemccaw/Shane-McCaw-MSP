@@ -6,7 +6,7 @@
   "notes": [
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these assertions only go green once this session's commit is deployed by the dev-server rebuild.",
     "THE FULL TICKET-CREATION HAPPY PATH (real SIH-xxxx reference) IS NOT ASSERTED HERE: raiseSignInHelpTicket requires live Zoho Desk credentials + ZOHO_DESK_DEFAULT_DEPARTMENT_ID, which the local/test harness does not carry, so the endpoint returns 502 there. What IS asserted is the route's real input VALIDATION (400s, unchanged from before), which needs no Zoho, plus the new page rendering and issue-card selection.",
-    "The client's issue-card LABELS are the current design's copy (\"I have lost access to my authenticator\", etc.), which is newer than the server's own internal SIGN_IN_HELP_ISSUES labels (\"Lost my authenticator, no recovery codes\", etc.) used only inside the raised Zoho ticket body -- see the filed finding on this drift. Only issueKey is ever sent to the server, so this does not affect wire behavior.",
+    "The client's issue-card LABELS and the server's internal SIGN_IN_HELP_ISSUES labels (used only inside the raised Zoho ticket body) now both match the current design's copy verbatim (\"I have lost access to my authenticator\", etc. -- see Git #3053, which fixed the drift previously noted here). Only issueKey is ever sent to the server, so this never affected wire behavior either way.",
     "The page is public (no login block) -- the user is locked out by definition, so /sign-in-help and its POST must not require auth. Route is /portal/sign-in-help (this app mounts at /portal/, no slug prefix)."
   ],
   "apiTests": [

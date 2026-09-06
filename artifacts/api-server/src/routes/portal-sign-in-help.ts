@@ -45,7 +45,8 @@ const signInHelpLimiter = rateLimit({
 });
 
 // The fixed 4-issue catalog. Labels + routing notes are the design's final copy
-// (Customer Portal Sign-in Help.dc.html BOT_ISSUES) — do not reword.
+// (Design/portal/design_handoff_full_site/screens/Auth Sign-In Help.dc.html ISSUES)
+// — do not reword.
 interface SignInHelpIssue {
   label: string;
   priority: string;
@@ -53,22 +54,22 @@ interface SignInHelpIssue {
 }
 const SIGN_IN_HELP_ISSUES: Record<string, SignInHelpIssue> = {
   mfa: {
-    label: "Lost my authenticator, no recovery codes",
+    label: "I have lost access to my authenticator",
     priority: "P2",
     routingNote: "Re-enrolment needs an identity check, so we will call the number on your account.",
   },
   locked: {
-    label: "Locked out and resetting did not clear it",
+    label: "My account is locked",
     priority: "P2",
     routingNote: "We will check the sign-in logs for your account and lift the lock manually.",
   },
   nocode: {
-    label: "Reset codes never arrive at all",
+    label: "No email or code is arriving",
     priority: "P3",
     routingNote: "We will confirm the address on your account and check delivery on our side.",
   },
   other: {
-    label: "Something else entirely",
+    label: "Something else is stopping me signing in",
     priority: "P3",
     routingNote: "A human reads this one before it gets routed.",
   },
