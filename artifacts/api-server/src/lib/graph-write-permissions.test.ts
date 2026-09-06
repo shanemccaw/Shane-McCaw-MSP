@@ -163,7 +163,7 @@ describe("adding a service principal to a group needs the body-driven extra", ()
 });
 
 describe("the derived request set", () => {
-  it("is exactly the 23 permissions #1875/#1899/#1901 derived from the packs' real steps", () => {
+  it("is exactly the 24 permissions #1875/#1899/#1901/#2856 derived from the packs' real steps", () => {
     expect([...DERIVED_WRITE_APP_PERMISSIONS]).toEqual([
       "Application.ReadWrite.All",
       "DelegatedPermissionGrant.ReadWrite.All",
@@ -176,6 +176,12 @@ describe("the derived request set", () => {
       "DeviceManagementManagedDevices.ReadWrite.All",
       "Files.ReadWrite.All",
       "Group.Create",
+      // #2856 — Shane's Option 2: request the least-privileged of the two real
+      // options for governance-groups-v1's owner + visibility steps.
+      // action.configure-group-expiration-policy still needs Directory.ReadWrite.All
+      // and stays refused (see DOCUMENTED_BUT_NOT_REQUESTED); action.delete-group
+      // needs this same scope but stays refused too via `alwaysRefused` (#3028).
+      "Group.ReadWrite.All",
       "GroupMember.ReadWrite.All",
       // #1901 — baseline-licensing-v1 group-based licensing. The per-user
       // assignLicense rule reuses User.ReadWrite.All; the group form cannot,
@@ -218,7 +224,10 @@ describe("the derived request set", () => {
       "User-PasswordProfile.ReadWrite.All", "User.ReadWrite.All", "User.RevokeSessions.All",
       "UserAuthenticationMethod.ReadWrite.All",
     ];
-    const added = DERIVED_WRITE_APP_PERMISSIONS.filter((p) => !beforeThisIssue.includes(p));
+    // #2856 landed after #1901 and adds an 18th pre-existing member (Group.ReadWrite.All)
+    // to the baseline this test isolates against, so its own 6-permission delta stays exact.
+    const beforeThisIssueAnd2856 = [...beforeThisIssue, "Group.ReadWrite.All"];
+    const added = DERIVED_WRITE_APP_PERMISSIONS.filter((p) => !beforeThisIssueAnd2856.includes(p));
     expect(added).toEqual([
       "DeviceManagementApps.ReadWrite.All",
       "DeviceManagementConfiguration.ReadWrite.All",
@@ -236,6 +245,26 @@ describe("the derived request set", () => {
     expect(added).not.toContain("RoleEligibilitySchedule.ReadWrite.Directory");
   });
 
+  it("#2856 added exactly 1 new permission (Group.ReadWrite.All) on top of #1901", () => {
+    // Shane's decision: Option 2 of #2856's own list. Isolated from the #1901 test
+    // above so each issue's own real cost is independently guarded.
+    const afterThisIssue = [
+      "Application.ReadWrite.All", "DelegatedPermissionGrant.ReadWrite.All",
+      "DeviceManagementApps.ReadWrite.All", "DeviceManagementConfiguration.ReadWrite.All",
+      "DeviceManagementManagedDevices.ReadWrite.All", "Files.ReadWrite.All", "Group.Create",
+      "GroupMember.ReadWrite.All", "LicenseAssignment.ReadWrite.All",
+      "OrganizationalBranding.ReadWrite.All", "Policy.Read.All",
+      "Policy.ReadWrite.AuthenticationMethod", "Policy.ReadWrite.Authorization",
+      "Policy.ReadWrite.ConditionalAccess", "RoleManagement.ReadWrite.Directory",
+      "SecurityIncident.ReadWrite.All", "SharePointTenantSettings.ReadWrite.All",
+      "TeamSettings.ReadWrite.All", "User-PasswordProfile.ReadWrite.All",
+      "User.DeleteRestore.All", "User.ReadWrite.All", "User.RevokeSessions.All",
+      "UserAuthenticationMethod.ReadWrite.All",
+    ];
+    const added = DERIVED_WRITE_APP_PERMISSIONS.filter((p) => !afterThisIssue.includes(p));
+    expect(added).toEqual(["Group.ReadWrite.All"]);
+  });
+
   it("excludes the permissions deliberately not requested, and says why", () => {
     const excluded = DOCUMENTED_BUT_NOT_REQUESTED.map((d) => d.permission);
     expect(excluded).toContain("DeviceManagementManagedDevices.PrivilegedOperations.All");
@@ -246,9 +275,14 @@ describe("the derived request set", () => {
   });
 
   it("never requests a broad directory-wide write permission", () => {
-    for (const forbidden of ["Directory.ReadWrite.All", "Group.ReadWrite.All", "Organization.ReadWrite.All", "Sites.ReadWrite.All"]) {
+    // Group.ReadWrite.All is deliberately NOT in this list as of #2856 — Shane's
+    // Option 2 decision requests it for governance-groups-v1's owner + visibility
+    // steps. It is still tenant-wide group write, and still worth naming here as
+    // the one exception: everything else stays refused.
+    for (const forbidden of ["Directory.ReadWrite.All", "Organization.ReadWrite.All", "Sites.ReadWrite.All"]) {
       expect(DERIVED_WRITE_APP_PERMISSIONS).not.toContain(forbidden);
     }
+    expect(DERIVED_WRITE_APP_PERMISSIONS).toContain("Group.ReadWrite.All");
   });
 
   it("every rule carries a justification naming a real step, and a Microsoft Learn citation", () => {
@@ -408,10 +442,11 @@ describe("#1901 — the other Config Packs' endpoints all resolve to a documente
     ["privileged-access-v1", "POST", "/roleManagement/directory/roleEligibilityScheduleRequests", ["RoleManagement.ReadWrite.Directory"]],
     ["privileged-access-v1", "POST", "/roleManagement/directory/roleAssignmentScheduleRequests", ["RoleManagement.ReadWrite.Directory"]],
     ["security-incident-response-v1", "PATCH", "/security/incidents/{{incidentId}}", ["SecurityIncident.ReadWrite.All"]],
-    // The three governance-groups-v1 endpoints #1901's body predates. These name
-    // the permission Microsoft documents — `required` reports what the operation
-    // NEEDS, which is not the same as what this platform requests. All three are
-    // then excluded via `notRequested`; see the dedicated assertions below.
+    // The three governance-groups-v1 endpoints #1901's body predates. `required`
+    // reports what the operation NEEDS, which is not the same as what this
+    // platform requests. #2856 (Shane's Option 2) now REQUESTS Group.ReadWrite.All
+    // for the first two; the third still needs Directory.ReadWrite.All and stays
+    // excluded via `notRequested` — see the dedicated assertions below.
     ["governance-groups-v1", "POST", "/groups/{{groupId}}/owners/$ref", ["Group.ReadWrite.All"]],
     ["governance-groups-v1", "PATCH", "/groups/{{groupId}}", ["Group.ReadWrite.All"]],
     ["governance-groups-v1", "POST", "/groupLifecyclePolicies", ["Directory.ReadWrite.All"]],
@@ -419,8 +454,6 @@ describe("#1901 — the other Config Packs' endpoints all resolve to a documente
 
   /** The endpoints above whose permission is documented but deliberately refused. */
   const refusedEndpoints = new Set([
-    "/groups/{{groupId}}/owners/$ref",
-    "/groups/{{groupId}}",
     "/groupLifecyclePolicies",
   ]);
 
@@ -441,26 +474,37 @@ describe("#1901 — the other Config Packs' endpoints all resolve to a documente
     }
   });
 
-  it("the group-write steps are REFUSED, not silently satisfied", () => {
-    // All three name a permission Microsoft really documents, and all three are
-    // excluded from the request because that permission is tenant-wide group or
-    // directory write. The pairing is what makes this honest: `required` reports
-    // the real need, `notRequested` reports that we are not asking for it, and
-    // the route subtracts the second from the first so the step reports as
-    // refused rather than as missing-a-consent the customer could go and grant.
-    const refused: Array<[string, string, string]> = [
-      ["POST", "/groups/{{groupId}}/owners/$ref", "Group.ReadWrite.All"],
-      ["PATCH", "/groups/{{groupId}}", "Group.ReadWrite.All"],
-      ["POST", "/groupLifecyclePolicies", "Directory.ReadWrite.All"],
-    ];
-    for (const [method, endpoint, permission] of refused) {
+  it("the expiration-policy step is REFUSED, not silently satisfied (Git #2856)", () => {
+    // Directory.ReadWrite.All is a permission Microsoft really documents, and it
+    // stays excluded from the request because it is tenant-wide directory write —
+    // the one step of the four #2856 did NOT buy. The pairing is what makes this
+    // honest: `required` reports the real need, `notRequested` reports that we
+    // are not asking for it, and the route subtracts the second from the first so
+    // the step reports as refused rather than as missing-a-consent the customer
+    // could go and grant.
+    const got = requiredPermissionsForWrite("POST", "/groupLifecyclePolicies");
+    expect(got.required).toEqual(["Directory.ReadWrite.All"]);
+    expect(got.notRequested).toEqual(["Directory.ReadWrite.All"]);
+    expect(got.rule!.grantRecommended).toBe(false);
+    expect(got.rule!.notRequestedReason!.length).toBeGreaterThan(40);
+    expect(DERIVED_WRITE_APP_PERMISSIONS).not.toContain("Directory.ReadWrite.All");
+  });
+
+  it("the owner + visibility steps are now REQUESTED, not refused (Git #2856)", () => {
+    // Shane's Option 2 decision: request Group.ReadWrite.All. These two steps'
+    // rules no longer carry grantRecommended: false, and Group.ReadWrite.All is
+    // in the derived set — a real posture change from before #2856, asserted
+    // explicitly so a future revert has to touch this test too.
+    for (const [method, endpoint] of [
+      ["POST", "/groups/{{groupId}}/owners/$ref"],
+      ["PATCH", "/groups/{{groupId}}"],
+    ] as const) {
       const got = requiredPermissionsForWrite(method, endpoint);
-      expect(got.required, `${method} ${endpoint}`).toEqual([permission]);
-      expect(got.notRequested, `${method} ${endpoint}`).toEqual([permission]);
-      expect(got.rule!.grantRecommended).toBe(false);
-      expect(got.rule!.notRequestedReason!.length).toBeGreaterThan(40);
-      expect(DERIVED_WRITE_APP_PERMISSIONS).not.toContain(permission);
+      expect(got.required, `${method} ${endpoint}`).toEqual(["Group.ReadWrite.All"]);
+      expect(got.notRequested, `${method} ${endpoint}`).toEqual([]);
+      expect(got.rule!.grantRecommended).not.toBe(false);
     }
+    expect(DERIVED_WRITE_APP_PERMISSIONS).toContain("Group.ReadWrite.All");
   });
 
   it("PIM approval is app-only UNSUPPORTED — a third state, not 'needs nothing'", () => {
@@ -613,6 +657,11 @@ describe("#2858 — the unwired catalogue resolves to a documented permission", 
     // Would need a NEW permission for a step nothing ships — documented, refused.
     ["action.reassign-app-owner", "POST", "/applications/{{appId}}/owners/$ref", ["Application.ReadWrite.All", "Directory.Read.All"], false],
     ["action.add-custom-domain", "POST", "/domains", ["Domain.ReadWrite.All"], false],
+    // ALWAYS refused (Git #3028, found implementing #2856): needs the same
+    // Group.ReadWrite.All #2856 grants for governance-groups-v1's owner/visibility
+    // steps, but this is the destructive delete op that grant was never meant to
+    // cover — `alwaysRefused` keeps it non-runnable even though the permission
+    // itself is now in DERIVED_WRITE_APP_PERMISSIONS. See `held` below.
     ["action.delete-group", "DELETE", "/groups/{{groupId}}", ["Group.ReadWrite.All"], false],
     ["action.restart-device", "POST", "/deviceManagement/managedDevices/{{deviceId}}/rebootNow", ["DeviceManagementManagedDevices.PrivilegedOperations.All"], false],
     ["action.remote-lock-device", "POST", "/deviceManagement/managedDevices/{{deviceId}}/remoteLock", ["DeviceManagementManagedDevices.PrivilegedOperations.All"], false],
@@ -630,8 +679,15 @@ describe("#2858 — the unwired catalogue resolves to a documented permission", 
       const got = requiredPermissionsForWrite(method, endpoint, { templateId });
       expect(got.rule, `${method} ${endpoint} matched no rule`).not.toBeNull();
       expect(got.required.sort()).toEqual([...expected].sort());
-      // A step is runnable only if EVERY permission it needs is actually requested.
-      const held = got.required.every((p) => DERIVED_WRITE_APP_PERMISSIONS.includes(p));
+      // A step is runnable only if EVERY permission it needs is actually requested
+      // AND the rule itself reports nothing outstanding in `notRequested`. The
+      // second half matters as of #2856/#3028: action.delete-group needs a
+      // permission (Group.ReadWrite.All) that IS in DERIVED_WRITE_APP_PERMISSIONS
+      // for an unrelated rule, so checking DERIVED membership alone would read it
+      // as runnable — `alwaysRefused` is what keeps its own notRequested non-empty.
+      const held =
+        got.required.every((p) => DERIVED_WRITE_APP_PERMISSIONS.includes(p)) &&
+        got.notRequested.length === 0;
       expect(held).toBe(runnable);
     });
   }
@@ -641,8 +697,9 @@ describe("#2858 — the unwired catalogue resolves to a documented permission", 
     // in its own notRequestedReason: a step no Config Pack ships must never
     // enlarge what every customer is asked to consent to. If a future rule here
     // needs a new permission, this fails and someone has to justify it against a
-    // real shipped product step.
-    expect(DERIVED_WRITE_APP_PERMISSIONS).toHaveLength(23);
+    // real shipped product step. (24, not 23 — #2856 landed after #2858 and added
+    // Group.ReadWrite.All for a real shipped pack step, not for anything here.)
+    expect(DERIVED_WRITE_APP_PERMISSIONS).toHaveLength(24);
     for (const forbidden of [
       "Domain.ReadWrite.All",
       "DeviceManagementManagedDevices.PrivilegedOperations.All",

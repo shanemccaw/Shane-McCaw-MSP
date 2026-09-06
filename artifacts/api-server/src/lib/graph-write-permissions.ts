@@ -117,6 +117,19 @@ export interface WritePermissionRule {
   /** Why it is not requested, when `grantRecommended` is false. */
   notRequestedReason?: string;
   /**
+   * True when this rule's refusal must hold even if its `permissions` become
+   * held anyway because a DIFFERENT rule requests the same scope (Git #3028,
+   * found while implementing #2856). Without this, a refused rule whose
+   * permission is later granted for an unrelated, non-destructive step would
+   * silently read as satisfied — exactly the false-green #1901 exists to
+   * prevent, just reached from a new direction. `action.delete-group` is the
+   * live case: it needs the same `Group.ReadWrite.All` that #2856 now grants
+   * for governance-groups-v1's owner/visibility steps, but deleting a group is
+   * the destructive operation that grant's objection was actually about, and
+   * must stay refused regardless of what the platform holds for other reasons.
+   */
+  alwaysRefused?: boolean;
+  /**
    * True when Microsoft's Application row for this operation reads
    * "Not supported." — i.e. there is NO application permission that authorises
    * it, at any privilege level. The operation is delegated-only, so an app-only
@@ -419,6 +432,13 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
     // #1901 — governance-groups-v1. Not in the 13 endpoints #1901's body listed:
     // that list was captured 2026-08-30 and governance-groups-v1 has been wired
     // since. Found by re-running the same derivation over the live table.
+    //
+    // GRANTED (Git #2856, 2026-09-06): Shane's call was Option 2 of #2856's own
+    // decision list — request Group.ReadWrite.All. It is still tenant-wide group
+    // write, still the exact scope quickstart-v1 was built to avoid, but it is the
+    // narrowest of the two real options and buys 3 of governance-groups-v1's 4
+    // steps (this rule, the visibility rule below, and NOT the expiration-policy
+    // rule, which needs Directory.ReadWrite.All and stays refused — see that rule).
     method: "POST",
     pattern: "/groups/*/owners/$ref",
     documentedApplicationTiers: {
@@ -431,20 +451,13 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
       "documents exactly two application permissions for this operation and BOTH are tenant-wide write " +
       "scopes: Group.ReadWrite.All at the least-privileged tier and Directory.ReadWrite.All above it. " +
       "There is no narrow owners-only permission — GroupMember.ReadWrite.All covers members, not owners, " +
-      "and Group.Create covers creation only.",
+      "and Group.Create covers creation only. Group.ReadWrite.All is REQUESTED (Git #2856): Shane chose " +
+      "the least-privileged of the two real options over dropping the pack or taking Directory.ReadWrite.All.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/group-post-owners",
-    grantRecommended: false,
-    notRequestedReason:
-      "Group.ReadWrite.All is the least privileged permission Microsoft offers for adding a group owner, " +
-      "but it is tenant-wide: the same grant lets the app rename, re-scope or DELETE any group in the " +
-      "customer's directory, including role-assignable ones. This platform's whole group posture is built " +
-      "on avoiding that — quickstart-v1 uses Group.Create (create only) and GroupMember.ReadWrite.All " +
-      "(membership only) precisely so it never holds a general group write. Taking Group.ReadWrite.All to " +
-      "ship one owner-assignment step would undo that for every customer. Shane's call: request it and " +
-      "gain governance-groups-v1's owner steps, or drop them from the pack.",
   },
   {
     // #1901 — governance-groups-v1, two templates on the same endpoint.
+    // GRANTED (Git #2856, 2026-09-06) — see the owners rule above for the decision.
     method: "PATCH",
     pattern: "/groups/*",
     documentedApplicationTiers: {
@@ -462,14 +475,10 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
       "the disableNesting property\". Updating **visibility** falls back to the higher-privileged cell, " +
       "whose only app-usable entries are Directory.ReadWrite.All and Group.ReadWrite.All " +
       "(Group.ManageProtection.All is delegated-only — \"App-only scenarios aren't supported\" — and " +
-      "Group-PreferredDataLocation.ReadWrite.All covers preferredDataLocation only).",
+      "Group-PreferredDataLocation.ReadWrite.All covers preferredDataLocation only). Group.ReadWrite.All is " +
+      "REQUESTED (Git #2856), same decision and same already-held grant as the owners rule above — this " +
+      "rule adds no new permission to the requested set.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/group-update",
-    grantRecommended: false,
-    notRequestedReason:
-      "Same tenant-wide group-write objection as the owners rule above, and for the same two steps' worth " +
-      "of product. Group.ReadWrite.All would let the app rewrite or delete any group in the directory. " +
-      "Not requested; governance-groups-v1's visibility steps will report as refused until Shane decides " +
-      "the pack is worth that scope.",
   },
   {
     // #1901 — governance-groups-v1.
@@ -1175,13 +1184,22 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
       "RoleManagement.ReadWrite.Directory for quickstart-v1 step 2.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/group-delete",
     grantRecommended: false,
+    // ALWAYS refused (Git #3028, found implementing #2856's decision): #2856
+    // granted Group.ReadWrite.All for governance-groups-v1's owner/visibility
+    // steps, which means the permission this rule needs is now genuinely held.
+    // Without `alwaysRefused`, `requiredPermissionsForWrite` would report THIS
+    // destructive operation as satisfied purely because the platform holds the
+    // scope for an unrelated reason — the false-green #1901 exists to prevent,
+    // reached from a new direction. See the interface field's own doc comment.
+    alwaysRefused: true,
     notRequestedReason:
-      "Group.ReadWrite.All is the same tenant-wide group-write scope already refused on the group-owner " +
-      "and group-visibility rules above, and #2856 tracks the product consequence. It is refused harder " +
-      "here, not less: this rule's operation is the destructive one that objection is actually about — " +
-      "the grant would let the app DELETE any group in the customer's directory. quickstart-v1's whole " +
-      "group posture (Group.Create for creation, GroupMember.ReadWrite.All for membership) exists to avoid " +
-      "holding it, and no pack wires a group delete.",
+      "Group.ReadWrite.All is the same tenant-wide group-write scope #2856 granted for the group-owner " +
+      "and group-visibility rules above. It is refused harder here, not less: this rule's operation is " +
+      "the destructive one that objection was actually about — the grant lets the app DELETE any group " +
+      "in the customer's directory, and holding it for owner/visibility steps does not make deleting " +
+      "groups any less out of scope. quickstart-v1's whole group posture (Group.Create for creation, " +
+      "GroupMember.ReadWrite.All for membership) exists to avoid a general group write, and no pack " +
+      "wires a group delete.",
   },
   {
     // #2858 — action.restart-device. Four path segments, matching the syncDevice
@@ -1531,9 +1549,18 @@ export function requiredPermissionsForWrite(
   // permission it demonstrably has, and would contradict DERIVED_WRITE_APP_PERMISSIONS.
   // The step is still blocked, because `required` is unchanged and the refused
   // permission is still missing from it.
+  //
+  // `alwaysRefused` (Git #3028) skips the DERIVED_WRITE_APP_PERMISSIONS filter
+  // entirely: it marks a rule whose permission is the SAME scope another rule
+  // genuinely requests, but for an unrelated destructive operation that must
+  // stay refused regardless — reporting it back as held-for-someone-else would
+  // be the false-green this whole filter exists to prevent, not the honest
+  // case the filter was built for.
   const notRequested = new Set<string>(
     rule && rule.grantRecommended === false
-      ? rule.permissions.filter((p) => !DERIVED_WRITE_APP_PERMISSIONS.includes(p))
+      ? rule.alwaysRefused
+        ? rule.permissions
+        : rule.permissions.filter((p) => !DERIVED_WRITE_APP_PERMISSIONS.includes(p))
       : [],
   );
 
