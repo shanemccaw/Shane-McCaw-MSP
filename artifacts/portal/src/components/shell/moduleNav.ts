@@ -43,7 +43,7 @@ export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [
   { key: "changes", label: "Microsoft Changes", icon: Megaphone, builtPath: "/microsoft-changes" },
   { key: "change-control", label: "Change Control", icon: Waypoints, builtPath: null },
   { key: "risk-register", label: "Risk Register", icon: AlertTriangle, builtPath: "/risk-register" },
-  { key: "remediation", label: "Remediation", icon: Wrench, builtPath: null },
+  { key: "remediation", label: "Remediation", icon: Wrench, builtPath: "/remediation-tracking" },
   { key: "sops", label: "SOPs", icon: BookOpen, builtPath: "/sops" },
   { key: "runbooks", label: "Runbooks", icon: BookOpenCheck, builtPath: "/runbooks" },
   { key: "raci", label: "Ownership / RACI", icon: Users, builtPath: null },

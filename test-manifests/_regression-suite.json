@@ -99,6 +99,7 @@
     "portal/sops-runbooks.json",
     "portal/microsoft-changes.json",
     "portal/config-state.json",
-    "portal/pillar-pages.json"
+    "portal/pillar-pages.json",
+    "portal/remediation-tracking.json"
   ]
 }
