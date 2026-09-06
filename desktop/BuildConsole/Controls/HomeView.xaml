@@ -688,7 +688,7 @@
                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="10,8">
                                     <Grid>
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Ellipse x:Name="ClaudeStatusDot" Width="8" Height="8" Fill="{StaticResource GreenBrush}"
+                                            <Ellipse x:Name="ClaudeStatusDot" Width="8" Height="8" Fill="{StaticResource StatusSuccessBrush}"
                                                      Margin="0,0,6,0" VerticalAlignment="Center"
                                                      Effect="{StaticResource GreenGlowSoft}"/>
                                             <TextBlock Text="Claude Status:" FontSize="11" Foreground="{StaticResource Subtext0Brush}"
@@ -732,7 +732,7 @@
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                                         <Border x:Name="OverallHealthPill" Background="#1E3A2F" CornerRadius="8" Padding="6,2" Margin="0,0,6,0">
-                                            <TextBlock x:Name="OverallHealthPillText" Text="Live Checking…" FontSize="10" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                            <TextBlock x:Name="OverallHealthPillText" Text="Live Checking…" FontSize="10" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                         <Button x:Name="BtnRefreshHealth" Content="⟳" Style="{StaticResource SecondaryButton}" Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold" Cursor="Hand" ToolTip="Re-check system health now" Click="BtnRefreshHealth_Click"/>
                                     </StackPanel>
@@ -752,7 +752,7 @@
                                             <TextBlock x:Name="DevServerSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
                                         <Border Grid.Column="2" x:Name="DevServerStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="DevServerBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                            <TextBlock x:Name="DevServerBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
                                 </Border>
@@ -771,7 +771,7 @@
                                             <TextBlock x:Name="DatabaseSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
                                         <Border Grid.Column="2" x:Name="DatabaseStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="DatabaseBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                            <TextBlock x:Name="DatabaseBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
                                 </Border>
@@ -790,7 +790,7 @@
                                             <TextBlock x:Name="MutexSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
                                         <Border Grid.Column="2" x:Name="MutexStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="MutexBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                            <TextBlock x:Name="MutexBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
                                 </Border>
@@ -811,7 +811,7 @@
                                         </StackPanel>
                                         <Button Grid.Column="2" x:Name="BtnCleanWorktrees" Content="🧹 Clean" Style="{StaticResource SecondaryButton}" Height="20" Padding="6,0" FontSize="10" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,6,0" Visibility="Collapsed" Click="BtnCleanWorktrees_Click" ToolTip="Sweep orphaned worktrees now"/>
                                         <Border Grid.Column="3" x:Name="WorktreesStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="WorktreesBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                            <TextBlock x:Name="WorktreesBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
                                 </Border>
@@ -832,7 +832,7 @@
                                         </StackPanel>
                                         <Button Grid.Column="2" x:Name="BtnRecheckStranded" Content="🔀 Recheck" Style="{StaticResource SecondaryButton}" Height="20" Padding="6,0" FontSize="10" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,6,0" Visibility="Collapsed" Click="BtnRecheckStranded_Click" ToolTip="Re-run the stranded-branch sweep now (read-only — does not delete branches; see diagnostics log for which branches to review/merge yourself)"/>
                                         <Border Grid.Column="3" x:Name="StrandedBranchesStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="StrandedBranchesBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                            <TextBlock x:Name="StrandedBranchesBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
                                 </Border>
@@ -851,7 +851,7 @@
                                             <TextBlock x:Name="SshSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
                                         <Border Grid.Column="2" x:Name="SshStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="SshBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                            <TextBlock x:Name="SshBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
                                 </Border>

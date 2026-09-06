@@ -210,7 +210,7 @@
                             <TextBlock x:Name="CurrentEmptyText" TextWrapping="Wrap" TextAlignment="Center"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16"
                                        IsHitTestVisible="False"
-                                       Foreground="{StaticResource RedBrush}" Visibility="Collapsed" Text=""/>
+                                       Foreground="{StaticResource StatusErrorBrush}" Visibility="Collapsed" Text=""/>
                         </Grid>
                     </DockPanel>
                 </Border>

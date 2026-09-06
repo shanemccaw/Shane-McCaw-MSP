@@ -81,7 +81,7 @@
                 <!-- Deadlock banner — the loud, unmissable call-out for genuine cycles. -->
                 <Border x:Name="DeadlockBanner"
                         Background="#3A1E26"
-                        BorderBrush="{StaticResource RedBrush}"
+                        BorderBrush="{StaticResource StatusErrorBrush}"
                         BorderThickness="1"
                         CornerRadius="4"
                         Padding="8,5"
@@ -91,13 +91,13 @@
                                Text=""
                                FontSize="11"
                                FontWeight="SemiBold"
-                               Foreground="{StaticResource RedBrush}"
+                               Foreground="{StaticResource StatusErrorBrush}"
                                TextWrapping="Wrap"/>
                 </Border>
                 <!-- Blocker-state-unverified warning — GitHub was unreachable this pass. -->
                 <Border x:Name="UnverifiedBanner"
                         Background="#3A3200"
-                        BorderBrush="{StaticResource YellowBrush}"
+                        BorderBrush="{StaticResource StatusWarningBrush}"
                         BorderThickness="1"
                         CornerRadius="4"
                         Padding="8,5"
@@ -107,7 +107,7 @@
                                Text=""
                                FontSize="11"
                                FontWeight="SemiBold"
-                               Foreground="{StaticResource YellowBrush}"
+                               Foreground="{StaticResource StatusWarningBrush}"
                                TextWrapping="Wrap"/>
                 </Border>
             </StackPanel>

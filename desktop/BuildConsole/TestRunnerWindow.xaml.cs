@@ -440,23 +440,23 @@ namespace BuildConsole
                 TxtRunLabel.Text = $"#{issue} — {feature} ({mode})";
                 if (targetEnv == Services.TargetEnvironment.Dev)
                 {
-                    TargetEnvBadge.Background = (System.Windows.Media.Brush)FindResource("GreenBrush");
+                    TargetEnvBadge.Background = (System.Windows.Media.Brush)FindResource("StatusSuccessBrush");
                     TxtTargetEnvBadge.Text = "DEV (LOCAL)";
                     TxtTargetEnvBadge.Foreground = (System.Windows.Media.Brush)FindResource("CrustBrush");
                 }
                 else if (targetEnv == Services.TargetEnvironment.Staging)
                 {
-                    TargetEnvBadge.Background = (System.Windows.Media.Brush)FindResource("PeachBrush");
+                    TargetEnvBadge.Background = (System.Windows.Media.Brush)FindResource("StatusWarningBrush");
                     TxtTargetEnvBadge.Text = "⚠️ STAGING";
                     TxtTargetEnvBadge.Foreground = (System.Windows.Media.Brush)FindResource("CrustBrush");
                 }
                 else
                 {
-                    TargetEnvBadge.Background = (System.Windows.Media.Brush)FindResource("RedBrush");
+                    TargetEnvBadge.Background = (System.Windows.Media.Brush)FindResource("StatusErrorBrush");
                     TxtTargetEnvBadge.Text = "🚨 PRODUCTION";
                     TxtTargetEnvBadge.Foreground = (System.Windows.Media.Brush)FindResource("CrustBrush");
                 }
-                SetStatus("● RUNNING...", "PeachBrush");
+                SetStatus("● RUNNING...", "StatusRunningBrush");
                 BtnRetry.IsEnabled = false;
                 BtnCancel.Visibility = Visibility.Visible;
                 _stepSw.Restart();
@@ -474,12 +474,12 @@ namespace BuildConsole
                 int passed = result.Steps.Count(s => s.Passed);
                 if (result.Cancelled)
                 {
-                    SetStatus("❌ CANCELLED", "RedBrush");
+                    SetStatus("❌ CANCELLED", "StatusErrorBrush");
                 }
                 else
                 {
                     SetStatus(result.AllPassed ? $"✔ ALL PASSED ({passed}/{total})" : $"⚠ {passed}/{total} PASSED",
-                        result.AllPassed ? "GreenBrush" : "RedBrush");
+                        result.AllPassed ? "StatusSuccessBrush" : "StatusErrorBrush");
                 }
                 BtnRetry.IsEnabled = _lastManifest != null;
                 BtnCancel.Visibility = Visibility.Collapsed;

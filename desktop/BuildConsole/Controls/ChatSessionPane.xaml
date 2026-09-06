@@ -513,7 +513,7 @@
                                      as honestly-stale rather than looking frozen on its first phase. -->
                                 <TextBlock x:Name="StaleNoticeText" Text="" Visibility="Collapsed"
                                            FontSize="9.5" FontWeight="SemiBold"
-                                           Foreground="{StaticResource YellowBrush}"
+                                           Foreground="{StaticResource StatusWarningBrush}"
                                            TextWrapping="Wrap" Margin="0,4,0,0"/>
                             </StackPanel>
                         </Border>

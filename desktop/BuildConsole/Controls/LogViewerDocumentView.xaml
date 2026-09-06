@@ -76,14 +76,14 @@
             <DockPanel Grid.Column="1">
                 <Border x:Name="LogViewerArchiveBanner" DockPanel.Dock="Top" Visibility="Collapsed"
                         Padding="14,8" Background="{StaticResource BaseBrush}"
-                        BorderThickness="0,0,0,1" BorderBrush="{StaticResource PeachBrush}">
+                        BorderThickness="0,0,0,1" BorderBrush="{StaticResource StatusWarningBrush}">
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Right" Text="Back to live sources" Cursor="Hand"
                                    MouseLeftButtonDown="LogViewerCloseArchiveBanner_Click"
-                                   Foreground="{StaticResource PeachBrush}" FontSize="10.5" FontWeight="Bold"/>
+                                   Foreground="{StaticResource StatusWarningBrush}" FontSize="10.5" FontWeight="Bold"/>
                         <TextBlock x:Name="LogViewerArchiveBannerText"
                                    FontFamily="Cascadia Code, Consolas, Courier New" FontSize="10.5"
-                                   Foreground="{StaticResource PeachBrush}"/>
+                                   Foreground="{StaticResource StatusWarningBrush}"/>
                     </DockPanel>
                 </Border>
 

@@ -27,7 +27,7 @@
                         <!-- shaneapp:// protocol live execution indicator -->
                         <Border x:Name="ShaneAppIndicator"
                                 Background="#33A6E3A1"
-                                BorderBrush="{StaticResource GreenBrush}"
+                                BorderBrush="{StaticResource StatusRunningBrush}"
                                 BorderThickness="1"
                                 CornerRadius="4"
                                 Padding="5,1"
@@ -37,7 +37,7 @@
                                 ToolTip="shaneapp:// is executing — Click to open live streaming console"
                                 MouseLeftButtonUp="ShaneAppIndicator_Click">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock x:Name="ShaneAppIndicatorDot" Text="●" FontSize="9" Foreground="{StaticResource GreenBrush}" Margin="0,0,3,0" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="ShaneAppIndicatorDot" Text="●" FontSize="9" Foreground="{StaticResource StatusRunningBrush}" Margin="0,0,3,0" VerticalAlignment="Center"/>
                                 <TextBlock x:Name="ShaneAppIndicatorLabel" Text="RUNNING" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
@@ -513,7 +513,7 @@
                         <!-- Active Working Epic Jump Bar -->
                         <Border x:Name="ActiveWorkingEpicBar"
                                 Background="#1A2D23"
-                                BorderBrush="{StaticResource GreenBrush}"
+                                BorderBrush="{StaticResource StatusRunningBrush}"
                                 BorderThickness="1"
                                 CornerRadius="5"
                                 Padding="7,4"
@@ -524,7 +524,7 @@
                                 MouseLeftButtonUp="ActiveWorkingEpicBar_Click">
                             <DockPanel LastChildFill="True">
                                 <Border DockPanel.Dock="Right"
-                                        Background="{StaticResource GreenBrush}"
+                                        Background="{StaticResource StatusRunningBrush}"
                                         CornerRadius="3"
                                         Padding="5,1"
                                         VerticalAlignment="Center">
@@ -539,7 +539,7 @@
                                                Text="WORKING: Epic"
                                                FontSize="11"
                                                FontWeight="Bold"
-                                               Foreground="{StaticResource GreenBrush}"
+                                               Foreground="{StaticResource StatusRunningBrush}"
                                                TextTrimming="CharacterEllipsis"
                                                VerticalAlignment="Center"/>
                                 </StackPanel>
@@ -609,7 +609,7 @@
                         <Border Margin="0,0,0,8" Padding="6,4" Background="{StaticResource Surface0Brush}" CornerRadius="4">
                             <WrapPanel Orientation="Horizontal">
                                 <StackPanel Orientation="Horizontal" Margin="0,0,12,2">
-                                    <Ellipse Width="8" Height="8" Fill="{StaticResource GreenBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <Ellipse Width="8" Height="8" Fill="{StaticResource StatusRunningBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                                     <TextBlock Text="Working" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,12,2">
@@ -781,7 +781,7 @@
                             <StackPanel>
                                 <DockPanel Margin="0,0,0,4">
                                     <TextBlock Text="Target Environment" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
-                                    <Border x:Name="TargetEnvWarningBadge" Background="{StaticResource PeachBrush}" CornerRadius="3" Padding="4,1" HorizontalAlignment="Right" Visibility="Collapsed">
+                                    <Border x:Name="TargetEnvWarningBadge" Background="{StaticResource StatusWarningBrush}" CornerRadius="3" Padding="4,1" HorizontalAlignment="Right" Visibility="Collapsed">
                                         <TextBlock x:Name="TargetEnvWarningText" Text="⚠️ NON-DEV" FontSize="9" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
                                     </Border>
                                 </DockPanel>

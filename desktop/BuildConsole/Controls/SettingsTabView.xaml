@@ -36,7 +36,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="🧪 Test Variables: " FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
                                 <TextBlock x:Name="TestEnvHealthText" Text="Loading..." FontSize="11" FontWeight="Bold"
-                                           Foreground="{StaticResource GreenBrush}"/>
+                                           Foreground="{StaticResource StatusSuccessBrush}"/>
                             </StackPanel>
                         </Border>
 
@@ -46,7 +46,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="🔑 GitHub PAT: " FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
                                 <TextBlock x:Name="GitHubPatHealthText" Text="Configured" FontSize="11" FontWeight="Bold"
-                                           Foreground="{StaticResource GreenBrush}"/>
+                                           Foreground="{StaticResource StatusSuccessBrush}"/>
                             </StackPanel>
                         </Border>
 
@@ -56,7 +56,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="☁️ Zoho API: " FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
                                 <TextBlock x:Name="ZohoTokenHealthText" Text="Configured" FontSize="11" FontWeight="Bold"
-                                           Foreground="{StaticResource GreenBrush}"/>
+                                           Foreground="{StaticResource StatusSuccessBrush}"/>
                             </StackPanel>
                         </Border>
 
@@ -116,7 +116,7 @@
                                     Tag="TestEnvironment" Click="NavButton_Click">
                                 <DockPanel LastChildFill="True">
                                     <TextBlock Text="🧪" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
-                                    <Border x:Name="TestEnvAlertPill" DockPanel.Dock="Right" Background="{StaticResource PeachBrush}"
+                                    <Border x:Name="TestEnvAlertPill" DockPanel.Dock="Right" Background="{StaticResource StatusWarningBrush}"
                                             CornerRadius="8" Padding="6,1" Visibility="Collapsed" VerticalAlignment="Center">
                                         <TextBlock x:Name="TestEnvAlertCount" Text="!" FontSize="9" FontWeight="Bold"
                                                    Foreground="{StaticResource CrustBrush}"/>
@@ -413,7 +413,7 @@
                                             <Button x:Name="BtnSaveGitHubPat" Grid.Column="3" Content="Save Token"
                                                     Style="{StaticResource PrimaryButton}" Padding="16,5" Click="BtnSaveGitHubPat_Click"/>
                                         </Grid>
-                                        <TextBlock x:Name="GitHubPatSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}"/>
+                                        <TextBlock x:Name="GitHubPatSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}"/>
                                     </StackPanel>
                                 </Border>
 
@@ -444,7 +444,7 @@
                                             <Button x:Name="BtnSaveZohoApiToken" Grid.Column="3" Content="Save Token"
                                                     Style="{StaticResource PrimaryButton}" Padding="16,5" Click="BtnSaveZohoApiToken_Click"/>
                                         </Grid>
-                                        <TextBlock x:Name="ZohoApiTokenSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}"/>
+                                        <TextBlock x:Name="ZohoApiTokenSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -500,7 +500,7 @@
                                             <Button x:Name="BtnSaveMaxConcurrent" Grid.Column="1" Content="Save" Style="{StaticResource PrimaryButton}"
                                                     Padding="16,5" Click="BtnSaveMaxConcurrent_Click"/>
                                         </Grid>
-                                        <TextBlock x:Name="MaxConcurrentSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="MaxConcurrentSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
 
@@ -522,7 +522,7 @@
                                         <TextBox x:Name="SecondaryClaudeConfigDirBox" Height="28" FontSize="12" Margin="0,0,0,10"/>
                                         <Button x:Name="BtnSaveSecondaryClaudeConfigDir" Content="Save Secondary Account Path" Style="{StaticResource PrimaryButton}"
                                                 HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveSecondaryClaudeConfigDir_Click"/>
-                                        <TextBlock x:Name="SecondaryClaudeConfigDirSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,6,0,0"/>
+                                        <TextBlock x:Name="SecondaryClaudeConfigDirSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                                     </StackPanel>
                                 </Border>
 
@@ -539,7 +539,7 @@
                                             <ComboBoxItem Content="Home (fibre — unmetered)"/>
                                             <ComboBoxItem Content="Rental (capped Verizon — metered)"/>
                                         </ComboBox>
-                                        <TextBlock x:Name="LocationModeSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,0,0,0"/>
+                                        <TextBlock x:Name="LocationModeSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,0,0,0"/>
                                     </StackPanel>
                                 </Border>
 
@@ -617,7 +617,7 @@
 
                                 <Button x:Name="BtnSaveReplitWatcher" Content="Save Watcher Settings" Style="{StaticResource PrimaryButton}"
                                         HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveReplitWatcher_Click"/>
-                                <TextBlock x:Name="ReplitWatcherSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,6,0,0"/>
+                                <TextBlock x:Name="ReplitWatcherSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -646,7 +646,7 @@
 
                                 <Button x:Name="BtnSaveScheduledRun" Content="Save Schedule" Style="{StaticResource PrimaryButton}"
                                         HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveScheduledRun_Click"/>
-                                <TextBlock x:Name="ScheduledRunSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,6,0,0"/>
+                                <TextBlock x:Name="ScheduledRunSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -726,7 +726,7 @@
                                     <Button x:Name="BtnTestSshConnection" Content="⚡ Test Connection" Style="{StaticResource SecondaryButton}"
                                             Padding="14,6" Click="BtnTestSshConnection_Click"/>
                                 </StackPanel>
-                                <TextBlock x:Name="SshSettingsSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,8,0,0"/>
+                                <TextBlock x:Name="SshSettingsSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,8,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -794,7 +794,7 @@
                                 <TextBox x:Name="EpicChatProjectUrlBox" Height="28" FontSize="12" Margin="0,0,0,10"/>
                                 <Button x:Name="BtnSaveEpicChatProjectUrl" Content="Save Project URL" Style="{StaticResource PrimaryButton}"
                                         HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveEpicChatProjectUrl_Click"/>
-                                <TextBlock x:Name="EpicChatProjectUrlSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,6,0,0"/>
+                                <TextBlock x:Name="EpicChatProjectUrlSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -831,7 +831,7 @@
                                     <Button x:Name="BtnTestBuildSound" Content="▶ Play Test" Style="{StaticResource IconButton}"
                                             Padding="12,5" FontSize="12" Margin="8,0,0,0" Click="BtnTestBuildSound_Click"/>
                                 </StackPanel>
-                                <TextBlock x:Name="BuildSoundSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,6,0,0"/>
+                                <TextBlock x:Name="BuildSoundSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -859,7 +859,7 @@
 
                                 <Button x:Name="BtnSaveLinkedIn" Content="Save LinkedIn Config" Style="{StaticResource PrimaryButton}"
                                         HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveLinkedIn_Click"/>
-                                <TextBlock x:Name="LinkedInSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,6,0,0"/>
+                                <TextBlock x:Name="LinkedInSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -929,7 +929,7 @@
                                             <Button x:Name="BtnCancelUserAccountEdit" Content="Cancel Edit" Style="{StaticResource IconButton}"
                                                     Padding="12,5" Margin="8,0,0,0" Visibility="Collapsed" Click="BtnCancelUserAccountEdit_Click"/>
                                         </StackPanel>
-                                        <TextBlock x:Name="UserAccountSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,6,0,0"/>
+                                        <TextBlock x:Name="UserAccountSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>

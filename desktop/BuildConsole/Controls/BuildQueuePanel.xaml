@@ -390,7 +390,7 @@
                                  wants the warning gone without re-queuing anything. -->
                             <Border x:Name="OrphanRecoveryBanner"
                                     Background="#3A1E26"
-                                    BorderBrush="{StaticResource RedBrush}"
+                                    BorderBrush="{StaticResource StatusErrorBrush}"
                                     BorderThickness="1"
                                     CornerRadius="4"
                                     Padding="8,6"
@@ -406,7 +406,7 @@
                                     <TextBlock x:Name="OrphanRecoveryText"
                                                Text="0 builds orphaned by a crash/restart"
                                                FontSize="11"
-                                               Foreground="{StaticResource RedBrush}"
+                                               Foreground="{StaticResource StatusErrorBrush}"
                                                VerticalAlignment="Center"
                                                TextWrapping="Wrap"/>
                                     <Button x:Name="BtnRecoverOrphans"
@@ -533,7 +533,7 @@
                                    AllowsTransparency="True"
                                    IsOpen="False">
                                 <Border Background="#3A3200"
-                                        BorderBrush="{StaticResource YellowBrush}"
+                                        BorderBrush="{StaticResource StatusWarningBrush}"
                                         BorderThickness="1"
                                         CornerRadius="4"
                                         Padding="8,6"
@@ -545,7 +545,7 @@
                                     <TextBlock x:Name="BuildSetFilterWarningText"
                                                FontSize="10.5"
                                                FontWeight="SemiBold"
-                                               Foreground="{StaticResource YellowBrush}"
+                                               Foreground="{StaticResource StatusWarningBrush}"
                                                TextWrapping="Wrap"/>
                                 </Border>
                             </Popup>

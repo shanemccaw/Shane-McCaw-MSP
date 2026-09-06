@@ -337,7 +337,7 @@
                         <!-- shaneapp:// live execution indicator badge in title bar -->
                         <Border x:Name="TopShaneAppIndicator"
                                 Background="#33A6E3A1"
-                                BorderBrush="{StaticResource GreenBrush}"
+                                BorderBrush="{StaticResource StatusRunningBrush}"
                                 BorderThickness="1"
                                 CornerRadius="4"
                                 Padding="6,2"
@@ -646,7 +646,7 @@
                 <StatusBarItem Grid.Column="0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse x:Name="StatusDot" Width="8" Height="8"
-                                 Fill="{StaticResource GreenBrush}"
+                                 Fill="{StaticResource StatusSuccessBrush}"
                                  Margin="2,0,6,0" VerticalAlignment="Center"/>
                         <TextBlock x:Name="NavStatusText" Text="Ready" VerticalAlignment="Center"/>
                     </StackPanel>
@@ -937,7 +937,7 @@
                                             Click="BtnAutoQueueStop_Click"/>
                                 </StackPanel>
                                 <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Foreground="{StaticResource TextBrush}">
-                                    <Run Text="⏳" Foreground="{StaticResource YellowBrush}"/>
+                                    <Run Text="⏳" Foreground="{StaticResource StatusWarningBrush}"/>
                                     <Run x:Name="AutoQueueGraceText" Text="Build queue auto-start in 1:30 — giving the app a moment to settle"/>
                                 </TextBlock>
                             </DockPanel>
