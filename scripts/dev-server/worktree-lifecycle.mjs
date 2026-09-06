@@ -45,7 +45,7 @@ import {
 } from "./git.mjs";
 import { pidAlive } from "./lock.mjs";
 import { findAndUnlinkWorktreeJunctions } from "./link-deps.mjs";
-import { scanSharedStore } from "./store-doctor.mjs";
+import { scanSharedStore, repairSharedStore } from "./store-doctor.mjs";
 
 // markWorktreeStale() drops this untracked marker into a retained worktree; it is
 // BuildConsole bookkeeping, never real work, so preservation must not count it as "dirty".
@@ -436,8 +436,19 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
   // Git #1988 — canary: after every removal, verify the SHARED store still resolves
   // inside the main checkout (per #1964's post-cleanup verification suggestion). This
   // pins the timeline of any future poisoning to the removal that exposed it, in the
-  // durable cleanups.log, instead of surfacing a session later. Detection only —
-  // repair is exclusively the explicit `store-doctor.mjs --repair` operation.
+  // durable cleanups.log, instead of surfacing a session later.
+  //
+  // Git #1980 — a poisoned store used to sit here as a logged `console.warn` only,
+  // with repair left to whichever session happened to notice: real evidence showed
+  // the shared store still POISONED (670 foreign links) across nine further sweep
+  // removals spanning 30+ minutes (2026-09-06T14:36Z -> 15:07Z, cleanups.log), because
+  // nothing ever acted on the warning. store-doctor's repair is already safe to run
+  // unattended — it only re-points a reparse point at a store-relative path it has
+  // VERIFIED exists and is non-empty under this root (see repairSharedStore); it never
+  // fetches anything and never touches a target it cannot confirm. So the moment this
+  // canary finds poisoning, repair it immediately, right here — and log the
+  // before/after of that repair (never silently), so the recurrence stays fully
+  // visible in cleanups.log instead of being hidden by going quiet.
   let storeAfterRemoval = null;
   try {
     const scan = scanSharedStore(config.mainRepoRoot);
@@ -451,7 +462,27 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
       console.warn(
         `[worktree-cleanup] WARNING: shared store at ${config.mainRepoRoot} is POISONED after removing ${wtPath} ` +
           `(foreign=${scan.foreignLinks.length}, dangling=${scan.danglingLinks.length}, poisonedBins=${scan.poisonedBins.length}). ` +
-          `Diagnose with: node scripts/dev-server/store-doctor.mjs (Git #1988)`
+          `Auto-repairing now (Git #1980) — see storeAutoRepair in this log entry.`
+      );
+      let repairRes = null;
+      try {
+        repairRes = repairSharedStore(config.mainRepoRoot, scan);
+      } catch (e) {
+        repairRes = { error: e.message };
+      }
+      const rescan = scanSharedStore(config.mainRepoRoot);
+      storeAfterRemoval.autoRepair = {
+        repairedLinks: repairRes?.repairedLinks?.length ?? 0,
+        repairedBins: repairRes?.repairedBins?.length ?? 0,
+        unrepairable: repairRes?.unrepairable?.length ?? 0,
+        error: repairRes?.error ?? null,
+        cleanAfterRepair: rescan.clean,
+      };
+      console.warn(
+        `[worktree-cleanup] store-doctor auto-repair: relinked ${storeAfterRemoval.autoRepair.repairedLinks} link(s), ` +
+          `rewrote ${storeAfterRemoval.autoRepair.repairedBins} shim(s), unrepairable ${storeAfterRemoval.autoRepair.unrepairable} — ` +
+          `store is now ${rescan.clean ? "CLEAN" : "STILL POISONED"}.` +
+          (rescan.clean ? "" : " Diagnose remaining entries with: node scripts/dev-server/store-doctor.mjs")
       );
     }
   } catch (e) {
@@ -482,6 +513,7 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
     branchDeleted,
     rescuedBranch: preservation.rescueBranch || null,
     rescuedWip: preservation.wip || null,
+    storeAfterRemoval,
   };
 }
 

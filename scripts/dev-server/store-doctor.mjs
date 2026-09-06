@@ -1,14 +1,22 @@
 #!/usr/bin/env node
 // scripts/dev-server/store-doctor.mjs
 //
-// Git #1988 — detect (and, only when explicitly asked, repair) the poisoned
-// shared-store state: pnpm links or .bin cmd-shims inside the MAIN checkout's
-// node_modules trees that resolve into an agent worktree (C:\wt\<id>\...) or
-// dangle at a target that no longer exists. This is the state a worktree
-// `pnpm install` used to leave behind (incidents #1951 #1955 #1959 #1964 #1967
-// #1974) — the .pnpmfile.cjs gate now fails that install closed; this script is
-// what makes any occurrence that still lands visible in seconds instead of
-// after a lost session.
+// Git #1988 — detect (and repair, on request) the poisoned shared-store state:
+// pnpm links or .bin cmd-shims inside the MAIN checkout's node_modules trees that
+// resolve into an agent worktree (C:\wt\<id>\...) or dangle at a target that no
+// longer exists. This is the state a worktree `pnpm install` used to leave behind
+// (incidents #1951 #1955 #1959 #1964 #1967 #1974) — the .pnpmfile.cjs gate fails
+// that install closed for the layout it knows about, but Git #1980 found real,
+// current poisoning (670 foreign links) surviving nine sweep removals across 30+
+// minutes with only a console.warn to notice it (cleanups.log,
+// 2026-09-06T14:36Z-15:07Z) — nobody was reading that warning in time. So the two
+// real callers of this module — provision-worktree.mjs (before junctioning a new
+// worktree in) and worktree-lifecycle.mjs's post-removal canary — now call
+// repairSharedStore() themselves the moment a scan comes back poisoned, since a
+// repair only ever re-points a reparse point at a store-relative path it has
+// verified exists and is non-empty (never fetches, never guesses); the CLI's own
+// `--repair` flag below stays the explicit, standalone entry point for a human or
+// a diagnostic session.
 //
 // Usage:
 //   node scripts/dev-server/store-doctor.mjs                  # scan, report, exit 0 clean / 1 poisoned
@@ -26,8 +34,8 @@
 //     that point into a worktree (`\wt\`) or point outside the root at a path
 //     that no longer exists (#1967's vitest shim class).
 //
-// Repair (--repair only — NEVER automatic; an automatic repair would hide the
-// recurrence this exists to surface):
+// Repair (via the CLI's --repair flag, or via repairSharedStore() called directly by
+// provision-worktree.mjs / worktree-lifecycle.mjs — see the Git #1980 note above):
 //   * a foreign/dangling link is re-pointed — as an absolute junction — at the
 //     same store-relative path under the scanned root, but only when that
 //     target really exists and is non-empty. Absolute junctions also dodge the

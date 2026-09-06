@@ -32,7 +32,7 @@ import { pathToFileURL } from "node:url";
 import { loadConfig, isWindows } from "./config.mjs";
 import { git, resolveCommit, shortSha, listWorktrees } from "./git.mjs";
 import { linkDeps, buildLibDist, copyEnvFiles } from "./link-deps.mjs";
-import { scanSharedStore } from "./store-doctor.mjs";
+import { scanSharedStore, repairSharedStore } from "./store-doctor.mjs";
 import {
   registerWorktree,
   getWorktreeRecord,
@@ -80,10 +80,16 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
 
   // Git #1988 — check the SHARED store this worktree is about to junction into, so a
   // poisoned store is visible at provisioning time (seconds) instead of mid-session as
-  // an inexplicable tsc/vitest failure. Detection only: provisioning proceeds either
-  // way (blocking every build on a poisoned store would strand the whole queue), but
-  // the result rides on the returned object and the human path prints it loudly.
-  // Repair stays the explicit `store-doctor.mjs --repair` operation, never automatic.
+  // an inexplicable tsc/vitest failure. Provisioning proceeds either way (blocking
+  // every build on a poisoned store would strand the whole queue), but the result
+  // rides on the returned object and the human path prints it loudly.
+  //
+  // Git #1980 — if the scan finds poisoning, repair it here, before this new worktree
+  // gets its own junctions pointed at the same broken store (there is no reason to
+  // hand a fresh worktree a poisoned set of links when store-doctor's repair is
+  // already proven safe — see the matching fix in worktree-lifecycle.mjs's
+  // post-removal canary for the full rationale). Still never silent: both the
+  // pre-repair poisoning and the repair outcome ride on storeHealth.
   let storeHealth = null;
   try {
     const scan = scanSharedStore(repo);
@@ -93,6 +99,22 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
       dangling: scan.danglingLinks.length,
       poisonedBins: scan.poisonedBins.length,
     };
+    if (!scan.clean) {
+      let repairRes = null;
+      try {
+        repairRes = repairSharedStore(repo, scan);
+      } catch (e) {
+        repairRes = { error: e.message };
+      }
+      const rescan = scanSharedStore(repo);
+      storeHealth.autoRepair = {
+        repairedLinks: repairRes?.repairedLinks?.length ?? 0,
+        repairedBins: repairRes?.repairedBins?.length ?? 0,
+        unrepairable: repairRes?.unrepairable?.length ?? 0,
+        error: repairRes?.error ?? null,
+        cleanAfterRepair: rescan.clean,
+      };
+    }
   } catch (e) {
     storeHealth = { error: e.message };
   }
@@ -254,9 +276,21 @@ function logStoreHealth(storeHealth) {
     return;
   }
   if (storeHealth.clean) return;
-  console.warn(`  !!! SHARED STORE POISONED (Git #1988): foreign=${storeHealth.foreign}, dangling=${storeHealth.dangling}, poisonedBins=${storeHealth.poisonedBins}`);
-  console.warn(`  !!! This worktree junctions into that store — tsc/vitest/builds may fail here through no fault of this session.`);
-  console.warn(`  !!! Diagnose with: node scripts/dev-server/store-doctor.mjs   (repair is explicit: --repair)`);
+  console.warn(`  !!! SHARED STORE WAS POISONED (Git #1988/#1980): foreign=${storeHealth.foreign}, dangling=${storeHealth.dangling}, poisonedBins=${storeHealth.poisonedBins}`);
+  if (storeHealth.autoRepair) {
+    const r = storeHealth.autoRepair;
+    console.warn(
+      `  !!! Auto-repaired before junctioning: relinked ${r.repairedLinks} link(s), rewrote ${r.repairedBins} shim(s), ` +
+        `unrepairable ${r.unrepairable} — store is now ${r.cleanAfterRepair ? "CLEAN" : "STILL POISONED"}.`
+    );
+    if (!r.cleanAfterRepair) {
+      console.warn(`  !!! This worktree junctions into that still-poisoned store — tsc/vitest/builds may fail here through no fault of this session.`);
+      console.warn(`  !!! Diagnose remaining entries with: node scripts/dev-server/store-doctor.mjs`);
+    }
+  } else {
+    console.warn(`  !!! This worktree junctions into that store — tsc/vitest/builds may fail here through no fault of this session.`);
+    console.warn(`  !!! Diagnose with: node scripts/dev-server/store-doctor.mjs   (repair is explicit: --repair)`);
+  }
 }
 
 /** Log (filenames only, never contents) which local env files were copied/skipped/missing. */
