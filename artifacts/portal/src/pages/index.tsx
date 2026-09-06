@@ -107,7 +107,7 @@ export default function OverviewPage() {
       action: "Raise change request",
       href: comingSoonHref("Change Control", "module"),
       alt: "Remediation",
-      altHref: comingSoonHref("Remediation Tracking", "module"),
+      altHref: "/remediation-tracking",
     });
   }
   if (d && d.overviewCounts.rbdWaiting > 0) {
@@ -131,7 +131,7 @@ export default function OverviewPage() {
       title: "Remediation steps neither verified nor accepted",
       ink: "#f8fafc",
       action: "Open tracker",
-      href: comingSoonHref("Remediation Tracking", "module"),
+      href: "/remediation-tracking",
       alt: "Policy decisions",
       altHref: comingSoonHref("Policy Decisions", "module"),
     });
@@ -151,7 +151,7 @@ export default function OverviewPage() {
         { value: d.overviewCounts.rbdActive, label: "Risk acceptances active", href: comingSoonHref("Risk Register", "module"), ink: NEUTRAL },
         { value: d.overviewCounts.microsoftChangesThisWeek, label: "MS changes this week", href: comingSoonHref("Microsoft Changes", "module"), ink: BLU },
         { value: d.overviewCounts.changeScheduleThisWeek, label: "Change windows this week", href: comingSoonHref("Change Control", "module"), ink: BLU },
-        { value: d.overviewCounts.remediationInProgress, label: "Remediation outstanding", href: comingSoonHref("Remediation Tracking", "module"), ink: RED },
+        { value: d.overviewCounts.remediationInProgress, label: "Remediation outstanding", href: "/remediation-tracking", ink: RED },
         { value: d.overviewCounts.policiesExpiringSoon, label: "Policies due for review", href: comingSoonHref("Policy Decisions", "module"), ink: AMB },
       ]
     : [];

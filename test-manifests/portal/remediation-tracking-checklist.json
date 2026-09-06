@@ -1,0 +1,85 @@
+{
+  "issue": 3038,
+  "feature": "Remediation Tracking: the findings-derived checklist (#3038, Feature #1489) -- the 'Your findings' and 'Fixed outside change control' tabs of the real customer-facing '/remediation-tracking' page in artifacts/portal, wiring §1b-1e of docs/remediation-tracking-contract-pack.md: GET/PUT /api/portal/remediation/checklist(/:checkKey), POST .../checklist/:checkKey/raise-change, GET /api/portal/remediation/fix-routes, POST /api/portal/remediation/fix-routes/:checkKey/reveal, and GET /api/portal/remediation/bypass-resolutions. No fixture module: every row on screen comes from these endpoints. The page's third tab, the 28-step programme (§1a/§1f/§1g), is #3037/#3039's scope -- see test-manifests/portal/remediation-tracking.json for that coverage; this file is this build's own findings-derived slice of the same page.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "TBD-fill-at-DONE",
+
+  "notes": [
+    "WHAT THIS COVERS: the three real GET reads (checklist/fix-routes/bypass-resolutions) answering 200 with the shapes the page's hooks consume, and the accepted_risk write guard on the checklist's own PUT — a bare `status: \"accepted_risk\"` is rejected 400 (#2827/#2869; the route's real, signed exit is POST .../decline-to-risk, not covered by this manifest since it creates a permanent msp_risk_decisions row). A real writable status (not_started) round-trips 200 against a stable monitor_checks key so the write path is proven without leaving persistent tracker state behind on re-run.",
+    "SEEDED DATA: uses a real, stable monitor_checks.key (identity:mfa-method-breakdown) rather than a scan-derived finding, since the checklist's item LIST depends on the test tenant's latest scan having open critical/warning findings, which is not guaranteed to be stable across runs — the write tests below exercise the same remediation_tracker_steps table the checklist GET reads, keyed by checkKey, independent of whether that check currently has an open finding.",
+    "ENV VARS required: DEPLOY_URL, TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD — the same CustomerUser testbed account test-manifests/portal/notification-preferences.json already uses. All three GET routes and the PUT route require only requireRole(\"Assessment\"), the lowest role carrying a customerId claim."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated testbed portal account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_CUSTOMER_EMAIL}}", "password": "{{TEST_CUSTOMER_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- the findings-derived checklist (§1b) answers 200 with an items array, honest-empty for an untouched/clean tenant rather than a fixture.",
+      "method": "GET",
+      "path": "/api/portal/remediation/checklist",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.items", "isArray": true }
+    },
+    {
+      "name": "A2 -- the fix-route dimension (§1c) answers 200 with a real tenantWriteCeiling and an items array.",
+      "method": "GET",
+      "path": "/api/portal/remediation/fix-routes",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.tenantWriteCeiling", "exists": true }
+    },
+    {
+      "name": "A3 -- the bypass-resolutions correlation (§1e) answers 200 with an items array, purely observational.",
+      "method": "GET",
+      "path": "/api/portal/remediation/bypass-resolutions",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.items", "isArray": true }
+    },
+    {
+      "name": "A4 -- a bare PUT setting accepted_risk directly is rejected 400 (#2827) -- the signed exit is POST .../decline-to-risk, never a plain status write.",
+      "method": "PUT",
+      "path": "/api/portal/remediation/checklist/identity:mfa-method-breakdown",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "accepted_risk" },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "A5 -- an unknown checkKey 400s rather than silently creating a tracker row for a key nothing scans.",
+      "method": "PUT",
+      "path": "/api/portal/remediation/checklist/does-not-exist:not-a-real-key",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "not_started" },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "A6 -- a real writable status round-trips 200 against a stable check key, proving the write path without leaving non-default state behind on re-run (not_started is the table's own absence default).",
+      "method": "PUT",
+      "path": "/api/portal/remediation/checklist/identity:mfa-method-breakdown",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "not_started" },
+      "expect": { "status": 200, "jsonPath": "$.item.status", "equals": "not_started" }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "goto the real login page.", "action": "goto", "target": "/portal/login" },
+    { "action": "expect", "selector": "[data-testid='login-email']", "state": "visible", "critical": true },
+    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_CUSTOMER_EMAIL}}" },
+    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_CUSTOMER_PASSWORD}}" },
+    { "name": "sign in.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the real Remediation Tracking page.", "action": "goto", "target": "/portal/remediation-tracking" },
+    { "name": "UI1 -- the page renders.", "action": "expect", "selector": "[data-testid='remediation-tracking-page']", "state": "visible", "critical": true },
+    { "name": "UI2 -- the live/loading/failed status line renders.", "action": "expect", "selector": "[data-testid='remediation-tracking-status']", "state": "visible", "critical": true },
+    { "name": "UI3 -- the 'Your findings' checklist tab renders (default tab).", "action": "expect", "selector": "[data-testid='remediation-tab-checklist']", "state": "visible", "critical": true },
+    { "name": "UI4 -- the 'Fixed outside change control' bypass tab renders.", "action": "expect", "selector": "[data-testid='remediation-tab-bypass']", "state": "visible" },
+    { "name": "UI5 -- switch to the bypass tab.", "action": "click", "selector": "[data-testid='remediation-tab-bypass']", "critical": true },
+    { "name": "UI6 -- the bypass tab's own content renders, honest-empty or a real row -- both real answers, not a loading state.", "action": "expect", "selector": "body", "textContains": ["Fixed, but outside change control"], "critical": true }
+  ]
+}
