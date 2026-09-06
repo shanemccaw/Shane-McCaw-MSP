@@ -106,6 +106,17 @@ namespace BuildConsole.Controls
             return _inFlightRefresh = RefreshCoreAsync();
         }
 
+        /// <summary>Git #2926 — the honest, self-recovering counterpart to the generic "Couldn't
+        /// read" failure text, for when the failure is the #2815 circuit breaker's own short-circuit
+        /// rather than a real standing error.</summary>
+        private static string BuildCircuitOpenMessage()
+        {
+            int remaining = Services.GitHubRateLimitCircuit.RemainingOpenSeconds();
+            return remaining > 0
+                ? $"GitHub is rate-limiting BuildConsole right now — this will recover automatically in ~{remaining}s (Git #2815), no action needed."
+                : "GitHub is rate-limiting BuildConsole right now — this will recover automatically shortly (Git #2815), no action needed.";
+        }
+
         private async System.Threading.Tasks.Task RefreshCoreAsync()
         {
             try
@@ -135,7 +146,12 @@ namespace BuildConsole.Controls
                     RowsList.Children.Clear();
                     _allRows = new List<Services.AiBatterUpRow>();
                     UpdateFilterBoxVisibility();
-                    TxtEmpty.Text = $"Couldn't read AI Batter Up: {ex.Message}";
+                    // Git #2926 — a suppressed call under the #2815 breaker is transient and
+                    // self-recovering within its backoff window; show that distinctly from a real,
+                    // standing failure so it doesn't read as an urgent bug (see #2916).
+                    TxtEmpty.Text = Services.GitHubRateLimitCircuit.IsCircuitOpenMessage(ex.Message)
+                        ? BuildCircuitOpenMessage()
+                        : $"Couldn't read AI Batter Up: {ex.Message}";
                     TxtEmpty.Visibility = Visibility.Visible;
                     SetCount(0);
                     return;
