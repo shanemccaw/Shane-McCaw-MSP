@@ -1,0 +1,301 @@
+/**
+ * HOW A MODULE DECLARES ITS OWN WHOLE-TENANT PURGE (Git #2859, EPIC #1944 part 7).
+ *
+ * `registerTenantDataPurger()` in `../registry.ts` is the mechanism #2765 built and
+ * deliberately shipped empty. This file is the shared shape every module's own
+ * declaration is written in, and the files beside it are those declarations — one per
+ * module, each owning nothing but its own tables.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Why a declared TARGET LIST and not a hand-written delete function per module
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * The registry's contract is `purge(tx, tenantId) => rows destroyed`, and a module could
+ * satisfy it with any code at all. Every one of them would nonetheless have to get the
+ * same three things right — which id space the tenant is keyed by, what to do when the
+ * table does not exist on this environment, and how to report what it actually removed.
+ * Written thirty times by hand those diverge, which is the four-modules-four-mechanisms
+ * drift #1944 exists to end. So a module declares WHAT it owns, and this file owns HOW
+ * the deletion runs.
+ *
+ * A declaration is still per-module and still lives with its module. What it is not is
+ * one central roster of every tenant-scoped table in the platform — see `../registry.ts`
+ * for why that shape rots, and `tenant-scope-coverage.live-db.test.ts` for the test that
+ * fails the moment a real tenant-scoped table exists with no module claiming it.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE THREE ID SPACES — the reason a target names its key rather than assuming one
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * A "tenant" is keyed three different ways across this schema, and picking the wrong one
+ * in an IRREVERSIBLE purge does not fail loudly — it silently destroys a DIFFERENT
+ * customer's rows, or silently destroys nothing:
+ *
+ *   - `customerId`  integer, `tenants.id`. The successor id-space after the Tenant/User
+ *                   refactor absorbed `msp_customers`.
+ *   - `tenantGuid`  text, `tenants.tenant_id` — the real Entra/M365 tenant GUID that
+ *                   telemetry and Graph-sourced rows carry.
+ *   - `userId`      integer, `users.id`. Several pre-refactor tables have a column NAMED
+ *                   `customer_id` that is really a user id, with a live
+ *                   `..._customer_id_fkey -> users(id)` still enforcing it. Keyed by the
+ *                   tenant's own user ids.
+ *
+ * A fourth, `ambiguousCustomerId`, exists because the codebase genuinely disagrees with
+ * itself on a handful of those tables — see `AMBIGUOUS_KEY_NOTE` below.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * A TABLE THAT DOES NOT EXIST IS SKIPPED, NOT AN ERROR — and the skip is reported
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * Real, confirmed on this project (#1471): the Replit staging schema lags local dev by
+ * more than a dozen tables, because their manual migrations have never been run there.
+ * A purge that hard-aborts on the first absent relation would leave that customer due
+ * forever, and re-running would abort at the same place every time.
+ *
+ * A relation that does not exist holds no rows for anybody, so skipping it destroys
+ * nothing and misses nothing. What must NOT happen is skipping it silently: the skip is
+ * recorded and logged on the `audit` channel with the purge, so the permanent account of
+ * what happened says which tables were absent rather than implying they were empty.
+ */
+
+import { sql, type SQL } from "drizzle-orm";
+import { logger } from "../../logger";
+import type { RetentionTx, TenantDataPurger } from "../registry";
+
+const auditLog = logger.child({ channel: "audit" });
+
+/**
+ * The id space a target's key column is expressed in. Named per target, never inferred
+ * from the column name — `customer_id` alone means all three things in this schema.
+ */
+export type TenantPurgeKeySpace = "customerId" | "tenantGuid" | "userId" | "ambiguousCustomerId";
+
+export interface TenantPurgeTarget {
+  /** Real SQL table name, e.g. `"msp_risk_decisions"`. */
+  table: string;
+  /** Real SQL column name holding the tenant key, e.g. `"tenant_id"`. */
+  column: string;
+  keySpace: TenantPurgeKeySpace;
+  /**
+   * A second column on the SAME table that also points at this tenant, in the SAME id
+   * space, where a row can be attributed by either. `config_diffs` is the real case: a
+   * drift diff has `base_tenant_id = head_tenant_id`, a tenant-compare diff does not, and
+   * a row matching on either side belongs to this tenant.
+   */
+  orColumn?: string;
+}
+
+/** The three resolved id spaces for one tenant, read once per purge. */
+export interface TenantPurgeScope {
+  tenantId: number;
+  /** `tenants.tenant_id` — null only for a tenant never linked to a real M365 tenant. */
+  tenantGuid: string | null;
+  /** `users.id` for every user under this tenant. Empty is normal: user-keyed targets then match nothing. */
+  userIds: number[];
+}
+
+/** Per-target outcome, so the audit account says what was actually removed. */
+export interface TenantPurgeDetail {
+  destroyed: Record<string, number>;
+  /** Tables absent from this database — reported, never silently treated as empty. */
+  absent: string[];
+}
+
+/**
+ * SQL identifiers are interpolated, not bound, so they are checked before they reach a
+ * statement. Every value in this codebase is a literal written in a declaration file, so
+ * this can never fire at runtime for a legitimate target — it exists so that it CANNOT
+ * become an injection point if a future caller ever builds a target from anything else.
+ */
+const SAFE_IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
+
+function assertSafeIdentifier(value: string, what: string): void {
+  if (!SAFE_IDENTIFIER.test(value)) {
+    throw new Error(`retention purger: unsafe ${what} identifier ${JSON.stringify(value)}`);
+  }
+}
+
+/**
+ * Read the tenant's three id spaces inside the purge transaction, so they cannot drift
+ * between being read and being used.
+ */
+export async function resolveTenantPurgeScope(tx: RetentionTx, tenantId: number): Promise<TenantPurgeScope> {
+  const tenantRows = await tx.execute<{ tenant_id: string | null }>(
+    sql`SELECT tenant_id FROM tenants WHERE id = ${tenantId} LIMIT 1`,
+  );
+  const tenantGuid = tenantRows.rows[0]?.tenant_id ?? null;
+
+  const userRows = await tx.execute<{ id: number }>(sql`SELECT id FROM users WHERE tenant_id = ${tenantId}`);
+  return { tenantId, tenantGuid, userIds: userRows.rows.map((r) => Number(r.id)) };
+}
+
+async function relationExists(tx: RetentionTx, table: string): Promise<boolean> {
+  const res = await tx.execute<{ oid: string | null }>(
+    sql`SELECT to_regclass(${`public.${table}`})::text AS oid`,
+  );
+  return res.rows[0]?.oid != null;
+}
+
+/**
+ * WHY `ambiguousCustomerId` EXISTS, and why it is not simply "delete where customer_id =
+ * the tenant id".
+ *
+ * Several pre-refactor tables carry a `customer_id` the codebase treats BOTH ways, in
+ * writing, today:
+ *
+ *   - `lib/db/migrations/manual/2026-08-27-testbed-reset-patch-projects-1396.sql` deletes
+ *     them under its own heading "customer_id (integer, tenants.id) scoped tables";
+ *   - `routes/admin-active-directory.ts`'s per-user cascade nulls the very same columns
+ *     with a USER id, and the live database enforces that reading with a real
+ *     `..._customer_id_fkey -> users(id)` constraint on each of them.
+ *
+ * Live evidence on the local database at the time of writing: `tenant_signal_history`
+ * holds 6,590 rows whose `customer_id` values are 37, 39 and 56 — real `users.id` values.
+ * The only `tenants.id` values that exist are 1 and 3.
+ *
+ * Guessing one reading is not available here. Under the user reading, deleting
+ * `customer_id = <tenants.id>` destroys the rows of whichever USER happens to hold that
+ * id — potentially a different customer's, irreversibly. So this key space deletes:
+ *
+ *   1. every row keyed to one of THIS tenant's own user ids (correct under the user
+ *      reading, and matching nothing under the tenant reading); AND
+ *   2. the row keyed to the tenant's own id, but ONLY when no `users` row holds that id
+ *      on behalf of somebody else — i.e. when the value cannot be another customer's.
+ *
+ * Both readings are therefore fully purged, and neither can reach a third party's data.
+ * The underlying disagreement is a real defect and is filed as #2983; this is
+ * what a purge does while that stands, not a substitute for settling it.
+ */
+export const AMBIGUOUS_KEY_NOTE =
+  "customer_id is read as tenants.id by the testbed-reset migration and as users.id by the " +
+  "per-user cascade and the live FK; both readings are purged, neither can reach another tenant";
+
+async function deleteTarget(tx: RetentionTx, target: TenantPurgeTarget, scope: TenantPurgeScope): Promise<number> {
+  assertSafeIdentifier(target.table, "table");
+  assertSafeIdentifier(target.column, "column");
+  if (target.orColumn) assertSafeIdentifier(target.orColumn, "column");
+
+  const table = sql.identifier(target.table);
+  const col = sql.identifier(target.column);
+  const orCol = target.orColumn ? sql.identifier(target.orColumn) : null;
+
+  // A JS array handed to drizzle's `sql` template expands to a TUPLE `($1, $2, ...)`,
+  // which `= ANY(...)` rejects outright ("op ANY/ALL (array) requires array on right
+  // side"). Bind the Postgres array literal instead, built only from values already
+  // narrowed to integers by `resolveTenantPurgeScope`.
+  const intArray = (ids: number[]): string => `{${ids.map((id) => Number(id)).join(",")}}`;
+
+  const matches = (value: unknown, ids?: number[]): SQL => {
+    const one = ids ? sql`${col} = ANY(${intArray(ids)}::int[])` : sql`${col} = ${value}`;
+    if (!orCol) return one;
+    const other = ids ? sql`${orCol} = ANY(${intArray(ids)}::int[])` : sql`${orCol} = ${value}`;
+    return sql`(${one} OR ${other})`;
+  };
+
+  let where: SQL;
+  switch (target.keySpace) {
+    case "customerId":
+      where = matches(scope.tenantId);
+      break;
+    case "tenantGuid":
+      // No GUID means no row can be attributed to this tenant in that id space at all.
+      if (scope.tenantGuid == null) return 0;
+      where = matches(scope.tenantGuid);
+      break;
+    case "userId":
+      if (scope.userIds.length === 0) return 0;
+      where = matches(undefined, scope.userIds);
+      break;
+    case "ambiguousCustomerId": {
+      const byUser = scope.userIds.length > 0 ? matches(undefined, scope.userIds) : null;
+      // The guard: take the tenant-id reading only when no `users` row holds that id on
+      // behalf of anyone else. A user with that id under this same tenant is already
+      // covered by the user-id leg above.
+      const byTenantGuarded = sql`(${matches(scope.tenantId)} AND NOT EXISTS (
+        SELECT 1 FROM users u WHERE u.id = ${scope.tenantId} AND u.tenant_id IS DISTINCT FROM ${scope.tenantId}
+      ))`;
+      where = byUser ? sql`(${byUser} OR ${byTenantGuarded})` : byTenantGuarded;
+      break;
+    }
+  }
+
+  const result = await tx.execute(sql`DELETE FROM ${table} WHERE ${where}`);
+  return Number(result.rowCount ?? 0);
+}
+
+/**
+ * Run a module's declared targets against one tenant. Exported separately from
+ * `declareTenantDataPurger` so a test can assert the per-table detail, which the
+ * registry's own `purge()` contract flattens to a single count.
+ */
+export async function purgeTargets(
+  tx: RetentionTx,
+  tenantId: number,
+  targets: TenantPurgeTarget[],
+): Promise<TenantPurgeDetail> {
+  const scope = await resolveTenantPurgeScope(tx, tenantId);
+  const destroyed: Record<string, number> = {};
+  const absent: string[] = [];
+
+  for (const target of targets) {
+    if (!(await relationExists(tx, target.table))) {
+      if (!absent.includes(target.table)) absent.push(target.table);
+      continue;
+    }
+    destroyed[target.table] = (destroyed[target.table] ?? 0) + (await deleteTarget(tx, target, scope));
+  }
+  return { destroyed, absent };
+}
+
+export interface TenantDataPurgerDeclaration {
+  /** Registry key — the owning module, e.g. `"risk-register"`. */
+  key: string;
+  /** How this data class reads to a human, for the audit account of the purge. */
+  displayName: string;
+  /** Every table this module holds for a customer, with the id space each is keyed by. */
+  targets: TenantPurgeTarget[];
+}
+
+/**
+ * Turn a module's declaration into the `TenantDataPurger` the registry takes.
+ *
+ * Emits one `audit`-channel line per module with the per-table counts and any absent
+ * tables. `purgeTerminatedTenant()` records the per-MODULE totals; a purge is
+ * irreversible, so the finer account of which table gave up how many rows is worth having
+ * permanently as well.
+ */
+export function declareTenantDataPurger(declaration: TenantDataPurgerDeclaration): TenantDataPurger {
+  const seen = new Set<string>();
+  for (const target of declaration.targets) {
+    const id = `${target.table}.${target.column}`;
+    if (seen.has(id)) {
+      throw new Error(
+        `retention purger "${declaration.key}": ${id} is declared twice — a duplicated target ` +
+          "double-counts rows it did not destroy in the audit account.",
+      );
+    }
+    seen.add(id);
+  }
+
+  return {
+    key: declaration.key,
+    displayName: declaration.displayName,
+    purge: async (tx, tenantId) => {
+      const detail = await purgeTargets(tx, tenantId, declaration.targets);
+      const total = Object.values(detail.destroyed).reduce((a, b) => a + b, 0);
+      auditLog.info(
+        {
+          actionType: "retention.tenant.module_purged",
+          tenantId,
+          module: declaration.key,
+          displayName: declaration.displayName,
+          destroyed: detail.destroyed,
+          absentTables: detail.absent,
+          totalDestroyed: total,
+        },
+        "audit: post-termination purge — module data destroyed",
+      );
+      return total;
+    },
+  };
+}

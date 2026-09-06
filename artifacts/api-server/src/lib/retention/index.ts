@@ -21,3 +21,9 @@ export * from "./lifecycle";
 export * from "./subscription-state";
 export * from "./subscription-gate";
 export * from "./post-termination";
+// #2859 — the real per-module tenant-data purgers the post-termination purge drives, and
+// `registerAllTenantDataPurgers()`, the single point that arms them. Exporting the
+// declarations does NOT register them: arming is an explicit call, made once at startup,
+// so importing this barrel anywhere cannot arm an irreversible destructive path as a side
+// effect. Until that call the registry is empty and `purgeTerminatedTenant()` refuses.
+export * from "./purgers";

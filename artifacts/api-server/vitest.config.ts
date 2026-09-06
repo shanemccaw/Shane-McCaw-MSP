@@ -535,6 +535,13 @@ export default defineConfig({
       // that customer's retention clocks and start the 7-year window, with tenants.status
       // left untouched throughout (which is the gap #2847 was filed for).
       "src/lib/retention/subscription-freeze.live-db.test.ts",
+      // #2859 — the real per-module tenant-data purgers the 7-year post-termination
+      // purge drives. The coverage test asks the RUNNING database what is tenant-scoped
+      // and fails on anything no module claims and no exemption explains; the purge test
+      // proves a genuinely due tenant is destroyed and a not-yet-due one beside it is
+      // untouched. Both skip cleanly with no DATABASE_URL.
+      "src/lib/retention/purgers/tenant-scope-coverage.live-db.test.ts",
+      "src/lib/retention/purgers/post-termination-purge.live-db.test.ts",
     ],
     coverage: {
       provider: "v8",

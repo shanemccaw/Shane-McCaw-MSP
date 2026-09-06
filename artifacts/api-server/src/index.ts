@@ -380,14 +380,29 @@ app.listen(port, (err) => {
   //
   //   3. THE POST-TERMINATION PURGE — the 7-year whole-dataset clock (part 7). Refuses
   //      to mark a tenant purged if no module has registered a purger, rather than
-  //      recording an irreversible claim that is false.
+  //      recording an irreversible claim that is false. #2859 supplies those purgers, and
+  //      ARMING THEM HAPPENS HERE, in the same block that schedules the sweep, so the two
+  //      cannot be wired apart: a deployment that scheduled the sweep without registering
+  //      the purgers would log an ERROR every hour and never purge anything, which is
+  //      exactly the state #2859 was filed to end.
   //
   // Hourly, not daily. The clocks are measured in days and years so the cadence is not
   // about precision — it is that a 24-hour interval in a process that restarts often can
   // go a long time without ever firing, and the two sweeps here are the ones whose
   // never-firing is invisible until a record outlives its window.
   import("./lib/retention").then(
-    ({ runRetentionSubscriptionSync, advanceDueDeletions, runPostTerminationPurgeSweep }) => {
+    ({
+      runRetentionSubscriptionSync,
+      advanceDueDeletions,
+      runPostTerminationPurgeSweep,
+      registerAllTenantDataPurgers,
+    }) => {
+      const armed = registerAllTenantDataPurgers();
+      logger.info(
+        { purgers: armed.length, keys: armed },
+        "retention: tenant-data purgers registered — the post-termination purge can now destroy data",
+      );
+
       const runRetentionCycle = async (): Promise<void> => {
         await runRetentionSubscriptionSync();
         await advanceDueDeletions();
