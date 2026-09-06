@@ -192,5 +192,34 @@ namespace BuildConsole.Services
                 || text.Contains("secondary rate", StringComparison.OrdinalIgnoreCase)
                 || text.Contains("abuse detection", StringComparison.OrdinalIgnoreCase);
         }
+
+        /// <summary>
+        /// Git #2926 — is this failure message the breaker's OWN short-circuit, i.e. the
+        /// <c>ReasonPhrase</c> <see cref="GitHubRateLimitHandler"/> stamps on a suppressed HTTP call
+        /// (<c>"rate-limit circuit open (Git #2815)"</c>)? Callers use this to tell "GitHub is
+        /// mid-backoff and will recover on its own within the window" apart from a real, standing
+        /// failure — the two look identical as a bare <see cref="Exception.Message"/> otherwise,
+        /// which is exactly what made #2916 get filed as an urgent "401" for a transient 403 that
+        /// self-healed in ~60s with no code change.
+        /// </summary>
+        public static bool IsCircuitOpenMessage(string? message) =>
+            !string.IsNullOrEmpty(message)
+            && message.Contains("rate-limit circuit open", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Seconds remaining until the breaker's current backoff window elapses (0 if closed or the
+        /// window has already elapsed pending a half-open probe). For surfacing "~Ns" in a UI message
+        /// alongside <see cref="IsCircuitOpenMessage"/> — best-effort/informational only, not a
+        /// guarantee the very next call succeeds (the half-open state still only lets one probe
+        /// through).
+        /// </summary>
+        public static int RemainingOpenSeconds()
+        {
+            lock (_gate)
+            {
+                var remaining = _openUntilUtc - DateTime.UtcNow;
+                return remaining > TimeSpan.Zero ? (int)Math.Ceiling(remaining.TotalSeconds) : 0;
+            }
+        }
     }
 }
