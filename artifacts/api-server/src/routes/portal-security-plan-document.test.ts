@@ -49,6 +49,9 @@ const versioning = vi.hoisted(() => ({
 }));
 vi.mock("../lib/security-plan-versioning.ts", () => versioning);
 
+const drift = vi.hoisted(() => ({ getSecurityPlanDrift: vi.fn() }));
+vi.mock("../lib/security-plan-drift.ts", () => drift);
+
 import router from "./portal-security-plan-document";
 
 function makeApp(user: Record<string, unknown> | null) {
@@ -188,5 +191,54 @@ describe("POST /api/portal/security-plan/versions/:versionUid/sign", () => {
     versioning.signSecurityPlanVersion.mockResolvedValue(null);
     const res = await request(makeApp(CUSTOMER)).post(path).send({ fullName: "Jordan Diaz" });
     expect(res.status).toBe(409);
+  });
+});
+
+describe("GET /api/portal/security-plan/drift (#3027)", () => {
+  const NO_BASELINE = {
+    hasLastSignedVersion: false,
+    lastSignedVersionUid: null,
+    lastSignedVersionNumber: null,
+    lastSignedAt: null,
+    modules: [],
+    totalAdded: 0,
+    totalRemoved: 0,
+    totalChanged: 0,
+  };
+
+  it("reuses getSecurityPlanDrift scoped to the caller's own tenant", async () => {
+    drift.getSecurityPlanDrift.mockResolvedValue({ live: CONTENT, drift: NO_BASELINE });
+    const res = await request(makeApp(CUSTOMER)).get("/api/portal/security-plan/drift");
+    expect(res.status).toBe(200);
+    expect(res.body.drift.hasLastSignedVersion).toBe(false);
+    expect(drift.getSecurityPlanDrift).toHaveBeenCalledWith(SCOPE);
+  });
+
+  it("reports real added/removed/changed counts when a baseline exists", async () => {
+    drift.getSecurityPlanDrift.mockResolvedValue({
+      live: CONTENT,
+      drift: {
+        ...NO_BASELINE,
+        hasLastSignedVersion: true,
+        lastSignedVersionUid: "11111111-1111-1111-1111-111111111111",
+        lastSignedVersionNumber: 3,
+        lastSignedAt: "2026-09-01T00:00:00.000Z",
+        modules: [{ moduleKey: "risk", label: "Risk Register", added: [], removed: [], changed: [] }],
+        totalAdded: 1,
+        totalRemoved: 0,
+        totalChanged: 2,
+      },
+    });
+    const res = await request(makeApp(CUSTOMER)).get("/api/portal/security-plan/drift");
+    expect(res.status).toBe(200);
+    expect(res.body.drift.totalAdded).toBe(1);
+    expect(res.body.drift.totalChanged).toBe(2);
+    expect(res.body.drift.lastSignedVersionNumber).toBe(3);
+  });
+
+  it("403s with no customer context on the token", async () => {
+    const res = await request(makeApp({ id: 7 })).get("/api/portal/security-plan/drift");
+    expect(res.status).toBe(403);
+    expect(drift.getSecurityPlanDrift).not.toHaveBeenCalled();
   });
 });

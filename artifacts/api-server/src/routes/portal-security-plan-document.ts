@@ -9,6 +9,10 @@
  *        before deciding to sign
  *   POST /api/portal/security-plan/versions/:versionUid/sign       — the customer
  *        signs that version themselves
+ *   GET  /api/portal/security-plan/drift                           — the live view's
+ *        drift from the last SIGNED version (#1562), added at #3027 — the same
+ *        computation `msp-security-plan.ts`'s own `/drift` route already serves
+ *        MSP-side; nothing customer-facing exposed it before this
  *
  * ── Real, confirmed gap this closes (#2949) ─────────────────────────────────
  * `msp-security-plan.ts`'s own header was explicit: "the customer-facing
@@ -71,7 +75,8 @@ import {
   listSecurityPlanVersions,
   signSecurityPlanVersion,
 } from "../lib/security-plan-versioning.ts";
-import type { ClientApprover, MspSecurityPlanVersion } from "@workspace/db";
+import { getSecurityPlanDrift } from "../lib/security-plan-drift.ts";
+import type { ClientApprover, MspSecurityPlanVersion, SecurityPlanDrift } from "@workspace/db";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -264,6 +269,54 @@ router.post(
       res.status(201).json({ version: toWireDetail(updated) });
     } catch (err: unknown) {
       log.error({ err }, "POST /portal/security-plan/versions/:versionUid/sign failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+interface WireSecurityPlanDrift {
+  readonly hasLastSignedVersion: boolean;
+  readonly lastSignedVersionUid: string | null;
+  readonly lastSignedVersionNumber: number | null;
+  readonly lastSignedAt: string | null;
+  readonly modules: SecurityPlanDrift["modules"];
+  readonly totalAdded: number;
+  readonly totalRemoved: number;
+  readonly totalChanged: number;
+}
+
+function toWireDrift(drift: SecurityPlanDrift): WireSecurityPlanDrift {
+  return {
+    hasLastSignedVersion: drift.hasLastSignedVersion,
+    lastSignedVersionUid: drift.lastSignedVersionUid,
+    lastSignedVersionNumber: drift.lastSignedVersionNumber,
+    lastSignedAt: drift.lastSignedAt,
+    modules: drift.modules,
+    totalAdded: drift.totalAdded,
+    totalRemoved: drift.totalRemoved,
+    totalChanged: drift.totalChanged,
+  };
+}
+
+// GET /api/portal/security-plan/drift — added at #3027. The live (honest, unscoped)
+// view's drift from the last SIGNED version (#1562) — the same `computeSecurityPlanDrift`
+// `msp-security-plan.ts`'s own `/drift` route already serves MSP-side (`getSecurityPlanDrift`,
+// `security-plan-drift.ts`), reused unchanged here rather than reimplemented, just scoped
+// to the caller's own tenant instead of an MSP-owned `:customerId` param. Per #1567, this
+// is mechanical DATA drift only (added/removed/changed rows) — never a claim about whether
+// the authored prose is stale, and `hasLastSignedVersion: false` (nothing ever signed) is
+// distinct from "signed, no drift since."
+router.get(
+  "/portal/security-plan/drift",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response) => {
+    try {
+      const scope = await requireScope(req, res);
+      if (!scope) return;
+      const { drift } = await getSecurityPlanDrift(scope);
+      res.json({ drift: toWireDrift(drift) });
+    } catch (err: unknown) {
+      log.error({ err }, "GET /portal/security-plan/drift failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },

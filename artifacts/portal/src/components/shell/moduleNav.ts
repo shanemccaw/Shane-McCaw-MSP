@@ -49,7 +49,7 @@ export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [
   { key: "raci", label: "Ownership / RACI", icon: Users, builtPath: null },
   { key: "policy", label: "Policy Decisions", icon: Scale, builtPath: null },
   { key: "config-state", label: "Configuration State", icon: Layers, builtPath: "/config-state" },
-  { key: "security-plan", label: "Security Plan", icon: FileCheck2, builtPath: null },
+  { key: "security-plan", label: "Security Plan", icon: FileCheck2, builtPath: "/security-plan" },
 ];
 
 /** `/coming-soon?feature=<label>&group=<group>` for a not-yet-built destination. */
