@@ -50,11 +50,14 @@ namespace BuildConsole
         private const double ReopenParkOffscreenY = -20000d;
 
         /// <summary>
-        /// Git #2130 kill switch. Returns true only when the #1887 background preload is
-        /// explicitly re-enabled — either the BUILDCONSOLE_ENABLE_CHAT_REOPEN_PRELOAD env
-        /// var is truthy (a one-run override that doesn't touch settings.json), or the
-        /// persisted <see cref="BuildConsole.Services.BuildConsoleSettings.EnableChatReopenPreload"/>
-        /// toggle is on. Default (missing env var + default-false setting) is OFF.
+        /// Git #2130 kill switch / Git #2132 re-enable. Returns whether the #1887 background
+        /// preload runs at all. The BUILDCONSOLE_ENABLE_CHAT_REOPEN_PRELOAD env var overrides
+        /// for a single run (truthy on, <c>0</c>/<c>false</c>/<c>no</c> off) without touching
+        /// settings.json; otherwise the persisted
+        /// <see cref="BuildConsole.Services.BuildConsoleSettings.EnableChatReopenPreload"/>
+        /// toggle decides. As of #2132 that setting defaults to ON again — its #2130 lockup
+        /// cause (an UNBOUNDED total of live preloads) is now bounded by
+        /// <see cref="ChatReopenPreloadCap"/>, so this no longer no-ops by default.
         /// </summary>
         private static bool ChatReopenPreloadEnabled()
         {
@@ -91,14 +94,15 @@ namespace BuildConsole
         /// </summary>
         private async Task ReopenPersistedChatTabsInBackgroundAsync()
         {
-            // Git #2130 — KILL SWITCH. This background preload path (real off-screen
-            // WebView2 navigation for every persisted tab, kicked off inside the loading
-            // window) was found to lock up Shane's machine and drain the build queue on a
-            // real cold start. Default OFF: unless explicitly re-enabled, no-op here at the
-            // single entry point so nothing is created, navigated, or parked in
-            // ChatReopenPreloadHost. Manual tab-reopen-on-click (Home "Resume Chat") is a
-            // separate path and is unaffected. Re-enable via the settings toggle or the
-            // BUILDCONSOLE_ENABLE_CHAT_REOPEN_PRELOAD=1 env var once root-caused.
+            // Git #2130 KILL SWITCH / Git #2132 re-enable. This background preload path (real
+            // off-screen WebView2 navigation, kicked off inside the loading window) locked up
+            // Shane's machine on a real cold start because it preloaded a live browser for EVERY
+            // persisted tab (unbounded total). #2132 root-caused and fixed that by bounding the
+            // total live preloads (ChatReopenPreloadCap), so the setting now defaults ON again.
+            // When the toggle is explicitly off (or BUILDCONSOLE_ENABLE_CHAT_REOPEN_PRELOAD=0),
+            // this still no-ops entirely at the single entry point — nothing is created,
+            // navigated, or parked in ChatReopenPreloadHost, and no placeholder tabs are opened;
+            // manual tab-reopen-on-click (Home "Resume Chat") is a separate path, unaffected.
             if (!ChatReopenPreloadEnabled())
             {
                 ActivityLog.Log(ChatReopenChannel,
@@ -111,11 +115,89 @@ namespace BuildConsole
                 .ToList();
             if (toReopen.Count == 0) return;
 
-            ActivityLog.Log(ChatReopenChannel, $"Git #1887: background-reopening {toReopen.Count} persisted chat tab(s)…");
+            // Git #2132 — bound the TOTAL number of live off-screen preloads, not just how many
+            // load concurrently. The #2130 lockup was that this method spun up a real, live
+            // WebView2 (full claude.ai page + several msedgewebview2.exe subprocesses) for EVERY
+            // persisted tab and parked it forever: the SemaphoreSlim(2) below caps only concurrent
+            // LOADS, and nothing disposes a parked preload on successful load, so N persisted tabs
+            // ended up as N live browsers running simultaneously. Now only the most-recently-used
+            // (by SavedAt) tabs up to the cap get a live preload; every other persisted tab still
+            // reopens as an inert placeholder tab (strip presence + normal load-on-click) that
+            // creates no CoreWebView2 until Shane actually selects it. cap 0 => no live preloads at
+            // all, still restores every tab as a load-on-click placeholder.
+            int cap = ChatReopenPreloadCap();
+            var byRecency = toReopen.OrderByDescending(p => p.SavedAt).ToList();
+            var hot = byRecency.Take(cap).ToList();
+            var cold = byRecency.Skip(cap).ToList();
+
+            ActivityLog.Log(ChatReopenChannel,
+                $"Git #1887/#2132: {toReopen.Count} persisted chat tab(s) — preloading {hot.Count} most-recent live, {cold.Count} as load-on-click placeholder(s) (cap {cap}).");
+
+            // Cold set first: cheap, synchronous placeholder-only tabs (no live WebView2). Doing
+            // these up front means every persisted tab is present in the strip immediately, while
+            // the bounded hot set loads for real below.
+            foreach (var p in cold)
+                OpenColdPlaceholderTab(p);
+
+            if (hot.Count == 0) return;
 
             using var gate = new System.Threading.SemaphoreSlim(2);
-            var tasks = toReopen.Select(p => ReopenOnePersistedTabInBackgroundAsync(p, gate));
+            var tasks = hot.Select(p => ReopenOnePersistedTabInBackgroundAsync(p, gate));
             await Task.WhenAll(tasks);
+        }
+
+        /// <summary>
+        /// Git #2132 — the max number of persisted tabs that get a LIVE off-screen preload on cold
+        /// start (see <see cref="BuildConsole.Services.BuildConsoleSettings.ChatReopenPreloadMaxTabs"/>).
+        /// Everything beyond this opens as an inert load-on-click placeholder. The
+        /// <c>BUILDCONSOLE_CHAT_REOPEN_PRELOAD_MAX</c> env var overrides for a single run; a
+        /// negative value (setting or env) is clamped to 0.
+        /// </summary>
+        private static int ChatReopenPreloadCap()
+        {
+            var env = Environment.GetEnvironmentVariable("BUILDCONSOLE_CHAT_REOPEN_PRELOAD_MAX");
+            if (!string.IsNullOrWhiteSpace(env) && int.TryParse(env.Trim(), out var envCap))
+                return envCap < 0 ? 0 : envCap;
+            try
+            {
+                var cap = BuildConsole.Services.BuildConsoleSettings.Load().ChatReopenPreloadMaxTabs;
+                return cap < 0 ? 0 : cap;
+            }
+            catch { return 3; }
+        }
+
+        /// <summary>
+        /// Git #2132 — a persisted tab BEYOND the preload cap: gets a real placeholder tab in the
+        /// strip (so nothing from the previous session is lost) but NO live background WebView2.
+        /// Its own placeholder WebView2 stays inert (WPF never realizes a non-selected TabItem's
+        /// Content, so no CoreWebView2 / msedgewebview2.exe is created) until Shane selects it, at
+        /// which point it loads normally — the exact same load-on-click path OpenChatTab already
+        /// takes when no matching preload exists (its else branch, with no _pendingReopenSwap entry
+        /// registered so EditorTabs_SelectionChanged does not try to swap in a nonexistent preload).
+        /// </summary>
+        private void OpenColdPlaceholderTab(PersistedChatTab p)
+        {
+            try
+            {
+                // Already open (a manual click beat us to it) or already preloaded (a duplicate
+                // persisted entry landed in the hot set) — nothing to do.
+                if (_chatTabs.Keys.Any(t => t.Tag is BoardChat c && c.ConversationId == p.ConversationId)) return;
+                if (_reopenPreloadedWebViews.ContainsKey(p.ConversationId)) return;
+
+                var chat = new BoardChat
+                {
+                    ConversationId = p.ConversationId,
+                    Title = p.Title,
+                    ClaudeUrl = p.ClaudeUrl,
+                    EpicId = p.EpicId,
+                    IssueGithubNumber = p.IssueGithubNumber,
+                };
+                OpenChatTab(chat, p.IssueGithubNumber, selectTab: false);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(ChatReopenChannel, $"Git #2132: cold placeholder tab for '{p.Title}' failed: {ex.Message}");
+            }
         }
 
         private async Task ReopenOnePersistedTabInBackgroundAsync(PersistedChatTab p, System.Threading.SemaphoreSlim gate)

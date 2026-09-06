@@ -541,9 +541,34 @@ namespace BuildConsole.Services
         /// Home-screen "Resume Chat" path) is unaffected and keeps working. Set true only to
         /// re-enable the preload once its startup-contention root cause is fixed.
         /// The env var <c>BUILDCONSOLE_ENABLE_CHAT_REOPEN_PRELOAD=1</c> can force it on for a
-        /// single run without editing settings.json.
+        /// single run without editing settings.json (and <c>=0</c> forces it off for a run).
+        ///
+        /// Git #2132 — re-enabled by default (true) now that #2132 bounded the TOTAL number of
+        /// live preloads (see <see cref="ChatReopenPreloadMaxTabs"/>). The #2130 lockup was the
+        /// UNBOUNDED total (a live claude.ai browser per persisted tab, 10-20 at once); with the
+        /// cap in place the startup-contention root cause the kill switch was guarding against is
+        /// structurally removed, so re-enabling now satisfies this field's own "re-enable once the
+        /// root cause is fixed" contract. Force it off for a run with the env var above if needed.
         /// </summary>
-        public bool EnableChatReopenPreload { get; set; } = false;
+        public bool EnableChatReopenPreload { get; set; } = true;
+
+        /// <summary>
+        /// Git #2132 — hard cap on how many persisted chat tabs get a LIVE off-screen preload
+        /// WebView2 on cold start when <see cref="EnableChatReopenPreload"/> is on. #1887's
+        /// original code preloaded a real, full claude.ai browser for EVERY persisted tab — the
+        /// <c>SemaphoreSlim(2)</c> bounded only how many loaded CONCURRENTLY, never the total live
+        /// count, and nothing disposed a parked preload on successful load — so 10-20 persisted
+        /// tabs meant 10-20 live browsers (each spawning several msedgewebview2.exe subprocesses)
+        /// running off-screen simultaneously: the real #2130 machine lockup. Now only the N
+        /// most-recently-used (by <see cref="PersistedChatTab.SavedAt"/>) persisted tabs preload
+        /// live; every other persisted tab still reopens as an inert placeholder tab that costs
+        /// nothing (WPF never realizes a non-selected TabItem's Content, so its WebView2 never
+        /// creates a CoreWebView2) and loads normally the moment Shane clicks it. Default 3 — a
+        /// small hot set. 0 disables live preloading entirely while still restoring every tab as a
+        /// load-on-click placeholder. Negative values are clamped to 0. The
+        /// <c>BUILDCONSOLE_CHAT_REOPEN_PRELOAD_MAX</c> env var overrides for a single run.
+        /// </summary>
+        public int ChatReopenPreloadMaxTabs { get; set; } = 3;
 
         /// <summary>
         /// Git #1989 — Conservation Cap toggle, title bar. OFF by default (and for any
