@@ -40,6 +40,13 @@ if defined DIRTY (
   exit /b 1
 )
 
+echo === Checking .pnpmfile.cjs / pnpm-lock.yaml pnpmfileChecksum are in sync (Git #2064) ===
+node "%PROJECT_DIR_NOSLASH%\..\..\scripts\dev-server\check-pnpmfile-checksum.mjs" --root "%PROJECT_DIR_NOSLASH%\..\.."
+if errorlevel 1 (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -Title "ShanesBuild Deploy - Error" -Message "pnpm-lock.yaml's pnpmfileChecksum is missing or does not match .pnpmfile.cjs (the same drift that caused #2060) - re-run node scripts/dev-server/check-pnpmfile-checksum.mjs for the exact fix, commit pnpm-lock.yaml, then re-run deploy-shanesbuild.cmd."
+  exit /b 1
+)
+
 echo === Pulling latest from origin/main ===
 git -C "%PROJECT_DIR_NOSLASH%" fetch origin main
 if errorlevel 1 (

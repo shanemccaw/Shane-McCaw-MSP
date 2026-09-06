@@ -268,6 +268,32 @@ are unlinked too), and `removeWorktreeSafe` REFUSES to delete a worktree while
 any junction it found could not be removed — it marks the worktree stale instead
 of risking a delete-through into the real store.
 
+## `.pnpmfile.cjs` / `pnpm-lock.yaml` checksum drift guard (Git #2064)
+
+`#2060` was caused by a commit that added `.pnpmfile.cjs` but committed
+`pnpm-lock.yaml` without the `pnpmfileChecksum` pnpm records for a present
+pnpmfile — with no checksum committed, every pnpm invocation in the shared main
+checkout re-injected it, leaving `pnpm-lock.yaml` perpetually dirty and blocking
+`deploy-shanesbuild.cmd`'s `git status --porcelain` gate. Any future edit to
+`.pnpmfile.cjs` that doesn't re-commit the updated checksum reintroduces the
+same drift, silently.
+
+`check-pnpmfile-checksum.mjs` recomputes pnpm 11.13.0's own checksum algorithm
+(`sha256-base64(sha256(LF-normalized .pnpmfile.cjs))`) offline — no `pnpm
+install`, no network, no metered cost — and fails loudly if the committed
+`pnpmfileChecksum` line in `pnpm-lock.yaml` is missing or doesn't match:
+
+```
+node scripts/dev-server/check-pnpmfile-checksum.mjs           # exit 0 clean, 1 drifted, 2 can't scan
+node scripts/dev-server/check-pnpmfile-checksum.mjs --json    # machine-readable
+node scripts/dev-server/check-pnpmfile-checksum.mjs --root <path>  # scan a different checkout (tests)
+```
+
+Wired into `desktop/BuildConsole/deploy-shanesbuild.cmd`, right after the
+working-tree-clean check and before the `origin/main` fetch — a drifted
+checksum is reported as a config error there instead of silently re-dirtying
+the checkout again.
+
 ## Reading live server logs
 
 `dev-all.mjs` streams stdout/stderr to **rotating log files** as well as the
