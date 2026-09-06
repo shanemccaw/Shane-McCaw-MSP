@@ -7427,6 +7427,11 @@ namespace BuildConsole.Controls
         // checked right now" without walking the TreeView's visual tree.
         private List<GitItem> _lastUnstagedItems = new();
 
+        // Git #2987 — the staged GitItem list from the most recent refresh, kept so
+        // DoGitCommitAsync can tell "nothing is staged yet" from "something already
+        // is" without an extra `git diff --cached` round-trip.
+        private List<GitItem> _lastStagedItems = new();
+
         // Git #2535 — thin fire-and-forget wrapper kept for the many void call sites
         // (BtnGitRefresh_Click, the FileSystemWatcher debounce, MainWindow, etc.).
         // The real body is now awaitable so RunGitCommand can await it and then set a
@@ -7570,6 +7575,7 @@ namespace BuildConsole.Controls
             }
             _selectedUnstagedPaths.IntersectWith(unstagedItems.Select(i => i.RelativePath));
             _lastUnstagedItems = unstagedItems;
+            _lastStagedItems = stagedItems;
 
             // Git #1968 — genuine no-op: an unchanged porcelain status means the
             // Changes tree we already have on screen is still byte-for-byte
@@ -8152,6 +8158,15 @@ namespace BuildConsole.Controls
         /// can chain it) — only clears the message box on a genuine zero-exit commit. A
         /// failed commit (nothing staged, hook rejection, ...) shows git's real error AND
         /// keeps the typed message so the user can fix the cause and retry without retyping it.
+        ///
+        /// Git #2987 — VS Code Source Control convention: if nothing is staged yet when
+        /// Commit is clicked, default to staging everything shown in Changes first (the
+        /// equivalent of `git add -A`), instead of letting git fail with "nothing added
+        /// to commit but untracked files present." If the user DID explicitly check
+        /// specific rows (a genuine partial-stage intent), that's respected instead —
+        /// only the checked paths get staged, not everything. Either fallback is skipped
+        /// entirely if something is already staged (e.g. via Stage Selected moments ago),
+        /// so an existing deliberate partial stage is never silently widened.
         /// </summary>
         private async System.Threading.Tasks.Task<bool> DoGitCommitAsync()
         {
@@ -8160,6 +8175,23 @@ namespace BuildConsole.Controls
             {
                 GitStatusSummaryText.Text = "Please enter a commit message";
                 return false;
+            }
+
+            if (_lastStagedItems.Count == 0 && _lastUnstagedItems.Count > 0)
+            {
+                var selectedPaths = _lastUnstagedItems.Where(i => i.IsSelected).Select(i => i.RelativePath).ToList();
+                if (selectedPaths.Count > 0)
+                {
+                    foreach (var path in selectedPaths)
+                    {
+                        if (!await RunGitCommand($"add \"{path}\""))
+                            return false;
+                    }
+                }
+                else if (!await RunGitCommand("add -A"))
+                {
+                    return false;
+                }
             }
 
             bool ok = await RunGitCommand($"commit -m \"{msg.Replace("\"", "\\\"")}\"");
@@ -8174,21 +8206,14 @@ namespace BuildConsole.Controls
         }
 
         /// <summary>
-        /// Git #2575 — one-click "Stage Selected (if any) → Commit → Push". Chains the
-        /// same three real command paths already in use elsewhere on this panel: a
-        /// per-file `git add` for whatever's checked (BtnGitStageSelected_Click's own
-        /// pipeline), the real commit body (DoGitCommitAsync, shared with
-        /// BtnGitCommit_Click), then `git push` (BtnGitPush_Click's own command) —
-        /// no new git-command mechanism.
+        /// Git #2575 — one-click "Stage (if needed) → Commit → Push". Git #2987 moved the
+        /// staging decision (checked rows if any were explicitly selected, otherwise
+        /// everything shown, VS Code's default-stage-all convention) into DoGitCommitAsync
+        /// itself — shared with BtnGitCommit_Click — so this just chains commit then
+        /// `git push` (BtnGitPush_Click's own command) with no separate staging step here.
         /// </summary>
         private async void BtnGitCommitAndPush_Click(object sender, RoutedEventArgs e)
         {
-            var paths = _lastUnstagedItems.Where(i => i.IsSelected).Select(i => i.RelativePath).ToList();
-            foreach (var path in paths)
-            {
-                await RunGitCommand($"add \"{path}\"");
-            }
-
             bool committed = await DoGitCommitAsync();
             if (!committed) return;
 
