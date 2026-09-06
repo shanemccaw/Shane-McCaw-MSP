@@ -44,7 +44,14 @@ namespace BuildConsole.Services
             var num = githubNumber.Value;
             if (num <= 0) return;
 
-            _ = Task.Run(async () =>
+            // Git #3022 — on a cold start, orphan recovery fires one of these board-Status moves per
+            // crashed build, all at once, alongside every other independent startup GitHub burst
+            // (Home reconcile, In-Flight tile, blocked-by sweep, title warm-up). Route the mirror's
+            // real GitHub work through the global cold-start coordinator so it staggers against the
+            // rest instead of adding to the simultaneous burst that trips the #2815 circuit. Still
+            // fire-and-forget, and a pure pass-through once the cold-start window elapses — a
+            // steady-state completion/park mirror behaves exactly as before.
+            _ = Task.Run(() => StartupGitHubCoordinator.RunAsync($"board mirror #{num} ({stateLabel})", async () =>
             {
                 try
                 {
@@ -58,7 +65,7 @@ namespace BuildConsole.Services
                 {
                     ActivityLog.Log(logChannel, $"{stateLabel}: couldn't move Git #{num}'s board Status: {ex.Message}");
                 }
-            });
+            }));
         }
 
         /// <summary>

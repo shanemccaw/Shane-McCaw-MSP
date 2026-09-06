@@ -75,6 +75,27 @@ namespace BuildConsole.Services
         private static readonly TimeSpan ProbeLease = TimeSpan.FromSeconds(30);
 
         /// <summary>
+        /// Git #3022 — a PURE read of whether the breaker is currently in its OPEN backoff
+        /// window (calls are being suppressed right now), with NO side effects. Unlike
+        /// <see cref="ShouldShortCircuit"/> it never leases the half-open probe and never logs,
+        /// so it is safe to poll cheaply. Lets a heavy batch operation (e.g. the Git Board
+        /// blocked-by sweep) decide to skip itself while the breaker is open rather than firing
+        /// hundreds of calls that will all short-circuit to synthetic 403s and silently corrupt
+        /// its own baseline (the #3022 whammy-flood artifact). Reports false when the window has
+        /// elapsed (HALF-OPEN, ready to re-probe) — that is a "go" for the next real call.
+        /// </summary>
+        public static bool IsOpen
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _openUntilUtc != DateTime.MinValue && DateTime.UtcNow < _openUntilUtc;
+                }
+            }
+        }
+
+        /// <summary>
         /// True if a real GitHub call should be SUPPRESSED right now.
         ///
         /// Git #2867 — the breaker has three real states, not two:

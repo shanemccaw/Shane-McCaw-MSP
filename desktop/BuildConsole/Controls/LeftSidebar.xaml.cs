@@ -2313,8 +2313,41 @@ namespace BuildConsole.Controls
         private async System.Threading.Tasks.Task EnrichBlockedStatusAsync(string pat)
         {
             if (DateTime.UtcNow - _lastBlockedEnrichUtc < BlockedEnrichMinInterval) return;
+
+            // Git #3022 — never run the sweep while the shared #2815 rate-limit circuit is OPEN.
+            // Every blocked_by call would short-circuit to a synthetic 403; GetBlockedByAsync only
+            // catches 404, so the 403 propagates into this sweep's per-issue catch, which leaves the
+            // SEEDED (false) value untouched. A rate-limited sweep therefore silently records a
+            // false-empty _knownBlockedIssueNumbers baseline — and the next clean sweep then sees the
+            // entire real blocked set as "newly blocked" and floods the Whammy animation (the exact
+            // 116-issue artifact #3022 traces to the 18.4s rate-limited sweep). Skipping here also
+            // saves that whole wasted 18.4s of suppressed calls. Deliberately does NOT advance
+            // _lastBlockedEnrichUtc, so the next board refresh re-attempts the moment the circuit
+            // closes rather than waiting out the throttle on a sweep that never really ran. The
+            // #3022 cold-start coordinator below is what keeps the circuit from opening in the first
+            // place; this is the belt-and-suspenders guard for the rarer case where it already is.
+            if (Services.GitHubRateLimitCircuit.IsOpen)
+            {
+                ActivityLog.Log("git-board.data",
+                    "blocked-by sweep skipped — #2815 rate-limit circuit is open; deferring so it can't record a false-empty blocked baseline (the #3022 whammy-flood artifact). Re-runs on the next board refresh once the circuit closes.");
+                return;
+            }
+
             _lastBlockedEnrichUtc = DateTime.UtcNow;
 
+            // Git #3022 — the blocked-by sweep is the single biggest GitHub load on a cold start
+            // (one blocked_by REST call per open issue — ~528 at current scale). Run it through the
+            // global cold-start coordinator so it doesn't overlap the other independent startup
+            // subsystems' bursts (Home reconcile, In-Flight tile, orphan mirrors, title warm-up) and
+            // collectively trip the #2815 circuit. Its own internal concurrency=6 gate is preserved
+            // inside this slot; the coordinator only prevents DIFFERENT subsystems from overlapping,
+            // and is a pure pass-through once the cold-start window has elapsed (steady-state manual
+            // refreshes are never delayed).
+            await Services.StartupGitHubCoordinator.RunAsync("blocked-by sweep", () => EnrichBlockedStatusCoreAsync(pat));
+        }
+
+        private async System.Threading.Tasks.Task EnrichBlockedStatusCoreAsync(string pat)
+        {
             var openIssues = _milestones.SelectMany(m => m.Epics).SelectMany(e => e.Issues)
                 .Where(i => i.Status != "CLOSED").ToList();
             if (openIssues.Count == 0) return;

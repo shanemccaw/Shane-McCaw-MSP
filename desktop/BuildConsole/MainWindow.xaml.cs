@@ -4192,30 +4192,40 @@ namespace BuildConsole
                 {
                     try
                     {
-                        _homeOpenIssueNumbers = await BuildConsole.Services.GitHubIssuesService.GetOpenIssueNumbersAsync();
-                        BuildConsole.Services.ActivityLog.Log("github.manual-refresh",
-                            $"Home queue/board reconciliation [Home-tab open/refresh]: {_homeOpenIssueNumbers.Count} open issue number(s) via gh CLI");
-
-                        // Git #1469 — same manual-refresh moment promotes every queue row
-                        // sitting in Verifying whose real GitHub issue has now closed to
-                        // real Done. Reuses the open-issue set just fetched above — no
-                        // extra `gh` call.
-                        if (_queueDb != null)
+                        // Git #3022 — on a cold start this whole GitHub block (a ~500-number `gh`
+                        // open-issue list + a board reconcile) fires alongside every other
+                        // independent startup subsystem's own GitHub burst. Run it as ONE operation
+                        // through the global cold-start coordinator so it staggers against the rest
+                        // instead of piling onto the simultaneous burst that trips the #2815 circuit.
+                        // Pure pass-through once the cold-start window elapses, so a mid-session manual
+                        // Home refresh is unaffected.
+                        await BuildConsole.Services.StartupGitHubCoordinator.RunAsync("Home queue/board reconciliation", async () =>
                         {
-                            var promoted = await _queueDb.PromoteVerifyingToDoneAsync(_homeOpenIssueNumbers);
-                            if (promoted.Count > 0)
-                            {
-                                BuildConsole.Services.ActivityLog.Log("github.manual-refresh",
-                                    $"Verifying → Done [Home-tab open/refresh]: {promoted.Count} queue item(s) — " +
-                                    string.Join(", ", promoted.Select(p => $"#{p.Id} (GH #{p.GithubNumber})")));
-                            }
+                            _homeOpenIssueNumbers = await BuildConsole.Services.GitHubIssuesService.GetOpenIssueNumbersAsync();
+                            BuildConsole.Services.ActivityLog.Log("github.manual-refresh",
+                                $"Home queue/board reconciliation [Home-tab open/refresh]: {_homeOpenIssueNumbers.Count} open issue number(s) via gh CLI");
 
-                            // Git #2136 / #2486 — same manual-refresh moment reconciles any pre-
-                            // dispatch row (Verifying AND still-queued) whose REAL board Status
-                            // column moved (Shane parked / crashed / marked Done, or pulled a queued
-                            // item back to Backlog). Git is the database; this is the #1867 fix.
-                            await BuildConsole.Services.BoardStatusSync.ReconcileQueueAgainstBoardAsync(_queueDb, "Home-tab refresh");
-                        }
+                            // Git #1469 — same manual-refresh moment promotes every queue row
+                            // sitting in Verifying whose real GitHub issue has now closed to
+                            // real Done. Reuses the open-issue set just fetched above — no
+                            // extra `gh` call.
+                            if (_queueDb != null)
+                            {
+                                var promoted = await _queueDb.PromoteVerifyingToDoneAsync(_homeOpenIssueNumbers);
+                                if (promoted.Count > 0)
+                                {
+                                    BuildConsole.Services.ActivityLog.Log("github.manual-refresh",
+                                        $"Verifying → Done [Home-tab open/refresh]: {promoted.Count} queue item(s) — " +
+                                        string.Join(", ", promoted.Select(p => $"#{p.Id} (GH #{p.GithubNumber})")));
+                                }
+
+                                // Git #2136 / #2486 — same manual-refresh moment reconciles any pre-
+                                // dispatch row (Verifying AND still-queued) whose REAL board Status
+                                // column moved (Shane parked / crashed / marked Done, or pulled a queued
+                                // item back to Backlog). Git is the database; this is the #1867 fix.
+                                await BuildConsole.Services.BoardStatusSync.ReconcileQueueAgainstBoardAsync(_queueDb, "Home-tab refresh");
+                            }
+                        });
                     }
                     catch { /* keep the last-known open-issue set */ }
                 }

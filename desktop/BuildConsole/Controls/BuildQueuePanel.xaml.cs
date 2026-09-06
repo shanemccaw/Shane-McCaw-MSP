@@ -450,7 +450,12 @@ namespace BuildConsole.Controls
         private async System.Threading.Tasks.Task RefreshInFlightIssuesAsync(string trigger)
         {
             List<Services.GitHubIssueSummary> issues;
-            try { issues = await Services.GitHubIssuesService.ListOpenByLabelAsync("in-flight"); }
+            // Git #3022 — the In-Flight tile's initial cold-start load is one of the independent
+            // startup GitHub bursts (a `gh issue list --label in-flight` call). Route it through the
+            // global cold-start coordinator so it staggers against the other startup subsystems
+            // instead of firing alongside them; pure pass-through once the cold-start window elapses,
+            // so a mid-session manual refresh is unaffected.
+            try { issues = await Services.StartupGitHubCoordinator.RunAsync("In-Flight tile", () => Services.GitHubIssuesService.ListOpenByLabelAsync("in-flight")); }
             catch { ActivityLog.Log("github.manual-refresh", $"In-Flight tile [{trigger}]: gh CLI fetch FAILED"); return; }
             ActivityLog.Log("github.manual-refresh", $"In-Flight tile [{trigger}]: {issues.Count} open in-flight issue(s) via gh CLI");
 
@@ -5303,6 +5308,7 @@ namespace BuildConsole.Controls
                 .Distinct()
                 .ToList();
 
+            var toFetch = new List<int>();
             foreach (var num in issueNumbers)
             {
                 bool alreadyCached;
@@ -5335,8 +5341,28 @@ namespace BuildConsole.Controls
                     {
                         _pendingFetches.Add(num);
                     }
-                    _ = FetchAndCacheIssueTitleAsync(num);
+                    toFetch.Add(num);
                 }
+            }
+
+            if (toFetch.Count == 0) return;
+
+            // Git #3022 — during a cold start, this warm-up's dozens of individual `gh issue view`
+            // calls are one of the independent startup GitHub bursts. Batch the whole batch as ONE
+            // coordinated op so it runs AFTER (staggered against) the heavier startup subsystems on
+            // the same global gate rather than joining their simultaneous burst. Inside this slot the
+            // fetches still run at most #2890's MaxConcurrentTitleFetches at a time. Fire-and-forget
+            // (this method is void) — titles are cosmetic ghost-card labels the queue's own refresh
+            // keeps warm. Outside the cold-start window it's the unchanged per-number fire-and-forget.
+            if (Services.StartupGitHubCoordinator.IsColdStartWindow)
+            {
+                _ = Services.StartupGitHubCoordinator.RunAsync("issue-title warm-up",
+                    () => System.Threading.Tasks.Task.WhenAll(toFetch.Select(FetchAndCacheIssueTitleAsync)));
+            }
+            else
+            {
+                foreach (var num in toFetch)
+                    _ = FetchAndCacheIssueTitleAsync(num);
             }
         }
 
