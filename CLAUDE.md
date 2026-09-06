@@ -749,6 +749,25 @@ you into applying a change against the PROD app registration, production Key Vau
 `ca-ps-execution`, or a Staging/Production deploy (that is always a #1281 plan, never
 a same-session apply).
 
+### The sanctioned destructive-write test target (Git #2840)
+
+Because that tenant is also Shane's real production M365 tenant, a **destructive
+per-user Graph write** (delete a user's registered MFA methods, revoke sessions,
+disable sign-in, force a password reset) had no safe target by default — which is why
+#1899 shipped its DELETE fan-out unit-tested but never once fired. One dedicated,
+non-privileged, unlicensed synthetic identity now exists for exactly this:
+
+- **`zz-test-graphwrite-01@mccawsoft2.onmicrosoft.com`** — objectId
+  `bdb21dc3-146a-4d97-a128-a2b8ff618d35`. No directory roles, no group memberships,
+  no licences. Driven by `scripts/azure/testbed-test-user-2840.mjs`; full details in
+  [`docs/testbed-destructive-write-test-user-2840.md`](docs/testbed-destructive-write-test-user-2840.md).
+
+**`zz-test-*@mccawsoft2.onmicrosoft.com` is a reserved prefix for synthetic test
+identities.** Target one of those for this class of write — never Shane's own account,
+never a real employee, and never "no target at all." Provisioning a *further* test
+identity is still a real tenant mutation: it goes through the DEV app registration,
+uses the same reserved naming, and gets documented the same way.
+
 ## Database
 
 - **Why this section no longer points at hosted Neon:** the hosted Neon Postgres instance previously used for local dev hit its free-plan monthly data-transfer quota and went unreachable (compute suspended, real, confirmed) — a real operational lesson about relying on a shared/limited hosted resource for high-frequency local dev traffic (Git #1209). Shane has since installed PostgreSQL 18 locally, and local dev now reads/writes that instance instead. The underlying philosophy is unchanged: agents connect directly for routine local dev/query verification rather than deferring everything to Shane — only the connection target changed.

@@ -250,6 +250,15 @@ frontend to wire it into yet. Everything below was verified with real Graph call
 against the testbed tenant (mccawsoft2.onmicrosoft.com,
 `c4c814d4-3afe-441e-9145-62461d0a4fd3`), not against documentation.
 
+> **Not a fix for the constraint below (#2840, 2026-09-06).** A sanctioned synthetic M365
+> identity now exists in this tenant —
+> `zz-test-graphwrite-01@mccawsoft2.onmicrosoft.com` (objectId
+> `bdb21dc3-146a-4d97-a128-a2b8ff618d35`), documented in
+> [`testbed-destructive-write-test-user-2840.md`](testbed-destructive-write-test-user-2840.md).
+> It exists so destructive **per-user Graph writes** can be exercised safely; it is
+> unlicensed and has no row in the platform's `users` table, so it does **not** close the
+> portal-identity-link gap described immediately below.
+
 **A structural constraint applies to the two Microsoft-365-sourced items (password age,
 failed sign-ins) and to device compliance:** portal users have no verified identity
 link to an M365 user object. A direct query of the testbed tenant's `users` rows
