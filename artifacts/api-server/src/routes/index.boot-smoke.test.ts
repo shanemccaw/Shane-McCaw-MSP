@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // #2881 — process guard against the entire "a route file's module-scope
 // evaluation error reaches main undetected" failure class. The actual bug
@@ -18,6 +18,28 @@ import { describe, expect, it } from "vitest";
 // sized for that, not masking a hang.
 describe("routes/index boot smoke", () => {
   it("imports without throwing and exports a usable Express router", async () => {
+    // #3029 — stub the env vars module-scope code in the import graph reads
+    // at eval time, so this test is genuinely self-contained rather than
+    // depending on ambient environment state (a real DATABASE_URL, real AI
+    // integration creds, etc. happening to already be present in the shell
+    // that runs it). Values are fake/unreachable — nothing here needs a live
+    // connection, only presence.
+    // Port 1 has nothing listening, so any accidental module-scope query
+    // against this fails instantly with ECONNREFUSED instead of doing a
+    // real (if failing) auth round trip against whatever Postgres happens
+    // to be listening on the real default port in this environment.
+    vi.stubEnv("DATABASE_URL", "postgresql://user:pass@127.0.0.1:1/db");
+    vi.stubEnv(
+      "AI_INTEGRATIONS_ANTHROPIC_BASE_URL",
+      "https://example.invalid/anthropic",
+    );
+    vi.stubEnv("AI_INTEGRATIONS_ANTHROPIC_API_KEY", "test-anthropic-key");
+    vi.stubEnv(
+      "AI_INTEGRATIONS_OPENAI_BASE_URL",
+      "https://example.invalid/openai",
+    );
+    vi.stubEnv("AI_INTEGRATIONS_OPENAI_API_KEY", "test-openai-key");
+
     const mod = await import("./index");
     const router = mod.default;
 
