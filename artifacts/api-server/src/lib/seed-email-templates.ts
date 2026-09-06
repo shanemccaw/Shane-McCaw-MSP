@@ -71,6 +71,23 @@ const TEMPLATES: TemplateDefinition[] = [
   `,
   },
   {
+    slug: "consent-invite",
+    recipientType: "client",
+    name: "Consent Invite (Connect Microsoft 365)",
+    subject: "Connect your Microsoft 365 to get started with Shane McCaw Consulting",
+    variables: [
+      { name: "clientName", description: "Client's full name or email" },
+      { name: "consentLink", description: "Single-use Microsoft 365 admin-consent URL (expires in 72 hours)" },
+    ],
+    bodyHtml: `
+    <p>Hi {{clientName}},</p>
+    <p>Shane McCaw Consulting uses a secure connection to your Microsoft 365 environment to set up your client workspace. Ask your Microsoft 365 administrator to open the link below and approve the connection — your portal account is created the moment it's approved:</p>
+    <p style="margin:24px 0;"><a href="{{consentLink}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Connect Microsoft 365 →</a></p>
+    <p style="color:#888;font-size:13px;">This link is single-use and expires in 72 hours.</p>
+    <p>— Shane McCaw</p>
+  `,
+  },
+  {
     slug: "account-setup",
     recipientType: "client",
     name: "Account Setup (Welcome)",
