@@ -649,39 +649,47 @@ verified its merge but left three modified files behind has not finished.
 Never `git stash` as a way of ending a session. A stash is invisible to everyone else and to the
 next session in that worktree; it hides the problem rather than closing it.
 
-## Remote server access (SSH) — real, working, current
+## Remote server access (SSH) — BuildConsole-internal, gated; NOT an agent tool (Git #1840)
 
-Direct SSH access to the Replit dev server is real and confirmed working end
-to end (connection test, git fetch/pull, restart) — this supersedes any
-earlier assumption that a build session has no way to reach the live
-server or database directly. Implemented in
-`desktop/BuildConsole/Services/ReplitSshService.cs`.
+SSH access to the Replit dev server (connection test, git fetch/pull, restart,
+pending-migration read) is real and confirmed working — but it is a
+**BuildConsole-internal capability**, implemented in and reached only through
+`desktop/BuildConsole/Services/ReplitSshService.cs`. That single choke point
+enforces the Git #1828 gate: agent/`shaneapp://`-originated executions are
+**hard-locked to Dev** and can never reach Staging/Replit over SSH, regardless
+of any UI state. Staging is reachable only through Shane's explicit manual UI
+actions.
 
-Real connection pattern:
+### HARD RULE — an agent session must never invoke `ssh` (or the Replit key) directly
 
-```
-ssh -i "$HOME\.ssh\replit" -p 22 -n -T -o StrictHostKeyChecking=accept-new <replUser>@<replHost> "<command>"
-```
+The Git #1828 gate lives inside `ReplitSshService`. An agent build session also
+has a real shell, and shelling out to `ssh` directly — with any key, including
+the Replit private key on disk — **bypasses that gate entirely**. That bypass is
+exactly the residual vector Git #1840 was filed to close, and it is prohibited:
 
-Remote repo path: `/home/runner/workspace`. The real host/user/key-path
-values are environment-specific — confirm them from BuildConsole Settings
--> SSH & Remote (Replit) rather than hardcoding them.
+- **Do not run `ssh`, `scp`, `sftp`, or any equivalent from a build session** to
+  reach Replit/Staging (or any remote host) using an on-disk private key. Not for
+  git, not for a restart, not for a "read-only" query — no exception.
+- **Do not read, copy, decrypt, or otherwise handle the Replit SSH private key**,
+  and do not go looking in `%AppData%\BuildConsole\settings.json` or `~/.ssh` for
+  its path or contents. A key being readable on disk under the same Windows user
+  is not authorization to use it.
+- All legitimate Replit/Staging deploy + restart work is BuildConsole's own,
+  through the gated `ReplitSshService` (and its manual "Deploy to Staging" action).
+  A build session does not initiate it by hand.
 
-SSH is now the **preferred mechanism** for git-pull/restart operations,
-superseding the earlier HTTP-based #911/#805 deploy endpoints where SSH has
-confirmed replaced them (see #82/#87's migration to the SSH pull+build
-pre-step in `PostBuildDeployPipeline`).
+If a task genuinely seems to need remote/Replit access, that is a signal to stop
+and hand it to Shane — the same instinct that keeps production out of scope
+(HARD RULE below) — not to reach for `ssh` yourself.
 
-SSH also reaches the real database directly, not just git/build commands —
-but everything in this section is scoped to the **dev** server named above
-(`ReplitSshService`, the Replit dev environment). This updates the Database
-section below the same way `shaneapp://executeSql` did: the old "no direct
-DB access, always write SQL for Shane" default is obsolete *for that dev
-database*, and a build session can self-verify against it directly. Manual
-SQL handed to Shane remains the right fallback only for genuinely
-destructive/sensitive operations on that same dev database (irreversible
-bulk deletes, anything he'd reasonably want eyes-on first) — the same
-judgment call already established for `shaneapp://executeSql`.
+### Where remote *reads* actually belong for an agent
+
+- **Local dev DB work → the local Postgres `DATABASE_URL`** (see the Database
+  section). That is the agent's direct-verification path, and it is not SSH.
+- **Replit/Staging SQL debugging → `shaneapp://executeSql`**, which routes through
+  BuildConsole's own gated dev api-server over HTTP — *not* a raw SSH connection
+  and *not* the private key. That remains the sanctioned indirect path for the
+  Replit/Staging environment; direct SSH from a shell is not.
 
 ### HARD RULE — production is never in scope, under any framing
 
