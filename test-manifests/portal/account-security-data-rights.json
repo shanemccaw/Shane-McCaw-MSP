@@ -1,0 +1,90 @@
+{
+  "issue": 2996,
+  "feature": "Account security - the real artifacts/portal '/account-security' page (src/pages/account-security.tsx), part of #1595. This manifest covers #2996's own scope specifically: the two data-rights endpoints traced in Design/portal/design_handoff_full_site/docs/account-security-contract-pack.md - GET /api/portal/data-export (portal-privacy.ts, right to portability, requireAuth) and POST /api/portal/deletion-request (portal-privacy.ts, right to erasure, requireAuth) - plus the page's read-only supporting reads (GET /api/auth/mfa/enrollments, GET /api/auth/sessions, GET /api/auth/login-history) needed to render the page honestly. Change-password (#1675) and MFA self-service enrollment are a different sibling issue's scope and are deliberately left inert on this page per the design's own 'Not wired yet' copy - not covered here.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "WHAT THIS COVERS: all four reads (mfa/enrollments, sessions, login-history, data-export) and the deletion-request write are auth-gated as documented, and a logged-in customer gets the real payload shapes the page's useAccountSecurityLive hook consumes.",
+    "WHAT THIS DOES NOT COVER, AND WHY (no portal login page yet): artifacts/portal has no login page today (#1648) - App.tsx's RequireAuth renders an honest 'Sign in required' panel for an unauthenticated visitor, the same structural gap test-manifests/portal/customer-home-overview.json (#2921) already documents. The uiSteps below only assert what is honestly reachable today. apiTests exercise the full real backend directly with a real bearer token. Once a portal login page exists, extend this manifest with a real login block + goto '/account-security' + assert on real rendered data-testids (account-security-request-export / account-security-toggle-delete / account-security-submit-deletion are already on the page) - no code change needed on the page side.",
+    "DELETION-REQUEST IS NOT RUN DESTRUCTIVELY HERE: submitSelfServiceDeletionRequest() (lib/data-rights.ts) records a real request against the testbed account and notifies the platform operator - it is not reversible by this manifest, and running it for real against the shared TEST_PORTAL_EMAIL account on every regression pass would spam that notification path. Per this manifest's own 'genuinely can't be asserted programmatically without side effects on shared fixtures' allowance, the write path is verified by the auth-gate check (401 unauthenticated) and by code reading against portal-privacy.ts:274-303, not by a full 200 round-trip. The GET /api/portal/data-export read has no such side effect and IS run for real below.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use).",
+    "NOT YET RUN via shaneapp://runTest as of this build (2026-09-06, session for #2996): a real attempt was made (`shaneapp://runTest?file=account-security-data-rights.json`) and returned 'manifest not found or unparseable' — BuildConsole's local instance resolves test-manifests/ against the dev-server checkout, which does not yet have this file or the new page/route (this branch is not merged/deployed yet). Same structural gap #2921's own manifest documents for its uiSteps run. Verified instead by: real tsc --noEmit pass (0 errors) and a real `vite build` (succeeds) against artifacts/portal with this page + route added, plus direct reading of the route handlers this manifest targets (portal-privacy.ts, mfa.ts, auth.ts, session-tracking.ts) confirming the shapes the apiTests assert against. Re-run this manifest via shaneapp://runTest once the dev-server merge/restart cycle has picked up this branch."
+  ],
+
+  "apiTests": [
+    {
+      "name": "AUTH-GATE-1 - GET /api/auth/mfa/enrollments with no Authorization header returns 401 (requireAuth)",
+      "method": "GET",
+      "path": "/api/auth/mfa/enrollments",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-2 - GET /api/auth/sessions with no Authorization header returns 401 (requireAuth)",
+      "method": "GET",
+      "path": "/api/auth/sessions",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-3 - GET /api/portal/data-export with no Authorization header returns 401 (requireAuth)",
+      "method": "GET",
+      "path": "/api/portal/data-export",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-4 - POST /api/portal/deletion-request with no Authorization header returns 401 (requireAuth)",
+      "method": "POST",
+      "path": "/api/portal/deletion-request",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP - log in as the designated testbed portal account to obtain a real client bearer; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "MFA - an authenticated GET /api/auth/mfa/enrollments returns the real five-field shape (mfa.ts:363-370)",
+      "method": "GET",
+      "path": "/api/auth/mfa/enrollments",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.passkeyCount", "exists": true }
+    },
+    {
+      "name": "SESSIONS - an authenticated GET /api/auth/sessions returns a real array (possibly empty), never a fixture substitution",
+      "method": "GET",
+      "path": "/api/auth/sessions",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.sessions", "isArray": true }
+    },
+    {
+      "name": "LOGIN-HISTORY - an authenticated GET /api/auth/login-history returns a real array",
+      "method": "GET",
+      "path": "/api/auth/login-history",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.history", "isArray": true }
+    },
+    {
+      "name": "DATA-EXPORT (#2996's own scope, right to portability) - an authenticated GET /api/portal/data-export streams the real archive shape (portal-privacy.ts), including the retention notice text",
+      "method": "GET",
+      "path": "/api/portal/data-export",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.exportVersion", "exists": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/account-security" },
+    {
+      "name": "Unauthenticated visit: the shell route mounts and RequireAuth's honest sign-in-required panel renders (no portal login page exists yet - see notes)",
+      "action": "expect",
+      "selector": "h1",
+      "state": "visible",
+      "textContains": "Sign in required",
+      "critical": true
+    }
+  ]
+}

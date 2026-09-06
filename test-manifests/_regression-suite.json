@@ -88,6 +88,7 @@
     "portal/governance-area-cards.json",
     "portal/shell-systems.json",
     "portal/alerts-dropdown.json",
-    "portal/customer-home-overview.json"
+    "portal/customer-home-overview.json",
+    "portal/account-security-data-rights.json"
   ]
 }

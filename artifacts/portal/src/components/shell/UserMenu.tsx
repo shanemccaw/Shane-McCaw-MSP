@@ -20,7 +20,7 @@ const MSP_ROLE_LABEL: Partial<Record<MspRole, string>> = {
   Assessment: "Assessment",
 };
 
-function roleLabel(user: AuthUser): string {
+export function roleLabel(user: AuthUser): string {
   if (user.mspRole && MSP_ROLE_LABEL[user.mspRole]) return MSP_ROLE_LABEL[user.mspRole]!;
   return user.role === "admin" ? "Admin" : "Customer";
 }
@@ -139,7 +139,7 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
       <Divider />
       <div style={{ padding: "4px 6px" }}>
         <MenuRow
-          href={comingSoonHref("Account security", "account")}
+          href="/account-security"
           icon={ShieldCheck}
           label="Account security"
           sub="Password · MFA · active sessions"

@@ -9,6 +9,7 @@ import { PortalLayout } from "@/components/layout";
 import IndexPage from "@/pages/index";
 import ComingSoon from "@/pages/coming-soon";
 import SupportPage from "@/pages/support";
+import AccountSecurityPage from "@/pages/account-security";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -55,6 +56,7 @@ function AppRoutes() {
       <Switch>
         <Route path="/" component={IndexPage} />
         <Route path="/support" component={SupportPage} />
+        <Route path="/account-security" component={AccountSecurityPage} />
         <Route path="/coming-soon" component={ComingSoon} />
         <Route component={NotFound} />
       </Switch>
