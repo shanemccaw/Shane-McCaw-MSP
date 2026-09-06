@@ -22,6 +22,11 @@ Several screens include a **"real response state" switcher** at the top (visible
 - **`screenshots/`** — one PNG per screen, numbered to match the table below.
 - **`docs/`** — contract-pack markdown files. These are backend-extraction documents: for most modules, a pack traces every field and state shown on that screen back to the real API route and database schema (file:line citations). They are the single most reliable source for exact data shapes, validation rules, error states, and "what's real vs. not built yet." Read the relevant pack before implementing a screen.
 
+## Update log
+
+- **Security Plan** (`screens/Security Plan.dc.html`) — added the real customer-facing review + sign action: a sealed-but-unsigned version now shows a "Review and sign this version" CTA opening a typed full-name (+ optional title) panel. Signing never edits plan content, only attaches a signature to the already-sealed version. Backed by `docs/security-plan-contract-pack.md`.
+- **Configuration State** (`screens/Configuration State.dc.html`) — refreshed to the latest real snapshot numbers and workload roll-up, and added a new change-attribution panel: a verdict roll-up (attributed / accepted risk / contested / unattributed / ignored) on the changes-since-last-snapshot card, with the honest all-unattributed state explained in place rather than read as a defect. Backed by `docs/configuration-state-contract-pack.md`.
+
 ## Screen inventory
 
 | # | Screen | File | Contract pack | Notes |

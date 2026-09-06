@@ -117,9 +117,20 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
         </sc-if>
         <sc-if value="{{cmpFull}}" hint-placeholder-val="{{ true }}">
           <div style="display:flex;align-items:baseline;gap:9px;margin-top:11px;flex-wrap:wrap">
-            <span style="font-size:24px;font-weight:800;color:#f8fafc;font-variant-numeric:tabular-nums">340</span>
-            <span style="font-size:12px;color:#94a3b8">changes across 7 resource types</span>
-            <span onClick="{{ncClick}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#c2a63d;cursor:pointer">1,203 resource types could not be compared</span>
+            <span style="font-size:24px;font-weight:800;color:#f8fafc;font-variant-numeric:tabular-nums">{{changeCount}}</span>
+            <span style="font-size:12px;color:#94a3b8">changes across {{changeTypeCount}} resource types</span>
+            <span onClick="{{ncClick}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#c2a63d;cursor:pointer">{{notComparableCount}} resource types could not be compared</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;padding:11px 13px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.015)">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">EXPLAINED SINCE</span>
+            <sc-for list="{{attrPills}}" as="p" hint-placeholder-count="5">
+              <span title="{{p.tip}}" style="display:flex;align-items:center;gap:5px;border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:3px 9px;cursor:help">
+                <span style="font-size:11px;font-weight:800;color:{{p.ink}};font-variant-numeric:tabular-nums">{{p.n}}</span>
+                <span style="font-size:9.5px;font-weight:700;letter-spacing:.05em;color:#64748b">{{p.label}}</span>
+              </span>
+            </sc-for>
+            <span onClick="{{attrClick}}" style="margin-left:auto;font-size:10.5px;font-weight:600;color:#60a5fa;cursor:pointer">Why so many are unattributed</span>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
             <sc-for list="{{kindChips}}" as="k" hint-placeholder-count="5">
@@ -136,7 +147,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
               </div>
             </sc-for>
           </div>
-          <span style="display:block;font-size:10.5px;color:#475569;margin-top:8px;border-top:1px solid rgba(255,255,255,.05);padding-top:9px">80% of these changes are one telemetry resource. 0 suppressed by noise rules · 6 rules active.</span>
+          <span style="display:block;font-size:10.5px;color:#475569;margin-top:8px;border-top:1px solid rgba(255,255,255,.05);padding-top:9px">A third of these changes are one telemetry resource (secure scores). 0 suppressed by noise rules · 6 rules active.</span>
         </sc-if>
       </div>
 
@@ -156,7 +167,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
         </sc-for>
       </div>
 
-      <span style="font-size:10.5px;color:#475569">Read-only end to end — collections are triggered by your MSP as visible workflow runs. Snapshots accumulate; nothing is deleted.</span>
+      <span style="font-size:10.5px;color:#475569">Read-only end to end — collections are triggered by your MSP as visible workflow runs. Snapshots are pruned nightly to the most recent 20 per tenant; any snapshot referenced by a comparison or a known-good baseline is protected and never pruned.</span>
     </sc-if>
   </div>
 
@@ -200,7 +211,7 @@ class Component extends DCLogic {
 
     const cur = noCmp
       ? { id: 11, meta: "Captured 31 Aug 2026 · 12:22 · workflow · 3.5s · collector 1796.1", targeted: 2, c: 0, e: 0, p: 0, s: 0, f: 2, objects: "0 objects stored", frac: "None of it was readable — a measure of our reach, not of your configuration." }
-      : { id: 10, meta: "Captured 31 Aug 2026 · 01:51 · manual · 3m 43s · collector 1796.1", targeted: 1359, c: 93, e: 62, p: 1, s: 425, f: 778, objects: "50,176 objects stored", frac: "11.4% of the model was readable — a measure of our reach, not of your configuration." };
+      : { id: 110, meta: "Captured 4 Sep 2026 · 19:21 · manual · 2m 19s · collector 1796.1", targeted: 1092, c: 90, e: 61, p: 1, s: 23, f: 917, objects: "50,464 objects stored", frac: "13.8% of the model was readable — a measure of our reach, not of your configuration." };
     const answered = cur.c + cur.e;
     const segs = [seg(cur.c, cur.targeted, C.collected), seg(cur.e, cur.targeted, C.empty), seg(cur.p, cur.targeted, C.partial), seg(cur.s, cur.targeted, C.skipped), seg(cur.f, cur.targeted, C.failed)];
     const fmt = (n) => n.toLocaleString("en-US");
@@ -213,26 +224,22 @@ class Component extends DCLogic {
     ].map(([k, v, dot, ink, tip]) => ({ k, v: fmt(v), dot, ink, tip }));
 
     const WL = [
-      ["MicrosoftGraph", 854, 49357, 73, 45, 1, 0, 735, null],
-      ["Intune", 162, 0, 0, 0, 0, 128, 34, "Unavailable — not licensed"],
-      ["ExchangeOnline", 99, 515, 4, 0, 0, 95, 0, null],
-      ["AzureAD", 96, 76, 12, 15, 0, 61, 8, null],
-      ["Teams", 64, 25, 2, 0, 0, 62, 0, null],
-      ["SecurityCompliance", 39, 0, 0, 2, 0, 36, 1, null],
+      ["MicrosoftGraph", 852, 49627, 73, 45, 1, 0, 733, null],
+      ["ExchangeOnline", 59, 504, 1, 0, 0, 0, 58, null],
+      ["Microsoft365Admin", 3, 104, 1, 0, 0, 0, 2, null],
       ["SharePointOnline", 23, 99, 1, 0, 0, 22, 0, null],
-      ["Microsoft365Admin", 7, 104, 1, 0, 0, 6, 0, null],
-      ["Other", 4, 0, 0, 0, 0, 4, 0, null],
-      ["Planner", 3, 0, 0, 0, 0, 3, 0, null],
-      ["Defender", 2, 0, 0, 0, 0, 2, 0, null],
-      ["Microsoft365DSC", 2, 0, 0, 0, 0, 2, 0, null],
-      ["Azure", 1, 0, 0, 0, 0, 1, 0, null],
-      ["Commerce", 1, 0, 0, 0, 0, 1, 0, null],
-      ["Fabric", 1, 0, 0, 0, 0, 1, 0, null],
+      ["AzureAD", 35, 76, 12, 15, 0, 0, 8, null],
+      ["PublicDNS", 1, 36, 1, 0, 0, 0, 0, null],
+      ["Teams", 56, 18, 1, 0, 0, 0, 55, "Now genuinely attempted (was mostly skipped) — most answers are a real permission or licence refusal, not silence."],
+      ["SecurityCompliance", 28, 0, 0, 1, 0, 0, 27, null],
       ["OneDriveForBusiness", 1, 0, 0, 0, 0, 1, 0, null],
+      ["Intune", 34, 0, 0, 0, 0, 0, 34, "Unavailable — not licensed. This tenant carries only Mobile Device Management for Office 365, not full Intune."],
     ];
     const WL_NOTES = {
       Intune: "Microsoft Intune is not licensed on this tenant. The only Intune-family entitlement is Mobile Device Management for Office 365, a basic MDM capability that does not include Intune — the Intune endpoints refuse with the intune-backend-iis-503 signature.",
-      MicrosoftGraph: "Failures here are mostly permission_denied (272) and unknown_error (304). Every row keeps its raw HTTP evidence; 32 failures carry no wire evidence at all and only their reason text explains them.",
+      MicrosoftGraph: "Failures here are mostly permission_denied (227) and unknown_error (203, down from 304 — a classifier fix reclassified many into two new, more honest reasons). Every row keeps its raw HTTP evidence; 142 failures carry no wire evidence at all and only their reason text explains them.",
+      Teams: "63 of 65 previously-skipped Teams checks are now attempted with a real cmdlet catalog entry — the tenant's real answer is mostly a licence or permission refusal, which is more honest than 'no executor exists'.",
+      PublicDNS: "The newest read transport on the platform. One resource type, real TXT records read directly off the tenant's own public DNS — works end to end, not just declared.",
     };
     const workloads = (noCmp ? [] : WL).map(([name, types, objects, c, e, p, s, f, note]) => ({
       name, line: types + " types · " + fmt(objects) + " obj",
@@ -252,13 +259,13 @@ class Component extends DCLogic {
     }));
 
     const GROUPS = [
-      ["/security/secureScores", 273, false, "Daily telemetry — a new secure-score document appears on every collection.", [["object_added", "New score documents since the base snapshot"], ["property_changed", "currentScore and control scores updated on paired documents"]]],
-      ["/auditLogs/directoryAudits", 50, false, "New directory audit entries recorded between the two snapshots.", [["object_added", "New audit entries — an append-only log reads as additions"]]],
-      ["/applications", 8, false, null, [["property_changed", "web.redirectUriSettings[0].uri — replit.dev callback → www.shanemccaw.com callback, on 'MSP Platform — Multi-Tenant Consent'"], ["array_reordered", "web.redirectUris — same members, new order, both sides stored in full"]]],
-      ["/schemaExtensions", 5, true, "Partial on both sides — this resource hit the 50-page cap at 4,949 objects, so absences here are unknown, never deletions.", [["property_changed", "Changes only on objects present in both truncated sets"]]],
-      ["/admin/serviceAnnouncement/issues", 2, false, null, [["object_removed", "MV1243442 — 'Users may be unable to access the Suite navigation bar within Microsoft Viva Engage'"]]],
-      ["/servicePrincipals", 1, false, null, [["property_changed", "One property on one service principal"]]],
-      ["/organization", 1, false, null, [["property_changed", "One tenant-level property"]]],
+      ["/security/secureScores", 285, false, "Daily telemetry — a new secure-score document appears on every collection.", [["object_added", "New score documents since the base snapshot"], ["property_changed", "currentScore and control scores updated on paired documents"]]],
+      ["/auditLogs/directoryAudits", 149, false, "New directory audit entries recorded between the two snapshots.", [["object_added", "New audit entries — an append-only log reads as additions"]]],
+      ["/reports/identityAnalytics/groups", 108, false, null, [["property_changed", "Group identity-risk scores updated between the two snapshots"]]],
+      ["/schemaExtensions", 100, true, "Partial on both sides — this resource hit the 50-page cap at 5,000 objects, so absences here are unknown, never deletions.", [["property_changed", "Changes only on objects present in both truncated sets"]]],
+      ["/auditLogs/auditActivityTypes", 84, false, null, [["object_added", "New audit-activity-type documents"]]],
+      ["/admin/serviceAnnouncement/issues", 70, false, null, [["object_removed", "Resolved service-health issues no longer listed"], ["object_added", "New service-health issues opened"]]],
+      ["/reports/sla/azureADAuthentication", 59, false, null, [["property_changed", "Rolling authentication-SLA figures updated"]]],
     ];
     const changeGroups = GROUPS.map(([key, n, partial, note, samples]) => ({
       key, n: String(n), partial,
@@ -268,28 +275,56 @@ class Component extends DCLogic {
         note: (note ? note + " " : "") + "Rows keep their stored sequence — the order is part of the result.",
       }),
     }));
-    const kindChips = [["property_removed", 162], ["property_changed", 116], ["object_added", 52], ["object_indeterminate", 3], ["object_removed", 3], ["property_added", 2], ["array_reordered", 2]].map(([k, n]) => ({ k, n: String(n) }));
+    const kindChips = [["property_changed", 326], ["object_added", 240], ["property_removed", 165], ["property_added", 79], ["object_indeterminate", 51], ["object_removed", 21]].map(([k, n]) => ({ k, n: String(n) }));
+
+    // ── change attribution (#2759) — a verdict on every changed row: does a real
+    // Change Request or accepted Risk explain it. Zero CRs/risk decisions exist for
+    // this tenant today, so every real change reads unattributed — an honest fact
+    // about Change Control activity, not a broken attribution engine.
+    const ATTR = { attributed_change: 0, accepted_risk: 0, contested: 0, unattributed: 882, ignored: 0 };
+    const ATTR_INK = { attributed_change: "#34d399", accepted_risk: "#60a5fa", contested: "#c2a63d", unattributed: "#64748b", ignored: "#475569" };
+    const ATTR_LABEL = { attributed_change: "CHANGE REQUEST", accepted_risk: "ACCEPTED RISK", contested: "CONTESTED", unattributed: "UNATTRIBUTED", ignored: "IGNORED" };
+    const ATTR_TIP = {
+      attributed_change: "Covered by a real, executed Change Request.",
+      accepted_risk: "Covered by a real, active accepted-risk decision.",
+      contested: "Both a Change Request and an accepted risk cover this row — kept as its own state for a human to resolve, never auto-picked.",
+      unattributed: "Neither a Change Request nor an accepted risk explains this row yet.",
+      ignored: "Suppressed by a noise rule — kept as its own verdict, not folded into unattributed.",
+    };
+    const attrPills = Object.keys(ATTR).map(k => ({ n: String(ATTR[k]), label: ATTR_LABEL[k], ink: ATTR_INK[k], tip: ATTR_TIP[k] }));
+    const attrClick = () => this.openP({
+      title: "Why so many are unattributed",
+      state: "882 of 882 changes · attribution pass has run",
+      rows: [
+        { k: "No Change Requests exist for this tenant", v: "Zero msp_change_requests rows — nothing has ever been recorded as a planned, approved change" },
+        { k: "No accepted risks cover this tenant either", v: "The one risk-decision row on the platform belongs to a different tenant" },
+        { k: "This is not a defect in the attribution engine", v: "The pass ran, found nothing to match against, and reported that honestly — 0 explained is the correct answer today" },
+      ],
+      note: "As Change Control and the Risk Register start recording real activity for this tenant, the same rows will re-attribute on the next pass — attribution never blocks or edits the underlying comparison.",
+    });
 
     const ncClick = () => this.openP({
       title: "Could not be compared",
-      state: noCmp ? "1,359 of 1,359 resource types" : "1,203 of 1,359 resource types",
+      state: noCmp ? "1,092 of 1,092 resource types" : "1,210 of 1,360 resource-type pairs",
       rows: noCmp
         ? [{ k: "Head snapshot answered nothing", v: "2 targeted, both failed — no resource read on the new side" }]
-        : [{ k: "Failed on both sides · 778", v: "Neither snapshot could read these" }, { k: "Skipped on both sides · 425", v: "Not attempted on either side" }],
+        : [{ k: "Failed on both sides · 917", v: "Neither snapshot could read these" }, { k: "Skipped on both sides · 23", v: "Not attempted on either side" }, { k: "Registry shrank between the two snapshots", v: "1,210 pairs is lower coverage than it looks — a real, honest 20% shrink in what the registry now says is collectable, not new failures" }],
       note: "At least one side did not successfully read these resources, so no object-level or property-level difference can be asserted. This is explicitly not a report that anything was added or removed.",
     });
 
     const HIST = [
+      [110, "4 Sep · 19:21", "manual", "1,092 targeted · 151 answered · 50,464 objects"],
+      [66, "1 Sep · 09:12", "manual", "1,092 targeted · 148 answered · 50,301 objects"],
+      [59, "31 Aug · 22:40", "workflow", "1,092 targeted · 149 answered · 50,290 objects"],
       [11, "31 Aug · 12:22", "workflow", "2 targeted · none readable"],
       [10, "31 Aug · 01:51", "manual", "1,359 targeted · 155 answered · 50,176 objects"],
-      [9, "30 Aug · 22:04", "manual", "2 targeted · smoke run"],
-      [8, "30 Aug · 21:48", "manual", "1,359 targeted · 155 answered · 50,124 objects"],
     ];
     const HIST_NOTES = {
+      110: "The freshest full collection. Wall clock 2m 19s — faster than #10 despite reading a comparably-sized tenant, because far fewer no-executor types are targeted at all now.",
+      66: "Same registry generation as #110 and #59 — objects drift slightly run to run even when nothing about the tenant's real configuration changed.",
+      59: "First full collection under the corrected, smaller registry (1,092 vs 1,359 previously targeted).",
       11: "readableFraction 0 means we could read none of what was targeted — not a 0% score for your tenant.",
-      10: "The largest real collection to date. Wall clock 3m 43s, 34 MB of stored objects.",
-      9: "A 2-resource smoke run. Comparing it against a full snapshot yields 0 comparable — the honest answer is 'we could not look', not 'no changes'.",
-      8: "Status split identical to #10 (93 / 62 / 1 / 425 / 778) — the split is stable run to run; the object count is not.",
+      10: "The last collection under the old, larger registry before a classifier correction removed ~20% of it as never genuinely reachable. Wall clock 3m 43s, 34 MB of stored objects.",
     };
     const history = HIST.map(([id, when, trigger, line]) => ({
       id: String(id), when, trigger, line,
@@ -314,10 +349,12 @@ class Component extends DCLogic {
       segs, legend,
       fracLine: cur.frac,
       hasWl: workloads.length > 0,
-      wlCountLine: "16 workloads on this snapshot · click one for its unread reasons",
+      wlCountLine: "10 workloads on this snapshot · click one for its unread reasons",
       workloads,
       cmpMeta: noCmp ? "#10 → #11 · 31 Aug" : "#8 → #10 · two full snapshots, 30–31 Aug",
       cmpNone: noCmp, cmpFull: !noCmp,
+      changeCount: "882", changeTypeCount: "7", notComparableCount: "1,210",
+      attrPills, attrClick,
       kindChips, changeGroups, ncClick,
       history,
       lpOpen: !!lp,
