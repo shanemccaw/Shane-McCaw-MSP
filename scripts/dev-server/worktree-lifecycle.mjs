@@ -485,6 +485,81 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
   };
 }
 
+/** stat mtime in ms, best-effort — a missing/unreadable path contributes 0. */
+function safeMtimeMs(p) {
+  try {
+    return statSync(p).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Git #2537 — best-effort "most recent on-disk activity" for a worktree, used by the sweep
+ * as a liveness signal INDEPENDENT of the tracking record and the stored owner pid.
+ *
+ * The single-pid retention the sweep relied on has multiple realistic ways to fail while a
+ * session is genuinely live: the pid we stamp is `launched.Process.Id` (claude.exe), which
+ * can be a short-lived launcher distinct from the real long-lived worker (the process that
+ * sets CLAUDE_PID), so the stored pid dies while the session keeps running; and the record
+ * itself can be lost/mismatched, after which a recordless `agent/*` worktree falls through
+ * every record-gated check straight to removal. Both were live data-loss paths (#2537).
+ *
+ * A live session continuously writes to its worktree — the working tree, and git's own
+ * per-worktree HEAD/index/logs (a session runs git constantly) — so recent mtimes are
+ * positive evidence the worktree is live regardless of what the record/pid say. A genuinely
+ * completed or abandoned worktree stops being written to, so its activity ages past the
+ * grace and it is still reclaimed exactly as before. Never throws; returns 0 when nothing
+ * can be stat'd (an empty/gone dir contributes no false liveness).
+ *
+ * Deliberately shallow: a full recursive walk of a complete checkout every sweep would be
+ * far too expensive. The working-tree root plus its immediate entries catch top-level churn,
+ * and the per-worktree git dir's hot files catch the staging/commit activity a session leaves
+ * even without top-level file changes.
+ */
+export function worktreeLastActivityMs(wtPath) {
+  let newest = 0;
+  const bump = (p) => {
+    const m = safeMtimeMs(p);
+    if (m > newest) newest = m;
+  };
+  try {
+    if (!existsSync(wtPath)) return 0;
+    bump(wtPath);
+    let entries = [];
+    try {
+      entries = readdirSync(wtPath, { withFileTypes: true });
+    } catch {}
+    for (const e of entries) {
+      // node_modules / dist are junctioned shared dirs (Git #1372) — their mtimes reflect
+      // link creation or ANOTHER worktree's build, not this session's activity. Skip them.
+      if (e.name === "node_modules") continue;
+      bump(path.join(wtPath, e.name));
+    }
+    // A linked worktree's `.git` is a file `gitdir: <abs path>` pointing at
+    // <git-common-dir>/worktrees/<id>/, where git writes HEAD/index/logs on every
+    // status/add/commit/checkout — the signal a committing or staging session leaves
+    // even when no top-level working-tree entry changed.
+    const gitPointer = path.join(wtPath, ".git");
+    bump(gitPointer);
+    let gitDir = null;
+    try {
+      const raw = readFileSync(gitPointer, "utf8").trim();
+      const m = /^gitdir:\s*(.+)$/m.exec(raw);
+      if (m) gitDir = path.resolve(wtPath, m[1].trim());
+    } catch {}
+    if (gitDir) {
+      bump(gitDir);
+      for (const f of ["HEAD", "index", "ORIG_HEAD", "COMMIT_EDITMSG", "FETCH_HEAD", path.join("logs", "HEAD")]) {
+        bump(path.join(gitDir, f));
+      }
+    }
+  } catch {
+    /* best effort — a stat/readdir failure must never make a live worktree look dead */
+  }
+  return newest;
+}
+
 /**
  * Periodic / manual sweep: finds and removes worktrees not tied to active or recently-completed builds.
  *
@@ -542,8 +617,22 @@ export function sweepWorktrees(config, opts = {}) {
     // created-at grace, but its record was re-stamped (updateWorktreeRecord bumps lastActiveAt)
     // when it was provisioned/resumed — honouring that keeps a freshly-active worktree out of
     // the candidate list during the brief window before its resume re-attaches.
-    const lastTouch = Math.max(rec?.createdAt || 0, rec?.lastActiveAt || 0);
-    if (rec && !rec.keepForDebug && (now - lastTouch < maxAgeMs) && !force) {
+    //
+    // Git #2537 — ALSO fold in real on-disk activity, and drop the `rec &&` requirement, so this
+    // grace no longer depends on the tracking record existing or its stored owner-pid being the
+    // live process. A live session continuously writes to its worktree; that on-disk evidence
+    // retains it even when the record was lost/mismatched or the stamped pid is stale (the pid we
+    // stamp is claude.exe's launcher, which can die while the real session keeps running under
+    // another pid). This is the exact guarantee #2537 found violated — a live mid-build worktree
+    // swept out from under a running session. A genuinely completed/abandoned worktree stops
+    // being written to, so it still ages past the grace and is reclaimed exactly as before.
+    const lastTouch = Math.max(
+      rec?.createdAt || 0,
+      rec?.lastActiveAt || 0,
+      worktreeLastActivityMs(wt.path)
+    );
+    const keepForDebug = !!(rec && rec.keepForDebug);
+    if (!keepForDebug && lastTouch > 0 && (now - lastTouch < maxAgeMs) && !force) {
       retained.push({ path: wt.path, reason: `active recently (${Math.round((now - lastTouch) / 1000)}s ago < grace ${Math.round(maxAgeMs / 1000)}s)` });
       continue;
     }
