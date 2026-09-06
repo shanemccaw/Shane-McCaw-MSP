@@ -8,7 +8,8 @@
 //   node scripts/dev-server/bootstrap-server.mjs [--link] [--launch] [--base <ref>]
 //
 //   --link    junction node_modules + lib/*/dist from the main repo (fast; no
-//             per-worktree pnpm install). Omit to `pnpm install` yourself.
+//             per-worktree pnpm install; this is the default path -- see
+//             below). Omit only for genuine first-time repo-root setup.
 //   --launch  start the server (scripts/dev-all.mjs) after setup.
 //   --base    base ref for the dev-server branch (default: config.baseRef).
 //
@@ -86,7 +87,15 @@ async function main() {
       console.log(`  built ${libsBuilt.built.length} lib/*/dist project(s).`);
     }
   } else {
-    console.log(`  (skip --link) ensure deps exist: run \`pnpm install\` at repo root, or re-run with --link`);
+    // Git #1987/#1988: `pnpm install` is not a remedy for broken module resolution
+    // and is never prescribed for that -- on an unchanged lockfile it exits without
+    // walking a single symlink, so it cannot repair a dangling worktree junction,
+    // and a bare re-run refetches the ~1,120-package graph, a real metered cost.
+    // `--link` (junctions from the main repo, no install) is the intended default
+    // for a worktree; a real `pnpm install` at repo root is only for genuine
+    // first-time setup, and even then runs subject to the repo's .pnpmfile.cjs
+    // install gates -- it is not a fix for a resolution failure.
+    console.log(`  (skip --link) re-run with --link (recommended), or run \`pnpm install\` at repo root only for genuine first-time setup`);
   }
 
   if (a.launch) {
