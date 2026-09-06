@@ -221,5 +221,18 @@ namespace BuildConsole.Services
                 return remaining > TimeSpan.Zero ? (int)Math.Ceiling(remaining.TotalSeconds) : 0;
             }
         }
+
+        /// <summary>
+        /// Git #3011 — true whenever the breaker is anywhere other than fully CLOSED, i.e. currently
+        /// OPEN (still inside a backoff window) OR past that window and awaiting its next half-open
+        /// probe. Lets a caller with no GitHub call of its own to make right now — the queue
+        /// watcher's self-recovery probe — decide whether firing one is worth anything at all:
+        /// probing an already-CLOSED breaker would just be the exact redundant `gh` traffic Git
+        /// #3009 exists to avoid.
+        /// </summary>
+        public static bool IsTripped
+        {
+            get { lock (_gate) { return _openUntilUtc != DateTime.MinValue; } }
+        }
     }
 }

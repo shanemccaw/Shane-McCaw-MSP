@@ -469,6 +469,35 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #3011 — the demand-driven self-recovery probe called from TickAsync (see the call
+        /// site's own comment for the full "why"). No-ops immediately when the shared #2815 circuit
+        /// isn't tripped (<see cref="GitHubRateLimitCircuit.IsTripped"/> false) — a healthy circuit
+        /// costs nothing here. When it IS tripped, this fires the same live open-issue fetch the
+        /// claim path would have made on its own (<see cref="GitHubIssuesService.TryGetOpenIssueNumbersAsync"/>),
+        /// which — like every `gh` call — consults the circuit itself (<see cref="SubprocessRunner"/>)
+        /// before spawning: still-OPEN short-circuits instantly with no process, and only the single
+        /// half-open probe per window actually reaches GitHub and reports success/failure back to
+        /// the breaker. A successful probe is forwarded through <see cref="ApplyOpenIssueSet"/>, the
+        /// same Git #3009 snapshot path the Git Board's own fetch feeds, so a real claim later this
+        /// tick or next doesn't need a second live call for the same data. Best-effort: any
+        /// unexpected exception here is logged and swallowed — this is background self-repair, not a
+        /// claim, and must never fail TickAsync itself.
+        /// </summary>
+        private async Task MaybeSelfRecoveryProbeAsync()
+        {
+            if (!GitHubRateLimitCircuit.IsTripped) return;
+            try
+            {
+                var result = await GitHubIssuesService.TryGetOpenIssueNumbersAsync();
+                if (result.Success) ApplyOpenIssueSet(result.OpenNumbers);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("watcher", $"Git #3011: self-recovery probe threw ({ex.Message}) — circuit state is whatever the underlying gh call last recorded.");
+            }
+        }
+
+        /// <summary>
         /// Global "Queue Paused / Running" toggle — a per-instance, in-memory
         /// switch, separate from any individual build's own Stop. While paused,
         /// TickAsync still REAPS builds that finish (so completions/slot-frees
@@ -1698,6 +1727,28 @@ namespace BuildConsole.Services
                 // detected and failed automatically instead of needing a manual DB UPDATE. Placed
                 // before the _appReady/_paused gates so a phantom is cleared even while paused.
                 await MaybeSweepStuckRunningRowsAsync();
+
+                // Git #3011 — demand-driven, throttled self-recovery probe for the shared #2815
+                // rate-limit circuit. The claim path below (GetNextAsync via freeSlots) is the
+                // ONLY automatic thing that can close a tripped circuit from this side, and it only
+                // fires a live `gh` call when there's a free slot AND at least one candidate that
+                // actually needs blocker/own-issue verification (see
+                // BuildQueuePostgresClient.SelectClaimCandidatesAsync). A full queue (no free
+                // slots — the early `return` below) or a drained/all-unblocked queue (no candidate
+                // needs a live check) never reaches that call, and the Git Board's own fetch is
+                // manual-only (Shane, 2026-08-14 — LeftSidebar.xaml.cs), so nothing probes a
+                // half-open circuit until Shane clicks Refresh — confirmed ~31 real minutes stuck
+                // on 2026-09-05. Placed before the _appReady/_paused gates, same reasoning as the
+                // phantom-running sweep just above: this is background self-repair, not a claim, so
+                // it should recover the circuit even while paused or still starting up.
+                //
+                // Demand-driven: MaybeSelfRecoveryProbeAsync no-ops instantly unless
+                // GitHubRateLimitCircuit.IsTripped, so a healthy circuit costs nothing extra here —
+                // the exact redundant-traffic concern #3009 exists to avoid. Throttled by the
+                // circuit's own half-open lease (ShouldShortCircuit inside SubprocessRunner.RunAsync):
+                // every tick while still OPEN short-circuits instantly with no process spawn; only
+                // the single probe per half-open window actually reaches GitHub.
+                await MaybeSelfRecoveryProbeAsync();
 
                 // Git #1883 — hard gate: never claim/launch a NEW queued item until the app
                 // itself has signaled genuine full readiness (see MarkAppReady). Checked
