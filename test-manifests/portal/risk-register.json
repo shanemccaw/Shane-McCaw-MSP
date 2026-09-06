@@ -9,9 +9,9 @@
 
     "WHY NO HAPPY-PATH ACCEPT IS DRIVEN HERE: an acceptance is PERMANENT -- the route refuses a second one with 409 -- so a step that successfully accepts a risk would pass exactly once and then poison every subsequent run of this manifest. A real accept WAS proven end-to-end in-session against a locally-built copy of this exact commit (RBD-2026-103, seeded via lib/db/migrations/manual/2026-08-21-portal-v2-risk-register-testbed-seed.sql): 201 with the new status:'active' field present, an immediate second attempt refused 409, then the row was reset via direct SQL back to its seeded pending_signature/Open state so this manifest's own A3/A4 guards stay true on every run. That sequence is deliberately not a manifest step, for the same non-idempotency reason.",
 
-    "NO UI LOGIN FLOW EXISTS YET FOR artifacts/portal -- this is a known, already-documented cross-cutting gap (see test-manifests/chat/support-chat-active-cards.json's own note), not specific to this build. App.tsx's RequireAuth renders an honest 'Sign in required' panel for an unauthenticated visitor; there is no #email/#password form to drive via uiSteps the way the retired portal-v2 manifests do. Auth Core's real Sign-In screen (#2991, Feature #1648) is what closes this -- once it lands, extend this manifest's uiSteps with a real login block (matching other artifacts/portal manifests) ahead of a `goto /risk-register` and the data-testid selectors this build already ships (risk-row-toggle-<id>, risk-accept-name-<id>, risk-accept-statement-<id>, risk-accept-confirm-<id>, risk-accept-sign-<id>, policy-decision-row-<id>). No code change needed on the risk-register side when that happens.",
+    "AUTH CORE HAS LANDED (#2991, Feature #1648, #3061) -- login.tsx now ships real #email/#password inputs and a login-submit testid (verified this session, login.tsx:230/248/257), so this manifest drives a real login instead of only asserting the pre-auth honest empty state. This note previously said no login form existed yet; that premise is stale and is corrected here.",
 
-    "THE UI STEP BELOW THEREFORE ONLY ASSERTS WHAT IS HONESTLY REACHABLE TODAY: the route mounts and RequireAuth's honest empty state renders for an unauthenticated visitor -- same pattern #2519's manifest uses for /support.",
+    "WHY NO HAPPY-PATH ACCEPT SUBMIT IS DRIVEN VIA THE UI EITHER (same reasoning as the API-level A3/A4 guards above): an acceptance is permanent and the accept dialog's own submit would poison every subsequent run. The uiSteps below open the risk-accept-name/-statement/-confirm/-sign controls on an already-accepted seeded row (RBD-2026-104) to prove the real controls render, without ever clicking risk-accept-sign-<id>.",
 
     "SEEDED TEST DATA: the testbed tenant's real register content is seeded demonstration data (lib/db/migrations/manual/2026-08-21-portal-v2-risk-register-testbed-seed.sql, idempotent via ON CONFLICT), not organic assessment output -- the READ path, the SCOPING and the ACCEPT write path it exercises are real. Re-run that file if A1/A2 below drift.",
 
@@ -36,11 +36,35 @@
       "expect": { "status": 200, "jsonPath": "$.risks", "isArray": true }
     },
     {
+      "name": "A1b -- take the first real row's id, the value UI3 below proves reached the DOM.",
+      "method": "GET",
+      "path": "/api/portal/risk-register",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.risks", "isArray": true },
+      "extract": { "as": "firstRiskId", "jsonPath": "$.risks[0].id" }
+    },
+    {
+      "name": "A1c -- ...and its real title.",
+      "method": "GET",
+      "path": "/api/portal/risk-register",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.risks", "isArray": true },
+      "extract": { "as": "firstRiskTitle", "jsonPath": "$.risks[0].title" }
+    },
+    {
       "name": "A2 -- the policy-decisions view of the same table also answers 200 with an array.",
       "method": "GET",
       "path": "/api/portal/policy-decisions",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.decisions", "isArray": true }
+    },
+    {
+      "name": "A2b -- take the first real decision's id, the value UI7 below proves reached the DOM (decisions[] is derived from risks[], so this is the same rbdId shape as A1b).",
+      "method": "GET",
+      "path": "/api/portal/policy-decisions",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.decisions", "isArray": true },
+      "extract": { "as": "firstDecisionId", "jsonPath": "$.decisions[0].id" }
     },
     {
       "name": "A3 -- accepting an already-accepted seeded risk (RBD-2026-104, always signed by the seed) is refused 409, proving the write-once guard, idempotently re-runnable.",
@@ -68,17 +92,22 @@
   ],
 
   "uiSteps": [
-    {
-      "name": "UI1 -- an unauthenticated visitor to /risk-register sees the app's own honest sign-in-required panel (no login page exists yet -- see notes), not a crash or a silently-empty register.",
-      "action": "goto",
-      "target": "/portal/risk-register"
-    },
-    {
-      "name": "UI2 -- the honest gate renders.",
-      "action": "expect",
-      "selector": "body",
-      "textContains": "Sign in required",
-      "critical": true
-    }
+    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the real Risk Register page.", "action": "goto", "target": "/portal/risk-register" },
+    { "name": "UI1 -- the register renders.", "action": "expect", "selector": "body", "textContains": "Risk register", "critical": true },
+    { "name": "UI2 -- THE REAL-DATA ASSERTION. The row the ENDPOINT returned first is on screen, under its own real title. A page falling back to fixture/placeholder text has no element with this id at all.", "action": "expect", "selector": "[data-testid='risk-row-toggle-{{firstRiskId}}']", "textContains": "{{firstRiskTitle}}", "critical": true },
+    { "name": "UI3 -- toggling the real row open renders its detail (real testid the risk-register build ships).", "action": "click", "selector": "[data-testid='risk-row-toggle-{{firstRiskId}}']" },
+    { "name": "UI4 -- the row's WHAT IT IS detail is now visible, proving the toggle actually opened the row rather than no-op'ing.", "action": "expect", "selector": "body", "textContains": "WHAT IT IS" },
+
+    { "name": "open the seeded already-accepted row (RBD-2026-104, always signed by the seed -- see notes on why no accept submit is driven).", "action": "click", "selector": "[data-testid='risk-row-toggle-RBD-2026-104']" },
+    { "name": "UI5 -- the write-once acceptance record renders for an already-accepted row, never the accept-and-sign form.", "action": "expect", "selector": "body", "textContains": "Accepted by" },
+
+    { "name": "UI6 -- the policy-decisions view of the same register also rendered, keyed by the real decision id the ENDPOINT returned (real testid the risk-register build ships).", "action": "expect", "selector": "[data-testid='policy-decision-row-{{firstDecisionId}}']", "state": "visible" },
+    { "name": "UI7 -- the ledger of what this page deliberately does not do is on screen.", "action": "expect", "selector": "body", "textContains": "What this page deliberately does not do" }
   ]
 }
