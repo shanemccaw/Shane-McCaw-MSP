@@ -104,9 +104,67 @@ export function parseMergeBlockedFiles(text) {
 }
 
 /**
+ * Paths whose merge conflicts the coordinator is allowed to auto-resolve.
+ *
+ * build-journal/<id>.md are per-issue, one-writer-per-file, append-only session
+ * bookends (see build-journal/README.md). Independent agent sessions each ADD
+ * their own file, and the coordinator merges those agent-branch commits into the
+ * shared dev-server checkout one at a time. Two branches carrying divergent
+ * histories for the SAME build-journal path collide as `CONFLICT (add/add)` --
+ * the recurring #2830 / #3055 failure. The content of a build-journal file inside
+ * the dev-server checkout is throwaway documentation (the authoritative bookend
+ * history lives on origin/main), so a conflict confined ENTIRELY to these paths
+ * is always safe to resolve automatically. `.gitattributes` already declares
+ * `build-journal/*.md merge=union`, which resolves this at the git level in any
+ * checkout that carries the attribute; this predicate is the code-level backstop
+ * for a checkout that has not yet picked it up (e.g. the pre-existing divergence
+ * already sitting in C:\dev-server before this fix reaches its dev-server branch).
+ */
+function isAutoResolvableConflictPath(p) {
+  return /^build-journal\/[^/]+\.md$/.test(String(p || "").replace(/\\/g, "/"));
+}
+
+/** Unmerged (conflicted) paths after a failed merge, repo-relative, forward slashes. */
+function unmergedPaths(cwd) {
+  const r = git(cwd, ["diff", "--name-only", "--diff-filter=U"]);
+  if (r.code !== 0) return [];
+  return r.stdout
+    .split(/\r?\n/)
+    .map((s) => s.trim().replace(/\\/g, "/"))
+    .filter(Boolean);
+}
+
+/**
+ * If a merge failed with conflicts confined ENTIRELY to auto-resolvable
+ * build-journal paths, resolve each such path in favour of the incoming commit
+ * (--theirs: the change being landed; the dev-server copy is non-authoritative)
+ * and COMMIT the merge, leaving HEAD advanced and the tree clean. Returns the new
+ * HEAD sha on success, or null if the conflict set is empty or includes any path
+ * that is NOT auto-resolvable (in which case the caller aborts and reports
+ * honestly -- a real code conflict must never be silently swallowed).
+ */
+function tryAutoResolveMerge(cwd, message) {
+  const conflicts = unmergedPaths(cwd);
+  if (conflicts.length === 0) return null;
+  if (!conflicts.every(isAutoResolvableConflictPath)) return null; // mixed/real conflict -> caller aborts
+  for (const p of conflicts) {
+    // add/add has no base stage; --theirs takes the incoming (stage 3) version.
+    if (git(cwd, ["checkout", "--theirs", "--", p]).code !== 0) return null;
+    if (git(cwd, ["add", "--", p]).code !== 0) return null;
+  }
+  const commitArgs = ["commit", "--no-verify"];
+  if (message) commitArgs.push("-m", message);
+  else commitArgs.push("--no-edit");
+  if (git(cwd, commitArgs).code !== 0) return null;
+  return revParse(cwd, "HEAD");
+}
+
+/**
  * Merge `commit` into the branch currently checked out in `cwd`.
- * Returns { ok, ff, sha, stderr, autoRestored? }. On conflict it ABORTS the
- * merge so the worktree is left clean, and returns ok:false with the conflict text.
+ * Returns { ok, ff, sha, stderr, autoRestored?, autoResolved? }. On conflict it
+ * ABORTS the merge so the worktree is left clean, and returns ok:false with the
+ * conflict text -- EXCEPT when every conflicted path is an auto-resolvable
+ * build-journal bookend (#2830/#3055), which is resolved and committed instead.
  *
  * SELF-HEAL (Git #1395): the dedicated dev-server checkout legitimately carries
  * regeneratable local edits to dependency manifests (package.json / pnpm-lock.yaml
@@ -160,6 +218,22 @@ export function mergeNoEdit(cwd, commit, message) {
       autoRestored: autoRestored.length ? autoRestored : undefined,
     };
   }
+
+  // The merge failed. If every conflicted path is an auto-resolvable build-journal
+  // bookend (#2830/#3055), resolve them and complete the merge rather than aborting.
+  // A conflict touching anything else falls through to the honest abort+report below.
+  const resolvedSha = tryAutoResolveMerge(cwd, message);
+  if (resolvedSha) {
+    return {
+      ok: true,
+      ff: true,
+      sha: resolvedSha,
+      stderr: "",
+      autoRestored: autoRestored.length ? autoRestored : undefined,
+      autoResolved: true,
+    };
+  }
+
   // Leave the server checkout in a clean state -- never half-merged.
   git(cwd, ["merge", "--abort"]);
   return {

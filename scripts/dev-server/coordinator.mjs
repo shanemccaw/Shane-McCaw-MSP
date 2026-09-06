@@ -156,6 +156,7 @@ export async function runCycle(config, deps, opts = {}) {
         merged: true,
         commit: req.commit,
         ...(res.autoRestored ? { autoRestored: res.autoRestored } : {}),
+        ...(res.autoResolved ? { autoResolved: true } : {}),
       };
       merged.push(req);
     } else {
@@ -461,6 +462,7 @@ export async function runSetMemberCycle(config, deps, { commit, agentId, setName
   let status;
   let error;
   let autoRestored;
+  let autoResolved;
   if (!resolved) {
     status = "conflict";
     error = "unresolvable commit";
@@ -476,6 +478,7 @@ export async function runSetMemberCycle(config, deps, { commit, agentId, setName
     if (res.ok) {
       status = "merged";
       autoRestored = res.autoRestored;
+      autoResolved = res.autoResolved;
     } else {
       status = "conflict";
       error = res.stderr;
@@ -496,6 +499,7 @@ export async function runSetMemberCycle(config, deps, { commit, agentId, setName
     expected: set.expected,
     closed: set.closed,
     ...(autoRestored ? { autoRestored } : {}),
+    ...(autoResolved ? { autoResolved: true } : {}),
   });
 
   const fire = await maybeFireSetRestart(config, deps, setName, { byAgent: agentId || key });

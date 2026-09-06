@@ -1,5 +1,22 @@
 dev_full_dump.pgdump filter=lfs diff=lfs merge=lfs -text
 
+# #3055: build-journal/<id>.md are per-issue, one-writer-per-file, append-only
+# session bookends. Independent agent sessions each ADD their own file, and the
+# dev-server coordinator (scripts/dev-server/) merges those agent-branch commits
+# into the shared C:\dev-server checkout one at a time. Two branches that carry
+# divergent histories for the SAME build-journal/<id>.md path therefore produce a
+# `CONFLICT (add/add)` on merge -- the exact recurring failure #2830 patched by
+# hand for two specific files and #3055 hit again for another. The content of a
+# build-journal file inside the dev-server checkout is throwaway documentation
+# (the authoritative bookend history lives on origin/main), so a lossless union
+# is always a safe automatic resolution. `merge=union` makes git resolve both
+# add/add and modify/modify on these paths by taking lines from both sides with
+# no conflict markers, so the coordinator's merge-back never stalls on a bookend
+# again. (Belt-and-suspenders: scripts/dev-server/git.mjs also resolves a merge
+# whose conflicts are confined to these paths in code, covering any checkout that
+# has not yet picked up this attribute.)
+build-journal/*.md merge=union
+
 # #2938: shebang + CRLF makes a .mjs file un-importable from vitest/Vite on
 # Windows -- a bare "SyntaxError: Invalid or unexpected token" that blames the
 # wrong (importing) file, not the actual broken module. node --check and a

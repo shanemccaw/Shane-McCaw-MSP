@@ -20,6 +20,11 @@
 //   11. Restart holds (Git #1855) -- an active hold defers the coordinator's
 //       restart within a bounded grace window; the wait is genuine but never
 //       indefinite, so a forgotten/never-released hold can't wedge the fleet.
+//   12. build-journal add/add auto-resolves (#2830/#3055) -- two sessions each
+//       ADD build-journal/<id>.md with divergent content; the merge-back lands
+//       BOTH automatically, preserving every real code change, tree left clean.
+//   13. Mixed conflict (build-journal + real code) STILL aborts honestly -- the
+//       auto-resolve never swallows a genuine code conflict.
 
 import { spawnSync } from "node:child_process";
 import {
@@ -114,6 +119,25 @@ function applyEnv(env) {
   for (const [k, v] of Object.entries(env)) process.env[k] = v;
 }
 
+/**
+ * Env for a spawned request-restart.mjs child, with the AMBIENT build-set
+ * routing vars scrubbed. When this selftest runs inside a BuildConsole-launched
+ * `--buildSet` build, the session's own DEV_BUILD_SET / DEV_BUILD_SET_MEMBER /
+ * DEV_BUILD_SET_EXPECTED env vars are set (request-restart.mjs reads them, lines
+ * ~120-125). Inheriting them makes the ungrouped-queue scenarios (3) route every
+ * child into that ambient set instead of the plain queue -- so nothing lands in
+ * the queue the parent runCycle drains, restarts=0, and the coalescing assertion
+ * fails. Scrubbing them keeps each scenario's routing determined solely by its
+ * own flags, independent of how the selftest itself was launched.
+ */
+function childEnv(extra = {}) {
+  const env = { ...process.env, ...extra };
+  delete env.DEV_BUILD_SET;
+  delete env.DEV_BUILD_SET_MEMBER;
+  delete env.DEV_BUILD_SET_EXPECTED;
+  return env;
+}
+
 function restartCount(config) {
   if (!existsSync(config.restartsLog)) return 0;
   return readFileSync(config.restartsLog, "utf8").split(/\r?\n/).filter(Boolean).length;
@@ -170,7 +194,7 @@ async function main() {
     const child = spawnSync(
       process.execPath,
       [REQUEST_RESTART, "--commit", agents[0].sha, "--agent", "rejoin", "--worktree", repo, "--json"],
-      { env: { ...process.env }, encoding: "utf8" }
+      { env: childEnv(), encoding: "utf8" }
     );
     const res = JSON.parse(child.stdout || "{}");
     check("already-live request reports landed + joined", () =>
@@ -191,7 +215,7 @@ async function main() {
     cleanup.push(repo);
     const stateDir = path.join(repo, "_state");
     applyEnv(baseEnv(repo, stateDir)); // parent + inherited children resolve THIS repo's state dir
-    const env = { ...process.env };
+    const env = childEnv();
     const config = loadConfig({ cwd: repo });
 
     const { spawn } = await import("node:child_process");
@@ -402,7 +426,7 @@ async function main() {
     cleanup.push(repo);
     const stateDir = path.join(repo, "_state");
     applyEnv(baseEnv(repo, stateDir));
-    const env = { ...process.env };
+    const env = childEnv();
     const config = loadConfig({ cwd: repo });
     const SET = "xset";
 
@@ -571,6 +595,128 @@ async function main() {
       check("the restart still fires once the grace window elapses (never wedged forever)", () =>
         assert.ok(record.restarted, "expected the restart to proceed despite the still-active hold"));
     }
+  }
+
+  // ---------------------------------------------------------------
+  // Scenario 12: build-journal add/add AUTO-RESOLVES (#2830/#3055). Two
+  // independent sessions each ADD build-journal/2830.md with divergent content --
+  // the exact add/add shape that recurred after #2830's manual history repair.
+  // The coordinator's merge-back must land BOTH automatically (no manual conflict
+  // resolution), preserving every real code change, leaving the checkout clean.
+  // NOTE: this temp repo has NO `.gitattributes`, so this exercises the code-level
+  // backstop in mergeNoEdit -- not the `merge=union` attribute -- on purpose.
+  // ---------------------------------------------------------------
+  console.log("Scenario 12: build-journal add/add auto-resolves (#2830/#3055)");
+  {
+    const repo = mkdtempSync(path.join(os.tmpdir(), "dsst-bj-"));
+    cleanup.push(repo);
+    G(repo, ["init", "-q"]);
+    G(repo, ["config", "user.email", "selftest@example.com"]);
+    G(repo, ["config", "user.name", "Dev Server Selftest"]);
+    G(repo, ["config", "commit.gpgsign", "false"]);
+    writeFileSync(path.join(repo, "base.txt"), "base\n");
+    G(repo, ["add", "-A"]);
+    G(repo, ["commit", "-q", "-m", "initial"]);
+    G(repo, ["branch", "-m", "dev-server"]);
+    const initial = revParse(repo, "HEAD");
+
+    // Branch A: adds build-journal/2830.md (content A) + a real code file.
+    G(repo, ["checkout", "-q", "-b", "bjA", initial]);
+    mkdirSync(path.join(repo, "build-journal"), { recursive: true });
+    writeFileSync(path.join(repo, "build-journal", "2830.md"), "# 2830 A\nline-A\n");
+    writeFileSync(path.join(repo, "codeA.txt"), "A code\n");
+    G(repo, ["add", "-A"]); G(repo, ["commit", "-q", "-m", "A"]);
+    const shaA = revParse(repo, "HEAD");
+    G(repo, ["checkout", "-q", "dev-server"]);
+
+    // Branch B: adds build-journal/2830.md (DIVERGENT content B) + a different code file.
+    G(repo, ["checkout", "-q", "-b", "bjB", initial]);
+    mkdirSync(path.join(repo, "build-journal"), { recursive: true });
+    writeFileSync(path.join(repo, "build-journal", "2830.md"), "# 2830 B\nline-B\n");
+    writeFileSync(path.join(repo, "codeB.txt"), "B code\n");
+    G(repo, ["add", "-A"]); G(repo, ["commit", "-q", "-m", "B"]);
+    const shaB = revParse(repo, "HEAD");
+    G(repo, ["checkout", "-q", "dev-server"]);
+
+    const stateDir = path.join(repo, "_state");
+    applyEnv(baseEnv(repo, stateDir));
+    const config = loadConfig({ cwd: repo });
+    let restarts = 0;
+    const fakeRestart = async () => { restarts++; return { fake: true, ready: true }; };
+    const idA = enqueue(config, { agentId: "bjA", commit: shaA, worktree: repo });
+    const idB = enqueue(config, { agentId: "bjB", commit: shaB, worktree: repo });
+    await runCycle(config, { restart: fakeRestart });
+
+    const oA = outcomeFor(config, idA);
+    const oB = outcomeFor(config, idB);
+    check("both build-journal-colliding commits LAND (add/add auto-resolved, no manual fixup)", () =>
+      assert.ok(oA && oA.landed && oB && oB.landed, `oA=${JSON.stringify(oA)} oB=${JSON.stringify(oB)}`));
+    check("neither is reported as an add/add conflict", () =>
+      assert.ok(!oA.conflict && !oB.conflict, `oA=${JSON.stringify(oA)} oB=${JSON.stringify(oB)}`));
+    check("the colliding merge is flagged autoResolved", () =>
+      assert.ok(oA.autoResolved || oB.autoResolved, `expected one autoResolved: oA=${JSON.stringify(oA)} oB=${JSON.stringify(oB)}`));
+    check("both real code changes survive the auto-resolved merge (nothing lost)", () => {
+      const head = revParse(repo, "HEAD");
+      assert.ok(isAncestor(repo, shaA, head) && isAncestor(repo, shaB, head), "a member commit missing from HEAD");
+      assert.ok(existsSync(path.join(repo, "codeA.txt")) && existsSync(path.join(repo, "codeB.txt")), "a real code file was lost");
+    });
+    check("server checkout clean after auto-resolve (HEAD resolves, no MERGE_HEAD)", () => {
+      assert.ok(revParse(repo, "HEAD"), "HEAD unresolvable");
+      assert.ok(!existsSync(path.join(repo, ".git", "MERGE_HEAD")), "MERGE_HEAD present after auto-resolve");
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Scenario 13: a MIXED conflict (a build-journal add/add PLUS a real code
+  // conflict in the same merge) must STILL abort + report honestly -- the
+  // auto-resolve must never swallow a genuine code conflict just because a
+  // build-journal file also happens to conflict.
+  // ---------------------------------------------------------------
+  console.log("Scenario 13: mixed conflict (build-journal + real code) still aborts honestly");
+  {
+    const repo = mkdtempSync(path.join(os.tmpdir(), "dsst-mix-"));
+    cleanup.push(repo);
+    G(repo, ["init", "-q"]);
+    G(repo, ["config", "user.email", "selftest@example.com"]);
+    G(repo, ["config", "user.name", "Dev Server Selftest"]);
+    G(repo, ["config", "commit.gpgsign", "false"]);
+    writeFileSync(path.join(repo, "shared.txt"), "line0\n"); // a real code file both sides edit
+    G(repo, ["add", "-A"]);
+    G(repo, ["commit", "-q", "-m", "initial"]);
+    G(repo, ["branch", "-m", "dev-server"]);
+    const initial = revParse(repo, "HEAD");
+
+    G(repo, ["checkout", "-q", "-b", "mixA", initial]);
+    mkdirSync(path.join(repo, "build-journal"), { recursive: true });
+    writeFileSync(path.join(repo, "build-journal", "2830.md"), "# 2830 A\n");
+    writeFileSync(path.join(repo, "shared.txt"), "A-change\n");
+    G(repo, ["add", "-A"]); G(repo, ["commit", "-q", "-m", "A"]);
+    const shaA = revParse(repo, "HEAD");
+    G(repo, ["checkout", "-q", "dev-server"]);
+
+    G(repo, ["checkout", "-q", "-b", "mixB", initial]);
+    mkdirSync(path.join(repo, "build-journal"), { recursive: true });
+    writeFileSync(path.join(repo, "build-journal", "2830.md"), "# 2830 B\n");
+    writeFileSync(path.join(repo, "shared.txt"), "B-change\n");
+    G(repo, ["add", "-A"]); G(repo, ["commit", "-q", "-m", "B"]);
+    const shaB = revParse(repo, "HEAD");
+    G(repo, ["checkout", "-q", "dev-server"]);
+
+    const stateDir = path.join(repo, "_state");
+    applyEnv(baseEnv(repo, stateDir));
+    const config = loadConfig({ cwd: repo });
+    const fakeRestart = async () => ({ fake: true, ready: true });
+    const idA = enqueue(config, { agentId: "mixA", commit: shaA, worktree: repo });
+    const idB = enqueue(config, { agentId: "mixB", commit: shaB, worktree: repo });
+    await runCycle(config, { restart: fakeRestart });
+
+    const oA = outcomeFor(config, idA);
+    const oB = outcomeFor(config, idB);
+    check("first commit lands", () => assert.ok(oA && oA.landed, `oA=${JSON.stringify(oA)}`));
+    check("the mixed-conflict commit is NOT auto-resolved -- reported conflict + not landed", () =>
+      assert.ok(oB && !oB.landed && oB.conflict && !oB.autoResolved, `oB=${JSON.stringify(oB)}`));
+    check("server checkout left clean after the honest abort (no MERGE_HEAD)", () =>
+      assert.ok(!existsSync(path.join(repo, ".git", "MERGE_HEAD")), "MERGE_HEAD present -- merge not aborted"));
   }
 
   // ---------------------------------------------------------------
