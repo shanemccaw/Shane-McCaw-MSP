@@ -209,8 +209,13 @@ namespace BuildConsole.Services
     /// </summary>
     public class GitHubApiClient
     {
-        private const string Owner = "shanemccaw";
-        private const string Repo = "Shane-McCaw-MSP";
+        // Git #3069 — real settings-backed GitHub repo identity (multi-instance BuildConsole),
+        // not a hardcoded constant. Defaults to this repo's real owner/name (BuildConsoleSettings'
+        // own field defaults), so an existing/unconfigured settings.json behaves identically to
+        // the old hardcoded consts. A second instance launched with --instance <name> reads its
+        // own %AppData%\BuildConsole-<name>\settings.json here, so it targets its own real repo.
+        private static string Owner => BuildConsoleSettings.Load().GitHubOwner;
+        private static string Repo => BuildConsoleSettings.Load().GitHubRepoName;
 
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
@@ -1066,7 +1071,10 @@ namespace BuildConsole.Services
         // Field is looked up by name ("Status") in the query below rather than by its id
         // (PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0, the same field CLAUDE.md's mutation writes to)
         // since GraphQL's fieldValueByName takes a name, not an id.
-        private const string BatterUpProjectId = "PVT_kwHOEiBDdc4BeoiY";
+        // Git #3069 — real settings-backed board id (multi-instance BuildConsole); see the
+        // Owner/Repo properties above for the same reasoning. Default matches this repo's real
+        // "AI Batter Up" board (BuildConsoleSettings.BatterUpProjectId's own field default).
+        private static string BatterUpProjectId => BuildConsoleSettings.Load().BatterUpProjectId;
         private const string BatterUpOptionId = "09b1927f";
 
         /// <summary>

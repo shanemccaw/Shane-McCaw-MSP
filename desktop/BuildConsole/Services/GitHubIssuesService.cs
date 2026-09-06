@@ -56,7 +56,11 @@ namespace BuildConsole.Services
     /// </summary>
     public static class GitHubIssuesService
     {
-        private const string Repo = "shanemccaw/Shane-McCaw-MSP";
+        // Git #3069 — real settings-backed "owner/repo" (multi-instance BuildConsole); see
+        // GitHubApiClient's Owner/Repo properties for the same reasoning. Default matches this
+        // repo's real identity (BuildConsoleSettings' own field defaults), so an existing/
+        // unconfigured settings.json behaves identically to the old hardcoded const.
+        private static string Repo => BuildConsoleSettings.Load().GitHubOwnerRepo;
 
         /// <summary>Git #2195 — the one real issue URL construction used by any caller (the Floating
         /// Chat Window's side dock included) that needs to open an issue number without already

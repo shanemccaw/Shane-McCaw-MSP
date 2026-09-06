@@ -736,6 +736,31 @@ namespace BuildConsole.Services
         /// switched back on. A settings.json with no key present deserializes to false (hidden).</summary>
         public bool ShowUsageReadout { get; set; } = false;
 
+        // ── Git #3069 — real GitHub repo identity, moved off hardcoded constants ─────
+        // Shane wants a SECOND, separately-compiled BuildConsole instance pointed at a
+        // genuinely different real GitHub repo (a personal/vanity app), running in real
+        // parallel alongside this MSP instance. GitHubApiClient's Owner/Repo consts and its
+        // BatterUpProjectId const were the only real hardcoded GitHub-identity values
+        // blocking that — moved here as real settings so a second instance's own
+        // %AppData%\BuildConsole-<name>\settings.json (see SettingsDir above) can point at
+        // its own repo/board without touching this repo's. Defaults are the CURRENT MSP
+        // values, so an existing settings.json (no "gitHub*"/"batterUpProjectId" keys)
+        // deserializes with these intact and every existing caller keeps working unchanged.
+
+        /// <summary>GitHub repo owner/org (e.g. "shanemccaw"). Default is this repo's real owner.</summary>
+        public string GitHubOwner { get; set; } = "shanemccaw";
+
+        /// <summary>GitHub repo name (e.g. "Shane-McCaw-MSP"). Default is this repo's real name.</summary>
+        public string GitHubRepoName { get; set; } = "Shane-McCaw-MSP";
+
+        /// <summary>The real "owner/repo" string `gh` and GitHubIssuesService's REST/GraphQL calls take.</summary>
+        public string GitHubOwnerRepo => $"{GitHubOwner}/{GitHubRepoName}";
+
+        /// <summary>The real GitHub Projects v2 board node id the Batter Up / AI Batter Up panels
+        /// read and write against (<see cref="GitHubApiClient.GetBatterUpIssuesAsync"/> and friends).
+        /// Default is this repo's real "AI Batter Up" project board.</summary>
+        public string BatterUpProjectId { get; set; } = "PVT_kwHOEiBDdc4BeoiY";
+
         // ── Git #1978 — explicit repo-root override ───────────────────────────────
         /// <summary>
         /// Git #1978 — explicit override for the repo root (the MAIN checkout BuildConsole
@@ -751,8 +776,13 @@ namespace BuildConsole.Services
         /// </summary>
         public string RepoRootOverride { get; set; } = "";
 
+        // Git #3069 — multi-instance: a process launched with --instance <name> gets its OWN
+        // %AppData%\BuildConsole-<name>\ folder (own settings.json, never touching the default
+        // instance's). InstanceMode.InstanceName is decided once in App.OnStartup, before this
+        // is ever read. Omitting --instance leaves this "BuildConsole" exactly as before.
         private static string SettingsDir =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole");
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                string.IsNullOrEmpty(InstanceMode.InstanceName) ? "BuildConsole" : $"BuildConsole-{InstanceMode.InstanceName}");
 
         private static string SettingsPath => Path.Combine(SettingsDir, "settings.json");
 

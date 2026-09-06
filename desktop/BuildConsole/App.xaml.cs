@@ -34,6 +34,20 @@ namespace BuildConsole
         /// whole process lifetime — a static field so the GC never collects it out from under us.
         /// </summary>
         internal const string SingleInstanceMutexName = @"Global\ShaneMcCawBuildConsole_SingleInstance";
+
+        /// <summary>
+        /// Git #3069 — the mutex name this PROCESS actually claims, suffixed with the real
+        /// <see cref="Services.InstanceMode.InstanceName"/> when one was passed via
+        /// <c>--instance &lt;name&gt;</c>. A differently-named instance (e.g. <c>_vanity</c>) claims a
+        /// distinct mutex, so it runs concurrently with the default one instead of being refused
+        /// by <see cref="SingleInstanceMutexName"/>. Omitting --instance leaves this identical to
+        /// <see cref="SingleInstanceMutexName"/> — today's exact behavior, unchanged.
+        /// </summary>
+        internal static string EffectiveSingleInstanceMutexName =>
+            string.IsNullOrEmpty(Services.InstanceMode.InstanceName)
+                ? SingleInstanceMutexName
+                : SingleInstanceMutexName + "_" + Services.InstanceMode.InstanceName;
+
         /// <summary>
         /// Git #2141 — distinct non-zero exit code a blocked second instance exits with, so a
         /// calling script/agent can detect the refusal programmatically, not just from the text.
@@ -57,6 +71,13 @@ namespace BuildConsole
 
         protected override void OnStartup(StartupEventArgs e)
         {
+            // Git #3069 — decide the real --instance name FIRST, before anything below reads
+            // it: the single-instance mutex claimed a few lines down, and every
+            // BuildConsoleSettings.Load()/Save() call (the %AppData% folder it resolves to)
+            // for the rest of this process's lifetime. Omitting --instance leaves this "" and
+            // every consumer's suffix logic is a no-op — today's exact behavior, unchanged.
+            Services.InstanceMode.Initialize(e.Args);
+
             // ── shaneapp:// protocol launch handling (executeSql local trigger) ──
             // Windows hands a registered shaneapp:// URI to this exe as an arg. What
             // this process does with it depends on whether an instance is already up:
@@ -86,7 +107,7 @@ namespace BuildConsole
             // double-click / `dotnet run` / an agent running the exe directly to verify the UI.
             // (A courier that finds nothing running becomes the cold-start owner:
             // createdNew==true, so it is never refused.)
-            _singleInstanceMutex = new System.Threading.Mutex(true, SingleInstanceMutexName, out bool createdNew);
+            _singleInstanceMutex = new System.Threading.Mutex(true, EffectiveSingleInstanceMutexName, out bool createdNew);
             if (!createdNew && protocolUri == null)
             {
                 // Bring Shane's real window forward, tell any agent reading this to stop, and

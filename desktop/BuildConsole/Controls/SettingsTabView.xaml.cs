@@ -72,6 +72,14 @@ namespace BuildConsole.Controls
             ShowUsageReadoutCheck.IsChecked = savedSettings.ShowUsageReadout;
             PinnedQuestionDetectionEnabledCheck.IsChecked = savedSettings.PinnedQuestionDetectionEnabled;
 
+            // Git #3069 — multi-instance BuildConsole: real repo/board identity.
+            GitHubOwnerBox.Text = savedSettings.GitHubOwner;
+            GitHubRepoNameBox.Text = savedSettings.GitHubRepoName;
+            BatterUpProjectIdBox.Text = savedSettings.BatterUpProjectId;
+            InstanceNameText.Text = string.IsNullOrEmpty(InstanceMode.InstanceName)
+                ? "This is the DEFAULT instance (no --instance flag)."
+                : $"This is the \"{InstanceMode.InstanceName}\" instance (launched with --instance {InstanceMode.InstanceName}) — its own settings.json under %AppData%\\BuildConsole-{InstanceMode.InstanceName}\\.";
+
             // Git #1986 — Home/Rental location gate. Only "Rental" (case-insensitive) reads as
             // metered; every other value, including a missing/corrupt setting, seeds Home (index 0),
             // per the Home-is-the-safe-default rule.
@@ -1061,6 +1069,29 @@ namespace BuildConsole.Controls
             SecondaryClaudeConfigDirSavedText.Text = string.IsNullOrEmpty(path)
                 ? "Saved (blank — will use the ~/.claude-secondary default)."
                 : $"Secondary account path saved: {path}";
+        }
+
+        /// <summary>Git #3069 — persist this instance's real GitHub repo owner/name and Batter Up
+        /// project board id. Blank owner/repo falls back to this repo's real defaults on next load;
+        /// a blank board id likewise falls back to this repo's real "AI Batter Up" board.</summary>
+        private void BtnSaveGitHubRepoIdentity_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsoleSettings.Load();
+            var owner = GitHubOwnerBox.Text.Trim();
+            var repoName = GitHubRepoNameBox.Text.Trim();
+            var boardId = BatterUpProjectIdBox.Text.Trim();
+
+            settings.GitHubOwner = string.IsNullOrEmpty(owner) ? "shanemccaw" : owner;
+            settings.GitHubRepoName = string.IsNullOrEmpty(repoName) ? "Shane-McCaw-MSP" : repoName;
+            settings.BatterUpProjectId = string.IsNullOrEmpty(boardId) ? "PVT_kwHOEiBDdc4BeoiY" : boardId;
+            settings.Save();
+
+            GitHubOwnerBox.Text = settings.GitHubOwner;
+            GitHubRepoNameBox.Text = settings.GitHubRepoName;
+            BatterUpProjectIdBox.Text = settings.BatterUpProjectId;
+            GitHubRepoIdentitySavedText.Text =
+                $"✓ Saved — {settings.GitHubOwnerRepo}, board {settings.BatterUpProjectId}. Takes effect the next time a GitHub call is made (no restart needed).";
+            ActivityLog.Log("settings.tab", $"GitHub repo identity set to {settings.GitHubOwnerRepo} (board {settings.BatterUpProjectId}).");
         }
 
         private void BtnSaveReplitWatcher_Click(object sender, RoutedEventArgs e)

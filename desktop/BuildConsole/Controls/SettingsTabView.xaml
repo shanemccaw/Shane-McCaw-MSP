@@ -581,6 +581,41 @@
                                                    FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
+
+                                <!-- Git #3069 — multi-instance BuildConsole: real GitHub repo/board identity -->
+                                <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="GitHub Repo Identity (Multi-Instance)" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
+                                        <TextBlock x:Name="InstanceNameText" Text="" FontSize="10.5" Foreground="{StaticResource Subtext0Brush}"
+                                                   Margin="0,0,0,10" TextWrapping="Wrap"/>
+                                        <TextBlock Text="The real repo/board this instance's Git Board, Batter Up and Build Queue point at. Launch a second, separately-compiled BuildConsole.exe with --instance &lt;name&gt; (own %AppData%\BuildConsole-&lt;name&gt;\settings.json, own mutex — runs concurrently with this instance) and set a different repo/board here to work a genuinely different real GitHub repo side by side. Defaults to this repo (shanemccaw/Shane-McCaw-MSP) and its real 'AI Batter Up' board — leave unchanged unless this IS a second instance."
+                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+
+                                        <Grid Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="12"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="Repo Owner/Org" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="GitHubOwnerBox" Height="28" FontSize="12"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="Repo Name" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="GitHubRepoNameBox" Height="28" FontSize="12"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <TextBlock Text="Batter Up Project Board ID" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                        <TextBox x:Name="BatterUpProjectIdBox" Height="28" FontSize="12" Margin="0,0,0,10"/>
+
+                                        <Button x:Name="BtnSaveGitHubRepoIdentity" Content="Save Repo Identity" Style="{StaticResource PrimaryButton}"
+                                                HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveGitHubRepoIdentity_Click"/>
+                                        <TextBlock x:Name="GitHubRepoIdentitySavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Border>
                     </StackPanel>
