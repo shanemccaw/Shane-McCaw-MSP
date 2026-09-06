@@ -8,15 +8,18 @@
  * the "28-step programme" tab).
  *
  * Deliberately does NOT cover the "Your findings" checklist tab or the
- * "Fixed outside change control" bypass tab (§1b-1e, #3038), or the pillar
- * scores panel / CSV / PDF / evidence-pack exports (§1f-1g, #3039) — those
- * are separate, real functional units dispatched as their own issues under
- * the same Feature. This component is written to compose cleanly alongside
- * them once they land: it owns only its own steps grid + pricing panel.
+ * "Fixed outside change control" bypass tab (§1b-1e, #3038) — a separate,
+ * real functional unit dispatched as its own issue under the same Feature.
+ *
+ * The pillar scores panel and CSV/PDF/evidence-pack exports (§1f-1g, #3039)
+ * are mounted here — real functional units of their own, but on the same
+ * "28-step programme" tab per the design's own layout.
  */
 import { useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PillarScoresCard } from "@/components/remediation-tracker/PillarScoresCard";
+import { RemediationExportControls } from "@/components/remediation-tracker/RemediationExportControls";
 import { REMEDIATION_TRACKER_CATALOGUE } from "@/lib/remediation-tracker-catalogue";
 import { useRemediationTracker } from "@/lib/remediation-tracker-api";
 import type { WireTrackerStep } from "@/lib/remediation-tracker-types";
@@ -66,6 +69,8 @@ export function RemediationProgrammeTab() {
 
       {data && (
         <>
+          <PillarScoresCard />
+
           <PricingPanel pricing={data.pricing} stepsById={stepsById} />
 
           <div className="flex flex-wrap items-center gap-2.5">
@@ -73,6 +78,9 @@ export function RemediationProgrammeTab() {
             <span className="text-[11px] text-muted-foreground">
               {verifiedCount} verified by a re-scan · {acceptedCount} accepted as a signed risk · {noCheckCount} can never be verified
             </span>
+            <div className="ml-auto">
+              <RemediationExportControls verifiedCount={verifiedCount} />
+            </div>
           </div>
 
           <div className="flex items-start gap-2 rounded-lg border border-dashed border-muted-foreground/30 p-3">
