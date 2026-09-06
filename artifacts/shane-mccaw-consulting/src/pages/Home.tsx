@@ -1,11 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Footer } from "@/components/Footer";
-import { PersistentChatBubble } from "@/components/PersistentChatBubble";
+import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { useServices, resolvePublicServicePriceCents } from "@/hooks/useServices";
 import { useTypewriterHeadline } from "@/hooks/useHeroHeadlines";
 import { trackAssessmentStarted, trackAssessmentCompleted, identifyLead, getGa4ClientId } from "@/lib/analytics";
-import { Button, Eyebrow, Logo } from "./home/dsComponents";
+import { Button, Eyebrow } from "./home/dsComponents";
 import { PILLARS, QUESTIONS, VARIANTS, VALUES, LETTERS, SEATS } from "./home/quizData";
 import { CHAPTERS } from "./home/chapterData";
 import { REPORT_CARDS } from "./home/reportCardData";
@@ -33,7 +32,7 @@ const KEYFRAMES = `
 @keyframes smcOrb{to{transform:rotate(-360deg)}}
 @keyframes smcBreath{0%,100%{opacity:.42}50%{opacity:.72}}
 @keyframes smcBlink{50%{opacity:0}}
-@media (prefers-reduced-motion:reduce){.smc-sheen{display:none}}
+@media (prefers-reduced-motion:reduce){.smc-sheen{display:none}*{animation:none!important}.smc-blink-cursor{opacity:1}}
 .smc-scope-group summary{list-style:none}
 .smc-scope-group summary::-webkit-details-marker{display:none}
 .smc-scope-group summary::after{content:"";width:7px;height:7px;margin-left:auto;flex-shrink:0;border-right:1.5px solid #64748b;border-bottom:1.5px solid #64748b;transform:rotate(45deg);transition:transform .15s ease}
@@ -175,7 +174,7 @@ function TypewriterHeadline() {
       >
         {leadDisplayed}
         <span className="smc-hero-gradient" style={HERO_GRADIENT_STYLE}>{gradientDisplayed}</span>
-        <span aria-hidden style={{ display: "inline-block", width: 3, height: "0.8em", marginLeft: 2, verticalAlign: "-0.1em", background: "#60a5fa", animation: "smcBlink 1s step-end infinite" }} />
+        <span aria-hidden className="smc-blink-cursor" style={{ display: "inline-block", width: 3, height: "0.8em", marginLeft: 2, verticalAlign: "-0.1em", background: "#60a5fa", animation: "smcBlink 1s step-end infinite" }} />
       </h1>
     </div>
   );
@@ -411,7 +410,7 @@ export default function Home() {
     : "Industry-wide, 80% of audited Copilot tenants had material oversharing exposure before guardrails went in (EPC Group audits) — an estimate here shows how yours might compare.";
 
   return (
-    <>
+    <Layout>
       <SEOMeta
         title="Copilot Readiness — Free Estimate | Shane McCaw Consulting"
         description="Seven questions. No sign-in, no scan, no sales call. Find out whether your Microsoft 365 tenant is actually ready for Copilot."
@@ -419,14 +418,8 @@ export default function Home() {
       <div className="dark" style={{ background: "#020617", color: "#cbd5e1", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh", overflowX: "hidden" }}>
         <style>{KEYFRAMES}</style>
 
-        <header style={{ position: "sticky", top: 0, zIndex: 50, height: 80, background: "rgba(2,6,23,.95)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(30,41,59,.8)" }}>
-          <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 clamp(16px,4vw,32px)", height: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-            <Logo tagline="M365 Architect" onDark />
-            <Button as="a" href="#assessment">
-              Get Your Real Score
-            </Button>
-          </div>
-        </header>
+        {/* The shared Header is fixed at 72px; clear it. */}
+        <div style={{ paddingTop: 72 }}>
 
         {/* ------------------------------------------------------------ Quiz + radar hero */}
         <section
@@ -905,10 +898,9 @@ export default function Home() {
         <p style={{ maxWidth: 1160, margin: "0 auto", padding: "0 clamp(16px,4vw,32px) 40px", fontSize: 12, color: "#475569" }}>
           Figures shown on this page are aggregate and illustrative. They describe patterns across comparable tenants and are not a measurement of your environment.
         </p>
+        </div>
       </div>
-      <Footer />
-      <PersistentChatBubble />
-    </>
+    </Layout>
   );
 }
 
