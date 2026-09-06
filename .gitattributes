@@ -1,1 +1,9 @@
 dev_full_dump.pgdump filter=lfs diff=lfs merge=lfs -text
+
+# #2938: shebang + CRLF makes a .mjs file un-importable from vitest/Vite on
+# Windows -- a bare "SyntaxError: Invalid or unexpected token" that blames the
+# wrong (importing) file, not the actual broken module. node --check and a
+# direct CLI run both pass; only a vitest/Vite-transformed import ever sees
+# it. Force LF on .mjs repo-wide so a Windows checkout/rebase can never
+# reintroduce CRLF into one of these files again.
+*.mjs text eol=lf
