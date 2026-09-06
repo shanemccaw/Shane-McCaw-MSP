@@ -2,7 +2,7 @@
   "issue": 2993,
   "feature": "Risk Register (#2993, Feature #1487) -- the real customer-facing Risk Register page in the rebuilt artifacts/portal (/risk-register), wired to GET /api/portal/risk-register, GET /api/portal/policy-decisions, POST /api/portal/risk-register/:rbdId/accept, and GET /api/portal/risk-register/rbd/:rbdId/versions -- see docs/risk-register-contract-pack.md. No fixture module: every row on screen comes from these endpoints.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "TBD-fill-at-DONE",
+  "lastVerifiedAgainstCommit": "6f4e48d3c",
 
   "notes": [
     "WHAT THIS COVERS: the real read shapes (risks[]/decisions[] arrays, the two fields this build added to the wire -- WireAcceptance.status and WireRisk.obligation, both real DB columns that existed but were not previously served), the write-once accept guard (409 on an already-accepted row), the 404 on a nonexistent rbdId, and that the per-RBD version-history read answers cleanly even when no version has ever been captured (empty array, not an error).",
