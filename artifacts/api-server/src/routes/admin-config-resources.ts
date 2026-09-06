@@ -43,6 +43,7 @@ import {
   CONFIG_AVAILABILITY,
   CONFIG_VERIFICATION_STATUS,
   CONFIG_COVERAGE_STATES,
+  CONFIG_CONTAINMENT_KINDS,
   EXECUTOR_BACKED_TRANSPORTS,
   coverageStateFor,
   TENANT_SERVICE_KEYS,
@@ -163,7 +164,7 @@ async function loadServiceAvailability(reconciledAgainstTenantId: number | null)
 
 /** Shared roll-up so the list and the summary endpoints cannot drift apart. */
 async function loadSummary() {
-  const [bySurface, byTransport, byAvailability, byVerification, coverage, extraction] = await Promise.all([
+  const [bySurface, byTransport, byAvailability, byVerification, coverage, containment, extraction] = await Promise.all([
     db.select({ key: configResourcesTable.surface, n: sql<number>`count(*)::int` })
       .from(configResourcesTable).groupBy(configResourcesTable.surface),
     db.select({ key: configResourcesTable.readTransport, n: sql<number>`count(*)::int` })
@@ -207,7 +208,31 @@ async function loadSummary() {
       // per-resource property count over rows that describe nothing.
       totalProperties: sql<number>`coalesce(sum(${configResourcesTable.propertyCount}) filter (where ${configResourcesTable.graphContainerKind} is distinct from 'function'), 0)::int`,
       operationProperties: sql<number>`coalesce(sum(${configResourcesTable.propertyCount}) filter (where ${configResourcesTable.graphContainerKind} = 'function'), 0)::int`,
+      // Git #2940 — counted ALONGSIDE the buckets above, never inside them. A contained row
+      // is already in exactly one of `covered`/`uncovered`/`noExecutor`/`unavailable` on its
+      // own merits, and stays there; this is a second, orthogonal fact about some of those
+      // same rows. Adding it to a bucket, or subtracting it from `uncovered`, is precisely
+      // the conflation the containment edge exists to avoid.
+      contained: sql<number>`count(*) filter (where ${configResourcesTable.containedInResourceId} is not null)::int`,
     }).from(configResourcesTable),
+    /**
+     * Git #2940 — the number the containment edge exists to produce: uncovered resources
+     * whose parent COLLECTION is itself covered.
+     *
+     * These rows are still uncovered and are still counted in `resourcesEntirelyUncovered`.
+     * What this adds is that they are not unreachable dead ends: a check already retrieves
+     * the bytes (`collection-member`) or reaches their container (`nested-child`), so
+     * closing them is a matter of asserting something specific, not of finding a read path.
+     * It is reported as a labelled SUBSET of the uncovered count, never subtracted from it.
+     */
+    db.execute(sql`
+      SELECT count(*)::int AS uncovered_under_covered_parent,
+             count(*) FILTER (WHERE c.containment_kind = 'collection-member')::int AS collection_members,
+             count(*) FILTER (WHERE c.containment_kind = 'nested-child')::int AS nested_children
+        FROM config_resources c
+        JOIN config_resources p ON p.id = c.contained_in_resource_id
+       WHERE c.effective_check_coverage_count = 0
+         AND p.effective_check_coverage_count > 0`),
     db.select().from(configModelExtractionsTable)
       .orderBy(desc(configModelExtractionsTable.startedAt)).limit(1),
   ]);
@@ -226,7 +251,13 @@ async function loadSummary() {
     unavailable: 0,
     totalProperties: 0,
     operationProperties: 0,
+    contained: 0,
   };
+  // drizzle's db.execute returns a QueryResult; rows live in .rows (same note as
+  // m365-roadmap-mc-link.ts).
+  const containmentRow = ((containment as unknown as {
+    rows?: Array<{ uncovered_under_covered_parent: number; collection_members: number; nested_children: number }>;
+  }).rows ?? [])[0] ?? { uncovered_under_covered_parent: 0, collection_members: 0, nested_children: 0 };
   const serviceAvailability = await loadServiceAvailability(latest?.reconciledAgainstTenantId ?? null);
 
   return {
@@ -291,6 +322,28 @@ async function loadSummary() {
       transportsWithNoExecutor: (CONFIG_READ_TRANSPORTS as readonly string[]).filter(
         (t) => !(EXECUTOR_BACKED_TRANSPORTS as readonly string[]).includes(t),
       ),
+      /**
+       * Git #2940 — rows that name the Graph COLLECTION they live inside, via
+       * `containedInResourceId`. A DIFFERENT relationship from `resourcesDuplicates`
+       * above, and counted differently on purpose: a duplicate is not an independent
+       * resource and is removed from the denominator, whereas a contained resource IS
+       * independent — `IntuneDeviceConfigurationPolicyMacOS` and its 41 siblings are 42
+       * distinct configurable objects that happen to share one polymorphic collection.
+       * So this number overlaps the coverage buckets rather than partitioning with them,
+       * and `resourcesCoverageEligible` is deliberately unchanged by it.
+       */
+      resourcesContained: c.contained,
+      /**
+       * The subset of `resourcesEntirelyUncovered` whose parent collection IS covered —
+       * gaps a check author can close by asserting something specific on a path the
+       * platform already reads, rather than by finding a new read path. Reported as a
+       * labelled subset, never subtracted from the uncovered count.
+       */
+      resourcesUncoveredUnderCoveredParent: Number(containmentRow.uncovered_under_covered_parent ?? 0),
+      /** Of those, how many the parent's own GET actually returns (`collection-member`) … */
+      resourcesUncoveredCollectionMembers: Number(containmentRow.collection_members ?? 0),
+      /** … versus how many need a further per-item GET the parent's check never makes. */
+      resourcesUncoveredNestedChildren: Number(containmentRow.nested_children ?? 0),
       checksMapped: latest?.checksMapped ?? 0,
       checksUnmatched: latest?.checksUnmatched ?? 0,
     },
@@ -392,6 +445,26 @@ router.get("/admin/config-resources", requireAdmin, async (req: Request, res: Re
       }
     }
 
+    /**
+     * Git #2940 — an ORTHOGONAL filter to `coverage` above, not another value of it.
+     * `?containment=contained` narrows to rows that name the collection they live in;
+     * `uncovered-under-covered-parent` narrows further to the closable subset. Deliberately
+     * a separate query parameter so it composes WITH `?coverage=uncovered` rather than
+     * competing with it — the moment containment becomes a coverage value, someone reads
+     * "43 uncovered" as "43 minus the contained ones", which is the miscount #2940 forbids.
+     */
+    const containmentFilter = String(q["containment"] ?? "").trim();
+    if (containmentFilter === "contained") {
+      conditions.push(sql`${configResourcesTable.containedInResourceId} is not null`);
+    } else if (containmentFilter === "uncovered-under-covered-parent") {
+      conditions.push(sql`${configResourcesTable.effectiveCheckCoverageCount} = 0
+        and exists (select 1 from config_resources p
+                     where p.id = ${configResourcesTable.containedInResourceId}
+                       and p.effective_check_coverage_count > 0)`);
+    } else if ((CONFIG_CONTAINMENT_KINDS as readonly string[]).includes(containmentFilter)) {
+      conditions.push(sql`${configResourcesTable.containmentKind} = ${containmentFilter}`);
+    }
+
     const search = String(q["q"] ?? "").trim();
     if (search) {
       const like = `%${search}%`;
@@ -487,6 +560,23 @@ router.get("/admin/config-resources", requireAdmin, async (req: Request, res: Re
         coverageState: coverageStateFor(
           r.readTransport, r.effectiveCheckCoverageCount, r.availability,
           r.graphContainerKind, r.canonicalResourceId),
+        // ── Containment / specialisation (#2940) ─────────────────────────────
+        /**
+         * The Graph collection this row lives inside. Note what is NOT above: this is
+         * absent from the `coverageStateFor` call by design. A contained row's state is
+         * whatever its own coverage says, and a covered parent does not promote it — a
+         * check on `/deviceManagement/deviceConfigurations` returns the bytes but asserts
+         * nothing about the MacOS-specific settings this row describes. The client renders
+         * containment beside the badge, never as the badge.
+         */
+        containedInResourceId: r.containedInResourceId,
+        /** collection-member | nested-child — how weak the reachability claim actually is. */
+        containmentKind: r.containmentKind,
+        containmentBasis: r.containmentBasis,
+        /** The exact evidence the edge matched on — published source, not assertion. */
+        containmentMatchedOn: r.containmentMatchedOn,
+        /** Why a row #2821 already flagged as residue got no containment edge either. */
+        containmentGapReason: r.containmentGapReason,
         sourceRef: r.sourceRef,
         notes: r.notes,
       })),
@@ -538,6 +628,48 @@ router.get("/admin/config-resources/:id", requireAdmin, async (req: Request, res
     ));
     const groupIds = groupRows.map((g) => g.id);
 
+    /**
+     * Git #2940 — the containment neighbourhood, kept strictly separate from the canonical
+     * group above. `groupIds` feeds the CHECK query because a check on the canonical row
+     * genuinely covers its duplicates; the rows below deliberately do NOT feed it, because
+     * a check on `/deviceManagement/deviceConfigurations` does not cover the 42 distinct
+     * objects that live in it. Two relationships, two queries, and only one of them may
+     * ever touch coverage.
+     */
+    const containmentSelect = {
+      id: configResourcesTable.id,
+      resourceKey: configResourcesTable.resourceKey,
+      displayName: configResourcesTable.displayName,
+      origin: configResourcesTable.origin,
+      surface: configResourcesTable.surface,
+      graphPath: configResourcesTable.graphPath,
+      graphEntityType: configResourcesTable.graphEntityType,
+      containmentKind: configResourcesTable.containmentKind,
+      containmentBasis: configResourcesTable.containmentBasis,
+      containmentMatchedOn: configResourcesTable.containmentMatchedOn,
+      readTransport: configResourcesTable.readTransport,
+      availability: configResourcesTable.availability,
+      graphContainerKind: configResourcesTable.graphContainerKind,
+      canonicalResourceId: configResourcesTable.canonicalResourceId,
+      effectiveCheckCoverageCount: configResourcesTable.effectiveCheckCoverageCount,
+    };
+    const [containerRows, memberRows] = await Promise.all([
+      // `?? -1` rather than a conditional: `config_resources.id` is a positive serial, so
+      // this is an indexed lookup that matches nothing when there is no parent, and it keeps
+      // both branches the same row type for the shared `withState` mapper below.
+      db.select(containmentSelect).from(configResourcesTable)
+        .where(eq(configResourcesTable.id, resource.containedInResourceId ?? -1)).limit(1),
+      db.select(containmentSelect).from(configResourcesTable)
+        .where(eq(configResourcesTable.containedInResourceId, id))
+        .orderBy(asc(configResourcesTable.resourceKey)),
+    ]);
+    const withState = (r: (typeof memberRows)[number]) => ({
+      ...r,
+      coverageState: coverageStateFor(
+        r.readTransport, r.effectiveCheckCoverageCount, r.availability,
+        r.graphContainerKind, r.canonicalResourceId),
+    });
+
     const [properties, checks, samples] = await Promise.all([
       db.select().from(configResourcePropertiesTable)
         .where(eq(configResourcePropertiesTable.configResourceId, id))
@@ -570,6 +702,20 @@ router.get("/admin/config-resources/:id", requireAdmin, async (req: Request, res
         : null,
       /** The rows that resolve onto THIS one, when it is the canonical record. */
       duplicates: groupRows.filter((g) => g.id !== canonicalId),
+      /**
+       * Git #2940 — the Graph COLLECTION this row lives inside, or null. Not a canonical
+       * record and never a substitute for one: its `coverageState` is reported so a surface
+       * can say "this gap sits inside a collection a check already reads", which is context
+       * for closing the gap, not a claim that it is closed.
+       */
+      containedIn: containerRows.length ? withState(containerRows[0]!) : null,
+      /**
+       * The rows that live INSIDE this one, when it is the collection. Their coverage states
+       * are each computed independently and are NOT rolled up into this row's, unlike
+       * `duplicates` above — that asymmetry is the whole point of #2940 being a separate
+       * edge from #2821.
+       */
+      containedMembers: memberRows.map(withState),
       properties: properties.map((p) => ({
         name: p.name,
         source: p.source,

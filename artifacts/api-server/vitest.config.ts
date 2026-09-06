@@ -175,6 +175,7 @@ export default defineConfig({
       "src/lib/monitor-evidence-capture-2923.test.ts",
       "src/lib/__tests__/service-availability.test.ts",
       "src/lib/__tests__/canonical-resource-resolution-2821.test.ts",
+      "src/lib/__tests__/containment-edge-resolution-2940.test.ts",
       "src/lib/__tests__/mfa-gap-monitor-check-1288.test.ts",
       "src/lib/sensitivity-label-severity-rules-470.test.ts",
       "src/lib/cert-secret-expiration-541.test.ts",
