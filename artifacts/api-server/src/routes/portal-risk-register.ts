@@ -123,6 +123,17 @@ function titleCaseSeverity(value: string | null): string | null {
 
 /** The acceptance block, present only once the risk has actually been accepted. */
 interface WireAcceptance {
+  /**
+   * The acceptance's own lifecycle state (RISK_ACCEPTANCE_STATUSES:
+   * pending_signature / active / revoked — `expired` removed, #1507). This is
+   * the DB `status` column, deliberately distinct from `WireRisk.status`
+   * (which serves `risk_status`, the risk's own lifecycle — see this file's
+   * header, "Three lifecycles"). Revoking a signature does not delete or edit
+   * this block — it stays as the permanent historical record of what was
+   * signed — so the UI needs this field to tell an active acceptance from a
+   * revoked one rather than assuming every `accepted` block is still live.
+   */
+  readonly status: string;
   /** The name the customer TYPED at acceptance time. */
   readonly by: string;
   /** When they typed it — the server's clock, never the client's. */
@@ -208,6 +219,11 @@ interface WireRisk {
   readonly liabilityValueUsd: number;
   readonly framework: string;
   readonly controlViolated: string;
+  /** The free-text obligation citation, e.g. "ISO 27001:2022 A.5.16" — same
+   * column `WirePolicyDecision.obligation` already serves. Display-authoritative
+   * whenever `obligationId` is null (no catalog match); shown alongside
+   * `obligationType` when one exists. */
+  readonly obligation: string | null;
   /** The compliance_obligations.id this risk cites, when `obligation` matches
    * the catalog (#1525). Null when there is no catalog match. */
   readonly obligationId: string | null;
@@ -316,6 +332,7 @@ function toWireRisk(
   const accepted: WireAcceptance | undefined =
     acceptedAt && approver?.name
       ? {
+          status: row.status,
           by: approver.name,
           on: acceptedAt,
           register: row.registerRef ?? null,
@@ -351,6 +368,7 @@ function toWireRisk(
     liabilityValueUsd: row.liabilityValueUsd,
     framework: row.framework,
     controlViolated: row.controlViolated,
+    obligation: row.obligation ?? null,
     obligationId: row.obligationId !== null ? String(row.obligationId) : null,
     obligationType: row.obligationId !== null ? (obligationTypeById.get(row.obligationId) ?? null) : null,
     spawnedByChangeRequestCode: row.spawnedByChangeRequestId !== null ? formatChangeRequestCode(row.spawnedByChangeRequestId) : null,
@@ -701,6 +719,7 @@ router.post(
       res.status(201).json({
         rbdId,
         accepted: {
+          status: "active",
           by: parsed.data.fullName,
           on: acceptedAt.toISOString(),
           // No `until`: the acceptance does not expire (#1507). The review clock

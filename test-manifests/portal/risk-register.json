@@ -1,0 +1,84 @@
+{
+  "issue": 2993,
+  "feature": "Risk Register (#2993, Feature #1487) -- the real customer-facing Risk Register page in the rebuilt artifacts/portal (/risk-register), wired to GET /api/portal/risk-register, GET /api/portal/policy-decisions, POST /api/portal/risk-register/:rbdId/accept, and GET /api/portal/risk-register/rbd/:rbdId/versions -- see docs/risk-register-contract-pack.md. No fixture module: every row on screen comes from these endpoints.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "TBD-fill-at-DONE",
+
+  "notes": [
+    "WHAT THIS COVERS: the real read shapes (risks[]/decisions[] arrays, the two fields this build added to the wire -- WireAcceptance.status and WireRisk.obligation, both real DB columns that existed but were not previously served), the write-once accept guard (409 on an already-accepted row), the 404 on a nonexistent rbdId, and that the per-RBD version-history read answers cleanly even when no version has ever been captured (empty array, not an error).",
+
+    "WHY NO HAPPY-PATH ACCEPT IS DRIVEN HERE: an acceptance is PERMANENT -- the route refuses a second one with 409 -- so a step that successfully accepts a risk would pass exactly once and then poison every subsequent run of this manifest. A real accept WAS proven end-to-end in-session against a locally-built copy of this exact commit (RBD-2026-103, seeded via lib/db/migrations/manual/2026-08-21-portal-v2-risk-register-testbed-seed.sql): 201 with the new status:'active' field present, an immediate second attempt refused 409, then the row was reset via direct SQL back to its seeded pending_signature/Open state so this manifest's own A3/A4 guards stay true on every run. That sequence is deliberately not a manifest step, for the same non-idempotency reason.",
+
+    "NO UI LOGIN FLOW EXISTS YET FOR artifacts/portal -- this is a known, already-documented cross-cutting gap (see test-manifests/chat/support-chat-active-cards.json's own note), not specific to this build. App.tsx's RequireAuth renders an honest 'Sign in required' panel for an unauthenticated visitor; there is no #email/#password form to drive via uiSteps the way the retired portal-v2 manifests do. Auth Core's real Sign-In screen (#2991, Feature #1648) is what closes this -- once it lands, extend this manifest's uiSteps with a real login block (matching other artifacts/portal manifests) ahead of a `goto /risk-register` and the data-testid selectors this build already ships (risk-row-toggle-<id>, risk-accept-name-<id>, risk-accept-statement-<id>, risk-accept-confirm-<id>, risk-accept-sign-<id>, policy-decision-row-<id>). No code change needed on the risk-register side when that happens.",
+
+    "THE UI STEP BELOW THEREFORE ONLY ASSERTS WHAT IS HONESTLY REACHABLE TODAY: the route mounts and RequireAuth's honest empty state renders for an unauthenticated visitor -- same pattern #2519's manifest uses for /support.",
+
+    "SEEDED TEST DATA: the testbed tenant's real register content is seeded demonstration data (lib/db/migrations/manual/2026-08-21-portal-v2-risk-register-testbed-seed.sql, idempotent via ON CONFLICT), not organic assessment output -- the READ path, the SCOPING and the ACCEPT write path it exercises are real. Re-run that file if A1/A2 below drift.",
+
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated testbed portal account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- the customer-scoped register answers 200 with an array.",
+      "method": "GET",
+      "path": "/api/portal/risk-register",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.risks", "isArray": true }
+    },
+    {
+      "name": "A2 -- the policy-decisions view of the same table also answers 200 with an array.",
+      "method": "GET",
+      "path": "/api/portal/policy-decisions",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.decisions", "isArray": true }
+    },
+    {
+      "name": "A3 -- accepting an already-accepted seeded risk (RBD-2026-104, always signed by the seed) is refused 409, proving the write-once guard, idempotently re-runnable.",
+      "method": "POST",
+      "path": "/api/portal/risk-register/RBD-2026-104/accept",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "fullName": "Regression Runner", "confirmed": true, "statement": "should be refused" },
+      "expect": { "status": 409, "jsonPath": "$.error.code", "equals": "CONFLICT" }
+    },
+    {
+      "name": "A4 -- a nonexistent rbdId 404s exactly like a real risk belonging to another tenant would (no ID-probing signal).",
+      "method": "POST",
+      "path": "/api/portal/risk-register/RBD-DOES-NOT-EXIST/accept",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "fullName": "Regression Runner", "confirmed": true, "statement": "should 404" },
+      "expect": { "status": 404, "jsonPath": "$.error.code", "equals": "NOT_FOUND" }
+    },
+    {
+      "name": "A5 -- a version history read for an RBD with no captured version answers 200 with an empty array, not an error (#1512 surface, no version ever rendered for the seeded rows).",
+      "method": "GET",
+      "path": "/api/portal/risk-register/rbd/RBD-2026-104/versions",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.versions", "isArray": true }
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "UI1 -- an unauthenticated visitor to /risk-register sees the app's own honest sign-in-required panel (no login page exists yet -- see notes), not a crash or a silently-empty register.",
+      "action": "goto",
+      "target": "/portal/risk-register"
+    },
+    {
+      "name": "UI2 -- the honest gate renders.",
+      "action": "expect",
+      "selector": "body",
+      "textContains": "Sign in required",
+      "critical": true
+    }
+  ]
+}

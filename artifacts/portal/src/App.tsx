@@ -19,6 +19,7 @@ import SignInHelpPage from "@/pages/sign-in-help";
 import NotificationPreferencesPage from "@/pages/notification-preferences";
 import SopsPage from "@/pages/sops";
 import RunbooksPage from "@/pages/runbooks";
+import RiskRegisterPage from "@/pages/risk-register";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -77,6 +78,7 @@ function ProtectedRoutes() {
           <Route path="/notification-preferences" component={NotificationPreferencesPage} />
           <Route path="/sops" component={SopsPage} />
           <Route path="/runbooks" component={RunbooksPage} />
+          <Route path="/risk-register" component={RiskRegisterPage} />
           <Route path="/coming-soon" component={ComingSoon} />
           <Route component={NotFound} />
         </Switch>
