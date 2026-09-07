@@ -44,6 +44,17 @@ import { computeRbdScopeDiff, diffNarrativeSnapshot } from "./rbd-scope-diff.ts"
 export { computeRbdScopeDiff, diffNarrativeSnapshot } from "./rbd-scope-diff.ts";
 export type { RbdVersionScopeDiff, RbdNarrativeFieldChange } from "./rbd-scope-diff.ts";
 
+/** `msp_rbd_versions.version_uid` is a real `uuid` Postgres column (#1508). A
+ * caller-supplied versionUid that isn't a well-formed UUID (a probe, a typo,
+ * a stale/garbage path segment) must resolve to "not found," not crash the
+ * query — `eq(versionUid, "not-a-uuid")` throws a Postgres
+ * `invalid input syntax for type uuid` error that bubbles past every one of
+ * this module's callers as an uncaught 500, contradicting portal-rbd-document
+ * .ts / public-rbd-document.ts / msp-rbd-versions.ts's own documented 404
+ * contract for "version not found" (#3058 found this wiring the portal's
+ * document surface). Every lookup-by-uid function below guards on this. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export interface CreateRbdVersionInput {
   mspId: number;
   rbdId: string;
@@ -176,6 +187,7 @@ export async function getCurrentRbdVersion(mspId: number, rbdId: string): Promis
  * need this — a superseded version must still be renderable, that is the
  * whole point of preserving it. */
 export async function getRbdVersionByUid(mspId: number, rbdId: string, versionUid: string): Promise<MspRbdVersion | null> {
+  if (!UUID_RE.test(versionUid)) return null;
   const [row] = await db
     .select()
     .from(mspRbdVersionsTable)
@@ -216,6 +228,7 @@ export async function signRbdVersion(
    * (`msp-rbd-versions.ts`) may have no image, only the attestation fields. */
   signatureData?: string | null,
 ): Promise<MspRbdVersion | null> {
+  if (!UUID_RE.test(versionUid)) return null;
   const signedAt = new Date();
   const updated = await db
     .update(mspRbdVersionsTable)
@@ -246,6 +259,7 @@ export async function generateRbdShareLink(
   rbdId: string,
   versionUid: string,
 ): Promise<MspRbdVersion | null> {
+  if (!UUID_RE.test(versionUid)) return null;
   const shareToken = randomBytes(24).toString("hex");
   const shareTokenExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   const updated = await db
