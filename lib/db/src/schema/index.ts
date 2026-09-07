@@ -1237,6 +1237,29 @@ export const tenantSignalHistoryTable = pgTable("tenant_signal_history", {
 }, (table) => ({
   customerSignalFiredIdx: index("tenant_signal_history_customer_signal_fired_idx")
     .on(table.customerId, table.signalKey, table.firedAt),
+  /**
+   * "At most one OPEN row per (customer, signal)" — the invariant
+   * `recordSignalTransitions` always assumed and nothing enforced (Git #3078).
+   *
+   * That writer decides what is newly fired by reading the customer's open rows and
+   * inserting one row per key not in that set. It is fired-and-forgotten from
+   * computeTenantSignals, so two overlapping evaluations of the same customer would
+   * both read zero open rows for a key and both insert. 45 (customer_id, signal_key)
+   * pairs on the local DB held 2-3 open rows apiece, fired_at values milliseconds
+   * apart. Because getStabilizedSignals stabilizes a signal when ANY open row is past
+   * its window, the older of a duplicate pair made the signal read as stabilized
+   * earlier than it genuinely was — the flap suppression the window exists for.
+   *
+   * Partial, not total: a signal legitimately re-fires after being resolved, so only
+   * the OPEN rows are constrained. The writer's INSERT names this exact predicate in
+   * its ON CONFLICT clause, so the two must stay in lockstep.
+   *
+   * Migration (also resolves the pre-existing duplicates):
+   * `lib/db/migrations/manual/2026-09-07-tenant-signal-history-one-open-per-signal-3078.sql`
+   */
+  oneOpenPerSignalIdx: uniqueIndex("tenant_signal_history_one_open_per_signal")
+    .on(table.customerId, table.signalKey)
+    .where(sql`resolved_at IS NULL`),
 }));
 
 export type TenantSignalHistory = typeof tenantSignalHistoryTable.$inferSelect;
