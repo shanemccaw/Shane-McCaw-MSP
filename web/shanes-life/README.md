@@ -27,6 +27,7 @@ Every decision below traces to a section of it, and the section is cited in the 
 | Notification tray leads, not a dashboard (§3, §11) | `GET /api/today` returns at most three things; there are no charts, totals, streaks or percentages anywhere |
 | Shopping: one running list, real capture-grammar push, no-login share (§5, §9, Shanes Life 04) | `src/core/lists.mjs`, `GET /api/shopping`, `public/app.js` `#/shopping`, MCP `push_list`/`get_list`/`check_list_item` (#3088) |
 | Shopping: per-store price history, real dated observations (Shanes Life 04) | `src/core/prices.mjs`, `GET/POST /api/stores`, `GET/POST /api/prices`, `public/app.js` "Log price"/"History" on each Shopping row, MCP `get_prices` (#3112) |
+| Shopping: weekly-ad cross-store verdicts, coupons, multi-buy (§3, §5, Shanes Life 04) | `src/core/prices.mjs` (`pushDeals`/`pushCoupons`/`fetchWeeklyAd`/`attachWeeklyAdVerdicts`), `GET /api/shopping` (`weeklyAdVerdict` per item), MCP `push_deals`/`push_coupons`/`fetch_weekly_ad` (#3110) |
 
 ---
 
@@ -307,6 +308,35 @@ per item.
 "Synced across Shane's own devices" (the design README's "store per phone") needs no sync
 mechanism: every observation is one real row in the shared database, reachable from any
 signed-in session — there is no per-device local copy to keep in step.
+
+## Shopping — weekly-ad verdicts, coupons, multi-buy (#3110)
+
+Contract Section 5's own line: "an already-working real capability … feeding Claude actual
+weekly store ad flyers and had it find where specific real grocery items were cheapest across
+stores." This is that capability wired into the app, not a new prices table: a weekly-ad price is
+the same real shape #3112 already built (one item, one store, one date, one price) — it lands in
+the SAME `item_prices`/`stores` tables with `source = 'weekly_ad'` instead of the default
+`'shane'`, plus a new `unit` column (`item_prices` didn't need one for a single scanned/logged
+price; a flyer's "$4/lb" does). Coupons and multi-buy counts ("2 for $5") are a genuinely
+different shape and get their own real table, `coupons` (migration 023).
+
+Claude pushes both over MCP after reading a real flyer conversationally — `push_deals` (prices)
+and `push_coupons` (coupons/multi-buy) — and can check what's already on file first with the
+existing `get_prices` (#3112) or the new `fetch_weekly_ad` (one store's whole current ad). The app
+still does no AI inference of its own (§10): nothing here fetches a live ad or calls a model: it
+only stores and matches what Claude already extracted.
+
+`GET /api/shopping` decorates each item with a real `weeklyAdVerdict` (`src/core/prices.mjs`'s
+`attachWeeklyAdVerdicts`) — the cheapest currently-known weekly-ad price across every store, plus
+the best matching coupon, or `null` when nothing matches yet. This is a different question from
+`lastPrice` (#3112, "what did this cost last time, anywhere, any source") — `weeklyAdVerdict`
+answers "what does the CURRENT weekly ad say, and where's it cheapest right now" — so both fields
+exist side by side. Matching is case-insensitive substring, both ways ("milk" matches "whole
+milk"), since one side is Claude's flyer-extracted text and the other is Shane's own
+capture-grammar wording. A weekly-ad price older than 10 days stops counting toward a verdict —
+"weekly" means this week's, not a forgotten push from a month ago. `public/app.js` renders it as a
+real badge ("Kroger $2.49/loaf · 2 for $2.49") on the matching Shopping row, next to (not
+replacing) the `lastPrice` hint.
 
 ## Not built here, on purpose
 

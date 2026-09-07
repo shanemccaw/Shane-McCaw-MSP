@@ -613,6 +613,66 @@ async function main() {
   const afterPutBack = await http("/api/shopping");
   check("the real running total drops once the item is put back", afterPutBack.json?.totalCents === 0 && afterPutBack.json?.overBudgetCents === 0, JSON.stringify(afterPutBack.json));
 
+  // 6f. Weekly-ad cross-store verdicts, coupons, multi-buy (Git #3110) -- push_deals/push_coupons
+  // (MCP) land in the SAME item_prices/stores tables #3112 built (source = 'weekly_ad'), and
+  // GET /api/shopping shows the real cross-store cheapest verdict + coupon on a matching item.
+  // Adds its own real item rather than relying on "bread" surviving the budget section's own
+  // push_list(replace:true) calls above.
+  const breadForVerdict = await http(`/api/lists/${shoppingId}/items`, { method: "POST", body: { items: ["bread"] } });
+  check("adding a real item for the weekly-ad verdict check works", breadForVerdict.status === 201, JSON.stringify(breadForVerdict.json));
+
+  const pushedDeals = await rpc(token.token, "tools/call", {
+    name: "push_deals",
+    arguments: { store: "Kroger", items: [{ item: "bread", priceCents: 249, unit: "loaf" }] },
+  });
+  const pushedDealsPayload = toolResult(pushedDeals);
+  check("push_deals (MCP) writes a real weekly-ad price", pushedDealsPayload?.pushed === 1 && pushedDealsPayload?.prices?.[0]?.price_cents === 249, JSON.stringify(pushedDealsPayload));
+
+  const dbWeeklyAdPrice = await one(
+    "SELECT price_cents, unit, source FROM item_prices WHERE user_id = $1 AND item_text = 'bread' AND source = 'weekly_ad'",
+    [userId],
+  );
+  check("the weekly-ad price is really a row in item_prices, tagged source='weekly_ad'", dbWeeklyAdPrice?.price_cents === 249 && dbWeeklyAdPrice?.unit === "loaf", JSON.stringify(dbWeeklyAdPrice));
+
+  const pushedCoupons = await rpc(token.token, "tools/call", {
+    name: "push_coupons",
+    arguments: { store: "Kroger", items: [{ item: "bread", description: "Buy 1 Get 1 Free", multiBuyCount: 2, multiBuyPriceCents: 249 }] },
+  });
+  const pushedCouponsPayload = toolResult(pushedCoupons);
+  check("push_coupons (MCP) writes a real coupon/multi-buy row", pushedCouponsPayload?.pushed === 1 && pushedCouponsPayload?.coupons?.[0]?.multi_buy_count === 2, JSON.stringify(pushedCouponsPayload));
+
+  const dbCoupon = await one("SELECT description, multi_buy_count FROM coupons WHERE user_id = $1 AND item_text = 'bread'", [userId]);
+  check("the coupon is really a row in coupons, not just an in-memory response", dbCoupon?.multi_buy_count === 2, JSON.stringify(dbCoupon));
+
+  const weeklyAd = await rpc(token.token, "tools/call", { name: "fetch_weekly_ad", arguments: { store: "Kroger" } });
+  const weeklyAdPayload = toolResult(weeklyAd);
+  check(
+    "fetch_weekly_ad (MCP) reads back the real store's prices and coupons",
+    weeklyAdPayload?.prices?.some((p) => p.item_text === "bread" && p.price_cents === 249) &&
+      weeklyAdPayload?.coupons?.some((c) => c.item_text === "bread"),
+    JSON.stringify(weeklyAdPayload),
+  );
+
+  const shoppingWithVerdicts = await http("/api/shopping");
+  const breadItem = shoppingWithVerdicts.json?.items?.find((i) => i.text === "bread");
+  check(
+    "GET /api/shopping shows the real weekly-ad verdict (store + price + coupon) on the matching item",
+    breadItem?.weeklyAdVerdict?.store === "Kroger" &&
+      breadItem?.weeklyAdVerdict?.priceCents === 249 &&
+      breadItem?.weeklyAdVerdict?.coupon?.multiBuyCount === 2,
+    JSON.stringify(breadItem?.weeklyAdVerdict),
+  );
+
+  const unpricedItem = shoppingWithVerdicts.json?.items?.find((i) => i.text !== "bread");
+  check("an item with no matching weekly-ad push shows no verdict", unpricedItem !== undefined && !unpricedItem?.weeklyAdVerdict, JSON.stringify(unpricedItem?.weeklyAdVerdict));
+
+  const weeklyAdActivity = await http("/api/activity");
+  check(
+    "the MCP push_deals/push_coupons writes are in the audit trail",
+    weeklyAdActivity.json?.activity?.some((a) => a.actor === "mcp" && a.action === "prices.deals.push") &&
+      weeklyAdActivity.json?.activity?.some((a) => a.actor === "mcp" && a.action === "prices.coupons.push"),
+  );
+
   // Revoke the push_list share so it doesn't linger past this run.
   if (pushedPayload?.share?.id) await http(`/api/shares/${pushedPayload.share.id}`, { method: "DELETE" });
 

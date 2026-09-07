@@ -1,10 +1,15 @@
-// Per-store price history (Git #3112).
+// Per-store price history (Git #3112) AND weekly-ad cross-store verdicts / coupons (Git #3110).
 //
 // Design handoff, Shanes Life 04 - Shopping.dc.html: "Prices are stored per store and per date,
 // and Claude reads them over MCP (get_prices) so the next list carries real numbers instead of
-// estimates." This is the real historical record #3112 asks for -- distinct from the current
-// weekly-ad snapshot #3110 attaches to a single running list -- built from repeated real
-// observations of the same item at the same store over time.
+// estimates." #3112's own real scope is the historical record -- repeated real observations of
+// the same item at the same store over time. #3110 is the current-week snapshot: Claude reads a
+// real weekly ad flyer conversationally and pushes it in (push_deals/push_coupons, below), and
+// the app turns that into a real cross-store "cheapest right now" verdict on matching list items.
+// Both live in the SAME item_prices/stores tables -- a weekly-ad price is the same real shape as
+// a shane-observed one, just source = 'weekly_ad' instead of the default 'shane', and read
+// differently (current-cheapest-across-stores vs. history-over-time). Coupons are a genuinely
+// different shape (multi-buy count, flat discount) and get their own table.
 //
 // "Synced across Shane's own devices" (the design README's "store per phone") needs no sync
 // mechanism here: this is one real row in the shared database per observation, reachable from
@@ -12,6 +17,11 @@
 
 import { many, one } from "../db.mjs";
 import { badRequest, notFound } from "../http.mjs";
+
+const MAX_ROWS_PER_CALL = 200;
+// A weekly ad is, by definition, this week's -- a forgotten push from a month ago should not
+// keep winning a cross-store verdict forever. Real slack past 7 days for a late "Done shopping".
+const WEEKLY_AD_FRESHNESS_DAYS = 10;
 
 /** Same normalisation on both write and read, so "Ground Beef" and "ground beef " match the
  *  same real history row -- the whole point of keying on text rather than a barcode (#3109). */
@@ -120,6 +130,212 @@ export async function attachLatestPrices(userId, items) {
     item.lastPrice = hint
       ? { priceCents: hint.price_cents, storeName: hint.store_name, observedOn: hint.observed_on }
       : null;
+  }
+  return items;
+}
+
+// ---------------------------------------------------------------------------
+// Weekly-ad cross-store verdicts, coupons and multi-buy counts (Git #3110).
+//
+// Real capability this stores, not invents: Claude already reads a real weekly ad flyer
+// conversationally and extracts real per-store prices and coupons (contract pack Section 5,
+// "already-working real capability from earlier tonight"). The app still does no AI inference of
+// its own (Section 10) -- nothing here fetches a live ad or calls a model. Claude pushes the
+// structured result in (push_deals / push_coupons, src/mcp/tools.mjs); this reuses the SAME
+// item_prices/stores tables #3112 built (source = 'weekly_ad' instead of the default 'shane'),
+// because a weekly-ad price is the same real shape -- one item, one store, one date, one price --
+// just a different origin and read pattern (current cross-store cheapest, not history-over-time).
+// ---------------------------------------------------------------------------
+
+function normaliseDate(value, field) {
+  if (value === undefined || value === null || value === "") return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) throw badRequest(`${field} must be a valid date`);
+  return d.toISOString().slice(0, 10);
+}
+
+function normaliseDealItems(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw badRequest("items is required and must be a non-empty array");
+  }
+  if (items.length > MAX_ROWS_PER_CALL) throw badRequest(`items must contain at most ${MAX_ROWS_PER_CALL} entries`);
+  return items.map((raw, i) => {
+    if (!raw || typeof raw !== "object") throw badRequest(`items[${i}] must be an object`);
+    const itemText = String(raw.item ?? "").trim();
+    if (!itemText) throw badRequest(`items[${i}].item is required`);
+    const priceCents = Number(raw.priceCents);
+    if (!Number.isFinite(priceCents) || priceCents < 0) {
+      throw badRequest(`items[${i}].priceCents must be a non-negative number`);
+    }
+    return {
+      itemText: itemText.slice(0, 500),
+      priceCents: Math.round(priceCents),
+      unit: raw.unit ? String(raw.unit).slice(0, 40) : null,
+      validOn: normaliseDate(raw.validOn, `items[${i}].validOn`),
+    };
+  });
+}
+
+function normaliseCouponItems(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw badRequest("items is required and must be a non-empty array");
+  }
+  if (items.length > MAX_ROWS_PER_CALL) throw badRequest(`items must contain at most ${MAX_ROWS_PER_CALL} entries`);
+  return items.map((raw, i) => {
+    if (!raw || typeof raw !== "object") throw badRequest(`items[${i}] must be an object`);
+    const itemText = String(raw.item ?? "").trim();
+    if (!itemText) throw badRequest(`items[${i}].item is required`);
+    const description = String(raw.description ?? "").trim();
+    if (!description) throw badRequest(`items[${i}].description is required`);
+    return {
+      itemText: itemText.slice(0, 500),
+      description: description.slice(0, 500),
+      multiBuyCount:
+        raw.multiBuyCount != null ? Math.max(1, Math.round(Number(raw.multiBuyCount))) : null,
+      multiBuyPriceCents: raw.multiBuyPriceCents != null ? Math.round(Number(raw.multiBuyPriceCents)) : null,
+      discountCents: raw.discountCents != null ? Math.round(Number(raw.discountCents)) : null,
+      validFrom: normaliseDate(raw.validFrom, `items[${i}].validFrom`),
+      validTo: normaliseDate(raw.validTo, `items[${i}].validTo`),
+    };
+  });
+}
+
+/** push_deals (MCP) -- Claude's real per-store weekly-ad prices, extracted from a flyer it read
+ *  conversationally. Lands in item_prices with source 'weekly_ad', same table #3112's own
+ *  shane-observed prices live in -- recordPrice already does everything a weekly-ad row needs
+ *  except carry a unit, so this calls it directly and patches unit on afterwards. */
+export async function pushDeals(userId, { store, items }) {
+  const normalised = normaliseDealItems(items);
+  const rows = [];
+  for (const item of normalised) {
+    const row = await recordPrice(userId, {
+      storeName: store,
+      itemText: item.itemText,
+      priceCents: item.priceCents,
+      observedOn: item.validOn,
+      source: "weekly_ad",
+    });
+    if (item.unit) {
+      await one(`UPDATE item_prices SET unit = $2 WHERE id = $1 RETURNING id`, [row.id, item.unit]);
+      row.unit = item.unit;
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+/** push_coupons (MCP) -- Claude's real coupon / multi-buy reads from the same flyer. `store` is
+ *  optional -- a manufacturer coupon isn't tied to one. */
+export async function pushCoupons(userId, { store, items }) {
+  const cleanStore = store ? String(store).trim().slice(0, 200) : null;
+  const normalised = normaliseCouponItems(items);
+  const rows = [];
+  for (const item of normalised) {
+    rows.push(
+      await one(
+        `INSERT INTO coupons (user_id, store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents, valid_from, valid_to)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         RETURNING id, store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents, valid_from, valid_to, created_at`,
+        [
+          userId,
+          cleanStore,
+          normaliseItemText(item.itemText),
+          item.description,
+          item.multiBuyCount,
+          item.multiBuyPriceCents,
+          item.discountCents,
+          item.validFrom,
+          item.validTo,
+        ],
+      ),
+    );
+  }
+  return rows;
+}
+
+/** fetch_weekly_ad (MCP) -- everything currently on file for one store's weekly ad: its
+ *  weekly-ad-sourced item_prices rows plus its coupons. `zip` is accepted and echoed back, not
+ *  yet a filter column -- today one store's prices are stored flat; per-zip ad variance is real
+ *  but out of this Feature's scope. */
+export async function fetchWeeklyAd(userId, { store, zip }) {
+  const cleanStore = String(store ?? "").trim();
+  if (!cleanStore) throw badRequest("store is required");
+  const prices = await many(
+    `SELECT ip.id, ip.item_text, ip.item_label, ip.price_cents, ip.unit, ip.observed_on, ip.created_at
+       FROM item_prices ip JOIN stores s ON s.id = ip.store_id
+      WHERE ip.user_id = $1 AND ip.source = 'weekly_ad' AND lower(s.name) = lower($2)
+        AND ip.observed_on >= current_date - interval '${WEEKLY_AD_FRESHNESS_DAYS} days'
+      ORDER BY ip.observed_on DESC, ip.price_cents ASC`,
+    [userId, cleanStore],
+  );
+  const coupons = await many(
+    `SELECT id, store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents, valid_from, valid_to, created_at
+       FROM coupons WHERE user_id = $1 AND lower(store) = lower($2)
+        AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
+      ORDER BY created_at DESC`,
+    [userId, cleanStore],
+  );
+  return { store: cleanStore, zip: zip ?? null, prices, coupons };
+}
+
+/** Case-insensitive substring match, both ways -- one side is Claude's flyer-extracted text, the
+ *  other is Shane's own capture-grammar wording ("milk" vs "whole milk"), so an exact match is
+ *  the wrong bar. Both sides are already normaliseItemText'd before this runs. */
+function textsMatch(a, b) {
+  return a.includes(b) || b.includes(a);
+}
+
+/**
+ * The real per-item verdict Shopping decorates onto its list: the cheapest CURRENT weekly-ad
+ * price across every store plus the best matching coupon/multi-buy, or nothing when Claude
+ * hasn't pushed one that matches yet. Distinct from attachLatestPrices' `lastPrice` above --
+ * that is "what did this cost last time, anywhere, any source"; this is "what does the current
+ * weekly ad say, and where's it cheapest right now."
+ */
+export async function attachWeeklyAdVerdicts(userId, items) {
+  if (!Array.isArray(items) || items.length === 0) return items;
+  const uniqueNorm = [...new Set(items.map((i) => normaliseItemText(i.text)).filter(Boolean))];
+  if (uniqueNorm.length === 0) return items;
+
+  const priceRows = await many(
+    `SELECT ip.item_text, ip.price_cents, ip.unit, s.name AS store_name
+       FROM item_prices ip JOIN stores s ON s.id = ip.store_id
+      WHERE ip.user_id = $1 AND ip.source = 'weekly_ad'
+        AND ip.observed_on >= current_date - interval '${WEEKLY_AD_FRESHNESS_DAYS} days'
+      ORDER BY ip.price_cents ASC`,
+    [userId],
+  );
+  const couponRows = await many(
+    `SELECT store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents FROM coupons
+      WHERE user_id = $1 AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
+      ORDER BY created_at DESC`,
+    [userId],
+  );
+
+  const verdictByText = new Map();
+  if (priceRows.length > 0 || couponRows.length > 0) {
+    for (const norm of uniqueNorm) {
+      const matchedPrice = priceRows.find((p) => textsMatch(norm, p.item_text));
+      const matchedCoupon = couponRows.find((c) => textsMatch(norm, c.item_text));
+      if (!matchedPrice && !matchedCoupon) continue;
+      verdictByText.set(norm, {
+        store: matchedPrice?.store_name ?? matchedCoupon?.store ?? null,
+        priceCents: matchedPrice?.price_cents ?? null,
+        unit: matchedPrice?.unit ?? null,
+        coupon: matchedCoupon
+          ? {
+              description: matchedCoupon.description,
+              multiBuyCount: matchedCoupon.multi_buy_count,
+              multiBuyPriceCents: matchedCoupon.multi_buy_price_cents,
+              discountCents: matchedCoupon.discount_cents,
+            }
+          : null,
+      });
+    }
+  }
+
+  for (const item of items) {
+    item.weeklyAdVerdict = verdictByText.get(normaliseItemText(item.text)) ?? null;
   }
   return items;
 }

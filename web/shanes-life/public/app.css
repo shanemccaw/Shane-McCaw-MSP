@@ -269,6 +269,19 @@ button:disabled { opacity: 0.5; cursor: default; }
   padding: 0.1rem 0.5rem;
 }
 
+/* Weekly-ad verdicts, coupons and multi-buy counts (Git #3110) -- a real per-item price/store
+   line, not shouted uppercase like the generic .chip it's built on. */
+.chip.verdict {
+  text-transform: none;
+  letter-spacing: normal;
+  color: hsl(var(--foreground));
+  background: hsla(160, 84%, 39%, 0.14);
+  border-color: hsla(160, 84%, 39%, 0.35);
+  margin-top: 0.25rem;
+  display: block;
+  width: fit-content;
+}
+
 .checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
 
 .checklist li {

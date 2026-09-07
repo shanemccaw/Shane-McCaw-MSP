@@ -515,6 +515,10 @@ export function buildApiRouter() {
     // Per-store price history (Git #3112): "last time $X at Store" on each row, one extra query
     // for the whole list rather than one per item.
     detail.items = await prices.attachLatestPrices(user.id, detail.items);
+    // Weekly-ad cross-store verdicts, coupons, multi-buy (Git #3110): "Walmart $2.99", cheapest
+    // store on the current ad, plus any matching coupon -- a different question from lastPrice
+    // above ("what does the CURRENT weekly ad say"), so it's a separate field, not a merge.
+    detail.items = await prices.attachWeeklyAdVerdicts(user.id, detail.items);
     return sendJson(res, 200, await attachOrder(user, detail, ctx.url));
   });
 

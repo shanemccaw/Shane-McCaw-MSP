@@ -913,12 +913,42 @@ function shoppingItemRow(listId, item, { store } = {}) {
   return el("li", { class: "shopping-row" }, [
     el("div", { class: "row" }, [
       box,
-      el("div", { style: "flex:1" }, [label, item.note ? el("span", { class: "who", text: item.note }) : null, priceLine, priceHint]),
+      el("div", { style: "flex:1" }, [
+        label,
+        item.note ? el("span", { class: "who", text: item.note }) : null,
+        priceLine,
+        priceHint,
+        verdictBadge(item.weeklyAdVerdict),
+      ]),
       remove,
     ]),
     priceTools(item),
     aisleControl,
   ]);
+}
+
+// Weekly-ad cross-store verdict, coupon and multi-buy count (Git #3110) -- null until Claude has
+// pushed a matching price/coupon over MCP (push_deals/push_coupons); most items show nothing
+// here, same as every other "real data or nothing" surface in this app.
+function verdictBadge(verdict) {
+  if (!verdict) return null;
+  const parts = [];
+  if (verdict.priceCents != null) {
+    const dollars = money(verdict.priceCents);
+    parts.push(verdict.store ? `${verdict.store} ${dollars}${verdict.unit ? `/${verdict.unit}` : ""}` : dollars);
+  } else if (verdict.store) {
+    parts.push(verdict.store);
+  }
+  if (verdict.coupon) {
+    const c = verdict.coupon;
+    if (c.multiBuyCount && c.multiBuyPriceCents != null) {
+      parts.push(`${c.multiBuyCount} for ${money(c.multiBuyPriceCents)}`);
+    } else {
+      parts.push(c.description);
+    }
+  }
+  if (parts.length === 0) return null;
+  return el("span", { class: "chip verdict", text: parts.join(" · ") });
 }
 
 /**

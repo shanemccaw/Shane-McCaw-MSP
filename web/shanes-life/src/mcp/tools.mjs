@@ -580,6 +580,96 @@ export const TOOLS = [
   },
 
   {
+    name: "push_deals",
+    title: "Push weekly-ad prices",
+    description:
+      "Store real per-store prices you just read off a weekly ad flyer (Git #3110), so Shopping can show a real cross-store verdict on matching list items -- 'Walmart $2.99', cheapest store wins. Lands in the same real price history get_prices reads, tagged as this week's ad rather than a one-off observation. Call get_prices first to check what's already on file for an item before re-pushing the same flyer twice.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        store: { type: "string", description: "Store name, e.g. 'Walmart', 'Kroger'." },
+        items: {
+          type: "array",
+          description: "One entry per priced item on the flyer.",
+          items: {
+            type: "object",
+            properties: {
+              item: { type: "string", description: "The grocery item, in plain words, e.g. 'whole milk'." },
+              priceCents: { type: "integer", description: "Price in cents, e.g. 299 for $2.99." },
+              unit: { type: "string", description: "'each', 'lb', '12oz', etc. -- whatever the flyer prints." },
+              validOn: { type: "string", description: "ISO date this price is good on, if the flyer states one. Defaults to today." },
+            },
+            required: ["item", "priceCents"],
+          },
+        },
+      },
+      required: ["store", "items"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const rows = await prices.pushDeals(ctx.user.id, args);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "prices.deals.push", detail: { store: args.store, count: rows.length } });
+      return { pushed: rows.length, prices: rows };
+    },
+  },
+
+  {
+    name: "push_coupons",
+    title: "Push coupons and multi-buy deals",
+    description:
+      "Store real coupons, multi-buy counts ('2 for $5') and discounts you just read off a weekly ad flyer or a coupon (Git #3110), so Shopping can surface them on matching list items.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        store: { type: "string", description: "Store this coupon is good at, if it is store-specific. Omit for a manufacturer coupon." },
+        items: {
+          type: "array",
+          description: "One entry per item the coupon/multi-buy applies to.",
+          items: {
+            type: "object",
+            properties: {
+              item: { type: "string", description: "The grocery item, in plain words." },
+              description: { type: "string", description: "The coupon in plain words, e.g. 'Buy 2 Get 1 Free', '$1 off any'." },
+              multiBuyCount: { type: "integer", description: "The N in '2 for $5', if this is a multi-buy deal." },
+              multiBuyPriceCents: { type: "integer", description: "The total price in cents for multiBuyCount of them, e.g. 500 for '2 for $5'." },
+              discountCents: { type: "integer", description: "A flat cents-off discount, if this isn't a multi-buy." },
+              validFrom: { type: "string", description: "ISO date the coupon starts, if stated." },
+              validTo: { type: "string", description: "ISO date the coupon expires, if stated." },
+            },
+            required: ["item", "description"],
+          },
+        },
+      },
+      required: ["items"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const rows = await prices.pushCoupons(ctx.user.id, args);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "prices.coupons.push", detail: { store: args.store ?? null, count: rows.length } });
+      return { pushed: rows.length, coupons: rows };
+    },
+  },
+
+  {
+    name: "fetch_weekly_ad",
+    title: "Read one store's whole weekly ad",
+    description:
+      "Everything currently on file for one store (Git #3110) -- every weekly-ad price and coupon pushed for it in roughly the last week -- so you can check what's already known before reading a fresh flyer for that store.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        store: { type: "string" },
+        zip: { type: "string", description: "Optional, for future per-zip ad variance. Not yet a real filter." },
+      },
+      required: ["store"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      return prices.fetchWeeklyAd(ctx.user.id, args);
+    },
+  },
+
+  {
     name: "list_categories",
     title: "List known categories",
     description:
