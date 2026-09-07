@@ -295,6 +295,10 @@ export const documentsPurger: TenantDataPurgerDeclaration = {
     { table: "msp_documents", column: "customer_id", keySpace: "customerId" },
     { table: "msp_report_definitions", column: "customer_id", keySpace: "customerId" },
     { table: "msp_report_runs", column: "customer_id", keySpace: "customerId" },
+    // #3063: admin-authored, client-facing status reports (Git #1923's `customerId` —
+    // a report is a deliverable to the customer organisation, not the named
+    // `clientUserId` addressee, so it purges in this id space).
+    { table: "status_reports", column: "customer_id", keySpace: "customerId" },
     { table: "insights_generated_documents", column: "msp_customer_id", keySpace: "customerId" },
     // #2983: `customer_id` on these three is a users.id, not a tenants.id —
     // confirmed against every real writer and reader. Purge by this tenant's logins.
@@ -421,6 +425,11 @@ export const directoryPurger: TenantDataPurgerDeclaration = {
     { table: "active_directory_ou_assignments", column: "customer_id", keySpace: "customerId" },
     { table: "active_directory_ou_assignments", column: "tenant_id", keySpace: "tenantGuid" },
     { table: "active_directory_ous", column: "tenant_id", keySpace: "customerId" },
+    // #3063: the customer's own requests to move an object between OUs — no FK (matching
+    // every other customer_id column on this surface), plus the denormalized real Graph
+    // tenant GUID captured alongside it.
+    { table: "active_directory_ou_assignment_requests", column: "customer_id", keySpace: "customerId" },
+    { table: "active_directory_ou_assignment_requests", column: "tenant_id", keySpace: "tenantGuid" },
     { table: "msp_staff_customer_scopes", column: "customer_id", keySpace: "customerId" },
     { table: "mfa_bypass_codes", column: "customer_id", keySpace: "customerId" },
     // #2983: `customer_id` on these three is a users.id, not a tenants.id —
