@@ -22,6 +22,7 @@
   "apiTests": [
     {
       "name": "SETUP -- log in as the designated testbed portal account; extract the bearer.",
+      "sessionTag": "setup",
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
@@ -110,19 +111,19 @@
   ],
 
   "uiSteps": [
-    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
-    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+    { "name": "goto the real login URL.", "sessionTag": "setup", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate before typing.", "sessionTag": "setup", "action": "expect", "selector": "#email", "state": "visible" },
+    { "sessionTag": "setup", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "sessionTag": "setup", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login -- every assertion below needs a real session.", "sessionTag": "setup", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
 
-    { "name": "goto the real Risk Register page.", "action": "goto", "target": "/portal/risk-register" },
+    { "name": "goto the real Risk Register page.", "sessionTag": "setup", "action": "goto", "target": "/portal/risk-register" },
     { "name": "UI1 -- the register renders.", "action": "expect", "selector": "body", "textContains": "Risk register", "critical": true },
     { "name": "UI2 -- THE REAL-DATA ASSERTION. The row the ENDPOINT returned first is on screen, under its own real title. A page falling back to fixture/placeholder text has no element with this id at all.", "action": "expect", "selector": "[data-testid='risk-row-toggle-{{firstRiskId}}']", "textContains": "{{firstRiskTitle}}", "critical": true },
     { "name": "UI3 -- toggling the real row open renders its detail (real testid the risk-register build ships).", "action": "click", "selector": "[data-testid='risk-row-toggle-{{firstRiskId}}']" },
     { "name": "UI4 -- the row's WHAT IT IS detail is now visible, proving the toggle actually opened the row rather than no-op'ing.", "action": "expect", "selector": "body", "textContains": "WHAT IT IS" },
 
-    { "name": "open the seeded already-accepted row (RBD-2026-104, always signed by the seed -- see notes on why no accept submit is driven).", "action": "click", "selector": "[data-testid='risk-row-toggle-RBD-2026-104']" },
+    { "name": "open the seeded already-accepted row (RBD-2026-104, always signed by the seed -- see notes on why no accept submit is driven).", "sessionTag": "setup", "action": "click", "selector": "[data-testid='risk-row-toggle-RBD-2026-104']" },
     { "name": "UI5 -- the write-once acceptance record renders for an already-accepted row, never the accept-and-sign form.", "action": "expect", "selector": "body", "textContains": "Accepted by" },
     { "name": "UI8 (#3058, sessionTag rbd-document) -- with zero msp_rbd_versions rows for the whole testbed, RiskDocumentPanel renders the real honest-empty state rather than any fixture/placeholder document.", "sessionTag": "rbd-document", "action": "expect", "selector": "body", "textContains": "No document prepared yet" },
 
