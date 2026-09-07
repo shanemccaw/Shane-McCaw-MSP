@@ -847,7 +847,7 @@ function priceTools(item) {
   return wrap;
 }
 
-function shoppingItemRow(listId, item) {
+function shoppingItemRow(listId, item, { store } = {}) {
   const box = el("input", { type: "checkbox", ...(item.done ? { checked: true } : {}), "aria-label": item.text });
   const label = el("span", { class: item.done ? "done" : "", text: item.text });
   box.addEventListener("change", async () => {
@@ -882,6 +882,34 @@ function shoppingItemRow(listId, item) {
   const priceHint = item.lastPrice
     ? el("span", { class: "who", text: `last time ${money(item.lastPrice.priceCents)} at ${item.lastPrice.storeName} (${whenDate(item.lastPrice.observedOn)})` })
     : null;
+
+  // Real aisle memory (Git #3108): "say where you found it once; next trip the list walks the
+  // store in order." Only offered once a store is set -- store_aisles is keyed on (store, item).
+  let aisleControl = null;
+  if (store) {
+    const aisleNum = el("input", { type: "number", min: "0", placeholder: "Aisle #", style: "width:70px", "aria-label": `Aisle for ${item.text}` });
+    const aisleNote = el("input", { placeholder: "e.g. end cap", style: "flex:1", "aria-label": `Aisle note for ${item.text}` });
+    const saveBtn = el("button", {
+      class: "ghost small",
+      text: "Save spot",
+      onClick: async (event) => {
+        const aisle = Number(aisleNum.value);
+        if (!Number.isInteger(aisle) || aisle < 0) return;
+        event.currentTarget.disabled = true;
+        try {
+          await api(`/api/lists/${listId}/items/${item.id}/aisle`, {
+            method: "POST",
+            body: JSON.stringify({ store, aisle, note: aisleNote.value.trim() || null }),
+          });
+          render();
+        } finally {
+          event.currentTarget.disabled = false;
+        }
+      },
+    });
+    aisleControl = el("div", { class: "row", style: "margin-top:.35rem" }, [aisleNum, aisleNote, saveBtn]);
+  }
+
   return el("li", { class: "shopping-row" }, [
     el("div", { class: "row" }, [
       box,
@@ -889,6 +917,7 @@ function shoppingItemRow(listId, item) {
       remove,
     ]),
     priceTools(item),
+    aisleControl,
   ]);
 }
 
@@ -1113,7 +1142,8 @@ function renderScanResult(list, dialog, result) {
 }
 
 async function viewShopping(view) {
-  const [list, storesResult] = await Promise.all([api("/api/shopping"), api("/api/stores")]);
+  const order = state.shoppingOrder || "flat";
+  const [list, storesResult] = await Promise.all([api(`/api/shopping?order=${order}`), api("/api/stores")]);
   const remaining = list.items.filter((i) => !i.done).length;
 
   // Real stores already logged (Git #3112) -- offered as a datalist so "Log price" autocompletes
@@ -1135,13 +1165,87 @@ async function viewShopping(view) {
     ]),
   );
 
+  // Which real store this run is at -- what Best-path ordering and aisle memory both key off.
+  const storeInput = el("input", { value: list.store || "", placeholder: "Which store? e.g. Aldi", "aria-label": "Store" });
+  const storeForm = el("form", { class: "row" }, [
+    storeInput,
+    el("button", { class: "ghost small", type: "submit", text: list.store ? "Update store" : "Set store" }),
+  ]);
+  storeForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    storeInput.disabled = true;
+    try {
+      await api(`/api/lists/${list.id}/store`, { method: "PATCH", body: JSON.stringify({ store: storeInput.value.trim() || null }) });
+      render();
+    } finally {
+      storeInput.disabled = false;
+    }
+  });
+  view.append(el("div", { class: "card" }, [storeForm]));
+
+  // Flat / Category / Best path (Git #3108) -- the design's own real segmented control.
+  const segment = (mode, label) =>
+    el("button", {
+      class: order === mode ? "primary small" : "ghost small",
+      text: label,
+      onClick: () => {
+        state.shoppingOrder = mode;
+        render();
+      },
+    });
+  view.append(
+    el("div", { class: "row", style: "margin:.5rem 0" }, [
+      segment("flat", "Flat"),
+      segment("category", "Category"),
+      segment("best", "Best path"),
+    ]),
+  );
+
   if (list.items.length === 0) {
     view.append(
       empty("Nothing on your list yet.", "Type into the box below, or ask Claude to push a list in over MCP.", "shop"),
     );
+  } else if (order === "category") {
+    for (const group of list.groups) {
+      view.append(
+        el("section", { class: "section" }, [
+          el("h3", { class: "small muted", text: group.category }),
+          el(
+            "ul",
+            { class: "checklist" },
+            group.items.map((item) => shoppingItemRow(list.id, item, { store: list.store })),
+          ),
+        ]),
+      );
+    }
+  } else if (order === "best") {
+    for (const group of list.groups) {
+      view.append(
+        el("section", { class: "section" }, [
+          el("h3", { class: "small muted", text: `Aisle ${group.aisle}` }),
+          el(
+            "ul",
+            { class: "checklist" },
+            group.items.map((item) => shoppingItemRow(list.id, item, { store: list.store })),
+          ),
+        ]),
+      );
+    }
+    if (list.unknown?.length) {
+      view.append(
+        el("section", { class: "section" }, [
+          el("p", { class: "small muted", style: "font-style:italic", text: list.store ? "No spot known yet -- say the aisle when you find it." : "Set a store above to start learning real aisle spots." }),
+          el(
+            "ul",
+            { class: "checklist" },
+            list.unknown.map((item) => shoppingItemRow(list.id, item, { store: list.store })),
+          ),
+        ]),
+      );
+    }
   } else {
     const ul = el("ul", { class: "checklist" });
-    for (const item of list.items) ul.append(shoppingItemRow(list.id, item));
+    for (const item of list.items) ul.append(shoppingItemRow(list.id, item, { store: list.store }));
     view.append(el("section", { class: "section" }, [ul]));
   }
 

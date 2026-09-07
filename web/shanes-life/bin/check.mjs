@@ -557,6 +557,89 @@ async function main() {
 
   cookie = null;
 
+  // 6d. Store paths + aisle memory (Git #3108) -- Flat / Category / Best path, and a real,
+  // growing per-store aisle map ("say where you found it once; next trip the list walks the
+  // store in order").
+  cookie = savedCookie;
+  const aldiStore = `Check Aldi ${stamp}`;
+
+  const storeSet = await http(`/api/lists/${shoppingId}/store`, { method: "PATCH", body: { store: aldiStore } });
+  check("PATCH .../store sets which real store this run is at", storeSet.status === 200 && storeSet.json?.store === aldiStore, JSON.stringify(storeSet.json));
+
+  const freshRun = await http(`/api/lists/${shoppingId}/items`, {
+    method: "POST",
+    body: { items: ["Pasta, 3 boxes", "Bananas", "Milk, full gallon"] },
+  });
+  const pastaItem = freshRun.json?.items?.find((i) => i.text === "Pasta, 3 boxes");
+  const milkItem2 = freshRun.json?.items?.find((i) => i.text === "Milk, full gallon");
+  check("real items exist to build ordering coverage on", Boolean(pastaItem && milkItem2), JSON.stringify(freshRun.json?.items?.map((i) => i.text)));
+
+  const categoryOrder = await http(`/api/lists/${shoppingId}?order=category`);
+  check(
+    "order=category groups items by the design's own real grocery categories",
+    categoryOrder.json?.groups?.some((g) => g.category === "Pantry" && g.items.some((i) => i.text === "Pasta, 3 boxes")) &&
+      categoryOrder.json?.groups?.some((g) => g.category === "Produce" && g.items.some((i) => i.text === "Bananas")) &&
+      categoryOrder.json?.groups?.some((g) => g.category === "Dairy" && g.items.some((i) => i.text === "Milk, full gallon")),
+    JSON.stringify(categoryOrder.json?.groups?.map((g) => [g.category, g.items.map((i) => i.text)])),
+  );
+
+  // Directly recording a spot on one item, through the owner API -- writes the real store_aisles
+  // row AND stamps the run's own row for immediate display.
+  const spotSet = await http(`/api/lists/${shoppingId}/items/${pastaItem.id}/aisle`, {
+    method: "POST",
+    body: { aisle: 12, note: "end cap" },
+  });
+  check("recording a real aisle spot works and defaults to the list's own store", spotSet.status === 200 && spotSet.json?.spot?.store === aldiStore && spotSet.json?.spot?.aisle === 12, JSON.stringify(spotSet.json));
+  check("the spot is stamped onto the item's own note for this run", spotSet.json?.item?.note === "Aisle 12 · end cap", JSON.stringify(spotSet.json?.item));
+
+  // record_aisle (MCP) -- grows the store map for an item with nothing on this run's list yet
+  // stamped, proving Best-path reads the real accumulated map, not just what got stamped by hand.
+  const bananaSpot = await rpc(token.token, "tools/call", {
+    name: "record_aisle",
+    arguments: { store: aldiStore, item: "Bananas", aisle: 1, note: "produce wall, right" },
+  });
+  const bananaSpotPayload = toolResult(bananaSpot);
+  check("record_aisle (MCP) writes a real store_aisles row", bananaSpotPayload?.spot?.aisle === 1 && bananaSpotPayload?.spot?.hits === 1, JSON.stringify(bananaSpotPayload));
+
+  // A second real report of the same item at the same store corrects the spot in place and bumps
+  // hits -- the "real, improving aisle map" building over repeated captures, not a one-time entry.
+  const bananaSpotAgain = await rpc(token.token, "tools/call", {
+    name: "record_aisle",
+    arguments: { store: aldiStore, item: "Bananas", aisle: 1, note: "produce wall, moved to the endcap" },
+  });
+  const bananaSpotAgainPayload = toolResult(bananaSpotAgain);
+  check("a repeat report updates the spot in place and grows hits, not a duplicate row", bananaSpotAgainPayload?.spot?.hits === 2 && bananaSpotAgainPayload?.spot?.note === "produce wall, moved to the endcap", JSON.stringify(bananaSpotAgainPayload));
+
+  const storeMap = await rpc(token.token, "tools/call", { name: "get_store_map", arguments: { store: aldiStore } });
+  const storeMapPayload = toolResult(storeMap);
+  check(
+    "get_store_map (MCP) reads back the real accumulated map, sorted by aisle",
+    storeMapPayload?.items?.length === 2 && storeMapPayload.items[0].aisle === 1 && storeMapPayload.items[1].aisle === 12,
+    JSON.stringify(storeMapPayload),
+  );
+
+  const bestOrder = await http(`/api/lists/${shoppingId}?order=best`);
+  const bestGroups = bestOrder.json?.groups || [];
+  check(
+    "order=best walks known aisles in ascending order, using the real accumulated map (not just this run's own stamped note)",
+    bestGroups.length === 2 && bestGroups[0].aisle === 1 && bestGroups[0].items.some((i) => i.text === "Bananas") &&
+      bestGroups[1].aisle === 12 && bestGroups[1].items.some((i) => i.text === "Pasta, 3 boxes"),
+    JSON.stringify(bestGroups.map((g) => [g.aisle, g.items.map((i) => i.text)])),
+  );
+  check(
+    "an item with no real spot yet sinks into `unknown`, not guessed at",
+    bestOrder.json?.unknown?.some((i) => i.text === "Milk, full gallon"),
+    JSON.stringify(bestOrder.json?.unknown),
+  );
+
+  const dbSpotCount = await one("SELECT count(*)::int AS n FROM store_aisles WHERE user_id = $1 AND lower(store) = lower($2)", [userId, aldiStore]);
+  check("the real store_aisles rows are really in the database, not just the response", dbSpotCount?.n === 2, JSON.stringify(dbSpotCount));
+
+  const aisleActivity = await http("/api/activity");
+  check("the aisle-memory writes are in the audit trail", aisleActivity.json?.activity?.some((a) => a.actor === "mcp" && a.action === "store_aisle.record"));
+
+  cookie = null;
+
   // 7. revocation really revokes
   cookie = savedCookie;
   const shares = await http(`/api/shares?entityId=${entityId}`);

@@ -15,6 +15,7 @@ import * as entities from "../core/entities.mjs";
 import * as lists from "../core/lists.mjs";
 import * as prices from "../core/prices.mjs";
 import * as shares from "../core/shares.mjs";
+import * as storeAisles from "../core/store-aisles.mjs";
 
 const CATEGORY_META_PROPS = {
   categoryLabel: { type: "string", description: "Human label for the category, e.g. 'Vet visit'. Only used the first time this category slug is seen." },
@@ -326,7 +327,7 @@ export const TOOLS = [
     name: "push_list",
     title: "Push a generated list",
     description:
-      "Push a real, ready-to-use list straight into the app -- the Shopping room's real capture-grammar entry point ('grocery words' -> the run). Omit name/category (or pass category 'shopping') to push into Shane's one real running Shopping list; pass a different category to start a different room's list once one exists. Call get_list first to see what is already there. Set replace true for a fresh run that swaps out the old contents; leave it false to add onto what is already there.",
+      "Push a real, ready-to-use list straight into the app -- the Shopping room's real capture-grammar entry point ('grocery words' -> the run). Omit name/category (or pass category 'shopping') to push into Shane's one real running Shopping list; pass a different category to start a different room's list once one exists. Call get_list first to see what is already there. Set replace true for a fresh run that swaps out the old contents; leave it false to add onto what is already there. Pass `store` to set which real store this run is being shopped at -- that is what Best-path ordering and aisle memory (get_store_map, record_aisle) key off.",
     inputSchema: {
       type: "object",
       properties: {
@@ -334,6 +335,7 @@ export const TOOLS = [
         name: { type: "string", description: "List name. Defaults to 'Shopping'." },
         category: { type: "string", description: "Category slug. Defaults to 'shopping', which always resolves to the one real running Shopping list regardless of name." },
         replace: { type: "boolean", default: false, description: "True clears the list first -- a fresh run, not an addition to the old one." },
+        store: { type: "string", description: "Real store this run is being shopped at, e.g. 'Aldi'. Sets/updates the list's store." },
         share: {
           type: "object",
           description: "Create a no-login share link for this list in the same call. Handy for handing the run straight to someone's phone.",
@@ -349,10 +351,12 @@ export const TOOLS = [
       additionalProperties: false,
     },
     async handler(args, ctx) {
-      const target =
+      let target =
         args.category && args.category !== "shopping"
           ? await lists.getOrCreateListByName(ctx.user.id, { name: args.name || "List", category: args.category })
           : await lists.getOrCreateShoppingList(ctx.user.id);
+
+      if (args.store) target = await lists.setListStore(ctx.user.id, target.id, args.store);
 
       const detail = args.replace
         ? await lists.replaceListItems(ctx.user.id, target.id, args.items)
@@ -429,6 +433,60 @@ export const TOOLS = [
         detail: { itemId: args.itemId, checked: args.checked !== false },
       });
       return item;
+    },
+  },
+
+  {
+    name: "record_aisle",
+    title: "Save a real aisle spot",
+    description:
+      "Save where something really is at a real store -- the capture grammar's aisle-memory chunk ('pasta aisle 12 end cap'). Builds a real, growing per-store map: a later report of the same item at the same store corrects the spot rather than duplicating it. Pass listId and itemId to also stamp the run's own row with the spot immediately; omit them to just grow the store map (e.g. recording several spots from an old receipt with nothing currently on the list).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        store: { type: "string", description: "Real store name, e.g. 'Aldi'." },
+        item: { type: "string", description: "The item, as said -- e.g. 'pasta'." },
+        aisle: { type: "integer", minimum: 0, description: "Aisle number." },
+        note: { type: "string", description: "Shelf detail, e.g. 'end cap', 'halfway down, left side, second row'." },
+        listId: { type: "string", description: "If given with itemId, also writes 'Aisle N · note' onto that row's own note." },
+        itemId: { type: "string" },
+      },
+      required: ["store", "item", "aisle"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const spot = await storeAisles.recordAisle(ctx.user.id, args.store, args.item, args.aisle, args.note ?? null);
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "store_aisle.record",
+        detail: { store: spot.store, item: spot.item_text, aisle: spot.aisle, hits: spot.hits },
+      });
+      let item = null;
+      if (args.listId && args.itemId) {
+        const owned = await lists.getOwnedList(ctx.user.id, args.listId);
+        if (!owned) throw new Error(`No list ${args.listId}`);
+        const noteLine = `Aisle ${spot.aisle}${spot.note ? ` · ${spot.note}` : ""}`;
+        item = await lists.setListItemNote(args.listId, args.itemId, noteLine);
+      }
+      return { spot, item };
+    },
+  },
+
+  {
+    name: "get_store_map",
+    title: "Read the real aisle map for a store",
+    description:
+      "Read the real, accumulated aisle memory for one store -- check this before asking Shane where something is, and use it to order a generated list into real walking order before pushing it.",
+    inputSchema: {
+      type: "object",
+      properties: { store: { type: "string" } },
+      required: ["store"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      return { store: args.store, items: await storeAisles.getStoreMap(ctx.user.id, args.store) };
     },
   },
 

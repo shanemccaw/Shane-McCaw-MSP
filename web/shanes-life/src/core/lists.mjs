@@ -15,10 +15,11 @@ import { bumpUse, ensureCategory } from "./categories.mjs";
 const MAX_ITEMS_PER_CALL = 500;
 
 // Mirrors core/entities.mjs's normaliseItems for the typed shape. Plain add/replace still only
-// accepts text/note/checked -- quantity and aisle remain their own separate Features (#3108),
-// out of scope here. Price now has a real home (020's price_cents/price_source/priced_at), but
-// only via a real scan (core/scan.mjs, #3109) -- a plain add is never priced, so it is not
-// accepted through this path either.
+// accepts text/note/checked -- quantity remains out of scope. Price now has a real home (020's
+// price_cents/price_source/priced_at), but only via a real scan (core/scan.mjs, #3109) -- a
+// plain add is never priced, so it is not accepted through this path either. Aisle memory
+// (#3108) is real but deliberately NOT a list_items column: it is a per-(user, store, item)
+// record in store_aisles that outlives any one run -- see core/store-aisles.mjs.
 function normaliseListItems(items) {
   if (items === undefined || items === null) return [];
   if (!Array.isArray(items)) throw badRequest("items must be an array");
@@ -43,10 +44,24 @@ function normaliseListItems(items) {
  *  name. */
 export async function getOwnedList(userId, listId) {
   return one(
-    `SELECT id, name, category, icon, created_at, updated_at
+    `SELECT id, name, category, icon, store, created_at, updated_at
        FROM lists WHERE id = $1 AND user_id = $2 AND archived_at IS NULL`,
     [listId, userId],
   );
+}
+
+/** Sets which real store a run is being shopped at (#3108) -- what Best-path ordering and aisle
+ *  memory both key off. Cleared with `store: null` (e.g. switching stores mid-week). */
+export async function setListStore(userId, listId, store) {
+  const owned = await getOwnedList(userId, listId);
+  if (!owned) throw notFound("List not found");
+  const clean = store ? String(store).trim().slice(0, 120) || null : null;
+  const row = await one(
+    `UPDATE lists SET store = $2, updated_at = now() WHERE id = $1
+     RETURNING id, name, category, icon, store, created_at, updated_at`,
+    [listId, clean],
+  );
+  return row;
 }
 
 /**
@@ -198,9 +213,9 @@ export async function deleteListItem(userId, listId, itemId) {
 }
 
 /** Clears every checked-off row -- the real, in-scope half of the design's "Done shopping"
- *  (Shanes Life 04 - Shopping.dc.html, option 1j): the run resets. The other half -- folding the
- *  cleared items into aisle-order pattern memory for next trip -- is its own separate Feature
- *  (aisle memory, explicitly out of #3088's scope) and is not implemented here. */
+ *  (Shanes Life 04 - Shopping.dc.html, option 1j): the run resets. Aisle spots already learned
+ *  for this store live in store_aisles (#3108), independent of any one run's items -- clearing
+ *  the run never touches that real, accumulated map. */
 export async function clearCheckedItems(userId, listId) {
   const owned = await getOwnedList(userId, listId);
   if (!owned) throw notFound("List not found");
@@ -260,6 +275,21 @@ export async function getListForShare(listId) {
       data: {},
     })),
   };
+}
+
+/** Overwrite a list item's note -- used by the aisle-memory endpoint (#3108) to write a real
+ *  "Aisle N · shelf note" line onto the row itself, so this run shows it without a second
+ *  store_aisles lookup. Ownership is checked by the caller (the route already loaded the item
+ *  off getListDetail, which is itself ownership-scoped). */
+export async function setListItemNote(listId, itemId, note) {
+  const row = await one(
+    `UPDATE list_items SET note = $3 WHERE id = $1 AND list_id = $2
+     RETURNING id, position, text, note, done, done_at`,
+    [itemId, listId, note],
+  );
+  if (!row) throw notFound("Item not found");
+  await query("UPDATE lists SET updated_at = now() WHERE id = $1", [listId]);
+  return row;
 }
 
 /** Tick / untick a list item. Mirrors core/entities.mjs's setItemChecked for the typed shape. */

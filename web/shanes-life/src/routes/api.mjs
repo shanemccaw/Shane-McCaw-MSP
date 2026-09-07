@@ -17,6 +17,8 @@ import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as prices from "../core/prices.mjs";
 import * as scan from "../core/scan.mjs";
 import * as shares from "../core/shares.mjs";
+import * as storeAisles from "../core/store-aisles.mjs";
+import { orderItems } from "../core/shopping-order.mjs";
 
 // Deliberately tight: this app has one real account, so a burst of failures is an attack, not a
 // forgetful person.
@@ -491,6 +493,19 @@ export function buildApiRouter() {
   // -- shopping / lists (typed tables, Git #3116's decision -- #3088 is the first room built
   // on this shape) ----------------------------------------------------------
 
+  // Flat / Category / Best-path ordering (Git #3108) -- ?order=flat|category|best on either
+  // real list-reading endpoint below. Best path reads the real, accumulated store_aisles map for
+  // whatever store the list is currently set to; with no store set (or nothing learned yet for
+  // it) every item lands in `unknown`, which is real and honest, not a guess.
+  async function attachOrder(user, detail, url) {
+    const mode = url.searchParams.get("order") || "flat";
+    if (mode !== "category" && mode !== "best") return { ...detail, order: "flat" };
+    let storeMap = [];
+    if (mode === "best" && detail.store) storeMap = await storeAisles.getStoreMap(user.id, detail.store);
+    const { mode: appliedMode, ...ordered } = orderItems(detail.items, mode, (item) => storeAisles.matchAisle(item.text, storeMap));
+    return { ...detail, order: appliedMode, ...ordered };
+  }
+
   // The Shopping room reads/writes exactly one real list -- "one run" (design handoff's capture
   // grammar, `grocery words -> the run`) -- so the client never needs to know its id up front.
   router.get("/api/shopping", async (_req, res, _params, ctx) => {
@@ -500,14 +515,57 @@ export function buildApiRouter() {
     // Per-store price history (Git #3112): "last time $X at Store" on each row, one extra query
     // for the whole list rather than one per item.
     detail.items = await prices.attachLatestPrices(user.id, detail.items);
-    return sendJson(res, 200, detail);
+    return sendJson(res, 200, await attachOrder(user, detail, ctx.url));
   });
 
   router.get("/api/lists/:id", async (_req, res, params, ctx) => {
     const user = requireUser(ctx);
     const detail = await lists.getListDetail(user.id, params.id);
     if (!detail) throw notFound("List not found");
-    return sendJson(res, 200, detail);
+    return sendJson(res, 200, await attachOrder(user, detail, ctx.url));
+  });
+
+  // Which real store this run is being shopped at -- what Best-path ordering and aisle memory
+  // both key off. `store: null` clears it (switching stores mid-week).
+  router.patch("/api/lists/:id/store", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    return sendJson(res, 200, await lists.setListStore(user.id, params.id, body.store ?? null));
+  });
+
+  // Real per-store aisle memory (Git #3108): "say where you found it once; next trip the list
+  // walks the store in order." Sets/corrects a real spot for one item at one store, growing the
+  // real accumulated map store_aisles.getStoreMap reads for Best-path -- and, for immediate
+  // display, writes the same "Aisle N · note" line onto the item's own `note` field, matching
+  // the design's "shown as a second line under the item."
+  router.post("/api/lists/:id/items/:itemId/aisle", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const owned = await lists.getOwnedList(user.id, params.id);
+    if (!owned) throw notFound("List not found");
+    const body = await readJson(req);
+    const store = body.store || owned.store;
+    if (!store) throw badRequest("store is required (set the list's store first, or pass one in the body)");
+    const items = await lists.getListDetail(user.id, params.id);
+    const item = items?.items?.find((i) => i.id === params.itemId);
+    if (!item) throw notFound("Item not found");
+
+    const spot = await storeAisles.recordAisle(user.id, store, item.text, body.aisle, body.note ?? null);
+    await audit.record({ userId: user.id, actor: "web", action: "store_aisle.record", entityId: params.id, detail: { store: spot.store, item: spot.item_text, aisle: spot.aisle, hits: spot.hits } });
+    const noteLine = `Aisle ${spot.aisle}${spot.note ? ` · ${spot.note}` : ""}`;
+    // Persist the aisle onto the list item's own note too, so it shows up on this run's row
+    // without a second lookup -- store_aisles.getStoreMap remains the real source of truth for
+    // future runs (and other lists at the same store).
+    const updatedItem = await lists.setListItemNote(params.id, params.itemId, noteLine);
+    return sendJson(res, 200, { spot, item: updatedItem, note: noteLine });
+  });
+
+  // The real, accumulated map for one store (Git #3108) -- what Best-path reads, surfaced for
+  // the owner directly too (e.g. a settings/debug view), not just consumed internally.
+  router.get("/api/store-aisles", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const store = ctx.url.searchParams.get("store");
+    if (store) return sendJson(res, 200, { store, items: await storeAisles.getStoreMap(user.id, store) });
+    return sendJson(res, 200, { stores: await storeAisles.listStores(user.id) });
   });
 
   router.post("/api/lists/:id/items", async (req, res, params, ctx) => {
