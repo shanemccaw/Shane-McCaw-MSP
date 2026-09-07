@@ -10,14 +10,15 @@
 // yet -- there is no alarm feature built.
 //
 // What's wired into the live app today, and what is not: this app (public/index.html,
-// public/app.js) is the early "Today / Inbox / Things / Settings" shell, not the room-based
-// prototype the design spec was drawn against (Rooms list, tray Later rows, Meds, Money, Dates,
+// public/app.js) is the "Today / Shopping / Inbox / Things / Settings" shell, not the full
+// room-based prototype the design spec was drawn against (tray Later rows, Meds, Money, Dates,
 // Pets, Lists, People, Heading Out, Wins, Vault, Budget Day -- none of those screens exist yet;
-// they're their own Feature issues, e.g. #3088 Shopping). Every slot and both peeker/watermark
-// mechanisms below are built to full spec so those Feature issues can wire them in the moment
-// their screens land. Today, only the slots that have a genuine, real host in the app are
-// actually called: the "Next" tray label peeker, the "Idle" empty-state icon, and the Things
-// room's "Things" watermark + "Nothing found" empty-state icon. See app.js for exactly where.
+// each is its own Feature issue under #3086). Every slot and both peeker/watermark mechanisms
+// below are built to full spec so those Feature issues can wire them in the moment their screens
+// land. Today, the slots with a genuine, real host in the app are: the "Next" tray label peeker,
+// the "Idle" empty-state icon, the Things room's "Things" watermark + "Nothing found" empty-state
+// icon, and (Git #3088) the Shopping room's "shop" watermark + empty-state icon. See app.js for
+// exactly where.
 
 const SLOTS = {
   heading: { id: "1a", name: "Heading out", variants: ["c-heading", "c-heading2"] },

@@ -1,21 +1,210 @@
 // Lists -- the typed shape rooms use instead of the generic entities pair (Git #3116's real
 // decision on #3086: rooms get their own typed tables, not entities/entity_items).
 //
-// Full list CRUD (create a list, push items via MCP, the Shopping screen itself) is #3088's own
-// scope and is not built here. This module carries exactly what the share layer needs to point
-// a no-login link at a real `lists`/`list_items` row: an ownership check for minting a link, a
-// read shaped the same way core/entities.mjs shapes an entity (so shares.mjs and
-// routes/public.mjs stay kind-agnostic), and the one write a share link is allowed to make --
-// ticking an item off.
+// #3116 built exactly what the share layer needed: an ownership check, a read shaped the same
+// way core/entities.mjs shapes an entity (so shares.mjs and routes/public.mjs stay kind-agnostic),
+// and the one write a share link is allowed to make -- ticking an item off. #3088 (Shopping, the
+// first real room on this typed shape) adds the rest: create/find-or-create, add/replace/delete
+// items, and clearing checked rows -- the real list CRUD the Shopping screen and `push_list` (MCP)
+// both need.
 
-import { many, one, query } from "../db.mjs";
+import { many, one, query, transaction } from "../db.mjs";
+import { badRequest, notFound } from "../http.mjs";
+import { bumpUse, ensureCategory } from "./categories.mjs";
 
-/** Ownership check before minting a share link against a list. */
+const MAX_ITEMS_PER_CALL = 500;
+
+// Mirrors core/entities.mjs's normaliseItems for the typed shape. list_items has no `data`
+// column -- 016's header quotes the design's own literal shape, `list_items(list_id, text,
+// done)` -- so quantity/aisle/price (each its own separate Feature, blocked_by #3088) have
+// nowhere to go here and are not accepted.
+function normaliseListItems(items) {
+  if (items === undefined || items === null) return [];
+  if (!Array.isArray(items)) throw badRequest("items must be an array");
+  if (items.length > MAX_ITEMS_PER_CALL) {
+    throw badRequest(`items must contain at most ${MAX_ITEMS_PER_CALL} entries`);
+  }
+  return items.map((raw, i) => {
+    const item = typeof raw === "string" ? { text: raw } : raw;
+    if (!item || typeof item !== "object") throw badRequest(`items[${i}] must be a string or an object`);
+    const text = String(item.text ?? "").trim();
+    if (!text) throw badRequest(`items[${i}].text is required`);
+    return {
+      text: text.slice(0, 500),
+      note: item.note ? String(item.note).slice(0, 2000) : null,
+      checked: Boolean(item.checked),
+    };
+  });
+}
+
+/** Ownership check before minting a share link against a list. Also the owner-side read used
+ *  everywhere else in this module -- includes enough to show a list's own header, not just its
+ *  name. */
 export async function getOwnedList(userId, listId) {
   return one(
-    "SELECT id, name FROM lists WHERE id = $1 AND user_id = $2 AND archived_at IS NULL",
+    `SELECT id, name, category, icon, created_at, updated_at
+       FROM lists WHERE id = $1 AND user_id = $2 AND archived_at IS NULL`,
     [listId, userId],
   );
+}
+
+/**
+ * The Shopping room's real typed shape (#3088, Git #3116's decision): one active list, a
+ * singleton per user. "One run" (design handoff's capture grammar, `grocery words -> the run`)
+ * means exactly one non-archived `lists` row with category 'shopping' -- created the first time
+ * anything needs it, same as the design's own "list created if missing" idiom for the generic
+ * Lists room.
+ */
+export async function getOrCreateShoppingList(userId) {
+  const existing = await one(
+    `SELECT id, name, category, icon, created_at, updated_at FROM lists
+      WHERE user_id = $1 AND category = 'shopping' AND archived_at IS NULL
+      ORDER BY created_at ASC LIMIT 1`,
+    [userId],
+  );
+  if (existing) return existing;
+
+  const cat = await ensureCategory(
+    "shopping",
+    {
+      label: "Shopping",
+      icon: "shopping-cart",
+      color: "sky",
+      itemNoun: "item",
+      description: "The one real running grocery/shopping list -- pushed to by Claude over MCP (push_list) or added to directly.",
+    },
+    { createdBy: "shane" },
+  );
+
+  try {
+    const row = await one(
+      `INSERT INTO lists (user_id, name, category, icon, created_by)
+       VALUES ($1, 'Shopping', $2, $3, 'shane')
+       RETURNING id, name, category, icon, created_at, updated_at`,
+      [userId, cat.slug, cat.icon],
+    );
+    await bumpUse(cat.slug);
+    return row;
+  } catch (err) {
+    // A concurrent request already created it (lists_user_name_key) -- re-read rather than 500.
+    if (err.code === "23505") return getOrCreateShoppingList(userId);
+    throw err;
+  }
+}
+
+/**
+ * Find-or-create a named, categorised list -- generalises getOrCreateShoppingList to any future
+ * room built on this same typed shape. `push_list` (MCP) routes here for anything other than the
+ * default 'shopping' category.
+ */
+export async function getOrCreateListByName(userId, { name, category, categoryMeta = {} }) {
+  const cleanName = String(name || "").trim().slice(0, 200);
+  if (!cleanName) throw badRequest("name is required");
+
+  const existing = await one(
+    `SELECT id, name, category, icon, created_at, updated_at FROM lists
+      WHERE user_id = $1 AND lower(name) = lower($2) AND archived_at IS NULL`,
+    [userId, cleanName],
+  );
+  if (existing) return existing;
+
+  const cat = await ensureCategory(category || "list", categoryMeta, { createdBy: "claude" });
+  try {
+    const row = await one(
+      `INSERT INTO lists (user_id, name, category, icon, created_by)
+       VALUES ($1, $2, $3, $4, 'claude')
+       RETURNING id, name, category, icon, created_at, updated_at`,
+      [userId, cleanName, cat.slug, cat.icon],
+    );
+    await bumpUse(cat.slug);
+    return row;
+  } catch (err) {
+    if (err.code === "23505") return getOrCreateListByName(userId, { name, category, categoryMeta });
+    throw err;
+  }
+}
+
+/** Owner-side read: the list, its raw items, and its share links -- not the share-normalised
+ *  shape getListForShare returns below, which exists for the kind-agnostic public route only. */
+export async function getListDetail(userId, listId) {
+  const list = await getOwnedList(userId, listId);
+  if (!list) return null;
+  const items = await many(
+    `SELECT id, position, text, note, done, done_at, created_at
+       FROM list_items WHERE list_id = $1 ORDER BY position, created_at`,
+    [listId],
+  );
+  const shareRows = await many(
+    `SELECT id, label, can_check, expires_at, revoked_at, view_count, last_seen_at, created_at
+       FROM share_links WHERE list_id = $1 ORDER BY created_at DESC`,
+    [listId],
+  );
+  return { ...list, items, shares: shareRows };
+}
+
+/** Append items, ownership-checked. Mirrors core/entities.mjs's addItems for the typed shape. */
+export async function addListItems(userId, listId, items) {
+  const owned = await getOwnedList(userId, listId);
+  if (!owned) throw notFound("List not found");
+  const normalised = normaliseListItems(items);
+  if (normalised.length === 0) throw badRequest("items is empty");
+
+  await transaction(async (client) => {
+    const { rows } = await client.query(
+      "SELECT COALESCE(max(position), -1) AS max FROM list_items WHERE list_id = $1",
+      [listId],
+    );
+    let next = Number(rows[0].max) + 1;
+    for (const item of normalised) {
+      await client.query(
+        `INSERT INTO list_items (list_id, position, text, note, done, done_at)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [listId, next++, item.text, item.note, item.checked, item.checked ? new Date().toISOString() : null],
+      );
+    }
+    await client.query("UPDATE lists SET updated_at = now() WHERE id = $1", [listId]);
+  });
+
+  return getListDetail(userId, listId);
+}
+
+/** Replace every row on a list in one call -- what a freshly Claude-generated list (`push_list`
+ *  with replace:true) wants: this run's old contents are gone, not merged with whatever was left
+ *  over from last time. */
+export async function replaceListItems(userId, listId, items) {
+  const owned = await getOwnedList(userId, listId);
+  if (!owned) throw notFound("List not found");
+  await query("DELETE FROM list_items WHERE list_id = $1", [listId]);
+  const normalised = normaliseListItems(items);
+  if (normalised.length === 0) {
+    await query("UPDATE lists SET updated_at = now() WHERE id = $1", [listId]);
+    return getListDetail(userId, listId);
+  }
+  return addListItems(userId, listId, items);
+}
+
+/** Ownership-checked delete of a single item -- correcting a mistaken add, same as entities. */
+export async function deleteListItem(userId, listId, itemId) {
+  const owned = await getOwnedList(userId, listId);
+  if (!owned) throw notFound("List not found");
+  const { rowCount } = await query("DELETE FROM list_items WHERE id = $1 AND list_id = $2", [
+    itemId,
+    listId,
+  ]);
+  if (rowCount === 0) throw notFound("Item not found");
+  await query("UPDATE lists SET updated_at = now() WHERE id = $1", [listId]);
+}
+
+/** Clears every checked-off row -- the real, in-scope half of the design's "Done shopping"
+ *  (Shanes Life 04 - Shopping.dc.html, option 1j): the run resets. The other half -- folding the
+ *  cleared items into aisle-order pattern memory for next trip -- is its own separate Feature
+ *  (aisle memory, explicitly out of #3088's scope) and is not implemented here. */
+export async function clearCheckedItems(userId, listId) {
+  const owned = await getOwnedList(userId, listId);
+  if (!owned) throw notFound("List not found");
+  await query("DELETE FROM list_items WHERE list_id = $1 AND done = true", [listId]);
+  await query("UPDATE lists SET updated_at = now() WHERE id = $1", [listId]);
+  return getListDetail(userId, listId);
 }
 
 /**

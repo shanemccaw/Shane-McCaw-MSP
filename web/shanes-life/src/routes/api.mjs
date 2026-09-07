@@ -11,6 +11,7 @@ import * as audit from "../core/audit.mjs";
 import * as captures from "../core/captures.mjs";
 import * as categories from "../core/categories.mjs";
 import * as entities from "../core/entities.mjs";
+import * as lists from "../core/lists.mjs";
 import * as media from "../core/media.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as shares from "../core/shares.mjs";
@@ -483,6 +484,57 @@ export function buildApiRouter() {
     const user = requireUser(ctx);
     await entities.deleteItem(user.id, params.id, params.itemId);
     return sendJson(res, 200, { ok: true });
+  });
+
+  // -- shopping / lists (typed tables, Git #3116's decision -- #3088 is the first room built
+  // on this shape) ----------------------------------------------------------
+
+  // The Shopping room reads/writes exactly one real list -- "one run" (design handoff's capture
+  // grammar, `grocery words -> the run`) -- so the client never needs to know its id up front.
+  router.get("/api/shopping", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const list = await lists.getOrCreateShoppingList(user.id);
+    return sendJson(res, 200, await lists.getListDetail(user.id, list.id));
+  });
+
+  router.get("/api/lists/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const detail = await lists.getListDetail(user.id, params.id);
+    if (!detail) throw notFound("List not found");
+    return sendJson(res, 200, detail);
+  });
+
+  router.post("/api/lists/:id/items", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    return sendJson(res, 201, await lists.addListItems(user.id, params.id, body.items));
+  });
+
+  router.patch("/api/lists/:id/items/:itemId", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const owned = await lists.getOwnedList(user.id, params.id);
+    if (!owned) throw notFound("List not found");
+    const body = await readJson(req);
+    if (body.checked === undefined) throw badRequest("checked is required");
+    const item = await lists.setListItemChecked(params.id, params.itemId, body.checked);
+    if (!item) throw notFound("Item not found");
+    // setListItemChecked returns the entity-shaped keys (checked_at/checked_by) the share layer
+    // needs -- remapped here onto the same raw done/done_at shape every other owner-side list
+    // endpoint (GET /api/shopping, POST items, clear-checked) already returns.
+    return sendJson(res, 200, { id: item.id, position: item.position, text: item.text, note: item.note, done: Boolean(item.checked_at), done_at: item.checked_at });
+  });
+
+  router.delete("/api/lists/:id/items/:itemId", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await lists.deleteListItem(user.id, params.id, params.itemId);
+    return sendJson(res, 200, { ok: true });
+  });
+
+  // The in-scope half of the design's "Done shopping" (Shanes Life 04 - Shopping.dc.html, 1j):
+  // clears what's checked. Folding that into aisle-order pattern memory is a separate Feature.
+  router.post("/api/lists/:id/clear-checked", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await lists.clearCheckedItems(user.id, params.id));
   });
 
   // -- today / categories / activity --------------------------------------

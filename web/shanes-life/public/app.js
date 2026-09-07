@@ -657,13 +657,29 @@ async function viewEntity(view, entityId) {
   }
 
   // Share links -- the mixed access model, from the owner's side.
-  const shares = el("section", { class: "section" }, [el("h2", { text: "Shared links" })]);
-  const liveShares = entity.shares.filter((s) => !s.revoked_at);
-  if (liveShares.length === 0) {
-    shares.append(el("p", { class: "muted small", text: "Not shared with anyone." }));
+  view.append(
+    shareSection({
+      shares: entity.shares,
+      onCreate: (label) => api("/api/shares", { method: "POST", body: JSON.stringify({ entityId: entity.id, label, canCheck: true }) }),
+      onRevoke: (id) => api(`/api/shares/${id}`, { method: "DELETE" }),
+    }),
+  );
+}
+
+/**
+ * The owner-side "Shared links" card: current links plus a form to mint a new one. Shared
+ * between a generic entity's page and the Shopping room, since #3116's share layer is
+ * kind-agnostic (entityId or listId) -- this stays kind-agnostic too, driven purely by the
+ * onCreate/onRevoke callbacks a caller supplies.
+ */
+function shareSection({ shares: shareList, onCreate, onRevoke }) {
+  const section = el("section", { class: "section" }, [el("h2", { text: "Shared links" })]);
+  const live = shareList.filter((s) => !s.revoked_at);
+  if (live.length === 0) {
+    section.append(el("p", { class: "muted small", text: "Not shared with anyone." }));
   }
-  for (const share of liveShares) {
-    shares.append(
+  for (const share of live) {
+    section.append(
       el("div", { class: "card" }, [
         el("div", { class: "spread" }, [
           el("div", {}, [
@@ -675,7 +691,7 @@ async function viewEntity(view, entityId) {
             text: "Revoke",
             onClick: async (event) => {
               event.target.disabled = true;
-              await api(`/api/shares/${share.id}`, { method: "DELETE" });
+              await onRevoke(share.id);
               render();
             },
           }),
@@ -686,7 +702,7 @@ async function viewEntity(view, entityId) {
 
   const labelInput = el("input", { placeholder: "Who is this for? e.g. Ronnie", "aria-label": "Share label" });
   const result = el("div");
-  shares.append(
+  section.append(
     el("div", { class: "card" }, [
       labelInput,
       el("div", { class: "row", style: "margin-top:.6rem" }, [
@@ -696,10 +712,7 @@ async function viewEntity(view, entityId) {
           onClick: async (event) => {
             event.target.disabled = true;
             try {
-              const share = await api("/api/shares", {
-                method: "POST",
-                body: JSON.stringify({ entityId: entity.id, label: labelInput.value.trim() || null, canCheck: true }),
-              });
+              const share = await onCreate(labelInput.value.trim() || null);
               result.replaceChildren(
                 el("p", { class: "small ok", text: "Copy it now — the link is shown once and cannot be recovered." }),
                 el("pre", { class: "token", text: share.url }),
@@ -720,7 +733,117 @@ async function viewEntity(view, entityId) {
       result,
     ]),
   );
-  view.append(shares);
+  return section;
+}
+
+// ---------------------------------------------------------------------------
+// Shopping -- the first room built on the typed lists/list_items shape (Git #3116's decision,
+// #3088). "One run": the client never knows the list's id up front, it just asks /api/shopping
+// and the server finds-or-creates the one real running list. Matches the shared chrome (cards,
+// checklist rows) design handoff README's "Screens" section already establishes app-wide; the
+// aisle/category grouping, scan-to-price and cart-swipe options drawn in
+// "Shanes Life 04 - Shopping.dc.html" are each their own separate Feature, blocked_by this one.
+// ---------------------------------------------------------------------------
+
+function shoppingItemRow(listId, item) {
+  const box = el("input", { type: "checkbox", ...(item.done ? { checked: true } : {}), "aria-label": item.text });
+  const label = el("span", { class: item.done ? "done" : "", text: item.text });
+  box.addEventListener("change", async () => {
+    box.disabled = true;
+    try {
+      const updated = await api(`/api/lists/${listId}/items/${item.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ checked: box.checked }),
+      });
+      label.className = updated.done ? "done" : "";
+    } finally {
+      box.disabled = false;
+    }
+  });
+  const remove = el("button", {
+    class: "ghost small danger",
+    text: "Remove",
+    onClick: async (event) => {
+      event.currentTarget.disabled = true;
+      await api(`/api/lists/${listId}/items/${item.id}`, { method: "DELETE" });
+      render();
+    },
+  });
+  return el("li", {}, [
+    box,
+    el("div", { style: "flex:1" }, [label, item.note ? el("span", { class: "who", text: item.note }) : null]),
+    remove,
+  ]);
+}
+
+async function viewShopping(view) {
+  const list = await api("/api/shopping");
+  const remaining = list.items.filter((i) => !i.done).length;
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("div", { class: "spread" }, [
+        el("h2", { text: "The run" }),
+        el("span", { class: "chip", text: list.items.length === 0 ? "empty" : remaining === 0 ? "all done" : `${remaining} left` }),
+      ]),
+    ]),
+  );
+
+  if (list.items.length === 0) {
+    view.append(
+      empty("Nothing on your list yet.", "Type into the box below, or ask Claude to push a list in over MCP.", "shop"),
+    );
+  } else {
+    const ul = el("ul", { class: "checklist" });
+    for (const item of list.items) ul.append(shoppingItemRow(list.id, item));
+    view.append(el("section", { class: "section" }, [ul]));
+  }
+
+  const addInput = el("input", { placeholder: "Add to Shopping", "aria-label": "Add an item" });
+  const addForm = el("form", { class: "row" }, [
+    addInput,
+    el("button", { class: "primary small", type: "submit", text: "Add" }),
+  ]);
+  addForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const text = addInput.value.trim();
+    if (!text) return;
+    addInput.disabled = true;
+    try {
+      await api(`/api/lists/${list.id}/items`, { method: "POST", body: JSON.stringify({ items: [{ text }] }) });
+      render();
+    } finally {
+      addInput.disabled = false;
+    }
+  });
+  view.append(el("div", { class: "card" }, [addForm]));
+
+  if (remaining < list.items.length) {
+    view.append(
+      el("div", { class: "row" }, [
+        el("button", {
+          class: "ghost small",
+          text: "Clear checked items",
+          onClick: async (event) => {
+            event.currentTarget.disabled = true;
+            await api(`/api/lists/${list.id}/clear-checked`, { method: "POST" });
+            render();
+          },
+        }),
+      ]),
+    );
+  }
+
+  view.append(
+    shareSection({
+      shares: list.shares,
+      onCreate: (label) => api("/api/shares", { method: "POST", body: JSON.stringify({ listId: list.id, label, canCheck: true }) }),
+      onRevoke: (id) => api(`/api/shares/${id}`, { method: "DELETE" }),
+    }),
+  );
+
+  // Room watermark (Git #3119): "Shopping and the shared link -> shop pair" per the critter spec.
+  attachRoomWatermark(view, "shop");
 }
 
 function itemRow(entityId, item) {
@@ -930,7 +1053,7 @@ async function viewSettings(view) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", inbox: "Inbox", things: "Things", settings: "Settings", entity: "" };
+const TITLES = { today: "Today", shopping: "Shopping", inbox: "Inbox", things: "Things", settings: "Settings", entity: "" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -953,7 +1076,8 @@ async function render() {
   }
 
   try {
-    if (state.route === "inbox") await viewInbox(view);
+    if (state.route === "shopping") await viewShopping(view);
+    else if (state.route === "inbox") await viewInbox(view);
     else if (state.route === "things") await viewThings(view);
     else if (state.route === "settings") await viewSettings(view);
     else if (state.route === "entity") await viewEntity(view, state.entity);

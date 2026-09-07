@@ -3,8 +3,8 @@
 The real hosted app for [Epic #3086](https://github.com/shanemccaw/Shane-McCaw-MSP/issues/3086).
 This directory is the **App Foundation** ([#3087](https://github.com/shanemccaw/Shane-McCaw-MSP/issues/3087)):
 hosting, database, auth, the universal capture box, no-login share links, and the MCP write
-plane. It deliberately contains no content features — Shopping Lists is the next Feature and is
-built on top of what is here, not beside it.
+plane. Shopping ([#3088](https://github.com/shanemccaw/Shane-McCaw-MSP/issues/3088)) is the
+first content Feature built on top of it, not beside it — see its own section below.
 
 **Read the design first:** `Design/design_handoff_shanes_life/` in this directory — `README.md`
 is the handoff (screens, data model additions, auth), `contract.md` is the v2 design contract, and
@@ -25,6 +25,7 @@ Every decision below traces to a section of it, and the section is cited in the 
 | MCP write plane reachable from any Claude conversation (§9, §10) | `src/mcp/`, `src/routes/mcp.mjs` |
 | Home Screen web app, not Expo (§10) | `public/manifest.webmanifest`, `public/sw.js`, the four `apple-mobile-web-app-*` meta tags |
 | Notification tray leads, not a dashboard (§3, §11) | `GET /api/today` returns at most three things; there are no charts, totals, streaks or percentages anywhere |
+| Shopping: one running list, real capture-grammar push, no-login share (§5, §9, Shanes Life 04) | `src/core/lists.mjs`, `GET /api/shopping`, `public/app.js` `#/shopping`, MCP `push_list`/`get_list`/`check_list_item` (#3088) |
 
 ---
 
@@ -266,27 +267,43 @@ account, and per `CLAUDE.md` an agent does not perform a hosting deploy.
    SL_CHECK_URL=https://<host> npm run check
    ```
 
+## Shopping (#3088)
+
+The first room built on this foundation, and the first consumer of the typed-tables decision
+below. "One run": `GET /api/shopping` finds-or-creates the one real `lists` row (category
+`shopping`) per user, rather than the client tracking a list id — matching the design's own
+`grocery words -> the run` capture-grammar line. Real CRUD lives in `src/core/lists.mjs`
+(`getOrCreateShoppingList`, `addListItems`, `setListItemChecked`, `deleteListItem`,
+`clearCheckedItems`, `replaceListItems`), reachable both from the signed-in web UI
+(`#/shopping` in `public/app.js`) and from Claude over MCP: `push_list` (the capture-grammar
+entry point — add onto the run, or `replace: true` for a fresh one), `get_list`, and
+`check_list_item`. The no-login share link reuses #3116's kind-agnostic `share_links` layer
+unchanged. Barcode scan, aisle memory, weekly-ad verdicts, per-run budget and per-store price
+history (all real, all drawn in `Shanes Life 04 - Shopping.dc.html`) are each their own
+separate Feature, `blocked_by` this one — not built here.
+
 ## Not built here, on purpose
 
-The notification tray, Today's real content, Money, Dates, Pets, Lists, Things, the Vault and
-everything else in the handoff are later Features under #3086.
+The notification tray, Today's real content, Money, Dates, Pets, Things, the Vault and
+everything else in the handoff besides Shopping are later Features under #3086.
 
 Their **schema** is here — migrations 014–018 create the real tables the handoff's *Data model
 additions* section names (`dates`, `date_asks`, `date_visits`, `date_photos`,
-`federal_holidays`, `pets`, `pet_vaccines`, `pet_care`, `pet_records`, `lists`, `list_items`,
-`things`, `contacts`, `wins`, `smoke_log`, `catches`, `vault`, `vault_reveals`, `vehicles`,
-`nudges`, `nudge_events`, `hooks`). **No route reads or writes any of them yet**, and they are
-empty — no seed rows, no sample content, nothing invented to fill a screen. #3107's scope was the
-shared database and the auth correction; each room is its own Feature, and each one starts with
-its table already there and already the right shape.
+`federal_holidays`, `pets`, `pet_vaccines`, `pet_care`, `pet_records`, `things`, `contacts`,
+`wins`, `smoke_log`, `catches`, `vault`, `vault_reveals`, `vehicles`, `nudges`, `nudge_events`,
+`hooks`). **No route reads or writes any of them yet**, and they are empty — no seed rows, no
+sample content, nothing invented to fill a screen. #3107's scope was the shared database and the
+auth correction; each room is its own Feature, and each one starts with its table already there
+and already the right shape.
 
 Two things worth knowing before building one:
 
-- **`entities`/`entity_items` and the typed tables overlap on purpose.** The typed tables back the
-  rooms the design actually draws; `entities` is the open tail that lets Claude file something
-  under a category nobody has coded for, on the day it invents one. Which of the two a given room
-  reads is a real decision that room's Feature has to make and record — it is **not** settled here.
-  Filed as a finding so it is decided deliberately rather than by whichever build gets there first.
+- **`entities`/`entity_items` and the typed tables overlap on purpose — and which one a room
+  reads is now a real, recorded decision, not an open question.** Real decision from Shane on
+  #3116, 2026-09-07: rooms use their own typed tables (`lists`/`list_items`, `things`,
+  `contacts`, …), not the generic `entities`/`entity_items` pair — Shopping (#3088, above) is the
+  first real consumer. `entities` stays real for its own actual purpose: the open tail that lets
+  Claude file something under a category nobody has coded for, on the day it invents one.
 - **`vehicles.loan_bill_id` is a real FK into ShanesSurvival's `accounts`.** That is the shared
   database paying for itself, and the pattern the rest of Money should follow: read the real
   Plaid-synced row, do not copy the number.

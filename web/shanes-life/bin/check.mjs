@@ -352,9 +352,9 @@ async function main() {
 
   // 6b. Git #3116's real decision: rooms use their own typed tables, not entities/entity_items,
   // so the share layer has to work against one directly -- starting with lists/list_items
-  // (migration 016), Shopping's real shape. Shopping's own CRUD is #3088's scope and does not
-  // exist yet, so the list + its items are inserted directly, the same real tables #3088 will
-  // read and write.
+  // (migration 016), Shopping's real shape. This section still inserts its own throwaway list
+  // directly (kept as a share-layer-only regression check, independent of #3088's real CRUD
+  // below), rather than reusing the real Shopping list #3088 adds.
   cookie = savedCookie;
   const shoppingList = await one(
     `INSERT INTO lists (user_id, name, created_by) VALUES ($1,$2,'shane') RETURNING id, name`,
@@ -396,6 +396,68 @@ async function main() {
   await http(`/api/shares/${listShares.json.shares[0].id}`, { method: "DELETE" });
   const afterListRevoke = await http(`/api/public/share/${listShareToken}`, { auth: false });
   check("a revoked list share link stops working", afterListRevoke.status === 404, `status ${afterListRevoke.status}`);
+
+  cookie = null;
+
+  // 6c. Shopping's own real CRUD (#3088) -- "one run": the client never knows a list id up
+  // front, GET /api/shopping finds-or-creates the one real running list.
+  cookie = savedCookie;
+  const shopping = await http("/api/shopping");
+  check("GET /api/shopping finds-or-creates the one real running list", shopping.status === 200 && shopping.json?.category === "shopping", JSON.stringify(shopping.json));
+  const shoppingId = shopping.json?.id;
+
+  const addedItems = await http(`/api/lists/${shoppingId}/items`, {
+    method: "POST",
+    body: { items: ["bananas", { text: "milk", note: "full gallon" }] },
+  });
+  check("adding items to the real Shopping list works", addedItems.status === 201 && addedItems.json?.items?.length === 2, JSON.stringify(addedItems.json));
+  const bananaItem = addedItems.json?.items?.find((i) => i.text === "bananas");
+  const milkItem = addedItems.json?.items?.find((i) => i.text === "milk");
+  check("item notes are stored", milkItem?.note === "full gallon");
+
+  const checkedBanana = await http(`/api/lists/${shoppingId}/items/${bananaItem.id}`, {
+    method: "PATCH",
+    body: { checked: true },
+  });
+  check("checking off a Shopping item is a real done/done_at write", checkedBanana.status === 200 && checkedBanana.json?.done === true, JSON.stringify(checkedBanana.json));
+
+  const removedMilk = await http(`/api/lists/${shoppingId}/items/${milkItem.id}`, { method: "DELETE" });
+  check("removing a Shopping item works", removedMilk.status === 200 && removedMilk.json?.ok === true);
+
+  const afterClear = await http(`/api/lists/${shoppingId}/clear-checked`, { method: "POST" });
+  check("clearing checked items removes only the checked ones", afterClear.status === 200 && afterClear.json?.items?.length === 0, JSON.stringify(afterClear.json?.items));
+
+  // push_list (MCP) -- the design's own real capture-grammar entry point ("grocery words -> the
+  // run"). replace:true swaps the whole run for a fresh one.
+  const pushed = await rpc(token.token, "tools/call", {
+    name: "push_list",
+    arguments: { items: ["eggs", "bread"], replace: true, share: { label: "Front door", canCheck: true } },
+  });
+  const pushedPayload = toolResult(pushed);
+  check("push_list (MCP) writes onto the real Shopping list", pushedPayload?.list?.id === shoppingId && pushedPayload?.list?.items?.length === 2, JSON.stringify(pushedPayload));
+  check("push_list returned a real share link", Boolean(pushedPayload?.share?.url), JSON.stringify(pushedPayload?.share));
+
+  const gotList = await rpc(token.token, "tools/call", { name: "get_list", arguments: {} });
+  const gotListPayload = toolResult(gotList);
+  check("get_list (MCP) reads back the same real list", gotListPayload?.id === shoppingId && gotListPayload?.items?.length === 2, JSON.stringify(gotListPayload));
+
+  const eggsItem = gotListPayload?.items?.find((i) => i.text === "eggs");
+  const mcpChecked = await rpc(token.token, "tools/call", {
+    name: "check_list_item",
+    arguments: { listId: shoppingId, itemId: eggsItem.id, checked: true },
+  });
+  // check_list_item mirrors check_item's entity-shaped return (checked_at/checked_by), not the
+  // owner HTTP API's done/done_at -- same parity the MCP entity tools already keep.
+  check("check_list_item (MCP) ticks a real row", Boolean(toolResult(mcpChecked)?.checked_at), JSON.stringify(toolResult(mcpChecked)));
+
+  const dbEggs = await one("SELECT done FROM list_items WHERE id = $1", [eggsItem.id]);
+  check("the MCP tick is really in the database", dbEggs?.done === true, JSON.stringify(dbEggs));
+
+  const shoppingActivity = await http("/api/activity");
+  check("the MCP push_list write is in the audit trail", shoppingActivity.json?.activity?.some((a) => a.actor === "mcp" && a.action === "list.items.push"));
+
+  // Revoke the push_list share so it doesn't linger past this run.
+  if (pushedPayload?.share?.id) await http(`/api/shares/${pushedPayload.share.id}`, { method: "DELETE" });
 
   cookie = null;
 

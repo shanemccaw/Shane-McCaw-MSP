@@ -12,6 +12,7 @@ import { record } from "../core/audit.mjs";
 import * as captures from "../core/captures.mjs";
 import * as categories from "../core/categories.mjs";
 import * as entities from "../core/entities.mjs";
+import * as lists from "../core/lists.mjs";
 import * as shares from "../core/shares.mjs";
 
 const CATEGORY_META_PROPS = {
@@ -321,10 +322,120 @@ export const TOOLS = [
   },
 
   {
+    name: "push_list",
+    title: "Push a generated list",
+    description:
+      "Push a real, ready-to-use list straight into the app -- the Shopping room's real capture-grammar entry point ('grocery words' -> the run). Omit name/category (or pass category 'shopping') to push into Shane's one real running Shopping list; pass a different category to start a different room's list once one exists. Call get_list first to see what is already there. Set replace true for a fresh run that swaps out the old contents; leave it false to add onto what is already there.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        items: ITEMS_SCHEMA,
+        name: { type: "string", description: "List name. Defaults to 'Shopping'." },
+        category: { type: "string", description: "Category slug. Defaults to 'shopping', which always resolves to the one real running Shopping list regardless of name." },
+        replace: { type: "boolean", default: false, description: "True clears the list first -- a fresh run, not an addition to the old one." },
+        share: {
+          type: "object",
+          description: "Create a no-login share link for this list in the same call. Handy for handing the run straight to someone's phone.",
+          properties: {
+            label: { type: "string" },
+            canCheck: { type: "boolean", default: true },
+            expiresInDays: { type: "number" },
+          },
+          additionalProperties: false,
+        },
+      },
+      required: ["items"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const target =
+        args.category && args.category !== "shopping"
+          ? await lists.getOrCreateListByName(ctx.user.id, { name: args.name || "List", category: args.category })
+          : await lists.getOrCreateShoppingList(ctx.user.id);
+
+      const detail = args.replace
+        ? await lists.replaceListItems(ctx.user.id, target.id, args.items)
+        : await lists.addListItems(ctx.user.id, target.id, args.items);
+
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "list.items.push",
+        entityId: target.id,
+        detail: { count: args.items.length, replace: Boolean(args.replace) },
+      });
+
+      let share = null;
+      if (args.share) {
+        share = await shares.createShareLink({
+          userId: ctx.user.id,
+          listId: target.id,
+          label: args.share.label ?? null,
+          canCheck: args.share.canCheck !== false,
+          expiresInDays: args.share.expiresInDays ?? null,
+        });
+        await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "share.create", entityId: target.id, detail: { shareId: share.id, kind: "list" } });
+      }
+      return { list: detail, share };
+    },
+  },
+
+  {
+    name: "get_list",
+    title: "Read a list",
+    description:
+      "Read a real list and its items -- call this before push_list to see what is already on the run, so a duplicate list never appears next to it. Omit listId for Shane's one real running Shopping list.",
+    inputSchema: {
+      type: "object",
+      properties: { listId: { type: "string" } },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const target = args.listId
+        ? await lists.getOwnedList(ctx.user.id, args.listId)
+        : await lists.getOrCreateShoppingList(ctx.user.id);
+      if (!target) throw new Error(`No list ${args.listId}`);
+      return lists.getListDetail(ctx.user.id, target.id);
+    },
+  },
+
+  {
+    name: "check_list_item",
+    title: "Tick or untick a list row",
+    description: "Mark one row on a list done or not done.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        listId: { type: "string" },
+        itemId: { type: "string" },
+        checked: { type: "boolean", default: true },
+      },
+      required: ["listId", "itemId"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const owned = await lists.getOwnedList(ctx.user.id, args.listId);
+      if (!owned) throw new Error(`No list ${args.listId}`);
+      const item = await lists.setListItemChecked(args.listId, args.itemId, args.checked !== false);
+      if (!item) throw new Error(`No item ${args.itemId}`);
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "list.item.check",
+        entityId: args.listId,
+        detail: { itemId: args.itemId, checked: args.checked !== false },
+      });
+      return item;
+    },
+  },
+
+  {
     name: "create_share_link",
     title: "Make a no-login link",
     description:
-      "Mint a link that opens one real record with no login at all -- the thing to hand to someone at the store. Pass entityId for a generic captured record, or listId for a room's own typed list (Shopping, once #3088 lands). Exactly one of the two is required. Set canCheck false for read-only. The URL is shown once and cannot be recovered afterwards; mint a new one instead.",
+      "Mint a link that opens one real record with no login at all -- the thing to hand to someone at the store. Pass entityId for a generic captured record, or listId for a room's own typed list -- Shopping's real running list, for one. Exactly one of the two is required. Set canCheck false for read-only. The URL is shown once and cannot be recovered afterwards; mint a new one instead.",
     inputSchema: {
       type: "object",
       properties: {
