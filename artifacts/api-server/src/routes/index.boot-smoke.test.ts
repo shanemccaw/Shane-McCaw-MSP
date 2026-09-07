@@ -53,5 +53,14 @@ describe("routes/index boot smoke", () => {
     expect(typeof (router as unknown as { handle?: unknown }).handle).toBe(
       "function",
     );
-  }, 60_000);
+    // #3066 — the previous 60s ceiling was still hit once under a real
+    // full-suite run even after vitest.config.ts capped the thread pool
+    // (cpus/2) to relieve contention: this file's ~150-module import graph
+    // is the single most import-heavy file in the suite, so it's the one
+    // most exposed to whatever CPU/transform contention remains under full
+    // parallelism. 90s gives real margin without masking a genuine hang —
+    // it passes in ~1-2s in isolation (see the test run in build-journal/
+    // 3066.md), so anything actually reaching this ceiling is still a real
+    // failure, not a timeout tuned to hide one.
+  }, 90_000);
 });
