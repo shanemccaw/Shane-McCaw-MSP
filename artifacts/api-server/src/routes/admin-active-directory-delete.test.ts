@@ -98,7 +98,11 @@ vi.mock("@workspace/db", () => {
   const mockDb: any = {
     select: vi.fn(() => makeChain("select")),
     insert: vi.fn(() => makeChain("insert")),
-    update: vi.fn(() => makeChain("update")),
+    update: vi.fn((t: any) => {
+      const chain = makeChain("update");
+      h.opRecords[h.opRecords.length - 1]!.table = t?.$tableName ?? null;
+      return chain;
+    }),
     delete: vi.fn((t: any) => {
       const chain = makeChain("delete");
       h.opRecords[h.opRecords.length - 1]!.table = t?.$tableName ?? null;
@@ -151,6 +155,16 @@ vi.mock("@workspace/db", () => {
     clientDocumentsTable: tbl("client_documents", ["id", "clientUserId", "uploadedBy"]),
     passwordResetTokensTable: tbl("password_reset_tokens", ["id", "userId", "token", "expiresAt"]),
     impersonationTokensTable: tbl("impersonation_tokens", ["id", "clientUserId", "adminUserId", "token", "expiresAt"]),
+    // #2984: four NO ACTION edges into users(id) the cascade never handled, each of
+    // which aborted the whole transaction for any user holding such a row.
+    signupExchangeTokensTable: tbl("signup_exchange_tokens", ["id", "userId", "token", "expiresAt"]),
+    printTokensTable: tbl("print_tokens", ["id", "userId", "documentId", "token", "expiresAt"]),
+    documentPrintTokensTable: tbl("document_print_tokens", ["id", "userId", "docType", "token", "expiresAt"]),
+    checkoutSessionsTable: tbl("checkout_sessions", ["id", "accountUserId", "tenantId"]),
+    // …and the one attribution column the DB will not blank for us — NO ACTION where
+    // every sibling is SET NULL, so the cascade NULLs it in code rather than deleting a
+    // row that belongs to the tenant, not the user.
+    customerAlertSettingsTable: tbl("customer_alert_settings", ["id", "customerId", "updatedByUserId"]),
     mfaEnrollmentsTable: tbl("mfa_enrollments", ["id", "userId", "method", "enabled", "createdAt"]),
     mfaChallengesTable: tbl("mfa_challenges", ["id", "userId"]),
     mfaBypassCodesTable: tbl("mfa_bypass_codes", ["id", "userId", "createdByUserId"]),
@@ -209,8 +223,8 @@ function adminToken(): string {
   });
 }
 
-/** Section A of the route's header comment — the audited explicit-delete
- *  order (users last). Kept in sync with the route by test failure. */
+/** Section A of `lib/user-hard-delete.ts`'s header comment — the audited explicit-delete
+ *  order (users last). Kept in sync with the cascade by test failure. */
 const EXPLICIT_DELETE_ORDER = [
   "workflow_steps",
   "kanban_tasks",
@@ -227,6 +241,13 @@ const EXPLICIT_DELETE_ORDER = [
   "email_domain_rules",
   "password_reset_tokens",
   "impersonation_tokens",
+  // #2984: found by a live pg_constraint sweep, missing from every earlier revision of
+  // this list. Each is a NO ACTION FK into users(id), so any one of these rows made the
+  // users DELETE below throw and rolled the entire transaction back.
+  "signup_exchange_tokens",
+  "print_tokens",
+  "document_print_tokens",
+  "checkout_sessions",
   "client_services",
   "projects",
   "mfa_enrollments",
@@ -279,6 +300,11 @@ const DB_HANDLED_TABLES = [
   "tenant_signal_history",
   "sales_offers",
   "sales_offer_events",
+  // #2984: NOT DB-handled — the cascade blanks it itself with an UPDATE, because its FK
+  // is NO ACTION where every sibling attribution column is SET NULL. It belongs in this
+  // list all the same: the row is keyed to the TENANT, and DELETING it because of who
+  // last edited it would destroy a live customer's alert configuration.
+  "customer_alert_settings",
 ];
 
 function deletedTables(): string[] {
@@ -392,6 +418,12 @@ describe("DELETE /admin/active-directory/user/:id — successful full wipe (acce
     expect(h.txState.committed).toBe(true);
     expect(h.txState.rolledBack).toBe(false);
 
+    // #2984 — the one attribution blanked in code rather than by the DB. It is an UPDATE,
+    // not a DELETE (asserted above), and it must actually have happened: without it the
+    // users DELETE fails on a NO ACTION constraint for any user who ever edited a tenant's
+    // alert settings.
+    expect(h.opRecords.filter((r) => r.op === "update" && r.table === "customer_alert_settings")).toHaveLength(1);
+
     // Platform audit row written after success.
     expect(auditLogSpy).toHaveBeenCalledTimes(1);
     expect(auditLogSpy.mock.calls[0]![0].actionType).toBe("user.hard_delete");
@@ -408,13 +440,16 @@ describe("DELETE /admin/active-directory/user/:id — successful full wipe (acce
     // Captured at call time: the transaction had NOT committed yet.
     expect(preState!.committedAtCall).toBe(false);
 
-    // Every table's row count is present: all 31 explicit tables…
+    // Every table's row count is present: all 35 explicit tables…
     const explicitCounts = preState!.payload.explicitDeleteCounts as Record<string, number>;
     expect(Object.keys(explicitCounts).sort()).toEqual(EXPLICIT_DELETE_ORDER.filter((t) => t !== "users").sort());
-    // …all 15 cascade tables and all 14 set-null reference columns
-    // (sales_offers.customer_id was repointed users -> tenants by #2730 and
-    // is no longer part of this census — see the route's own comment;
-    // tenant_signal_history.client_user_id joined it as #2983's 14th).
+    // …all 15 cascade tables and all 14 attribution columns whose ROW survives.
+    // (sales_offers.customer_id was repointed users -> tenants by #2730 and is no longer
+    // part of this census — see the cascade's own comment; tenant_signal_history
+    // .client_user_id joined it as #2983's 14th; #3079 then dropped
+    // script_download_tokens.client_user_id, taking it back to 13 — and left this
+    // assertion reading 14, which is why this file was already red on main before #2984
+    // touched it; #2984's customer_alert_settings.updated_by_user_id is the real 14th.)
     expect(Object.keys(preState!.payload.dbCascadeCounts as object)).toHaveLength(15);
     expect(Object.keys(preState!.payload.dbSetNullCounts as object)).toHaveLength(14);
     expect(preState!.payload.targetUserId).toBe(42);
@@ -478,9 +513,9 @@ describe("DELETE /admin/active-directory/user/:id — rollback (acceptance c)", 
     // Let the 60 census counts drain as 0s, then fail one of the deletes:
     // queue entries are consumed by census selects first (defaults), so to
     // hit a DELETE we pre-load enough census defaults then an Error. The
-    // census makes exactly 60 count selects (31 explicit + 15 cascade + 14
+    // census makes exactly 64 count selects (35 explicit + 15 cascade + 14
     // set-null); give them explicit zeros, then fail the first delete.
-    for (let i = 0; i < 60; i++) h.queue.push([{ n: 0 }]);
+    for (let i = 0; i < 64; i++) h.queue.push([{ n: 0 }]);
     h.queue.push(new Error("simulated delete failure"));
 
     const res = await request(app).delete("/api/admin/active-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);

@@ -44,6 +44,10 @@ export const changeControlPurger: TenantDataPurgerDeclaration = {
   key: "change-control",
   displayName: "Change control",
   targets: [
+    // `cab_agenda_items` FIRST: its `cr_approval_id` FK onto `cr_approvals` is NO ACTION
+    // (live `pg_constraint` sweep, #2984), so an agenda item still referencing an approval
+    // fails the DELETE below and aborts the whole purge transaction.
+    { table: "cab_agenda_items", column: "tenant_id", keySpace: "tenantGuid" },
     { table: "cr_approvals", column: "tenant_id", keySpace: "tenantGuid" },
     { table: "cr_attachments", column: "tenant_id", keySpace: "tenantGuid" },
     { table: "cr_comments", column: "tenant_id", keySpace: "tenantGuid" },
@@ -51,7 +55,6 @@ export const changeControlPurger: TenantDataPurgerDeclaration = {
     { table: "cr_executions", column: "tenant_id", keySpace: "tenantGuid" },
     { table: "cr_pirs", column: "tenant_id", keySpace: "tenantGuid" },
     { table: "msp_change_requests", column: "tenant_id", keySpace: "tenantGuid" },
-    { table: "cab_agenda_items", column: "tenant_id", keySpace: "tenantGuid" },
     { table: "cab_members", column: "tenant_id", keySpace: "tenantGuid" },
     { table: "change_freeze_windows", column: "tenant_id", keySpace: "tenantGuid" },
     { table: "change_maintenance_windows", column: "tenant_id", keySpace: "tenantGuid" },
@@ -319,6 +322,13 @@ export const documentsPurger: TenantDataPurgerDeclaration = {
     // a report is a deliverable to the customer organisation, not the named
     // `clientUserId` addressee, so it purges in this id space).
     { table: "status_reports", column: "customer_id", keySpace: "customerId" },
+    // `print_tokens` BEFORE the documents it points at: `print_tokens.document_id` →
+    // `insights_generated_documents(id)` is NO ACTION (live `pg_constraint` sweep,
+    // #2984), so a live print token aborts the whole purge transaction. Keyed by the
+    // tenant's own logins, which is who mints one. A print token held by an MSP STAFF
+    // account against this customer's document is out of this key space's reach and
+    // would still block — filed as its own finding rather than papered over here.
+    { table: "print_tokens", column: "user_id", keySpace: "userId" },
     { table: "insights_generated_documents", column: "msp_customer_id", keySpace: "customerId" },
     // #2983: `customer_id` on these three is a users.id, not a tenants.id —
     // confirmed against every real writer and reader. Purge by this tenant's logins.
