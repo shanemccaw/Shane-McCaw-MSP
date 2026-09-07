@@ -9,13 +9,15 @@
 // /api/entities would be indistinguishable from fixture data the moment it went stale, which is
 // exactly the failure this project has already paid for once.
 
-const CACHE = "shanes-life-shell-v1";
+const CACHE = "shanes-life-shell-v2";
 const SHELL = [
   "/",
   "/index.html",
   "/share.html",
   "/app.css",
   "/app.js",
+  "/critters.js",
+  "/critters-sprite.svg",
   "/share.js",
   "/manifest.webmanifest",
   "/icons/icon-192.png",

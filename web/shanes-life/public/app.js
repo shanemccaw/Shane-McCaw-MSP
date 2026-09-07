@@ -3,6 +3,16 @@
 // Every number and every row on this screen comes from a real endpoint. There is no fixture
 // module anywhere in this directory and there must never be one.
 
+import {
+  initCritters,
+  loadCritterSprite,
+  resetCritterRender,
+  critterIcon,
+  attachPeeker,
+  attachRoomWatermark,
+  rollPeekers,
+} from "./critters.js";
+
 const $ = (sel, root = document) => root.querySelector(sel);
 
 const state = {
@@ -58,9 +68,12 @@ const el = (tag, props = {}, children = []) => {
   return node;
 };
 
-function empty(message, hint) {
+// critterSlot defaults to "idle" (1e, "Idle... 'nothing to look at' state" per the critter
+// spec, Git #3119) -- the generic "nothing here" moment. Things' own empty state passes
+// "notfound" (1w, "Things '?' ... empty search") instead, per the spec's own mapping.
+function empty(message, hint, critterSlot = "idle") {
   return el("div", { class: "empty" }, [
-    el("img", { src: "/icons/icon-192.png", alt: "" }),
+    critterIcon(critterSlot, { size: 64 }),
     el("p", { text: message }),
     hint ? el("p", { class: "small", text: hint }) : null,
   ]);
@@ -84,7 +97,12 @@ function when(iso) {
 async function loadMe() {
   const me = await api("/api/me");
   state.user = me.user;
-  if (me.user) setInboxBadge(me.pendingCaptures);
+  if (me.user) {
+    setInboxBadge(me.pendingCaptures);
+    // Critter daily roll (Git #3119) -- seeded from the SERVER's date, per the design handoff,
+    // never the client clock, so every device rolls the same critter for a slot on a given day.
+    if (me.serverDate) initCritters(me.serverDate);
+  }
   return me.user;
 }
 
@@ -453,7 +471,12 @@ async function viewToday(view) {
   const data = await api("/api/today");
   setInboxBadge(data.pendingCaptures);
 
-  const next = el("section", { class: "section" }, [el("h2", { text: "Next" })]);
+  // The label sits in its own row, separate from the card list below it -- attachPeeker turns
+  // this row (and only this row) into the spec's "position:relative; display:flex;
+  // align-items:flex-end" label row; the cards stay in normal block flow beneath it.
+  const nextLabel = el("h2", { text: "Next" });
+  const nextLabelRow = el("div", { class: "section-label-row" }, [nextLabel]);
+  const next = el("section", { class: "section" }, [nextLabelRow]);
   if (data.next.length === 0) {
     next.append(
       el("div", { class: "card" }, [
@@ -466,6 +489,13 @@ async function viewToday(view) {
     }
   }
   view.append(next);
+
+  // Peeker (Git #3119): "Next" is the one tray section label this app actually has today, so it
+  // gets the day's first peek roll (`b`). Later/Meds/Rooms are the spec's other three tray
+  // labels and get the next three (`b+1..b+3` via rollPeekers()), but none of those sections
+  // exist in this app yet -- there's no tray Later row, Meds card or Rooms list to attach them
+  // to. Wire those the moment those screens land.
+  attachPeeker(nextLabel, rollPeekers()[0]);
 
   if (data.pendingCaptures > 0) {
     view.append(
@@ -579,12 +609,18 @@ async function viewThings(view) {
       empty(
         "Nothing filed yet.",
         "Categories are open — Claude invents the right one when it files something, so this fills itself in.",
+        "notfound",
       ),
     );
   } else {
     for (const entity of shown) list.append(entityTile(entity));
   }
   view.append(list);
+
+  // Room watermark (Git #3119): "Things" is the one room from the critter spec's room map that
+  // genuinely exists in this app today. Painted on the view itself, not the section, so it shows
+  // through every row per the spec ("painted over the content so it shows through list rows").
+  attachRoomWatermark(view, "things");
 }
 
 async function viewEntity(view, entityId) {
@@ -908,6 +944,7 @@ async function render() {
   parseRoute();
   const view = $("#view");
   view.replaceChildren();
+  resetCritterRender(); // Git #3119: a slot's pair-alt only advances within a single screen.
   $("#view-title").textContent = TITLES[state.route] ?? "";
 
   for (const tab of document.querySelectorAll(".tabs a")) {
@@ -930,6 +967,9 @@ async function render() {
 window.addEventListener("hashchange", render);
 
 async function start() {
+  // The critter sprite (Git #3119) loads in parallel with everything else -- it's decorative,
+  // so nothing in the real startup path waits on it.
+  loadCritterSprite();
   // An enrolment link wins over everything: it is how the very first passkey gets created, and
   // at that moment there is by definition no session to load.
   if (enrollmentTokenFromUrl()) return showEnroll();

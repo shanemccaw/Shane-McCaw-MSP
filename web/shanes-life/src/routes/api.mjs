@@ -26,6 +26,19 @@ function requireUser(ctx) {
   return ctx.session.user;
 }
 
+/**
+ * The critter daily-roll date key (Git #3119, "Shanes Life 14 - Critters.dc.html"): unpadded
+ * Y-M-D from the SERVER's clock, never the client's -- the spec is explicit that the roll is
+ * "evaluated once at first open from the server date" so every device shows the same critter for
+ * a slot on a given day regardless of its own clock/timezone. Format matches the design's own
+ * `d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate()` exactly (no zero-padding) --
+ * padding would change the hash input and roll a different critter than the design previewed.
+ */
+function serverDateKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
 export function buildApiRouter() {
   const router = new Router();
 
@@ -331,6 +344,8 @@ export function buildApiRouter() {
       publicOrigin: config.publicOrigin,
       passkeyCount: await credentials.countCredentials(user.id),
       lastVerifiedAt: ctx.session.lastVerifiedAt,
+      // The critter daily-roll seed (Git #3119) -- see serverDateKey() above.
+      serverDate: serverDateKey(),
     });
   });
 

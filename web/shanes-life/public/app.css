@@ -28,6 +28,9 @@ html, body {
   font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   -webkit-text-size-adjust: 100%;
   overscroll-behavior-y: contain;
+  /* The room watermark (Git #3119) sits at right:-44px by design, deliberately bleeding off the
+     card edge -- this keeps that from opening a horizontal scrollbar on the page. */
+  overflow-x: hidden;
 }
 
 [hidden] { display: none !important; }
@@ -255,7 +258,23 @@ button:disabled { opacity: 0.5; cursor: default; }
    fill the space, and it never scolds. */
 
 .empty { display: grid; justify-items: center; gap: 0.5rem; padding: 2rem 1rem; text-align: center; color: var(--muted); }
-.empty img { width: 64px; height: 64px; border-radius: 20px; opacity: 0.75; }
+.empty svg { width: 64px; height: 64px; opacity: 0.85; }
+
+/* ---------- critters (Git #3119) ----------
+   Same family as the sign-in fox above: soft vertical gradient body, cream belly, dark dot
+   eyes, blush #F472B6, one navy ground shadow. Decorative only, never a mechanic. */
+
+/* Peeker pupils look left/right on an 8s loop -- defined once here since the animation is
+   applied inline (via the symbol's own `style="animation:pkLook ..."`) inside critters-sprite.svg. */
+@keyframes pkLook {
+  0%, 16% { transform: translateX(0); }
+  28%, 48% { transform: translateX(-8px); }
+  60%, 82% { transform: translateX(8px); }
+  100% { transform: translateX(0); }
+}
+
+.critter-peeker { pointer-events: none; }
+.critter-watermark { pointer-events: none; }
 
 pre.token {
   background: var(--surface-2);
