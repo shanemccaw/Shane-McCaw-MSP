@@ -85,6 +85,10 @@ constraints:
   dispatches an actual build. That's not just how tonight happened to go — it's meant to
   be a real, designed-in part of how this app keeps growing after launch, not a one-time
   design phase that ends once the app ships.
+- **Real simple lists — movies/shows to watch, recommended books, confirmed 2026-09-05.**
+  A real, deliberate light-touch case: these don't need their own bespoke design, just the
+  same capture box and a sensible list treatment — exactly the extensibility principle
+  above, applied rather than re-explained.
 - **Real appointment handling, confirmed 2026-09-05 — no new mechanism, just confirms the
   capture box handles this too.** One-off appointments captured exactly as natural speech —
   "dr appointment sept 3rd 2pm dr fonji" — parsed into date/time/type/provider
