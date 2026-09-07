@@ -59,7 +59,17 @@ node scripts/azure/testbed-test-user-2840.mjs --create             --i-mean-it
 node scripts/azure/testbed-test-user-2840.mjs --revoke-sessions    --i-mean-it
 node scripts/azure/testbed-test-user-2840.mjs --seed-phone-method  --i-mean-it
 node scripts/azure/testbed-test-user-2840.mjs --purge-auth-methods --i-mean-it
+
+# #2981's repro: the ORIGINAL single-pass purge, kept so the stale-read failure
+# can still be reproduced on demand. Production no longer behaves this way.
+node scripts/azure/testbed-test-user-2840.mjs --purge-auth-methods-single-pass --i-mean-it
 ```
+
+`--purge-auth-methods` now mirrors what production runs after #2981: enumerate → delete →
+**re-enumerate** until two consecutive delayed reads corroborate that nothing removable is
+left (bounded at 6 reads / 45s), reporting failure rather than success if it cannot. The
+authoritative implementation is `artifacts/api-server/src/lib/mfa-reregistration.ts`; the
+script's copy is a deliberate dependency-free mirror, so keep the two in step.
 
 ### Safety rails, enforced in code rather than in prose
 
@@ -96,6 +106,18 @@ This is Entra directory replication between Graph replicas, not a script bug —
 real consequence for `mfa-enforcement-v1`, which enumerates and deletes in one pass and
 reports success on a `0 deletable` read. Filed as its own issue (see below).
 
+### Re-verified after the #2981 fix (2026-09-07)
+
+Both halves of the lag, and the fix, observed live against the same account in one sitting:
+
+| Sequence | Result |
+|---|---|
+| `--seed-phone-method --purge-auth-methods-single-pass` (the OLD production behaviour) | `POST phoneMethods` → **201**, then `enumerated 1 method(s); 0 deletable` — **deleted nothing, reported no error.** #2981 reproduced verbatim. |
+| `--purge-auth-methods` (the NEW behaviour) on that same still-registered method | `read 1: enumerated 2 method(s); 1 outstanding` → `DELETE phoneMethods/3179e48a-750b-4051-897c-87b9720928f7` → **204**; `read 2: 0 outstanding`; `read 3: 0 outstanding` → **VERIFIED empty after 3 reads, 2 corroborating clean reads.** |
+| An earlier `--seed-phone-method --purge-auth-methods` in the same sitting | read 1 deleted the method (204), and **read 2 still enumerated 2 methods** — the lag running in the *other* direction, a converged replica still listing a method already deleted. Treated as clean because the confirmed 204 outranks the lagging read, exactly as Microsoft's own guidance says; read 3 enumerated 1 and it verified. |
+
+The account was left clean again afterwards — only `passwordAuthenticationMethod` remains.
+
 ## What this does *not* unlock
 
 - **Password / privileged-user operations still need more than a permission grant.**
@@ -116,6 +138,9 @@ reports success on a `0 deletable` read. Filed as its own issue (see below).
 
 - **#1899** — `mfa-enforcement-v1` step 1's real re-registration mechanism; this account is
   what its DELETE fan-out was missing.
+- **#2981** — the replication-lag consequence found here, now fixed: the fan-out
+  re-enumerates and reports failure rather than success when it cannot corroborate the
+  wipe (`artifacts/api-server/src/lib/mfa-reregistration.ts`).
 - **#1913 / CLAUDE.md "Production-change gate"** — why the app registration, not the tenant,
   is the boundary this account is created inside.
 - `docs/write-app-permissions.md` — the write app's real permission inventory.
