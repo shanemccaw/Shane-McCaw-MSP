@@ -1,0 +1,5 @@
+/* Inter — the sole typeface across every Shane McCaw MSP surface (weights 400–800).
+   Loaded from Google Fonts CDN. No self-hosted binaries ship with this system;
+   if you need offline/self-hosted Inter, drop the .woff2 files in assets/fonts/
+   and replace this import with local @font-face rules. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
