@@ -2,7 +2,7 @@
   "issue": 2993,
   "feature": "Risk Register (#2993, Feature #1487) -- the real customer-facing Risk Register page in the rebuilt artifacts/portal (/risk-register), wired to GET /api/portal/risk-register, GET /api/portal/policy-decisions, POST /api/portal/risk-register/:rbdId/accept, and GET /api/portal/risk-register/rbd/:rbdId/versions -- see docs/risk-register-contract-pack.md. No fixture module: every row on screen comes from these endpoints. #3058 wired the whole-document viewer + drawn-signature capture (GET .../versions/:versionUid/document, POST .../versions/:versionUid/sign) that this manifest's DOC steps below cover.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "TBD",
+  "lastVerifiedAgainstCommit": "bbc47252e",
 
   "notes": [
     "#3058 -- no msp_rbd_versions row exists anywhere in the local/testbed DB (confirmed via direct SELECT this session), so the document/sign happy path (a real rendered WireRbdDocument, a real 201 sign) is NOT driven end-to-end here -- rendering one needs a real MSP staff createdByUserId via the separate msp-rbd-versions.ts route, which is out of this manifest's scope. What IS driven: the scoped-404 guard on both new routes for a version that does not exist (DOC1/DOC2, idempotent), and the honest 'No document prepared yet' empty state rendering for real on a row with zero captured versions (UI8). If an MSP-rendered + customer-signable version is ever seeded for the testbed tenant, extend this manifest with the real document-render + sign-and-verify-409-on-resubmit path the same way A3's write-once guard was proven (see that note) rather than leaving this gap silently uncovered.",
