@@ -169,6 +169,25 @@ in isolation.
   Shane touches anything at the real bank. It never executes anything; it's a real, instant
   "what would this actually do" answer, replacing the manual back-and-forth Shane and
   Claude did by hand tonight for the real mortgage/electric/Tesla split decision.
+- **Real bill due-date notifications, confirmed 2026-09-05 — real reuse, not a
+  duplicate.** Once Money unifies (Section 1), bill due dates are already real data
+  ShanesSurvival tracks (`due_day` per account) — the notification tray surfaces that
+  same real data, it doesn't maintain a second, separate due-date tracker.
+- **Real Tax Levy payment reminder, confirmed 2026-09-05 — the real, existing $242/month
+  IRS installment (already tracked in ShanesSurvival's `debts` table, due the 12th of each
+  month starting November).** Same real reuse principle as bill due dates above — this is
+  a genuinely high-stakes one given the real levy history, worth a real, distinct nudge,
+  not just lumped anonymously into a general bill list.
+- **Real, important limitation, confirmed 2026-09-05 — Shane asked whether Claude itself
+  could proactively check in mid-conversation ("Shane, have you covered the Tax Levy?")
+  even in an unrelated chat.** That's not how Claude's memory system actually works, by
+  design — memory surfaces information relevant to what's being asked, it doesn't
+  interject unprompted into a different conversation. **The real, buildable version of the
+  same underlying goal is the notification tray itself** (already locked as this app's
+  primary interface, Section 3) — a real, reliable push notification at the right real
+  time doesn't depend on which conversation happens to be open, and achieves the actual
+  goal (a proactive reminder Shane doesn't have to remember to ask for) better than relying
+  on Claude's own chat behavior would anyway.
 - **Real per-vehicle financial tracking, confirmed 2026-09-05 — cars belong in the
   unified Money picture (Section 1), not a separate maintenance calendar.** Shane's real
   focus: cars as part of real financial decision-making, not just "remind me about oil
