@@ -10,21 +10,23 @@
  * `routes/portal-change-control.ts`'s header for why both predicates are
  * required together).
  *
- * ── Which vocabulary this reads (the issue body is superseded here) ─────────
+ * ── Which vocabulary this reads (#3045) ──────────────────────────────────────
  * #1506's own issue body says success/failure should read #1502's close codes
- * (`successful | successful_with_issues | failed | rolled_back`). #1502 is
- * still OPEN — no close-code column exists anywhere in the schema (verified
- * live: no `close_code` / `successful_with_issues` in `lib/db/src/schema/msp.ts`
- * and nothing under `lib/db/migrations/manual/` adds one). #1506's own
- * 2026-09-03 re-dispatch comment supersedes the stale body and is what this
- * module actually implements: a change's terminal outcome comes from
- * `cr_executions.outcome` (`succeeded | failed | rolled_back`) when an
- * execution row exists for it, and falls back to the CR's own `cr_events`
- * terminal event (`completed` | `rolled_back`) when it does not. `crEventsTable`
- * itself documents this exact pair of formulas — see its header in
- * `lib/db/src/schema/msp.ts`. If #1502 lands later and adds a real close-code
- * column, extend this file to prefer it; don't invent a second vocabulary here
- * in the meantime.
+ * (`successful | successful_with_issues | failed | rolled_back`). #1502 has
+ * since shipped — `cr_pirs.closeCode` (`lib/db/src/schema/msp.ts:5278`,
+ * `lib/db/migrations/manual/2026-09-03-cr-pirs-1502.sql`) is a real,
+ * human-reviewed column today, one row per `cr_executions` row. This module
+ * prefers it: when a CR's latest settled execution has a PIR attached, its
+ * `closeCode` decides success/failure (`successful`/`successful_with_issues`
+ * → success, `failed`/`rolled_back` → failure) — the authoritative,
+ * human-confirmed signal, including the `successful_with_issues` nuance that
+ * `cr_executions.outcome`'s 3-value vocabulary has no equivalent for. Only
+ * when no PIR exists for that execution does this fall back to
+ * `cr_executions.outcome` (`succeeded | failed | rolled_back`), and only when
+ * no execution row exists at all does it fall back further to the CR's own
+ * `cr_events` terminal event (`completed` | `rolled_back`). `crEventsTable`
+ * itself documents that last pair of formulas — see its header in
+ * `lib/db/src/schema/msp.ts`.
  *
  * ── Honesty rule ──────────────────────────────────────────────────────────────
  * A metric with no qualifying events is `available: false`, never `0` and never
@@ -39,10 +41,12 @@ import {
   mspChangeRequestsTable,
   crEventsTable,
   crExecutionsTable,
+  crPirsTable,
   cabAgendaItemsTable,
   cabMeetingsTable,
   type CrEvent,
   type CrExecution,
+  type CrPir,
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 
@@ -147,9 +151,10 @@ export async function computeChangeMetrics(scope: ChangeMetricsScope): Promise<C
   const crIds = crs.map((c) => c.id);
   const classById = new Map<number, string>(crs.map((c) => [c.id, c.changeClass]));
 
-  const [events, executions, agendaItems] = await Promise.all([
+  const [events, executions, pirs, agendaItems] = await Promise.all([
     db.select().from(crEventsTable).where(inArray(crEventsTable.changeRequestId, crIds)),
     db.select().from(crExecutionsTable).where(inArray(crExecutionsTable.changeRequestId, crIds)),
+    db.select().from(crPirsTable).where(inArray(crPirsTable.changeRequestId, crIds)),
     db
       .select()
       .from(cabAgendaItemsTable)
@@ -158,8 +163,11 @@ export async function computeChangeMetrics(scope: ChangeMetricsScope): Promise<C
 
   // ── Change success rate / failed change rate ────────────────────────────────
   // Per-CR terminal outcome: prefer the most recently-settled cr_executions row
-  // (outcome != 'pending') when one exists; fall back to the CR's own latest
-  // terminal cr_events row (`completed` | `rolled_back`) when it does not.
+  // (outcome != 'pending') when one exists — and within that, prefer its
+  // cr_pirs.closeCode (#1502's human-reviewed review) over the execution's own
+  // mechanical outcome when a PIR was recorded against it; fall back to the CR's
+  // own latest terminal cr_events row (`completed` | `rolled_back`) when no
+  // execution row exists at all.
   const executionsByCr = new Map<number, CrExecution[]>();
   for (const e of executions) {
     if (e.outcome === "pending") continue;
@@ -174,6 +182,8 @@ export async function computeChangeMetrics(scope: ChangeMetricsScope): Promise<C
     list.push(ev);
     terminalEventsByCr.set(ev.changeRequestId, list);
   }
+  // One PIR per execution (real UNIQUE constraint on execution_id) — a plain map is exact, no "latest" needed.
+  const pirByExecutionId = new Map<number, CrPir>(pirs.map((p) => [p.executionId, p]));
 
   let successCount = 0;
   let failureCount = 0;
@@ -185,6 +195,12 @@ export async function computeChangeMetrics(scope: ChangeMetricsScope): Promise<C
         const bt = (b.executedAt ?? b.createdAt).getTime();
         return bt - at;
       })[0];
+      const pir = pirByExecutionId.get(latest.id);
+      if (pir) {
+        if (pir.closeCode === "successful" || pir.closeCode === "successful_with_issues") successCount++;
+        else if (pir.closeCode === "failed" || pir.closeCode === "rolled_back") failureCount++;
+        continue;
+      }
       if (latest.outcome === "succeeded") successCount++;
       else if (latest.outcome === "failed" || latest.outcome === "rolled_back") failureCount++;
       continue;
