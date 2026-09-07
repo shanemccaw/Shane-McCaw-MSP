@@ -89,6 +89,15 @@ constraints:
   A real, deliberate light-touch case: these don't need their own bespoke design, just the
   same capture box and a sensible list treatment — exactly the extensibility principle
   above, applied rather than re-explained.
+- **Real federal holidays, confirmed 2026-09-05 — different in kind from everything else
+  here.** Real, stated problem: "I only ever know when it's too late." Unlike birthdays
+  or appointments, this needs no manual entry at all — it's a real, known public schedule
+  (OPM publishes the official federal holiday calendar every year, including which
+  holidays get observed on a shifted date). Real requirement: use an actual current
+  source, not a one-time hardcoded list that goes stale — dates shift year to year and
+  around weekends. Same real lead-time reminder pattern as birthdays/events, since Shane's
+  own real NASA work schedule and bill due-dates both depend on knowing these in advance,
+  not the day of.
 - **Real appointment handling, confirmed 2026-09-05 — no new mechanism, just confirms the
   capture box handles this too.** One-off appointments captured exactly as natural speech —
   "dr appointment sept 3rd 2pm dr fonji" — parsed into date/time/type/provider
