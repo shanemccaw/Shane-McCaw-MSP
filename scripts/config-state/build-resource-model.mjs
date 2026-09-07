@@ -108,7 +108,8 @@ async function main() {
 
     // ── 1. Graph types the configuration surface actually reaches ─────────────
     // Transitive closure from the entity types behind the config paths, following
-    // structural property types. Bounds the load to what a config snapshot could
+    // structural property types (sideways), BaseType (upward) and — Git #2978 — real
+    // derived subtypes (downward). Bounds the load to what a config snapshot could
     // ever need to hold, instead of all ~11.6k declared types across both versions.
     console.log("── Loading the reachable Graph entity model ──────────────────");
     await client.query("DELETE FROM graph_entity_properties");
@@ -120,11 +121,54 @@ async function main() {
 
     for (const v of ["v1.0", "beta"]) {
       const model = graph[v];
+
+      // Git #2978 — reverse index for the downward pass: resolved BaseType
+      // qualifiedName -> [derived type qualifiedNames]. Built once over the FULL
+      // declared type universe (model.types, not just what's reachable so far) —
+      // a real subtype (e.g. microsoft.graph.iosWiFiConfiguration) can live anywhere
+      // in the ~11.6k declared types and is only found by asking "who derives from
+      // this", not by walking the reachable set forward.
+      const childrenByBase = new Map();
+      for (const t of model.types.values()) {
+        if (!t.baseType) continue;
+        const b = model.resolveType(t.baseType, t.namespace);
+        if (!b) continue;
+        if (!childrenByBase.has(b.qualifiedName)) childrenByBase.set(b.qualifiedName, []);
+        childrenByBase.get(b.qualifiedName).push(t.qualifiedName);
+      }
+
       const reachable = new Map();
       const queue = [];
+      // Git #2978 — types allowed to pull their OWN derived subtypes into the
+      // closure. Deliberately NOT "every type in reachable" (this issue's own
+      // literal draft fix) — Graph's object model is single-rooted at the abstract
+      // microsoft.graph.entity, which virtually every entity type reaches via the
+      // upward BaseType walk below. Treating every ancestor as a downward root would
+      // walk entity back down through most of the ~11.6k-type universe the first
+      // time any ordinary entity type pulled it in as an ancestor — the opposite of
+      // "bounded". Only a type that is the DECLARED entityType of a real addressable
+      // config path (an EntitySet/Singleton/containment-nav target — never a generic
+      // ancestor reached by walking BaseType up, and never a structural property's
+      // type reached sideways) is a genuine "this collection's rows are really one
+      // of these concrete subtypes" root, so only those seed downward expansion. A
+      // subtype discovered that way is itself re-seeded, so a multi-level hierarchy
+      // (deviceConfiguration -> windowsGeneralConfiguration -> ...) still resolves
+      // to a fixed point instead of stopping one level down.
+      const downwardRoots = new Set();
       for (const p of graphPaths[v]) {
-        if (p.entityType && model.types.has(p.entityType)) queue.push(p.entityType);
+        if (p.entityType && model.types.has(p.entityType)) {
+          queue.push(p.entityType);
+          downwardRoots.add(p.entityType);
+        }
       }
+      // Circuit breaker, not a tuned bound — real Graph subtype fan-outs (Intune
+      // device/app/enrollment configs, the widest known cases) stay in the dozens.
+      // If a future schema change ever made a downward root genuinely explode, this
+      // stops the run from silently ballooning instead of failing loud.
+      const DOWNWARD_SANITY_CAP = 1000;
+      let downwardConsidered = 0;
+      let downwardCapHit = false;
+      const discoveredViaDownward = new Set();
       while (queue.length) {
         const q = queue.pop();
         if (reachable.has(q)) continue;
@@ -144,6 +188,25 @@ async function main() {
           if (!target) continue;
           if (prop.kind === "navigationProperty" && !prop.containsTarget) continue;
           queue.push(target.qualifiedName);
+        }
+        // Downward (Git #2978): only from a genuine collection-root, or a subtype
+        // discovered THROUGH one — never from an ancestor reached by the upward walk
+        // above, or a type reached sideways through a structural property. See the
+        // downwardRoots comment.
+        if (downwardRoots.has(q)) {
+          for (const child of childrenByBase.get(q) ?? []) {
+            if (downwardConsidered >= DOWNWARD_SANITY_CAP) {
+              if (!downwardCapHit) {
+                downwardCapHit = true;
+                console.warn(`  ⚠ ${v}: downward closure hit its ${DOWNWARD_SANITY_CAP}-type sanity cap — stopped early, model is incomplete below this point`);
+              }
+              break;
+            }
+            downwardConsidered++;
+            downwardRoots.add(child);
+            discoveredViaDownward.add(child);
+            queue.push(child);
+          }
         }
       }
 
@@ -188,7 +251,8 @@ async function main() {
         ["entity_type_id", "name", "kind", "edm_type", "is_collection", "is_nullable", "contains_target", "ordinal"],
         propRows, { onConflict: "ON CONFLICT DO NOTHING" });
       propRowCount += propRows.length;
-      console.log(`  ${v}: ${typeRows.length} reachable types, ${propRows.length} properties`);
+      const realDownwardCount = [...discoveredViaDownward].filter((q) => reachable.has(q)).length;
+      console.log(`  ${v}: ${typeRows.length} reachable types (${realDownwardCount} via downward closure), ${propRows.length} properties`);
     }
 
     // ── 2. Link DSC resources to Graph paths ─────────────────────────────────
