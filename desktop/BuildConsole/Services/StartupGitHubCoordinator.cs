@@ -24,6 +24,19 @@ namespace BuildConsole.Services
     ///   • The blocked-by sweep             — one blocked_by REST call per open issue (~528, HTTP)
     ///   • Issue-title warm-up              — dozens of `gh issue view` calls (gh CLI)
     ///
+    /// Git #3113 update — the biggest members of that list (the issue-title warm-up's per-issue
+    /// `gh issue view` calls, the chat-dock enrichment, and the background board-status reconcile)
+    /// NO LONGER hit GitHub at all: they now read a local Postgres mirror (`bt_issue_mirror`, see
+    /// <see cref="GitHubIssueMirror"/>) refreshed by ONE periodic BATCHED sync. That mirror sync is
+    /// itself now the primary heavy startup GitHub operation this coordinator staggers — the watcher
+    /// tick fires it through <see cref="RunAsync"/> so the first, full-board sync lands in its own
+    /// cold-start slot instead of joining the other bursts. The cross-subsystem coordination below
+    /// still matters for the live operations that remain (the fail-closed blocked-by sweep, orphan
+    /// recovery, and the mirror sync itself), but the routine request-per-issue volume that used to
+    /// dominate the cold-start burst is gone at the source — this is #3113's real root fix, and the
+    /// reason this coordinator's staggering, while still useful, no longer has to paper over a
+    /// fundamentally request-per-issue read pattern.
+    ///
     /// Fired in parallel the moment each one's own gate allows, that aggregate volume
     /// overwhelms GitHub's SECONDARY rate limit — the real #3022 log shows the #2815 circuit
     /// tripping and resetting repeatedly within a single second (12:53:23.199 → 12:53:23.436)

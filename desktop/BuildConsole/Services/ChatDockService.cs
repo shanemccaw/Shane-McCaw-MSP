@@ -105,39 +105,13 @@ namespace BuildConsole.Services
         /// hundreds of sequential GitHub calls.</summary>
         private const int MaxEnrichedItems = 40;
 
-        /// <summary>Git #2889 — real cap on how many mentioned issues' <see cref="BuildItemAsync"/>
-        /// fetches run simultaneously. #2686 correctly fanned this out via unbounded
-        /// <c>Task.WhenAll</c> to fix the panel's own real sequential-load slowness, but with zero
-        /// concurrency cap a chat mentioning N issues fired N simultaneous real GitHub calls (gh CLI +
-        /// API) at once — Shane's live log showed 7 real <c>gh issue view</c> calls within a 20ms
-        /// window, a direct contributor to that night's rate-limit exhaustion (#2815/#2867). Bounding
-        /// to a small number keeps #2686's real concurrency win (still not fully sequential) while
-        /// staggering the real GitHub calls instead of bursting them.</summary>
-        private const int MaxConcurrentItemFetches = 3;
-
-        /// <summary>Git #3073 — #2889's gate was a `using var gate = new SemaphoreSlim(...)` LOCAL to
-        /// one <see cref="BuildAsync"/> call, so it only bounded concurrency WITHIN a single chat
-        /// dock's own refresh. It did nothing to bound concurrency ACROSS simultaneous refreshes of
-        /// several different chat docks — and <c>MainWindow.xaml.cs</c>'s <c>BoardRefreshCompleted</c>
-        /// cascade (#2688) fires every open chat tab's <c>ChatDocumentContainer.RefreshDetectedAsync</c>
-        /// off the SAME event dispatch, each independently constructing its own local gate. With N
-        /// open chat tabs mentioning distinct issue numbers, that meant N × <see cref="MaxConcurrentItemFetches"/>
-        /// real GitHub calls in flight at once on one cold-start board refresh — exactly the "dozens
-        /// of distinct issue numbers within milliseconds" Shane's log showed, none of it explained by
-        /// this method's own per-dock bound. Making the gate STATIC (shared process-wide across every
-        /// concurrent <see cref="BuildAsync"/> call, not just every item within one call) is the real
-        /// fix: total real GitHub calls in flight for chat-dock enrichment now stays capped at
-        /// <see cref="MaxConcurrentItemFetches"/> no matter how many chat docks refresh at once.</summary>
-        private static readonly SemaphoreSlim SharedItemFetchGate = new(MaxConcurrentItemFetches, MaxConcurrentItemFetches);
-
-        /// <summary>Git #3073 — same real per-number cooldown shape #2890 established for
-        /// <c>BuildQueuePanel.TriggerBackgroundIssueTitleQueries</c>: a mentioned issue whose
-        /// board-status/chain-walk fetch failed recently is skipped (metadata just stays null/empty
-        /// for this pass) rather than re-attempted on literally every dock refresh across every open
-        /// chat tab. Keyed process-wide (not per-chat) since the same issue number failing for one
-        /// chat's dock will fail identically for every other chat that also mentions it.</summary>
-        private static readonly Dictionary<int, DateTime> MetadataFetchCooldownUntil = new();
-        private static readonly TimeSpan MetadataFetchRetryCooldown = TimeSpan.FromSeconds(60);
+        // Git #3113 — the whole live-GitHub concurrency-bounding apparatus this service used to carry
+        // (#2889's MaxConcurrentItemFetches, #3073's process-wide SharedItemFetchGate, the per-number
+        // metadata cooldown) is GONE, because the dock no longer makes ANY live GitHub call. Every
+        // mentioned issue's title, open/closed state, board Status and blocked-by/blocking chain now
+        // reads from the local bt_issue_mirror (refreshed by one periodic batched sync, #3113's real
+        // root fix). There is nothing left to stagger — local Postgres reads have none of the
+        // secondary-rate-limit sensitivity that made those gates necessary.
 
         public static Task<ChatDockData> BuildAsync(BuildQueuePostgresClient db, string chatUrl, int chatId) =>
             BuildAsync(db, chatUrl, chatId, null);
@@ -186,146 +160,74 @@ namespace BuildConsole.Services
             if (mentioned.Count == 0)
                 return new ChatDockData { Items = new List<ChatDockItem>(), PinnedQuestions = pins };
 
-            // Step 2 — live open/closed cross-check, batched in one gh CLI call (Git #1600's
-            // fail-closed shape: Success=false means GitHub was unreachable, never "nothing open").
-            var openResult = await GitHubIssuesService.TryGetOpenIssueNumbersAsync();
-            bool reachedGitHub = openResult.Success;
+            // Git #3113 — Step 2 is now a LOCAL mirror read, not a live GitHub round-trip. One batched
+            // read of every mentioned number's mirrored row (title, open/closed state, board Status,
+            // blocked-by/blocking) replaces the old per-issue `gh issue view` + per-issue board-status
+            // GraphQL + live BFS chain walk — the exact per-issue burst the dock used to contribute to
+            // the recurring rate-limit cycle. The mirror is refreshed by one periodic batched sync
+            // (GitHubIssueMirror), so this dock refresh costs GitHub nothing.
+            var cache = await GitHubIssueMirror.GetManyAsync(mentioned);
 
-            var settings = BuildConsoleSettings.Load();
-            GitHubApiClient? gh = settings.HasGitHubPat ? new GitHubApiClient(settings.GitHubPat) : null;
+            // Fail-closed exactly as before: if the mirror has never completed a successful sync, we
+            // can't tell open from closed, so every mention is kept (unknown) rather than silently
+            // dropped — the same rule #1600 applied when the live `gh` check was unreachable.
+            bool mirrorUsable = await GitHubIssueMirror.HasUsableDataAsync();
 
-            // Git #2686 — was a sequential `foreach` doing 3-4 real awaited GitHub calls PER mentioned
-            // issue (title, board-status, two chain walks), each item fully blocking the next — O(N ×
-            // chain-depth) sequential round trips. Fan every item's own fetch out concurrently instead;
-            // each still fails closed on its own (a single item's fetch failure never aborts the batch,
-            // it just lands with less metadata — same behavior as before, just not serialized).
-            //
-            // Git #2889 — that fan-out was unbounded: N mentioned issues meant N simultaneous real
-            // GitHub calls fired at once. Gate it through a small SemaphoreSlim instead of reverting to
-            // fully sequential — still concurrent (keeps #2686's real load-time fix), but real GitHub
-            // calls are now capped/staggered rather than bursting.
-            //
-            // Git #3073 — that gate must be the process-wide SharedItemFetchGate, not a local instance
-            // per call: several chat docks can (and do, via #2688's BoardRefreshCompleted cascade)
-            // refresh concurrently, and a local gate only bounds ONE dock's own fan-out.
-            var itemTasks = mentioned
-                .Select(number => BuildItemThrottledAsync(number, reachedGitHub, openResult, gh, liveQueueItems))
-                .ToList();
-            var built = await Task.WhenAll(itemTasks);
-            var items = built.Where(i => i != null).Select(i => i!).ToList();
+            var items = new List<ChatDockItem>();
+            foreach (var number in mentioned)
+            {
+                var item = await BuildItemFromMirrorAsync(number, mirrorUsable, cache, liveQueueItems);
+                if (item != null) items.Add(item);
+            }
 
             return new ChatDockData
             {
                 Items = items,
                 PinnedQuestions = pins,
-                GitHubReachable = reachedGitHub,
-                GitHubError = openResult.Error,
+                // GitHubReachable now means "the mirror has real, synced data"; when false the dock
+                // shows every mention unfiltered with the note below (same fail-closed UX as before).
+                GitHubReachable = mirrorUsable,
+                GitHubError = mirrorUsable ? null : "issue mirror not yet populated — showing all mentions unfiltered until the first sync completes",
             };
         }
 
-        /// <summary>Git #2889 — acquires <see cref="MaxConcurrentItemFetches"/>'s real gate before
-        /// starting this mentioned issue's real GitHub work, so <see cref="BuildAsync"/>'s
-        /// <c>Task.WhenAll</c> fan-out only ever has a small, bounded number of items actually
-        /// in-flight at once instead of firing all of them simultaneously.
-        ///
-        /// Git #3073 — that gate is now <see cref="SharedItemFetchGate"/>, held process-wide across
-        /// EVERY concurrently-refreshing chat dock, not just the items within this one call.</summary>
-        private static async Task<ChatDockItem?> BuildItemThrottledAsync(
+        /// <summary>
+        /// Git #3113 — one mentioned issue's dock item, built entirely from the local
+        /// <see cref="GitHubIssueMirror"/> (no live GitHub call). Drop rules mirror the old live
+        /// cross-check exactly:
+        ///   • mirror usable + row is CLOSED  → drop (confirmed resolved).
+        ///   • mirror usable + NO row         → drop: the mirror's open set is every open repo issue,
+        ///                                       so an absent number is not open (the old
+        ///                                       <c>isOpen == false</c> case).
+        ///   • mirror usable + row is OPEN    → keep, StateUnknown = false.
+        ///   • mirror NOT usable (never synced) → keep every mention, StateUnknown = true (fail-closed).
+        /// </summary>
+        private static async Task<ChatDockItem?> BuildItemFromMirrorAsync(
             int number,
-            bool reachedGitHub,
-            LiveOpenIssuesResult openResult,
-            GitHubApiClient? gh,
+            bool mirrorUsable,
+            Dictionary<int, GitHubIssueMirror.MirrorIssue> cache,
             IReadOnlyList<QueueItem>? liveQueueItems)
         {
-            await SharedItemFetchGate.WaitAsync();
-            try
-            {
-                return await BuildItemAsync(number, reachedGitHub, openResult, gh, liveQueueItems);
-            }
-            finally
-            {
-                SharedItemFetchGate.Release();
-            }
-        }
+            cache.TryGetValue(number, out var row);
 
-        /// <summary>Git #2686 — one mentioned issue's full fetch (title, board-status, both chain
-        /// walks, live-queue cross-reference), extracted so <see cref="BuildAsync"/> can run every
-        /// mentioned number's fetch concurrently via <c>Task.WhenAll</c> instead of a blocking
-        /// sequential loop. Returns null only for a confirmed-closed issue (dropped from the dock);
-        /// every other outcome — including every kind of per-field fetch failure — still returns a
-        /// real item, same fail-closed shape the original sequential loop had. Git #2889 — its real
-        /// concurrency is now bounded by <see cref="BuildItemThrottledAsync"/>, its own caller.</summary>
-        private static async Task<ChatDockItem?> BuildItemAsync(
-            int number,
-            bool reachedGitHub,
-            LiveOpenIssuesResult openResult,
-            GitHubApiClient? gh,
-            IReadOnlyList<QueueItem>? liveQueueItems)
-        {
-            bool? isOpen = reachedGitHub ? openResult.OpenNumbers.Contains(number) : (bool?)null;
-            // Fail-closed: unknown (GitHub unreachable) is treated as still-relevant, same as a
-            // confirmed-open issue. Only a CONFIRMED closed state drops it from the dock.
-            if (isOpen == false) return null;
-
-            string title = $"#{number}";
-            string? boardStatus = null;
-            var blockedBy = new List<ChatDockEdge>();
-            var blocks = new List<ChatDockEdge>();
-
-            try
+            if (mirrorUsable)
             {
-                var titleLookup = await GitHubIssuesService.GetIssueTitleAsync(number);
-                if (!string.IsNullOrWhiteSpace(titleLookup.Title)) title = titleLookup.Title!;
-            }
-            catch { /* title stays the bare number — not fatal, the item is still real */ }
-
-            // Git #3073 — a number whose board-status/chain-walk fetch failed recently is on
-            // cooldown; skip it so a persistently-failing number doesn't get re-hit on every dock
-            // refresh across every open chat tab that happens to mention it (same real shape as
-            // #2890's title-fetch cooldown).
-            bool inMetadataCooldown;
-            lock (MetadataFetchCooldownUntil)
-            {
-                inMetadataCooldown = MetadataFetchCooldownUntil.TryGetValue(number, out var retryNotBefore)
-                    && DateTime.UtcNow < retryNotBefore;
+                if (row == null) return null;       // not in the open set → resolved/closed → drop
+                if (row.IsClosed) return null;      // confirmed closed → drop
             }
 
-            if (gh != null && !inMetadataCooldown)
-            {
-                try
-                {
-                    var statusTask = gh.GetIssueBoardStatusAsync(number);
-                    var blockedByTask = WalkChainAsync(gh, number, reverse: false);
-                    var blocksTask = WalkChainAsync(gh, number, reverse: true);
-                    await Task.WhenAll(statusTask, blockedByTask, blocksTask);
-                    boardStatus = statusTask.Result?.StatusName;
-                    blockedBy = blockedByTask.Result;
-                    blocks = blocksTask.Result;
-
-                    // Succeeded — drop any prior cooldown for this number.
-                    lock (MetadataFetchCooldownUntil)
-                    {
-                        MetadataFetchCooldownUntil.Remove(number);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Metadata-only failure — the item itself stays in the actionable list
-                    // (fail-closed), it just renders without a chain/board-status this pass.
-                    ActivityLog.Log("chat.dock", $"relationship/board-status fetch failed for #{number}: {ex.Message}");
-                    lock (MetadataFetchCooldownUntil)
-                    {
-                        MetadataFetchCooldownUntil[number] = DateTime.UtcNow + MetadataFetchRetryCooldown;
-                    }
-                }
-            }
+            string title = row != null && !string.IsNullOrWhiteSpace(row.Title) ? row.Title : $"#{number}";
+            var blockedBy = await WalkChainFromMirrorAsync(number, cache, reverse: false);
+            var blocks = await WalkChainFromMirrorAsync(number, cache, reverse: true);
 
             return new ChatDockItem
             {
                 Number = number,
                 Title = title,
-                StateUnknown = isOpen == null,
-                BoardStatus = boardStatus,
+                // Unknown only when the mirror can't yet vouch for state at all (never synced) or the
+                // issue has no row while the mirror IS usable can't happen here (dropped above).
+                StateUnknown = !mirrorUsable,
+                BoardStatus = row?.BoardStatusName,
                 LiveQueueStatus = FindLiveQueueStatus(number, liveQueueItems),
                 BlockedBy = blockedBy,
                 Blocks = blocks,
@@ -352,13 +254,17 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// Bounded BFS chain walk reusing #2081's single-hop <see cref="GitHubApiClient.GetBlockedByAsync"/>
-        /// / <see cref="GitHubApiClient.GetBlockingAsync"/> repeatedly, so a chain like #2007 blocked by
-        /// #2002 blocked by #2005 surfaces as three real hops instead of stopping at the first link. Stops
-        /// walking through a node once it's CLOSED (a closed link can't propagate a live block further),
-        /// and never revisits a number already seen (cycle-safe).
+        /// Git #3113 — the same bounded, cycle-safe BFS chain walk as before (#2007 blocked-by #2002
+        /// blocked-by #2005 surfaces as three hops; stops walking through a CLOSED node), but over the
+        /// LOCAL mirror graph (<see cref="GitHubIssueMirror.MirrorIssue.BlockedByNumbers"/> /
+        /// <see cref="GitHubIssueMirror.MirrorIssue.BlockingNumbers"/>) instead of a live per-hop
+        /// <c>GetBlockedByAsync</c>/<c>GetBlockingAsync</c> REST call. <paramref name="cache"/> is the
+        /// per-dock row cache (seeded from the batched GetManyAsync); any node not yet in it is filled
+        /// from the mirror on demand. A number the mirror has never heard of simply has no further
+        /// hops (same as a live hop returning nothing) — never a GitHub call.
         /// </summary>
-        private static async Task<List<ChatDockEdge>> WalkChainAsync(GitHubApiClient gh, int root, bool reverse)
+        private static async Task<List<ChatDockEdge>> WalkChainFromMirrorAsync(
+            int root, Dictionary<int, GitHubIssueMirror.MirrorIssue> cache, bool reverse)
         {
             var edges = new List<ChatDockEdge>();
             var visited = new HashSet<int> { root };
@@ -369,34 +275,43 @@ namespace BuildConsole.Services
                 var next = new List<int>();
                 foreach (var node in frontier)
                 {
-                    List<GitHubIssueResult> related;
-                    try
-                    {
-                        related = reverse ? await gh.GetBlockingAsync(node) : await gh.GetBlockedByAsync(node);
-                    }
-                    catch
-                    {
-                        continue; // one node's hop failing doesn't abort the whole chain walk
-                    }
+                    var nodeRow = await GetCachedRowAsync(node, cache);
+                    if (nodeRow == null) continue;
+                    var related = reverse ? nodeRow.BlockingNumbers : nodeRow.BlockedByNumbers;
 
-                    foreach (var r in related)
+                    foreach (var num in related)
                     {
-                        if (!visited.Add(r.Number)) continue;
+                        if (!visited.Add(num)) continue;
+                        var relRow = await GetCachedRowAsync(num, cache);
+                        bool isClosed = relRow?.IsClosed ?? false;
+                        string title = relRow != null && !string.IsNullOrWhiteSpace(relRow.Title) ? relRow.Title : $"#{num}";
                         edges.Add(new ChatDockEdge
                         {
-                            Number = r.Number,
-                            Title = r.Title,
-                            IsClosed = r.IsClosed,
+                            Number = num,
+                            Title = title,
+                            IsClosed = isClosed,
                             Depth = depth,
                             Reverse = reverse,
                         });
-                        if (!r.IsClosed) next.Add(r.Number);
+                        if (!isClosed) next.Add(num);
                     }
                 }
                 frontier = next;
             }
 
             return edges;
+        }
+
+        /// <summary>A mirrored row from the per-dock cache, filling it from the local mirror on a miss.
+        /// A local, pooled Postgres read — never a GitHub call. Returns null when the mirror has no row
+        /// for that number.</summary>
+        private static async Task<GitHubIssueMirror.MirrorIssue?> GetCachedRowAsync(
+            int number, Dictionary<int, GitHubIssueMirror.MirrorIssue> cache)
+        {
+            if (cache.TryGetValue(number, out var cached)) return cached;
+            var row = await GitHubIssueMirror.TryGetAsync(number);
+            if (row != null) cache[number] = row;
+            return row;
         }
     }
 }

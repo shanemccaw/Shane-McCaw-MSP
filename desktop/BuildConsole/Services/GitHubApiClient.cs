@@ -1516,6 +1516,85 @@ namespace BuildConsole.Services
             };
         }
 
+        /// <summary>
+        /// Git #3113 — the batched, whole-board equivalent of <see cref="GetIssueBoardStatusAsync"/>:
+        /// walks THIS project's items connection ONCE and returns every real Issue's current Status
+        /// option id + display name, keyed by issue number. This is the single batched read the local
+        /// issue mirror's periodic sync uses (see <see cref="Services.GitHubIssueMirror"/>) instead of
+        /// firing one per-issue <see cref="GetIssueBoardStatusAsync"/> GraphQL call for every number a
+        /// routine reader wants a board status for — the actual root of the recurring rate-limit cycle.
+        /// Same paginated, retry-backed FULL walk to the start of the connection as
+        /// <see cref="ScanProjectItemsForStatusAsync"/> (board position carries no Status information,
+        /// #1995 — no early-stop), but captures EVERY item's status rather than filtering to one option.
+        /// Only real Issues in this repo are included (Draft Issues / PRs / other-repo items skipped).
+        /// Bounded by the same <see cref="MaxPages"/> runaway guard, which logs loudly rather than
+        /// truncating silently if ever hit.
+        /// </summary>
+        public async Task<Dictionary<int, IssueBoardStatus>> GetAllIssueBoardStatusesAsync()
+        {
+            var result = new Dictionary<int, IssueBoardStatus>();
+            string? before = null;
+            int pagesWalked = 0;
+
+            for (int page = 0; page < MaxPages; page++)
+            {
+                pagesWalked = page + 1;
+                string beforeArg = before == null ? "null" : $"\"{before}\"";
+                string query = $@"query {{
+  node(id: ""{BatterUpProjectId}"") {{
+    ... on ProjectV2 {{
+      items(last: {PageSize}, before: {beforeArg}) {{
+        pageInfo {{ hasPreviousPage startCursor }}
+        nodes {{
+          id
+          fieldValueByName(name: ""Status"") {{
+            ... on ProjectV2ItemFieldSingleSelectValue {{ optionId name }}
+          }}
+          content {{
+            ... on Issue {{ number repository {{ nameWithOwner }} }}
+          }}
+        }}
+      }}
+    }}
+  }}
+}}";
+
+                var conn = await PostProjectItemsQueryWithRetryAsync(query, "issue-mirror board sweep");
+                if (conn?.Nodes != null)
+                {
+                    foreach (var n in conn.Nodes)
+                    {
+                        var issue = n.Content;
+                        // Same guards as ScanProjectItemsForStatusAsync: a Draft Issue / PR content
+                        // matches no `... on Issue` fragment (Number defaults to 0); skip it and any
+                        // item that isn't a real Issue in THIS repo.
+                        if (issue == null || issue.Number == 0) continue;
+                        if (!string.Equals(issue.Repository?.NameWithOwner, $"{Owner}/{Repo}", StringComparison.OrdinalIgnoreCase)) continue;
+                        // An issue has exactly one item on this project, so first write wins.
+                        result[issue.Number] = new IssueBoardStatus
+                        {
+                            ItemId = n.Id ?? "",
+                            OptionId = n.FieldValueByName?.OptionId,
+                            StatusName = n.FieldValueByName?.Name,
+                        };
+                    }
+                }
+
+                bool more = conn?.PageInfo?.HasPreviousPage == true && !string.IsNullOrEmpty(conn.PageInfo.StartCursor);
+                if (!more)
+                {
+                    ActivityLog.Log("git-board.data",
+                        $"issue-mirror board sweep reached the start of the board after {pagesWalked} page(s) ({result.Count} issue status(es)) — full walk, no early-stop.");
+                    return result;
+                }
+                before = conn!.PageInfo!.StartCursor;
+            }
+
+            ActivityLog.Log("git-board.data",
+                $"WARNING: issue-mirror board sweep hit the {MaxPages}-page ({MaxPages * PageSize}-item) cap after {pagesWalked} pages — board statuses may be incomplete; raise MaxPages.");
+            return result;
+        }
+
         private class IssueBoardStatusResponse
         {
             public IssueBoardStatusData? Data { get; set; }

@@ -267,6 +267,11 @@ namespace BuildConsole.Services
         /// doesn't fire a second `dev-all --start api-server` (racing kill-port/build.mjs) while the
         /// first rebuild is still finishing and :8080 hasn't bound yet.</summary>
         private DateTime _lastApiServerStartUtc = DateTime.MinValue;
+        /// <summary>Git #3113 — cheap local throttle on the GitHub-issue-mirror sync trigger fired from
+        /// TickAsync, so we don't even build a client / read the sync-state row on every ~10s tick. The
+        /// real interval gate (5 min) + failed-attempt backoff + single-flight all live in
+        /// <see cref="GitHubIssueMirror.MaybeSyncAsync"/>; this is just a fast pre-filter.</summary>
+        private DateTime _lastMirrorSyncTriggerUtc = DateTime.MinValue;
         /// <summary>
         /// Git #2891 — queue ids currently INSIDE <see cref="LaunchItem"/> (claimed → running in the
         /// DB, but not yet spawned + registered in <see cref="_running"/>). This window can be long
@@ -960,6 +965,41 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 ActivityLog.Log("watcher", $"[#3084] api-server auto-revive probe failed (non-fatal): {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Git #3113 — triggers the periodic GitHub-issue-mirror sync. This is the batched refresh that
+        /// keeps <c>bt_issue_mirror</c> current so routine reads (issue-title warm-up, chat-dock
+        /// enrichment, the background Verifying reconcile) serve from local Postgres and never fire a
+        /// per-issue GitHub call — the real root fix for the recurring rate-limit cycle.
+        ///
+        /// Runs regardless of pause/readiness (a background refresh, not a claim), same as the sweeps
+        /// above. The heavy lifting and ALL the real gating live in
+        /// <see cref="GitHubIssueMirror.MaybeSyncAsync"/> (persisted 5-min interval, failed-attempt
+        /// backoff, single-flight), so this method is safe to call every tick; the cheap local throttle
+        /// here just avoids constructing a client / touching the DB on the ~10s ticks in between. The
+        /// first (heavy, full-board) sync is routed through <see cref="StartupGitHubCoordinator"/> so it
+        /// is staggered against the other cold-start GitHub bursts (#3022) rather than joining them.
+        /// Best-effort: never throws into the caller (it is fire-and-forget on a background thread).
+        /// </summary>
+        private async Task MaybeSyncIssueMirrorAsync()
+        {
+            try
+            {
+                if ((DateTime.UtcNow - _lastMirrorSyncTriggerUtc).TotalSeconds < 30) return;
+                _lastMirrorSyncTriggerUtc = DateTime.UtcNow;
+
+                var settings = BuildConsoleSettings.Load();
+                if (!settings.HasGitHubPat) return; // no PAT → nothing to sync with; readers fall back to live.
+
+                var gh = new GitHubApiClient(settings.GitHubPat);
+                await StartupGitHubCoordinator.RunAsync("issue-mirror sync",
+                    () => GitHubIssueMirror.MaybeSyncAsync(gh));
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("issue-mirror", $"mirror sync trigger failed (non-fatal): {ex.Message}");
             }
         }
 
@@ -1813,6 +1853,15 @@ namespace BuildConsole.Services
                 // same reason as the sweeps above (background self-repair, not a claim), though it
                 // additionally no-ops until _appReady so it never adds a heavy rebuild to startup.
                 await MaybeEnsureApiServerUpAsync();
+
+                // Git #3113 — refresh the local GitHub-issue mirror on its own interval. This is the
+                // periodic BATCHED sync that lets routine reads (issue-title warm-up, chat-dock
+                // enrichment, the background Verifying reconcile) serve from local Postgres instead of
+                // firing a per-issue `gh issue view` / board-status call every refresh — the real root
+                // fix for the recurring rate-limit cycle. Fired on a background thread (never blocks the
+                // tick or the claim loop below) and self-gated hard (5-min persisted interval +
+                // failed-attempt backoff + single-flight), so most ticks it no-ops instantly.
+                _ = System.Threading.Tasks.Task.Run(MaybeSyncIssueMirrorAsync);
 
                 // Git #3011 — demand-driven, throttled self-recovery probe for the shared #2815
                 // rate-limit circuit. The claim path below (GetNextAsync via freeSlots) is the

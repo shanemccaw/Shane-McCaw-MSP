@@ -235,6 +235,16 @@ namespace BuildConsole.Services
         {
             if (!IsQueryableIssueNumber(issueNumber, "view")) return new IssueTitleLookup(null, false);
 
+            // Git #3113 — mirror-first. A routine title read (the issue-title warm-up is the single
+            // biggest per-issue `gh issue view` offender behind the recurring rate-limit cycle) serves
+            // from the local bt_issue_mirror when present, with ZERO GitHub calls. Only a genuine miss
+            // falls through to the live `gh issue view` below, which then self-populates the mirror.
+            // TryGetTitleAsync returns null on a miss OR on any error, so a mirror problem can never
+            // make this read worse than the pre-#3113 live-only path.
+            var mirrored = await GitHubIssueMirror.TryGetTitleAsync(issueNumber);
+            if (!string.IsNullOrWhiteSpace(mirrored))
+                return new IssueTitleLookup(mirrored, false);
+
             // Git #2539 — through SubprocessRunner (shared gate + crash retry). The transient-vs-
             // permanent distinction Git #1979 depends on is preserved: only gh's own "Could not
             // resolve to an issue" stderr sets NotFound=true; a spawn failure or any other non-zero
@@ -260,7 +270,13 @@ namespace BuildConsole.Services
                 using var doc = System.Text.Json.JsonDocument.Parse(res.StdOut);
                 if (doc.RootElement.TryGetProperty("title", out var titleProp))
                 {
-                    return new IssueTitleLookup(titleProp.GetString(), false);
+                    var title = titleProp.GetString();
+                    // Git #3113 — self-populate the mirror from this live fallback so the NEXT read of
+                    // this number is a free local hit. Fire-and-forget + best-effort (the method
+                    // swallows its own errors); the live title we're returning is unaffected either way.
+                    if (!string.IsNullOrWhiteSpace(title))
+                        _ = GitHubIssueMirror.UpsertTitleOnFallbackAsync(issueNumber, title!);
+                    return new IssueTitleLookup(title, false);
                 }
                 return new IssueTitleLookup(null, false);
             }

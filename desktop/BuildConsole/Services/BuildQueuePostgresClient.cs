@@ -1211,10 +1211,38 @@ namespace BuildConsole.Services
 
             foreach (var (id, num, oldStatus) in candidates)
             {
+                bool isVerifying = string.Equals(oldStatus, VerifyingStatus, StringComparison.OrdinalIgnoreCase);
                 GitHubApiClient.IssueBoardStatus? board;
                 try
                 {
-                    board = await gh.GetIssueBoardStatusAsync(num);
+                    if (isVerifying)
+                    {
+                        // Git #3113 — the BACKGROUND Verifying reconcile is a routine status lookup that
+                        // fires on every Home/Build Watch/Git Board refresh; read it from the local
+                        // mirror first (zero GitHub calls), falling back to a live read only on a mirror
+                        // miss. A stale-but-present reading is safe HERE specifically: this reconcile
+                        // only ever moves a row to a TERMINAL state, and not moving it (or moving it a
+                        // tick later) is self-healing on the next sync — it can never wrongly RELEASE
+                        // work the way the fail-closed launch gate could, which is why that gate stays
+                        // live and this does not.
+                        var mirrored = await GitHubIssueMirror.TryGetAsync(num);
+                        board = mirrored != null
+                            ? new GitHubApiClient.IssueBoardStatus
+                            {
+                                OptionId = mirrored.BoardStatusOptionId,
+                                StatusName = mirrored.BoardStatusName,
+                            }
+                            : await gh.GetIssueBoardStatusAsync(num);
+                    }
+                    else
+                    {
+                        // Git #3113 — a SCOPED queued row is exactly an issue a Build Chain Map edit JUST
+                        // moved on the board; this is the authoritative "did my move take?" check, so it
+                        // stays LIVE. A stale mirror reading here could wrongly cancel a row Shane just
+                        // re-queued (Batter Up → Backlog → back), the genuinely-unsafe case the #3113
+                        // audit keeps on GitHub.
+                        board = await gh.GetIssueBoardStatusAsync(num);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -2921,24 +2949,42 @@ namespace BuildConsole.Services
             }
 
             // 2. .env.local at the repo root
-            var envLocal = System.IO.Path.Combine(repoRoot, ".env.local");
-            if (System.IO.File.Exists(envLocal))
-            {
-                foreach (var line in System.IO.File.ReadAllLines(envLocal))
-                {
-                    var trimmed = line.Trim();
-                    if (trimmed.StartsWith('#') || !trimmed.StartsWith("DATABASE_URL=", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    var url = trimmed.Substring("DATABASE_URL=".Length).Trim().Trim('"').Trim('\'');
-                    if (!string.IsNullOrWhiteSpace(url))
-                        return new BuildQueuePostgresClient(url);
-                }
-            }
+            var url = TryResolveConnectionString(config, repoRoot);
+            if (!string.IsNullOrWhiteSpace(url))
+                return new BuildQueuePostgresClient(url!);
 
             onMissing(
                 "No DATABASE_URL found — set databaseUrl in scripts/build-queue-watcher.config.json " +
                 "or add DATABASE_URL=<connection string> to .env.local at the repo root. " +
                 "The queue watcher will fall back to HTTP (API server) for DB operations.");
+            return null;
+        }
+
+        /// <summary>
+        /// Git #3113 — resolves the raw DATABASE_URL the same way <see cref="TryCreate"/> does
+        /// (the config's own <c>databaseUrl</c> override first, then the <c>DATABASE_URL=</c> line in
+        /// &lt;repoRoot&gt;/.env.local), WITHOUT constructing a client. Used by
+        /// <see cref="GitHubIssueMirror"/>, which owns its own <c>bt_issue_mirror</c> SQL and only
+        /// needs the connection string, not a full queue client. Returns null when neither source has
+        /// one (a null/blank <paramref name="repoRoot"/> is treated the same as "no .env.local" — the
+        /// same #1985 fail-closed rule TryCreate applies, so we never resolve .env.local against the
+        /// process cwd and pick up an unrelated database).
+        /// </summary>
+        public static string? TryResolveConnectionString(BuildTrackerConfig config, string? repoRoot)
+        {
+            if (!string.IsNullOrWhiteSpace(config.DatabaseUrl)) return config.DatabaseUrl;
+            if (string.IsNullOrWhiteSpace(repoRoot)) return null;
+
+            var envLocal = System.IO.Path.Combine(repoRoot, ".env.local");
+            if (!System.IO.File.Exists(envLocal)) return null;
+            foreach (var line in System.IO.File.ReadAllLines(envLocal))
+            {
+                var trimmed = line.Trim();
+                if (trimmed.StartsWith('#') || !trimmed.StartsWith("DATABASE_URL=", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var url = trimmed.Substring("DATABASE_URL=".Length).Trim().Trim('"').Trim('\'');
+                if (!string.IsNullOrWhiteSpace(url)) return url;
+            }
             return null;
         }
     }
