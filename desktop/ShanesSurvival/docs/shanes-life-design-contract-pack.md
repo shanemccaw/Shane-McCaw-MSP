@@ -90,6 +90,19 @@ constraints:
   Shane touches anything at the real bank. It never executes anything; it's a real, instant
   "what would this actually do" answer, replacing the manual back-and-forth Shane and
   Claude did by hand tonight for the real mortgage/electric/Tesla split decision.
+- **Real Wins log, confirmed 2026-09-05 — deliberately distinct from the "no gamification"
+  rule (Section 3/7).** Streaks, badges, and completion percentages are still explicitly
+  cut — those are arbitrary game mechanics that create pressure and comparison. A Wins log
+  is different in kind, not just in name: it acknowledges genuine, hard-won real-world
+  milestones — a mortgage payment actually made after being behind, an IRS levy actually
+  resolved, Tesla actually brought current. No mechanic to break, no streak to lose, nothing
+  to compare against. Real trigger points once Money unifies (Section 1): a debt's real
+  balance hitting $0, a critical debt (Section on `is_critical`) getting resolved, a
+  deferred bill finally caught up. Also capturable manually through the same universal
+  capture box as everything else — Shane should be able to just say "I did it" and have it
+  land here. Given how much real hardship this app exists to help navigate, a genuine
+  record of real relief moments is a real, deliberate counterweight to the triage-only
+  framing of Money — not decoration, not engagement bait.
 - **Real "Budget Day" ritual, confirmed 2026-09-05 — anchored to Shane's actual real
   biweekly payday (every other Friday), already tracked as `next_pay_date`/
   `pay_frequency_days` on the real income source once the Section 1 unification lands.**
