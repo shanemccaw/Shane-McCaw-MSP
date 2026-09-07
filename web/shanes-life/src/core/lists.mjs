@@ -14,10 +14,11 @@ import { bumpUse, ensureCategory } from "./categories.mjs";
 
 const MAX_ITEMS_PER_CALL = 500;
 
-// Mirrors core/entities.mjs's normaliseItems for the typed shape. list_items has no `data`
-// column -- 016's header quotes the design's own literal shape, `list_items(list_id, text,
-// done)` -- so quantity/aisle/price (each its own separate Feature, blocked_by #3088) have
-// nowhere to go here and are not accepted.
+// Mirrors core/entities.mjs's normaliseItems for the typed shape. Plain add/replace still only
+// accepts text/note/checked -- quantity and aisle remain their own separate Features (#3108),
+// out of scope here. Price now has a real home (020's price_cents/price_source/priced_at), but
+// only via a real scan (core/scan.mjs, #3109) -- a plain add is never priced, so it is not
+// accepted through this path either.
 function normaliseListItems(items) {
   if (items === undefined || items === null) return [];
   if (!Array.isArray(items)) throw badRequest("items must be an array");
@@ -130,7 +131,8 @@ export async function getListDetail(userId, listId) {
   const list = await getOwnedList(userId, listId);
   if (!list) return null;
   const items = await many(
-    `SELECT id, position, text, note, done, done_at, created_at
+    `SELECT id, position, text, note, done, done_at, created_at,
+            price_cents, price_source, priced_at
        FROM list_items WHERE list_id = $1 ORDER BY position, created_at`,
     [listId],
   );

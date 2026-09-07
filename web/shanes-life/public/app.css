@@ -284,6 +284,35 @@ button:disabled { opacity: 0.5; cursor: default; }
 .checklist input[type="checkbox"] { width: 22px; height: 22px; flex: 0 0 auto; margin-top: 0.1rem; accent-color: hsl(var(--primary)); }
 .checklist .done { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
 .checklist .who { font-size: 0.72rem; color: hsl(var(--muted-foreground)); display: block; }
+.checklist .who.ok { color: hsl(var(--success)); }
+
+/* ---------- scan sheet (Git #3109, design "Shanes Life 04 - Shopping.dc.html" 2a) ---------- */
+
+dialog.sheet {
+  width: min(420px, 92vw);
+  max-height: 88dvh;
+  overflow-y: auto;
+  margin: auto;
+  padding: 1rem;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--card-border));
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-dark-lg, 0 20px 40px rgba(0,0,0,.45));
+}
+dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
+.sheet-title { font-size: 18px; font-weight: var(--weight-bold); }
+.sheet-body { display: grid; gap: 0.75rem; margin-top: 0.75rem; }
+
+.scan-video {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  border-radius: var(--radius-2xl);
+  background: #050c18;
+}
+
+.sheet-body button.tile[aria-pressed="true"] { border-color: hsl(var(--primary)); color: hsl(var(--primary)); }
 
 /* ---------- empty states ----------
    An empty state here says only that nothing has been captured yet. It never invents a row to
