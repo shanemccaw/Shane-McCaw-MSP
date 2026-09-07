@@ -552,6 +552,67 @@ async function main() {
   const scanActivity = await http("/api/activity");
   check("a scan save is in the real audit trail", scanActivity.json?.activity?.some((a) => a.actor === "web" && a.action === "list.item.scan"));
 
+  // 6e. Real per-run budget + real running total + put-it-back (#3111). The total only ever sums
+  // real list_items.price_cents -- the same column a real scan (above) sets -- so this section
+  // scans a couple more items for real, known prices rather than inventing a price field of its
+  // own on a plain add (that path stays deliberately unpriced, per #3109's own decision).
+  const beforeBudget = await http("/api/shopping");
+  check("no budget set means no over-budget", beforeBudget.json?.budget === null && beforeBudget.json?.overBudgetCents === 0, JSON.stringify(beforeBudget.json));
+  const expectedTotalCents = beforeBudget.json.items.reduce((sum, i) => sum + (i.price_cents || 0), 0);
+  check("the real running total sums every real (scanned) price on the list", beforeBudget.json?.totalCents === expectedTotalCents, JSON.stringify({ totalCents: beforeBudget.json?.totalCents, expectedTotalCents }));
+
+  // Scan two brand-new items with real, known prices so the budget math below is deterministic
+  // on top of whatever else this run already priced.
+  const steakBarcode = `${Date.now()}1`.slice(0, 12);
+  const savedSteak = await http(`/api/lists/${shoppingId}/scan/save`, { method: "POST", body: { barcode: steakBarcode, text: "Ribeye steak", priceCents: 1800 } });
+  check("a fresh scan-priced item is a real 201/200 write", savedSteak.status === 200 && savedSteak.json?.item?.price_cents === 1800, JSON.stringify(savedSteak.json));
+  const wineBarcode = `${Date.now()}2`.slice(0, 12);
+  const savedWine = await http(`/api/lists/${shoppingId}/scan/save`, { method: "POST", body: { barcode: wineBarcode, text: "Malbec", priceCents: 1250 } });
+  check("a second fresh scan-priced item is a real write", savedWine.status === 200 && savedWine.json?.item?.price_cents === 1250, JSON.stringify(savedWine.json));
+
+  const afterScans = await http("/api/shopping");
+  const expectedAfterScans = expectedTotalCents + 1800 + 1250;
+  check("the real running total updates live once new items are priced", afterScans.json?.totalCents === expectedAfterScans, JSON.stringify({ totalCents: afterScans.json?.totalCents, expectedAfterScans }));
+
+  const belowBudget = afterScans.json.totalCents - 100; // 1 dollar under the real current total
+  const setBudget = await http(`/api/lists/${shoppingId}/budget`, { method: "PATCH", body: { budget: belowBudget / 100 } });
+  check("PATCH .../budget sets a real budget_cents", setBudget.status === 200 && setBudget.json?.budget === belowBudget / 100, JSON.stringify(setBudget.json));
+  const dbBudget = await one("SELECT budget_cents FROM lists WHERE id = $1", [shoppingId]);
+  check("the budget is really in the database, not just the response", dbBudget?.budget_cents === belowBudget, JSON.stringify(dbBudget));
+  check("a budget under the real total is really over budget", setBudget.json?.overBudgetCents === setBudget.json.totalCents - belowBudget, JSON.stringify(setBudget.json));
+
+  const clearedBudget = await http(`/api/lists/${shoppingId}/budget`, { method: "PATCH", body: { budget: null } });
+  check("budget: null really clears it", clearedBudget.status === 200 && clearedBudget.json?.budget === null && clearedBudget.json?.overBudgetCents === 0, JSON.stringify(clearedBudget.json));
+
+  // set_list_budget (MCP) -- Claude setting a real budget on the run directly.
+  const mcpBudget = await rpc(token.token, "tools/call", { name: "set_list_budget", arguments: { budget: 5 } });
+  const mcpBudgetPayload = toolResult(mcpBudget);
+  check("set_list_budget (MCP) sets a real budget", mcpBudgetPayload?.budget === 5, JSON.stringify(mcpBudgetPayload));
+  check("set_list_budget (MCP) shows the run is really over a $5 budget", mcpBudgetPayload?.overBudgetCents > 0, JSON.stringify(mcpBudgetPayload));
+
+  // push_list with a budget in the same call -- real "a $15 grocery run" -- replacing everything,
+  // so the pushed (unpriced) items bring the real total back to zero until something is scanned.
+  const pushedBudgeted = await rpc(token.token, "tools/call", {
+    name: "push_list",
+    arguments: { items: ["chicken", "broccoli"], replace: true, budget: 15 },
+  });
+  const pushedBudgetedPayload = toolResult(pushedBudgeted);
+  check("push_list (MCP) can set the real budget in the same call", pushedBudgetedPayload?.list?.budget === 15, JSON.stringify(pushedBudgetedPayload?.list));
+  check("a freshly replaced, unpriced run has a real $0 total", pushedBudgetedPayload?.list?.totalCents === 0 && pushedBudgetedPayload?.list?.overBudgetCents === 0, JSON.stringify(pushedBudgetedPayload?.list));
+
+  const chickenItem = pushedBudgetedPayload?.list?.items?.find((i) => i.text === "chicken");
+  const chickenBarcode = `${Date.now()}3`.slice(0, 12);
+  await http(`/api/lists/${shoppingId}/scan/save`, { method: "POST", body: { barcode: chickenBarcode, itemId: chickenItem.id, priceCents: 2100 } });
+  const overNow = await http("/api/shopping");
+  check("scanning an item over the real budget updates the real total live", overNow.json?.totalCents === 2100 && overNow.json?.overBudgetCents === 600, JSON.stringify(overNow.json));
+
+  // Put-it-back is informational, over the same real items+budget the API already returns;
+  // removing an over-budget item never blocks -- it's a real, ordinary DELETE.
+  const putBack = await http(`/api/lists/${shoppingId}/items/${chickenItem.id}`, { method: "DELETE" });
+  check("putting an item back is a real, unblocked delete", putBack.status === 200 && putBack.json?.ok === true);
+  const afterPutBack = await http("/api/shopping");
+  check("the real running total drops once the item is put back", afterPutBack.json?.totalCents === 0 && afterPutBack.json?.overBudgetCents === 0, JSON.stringify(afterPutBack.json));
+
   // Revoke the push_list share so it doesn't linger past this run.
   if (pushedPayload?.share?.id) await http(`/api/shares/${pushedPayload.share.id}`, { method: "DELETE" });
 

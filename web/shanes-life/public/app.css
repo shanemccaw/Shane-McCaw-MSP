@@ -321,6 +321,32 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
 .price-tools { display: grid; gap: 0.35rem; }
 .price-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; font-size: 0.8rem; }
 
+/* ---------- Shopping: real per-run budget + put-it-back (#3111) ---------- */
+
+.budget-total-row { cursor: pointer; }
+.budget-total { font-size: 15px; font-weight: var(--weight-bold); font-variant-numeric: tabular-nums; }
+
+.budget-bar {
+  position: relative;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: hsl(var(--muted));
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+.budget-bar-fill { position: absolute; inset: 0 auto 0 0; height: 100%; border-radius: var(--radius-full); }
+
+.put-back { display: grid; gap: 0.4rem; margin-top: 0.75rem; }
+.put-back-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: hsl(var(--muted));
+  border-radius: var(--radius-lg);
+  padding: 0.5rem 0.6rem;
+}
+.put-back-row .who { display: block; }
+
 /* ---------- empty states ----------
    An empty state here says only that nothing has been captured yet. It never invents a row to
    fill the space, and it never scolds. */

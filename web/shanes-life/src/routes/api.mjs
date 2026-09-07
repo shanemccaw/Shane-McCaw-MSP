@@ -601,6 +601,20 @@ export function buildApiRouter() {
     return sendJson(res, 200, await lists.clearCheckedItems(user.id, params.id));
   });
 
+  // #3111: a real stated budget for this run. `budget` is dollars (a number, or null to clear)
+  // -- informational only, per the issue's own scope: this never blocks addListItems above, it
+  // just changes what getListDetail's real running total looks like against.
+  router.patch("/api/lists/:id/budget", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    if (body.budget === undefined) throw badRequest("budget is required (a number, or null to clear)");
+    const budgetCents = body.budget === null ? null : Math.round(Number(body.budget) * 100);
+    if (budgetCents !== null && (!Number.isFinite(budgetCents) || budgetCents < 0)) {
+      throw badRequest("budget must be a non-negative number or null");
+    }
+    return sendJson(res, 200, await lists.setListBudget(user.id, params.id, budgetCents));
+  });
+
   // -- per-store price history (Git #3112) ---------------------------------
 
   router.get("/api/stores", async (_req, res, _params, ctx) => {

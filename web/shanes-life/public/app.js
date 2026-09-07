@@ -1141,6 +1141,81 @@ function renderScanResult(list, dialog, result) {
   return wrap;
 }
 
+// #3111: a real per-run budget + real running total + an informational "put it back" card.
+// The total is real, not estimated -- it sums list_items.price_cents, which only a real scan
+// (#3109) ever sets, so it honestly reads $0 until something on the run has actually been
+// scanned. Deliberately whole-list, not cart-vs-still-to-get: the issue's own real scope says
+// the total "updates live as items are added/removed," not as items are checked off -- that
+// richer split belongs to the store-path Feature (#3108), not this one.
+function budgetCard(list) {
+  const overCents = list.overBudgetCents || 0;
+  const over = overCents > 0;
+
+  const totalLine = el("div", { class: "spread budget-total-row" }, [
+    el("span", { class: "budget-total", style: over ? "color:hsl(var(--destructive))" : "", text: money(list.totalCents) }),
+    el("span", {
+      class: "small muted",
+      text: list.budget == null ? "set a budget" : over ? `${money(overCents)} over $${list.budget}` : `of $${list.budget}`,
+    }),
+  ]);
+  totalLine.addEventListener("click", async () => {
+    const draft = prompt("Budget for this run ($, blank to clear)", list.budget == null ? "" : String(list.budget));
+    if (draft === null) return;
+    const value = draft.trim() === "" ? null : Number(draft);
+    if (value !== null && (!Number.isFinite(value) || value < 0)) return;
+    await api(`/api/lists/${list.id}/budget`, { method: "PATCH", body: JSON.stringify({ budget: value }) });
+    render();
+  });
+
+  const children = [totalLine];
+
+  if (list.budget != null) {
+    const pct = Math.min(100, (list.totalCents / (list.budget * 100 || 1)) * 100);
+    children.push(
+      el("div", { class: "budget-bar" }, [
+        el("div", { class: "budget-bar-fill", style: `width:${pct}%;background:hsl(var(--${over ? "destructive" : "warning"}))` }),
+      ]),
+    );
+  }
+
+  if (over) {
+    // Put-it-back: informational only, never blocks the add. Offers the most-recently-priced
+    // items first (design handoff's own "I put it back" / "Keep" pair) until enough of them
+    // would bring the run back under budget.
+    const priced = list.items.filter((i) => i.price_cents != null).slice().reverse();
+    let stillOver = overCents;
+    const suggestions = [];
+    for (const item of priced) {
+      if (stillOver <= 0) break;
+      suggestions.push(item);
+      stillOver -= item.price_cents;
+    }
+    if (suggestions.length > 0) {
+      const rows = suggestions.map((item) =>
+        el("div", { class: "put-back-row" }, [
+          el("div", { style: "flex:1" }, [
+            el("span", { text: item.text }),
+            el("span", { class: "who", text: money(item.price_cents) }),
+          ]),
+          el("button", {
+            class: "small",
+            text: "I put it back",
+            onClick: async (event) => {
+              event.currentTarget.disabled = true;
+              await api(`/api/lists/${list.id}/items/${item.id}`, { method: "DELETE" });
+              render();
+            },
+          }),
+          el("button", { class: "ghost small", text: "Keep", onClick: (event) => event.currentTarget.closest(".put-back-row").remove() }),
+        ]),
+      );
+      children.push(el("div", { class: "put-back" }, rows));
+    }
+  }
+
+  return el("div", { class: "card budget-card" }, children);
+}
+
 async function viewShopping(view) {
   const order = state.shoppingOrder || "flat";
   const [list, storesResult] = await Promise.all([api(`/api/shopping?order=${order}`), api("/api/stores")]);
@@ -1164,6 +1239,8 @@ async function viewShopping(view) {
       ]),
     ]),
   );
+
+  view.append(budgetCard(list));
 
   // Which real store this run is at -- what Best-path ordering and aisle memory both key off.
   const storeInput = el("input", { value: list.store || "", placeholder: "Which store? e.g. Aldi", "aria-label": "Store" });

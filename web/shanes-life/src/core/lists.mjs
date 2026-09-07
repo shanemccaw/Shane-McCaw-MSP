@@ -44,7 +44,7 @@ function normaliseListItems(items) {
  *  name. */
 export async function getOwnedList(userId, listId) {
   return one(
-    `SELECT id, name, category, icon, store, created_at, updated_at
+    `SELECT id, name, category, icon, store, budget_cents, created_at, updated_at
        FROM lists WHERE id = $1 AND user_id = $2 AND archived_at IS NULL`,
     [listId, userId],
   );
@@ -73,7 +73,7 @@ export async function setListStore(userId, listId, store) {
  */
 export async function getOrCreateShoppingList(userId) {
   const existing = await one(
-    `SELECT id, name, category, icon, created_at, updated_at FROM lists
+    `SELECT id, name, category, icon, budget_cents, created_at, updated_at FROM lists
       WHERE user_id = $1 AND category = 'shopping' AND archived_at IS NULL
       ORDER BY created_at ASC LIMIT 1`,
     [userId],
@@ -96,7 +96,7 @@ export async function getOrCreateShoppingList(userId) {
     const row = await one(
       `INSERT INTO lists (user_id, name, category, icon, created_by)
        VALUES ($1, 'Shopping', $2, $3, 'shane')
-       RETURNING id, name, category, icon, created_at, updated_at`,
+       RETURNING id, name, category, icon, budget_cents, created_at, updated_at`,
       [userId, cat.slug, cat.icon],
     );
     await bumpUse(cat.slug);
@@ -118,7 +118,7 @@ export async function getOrCreateListByName(userId, { name, category, categoryMe
   if (!cleanName) throw badRequest("name is required");
 
   const existing = await one(
-    `SELECT id, name, category, icon, created_at, updated_at FROM lists
+    `SELECT id, name, category, icon, budget_cents, created_at, updated_at FROM lists
       WHERE user_id = $1 AND lower(name) = lower($2) AND archived_at IS NULL`,
     [userId, cleanName],
   );
@@ -129,7 +129,7 @@ export async function getOrCreateListByName(userId, { name, category, categoryMe
     const row = await one(
       `INSERT INTO lists (user_id, name, category, icon, created_by)
        VALUES ($1, $2, $3, $4, 'claude')
-       RETURNING id, name, category, icon, created_at, updated_at`,
+       RETURNING id, name, category, icon, budget_cents, created_at, updated_at`,
       [userId, cleanName, cat.slug, cat.icon],
     );
     await bumpUse(cat.slug);
@@ -141,7 +141,15 @@ export async function getOrCreateListByName(userId, { name, category, categoryMe
 }
 
 /** Owner-side read: the list, its raw items, and its share links -- not the share-normalised
- *  shape getListForShare returns below, which exists for the kind-agnostic public route only. */
+ *  shape getListForShare returns below, which exists for the kind-agnostic public route only.
+ *
+ * #3111 (per-run budget): also returns the list's real `budget` (dollars, from `budget_cents`)
+ * and a real running `totalCents`/`total` summed across every item's own `price_cents` --
+ * #3109's real scan is the only thing that ever sets that column, so the total is real, not
+ * estimated, and simply reads $0 until something on the run has actually been scanned. This
+ * intentionally does NOT split by done/checked -- the issue's own real scope is "updates live
+ * as items are added/removed," not a checked-vs-still-to-get split (that richer cart/toGo model
+ * belongs to the store-path Feature, #3108, not this one). */
 export async function getListDetail(userId, listId) {
   const list = await getOwnedList(userId, listId);
   if (!list) return null;
@@ -156,7 +164,28 @@ export async function getListDetail(userId, listId) {
        FROM share_links WHERE list_id = $1 ORDER BY created_at DESC`,
     [listId],
   );
-  return { ...list, items, shares: shareRows };
+  const totalCents = items.reduce((sum, i) => sum + (i.price_cents || 0), 0);
+  return {
+    ...list,
+    budget: list.budget_cents == null ? null : list.budget_cents / 100,
+    items,
+    totalCents,
+    total: totalCents / 100,
+    overBudgetCents: list.budget_cents == null ? 0 : Math.max(0, totalCents - list.budget_cents),
+    shares: shareRows,
+  };
+}
+
+/** Set (or clear, with `null`) the real stated budget for this run -- #3111. Informational only:
+ *  see routes/api.mjs and mcp/tools.mjs, nothing here ever blocks an add. */
+export async function setListBudget(userId, listId, budgetCents) {
+  const owned = await getOwnedList(userId, listId);
+  if (!owned) throw notFound("List not found");
+  if (budgetCents !== null && (!Number.isFinite(budgetCents) || budgetCents < 0)) {
+    throw badRequest("budgetCents must be a non-negative number or null");
+  }
+  await query("UPDATE lists SET budget_cents = $2, updated_at = now() WHERE id = $1", [listId, budgetCents]);
+  return getListDetail(userId, listId);
 }
 
 /** Append items, ownership-checked. Mirrors core/entities.mjs's addItems for the typed shape. */

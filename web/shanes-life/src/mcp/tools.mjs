@@ -327,7 +327,7 @@ export const TOOLS = [
     name: "push_list",
     title: "Push a generated list",
     description:
-      "Push a real, ready-to-use list straight into the app -- the Shopping room's real capture-grammar entry point ('grocery words' -> the run). Omit name/category (or pass category 'shopping') to push into Shane's one real running Shopping list; pass a different category to start a different room's list once one exists. Call get_list first to see what is already there. Set replace true for a fresh run that swaps out the old contents; leave it false to add onto what is already there. Pass `store` to set which real store this run is being shopped at -- that is what Best-path ordering and aisle memory (get_store_map, record_aisle) key off.",
+      "Push a real, ready-to-use list straight into the app -- the Shopping room's real capture-grammar entry point ('grocery words' -> the run). Omit name/category (or pass category 'shopping') to push into Shane's one real running Shopping list; pass a different category to start a different room's list once one exists. Call get_list first to see what is already there. Set replace true for a fresh run that swaps out the old contents; leave it false to add onto what is already there. Pass `store` to set which real store this run is being shopped at -- that is what Best-path ordering and aisle memory (get_store_map, record_aisle) key off. Pass `budget` to set the real stated budget for this run in the same call -- e.g. \"a $45 grocery run\" -- or call set_list_budget separately.",
     inputSchema: {
       type: "object",
       properties: {
@@ -336,6 +336,7 @@ export const TOOLS = [
         category: { type: "string", description: "Category slug. Defaults to 'shopping', which always resolves to the one real running Shopping list regardless of name." },
         replace: { type: "boolean", default: false, description: "True clears the list first -- a fresh run, not an addition to the old one." },
         store: { type: "string", description: "Real store this run is being shopped at, e.g. 'Aldi'. Sets/updates the list's store." },
+        budget: { type: "number", description: "Dollars, e.g. 45. Sets the real stated budget for this run (#3111). Omit to leave the existing budget unchanged; pass null explicitly to clear it." },
         share: {
           type: "object",
           description: "Create a no-login share link for this list in the same call. Handy for handing the run straight to someone's phone.",
@@ -358,7 +359,7 @@ export const TOOLS = [
 
       if (args.store) target = await lists.setListStore(ctx.user.id, target.id, args.store);
 
-      const detail = args.replace
+      let detail = args.replace
         ? await lists.replaceListItems(ctx.user.id, target.id, args.items)
         : await lists.addListItems(ctx.user.id, target.id, args.items);
 
@@ -370,6 +371,12 @@ export const TOOLS = [
         entityId: target.id,
         detail: { count: args.items.length, replace: Boolean(args.replace) },
       });
+
+      if (args.budget !== undefined) {
+        const budgetCents = args.budget === null ? null : Math.round(Number(args.budget) * 100);
+        detail = await lists.setListBudget(ctx.user.id, target.id, budgetCents);
+        await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "list.budget.set", entityId: target.id, detail: { budgetCents } });
+      }
 
       let share = null;
       if (args.share) {
@@ -487,6 +494,32 @@ export const TOOLS = [
     },
     async handler(args, ctx) {
       return { store: args.store, items: await storeAisles.getStoreMap(ctx.user.id, args.store) };
+    },
+  },
+
+  {
+    name: "set_list_budget",
+    title: "Set a list's real stated budget",
+    description:
+      "Set (or clear, with null) the real stated budget for a run -- #3111. Informational only: the app never blocks an add, it just shows the real running total against this and offers a put-it-back prompt once over. Omit listId for Shane's one real running Shopping list.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        listId: { type: "string" },
+        budget: { type: "number", description: "Dollars, e.g. 45. Pass null to clear the budget." },
+      },
+      required: ["budget"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const target = args.listId
+        ? await lists.getOwnedList(ctx.user.id, args.listId)
+        : await lists.getOrCreateShoppingList(ctx.user.id);
+      if (!target) throw new Error(`No list ${args.listId}`);
+      const budgetCents = args.budget === null ? null : Math.round(Number(args.budget) * 100);
+      const detail = await lists.setListBudget(ctx.user.id, target.id, budgetCents);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "list.budget.set", entityId: target.id, detail: { budgetCents } });
+      return detail;
     },
   },
 
