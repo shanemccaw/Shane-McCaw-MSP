@@ -169,6 +169,16 @@ constraints:
   weed-eating, lawn, cleaning a room — while the builds run themselves. **Real open
   technical question, not yet confirmed**: whether BuildConsole currently has outbound
   webhook capability at all — verify before assuming this is a simple wiring job.
+- **Real location-aware content surfacing, confirmed 2026-09-05 — generalizes the
+  location-trigger principle beyond the single Heading Out example.** Real behavior:
+  detecting where Shane actually is (Walmart, home, NASA/work) and automatically surfacing
+  the relevant real content for that place — the Walmart list at Walmart, home tasks at
+  home, work items at work. Same real hub-and-spoke idea (Section 3) generalized further:
+  not just "which house am I at," but "which real place am I at, and what does this place
+  need to show me" — across shopping lists and tasks broadly, not one narrow case. **Real
+  technical honesty**: genuine phone-level location/geofencing is a meaningfully bigger
+  real lift than most of what's in this document so far — needs real scoping (accuracy,
+  battery impact, per-location radius tuning), not assumed simple.
 - **Item location memory logs instantly, no confirmation step.**
 - **A lightweight "things that need to move or get known" queue**, distinct from Shane's
   own tasks — e.g., "no toilet paper at House B" or "grab the weedeater from House A, bring
