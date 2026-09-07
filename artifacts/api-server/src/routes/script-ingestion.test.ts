@@ -64,6 +64,7 @@ vi.mock("../lib/logger.ts", () => {
 let app: express.Express;
 
 beforeEach(async () => {
+  vi.clearAllMocks();
   vi.resetModules();
   const { default: router } = await import("./script-ingestion.ts");
   app = express();
@@ -297,6 +298,11 @@ describe("POST /script-ingestion — successful ingestion", () => {
       .post("/script-ingestion")
       .set("Authorization", "Bearer validtoken")
       .send(goodPayload);
-    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    // The route also fires a non-awaited "fire-and-forget" AI analysis pass
+    // (runIngestionAnalysis) that calls db.update on scriptRunResultsTable once
+    // it settles, so mockUpdate legitimately sees more than one call across a
+    // single request. Assert on the token-burn call specifically rather than
+    // the raw total count.
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ tokenHash: "tokenHash" }));
   });
 });
