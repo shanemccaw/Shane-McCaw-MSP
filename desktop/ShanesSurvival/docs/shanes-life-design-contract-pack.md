@@ -49,6 +49,15 @@ constraints:
 - **Real financial priority running alongside this**: NASA role + the Copilot Readiness
   consulting business, being banked on for real financial recovery.
 
+**Real visual personality note, confirmed 2026-09-05.** Shane wants real, cute animal
+"critters" in the UI — the same delight-oriented element already real and working in
+BuildConsole, with Microsoft Clarity's real critter aesthetic as a reference point. This
+is a deliberate personality/warmth choice, distinct from gamification (Section 11) since
+it's decorative and delight-oriented, not a mechanic tied to streaks or performance.
+Real note for whoever does the eventual visual pass: reference BuildConsole's existing
+real critter implementation for consistency across Shane's own tools, not designed fresh
+in isolation.
+
 ## 2. The three real design failures this exists to fix
 
 - **Capture friction is the core enemy.** "It's all these damn huge forms just to say I
