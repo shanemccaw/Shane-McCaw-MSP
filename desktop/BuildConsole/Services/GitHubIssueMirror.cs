@@ -73,6 +73,15 @@ namespace BuildConsole.Services
         private static DateTime _lastAttemptUtc = DateTime.MinValue;
         private static readonly TimeSpan FailedAttemptBackoff = TimeSpan.FromSeconds(60);
 
+        /// <summary>Git #3131 — throttles the "we deliberately skipped this call" observability lines
+        /// so the two silent early-returns in <see cref="MaybeSyncAsync"/> leave a trace (a real no-op
+        /// is distinguishable from the sync never running at all) WITHOUT logging on every ~30s watcher
+        /// tick. One periodic line per skip window is enough to be found by a grep; a per-tick line
+        /// would just be noise. Reset whenever a real sync is actually attempted, so the very next skip
+        /// after a run is logged promptly rather than swallowed by a stale throttle.</summary>
+        private static DateTime _lastSkipLogUtc = DateTime.MinValue;
+        private static readonly TimeSpan SkipLogThrottle = TimeSpan.FromSeconds(60);
+
         private static string? ConnString()
         {
             lock (_connLock)
@@ -297,26 +306,67 @@ namespace BuildConsole.Services
             {
                 // last_full_sync_at only advances on a SUCCESSFUL sync, so this gate says "we have a
                 // recent SUCCESS" — a failed sync leaves it stale and this returns false → eligible.
-                var (lastAt, _, _) = await GetSyncStateAsync();
+                var (lastAt, lastOk, lastNote) = await GetSyncStateAsync();
                 if (lastAt != null && DateTime.UtcNow - lastAt.Value.ToUniversalTime() < SyncInterval)
+                {
+                    // Git #3131 — this "still fresh, skip" path used to be totally silent, which made a
+                    // deliberate no-op indistinguishable in the ActivityLog from "the sync was never
+                    // wired at all" (Shane's real #3131 report: zero `issue-mirror` lines after well past
+                    // the interval, because a fresh cold start skips silently for up to the whole
+                    // SyncInterval when last_full_sync_at is already recent from a prior session). Leave a
+                    // throttled trace, and surface the last attempt's real outcome so an intermittent 403
+                    // (the #2815 rate-limit circuit) is visible here without a separate DB query.
+                    var freshAge = DateTime.UtcNow - lastAt.Value.ToUniversalTime();
+                    MaybeLogSkip(
+                        $"skip: mirror still fresh (last successful sync {freshAge.TotalMinutes:0.0}m ago, " +
+                        $"under the {SyncInterval.TotalMinutes:0}m interval)" +
+                        (lastOk ? "." : $"; NOTE last recorded attempt FAILED: {lastNote}"));
                     return null; // still fresh enough
+                }
 
                 // Back off failed attempts so a persistently-unreachable GitHub isn't re-hit every tick.
                 if (DateTime.UtcNow - _lastAttemptUtc < FailedAttemptBackoff)
+                {
+                    // Git #3131 — likewise: the failed-attempt backoff was silent, so a run of transient
+                    // 403s (the #2815 circuit) reads exactly like "never runs." Trace it, throttled.
+                    var backoffAge = DateTime.UtcNow - _lastAttemptUtc;
+                    MaybeLogSkip(
+                        $"skip: backing off after a recent failed attempt {backoffAge.TotalSeconds:0}s ago " +
+                        $"(retry once past the {FailedAttemptBackoff.TotalSeconds:0}s backoff)" +
+                        (lastNote != null ? $"; last note: {lastNote}" : "."));
                     return null;
+                }
             }
 
             // Single-flight: never let two syncs overlap.
-            if (Interlocked.CompareExchange(ref _syncing, 1, 0) != 0) return null;
+            if (Interlocked.CompareExchange(ref _syncing, 1, 0) != 0)
+            {
+                // Git #3131 — a sync genuinely in flight (a slow ~40s sync spanning multiple ticks) also
+                // returned silently. Distinguish it from a skip so the log shows the sync IS working.
+                MaybeLogSkip("skip: a full sync is already in flight (single-flight guard) — not starting a second.");
+                return null;
+            }
             try
             {
                 _lastAttemptUtc = DateTime.UtcNow;
+                _lastSkipLogUtc = DateTime.MinValue; // a real attempt is running — let the next skip log promptly.
                 return await SyncAsync(gh);
             }
             finally
             {
                 Interlocked.Exchange(ref _syncing, 0);
             }
+        }
+
+        /// <summary>Git #3131 — emit a "why this MaybeSyncAsync call did NOT sync" line, throttled to at
+        /// most one per <see cref="SkipLogThrottle"/> so a real no-op is grep-visible in the ActivityLog
+        /// without spamming a line on every ~30s watcher tick. The whole point of #3131: a deliberate
+        /// skip must be distinguishable from the sync never running at all.</summary>
+        private static void MaybeLogSkip(string reason)
+        {
+            if (DateTime.UtcNow - _lastSkipLogUtc < SkipLogThrottle) return;
+            _lastSkipLogUtc = DateTime.UtcNow;
+            ActivityLog.Log("issue-mirror", reason);
         }
 
         /// <summary>
