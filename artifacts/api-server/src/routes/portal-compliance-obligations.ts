@@ -32,6 +32,22 @@
  * `default_in_scope` hint rather than hiding the row, so the register is always
  * complete against the catalog.
  *
+ * ── Tenant-authored authority scoping (Git #1525 / #3042) ──────────────────
+ * `compliance_frameworks` gained nullable `mspId`/`tenantId` for a tenant-
+ * authored authority (a customer's own insurance schedule) alongside the
+ * global/seeded catalog. #3042 is the first route that can ever create one of
+ * those rows, and this GET's catalog query originally had NO mspId/tenantId
+ * predicate at all — it read every active framework/obligation unconditionally.
+ * That is fine while every real row is global, but the instant a tenant-
+ * authored row exists it would be served to EVERY tenant of EVERY MSP on the
+ * platform, not just the one it was authored for — a real cross-tenant leak on
+ * a customer-facing route (a materially worse trust boundary than
+ * `msp-rbd.ts`'s own mspId-only filter, which is MSP staff reading their own
+ * book). Fixed here: a row is included only if it is global (`mspId IS NULL`)
+ * or matches THIS caller's own resolved `(mspId, tenantId)` pair — the same
+ * `or(isNull(...), eq(...))` shape `portal-policy-decisions.ts:337` already
+ * uses for the obligation-FK resolution.
+ *
  * ── Role floor ──────────────────────────────────────────────────────────────
  * `Assessment` — same floor as `/portal/pillars`/`useLivePillarHero`, since this
  * page carries no liability dollar figure (unlike risk-register's `CustomerUser`
@@ -40,7 +56,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, complianceFrameworksTable, complianceObligationsTable, tenantComplianceScopeTable, mspRiskDecisionsTable } from "@workspace/db";
-import { and, eq, asc } from "drizzle-orm";
+import { and, eq, asc, isNull, or } from "drizzle-orm";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
@@ -81,6 +97,12 @@ router.get(
         return;
       }
 
+      // Resolved up front (not just for the risk-findings join below) — this is
+      // also what lets the catalog query below tell "global" apart from "this
+      // caller's own tenant-authored row" instead of reading every MSP's
+      // tenant-authored authorities unconditionally. See the header note.
+      const tenantScope = await resolveTenantScope(customerId);
+
       const catalog = await db
         .select({
           frameworkId: complianceFrameworksTable.id,
@@ -92,7 +114,21 @@ router.get(
         })
         .from(complianceObligationsTable)
         .innerJoin(complianceFrameworksTable, eq(complianceObligationsTable.frameworkId, complianceFrameworksTable.id))
-        .where(and(eq(complianceObligationsTable.active, true), eq(complianceFrameworksTable.active, true)))
+        .where(
+          and(
+            eq(complianceObligationsTable.active, true),
+            eq(complianceFrameworksTable.active, true),
+            tenantScope
+              ? or(
+                  isNull(complianceFrameworksTable.mspId),
+                  and(
+                    eq(complianceFrameworksTable.mspId, tenantScope.mspId),
+                    eq(complianceFrameworksTable.tenantId, tenantScope.tenantId),
+                  ),
+                )
+              : isNull(complianceFrameworksTable.mspId),
+          ),
+        )
         .orderBy(asc(complianceFrameworksTable.sortOrder), asc(complianceObligationsTable.sortOrder));
 
       if (catalog.length === 0) {
@@ -110,7 +146,6 @@ router.get(
       // — NOT by customerId. A tenant with no resolvable scope (no M365 tenant
       // identifier recorded yet) genuinely has no findings, so this stays empty
       // rather than failing the whole register.
-      const tenantScope = await resolveTenantScope(customerId);
       const openByObligation = new Map<string, { count: number; hasHigh: boolean; titles: string[] }>();
       if (tenantScope) {
         const riskRows = await db
