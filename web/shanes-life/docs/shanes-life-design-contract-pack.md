@@ -50,13 +50,21 @@ constraints:
   consulting business, being banked on for real financial recovery.
 
 **Real visual personality note, confirmed 2026-09-05.** Shane wants real, cute animal
-"critters" in the UI — the same delight-oriented element already real and working in
-BuildConsole, with Microsoft Clarity's real critter aesthetic as a reference point. This
-is a deliberate personality/warmth choice, distinct from gamification (Section 11) since
-it's decorative and delight-oriented, not a mechanic tied to streaks or performance.
-Real note for whoever does the eventual visual pass: reference BuildConsole's existing
-real critter implementation for consistency across Shane's own tools, not designed fresh
-in isolation.
+"critters" in the UI, with Microsoft Clarity's real critter aesthetic as a reference
+point. This is a deliberate personality/warmth choice, distinct from gamification
+(Section 11) since it's decorative and delight-oriented, not a mechanic tied to streaks
+or performance. **Real correction, 2026-09-07**: Shane explicitly declined any
+BuildConsole cross-pollination, in either direction — critters are designed fresh for
+Shane's Life and stay entirely within it, full stop. The critter set actually built
+(#3119) is real, original work, not a port.
+
+**Real "Round 2 UI" direction, confirmed 2026-09-07 — real, stated intent, design not
+yet finished.** Shane is working a second design pass (same real Claude Design process
+as Round 1) toward something more dynamic, prettier, and "themed cute," including real
+holiday themes and real time-of-day visual changes. No real spec exists yet — this is a
+real, stated direction to hold onto, not a locked requirement to build against until the
+actual design lands. When it does, this note should be replaced with the real, specific
+decisions the same way every other design pass tonight was.
 
 ## 2. The three real design failures this exists to fix
 
