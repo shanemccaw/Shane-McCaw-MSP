@@ -90,6 +90,21 @@ function when(iso) {
   return d.toLocaleDateString([], { month: "short", day: "numeric" }) + ` ${time}`;
 }
 
+/** $1.79, from integer cents -- the whole schema stores money as price_cents (Git #3112). */
+function money(cents) {
+  return `$${(Number(cents) / 100).toFixed(2)}`;
+}
+
+/** A plain `date` column (YYYY-MM-DD), not a timestamp -- `when()` above is for the latter. */
+function whenDate(isoDate) {
+  if (!isoDate) return "";
+  const d = new Date(`${isoDate}T00:00:00`);
+  const diffDays = Math.round((d - new Date(new Date().toDateString())) / 86_400_000);
+  if (diffDays === 0) return "today";
+  if (diffDays === -1) return "yesterday";
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
 // ---------------------------------------------------------------------------
 // auth
 // ---------------------------------------------------------------------------
@@ -745,6 +760,92 @@ function shareSection({ shares: shareList, onCreate, onRevoke }) {
 // "Shanes Life 04 - Shopping.dc.html" are each their own separate Feature, blocked_by this one.
 // ---------------------------------------------------------------------------
 
+/**
+ * Per-store price history (Git #3112): a "log a price" form and the item's real history, both
+ * expanded inline rather than routed to a separate screen -- there is no per-item detail route
+ * in this app's minimal hash router, and the design keeps Shopping to one scrolling screen.
+ */
+function priceTools(item) {
+  const wrap = el("div", { class: "price-tools" });
+  const logBtn = el("button", { class: "ghost small", type: "button", text: "Log price" });
+  const historyBtn = el("button", { class: "ghost small", type: "button", text: "History" });
+  const panel = el("div");
+  wrap.append(el("div", { class: "row" }, [logBtn, historyBtn]), panel);
+
+  logBtn.addEventListener("click", () => {
+    if (panel.dataset.mode === "log") {
+      panel.replaceChildren();
+      panel.dataset.mode = "";
+      return;
+    }
+    panel.dataset.mode = "log";
+    const storeInput = el("input", { placeholder: "Store, e.g. Aldi", "aria-label": "Store", list: "known-stores" });
+    const priceInput = el("input", { type: "number", step: "0.01", min: "0", placeholder: "0.00", "aria-label": "Price" });
+    const dateInput = el("input", { type: "date", value: new Date().toISOString().slice(0, 10), "aria-label": "Date" });
+    const saveBtn = el("button", { class: "primary small", type: "button", text: "Save price" });
+    const msg = el("span", { class: "small" });
+    saveBtn.addEventListener("click", async () => {
+      const storeName = storeInput.value.trim();
+      const dollars = Number(priceInput.value);
+      if (!storeName || !Number.isFinite(dollars) || dollars < 0) {
+        msg.className = "small error";
+        msg.textContent = "A store and a real price are both required.";
+        return;
+      }
+      saveBtn.disabled = true;
+      try {
+        await api("/api/prices", {
+          method: "POST",
+          body: JSON.stringify({
+            storeName,
+            itemText: item.text,
+            priceCents: Math.round(dollars * 100),
+            observedOn: dateInput.value || null,
+          }),
+        });
+        render();
+      } catch (err) {
+        msg.className = "small error";
+        msg.textContent = err.message;
+        saveBtn.disabled = false;
+      }
+    });
+    panel.replaceChildren(
+      el("div", { class: "card" }, [
+        el("div", { class: "row" }, [storeInput, priceInput, dateInput]),
+        el("div", { class: "row", style: "margin-top:.4rem" }, [saveBtn, msg]),
+      ]),
+    );
+  });
+
+  historyBtn.addEventListener("click", async () => {
+    if (panel.dataset.mode === "history") {
+      panel.replaceChildren();
+      panel.dataset.mode = "";
+      return;
+    }
+    panel.dataset.mode = "history";
+    panel.replaceChildren(el("p", { class: "small muted", text: "Loading…" }));
+    const { history } = await api(`/api/prices?item=${encodeURIComponent(item.text)}`);
+    if (history.length === 0) {
+      panel.replaceChildren(el("p", { class: "small muted", text: "No real prices logged for this item yet." }));
+      return;
+    }
+    const ul = el("ul", { class: "price-history" });
+    for (const row of history) {
+      ul.append(
+        el("li", { class: "spread" }, [
+          el("span", { text: row.store_name }),
+          el("span", { class: "muted", text: `${money(row.price_cents)} · ${whenDate(row.observed_on)}` }),
+        ]),
+      );
+    }
+    panel.replaceChildren(ul);
+  });
+
+  return wrap;
+}
+
 function shoppingItemRow(listId, item) {
   const box = el("input", { type: "checkbox", ...(item.done ? { checked: true } : {}), "aria-label": item.text });
   const label = el("span", { class: item.done ? "done" : "", text: item.text });
@@ -769,16 +870,34 @@ function shoppingItemRow(listId, item) {
       render();
     },
   });
-  return el("li", {}, [
-    box,
-    el("div", { style: "flex:1" }, [label, item.note ? el("span", { class: "who", text: item.note }) : null]),
-    remove,
+  // "last time $X at Store" -- real per-store history (Git #3112), attached server-side by
+  // GET /api/shopping (prices.attachLatestPrices), not invented here.
+  const priceHint = item.lastPrice
+    ? el("span", { class: "who", text: `last time ${money(item.lastPrice.priceCents)} at ${item.lastPrice.storeName} (${whenDate(item.lastPrice.observedOn)})` })
+    : null;
+  return el("li", { class: "shopping-row" }, [
+    el("div", { class: "row" }, [
+      box,
+      el("div", { style: "flex:1" }, [label, item.note ? el("span", { class: "who", text: item.note }) : null, priceHint]),
+      remove,
+    ]),
+    priceTools(item),
   ]);
 }
 
 async function viewShopping(view) {
-  const list = await api("/api/shopping");
+  const [list, storesResult] = await Promise.all([api("/api/shopping"), api("/api/stores")]);
   const remaining = list.items.filter((i) => !i.done).length;
+
+  // Real stores already logged (Git #3112) -- offered as a datalist so "Log price" autocompletes
+  // onto the same store rather than a typo creating a near-duplicate.
+  view.append(
+    el(
+      "datalist",
+      { id: "known-stores" },
+      storesResult.stores.map((s) => el("option", { value: s.name })),
+    ),
+  );
 
   view.append(
     el("section", { class: "section" }, [

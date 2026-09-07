@@ -421,6 +421,54 @@ async function main() {
   });
   check("checking off a Shopping item is a real done/done_at write", checkedBanana.status === 200 && checkedBanana.json?.done === true, JSON.stringify(checkedBanana.json));
 
+  // 6c-2. Per-store price history (Git #3112): a real, repeated observation for the same item at
+  // the same store builds a real, queryable history -- not just a single current-price field.
+  const noStores = await http("/api/stores");
+  check("GET /api/stores starts empty for a fresh account", noStores.status === 200 && noStores.json?.stores?.length === 0, JSON.stringify(noStores.json));
+
+  const firstPrice = await http("/api/prices", {
+    method: "POST",
+    body: { storeName: "Aldi", itemText: bananaItem.text, priceCents: 179, observedOn: "2026-08-30" },
+  });
+  check("logging a real price for an item creates its store on first use", firstPrice.status === 201 && firstPrice.json?.store_name === "Aldi" && firstPrice.json?.price_cents === 179, JSON.stringify(firstPrice.json));
+
+  const secondPrice = await http("/api/prices", {
+    method: "POST",
+    body: { storeName: "aldi", itemText: bananaItem.text.toUpperCase(), priceCents: 189, observedOn: "2026-09-06" },
+  });
+  check("a second observation reuses the same store, case-insensitively", secondPrice.status === 201 && secondPrice.json?.store_id === firstPrice.json?.store_id, JSON.stringify(secondPrice.json));
+
+  const walmartPrice = await http("/api/prices", {
+    method: "POST",
+    body: { storeName: "Walmart", itemText: bananaItem.text, priceCents: 169, observedOn: "2026-09-05" },
+  });
+  check("a different store gets its own real row", walmartPrice.status === 201 && walmartPrice.json?.store_id !== firstPrice.json?.store_id, JSON.stringify(walmartPrice.json));
+
+  const nowStores = await http("/api/stores");
+  check("GET /api/stores lists both real stores", nowStores.json?.stores?.length === 2, JSON.stringify(nowStores.json));
+
+  const history = await http(`/api/prices?item=${encodeURIComponent(bananaItem.text)}`);
+  check(
+    "GET /api/prices returns every real observation for the item, most recent first",
+    history.status === 200 && history.json?.history?.length === 3 && history.json.history[0].store_name === "Aldi" && history.json.history[0].price_cents === 189,
+    JSON.stringify(history.json),
+  );
+
+  const shoppingWithHints = await http("/api/shopping");
+  const bananasAfterPricing = shoppingWithHints.json?.items?.find((i) => i.id === bananaItem.id);
+  check(
+    "GET /api/shopping attaches the item's real latest price -- one query for the whole list, not one per item",
+    bananasAfterPricing?.lastPrice?.priceCents === 189 && bananasAfterPricing?.lastPrice?.storeName === "Aldi",
+    JSON.stringify(bananasAfterPricing?.lastPrice),
+  );
+
+  const mcpPrices = await rpc(token.token, "tools/call", { name: "get_prices", arguments: { item: bananaItem.text } });
+  const mcpPricesPayload = toolResult(mcpPrices);
+  check("get_prices (MCP) reads the same real history Claude would use to build the next list", mcpPricesPayload?.history?.length === 3, JSON.stringify(mcpPricesPayload));
+
+  const dbPriceCount = await one("SELECT count(*)::int AS n FROM item_prices WHERE user_id = $1", [userId]);
+  check("every logged price is really a row in item_prices, not just an in-memory response", dbPriceCount?.n === 3, JSON.stringify(dbPriceCount));
+
   const removedMilk = await http(`/api/lists/${shoppingId}/items/${milkItem.id}`, { method: "DELETE" });
   check("removing a Shopping item works", removedMilk.status === 200 && removedMilk.json?.ok === true);
 

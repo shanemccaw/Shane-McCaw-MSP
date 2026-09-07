@@ -14,6 +14,7 @@ import * as entities from "../core/entities.mjs";
 import * as lists from "../core/lists.mjs";
 import * as media from "../core/media.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
+import * as prices from "../core/prices.mjs";
 import * as shares from "../core/shares.mjs";
 
 // Deliberately tight: this app has one real account, so a burst of failures is an attack, not a
@@ -494,7 +495,11 @@ export function buildApiRouter() {
   router.get("/api/shopping", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
     const list = await lists.getOrCreateShoppingList(user.id);
-    return sendJson(res, 200, await lists.getListDetail(user.id, list.id));
+    const detail = await lists.getListDetail(user.id, list.id);
+    // Per-store price history (Git #3112): "last time $X at Store" on each row, one extra query
+    // for the whole list rather than one per item.
+    detail.items = await prices.attachLatestPrices(user.id, detail.items);
+    return sendJson(res, 200, detail);
   });
 
   router.get("/api/lists/:id", async (_req, res, params, ctx) => {
@@ -535,6 +540,51 @@ export function buildApiRouter() {
   router.post("/api/lists/:id/clear-checked", async (_req, res, params, ctx) => {
     const user = requireUser(ctx);
     return sendJson(res, 200, await lists.clearCheckedItems(user.id, params.id));
+  });
+
+  // -- per-store price history (Git #3112) ---------------------------------
+
+  router.get("/api/stores", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { stores: await prices.listStores(user.id) });
+  });
+
+  router.post("/api/stores", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    if (!body.name) throw badRequest("name is required");
+    return sendJson(res, 201, await prices.getOrCreateStore(user.id, body.name));
+  });
+
+  // ?item= is the same normalised text saved with each price -- the Shopping room's own item
+  // text, so "spaghetti sauce" pulls back every real observation ever logged for it.
+  router.get("/api/prices", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const url = new URL(req.url, "http://internal");
+    const item = url.searchParams.get("item");
+    if (!item) throw badRequest("item query param is required");
+    return sendJson(res, 200, { item, history: await prices.getPriceHistory(user.id, item) });
+  });
+
+  router.post("/api/prices", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await prices.recordPrice(user.id, {
+      storeId: body.storeId ?? null,
+      storeName: body.storeName ?? null,
+      itemText: body.itemText,
+      priceCents: body.priceCents,
+      observedOn: body.observedOn ?? null,
+      note: body.note ?? null,
+      source: "shane",
+    });
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "price.record",
+      detail: { itemText: row.item_text, storeName: row.store_name, priceCents: row.price_cents },
+    });
+    return sendJson(res, 201, row);
   });
 
   // -- today / categories / activity --------------------------------------

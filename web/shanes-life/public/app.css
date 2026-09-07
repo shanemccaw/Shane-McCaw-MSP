@@ -285,6 +285,13 @@ button:disabled { opacity: 0.5; cursor: default; }
 .checklist .done { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
 .checklist .who { font-size: 0.72rem; color: hsl(var(--muted-foreground)); display: block; }
 
+/* Per-store price history (Git #3112): the Shopping row's checkbox/label/remove line, plus a
+   second block below it for the log-price form / history list -- so .checklist li's own flex
+   row (above) stays the top line, not the whole row. */
+.checklist li.shopping-row { display: grid; gap: 0.4rem; align-items: stretch; }
+.price-tools { display: grid; gap: 0.35rem; }
+.price-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; font-size: 0.8rem; }
+
 /* ---------- empty states ----------
    An empty state here says only that nothing has been captured yet. It never invents a row to
    fill the space, and it never scolds. */

@@ -26,6 +26,7 @@ Every decision below traces to a section of it, and the section is cited in the 
 | Home Screen web app, not Expo (§10) | `public/manifest.webmanifest`, `public/sw.js`, the four `apple-mobile-web-app-*` meta tags |
 | Notification tray leads, not a dashboard (§3, §11) | `GET /api/today` returns at most three things; there are no charts, totals, streaks or percentages anywhere |
 | Shopping: one running list, real capture-grammar push, no-login share (§5, §9, Shanes Life 04) | `src/core/lists.mjs`, `GET /api/shopping`, `public/app.js` `#/shopping`, MCP `push_list`/`get_list`/`check_list_item` (#3088) |
+| Shopping: per-store price history, real dated observations (Shanes Life 04) | `src/core/prices.mjs`, `GET/POST /api/stores`, `GET/POST /api/prices`, `public/app.js` "Log price"/"History" on each Shopping row, MCP `get_prices` (#3112) |
 
 ---
 
@@ -278,9 +279,34 @@ below. "One run": `GET /api/shopping` finds-or-creates the one real `lists` row 
 (`#/shopping` in `public/app.js`) and from Claude over MCP: `push_list` (the capture-grammar
 entry point — add onto the run, or `replace: true` for a fresh one), `get_list`, and
 `check_list_item`. The no-login share link reuses #3116's kind-agnostic `share_links` layer
-unchanged. Barcode scan, aisle memory, weekly-ad verdicts, per-run budget and per-store price
-history (all real, all drawn in `Shanes Life 04 - Shopping.dc.html`) are each their own
-separate Feature, `blocked_by` this one — not built here.
+unchanged. Barcode scan, aisle memory, weekly-ad verdicts and per-run budget (all real, all
+drawn in `Shanes Life 04 - Shopping.dc.html`) are each their own separate Feature, `blocked_by`
+this one — not built here.
+
+## Shopping — per-store price history (#3112)
+
+The design's own line: "Prices are stored per store and per date, and Claude reads them over MCP
+(`get_prices`) so the next list carries real numbers instead of estimates." This is the real
+historical record, not a single current-price field — `stores` and `item_prices`
+(migration 021) hold a real, dated observation per (store, item), and `src/core/prices.mjs` is
+the CRUD: `getOrCreateStore`, `recordPrice`, `getPriceHistory`, `attachLatestPrices`.
+
+`item_prices.item_text` is the normalised item name, not a foreign key onto `list_items` — list
+rows are deleted every "Done shopping" clear-checked pass (#3088), so history keyed on the row
+would evaporate with the run. This is deliberately independent of barcode scan (#3109, separate,
+not built here): logging a price is a manual "Log price" action on any Shopping row, not gated
+on a scan first landing.
+
+Reachable both ways: the signed-in web UI (`public/app.js` — "Log price" opens an inline
+store/price/date form on each Shopping row; "History" reads back every real observation for
+that item) and Claude over MCP (`get_prices`, read-only — writing a price is a manual, in-app
+action per the design, not an MCP tool). `GET /api/shopping` attaches each item's real latest
+price (`lastPrice`) in the same response, one extra query for the whole list rather than one
+per item.
+
+"Synced across Shane's own devices" (the design README's "store per phone") needs no sync
+mechanism: every observation is one real row in the shared database, reachable from any
+signed-in session — there is no per-device local copy to keep in step.
 
 ## Not built here, on purpose
 

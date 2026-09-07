@@ -13,6 +13,7 @@ import * as captures from "../core/captures.mjs";
 import * as categories from "../core/categories.mjs";
 import * as entities from "../core/entities.mjs";
 import * as lists from "../core/lists.mjs";
+import * as prices from "../core/prices.mjs";
 import * as shares from "../core/shares.mjs";
 
 const CATEGORY_META_PROPS = {
@@ -465,6 +466,25 @@ export const TOOLS = [
         detail: { shareId: share.id, kind: args.listId ? "list" : "entity" },
       });
       return share;
+    },
+  },
+
+  {
+    name: "get_prices",
+    title: "Read an item's real price history",
+    description:
+      "The real per-store price history for one item -- every store, every date it was ever priced (Git #3112). Call this while generating a shopping list so it carries real numbers instead of estimates, e.g. 'spaghetti sauce, last seen $1.79 at Aldi Sep 6'. Matches on the same normalised (lower/trim) item text `push_list` items use, so it works even when items were never scanned or barcode-linked.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        item: { type: "string", description: "The item's text, e.g. 'spaghetti sauce'." },
+        limit: { type: "integer", minimum: 1, maximum: 500, default: 100 },
+      },
+      required: ["item"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      return { item: args.item, history: await prices.getPriceHistory(ctx.user.id, args.item, { limit: args.limit || 100 }) };
     },
   },
 
