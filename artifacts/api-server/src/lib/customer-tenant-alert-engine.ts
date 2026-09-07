@@ -357,6 +357,36 @@ async function evalLicenseChange(customerId: number, windowMinutes: number): Pro
   );
 }
 
+/**
+ * POA&Ms (#1935, Git #3094): the 9-step milestone-proximity ladder. Per
+ * #1942's own hard rule ("Nine ladder thresholds must not become nine
+ * identical notifications... Far thresholds are digest material"), this is
+ * ONE catalog condition, not nine — sorted far→near; severity is derived
+ * from proximity in getSeverityOverride below, never stored per-threshold.
+ */
+const POAM_MILESTONE_LADDER_DAYS = [90, 60, 30, 21, 14, 7, 3, 2, 1];
+
+/**
+ * A POA&M milestone crossing one of the 9 ladder thresholds today, for a
+ * still-`active` POA&M's still-`pending` milestone (`msp_poam_milestones`,
+ * #3080). Poll-based like every other evaluator here (5-minute cycle): a
+ * milestone is counted on the one calendar day `due_date - today` lands
+ * exactly on a ladder value, not continuously — this rule's own
+ * cooldown_minutes (1440, i.e. daily) then holds it for the rest of that day,
+ * so a tenant with several milestones crossing thresholds the same day still
+ * gets one notification, not one per milestone.
+ */
+async function evalPoamMilestoneApproaching(tenantId: string): Promise<number> {
+  return count(
+    `SELECT COUNT(*)::text AS n
+     FROM msp_poam_milestones m
+     JOIN msp_poams p ON p.id = m.poam_id
+     WHERE p.tenant_id = $1 AND p.status = 'active' AND m.status = 'pending'
+       AND (m.due_date - CURRENT_DATE) = ANY($2::int[])`,
+    [tenantId, POAM_MILESTONE_LADDER_DAYS],
+  );
+}
+
 async function getConditionValue(
   rule: { condition_type: string; window_minutes: number; threshold: number },
   ctx: TenantContext,
@@ -581,6 +611,24 @@ async function getConditionValue(
           [tid, w],
         );
 
+      // ── POA&Ms (#1935, Git #3094) ────────────────────────────────────────────
+      case "poam.milestone_approaching":
+        if (!tid) return 0;
+        return await evalPoamMilestoneApproaching(tid);
+      case "poam.expiring":
+        // The separate T-0/lapse condition, off the PARENT plan's own target
+        // date (msp_poams.scheduled_completion_date), not a milestone —
+        // fires once that date has arrived or passed while the plan is still
+        // 'active' (never verified complete). Distinct table/column from the
+        // ladder above, per the issue's own instruction.
+        if (!tid) return 0;
+        return await count(
+          `SELECT COUNT(*)::text AS n FROM msp_poams
+           WHERE tenant_id = $1 AND status = 'active'
+             AND scheduled_completion_date <= CURRENT_DATE`,
+          [tid],
+        );
+
       // ── pending_detector conditions — hook wired, source not built yet ──────
       default:
         return 0;
@@ -695,6 +743,8 @@ function buildSummary(conditionType: string, value: number, ctx: TenantContext):
     case "billing.payment_failed": return `${who}a subscription payment has failed.`;
     case "billing.license_change": return `${who}${n} licence assignment change${s} detected.`;
     case "support.ticket_updated": return `${who}${n} support reply${s} from Shane McCaw Consulting.`;
+    case "poam.milestone_approaching": return `${who}${n} POA&M milestone${s} approaching ${n === 1 ? "its" : "their"} scheduled checkpoint.`;
+    case "poam.expiring": return `${who}${n} POA&M${s} reached ${n === 1 ? "its" : "their"} scheduled completion date without being verified complete.`;
     default: return `${who}alert condition "${conditionType}" triggered (value ${n}).`;
   }
 }
@@ -789,6 +839,33 @@ interface RuleRow {
   deep_link_path: string | null; admin_deep_link_path: string | null;
 }
 
+/**
+ * Per-firing severity override (Git #3094). `rule.severity` is the catalog's
+ * static default and is exactly right for every other condition here — but
+ * #1942's own hard rule for the POA&M ladder is that severity CLIMBS with
+ * proximity (nine thresholds collapsed into one condition), so a single
+ * fixed row-level severity can't represent it. Returns null for every other
+ * condition — "use rule.severity, unchanged" — this only ever fires a second
+ * query for the one condition that actually needs a dynamic value.
+ */
+async function getSeverityOverride(rule: RuleRow, ctx: TenantContext): Promise<"info" | "warning" | "critical" | null> {
+  if (rule.condition_type !== "poam.milestone_approaching" || !ctx.tenantId) return null;
+  const res = await pool.query<{ min_days: number | null }>(
+    `SELECT MIN(m.due_date - CURRENT_DATE)::int AS min_days
+     FROM msp_poam_milestones m
+     JOIN msp_poams p ON p.id = m.poam_id
+     WHERE p.tenant_id = $1 AND p.status = 'active' AND m.status = 'pending'
+       AND (m.due_date - CURRENT_DATE) = ANY($2::int[])`,
+    [ctx.tenantId, POAM_MILESTONE_LADDER_DAYS],
+  );
+  const days = res.rows[0]?.min_days;
+  if (days == null) return null;
+  // 3/2/1 days out -> critical, 3/2/1 weeks out -> warning, 90/60/30 days out -> info.
+  if (days <= 3) return "critical";
+  if (days <= 21) return "warning";
+  return "info";
+}
+
 export async function evaluateCustomerTenantRules(): Promise<void> {
   await ensureCustomerTenantAlertTables();
 
@@ -813,6 +890,10 @@ export async function evaluateCustomerTenantRules(): Promise<void> {
 
         if (await isInCooldown(rule.id, ctx.customerId, rule.cooldown_minutes)) continue;
 
+        // Git #3094: only poam.milestone_approaching ever overrides the
+        // catalog's static severity; every other condition gets back null
+        // and keeps rule.severity exactly as before.
+        const severity = (await getSeverityOverride(rule, ctx)) ?? rule.severity;
         const summary = buildSummary(rule.condition_type, value, ctx);
 
         const evtRes = await pool.query<{ id: number }>(
@@ -823,7 +904,7 @@ export async function evaluateCustomerTenantRules(): Promise<void> {
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,false,false,'pending_prefs')
            RETURNING id`,
           [
-            rule.id, rule.rule_key, rule.alert_category, rule.severity, ctx.customerId,
+            rule.id, rule.rule_key, rule.alert_category, severity, ctx.customerId,
             ctx.mspId, ctx.tenantId, value, summary, rule.deep_link_path, rule.admin_deep_link_path,
           ],
         );
@@ -837,7 +918,7 @@ export async function evaluateCustomerTenantRules(): Promise<void> {
           ruleKey: rule.rule_key,
           label: rule.label,
           summary,
-          severity: rule.severity,
+          severity,
           adminDeepLinkPath: rule.admin_deep_link_path,
           deliveryEmail: rule.delivery_admin_email,
           deliveryPush: rule.delivery_admin_push,
@@ -851,7 +932,7 @@ export async function evaluateCustomerTenantRules(): Promise<void> {
             eventId,
             ruleKey: rule.rule_key,
             alertCategory: rule.alert_category,
-            severity: rule.severity as "info" | "warning" | "critical",
+            severity: severity as "info" | "warning" | "critical",
             customerId: ctx.customerId,
             mspId: ctx.mspId,
             tenantId: ctx.tenantId,
