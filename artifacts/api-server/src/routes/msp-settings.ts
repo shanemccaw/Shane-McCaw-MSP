@@ -1540,7 +1540,12 @@ router.patch("/msp/settings/connector/mailbox/automated-emails", requireRole("MS
 
 // ── PATCH /api/msp/settings/connector/mailbox/write-back ───────────────────────
 // Toggles whether write-back (mutating) Graph operations are permitted for this
-// MSP's tenants. Schema/parameter only — no enforcement logic reads this flag yet.
+// MSP's tenants. This is the real, fail-closed Gate 1 of graphWriteForTenant()
+// (artifacts/api-server/src/lib/graph.ts) — it resolves the MSP from the target
+// customer row and throws WriteBackNotEnabledError when writeBackEnabled is
+// false, before the separate tenant-write-consent gate even runs. It gates
+// every tenant-scoped Microsoft Graph write call for every one of this MSP's
+// tenants, not a cosmetic/schema-only flag.
 
 const writeBackSchema = z.object({ enabled: z.boolean() });
 
