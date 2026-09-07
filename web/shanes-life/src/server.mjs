@@ -125,6 +125,26 @@ async function handle(req, res) {
     if (serveStatic(PUBLIC_DIR, "/share.html", res)) return;
   }
 
+  // OAuth discovery probes (RFC 8414 / RFC 9728). `mcp-remote` -- the bridge Claude
+  // Desktop uses to reach this server -- probes several `/.well-known/...` variants
+  // (`/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource`,
+  // and path-relative forms like `/mcp/.well-known/openid-configuration`) before ever
+  // sending the bearer token, even though this server only does bearer-token auth and
+  // implements none of them. Left to the SPA catch-all below, every one of those probes
+  // got the app shell's `index.html` back -- `mcp-remote` either blew up trying to parse
+  // it as JSON, or (confirmed live, 2026-09-07) silently treated the 200 HTML response as
+  // real OpenID metadata. A real 404 on any path containing a `.well-known` segment is
+  // enough: mcp-remote's own discovery code treats a 404 on these paths as "not
+  // implemented" and moves on (see mcp-remote's `discoverOAuthProtectedResourceMetadata`,
+  // which explicitly special-cases `response.status === 404`, and
+  // `discoverAuthorizationServerMetadata`'s loop, which `continue`s past any 4xx), then
+  // proceeds straight to sending the bearer token it already has. There is no reason to
+  // implement any of these well-known responses for real -- bearer-token-only auth
+  // already degrades cleanly once the probe fails honestly.
+  if (pathname === "/.well-known" || pathname.includes("/.well-known/")) {
+    return sendJson(res, 404, { error: "Not found" });
+  }
+
   if (pathname !== "/" && serveStatic(PUBLIC_DIR, pathname, res)) return;
 
   // Client-side routing: any unknown path falls back to the app shell.
