@@ -1681,10 +1681,36 @@ async function recordSignalTransitions(
 
     for (const signalKey of newlyFired) {
       try {
-        await db.execute(sql`
+        // ON CONFLICT DO NOTHING against the partial unique index, NOT a bare INSERT
+        // (Git #3078). The `newlyFired` set above is derived from a read that another
+        // overlapping evaluation of the same customer can invalidate before we get
+        // here — this function is fired-and-forgotten from computeTenantSignals, so
+        // overlapping evaluations are ordinary. Both would see zero open rows for the
+        // key and both would insert; 45 (customer_id, signal_key) pairs on the local
+        // DB ended up with 2-3 open rows apiece, fired_at milliseconds apart. The
+        // damage is not cosmetic: getStabilizedSignals stabilizes a signal when ANY
+        // open row is past its window, so the older duplicate made signals read as
+        // stabilized before they genuinely were.
+        //
+        // The index is the fix; this clause is how the loser of the race exits
+        // cleanly. The predicate here must match
+        // `tenant_signal_history_one_open_per_signal` exactly for Postgres to infer
+        // it — see the index's own comment in lib/db/src/schema/index.ts.
+        const inserted = await db.execute(sql`
           INSERT INTO tenant_signal_history (customer_id, msp_id, signal_key, fired_at)
           VALUES (${customerId}, ${mspId}, ${signalKey}, NOW())
+          ON CONFLICT (customer_id, signal_key) WHERE resolved_at IS NULL DO NOTHING
+          RETURNING id
         `);
+        if (inserted.rows.length === 0) {
+          // Not an error — the signal is already open, which is the state we wanted.
+          // Logged because it is the only place the race is observable, and a steady
+          // stream of these means evaluations are overlapping more than expected.
+          log.info(
+            { customerId, mspId, signalKey },
+            "recordSignalTransitions: signal already open (concurrent evaluation won the insert) — no duplicate row created",
+          );
+        }
       } catch (err) {
         log.warn({ err, customerId, mspId, signalKey }, "recordSignalTransitions: failed to insert newly-fired row");
       }
@@ -1714,6 +1740,12 @@ async function recordSignalTransitions(
  * "currently fired" if it has an open row (resolved_at IS NULL) in
  * tenant_signal_history; it's "stabilized" if that row's fired_at is old
  * enough for its own window.
+ *
+ * "That row" is now singular by construction: Git #3078 added the partial unique
+ * index `tenant_signal_history_one_open_per_signal`, so a signal key can have at
+ * most one open row per customer. Before it, a duplicate open row inserted by a
+ * racing evaluation stabilized the signal off whichever row happened to be oldest,
+ * which is the opposite of what the window is for.
  *
  * Windows are resolved in one batched query keyed off the customer's open
  * signal keys (not one query per signal) — this runs per customer inside
