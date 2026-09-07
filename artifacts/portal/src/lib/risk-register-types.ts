@@ -104,6 +104,26 @@ export interface WireRbdVersionSummary {
   readonly signatureInherited: boolean;
 }
 
+/** The already-rendered whole-document artifact (§1.5/§1.6, #1512/#3058). Never
+ * rendered on demand by this app — see `portal-rbd-document.ts`'s own header. */
+export interface WireRbdDocument {
+  readonly runId: string;
+  readonly htmlContent: string;
+  readonly pdfBase64: string;
+  readonly pdfSizeBytes: number;
+  readonly generatedAt: string;
+}
+
+export interface SignRbdDocumentRequest {
+  readonly signerName: string;
+  readonly signerTitle?: string;
+  readonly signatureData: string;
+}
+
+export interface SignRbdDocumentResponse {
+  readonly version: WireRbdVersionSummary;
+}
+
 export interface AcceptRiskRequest {
   readonly fullName: string;
   readonly confirmed: true;

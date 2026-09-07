@@ -1,5 +1,5 @@
 /**
- * React Query hooks for the customer-facing Risk Register (#2993).
+ * React Query hooks for the customer-facing Risk Register (#2993, #3058).
  *
  * Wired to the real, live endpoints documented in
  * `docs/risk-register-contract-pack.md`:
@@ -7,6 +7,8 @@
  *   GET  /api/portal/policy-decisions
  *   POST /api/portal/risk-register/:rbdId/accept
  *   GET  /api/portal/risk-register/rbd/:rbdId/versions
+ *   GET  /api/portal/risk-register/rbd/:rbdId/versions/:versionUid/document (#3058)
+ *   POST /api/portal/risk-register/rbd/:rbdId/versions/:versionUid/sign (#3058)
  *
  * No fixture module, no fallback data — every read either resolves to a real
  * server response or surfaces as a failed/loading state the page itself
@@ -18,7 +20,10 @@ import type {
   AcceptRiskRequest,
   AcceptRiskResponse,
   ApiErrorBody,
+  SignRbdDocumentRequest,
+  SignRbdDocumentResponse,
   WirePolicyDecision,
+  WireRbdDocument,
   WireRbdVersionSummary,
   WireRisk,
 } from "@/lib/risk-register-types";
@@ -82,6 +87,64 @@ export function useRbdVersions(rbdId: string, enabled: boolean) {
       return data.versions;
     },
     enabled,
+  });
+}
+
+/**
+ * The already-rendered document for one version (§1.5, #3058). Never renders
+ * on demand — a 404 here means the MSP genuinely hasn't prepared it yet, so
+ * that case resolves to `null` rather than throwing, letting the panel render
+ * the contract pack's own honest-empty copy instead of an error state.
+ */
+export function useRbdDocument(rbdId: string, versionUid: string | null, enabled: boolean) {
+  const { fetchWithAuth } = useAuth();
+  return useQuery({
+    queryKey: ["portal", "risk-register", "rbd-document", rbdId, versionUid],
+    queryFn: async () => {
+      const res = await fetchWithAuth(
+        `/api/portal/risk-register/rbd/${encodeURIComponent(rbdId)}/versions/${encodeURIComponent(versionUid as string)}/document`,
+        undefined,
+        { silent: true },
+      );
+      if (res.status === 404) return null;
+      const data = await parseJsonOrThrow<{ document: WireRbdDocument }>(res);
+      return data.document;
+    },
+    enabled: enabled && versionUid !== null,
+  });
+}
+
+export function useSignRbdDocument() {
+  const { fetchWithAuth } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      rbdId,
+      versionUid,
+      body,
+    }: {
+      rbdId: string;
+      versionUid: string;
+      body: SignRbdDocumentRequest;
+    }) => {
+      const res = await fetchWithAuth(
+        `/api/portal/risk-register/rbd/${encodeURIComponent(rbdId)}/versions/${encodeURIComponent(versionUid)}/sign`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      return parseJsonOrThrow<SignRbdDocumentResponse>(res);
+    },
+    onSettled: (_data, _err, variables) => {
+      // Same reasoning as useAcceptRisk's onSettled — a 409 (superseded,
+      // already signed elsewhere) means our local view was stale, so refetch
+      // the version list rather than optimistically patch it.
+      void queryClient.invalidateQueries({
+        queryKey: ["portal", "risk-register", "rbd-versions", variables.rbdId],
+      });
+    },
   });
 }
 

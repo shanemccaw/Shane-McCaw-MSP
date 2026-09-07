@@ -1,10 +1,11 @@
 {
   "issue": 2993,
-  "feature": "Risk Register (#2993, Feature #1487) -- the real customer-facing Risk Register page in the rebuilt artifacts/portal (/risk-register), wired to GET /api/portal/risk-register, GET /api/portal/policy-decisions, POST /api/portal/risk-register/:rbdId/accept, and GET /api/portal/risk-register/rbd/:rbdId/versions -- see docs/risk-register-contract-pack.md. No fixture module: every row on screen comes from these endpoints.",
+  "feature": "Risk Register (#2993, Feature #1487) -- the real customer-facing Risk Register page in the rebuilt artifacts/portal (/risk-register), wired to GET /api/portal/risk-register, GET /api/portal/policy-decisions, POST /api/portal/risk-register/:rbdId/accept, and GET /api/portal/risk-register/rbd/:rbdId/versions -- see docs/risk-register-contract-pack.md. No fixture module: every row on screen comes from these endpoints. #3058 wired the whole-document viewer + drawn-signature capture (GET .../versions/:versionUid/document, POST .../versions/:versionUid/sign) that this manifest's DOC steps below cover.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "6f4e48d3c",
+  "lastVerifiedAgainstCommit": "TBD",
 
   "notes": [
+    "#3058 -- no msp_rbd_versions row exists anywhere in the local/testbed DB (confirmed via direct SELECT this session), so the document/sign happy path (a real rendered WireRbdDocument, a real 201 sign) is NOT driven end-to-end here -- rendering one needs a real MSP staff createdByUserId via the separate msp-rbd-versions.ts route, which is out of this manifest's scope. What IS driven: the scoped-404 guard on both new routes for a version that does not exist (DOC1/DOC2, idempotent), and the honest 'No document prepared yet' empty state rendering for real on a row with zero captured versions (UI8). If an MSP-rendered + customer-signable version is ever seeded for the testbed tenant, extend this manifest with the real document-render + sign-and-verify-409-on-resubmit path the same way A3's write-once guard was proven (see that note) rather than leaving this gap silently uncovered.",
     "WHAT THIS COVERS: the real read shapes (risks[]/decisions[] arrays, the two fields this build added to the wire -- WireAcceptance.status and WireRisk.obligation, both real DB columns that existed but were not previously served), the write-once accept guard (409 on an already-accepted row), the 404 on a nonexistent rbdId, and that the per-RBD version-history read answers cleanly even when no version has ever been captured (empty array, not an error).",
 
     "WHY NO HAPPY-PATH ACCEPT IS DRIVEN HERE: an acceptance is PERMANENT -- the route refuses a second one with 409 -- so a step that successfully accepts a risk would pass exactly once and then poison every subsequent run of this manifest. A real accept WAS proven end-to-end in-session against a locally-built copy of this exact commit (RBD-2026-103, seeded via lib/db/migrations/manual/2026-08-21-portal-v2-risk-register-testbed-seed.sql): 201 with the new status:'active' field present, an immediate second attempt refused 409, then the row was reset via direct SQL back to its seeded pending_signature/Open state so this manifest's own A3/A4 guards stay true on every run. That sequence is deliberately not a manifest step, for the same non-idempotency reason.",
@@ -88,6 +89,23 @@
       "path": "/api/portal/risk-register/rbd/RBD-2026-104/versions",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.versions", "isArray": true }
+    },
+    {
+      "name": "DOC1 (#3058, sessionTag rbd-document) -- GET .../document for a versionUid that does not exist 404s scoped exactly like one belonging to another tenant would, not a 500.",
+      "sessionTag": "rbd-document",
+      "method": "GET",
+      "path": "/api/portal/risk-register/rbd/RBD-2026-104/versions/does-not-exist/document",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 404, "jsonPath": "$.error.code", "equals": "NOT_FOUND" }
+    },
+    {
+      "name": "DOC2 (#3058, sessionTag rbd-document) -- POST .../sign for a versionUid that does not exist also 404s, idempotently re-runnable (no state written on a 404).",
+      "sessionTag": "rbd-document",
+      "method": "POST",
+      "path": "/api/portal/risk-register/rbd/RBD-2026-104/versions/does-not-exist/sign",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "signerName": "Regression Runner", "signatureData": "data:image/png;base64,AAAAAAAAAA" },
+      "expect": { "status": 404, "jsonPath": "$.error.code", "equals": "NOT_FOUND" }
     }
   ],
 
@@ -106,6 +124,7 @@
 
     { "name": "open the seeded already-accepted row (RBD-2026-104, always signed by the seed -- see notes on why no accept submit is driven).", "action": "click", "selector": "[data-testid='risk-row-toggle-RBD-2026-104']" },
     { "name": "UI5 -- the write-once acceptance record renders for an already-accepted row, never the accept-and-sign form.", "action": "expect", "selector": "body", "textContains": "Accepted by" },
+    { "name": "UI8 (#3058, sessionTag rbd-document) -- with zero msp_rbd_versions rows for the whole testbed, RiskDocumentPanel renders the real honest-empty state rather than any fixture/placeholder document.", "sessionTag": "rbd-document", "action": "expect", "selector": "body", "textContains": "No document prepared yet" },
 
     { "name": "UI6 -- the policy-decisions view of the same register also rendered, keyed by the real decision id the ENDPOINT returned (real testid the risk-register build ships).", "action": "expect", "selector": "[data-testid='policy-decision-row-{{firstDecisionId}}']", "state": "visible" },
     { "name": "UI7 -- the ledger of what this page deliberately does not do is on screen.", "action": "expect", "selector": "body", "textContains": "What this page deliberately does not do" }
