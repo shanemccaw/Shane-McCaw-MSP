@@ -96,20 +96,27 @@ namespace BuildConsole.Services
         public static async Task RunAsync(string label, Func<Task> work)
         {
             // Pass-through: past the window, or re-entrant from inside an already-coordinated op.
+            // Git #3071: no ConfigureAwait(false) anywhere in this method — callers (and the
+            // `work` delegates they hand us) routinely touch WPF UI either before their own
+            // first internal await or immediately after one of ours resumes. Stripping the
+            // SynchronizationContext here silently moves that UI-touching code onto a
+            // ThreadPool thread and crashes (`RenderIssuesTreeAsync`'s `ItemCollection.Clear()`
+            // via `EnrichBlockedStatusCoreAsync`). Resume on the original context throughout,
+            // matching this codebase's convention for UI-adjacent async work.
             if (!IsColdStartWindow || _insideGate.Value)
             {
-                await work().ConfigureAwait(false);
+                await work();
                 return;
             }
 
             var waitSw = Stopwatch.StartNew();
-            bool acquired = await _gate.WaitAsync(MaxGateWait).ConfigureAwait(false);
+            bool acquired = await _gate.WaitAsync(MaxGateWait);
             waitSw.Stop();
             if (!acquired)
             {
                 ActivityLog.Log(Channel,
                     $"cold-start GitHub coordinator: '{label}' waited {waitSw.ElapsedMilliseconds}ms for the gate and proceeded uncoordinated (Git #3022).");
-                await work().ConfigureAwait(false);
+                await work();
                 return;
             }
 
@@ -120,7 +127,7 @@ namespace BuildConsole.Services
                 long n = Interlocked.Increment(ref _opsCoordinated);
                 ActivityLog.Log(Channel,
                     $"cold-start GitHub coordinator: running '{label}' (op #{n}, {waitSw.ElapsedMilliseconds}ms gate wait) (Git #3022).");
-                await work().ConfigureAwait(false);
+                await work();
                 runSw.Stop();
                 ActivityLog.Log(Channel,
                     $"cold-start GitHub coordinator: '{label}' done in {runSw.ElapsedMilliseconds}ms (Git #3022).");
@@ -132,7 +139,7 @@ namespace BuildConsole.Services
                 // never hold the gate needlessly once we've aged out.
                 if (IsColdStartWindow)
                 {
-                    try { await Task.Delay(InterOpSettle).ConfigureAwait(false); } catch { /* delay is best-effort */ }
+                    try { await Task.Delay(InterOpSettle); } catch { /* delay is best-effort */ }
                 }
                 _gate.Release();
             }
@@ -147,7 +154,7 @@ namespace BuildConsole.Services
         public static async Task<T> RunAsync<T>(string label, Func<Task<T>> work)
         {
             T result = default!;
-            await RunAsync(label, async () => { result = await work().ConfigureAwait(false); }).ConfigureAwait(false);
+            await RunAsync(label, async () => { result = await work(); });
             return result;
         }
 
