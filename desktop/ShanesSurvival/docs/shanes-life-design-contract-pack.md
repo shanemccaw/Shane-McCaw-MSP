@@ -96,6 +96,12 @@ constraints:
   is too late here — a birthday reminder needs genuinely more lead time, enough to actually
   get a card or gift, not just same-day awareness. Real annual recurrence, stated once,
   respected every year (Section 8).
+- **Real "want to attend" events, confirmed 2026-09-05 — same real pattern as birthdays,
+  applied to one-off things Shane sees and wants to actually go to** (an air show, a
+  street fair). Real, stated problem: "I always see them and wanna go then forget when and
+  where." Same one-box capture, same real lead-time reminder (not same-day, enough notice
+  to actually plan around it) — no new mechanism, just the same date-plus-lead-time system
+  pointed at a different, lower-stakes real subject than appointments or birthdays.
 - **Nudges rationed to 1–3 per day.** Never accumulate, never shame.
 - **Tasks batch by real-world moment, not clock time** — "when heading out," "when at the
   store," not "at 3pm."
