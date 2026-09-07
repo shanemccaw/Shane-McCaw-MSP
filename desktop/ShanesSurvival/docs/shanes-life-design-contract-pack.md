@@ -460,6 +460,19 @@ specifically. Real fallback if full parity isn't achievable: tapping a notificat
 the app directly to the relevant item, which is still fast, just not zero-tap. Needs real
 verification during build, not assumed either way.
 
+**Real correction, confirmed 2026-09-05: Expo Go doesn't win this one by being "a real
+native app."** Checked directly — there's a long, well-documented history (spanning Expo
+SDK 39 through SDK 49, across several years) of developers reporting that interactive
+notification action buttons genuinely don't work reliably on iOS specifically through
+Expo, even when implemented exactly per Expo's own documentation. One Expo staff response
+explicitly stated the Push Notification API didn't support notification actions at all.
+The API (`setNotificationCategoryAsync`) exists today, but real-world reports keep
+showing it's broken or inconsistent on iOS. **Real conclusion**: both platforms have
+genuine uncertainty on this specific feature — Safari's for unclear documentation, Expo's
+for a persistent, multi-year real bug pattern — so this doesn't change the real platform
+decision above; if anything it reinforces it, since Expo doesn't solve this problem better
+while adding real App Store/Developer Program overhead the web-app path avoids.
+
 ## 11. What NOT to design
 
 - No dashboard-first layout — the notification tray leads.
