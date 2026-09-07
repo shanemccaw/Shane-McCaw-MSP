@@ -70,6 +70,23 @@ export const riskRegisterPurger: TenantDataPurgerDeclaration = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POA&Ms (#3080, part of #1935) — the sibling exit to the Risk Register above,
+// same MSP-era shape (`msp_id` + free-text `tenant_id` holding the M365 tenant
+// GUID, exactly like `msp_risk_decisions.tenant_id` — `msp_poams` mirrors that
+// table's own pattern deliberately). Real finding, filed and closed in the same
+// build that added the table (#3093): `msp_poam_milestones` carries no
+// `tenant_id`/`customer_id` of its own and needs no target here — it purges
+// via its real `ON DELETE CASCADE` FK onto `msp_poams.id` the moment the
+// parent row goes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const poamPurger: TenantDataPurgerDeclaration = {
+  key: "poams",
+  displayName: "POA&Ms (Plan of Action & Milestones)",
+  targets: [{ table: "msp_poams", column: "tenant_id", keySpace: "tenantGuid" }],
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Configuration drift & snapshots — what the tenant's Microsoft configuration looked
 // like, sampled over time, and every diff computed from it.
 //
@@ -444,6 +461,7 @@ export const directoryPurger: TenantDataPurgerDeclaration = {
 export const ALL_TENANT_DATA_PURGER_DECLARATIONS: TenantDataPurgerDeclaration[] = [
   changeControlPurger,
   riskRegisterPurger,
+  poamPurger,
   configDriftPurger,
   monitoringPurger,
   alertingPurger,
