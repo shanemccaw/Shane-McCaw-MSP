@@ -209,6 +209,12 @@ database Shane manages by hand.
 - **The Money-feeder use case still applies, separately**: when Ronnie/DJ mention something
   they need, that's still real budget-awareness information feeding the Money triage view,
   distinct from Shane actively generating his own shopping/recipe lists via Claude.
+- **Real health context factored into meal/recipe generation, confirmed 2026-09-05.**
+  Shane's real cardiac health condition (stage 2 heart disease, hypertension) should
+  inform Claude's real recipe and meal suggestions — heart-healthy choices favored, not a
+  generic recipe list indifferent to it. Same "state once, respected everywhere forever"
+  principle already locked (Section 7) — this is stated once, real health information
+  Shane has already disclosed, not re-asked for every time a meal gets planned.
 - **Real, already-working cross-store price comparison**: in a separate real conversation,
   Shane fed Claude actual weekly store ad flyers and had it find where specific real
   grocery items were cheapest across stores. This is a concrete, already-functioning
