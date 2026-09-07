@@ -21,11 +21,15 @@
  * the same "this was formally agreed" evidentiary value) that justified the
  * higher floor there.
  *
- * Deliberately NOT gated by `portal-tier-features.ts` (#1168) in this build:
- * which purchased Monitoring tier bundles POA&Ms is a real entitlement/money
- * decision this build does not invent — left for a decision on #1935/#1168,
- * same as every other module's tier assignment was a recorded decision, not
- * a guess.
+ * Tier-gated per #3104/#1168: creation and tracking stay unconditional (the
+ * two POST routes below, and the whole MSP-console side in `msp-poams.ts`,
+ * are never gated by this) — only the two customer-facing READ routes below
+ * check the caller's purchased Monitoring tier bundles the real `poams`
+ * module key, same as `policyDecisions`/`riskRegister` in
+ * `portal-risk-register.ts`. WHICH tier(s) actually include `poams` is a
+ * real pricing decision this build does not invent — see #3104's own bookend;
+ * until that's decided nothing resolves `includedFeatures` to contain
+ * `poams`, so this fails closed (402) rather than silently open.
  *
  * The real signature ceremony reuses `risk-authority.ts`'s resolution
  * functions VERBATIM (never RBD-specific in implementation, only in name):
@@ -42,6 +46,7 @@ import { z } from "zod";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
 import { personIdForUser } from "../lib/portal-ownership";
@@ -205,6 +210,9 @@ async function scopeOrEmpty(req: Request, res: Response) {
 router.get(
   "/portal/poams",
   requireRole("CustomerUser"),
+  // #1168/#3104: creation (POST below) is unconditional; only this READ
+  // checks the customer's purchased Monitoring tier bundles POA&Ms.
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.poams),
   async (req: Request, res: Response) => {
     try {
       const scope = await scopeOrEmpty(req, res);
@@ -248,6 +256,7 @@ router.get(
 router.get(
   "/portal/poams/:poamId",
   requireRole("CustomerUser"),
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.poams),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     try {

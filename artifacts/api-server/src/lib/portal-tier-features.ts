@@ -54,6 +54,7 @@ export const PORTAL_TIER_MODULE_KEYS = {
   ownership: "ownership",
   securityPlan: "security_plan",
   piiGovernance: "pii_governance",
+  poams: "poams", // #3104 — customer-facing POA&M reads only; MSP-console side stays ungated
 } as const;
 
 export type PortalTierModuleKey =
