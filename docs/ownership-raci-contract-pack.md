@@ -25,8 +25,8 @@ this pack** — its shape is real (§1b) but its screen does not exist as a spec
 
 | # | Surface | File | Audience | Writes? |
 |---|---|---|---|---|
-| A | `GET /api/portal/ownership` | `artifacts/api-server/src/routes/portal-ownership.ts:420-543` | Customer (the page — #1491) | no |
-| B | `POST /api/portal/ownership/*` (assign, reorder, accept, decline, delegations, delegations/end, rows) + `GET /api/portal/ownership/events` | same file, `:603-1191` | Customer (the page's own writes) | yes |
+| A | `GET /api/portal/ownership` | `artifacts/api-server/src/routes/portal-ownership.ts:421-547` | Customer (the page — #1491) | no |
+| B | `POST /api/portal/ownership/*` (assign, reorder, accept, decline, delegations, delegations/end, rows) + `GET /api/portal/ownership/events` | same file, `:607-1196` | Customer (the page's own writes) | yes |
 | C | `GET /api/msp/ownership/mine` | `artifacts/api-server/src/routes/msp-ownership.ts:71-173` | MSP operator (cross-customer — #1686, not yet architected) | no |
 | D | `POST /api/msp/ownership/:customerId/*` (assign, accept, decline) | same file, `:230-500` | MSP operator (per-customer, cross-tenant-boundary — #1686) | yes |
 
@@ -49,27 +49,40 @@ page for it).
 
 ### 1a. `GET /api/portal/ownership` — the customer surface (A)
 
-Source: `artifacts/api-server/src/routes/portal-ownership.ts:420-543`, assembled by
-`gatherOwnershipObjects` (`:203-388`) and `lib/portal-ownership.ts`'s pure mappers. Customer-scoped:
-`requireRole("CustomerUser")` (`:422`) — a **higher floor** than the neighbouring
+Source: `artifacts/api-server/src/routes/portal-ownership.ts:421-547`, assembled by
+`gatherOwnershipObjects` (`:204-389`) and `lib/portal-ownership.ts`'s pure mappers. Customer-scoped:
+`requireRole("CustomerUser")` (`:423`) — a **higher floor** than the neighbouring
 `portal-change-control.ts`/`portal-remediation-tracker.ts`, which floor at `Assessment`; not a
 security difference, a product one (`:69-77`). Customer is `resolveCustomerId(req)` off the JWT
-(`:424`), never a request param.
+(`:428`), never a request param.
 
-**`WireOwnershipPayload`** (`:390-418`):
+**New since the last pack (#1168, `523af076f`, 2026-09-04): a fourth gate.** `requireTierFeature(
+PORTAL_TIER_MODULE_KEYS.ownership)` (`:426`) now sits after the role check on both READ routes of
+this surface — this one and `GET /portal/ownership/events` (§1b) — checking the customer's
+purchased Monitoring tier bundles `"ownership"` (Premier only, per `lib/portal-tier-features.ts`'s
+cumulative ladder). This is the **visibility** layer only, per #1168's "creation unconditional,
+tier only gates visibility" rule: every write route in §1b is untouched, still gated solely by
+`requireRole("CustomerUser")` — a Foundation/Growth customer whose overlay already has assignments
+(written before or independent of tier) keeps them; the tier gate only decides whether their own
+`GET` can read the matrix back. Nothing else in this module changed under #1168 — Change Control's
+own add-on gate (`requireAddOnEntitlement`) is explicitly excluded from this mechanism per
+`portal-tier-features.ts`'s own header, and surfaces C/D (§1c/§1d, MSP-side) are not customer-facing
+and were not touched.
+
+**`WireOwnershipPayload`** (`:391-419`):
 
 | Field | Type | Nullability | Line |
 |---|---|---|---|
-| `customer` | `{ id: number, name: string }` | never null | `391`, `504-505` |
-| `sides` | `readonly string[]` — `[customerName, "MSP", "External"]` (`sidesFor`, `lib/portal-ownership.ts:134-137`) | never null, always 3 entries | `392` |
-| `people` | `WireOwnPerson[]` — the tenant's own active users + the MSP's staff (§"the MSP is available") | never null, may be `[]` | `393`, `250-253` |
-| `objects` | `WireOwnObject[]` — every real row across 5 live types | never null, may be `[]` | `394` |
-| `sources` | `WireOwnSource[]` — one entry per of 8 object types, live/not | never null, fixed 8 entries | `395`, `509` |
-| `currentUserId` | `string` — caller's own `people` id, or `""` if not on the roster | never null | `396-397`, `447` |
-| `currentUserName` | `string` | never null, may be `""` | `398`, `511` |
-| `tenantScoped` | `boolean` — see "fail closed, partially" below | never null | `399-404`, `512` |
-| `overlay` | `WireOwnershipOverlay` (§1b) — this customer's saved edits | never null; empty arrays for a customer who never wrote | `405-411`, `513` |
-| `gateMode` | `"strict" \| "loose"` (§3) — read-only here; written via surface E | never null | `412-417`, `514` |
+| `customer` | `{ id: number, name: string }` | never null | `392`, `509` |
+| `sides` | `readonly string[]` — `[customerName, "MSP", "External"]` (`sidesFor`, `lib/portal-ownership.ts:134-137`) | never null, always 3 entries | `393` |
+| `people` | `WireOwnPerson[]` — the tenant's own active users + the MSP's staff (§"the MSP is available") | never null, may be `[]` | `394`, `250-253` |
+| `objects` | `WireOwnObject[]` — every real row across 5 live types | never null, may be `[]` | `395` |
+| `sources` | `WireOwnSource[]` — one entry per of 8 object types, live/not | never null, fixed 8 entries | `396`, `513` |
+| `currentUserId` | `string` — caller's own `people` id, or `""` if not on the roster | never null | `397-398`, `451` |
+| `currentUserName` | `string` | never null, may be `""` | `399`, `515` |
+| `tenantScoped` | `boolean` — see "fail closed, partially" below | never null | `400-405`, `516` |
+| `overlay` | `WireOwnershipOverlay` (§1b) — this customer's saved edits | never null; empty arrays for a customer who never wrote | `406-412`, `517` |
+| `gateMode` | `"strict" \| "loose"` (§3) — read-only here; written via surface E | never null | `413-418`, `518` |
 
 **`WireOwnPerson`** (`lib/portal-ownership.ts:88-99`, built by `toWirePerson` `:199-209`):
 
@@ -147,14 +160,14 @@ the JWT — never a body-supplied customer id):
 
 | Route | Purpose | Notable behaviour | Line |
 |---|---|---|---|
-| `POST /portal/ownership/assign` | Set or clear one cell holder | Upserts on the 4-col unique key (§4); new holder appended to precedence, existing holder's rank untouched; appends one `portal_ownership_events` row in the same transaction | `603-709` |
-| `POST /portal/ownership/reorder` | Reorder one cell's holders | Requires the **full** current holder set, no more/fewer — a partial list corrupts the omitted rows' relative rank; changes nothing about who MAY act | `721-788` |
-| `POST /portal/ownership/accept` | Mark pending accepted | Update-only (no invented owner on a miss); `ownerPersonId` optional — omitted = every holder in the cell; strict-mode actor-must-equal-owner gate (§3) | `803-879` |
-| `POST /portal/ownership/decline` | Mark pending declined | Same shape as accept; `reason` is **optional** here (customer-side — §3 "by-side asymmetry"); fires `notifyOwnershipDeclined` escalation to the assigner for r/a cells | `896-992` |
-| `POST /portal/ownership/delegations` | Start a handover | `fromPersonId` is the **selected** person, not necessarily the caller — comes from the body | `999-1031` |
-| `POST /portal/ownership/delegations/end` | End a handover | Flips `done`, never deletes — the record that a handover happened survives | `1038-1074` |
-| `POST /portal/ownership/rows` | Add a row | Upserts on `(customerId, rowId)` — a coverage id promoted twice does not duplicate | `1083-1131` |
-| `GET /portal/ownership/events` | One cell's append-only history | `objectId`+`roleKey` required query params, `ownerPersonId` optional narrowing (§4 "event log") | `1141-1191` |
+| `POST /portal/ownership/assign` | Set or clear one cell holder | Upserts on the 4-col unique key (§4); new holder appended to precedence, existing holder's rank untouched; appends one `portal_ownership_events` row in the same transaction | `607-713` |
+| `POST /portal/ownership/reorder` | Reorder one cell's holders | Requires the **full** current holder set, no more/fewer — a partial list corrupts the omitted rows' relative rank; changes nothing about who MAY act | `725-792` |
+| `POST /portal/ownership/accept` | Mark pending accepted | Update-only (no invented owner on a miss); `ownerPersonId` optional — omitted = every holder in the cell; strict-mode actor-must-equal-owner gate (§3) | `807-883` |
+| `POST /portal/ownership/decline` | Mark pending declined | Same shape as accept; `reason` is **optional** here (customer-side — §3 "by-side asymmetry"); fires `notifyOwnershipDeclined` escalation to the assigner for r/a cells | `900-996` |
+| `POST /portal/ownership/delegations` | Start a handover | `fromPersonId` is the **selected** person, not necessarily the caller — comes from the body | `1003-1035` |
+| `POST /portal/ownership/delegations/end` | End a handover | Flips `done`, never deletes — the record that a handover happened survives | `1042-1078` |
+| `POST /portal/ownership/rows` | Add a row | Upserts on `(customerId, rowId)` — a coverage id promoted twice does not duplicate | `1087-1135` |
+| `GET /portal/ownership/events` | One cell's append-only history | `objectId`+`roleKey` required query params, `ownerPersonId` optional narrowing (§4 "event log"); also carries the same `requireTierFeature(PORTAL_TIER_MODULE_KEYS.ownership)` gate as §1a (`:1148`, added by #1168) | `1145-1196` |
 
 ### 1c. `GET /api/msp/ownership/mine` — the MSP cross-customer view (C, #1686/#1491-note-7)
 
@@ -263,7 +276,7 @@ OWNERSHIP_GATE_MODES = ["strict", "loose"]   // no row for a customer = "loose" 
 ```
 
 **By-side decline-reason asymmetry (#1519), a genuine product rule, not an oversight:** customer-
-side decline (`routes/portal-ownership.ts:896-992`) leaves `reason` optional and instead escalates
+side decline (`routes/portal-ownership.ts:900-996`) leaves `reason` optional and instead escalates
 to the assigner (`notifyOwnershipDeclined`); MSP-side decline (`routes/msp-ownership.ts:429-500`)
 requires `reason` and records no escalation notification of its own. Both write the same
 `declineReason` column and the same `declined` event type — the difference is entirely in what each
@@ -296,7 +309,7 @@ route *requires* and what each route *notifies*, not in the schema.
   separate "the MSP" pseudo-person and no default placement — a customer places (or doesn't place)
   a named MSP staff member exactly like any other roster entry.
 - **The two read surfaces share one object-assembly function.** `gatherOwnershipObjects`
-  (`portal-ownership.ts:203-388`) is called by both surface A (for the customer's own page) and
+  (`portal-ownership.ts:204-389`) is called by both surface A (for the customer's own page) and
   surface C (`msp-ownership.ts:140`, once per in-scope customer with any MSP-held rows) — so an
   MSP-side reader's resolved object name/type/sub/link is guaranteed identical to what that
   customer's own page would show, not a second parallel derivation.
@@ -390,7 +403,7 @@ Swept from the route/lib headers and named as forbidden, not merely absent:
 - **A `PortalOwnershipRow` id scheme cross-referencing `Design/portal_ownership_data.ts`-style
   fixtures.** There is no fixture module behind this route at all (unlike the old portal-v2 pattern)
   — `source: "coverage"` rows' `objType`/`name`/`sub` genuinely are `null` in this table
-  (`portal-ownership.ts:1080`); the client is expected to carry the coverage fixture's descriptive
+  (`portal-ownership.ts:1084`); the client is expected to carry the coverage fixture's descriptive
   text itself, and this pack states that as a real, named limit rather than treating it as an
   oversight.
 
@@ -403,9 +416,18 @@ Swept from the route/lib headers and named as forbidden, not merely absent:
   and is explicitly blocked on the `artifacts/msp-console` scaffolding (#1680). Building a page
   against §1c/§1d today would be building ahead of that Feature's own architecture conversation,
   which its own issue body forbids.
-- **#1518/#1524 — "decide the fate of `portal_ownership_delegations`"** remains open on #1491's own
-  structured index. The table and its two routes (§1b) are real and wired; whether its long-term
-  shape changes is a decision this pack does not pre-empt.
+- **#1518/#1524 — "decide the fate of `portal_ownership_delegations`" — DECIDED, closed 2026-09-07.**
+  Shane's decision: keep delegation as-is, customer-side only, **no code change**. Multi-holder
+  A-cells (structural authority, §4) and delegation (an explicit, auto-reverting record of a
+  customer-initiated temporary handover) are complementary, not redundant — "It's not our job to
+  track people OOO... Our job is to ensure approvals. How the customer does that is on them. A
+  backup, an override, as long as we record it." This pack's own audit (this session, #1725)
+  confirms the table and its two routes (§1b: `POST /portal/ownership/delegations`,
+  `POST /portal/ownership/delegations/end`) are unchanged since the decision and already match it
+  exactly — `WireOwnDelegation`'s `until`-as-free-text, `scope` defaulting to `"all"`, and
+  `done`-flip-never-delete semantics (§1b) are precisely the "customer-initiated statement,
+  enforced, never platform-managed" shape the decision describes. No further work follows from
+  this decision.
 - **#1521 — "cross-customer MSP view"** is the issue this pack's §1c documents; it and its successor
   #2523 are both closed/verified — no further gap there, listed here only so a reader tracing the
   issue numbers in this pack's own citations does not mistake it for still-open.
@@ -413,5 +435,13 @@ Swept from the route/lib headers and named as forbidden, not merely absent:
   does not refile it, only cites it as the honest limit of `notifyOwnershipDeclined`.
 - **No genuinely new gap was found during this pack's own audit** beyond what #1519/#2523's own
   sessions already surfaced and filed. This pack is extraction, not discovery — the module's real
-  gaps (delegations' fate, #1686's architecture, the escalation chain) were already on record before
-  this session started.
+  gaps (#1686's architecture, the escalation chain) were already on record before this session
+  started, and delegations' fate (above) was decided, not discovered, this session.
+- **This session (#1725, 2026-09-07) re-audited the whole pack line-by-line against `main` and found
+  exactly one real backend change since the prior pack (`152ca0acf3`, 2026-09-03): #1168's
+  `requireTierFeature` gate, landed `523af076f` on 2026-09-04, added to both of surface A's READ
+  routes (§1a). All other files this pack cites (`lib/portal-ownership.ts`, `msp-ownership.ts`,
+  `msp-ownership-book.ts`, `portal-settings-ownership.ts`, the schema in `msp.ts`) are unchanged —
+  confirmed via `git log` against each, not assumed. Every `portal-ownership.ts` route-file line
+  citation in this pack has been re-verified and corrected for the line numbers #1168's edit
+  shifted; no other section required a content change.
