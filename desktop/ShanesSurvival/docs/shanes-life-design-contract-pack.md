@@ -121,6 +121,22 @@ constraints:
   Shane touches anything at the real bank. It never executes anything; it's a real, instant
   "what would this actually do" answer, replacing the manual back-and-forth Shane and
   Claude did by hand tonight for the real mortgage/electric/Tesla split decision.
+- **Real per-vehicle financial tracking, confirmed 2026-09-05 — cars belong in the
+  unified Money picture (Section 1), not a separate maintenance calendar.** Shane's real
+  focus: cars as part of real financial decision-making, not just "remind me about oil
+  changes." Real per-vehicle profile (Tesla Model 3, Kia Forte, confirmed via the real
+  Allstate policy) aggregating what's already tracked separately today — real loan balance/
+  payment, real insurance cost, real registration renewal date/cost, real maintenance
+  spend — so a real question like "is this car actually worth keeping given what it
+  costs" has a real, aggregated answer instead of scattered numbers across different bills.
+  Registration renewal and oil-change intervals reuse the real irregular-interval pattern
+  already built for appointments/vaccines (Section 3/6), with real lead time, not
+  same-day awareness.
+- **Real correction, confirmed 2026-09-05 — Pool and Yard are simple recurring bills, not
+  a maintenance-tracking problem.** Pool service ($100/month) and a yard guy ($80/month)
+  already handle the real work — these are just two more real bills belonging in the
+  unified Money system (Section 1) once it exists, same as every other bill already
+  tracked. No separate module needed, unlike Cars or Pets.
 - **Real Wins log, confirmed 2026-09-05 — deliberately distinct from the "no gamification"
   rule (Section 3/8).** Streaks, badges, and completion percentages are still explicitly
   cut — those are arbitrary game mechanics that create pressure and comparison. A Wins log
