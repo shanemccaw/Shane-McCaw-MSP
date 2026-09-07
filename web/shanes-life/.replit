@@ -1,0 +1,29 @@
+# Replit configuration for Shane's Life (contract pack Section 9: real hosting on Replit).
+#
+# This app is a subdirectory of the Shane-McCaw-MSP monorepo, so every command below is run
+# from web/shanes-life rather than the repo root.
+
+entrypoint = "src/server.mjs"
+modules = ["nodejs-20", "postgresql-16"]
+
+run = "cd web/shanes-life && npm start"
+
+[nix]
+channel = "stable-24_05"
+
+[env]
+NODE_ENV = "production"
+
+# The app binds 0.0.0.0:$PORT; Replit maps that to the public HTTPS hostname.
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[deployment]
+# Reserved VM rather than Autoscale, on purpose. Two real reasons:
+#   1. The login rate limiter is per-process (src/auth/ratelimit.mjs). Several autoscale
+#      instances would each keep their own counters, multiplying the real limit.
+#   2. The notification tray this app is built toward needs a single long-lived process to
+#      schedule from; a scale-to-zero deployment has nowhere to run one.
+deploymentTarget = "vm"
+run = ["sh", "-c", "cd web/shanes-life && npm ci --omit=dev && npm start"]

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Shane's Life</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#101317" />
+    <meta name="description" content="One box for everything." />
+
+    <!-- Home Screen delivery (contract pack Section 10): a standalone site added to the Home
+         Screen, not Expo, not a native app. These four lines are what make iOS treat it as one. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Shane's Life" />
+
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+    <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" />
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <!-- Sign-in. Nothing else in the app renders until this passes. -->
+    <main id="login-view" class="centered" hidden>
+      <form id="login-form" class="card auth-card" autocomplete="on">
+        <img src="/icons/icon-192.png" alt="" width="72" height="72" class="auth-mark" />
+        <h1>Shane's Life</h1>
+        <p class="muted">One box for everything.</p>
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="username" required />
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+        <button type="submit" class="primary" id="login-submit">Sign in</button>
+        <p id="login-error" class="error" role="alert" hidden></p>
+      </form>
+    </main>
+
+    <!-- The app itself. -->
+    <div id="app-view" hidden>
+      <header class="app-header">
+        <h1 id="view-title">Today</h1>
+        <button id="sign-out" class="ghost small">Sign out</button>
+      </header>
+
+      <main id="view" class="view" aria-live="polite"></main>
+
+      <!-- The universal capture box. It is fixed to the bottom of every screen on purpose:
+           contract pack Section 3 makes this the single entry point, and Section 2 names capture
+           friction as the core enemy. It is never a category-specific form. -->
+      <form id="capture" class="capture">
+        <div id="capture-attachment" class="attachment" hidden>
+          <span id="capture-attachment-label"></span>
+          <button type="button" id="capture-attachment-clear" class="ghost small">Remove</button>
+        </div>
+        <div class="capture-row">
+          <textarea
+            id="capture-text"
+            rows="1"
+            placeholder="Say anything…"
+            aria-label="Capture anything"
+          ></textarea>
+          <button type="button" id="capture-photo" class="icon-btn" title="Attach a photo" aria-label="Attach a photo">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l2-2h6l2 2h3v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          </button>
+          <button type="button" id="capture-voice" class="icon-btn" title="Record a voice note" aria-label="Record a voice note">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+          </button>
+          <button type="submit" id="capture-send" class="primary small">Save</button>
+        </div>
+        <p id="capture-status" class="capture-status" role="status"></p>
+        <input type="file" id="capture-file" accept="image/*" capture="environment" hidden />
+      </form>
+
+      <nav class="tabs">
+        <a href="#/today" data-tab="today">Today</a>
+        <a href="#/inbox" data-tab="inbox">Inbox <span id="inbox-badge" class="badge" hidden></span></a>
+        <a href="#/things" data-tab="things">Things</a>
+        <a href="#/settings" data-tab="settings">Settings</a>
+      </nav>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
