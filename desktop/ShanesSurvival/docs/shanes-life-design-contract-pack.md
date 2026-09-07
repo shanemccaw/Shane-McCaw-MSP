@@ -65,6 +65,17 @@ constraints:
 - **Notification tray is the primary interface — not a dashboard.**
 - **Universal capture box (text/voice/photo)**, parsed by AI, is the single entry point for
   everything. One box, not category-specific forms.
+- **Real extensibility principle, confirmed 2026-09-05 — the capture box above is
+  genuinely open, not a fixed list of known categories.** Shane's own example: "mom's
+  coming to visit the 12th-18th" — a real thing that was never explicitly designed for.
+  Real behavior needed: Claude, via MCP, gives it real live classification — the right
+  category, the right icon, the right treatment — without a developer having to build a
+  dedicated feature first. Every specific module in this document (appointments,
+  birthdays, want-to-attend events, vet visits, and everything else) is a real,
+  anticipated common case, not a closed, exhaustive list. The underlying real data model
+  needs to support Claude assigning a sensible new category on the fly, not just slotting
+  things into a fixed enum. This is the actual point of the whole one-box design — genuine
+  extensibility, not just fewer forms.
 - **Real appointment handling, confirmed 2026-09-05 — no new mechanism, just confirms the
   capture box handles this too.** One-off appointments captured exactly as natural speech —
   "dr appointment sept 3rd 2pm dr fonji" — parsed into date/time/type/provider
