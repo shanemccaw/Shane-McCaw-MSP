@@ -72,7 +72,7 @@ constraints:
   Shane has real appointments every 6 weeks and every 2 months — the recurrence model needs
   to support arbitrary real intervals, not just the generic presets most calendar tools
   offer. **Real reminder timing: the day before**, for both recurring and one-off
-  appointments — this is a real, legitimate exception to "context over clock" (Section 7),
+  appointments — this is a real, legitimate exception to "context over clock" (Section 8),
   since an appointment is inherently date-anchored. Counts against the real 1–3/day nudge
   cap above, same as everything else — not a bonus exception to it.
 - **Real "ask next time" note, confirmed 2026-09-05 — threads to a specific real
@@ -91,11 +91,11 @@ constraints:
 - **Real birthdays/important dates for family and friends, confirmed 2026-09-05 —
   solves a real, stated problem: "I miss them all 'cause I don't know until someone tells
   me I missed it."** Captured via the same one-box capture, threaded to the person the same
-  way People & Patterns (Section 6) threads observations — factual, not reflective.
+  way People & Patterns (Section 7) threads observations — factual, not reflective.
   **Real timing difference from appointments**: a day-before reminder (Section 3, above)
   is too late here — a birthday reminder needs genuinely more lead time, enough to actually
   get a card or gift, not just same-day awareness. Real annual recurrence, stated once,
-  respected every year (Section 7).
+  respected every year (Section 8).
 - **Nudges rationed to 1–3 per day.** Never accumulate, never shame.
 - **Tasks batch by real-world moment, not clock time** — "when heading out," "when at the
   store," not "at 3pm."
@@ -122,7 +122,7 @@ constraints:
   "what would this actually do" answer, replacing the manual back-and-forth Shane and
   Claude did by hand tonight for the real mortgage/electric/Tesla split decision.
 - **Real Wins log, confirmed 2026-09-05 — deliberately distinct from the "no gamification"
-  rule (Section 3/7).** Streaks, badges, and completion percentages are still explicitly
+  rule (Section 3/8).** Streaks, badges, and completion percentages are still explicitly
   cut — those are arbitrary game mechanics that create pressure and comparison. A Wins log
   is different in kind, not just in name: it acknowledges genuine, hard-won real-world
   milestones — a mortgage payment actually made after being behind, an IRS levy actually
@@ -155,7 +155,7 @@ constraints:
   wants real financial confrontation here, not neutral-only framing: e.g., "you're short
   $X this cycle, and $Y of that went to cigarettes" — a real, factual comparison between
   actual spend and actual shortfall. This is a deliberate, Shane-chosen override of the
-  general no-guilt principle (Section 7), scoped to this one feature — not a default
+  general no-guilt principle (Section 8), scoped to this one feature — not a default
   applied elsewhere. **Real behavioral note, also from Shane**: he starts and stops
   smoking cyclically, not linearly — so a traditional "days smoke-free streak" (which
   resets to zero on a slip) doesn't fit his real pattern anyway and isn't the mechanism
@@ -213,7 +213,7 @@ grounded in patterns from tonight itself — all confirmed wanted:
   Once Money unifies (Section 1), this becomes real, live protection here too, not just a
   future ShanesSurvival-only feature.
 - **Bulk-buy suggestion from real patterns.** Same pattern-anticipation principle already
-  locked in (Section 7), pointed at recurring purchases: if something gets bought often in
+  locked in (Section 8), pointed at recurring purchases: if something gets bought often in
   small amounts (same real shape as the 7-Eleven finding), the app should surface "this
   might be cheaper bought in bulk."
 
@@ -233,7 +233,7 @@ database Shane manages by hand.
   built as an in-app database/form system.
 - No separate recipe-authoring UI, no manual meal-planning calendar — the generation
   happens in a Claude conversation, the app's job is to host, display, and let Shane check
-  items off, same division of labor as the rest of this app (see Section 9).
+  items off, same division of labor as the rest of this app (see Section 10).
 - **The original cut still stands for what it was actually about**: no automatic inventory/
   expiration tracking, no recipe-from-pantry-contents generation. Those remain out of
   scope — this update is about *how* Shopping/Recipes get populated (Claude + MCP, on
@@ -245,7 +245,7 @@ database Shane manages by hand.
   Shane's real cardiac health condition (stage 2 heart disease, hypertension) should
   inform Claude's real recipe and meal suggestions — heart-healthy choices favored, not a
   generic recipe list indifferent to it. Same "state once, respected everywhere forever"
-  principle already locked (Section 7) — this is stated once, real health information
+  principle already locked (Section 8) — this is stated once, real health information
   Shane has already disclosed, not re-asked for every time a meal gets planned.
 - **Real, already-working cross-store price comparison**: in a separate real conversation,
   Shane fed Claude actual weekly store ad flyers and had it find where specific real
@@ -265,9 +265,36 @@ database Shane manages by hand.
   then surfaces on the Today view as simple, real, moment-based nudges — "ready to make
   dinner," "don't forget to make lunch for tomorrow" — never as a calendar to browse. This
   is the same "batched by real-world moment, not clock time" and "Today view shows only
-  what's next" principles from Section 3/7, just applied to meals specifically.
+  what's next" principles from Section 3/8, just applied to meals specifically.
 
-## 6. People & Patterns — private reflection journal (real, explicit boundaries)
+## 6. Pets — dogs, cats, vet records, vaccines, confirmed 2026-09-05
+
+Named in the very original brainstorm ("dogs and cats") but never locked in until now.
+Real, full scope — "all of it," in Shane's words.
+
+**Real per-pet profiles**: each dog/cat gets a real identity (name, species, breed,
+birthdate) — same "state once, respected everywhere forever" principle (Section 8) as
+everything else. Multiple pets supported, not a single-pet assumption.
+
+**Real vet records — reuses the appointment system (Section 3), doesn't reinvent it.**
+A vet visit is just an appointment where the provider is the vet and the subject is the
+pet, not Shane. Same real capture, same day-before reminder, same "ask next time" note
+(Section 3), same in-visit notes/photos for real documents (vaccine certificates, visit
+summaries) — all already built for Shane's own appointments, extended to cover pets.
+
+**Real vaccine schedule tracking**: vaccines have real, often irregular multi-year cycles
+(e.g., rabies boosters on a 1- or 3-year cycle depending on the vaccine and local
+requirements) — same real irregular-interval support already needed for Shane's own
+6-week/2-month appointments (Section 3). **Real reminder timing**: needs lead time similar
+to birthdays (Section 3), not just a day-before — enough real notice to actually book the
+vet visit before the vaccine lapses, not same-day awareness of something already overdue.
+
+**Real feeding schedules and pet medication**: reuses the existing medication system
+(Section 3) — batched by time-of-day, single swipe to complete — rather than building a
+separate pet-specific mechanism. A pet's feeding/medication is the same real shape as
+Shane's own, just attached to a different real subject.
+
+## 7. People & Patterns — private reflection journal (real, explicit boundaries)
 
 A real, distinct module Shane asked to be added on top of the main design.
 
@@ -295,7 +322,7 @@ capture used everywhere else — no separate journaling flow.
 plus a search/ask interface for pattern recall. Calm, private, journal-like visual
 language — should NOT look like a chat interface with a persona attached to it.
 
-## 7. Design principles — apply to every screen
+## 8. Design principles — apply to every screen
 
 - **Trust stated facts immediately.** No confirmation dialogs on what Shane states directly;
   second-guessing is reserved for genuinely ambiguous captures only.
@@ -308,7 +335,7 @@ language — should NOT look like a chat interface with a persona attached to it
   applied to cut expiration tracking and recipe generation. Apply it to every proposed
   feature, not just food.
 
-## 8. Real new requirements, confirmed tonight (2026-09-05) — not in the original session
+## 9. Real new requirements, confirmed tonight (2026-09-05) — not in the original session
 
 - **Real login/auth** — grown from personal prototype into something properly account-gated.
 - **Real hosting on Replit.**
@@ -318,7 +345,7 @@ language — should NOT look like a chat interface with a persona attached to it
   phone or hand to someone else, while the rest of the app stays behind real auth. A
   genuine mixed-access-model requirement.
 
-## 9. Real technical constraint to design around
+## 10. Real technical constraint to design around
 
 **Shane's Claude subscription does not cover live API costs for a production app.** The AI
 parsing/generation step should happen in a Claude conversation via MCP, not as a live API
@@ -326,7 +353,7 @@ call triggered by the hosted app itself at runtime. The hosted app stores, displ
 shares, and checks off what Claude already generated — it doesn't do its own live AI
 inference. Keep this boundary clean in the architecture.
 
-## 10. What NOT to design
+## 11. What NOT to design
 
 - No dashboard-first layout — the notification tray leads.
 - No budget/spending charts or categories anywhere — that's ShanesSurvival's job, not this
@@ -337,7 +364,7 @@ inference. Keep this boundary clean in the architecture.
 - No inventory/expiration tracking or recipe generation in Food — deliberately cut.
 - No time-of-day-scheduled notifications as the primary trigger — context/location first.
 
-## 11. Real open question for Shane, not yet decided
+## 12. Real open question for Shane, not yet decided
 
 Given the size of the full blueprint versus tonight's real immediate need (hosted
 checklists + login + shareable links), what's the real first slice to actually build? The
