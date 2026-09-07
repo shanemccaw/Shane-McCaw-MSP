@@ -81,6 +81,15 @@ constraints:
   IS this app's data. This is the exact real capability the cloud-hosted piece exists to
   provide: real, live balances and shortfall math, reachable from Claude mobile, not just
   Claude Desktop on Shane's PC.
+- **Real transfer simulator — "what if," confirmed 2026-09-05.** Real transfer automation
+  (actually initiating a bank transfer) isn't buildable — Plaid is read-only, and NFCU
+  doesn't support Plaid's real Transfer product either (confirmed earlier tonight). But the
+  real decision-support layer is: Shane describes a hypothetical transfer ("move $500 from
+  DirectDeposit to Mortgage"), and the app computes the real resulting state — updated
+  shortfall, updated pay-period forecast, whether anything else goes unfunded — before
+  Shane touches anything at the real bank. It never executes anything; it's a real, instant
+  "what would this actually do" answer, replacing the manual back-and-forth Shane and
+  Claude did by hand tonight for the real mortgage/electric/Tesla split decision.
 - **Real "Budget Day" ritual, confirmed 2026-09-05 — anchored to Shane's actual real
   biweekly payday (every other Friday), already tracked as `next_pay_date`/
   `pay_frequency_days` on the real income source once the Section 1 unification lands.**
