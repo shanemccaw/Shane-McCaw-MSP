@@ -15,6 +15,7 @@ import * as lists from "../core/lists.mjs";
 import * as media from "../core/media.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as prices from "../core/prices.mjs";
+import * as scan from "../core/scan.mjs";
 import * as shares from "../core/shares.mjs";
 
 // Deliberately tight: this app has one real account, so a burst of failures is an attack, not a
@@ -585,6 +586,44 @@ export function buildApiRouter() {
       detail: { itemText: row.item_text, storeName: row.store_name, priceCents: row.price_cents },
     });
     return sendJson(res, 201, row);
+  });
+
+  // Barcode scan (Git #3109): resolve a real scanned barcode against this real list before
+  // asking Shane for a price -- exact / near / unknown, per the design's own three-state
+  // grammar. Read-only; never a silent failure -- "unknown" is a real, valid response, not an
+  // error.
+  router.post("/api/lists/:id/scan/lookup", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    return sendJson(res, 200, await scan.lookupBarcode(user.id, params.id, body.barcode));
+  });
+
+  // Saves the real typed price, links the barcode for next time, and checks the item off --
+  // "Saving also checks the item off" per the design copy.
+  //
+  // Note (filed as a finding, Git #3112): this saves only onto list_items.price_cents /
+  // barcode_links.last_price_cents -- a single scalar, not the real per-store/per-date history
+  // #3112 built (`item_prices`, below). The design's own "Why" note on this exact screen says
+  // "Prices are stored per store and per date" for the scan flow too; scan.mjs does not do that
+  // yet. Not fixed here -- rewiring another already-shipped Feature's write path is out of this
+  // issue's own scope.
+  router.post("/api/lists/:id/scan/save", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const result = await scan.saveScan(user.id, params.id, {
+      barcode: body.barcode,
+      itemId: body.itemId ?? null,
+      text: body.text ?? null,
+      priceCents: body.priceCents,
+    });
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "list.item.scan",
+      entityId: params.id,
+      detail: { barcode: body.barcode, itemId: result.item.id, priceCents: result.item.price_cents },
+    });
+    return sendJson(res, 200, result);
   });
 
   // -- today / categories / activity --------------------------------------

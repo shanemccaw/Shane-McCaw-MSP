@@ -756,8 +756,9 @@ function shareSection({ shares: shareList, onCreate, onRevoke }) {
 // #3088). "One run": the client never knows the list's id up front, it just asks /api/shopping
 // and the server finds-or-creates the one real running list. Matches the shared chrome (cards,
 // checklist rows) design handoff README's "Screens" section already establishes app-wide; the
-// aisle/category grouping, scan-to-price and cart-swipe options drawn in
-// "Shanes Life 04 - Shopping.dc.html" are each their own separate Feature, blocked_by this one.
+// aisle/category grouping and cart-swipe options drawn in "Shanes Life 04 - Shopping.dc.html"
+// are their own separate Feature (#3108), blocked_by this one. Scan -> real price (2a) is
+// #3109's own scope, built below.
 // ---------------------------------------------------------------------------
 
 /**
@@ -870,6 +871,12 @@ function shoppingItemRow(listId, item) {
       render();
     },
   });
+  // "$1.89 - scanned" (design 04, 2a) vs a plain note -- price_source distinguishes a real scan
+  // from a manual price someone might type in later (#3109).
+  const priceLine =
+    item.price_cents != null
+      ? el("span", { class: item.price_source === "scan" ? "who ok" : "who", text: `${money(item.price_cents)}${item.price_source === "scan" ? " · scanned" : ""}` })
+      : null;
   // "last time $X at Store" -- real per-store history (Git #3112), attached server-side by
   // GET /api/shopping (prices.attachLatestPrices), not invented here.
   const priceHint = item.lastPrice
@@ -878,11 +885,231 @@ function shoppingItemRow(listId, item) {
   return el("li", { class: "shopping-row" }, [
     el("div", { class: "row" }, [
       box,
-      el("div", { style: "flex:1" }, [label, item.note ? el("span", { class: "who", text: item.note }) : null, priceHint]),
+      el("div", { style: "flex:1" }, [label, item.note ? el("span", { class: "who", text: item.note }) : null, priceLine, priceHint]),
       remove,
     ]),
     priceTools(item),
   ]);
+}
+
+/**
+ * The real scan sheet (design "Shanes Life 04 - Shopping.dc.html", option 2a). Decodes with the
+ * browser's native BarcodeDetector where it exists (Chrome/Edge/Android); everywhere else --
+ * and if the camera itself is denied -- falls back to typing the barcode by hand. Never a
+ * silent failure either way: a barcode that doesn't decode or doesn't match anything still
+ * lands on a real state (unknown), never a dead end.
+ */
+async function openScanSheet(list) {
+  const dialog = el("dialog", { class: "sheet" });
+  const body = el("div", { class: "sheet-body" });
+  dialog.append(
+    el("div", { class: "spread" }, [
+      el("span", { class: "sheet-title", text: "Scan" }),
+      el("button", { class: "ghost small", text: "Close", onClick: () => dialog.close() }),
+    ]),
+    body,
+  );
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+
+  let stream = null;
+  const video = el("video", { autoplay: "", playsinline: "", muted: "", class: "scan-video" });
+  const status = el("p", { class: "small muted", text: "Point the camera at a barcode." });
+  const manualInput = el("input", { placeholder: "Or type the barcode", inputmode: "numeric", "aria-label": "Barcode" });
+  const manualForm = el("form", { class: "row" }, [manualInput, el("button", { class: "small", type: "submit", text: "Look up" })]);
+  const resultBox = el("div");
+
+  const stopCamera = () => {
+    if (stream) {
+      for (const track of stream.getTracks()) track.stop();
+      stream = null;
+    }
+  };
+  dialog.addEventListener("close", stopCamera);
+
+  async function runLookup(barcode) {
+    status.textContent = "Looking it up…";
+    resultBox.replaceChildren();
+    try {
+      const result = await api(`/api/lists/${list.id}/scan/lookup`, {
+        method: "POST",
+        body: JSON.stringify({ barcode }),
+      });
+      status.textContent = "";
+      resultBox.replaceChildren(renderScanResult(list, dialog, result));
+    } catch (err) {
+      status.textContent = "";
+      resultBox.replaceChildren(el("p", { class: "small error", text: err.message }));
+    }
+  }
+
+  manualForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const barcode = manualInput.value.trim();
+    if (!barcode) return;
+    stopCamera();
+    video.remove();
+    runLookup(barcode);
+  });
+
+  body.append(video, status, resultBox, el("div", { class: "card" }, [manualForm]));
+
+  if ("BarcodeDetector" in window) {
+    try {
+      const supported = await window.BarcodeDetector.getSupportedFormats();
+      const detector = new window.BarcodeDetector({
+        formats: supported.filter((f) => ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"].includes(f)),
+      });
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      video.srcObject = stream;
+      let stopped = false;
+      const tick = async () => {
+        if (stopped || !dialog.open) return;
+        try {
+          const codes = await detector.detect(video);
+          if (codes.length > 0) {
+            stopped = true;
+            stopCamera();
+            video.remove();
+            await runLookup(codes[0].rawValue);
+            return;
+          }
+        } catch {
+          // A single failed detect frame is not a real error -- keep scanning.
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    } catch (err) {
+      // Camera denied/unavailable -- real, honest fallback to manual entry, never a dead end.
+      video.remove();
+      status.textContent = "Camera unavailable — type the barcode instead.";
+    }
+  } else {
+    // No BarcodeDetector on this browser (e.g. Safari/iOS as of this writing) -- same honest
+    // fallback, not a feature that silently does nothing.
+    video.remove();
+    status.textContent = "This browser can't scan a live camera feed — type the barcode instead.";
+  }
+
+  dialog.showModal();
+}
+
+/** Renders one of the three real match states (exact / near / unknown) plus the price form. */
+function renderScanResult(list, dialog, result) {
+  const wrap = el("div", { class: "section" });
+  const priceInput = el("input", { type: "number", step: "0.01", min: "0", placeholder: "0.00", inputmode: "decimal", "aria-label": "Price" });
+  let chosenItemId = null;
+  let chosenText = null;
+
+  if (result.match === "exact") {
+    wrap.append(
+      el("div", { class: "card" }, [
+        el("div", { class: "title", text: result.productName }),
+        el("div", { class: "meta", text: result.lastPriceCents != null ? `On your list · last time ${formatPriceCents(result.lastPriceCents)}` : "On your list" }),
+      ]),
+    );
+    chosenItemId = result.itemId;
+    chosenText = result.itemId ? null : result.productName;
+    if (result.lastPriceCents != null) priceInput.value = (result.lastPriceCents / 100).toFixed(2);
+  } else if (result.match === "near") {
+    wrap.append(el("p", { class: "small", text: `"${result.productName}" — is this one of these?` }));
+    for (const c of result.candidates) {
+      wrap.append(
+        el("button", {
+          class: "tile",
+          text: c.text,
+          onClick: (event) => {
+            chosenItemId = c.id;
+            chosenText = null;
+            for (const b of wrap.querySelectorAll("button.tile")) b.removeAttribute("aria-pressed");
+            event.currentTarget.setAttribute("aria-pressed", "true");
+          },
+        }),
+      );
+    }
+    wrap.append(
+      el("button", {
+        class: "tile",
+        text: "Something else",
+        onClick: (event) => {
+          chosenItemId = null;
+          chosenText = result.productName || null;
+          for (const b of wrap.querySelectorAll("button.tile")) b.removeAttribute("aria-pressed");
+          event.currentTarget.setAttribute("aria-pressed", "true");
+        },
+      }),
+    );
+  } else {
+    wrap.append(
+      el("p", { class: "small", text: result.productName ? `"${result.productName}" isn't on your list.` : "Barcode not recognised." }),
+    );
+    wrap.append(
+      el("button", {
+        class: "tile",
+        text: `Add "${result.productName || "this item"}" to the list`,
+        onClick: (event) => {
+          chosenItemId = null;
+          chosenText = result.productName || "Scanned item";
+          for (const b of wrap.querySelectorAll("button.tile")) b.removeAttribute("aria-pressed");
+          event.currentTarget.setAttribute("aria-pressed", "true");
+        },
+      }),
+    );
+    wrap.append(el("p", { class: "small muted", text: "It's one of these:" }));
+    for (const item of list.items.filter((i) => !i.done)) {
+      wrap.append(
+        el("button", {
+          class: "tile",
+          text: item.text,
+          onClick: (event) => {
+            chosenItemId = item.id;
+            chosenText = null;
+            for (const b of wrap.querySelectorAll("button.tile")) b.removeAttribute("aria-pressed");
+            event.currentTarget.setAttribute("aria-pressed", "true");
+          },
+        }),
+      );
+    }
+  }
+
+  const saveError = el("p", { class: "small error" });
+  const saveBtn = el("button", {
+    class: "primary small",
+    text: "Save price",
+    onClick: async (event) => {
+      const dollars = Number(priceInput.value);
+      if (!Number.isFinite(dollars) || dollars < 0) {
+        saveError.textContent = "Enter a real price.";
+        return;
+      }
+      if (!chosenItemId && !chosenText) {
+        saveError.textContent = "Pick what this is first.";
+        return;
+      }
+      event.currentTarget.disabled = true;
+      saveError.textContent = "";
+      try {
+        await api(`/api/lists/${list.id}/scan/save`, {
+          method: "POST",
+          body: JSON.stringify({
+            barcode: result.barcode,
+            itemId: chosenItemId,
+            text: chosenText,
+            priceCents: Math.round(dollars * 100),
+          }),
+        });
+        dialog.close();
+        render();
+      } catch (err) {
+        saveError.textContent = err.message;
+        event.currentTarget.disabled = false;
+      }
+    },
+  });
+
+  wrap.append(el("div", { class: "row" }, [priceInput, saveBtn]), saveError);
+  return wrap;
 }
 
 async function viewShopping(view) {
@@ -936,6 +1163,16 @@ async function viewShopping(view) {
     }
   });
   view.append(el("div", { class: "card" }, [addForm]));
+
+  view.append(
+    el("div", { class: "row" }, [
+      el("button", {
+        class: "small",
+        text: "Scan",
+        onClick: () => openScanSheet(list),
+      }),
+    ]),
+  );
 
   if (remaining < list.items.length) {
     view.append(
