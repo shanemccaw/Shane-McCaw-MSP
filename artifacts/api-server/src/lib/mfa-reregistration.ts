@@ -54,6 +54,13 @@
  * logic is unit-testable against real fakes with no network, no database and no real
  * sleeping — the caller (`runForceMfaReregistrationAgainstTenant` in workflow-executor.ts)
  * injects the real Graph calls.
+ *
+ * #3075 added the READ half of the same lag class to this module rather than starting a
+ * second mechanism elsewhere: `runAuthMethodResolutionConvergence` (bottom of this file),
+ * which `action.remove-auth-method` uses to stop a single stale 404 on its method-type read
+ * from failing the step outright. Same evidence, same backoff shape, same honest-failure
+ * discipline, opposite direction — so it lives beside the enumeration loop, not apart
+ * from it. `DELETABLE_AUTH_METHOD_COLLECTIONS` is likewise shared by both callers.
  */
 import { logger } from "./logger";
 
@@ -363,6 +370,207 @@ export async function runMfaReregistrationConvergence(
     failure: "unverified",
     unverifiedReason,
     outstanding: outstandingAtLastRead,
+    ...(lastReadError !== undefined ? { readError: lastReadError } : {}),
+  };
+}
+
+// ── #3075 — the READ half of the same replica-lag class ────────────────────────
+
+/**
+ * `action.remove-auth-method` hits this module's lag from the opposite direction.
+ *
+ * That action targets exactly ONE already-known `{{methodId}}`, so before it can delete
+ * anything it must GET that specific method to learn the polymorphic `@odata.type` that
+ * names the real typed collection to delete through (#2875). That read used to be a single
+ * un-retried call, and `graphReadForTenantWithWriteToken` throws on any non-2xx — so a 404
+ * from a replica that has not converged yet failed the whole step outright, without the
+ * DELETE ever being attempted.
+ *
+ * The same #2840 evidence that produced #2981 proves the read direction too: a phone method
+ * `POST`ed to a 201 (id `3179e48a-750b-4051-897c-87b9720928f7`) was invisible to the very
+ * next enumeration in a fresh process. A method that genuinely exists reading as 404 is the
+ * same replica lag, and it bites hardest exactly where this action matters most — during
+ * compromised-account response, where the operator has the method id in hand precisely
+ * because they JUST saw an attacker enrol it, so the method is minutes old and its
+ * replication is least likely to have settled.
+ *
+ * Hence: a single 404 is not an answer. A 404 that survives `requiredAbsentReads` delayed
+ * reads is. Same Microsoft guidance this module already follows ("poll with exponential
+ * backoff when a read is required"), same bounded budget, same honest-failure discipline —
+ * it just corroborates ABSENCE instead of corroborating an empty list.
+ *
+ * Deliberately NOT changed here: a corroborated-absent method still reports a FAILED step
+ * rather than a success. The fan-out treats a 404 as "already gone, resolved" because its
+ * ids came from Graph's own enumeration, so absence there unambiguously means the method
+ * was present and now is not. Here the id is operator-supplied and can simply be wrong, and
+ * turning that into a success would manufacture exactly the false-success class #2981
+ * existed to kill. What this fixes is the reliability gap: the failure is now corroborated
+ * instead of being one unlucky sample.
+ */
+export interface AuthMethodResolutionPolicy {
+  /**
+   * Consecutive 404 reads required before concluding the method genuinely does not exist.
+   * Must be >= 2 to be meaningful: at 1 this degrades back to #3075's bug, where a single
+   * stale 404 is the whole answer. Every read after the first is preceded by a real delay,
+   * so two 404s are two samples separated in time.
+   */
+  requiredAbsentReads: number;
+  /** Hard cap on reads (the initial one plus every re-read). */
+  maxReads: number;
+  /** Delay before read 2; doubles for each subsequent read, capped at maxDelayMs. */
+  initialDelayMs: number;
+  maxDelayMs: number;
+  /** Wall-clock cap on total time spent waiting for convergence. */
+  totalBudgetMs: number;
+  /** Consecutive throwing (non-404) reads after which the loop stops rather than burning the budget. */
+  maxConsecutiveReadFailures: number;
+}
+
+/**
+ * Real defaults, deliberately cheaper than DEFAULT_MFA_REREGISTRATION_VERIFICATION because
+ * the cost profile is the opposite way round. The overwhelmingly common case — the method
+ * exists and the first read sees it — pays ZERO extra wall clock and takes exactly the one
+ * read it always did. Time is only spent on a 404, i.e. exactly the case that used to be an
+ * outright failure. Worst realistic case is 5s before reporting a corroborated absence;
+ * hard ceiling 4 reads / 30s.
+ */
+export const DEFAULT_AUTH_METHOD_RESOLUTION: AuthMethodResolutionPolicy = {
+  requiredAbsentReads: 2,
+  maxReads: 4,
+  initialDelayMs: 5_000,
+  maxDelayMs: 15_000,
+  totalBudgetMs: 30_000,
+  maxConsecutiveReadFailures: 2,
+};
+
+export interface AuthMethodResolutionDeps {
+  /**
+   * `GET /users/{id}/authentication/methods/{methodId}`.
+   * Resolves the method, or `null` for a real Graph 404 — "this replica cannot see it",
+   * which is NOT the same statement as "it does not exist". Throws for any OTHER read
+   * failure (403, 429, 5xx), which this loop deliberately does not interpret as absence.
+   */
+  readMethod: () => Promise<AuthenticationMethodRef | null>;
+  /** Injected so tests converge instantly instead of really waiting. */
+  sleep: (ms: number) => Promise<void>;
+  /** Identifiers carried into log lines only (tenantId / userId / methodId). */
+  context?: Record<string, unknown>;
+}
+
+/** Everything the caller needs in order to report honestly, whatever the outcome. */
+export interface AuthMethodResolutionTrail {
+  /** Reads actually performed. */
+  reads: number;
+  /** Consecutive 404 reads standing at exit. */
+  absentReads: number;
+  /** Real wall-clock time spent waiting for replica convergence. */
+  waitedMs: number;
+  /** Cumulative reads that threw (non-404 failures). */
+  readFailures: number;
+}
+
+export type AuthMethodResolutionOutcome = AuthMethodResolutionTrail &
+  (
+    /** A read returned the method. Its `@odata.type` is the real one to delete through. */
+    | { resolution: "found"; method: AuthenticationMethodRef }
+    /** 404 on `requiredAbsentReads` consecutive delayed reads — a real "no such method". */
+    | { resolution: "absent" }
+    /** The read itself kept failing for a reason that is not a 404 (403, 429, 5xx). */
+    | { resolution: "read_failed"; readError: string }
+    /**
+     * Neither corroborated present nor corroborated absent inside the budget. Reported
+     * rather than guessed: concluding "absent" from an uncorroborated 404 is the bug.
+     */
+    | {
+        resolution: "unresolved";
+        unresolvedReason: "budget_exhausted" | "read_cap_reached";
+        readError?: string;
+      }
+  );
+
+/**
+ * Read -> wait -> re-read until the method is seen, or its absence is corroborated, or the
+ * bounded budget runs out. See the AuthMethodResolutionPolicy doc above for why a single
+ * 404 is not allowed to be the last word.
+ */
+export async function runAuthMethodResolutionConvergence(
+  deps: AuthMethodResolutionDeps,
+  policy: AuthMethodResolutionPolicy = DEFAULT_AUTH_METHOD_RESOLUTION,
+): Promise<AuthMethodResolutionOutcome> {
+  const startedAt = Date.now();
+  const ctx = deps.context ?? {};
+
+  let reads = 0;
+  let absentReads = 0;
+  let waitedMs = 0;
+  let readFailures = 0;
+  let consecutiveReadFailures = 0;
+  let lastReadError: string | undefined;
+
+  const trail = (): AuthMethodResolutionTrail => ({ reads, absentReads, waitedMs, readFailures });
+
+  while (reads < policy.maxReads) {
+    if (reads > 0) {
+      const remainingBudget = policy.totalBudgetMs - (Date.now() - startedAt);
+      if (remainingBudget <= 0) break;
+      // Same shape as the enumeration loop's backoff: read 1 is never delayed, and each
+      // subsequent delay doubles from initialDelayMs up to maxDelayMs.
+      const delayMs = Math.min(
+        Math.min(policy.initialDelayMs * 2 ** Math.max(0, reads - 1), policy.maxDelayMs),
+        remainingBudget,
+      );
+      await deps.sleep(delayMs);
+      waitedMs += delayMs;
+    }
+
+    reads++;
+    let method: AuthenticationMethodRef | null;
+    try {
+      method = await deps.readMethod();
+      consecutiveReadFailures = 0;
+    } catch (err) {
+      readFailures++;
+      consecutiveReadFailures++;
+      absentReads = 0;
+      lastReadError = err instanceof Error ? err.message : String(err);
+      log.warn({ ...ctx, read: reads, err }, "auth-method-resolution: method read failed (not a 404)");
+      if (consecutiveReadFailures >= policy.maxConsecutiveReadFailures) {
+        return { ...trail(), resolution: "read_failed", readError: lastReadError };
+      }
+      continue;
+    }
+
+    if (method) {
+      // A LATER read finding a method an earlier 404 denied is the exact #3075 signature:
+      // single-pass would already have failed the step without attempting the DELETE.
+      if (reads > 1) {
+        log.warn(
+          { ...ctx, read: reads, waitedMs, methodType: method["@odata.type"] },
+          "auth-method-resolution: re-read found a method an earlier 404 denied — stale replica read caught (#3075)",
+        );
+      }
+      return { ...trail(), resolution: "found", method };
+    }
+
+    absentReads++;
+    if (absentReads >= policy.requiredAbsentReads) {
+      log.info(
+        { ...ctx, reads, absentReads, waitedMs },
+        "auth-method-resolution: method absence corroborated across delayed reads",
+      );
+      return { ...trail(), resolution: "absent" };
+    }
+  }
+
+  const unresolvedReason = reads >= policy.maxReads ? "read_cap_reached" : "budget_exhausted";
+  log.warn(
+    { ...ctx, reads, absentReads, waitedMs, unresolvedReason },
+    "auth-method-resolution: could not corroborate the method as present OR absent inside the budget",
+  );
+  return {
+    ...trail(),
+    resolution: "unresolved",
+    unresolvedReason,
     ...(lastReadError !== undefined ? { readError: lastReadError } : {}),
   };
 }

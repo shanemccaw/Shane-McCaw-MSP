@@ -95,7 +95,10 @@ import {
   DELETABLE_AUTH_METHOD_COLLECTIONS,
   DEFAULT_MFA_REREGISTRATION_VERIFICATION,
   runMfaReregistrationConvergence,
+  DEFAULT_AUTH_METHOD_RESOLUTION,
+  runAuthMethodResolutionConvergence,
   type MfaReregistrationVerificationPolicy,
+  type AuthMethodResolutionPolicy,
 } from "./mfa-reregistration";
 import { runWithRequestContext } from "./request-context.ts";
 import { evaluateRules as runAlertRuleEvaluation } from "./alert-engine";
@@ -898,6 +901,15 @@ async function runForceMfaReregistrationAgainstTenant(
  * real collection. Two calls that `baseline_action_templates`' single-row model
  * can't express, so this gets its own code path the same way runForceMfaReregistration
  * AgainstTenant() does.
+ *
+ * #3075: that type-resolving GET is itself exposed to the replica lag #2981 proved, in the
+ * opposite direction — a method that genuinely exists can 404 on a replica that has not
+ * converged, and `graphReadForTenantWithWriteToken` throws on any non-2xx, so one unlucky
+ * sample failed the whole step without ever attempting the DELETE. Worst exactly where this
+ * action matters most: an operator has a method id in hand because they just watched an
+ * attacker enrol it. The read now runs through `runAuthMethodResolutionConvergence` in
+ * ./mfa-reregistration — the same module, same evidence, same bounded backoff — so a 404
+ * must survive delayed re-reads before it is believed.
  */
 const REMOVE_AUTH_METHOD_TEMPLATE_ID = "action.remove-auth-method";
 
@@ -907,28 +919,99 @@ async function runRemoveAuthMethodAgainstTenant(
   userId: string,
   methodId: string,
   label: string,
-): Promise<BaselineTemplateExecutionResult & { methodType?: string }> {
-  const { graphReadForTenantWithWriteToken, graphWriteForTenant } = await import("./graph");
+  policy: AuthMethodResolutionPolicy = DEFAULT_AUTH_METHOD_RESOLUTION,
+): Promise<BaselineTemplateExecutionResult & {
+  methodType?: string;
+  /** Real convergence trail for the type-resolving read (#3075), for the audit row. */
+  resolutionReads: number;
+  resolutionWaitedMs: number;
+  /** Consecutive 404s standing when the resolution loop exited. */
+  absentReads: number;
+  /** Set when success=false because the read never corroborated presence OR absence. */
+  unresolvedReason?: string;
+}> {
+  const { graphReadForTenantWithWriteToken, graphWriteForTenant, isGraphWriteTokenReadNotFound } =
+    await import("./graph");
   const getEndpoint = `/users/${userId}/authentication/methods/${methodId}`;
 
-  let method: { id: string; "@odata.type"?: string } | undefined;
-  try {
-    method = await graphReadForTenantWithWriteToken(tenantId, getEndpoint);
-  } catch (err) {
-    log.warn({ err, tenantId, userId, methodId }, "runRemoveAuthMethodAgainstTenant: GET authentication method failed");
+  // #3075 — this read used to be a single un-retried call, so a 404 from an Entra replica
+  // that had not converged failed the step outright and never attempted the DELETE. A 404
+  // now has to survive delayed re-reads before it is believed; every other read failure
+  // (403, 429, 5xx) still propagates as a throw, because those are not replica lag.
+  const outcome = await runAuthMethodResolutionConvergence(
+    {
+      readMethod: async () => {
+        try {
+          return (await graphReadForTenantWithWriteToken(tenantId, getEndpoint)) ?? null;
+        } catch (err) {
+          if (isGraphWriteTokenReadNotFound(err)) return null;
+          throw err;
+        }
+      },
+      sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+      context: { tenantId, userId, customerId, methodId, templateId: REMOVE_AUTH_METHOD_TEMPLATE_ID },
+    },
+    policy,
+  );
+
+  const trail = {
+    resolutionReads: outcome.reads,
+    resolutionWaitedMs: outcome.waitedMs,
+    absentReads: outcome.absentReads,
+  };
+
+  if (outcome.resolution === "read_failed") {
+    log.warn(
+      { tenantId, userId, methodId, reads: outcome.reads, readError: outcome.readError },
+      "runRemoveAuthMethodAgainstTenant: GET authentication method failed",
+    );
     return {
-      success: false, status: 0, errorType: "unexpected", data: err instanceof Error ? err.message : String(err),
+      success: false, status: 0, errorType: "unexpected", data: outcome.readError,
       endpoint: getEndpoint, method: "GET", label,
+      ...trail, unresolvedReason: "read_failed",
     };
   }
 
-  const collection = DELETABLE_AUTH_METHOD_COLLECTIONS[method?.["@odata.type"] ?? ""];
+  if (outcome.resolution === "absent") {
+    // Corroborated across delayed reads, so this is a real "no such method" rather than one
+    // stale sample. Still a FAILED step, not a success: the id is operator-supplied and can
+    // simply be wrong, and calling a wrong id "done" would be the false-success class #2981
+    // exists to prevent. See runAuthMethodResolutionConvergence's doc for the full reasoning.
+    return {
+      success: false, status: 404, errorType: "bad_request",
+      data:
+        `Authentication method ${methodId} does not exist on user ${userId}: confirmed absent by ` +
+        `${outcome.absentReads} delayed read(s) across ${outcome.reads} total (${outcome.waitedMs}ms waited), ` +
+        `so this is a real 404 and not an unconverged Entra replica (#3075). Nothing was deleted.`,
+      endpoint: getEndpoint, method: "GET", label,
+      ...trail, unresolvedReason: "absent",
+    };
+  }
+
+  if (outcome.resolution === "unresolved") {
+    return {
+      success: false, status: 0, errorType: "unexpected",
+      data:
+        `Authentication method ${methodId} on user ${userId} could not be confirmed present OR absent ` +
+        `inside the budget: ${outcome.reads} read(s), ${outcome.waitedMs}ms waited, reason ` +
+        `${outcome.unresolvedReason}` +
+        (outcome.readError ? `; last read error: ${outcome.readError}` : "") +
+        ". Entra reads are eventually consistent, so this step reports failure rather than " +
+        "concluding the method is gone from a read it could not corroborate (#3075). Re-run it to converge.",
+      endpoint: getEndpoint, method: "GET", label,
+      ...trail, unresolvedReason: outcome.unresolvedReason,
+    };
+  }
+
+  const method = outcome.method;
+  const collection = DELETABLE_AUTH_METHOD_COLLECTIONS[method["@odata.type"] ?? ""];
   if (!collection) {
     return {
       success: false, status: 400, errorType: "bad_request",
-      data: `Authentication method ${methodId} has @odata.type '${method?.["@odata.type"] ?? "unknown"}', which has no supported typed DELETE collection (only phone, Microsoft Authenticator and software OATH methods are removable through this action).`,
+      data: `Authentication method ${methodId} has @odata.type '${method["@odata.type"] ?? "unknown"}', which has no supported typed DELETE collection (only phone, Microsoft Authenticator and software OATH methods are removable through this action).`,
       endpoint: getEndpoint, method: "GET", label,
-      methodType: method?.["@odata.type"],
+      methodType: method["@odata.type"],
+      ...trail,
     };
   }
 
@@ -938,7 +1021,8 @@ async function runRemoveAuthMethodAgainstTenant(
   return {
     success: result.success, status: result.status, data: result.data, errorType: result.errorType,
     endpoint: deleteEndpoint, method: "DELETE", label,
-    methodType: method?.["@odata.type"],
+    methodType: method["@odata.type"],
+    ...trail,
   };
 }
 
@@ -1033,6 +1117,14 @@ export async function runBaselineTemplateAgainstTenant(
           tenantId,
           executedAt: new Date().toISOString(),
           methodType: removeResult.methodType ?? null,
+          // #3075 — the real type-resolution trail, so the audit row records how hard the
+          // method-type read was actually corroborated rather than implying one clean GET.
+          // A `resolutionReads` above 1 means an Entra replica 404'd a method that a later
+          // read either found (lag caught) or confirmed genuinely absent.
+          resolutionReads: removeResult.resolutionReads,
+          resolutionWaitedMs: removeResult.resolutionWaitedMs,
+          absentReads: removeResult.absentReads,
+          unresolvedReason: removeResult.unresolvedReason ?? null,
           ...(source !== undefined ? { source } : {}),
         },
       }).returning({ id: baselineActionTemplateAuditLogTable.id });

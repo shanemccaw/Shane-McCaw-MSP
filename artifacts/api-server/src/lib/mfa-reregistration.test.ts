@@ -1,5 +1,5 @@
 /**
- * mfa-reregistration.test.ts — #2981.
+ * mfa-reregistration.test.ts — #2981, and #3075 for the same lag class read-side.
  *
  * The regression this file exists for: `action.require-security-info-reregistration`
  * used to GET a user's authentication methods ONCE, delete whatever that read returned,
@@ -21,10 +21,15 @@ vi.mock("./logger", () => {
 
 import {
   runMfaReregistrationConvergence,
+  runAuthMethodResolutionConvergence,
   DEFAULT_MFA_REREGISTRATION_VERIFICATION,
+  DEFAULT_AUTH_METHOD_RESOLUTION,
+  DELETABLE_AUTH_METHOD_COLLECTIONS,
   type AuthenticationMethodRef,
   type AuthMethodDeleteResult,
   type MfaReregistrationVerificationPolicy,
+  type AuthMethodResolutionPolicy,
+  type AuthMethodResolutionDeps,
 } from "./mfa-reregistration";
 
 const PASSWORD: AuthenticationMethodRef = {
@@ -313,5 +318,178 @@ describe("runMfaReregistrationConvergence — the bound is real", () => {
       DEFAULT_MFA_REREGISTRATION_VERIFICATION.requiredCleanReads,
     );
     expect(DEFAULT_MFA_REREGISTRATION_VERIFICATION.totalBudgetMs).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * #3075 — the READ half of the same replica-lag class, on `action.remove-auth-method`.
+ *
+ * The regression these tests exist for: `runRemoveAuthMethodAgainstTenant` resolved the
+ * target method's `@odata.type` with ONE un-retried GET, and the write-token read helper
+ * throws on any non-2xx — so a 404 from an unconverged Entra replica failed the whole step
+ * without the DELETE ever being attempted. Same #2840 evidence as #2981, opposite direction.
+ *
+ * Same discipline as the block above: real fakes, injected `sleep`, no network, no database.
+ */
+const NOT_FOUND = Symbol("graph-404");
+const THROWS = Symbol("read-threw");
+
+type ScriptedRead = AuthenticationMethodRef | typeof NOT_FOUND | typeof THROWS;
+
+/** A policy identical in shape to the real default, with zero-cost delays for tests. */
+const resolutionPolicy = (over: Partial<AuthMethodResolutionPolicy> = {}): AuthMethodResolutionPolicy => ({
+  ...DEFAULT_AUTH_METHOD_RESOLUTION,
+  initialDelayMs: 10,
+  maxDelayMs: 40,
+  totalBudgetMs: 10_000,
+  ...over,
+});
+
+/** Scripted single-method reads; the last entry repeats once the script is exhausted. */
+function makeResolutionDeps(script: ScriptedRead[]) {
+  const sleeps: number[] = [];
+  let readCall = 0;
+
+  const deps: AuthMethodResolutionDeps = {
+    readMethod: async () => {
+      const entry = script[Math.min(readCall, script.length - 1)];
+      readCall++;
+      if (entry === THROWS) {
+        // What graphReadForTenantWithWriteToken really throws for a non-404, e.g. a 403.
+        throw new Error("graphReadForTenantWithWriteToken: GET failed (403): denied");
+      }
+      return entry === NOT_FOUND ? null : (entry as AuthenticationMethodRef);
+    },
+    sleep: async (ms: number) => {
+      sleeps.push(ms);
+    },
+  };
+  return { deps, sleeps, readCount: () => readCall };
+}
+
+describe("runAuthMethodResolutionConvergence — #3075 stale-404 regression", () => {
+  it("catches the exact #3075 signature: a 404 on read 1, then a re-read that finds the method", async () => {
+    // Read 1 lands on the replica that has not converged (the method genuinely exists);
+    // read 2 sees it. Single-pass would have failed the step here without a DELETE.
+    const { deps, sleeps } = makeResolutionDeps([NOT_FOUND, PHONE]);
+
+    const outcome = await runAuthMethodResolutionConvergence(deps, resolutionPolicy());
+
+    expect(outcome.resolution).toBe("found");
+    if (outcome.resolution !== "found") throw new Error("unreachable");
+    expect(outcome.method).toEqual(PHONE);
+    expect(outcome.reads).toBe(2);
+    expect(sleeps).toEqual([10]);
+    expect(outcome.waitedMs).toBe(10);
+  });
+
+  it("never lets a SINGLE 404 be the answer — absence takes requiredAbsentReads delayed reads", async () => {
+    const { deps, sleeps, readCount } = makeResolutionDeps([NOT_FOUND]);
+
+    const outcome = await runAuthMethodResolutionConvergence(deps, resolutionPolicy());
+
+    expect(outcome.resolution).toBe("absent");
+    expect(readCount()).toBe(DEFAULT_AUTH_METHOD_RESOLUTION.requiredAbsentReads);
+    expect(readCount()).toBeGreaterThanOrEqual(2);
+    expect(outcome.absentReads).toBe(DEFAULT_AUTH_METHOD_RESOLUTION.requiredAbsentReads);
+    // Every read after the first is genuinely separated in time, not a tight re-poll.
+    expect(sleeps.length).toBe(readCount() - 1);
+    expect(sleeps.every((ms) => ms > 0)).toBe(true);
+  });
+
+  it("costs the happy path nothing: a method visible on read 1 resolves in one read with zero waiting", async () => {
+    // The overwhelmingly common case. #3075's fix must not add wall clock to it.
+    const { deps, sleeps, readCount } = makeResolutionDeps([AUTHENTICATOR]);
+
+    const outcome = await runAuthMethodResolutionConvergence(deps, resolutionPolicy());
+
+    expect(outcome.resolution).toBe("found");
+    expect(readCount()).toBe(1);
+    expect(sleeps).toEqual([]);
+    expect(outcome.waitedMs).toBe(0);
+    expect(outcome.absentReads).toBe(0);
+  });
+
+  it("does not treat a non-404 read failure as absence — a 403 is reported as a read failure", async () => {
+    // A 403 is a permission problem no amount of re-reading fixes, and calling it "absent"
+    // would report a missing method where the real answer is "we were not allowed to look".
+    const { deps } = makeResolutionDeps([THROWS]);
+
+    const outcome = await runAuthMethodResolutionConvergence(deps, resolutionPolicy());
+
+    expect(outcome.resolution).toBe("read_failed");
+    if (outcome.resolution !== "read_failed") throw new Error("unreachable");
+    expect(outcome.readError).toContain("403");
+    expect(outcome.readFailures).toBe(DEFAULT_AUTH_METHOD_RESOLUTION.maxConsecutiveReadFailures);
+    expect(outcome.absentReads).toBe(0);
+  });
+
+  it("resets the absent streak when a read throws, so 404s split by a failure never corroborate", async () => {
+    // 404, throw, 404, throw: two 404s were seen, but never two CONSECUTIVE delayed ones,
+    // so absence is not concluded — it exits honestly unresolved instead.
+    const { deps } = makeResolutionDeps([NOT_FOUND, THROWS, NOT_FOUND, THROWS]);
+
+    const outcome = await runAuthMethodResolutionConvergence(deps, resolutionPolicy({ maxReads: 4 }));
+
+    expect(outcome.resolution).toBe("unresolved");
+    if (outcome.resolution !== "unresolved") throw new Error("unreachable");
+    expect(outcome.unresolvedReason).toBe("read_cap_reached");
+    expect(outcome.reads).toBe(4);
+    expect(outcome.readFailures).toBe(2);
+    expect(outcome.absentReads).toBe(0);
+  });
+
+  it("reports honestly rather than guessing when the wall-clock budget runs out", async () => {
+    const nowSpy = vi.spyOn(Date, "now");
+    let now = 0;
+    nowSpy.mockImplementation(() => now);
+    try {
+      const deps: AuthMethodResolutionDeps = {
+        readMethod: async () => null,
+        sleep: async (ms: number) => {
+          now += ms;
+        },
+      };
+
+      const outcome = await runAuthMethodResolutionConvergence(
+        deps,
+        resolutionPolicy({ requiredAbsentReads: 50, maxReads: 50, initialDelayMs: 1_000, maxDelayMs: 5_000, totalBudgetMs: 8_000 }),
+      );
+
+      expect(outcome.resolution).toBe("unresolved");
+      if (outcome.resolution !== "unresolved") throw new Error("unreachable");
+      expect(outcome.unresolvedReason).toBe("budget_exhausted");
+      expect(outcome.waitedMs).toBeLessThanOrEqual(8_000);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("backs off exponentially between reads, capped at maxDelayMs", async () => {
+    const { deps, sleeps } = makeResolutionDeps([NOT_FOUND]);
+
+    await runAuthMethodResolutionConvergence(deps, resolutionPolicy({ requiredAbsentReads: 5, maxReads: 5 }));
+
+    expect(sleeps).toEqual([10, 20, 40, 40]);
+  });
+
+  it("ships a default policy that cannot degrade to the single-404 bug", () => {
+    expect(DEFAULT_AUTH_METHOD_RESOLUTION.requiredAbsentReads).toBeGreaterThanOrEqual(2);
+    expect(DEFAULT_AUTH_METHOD_RESOLUTION.maxReads).toBeGreaterThanOrEqual(
+      DEFAULT_AUTH_METHOD_RESOLUTION.requiredAbsentReads,
+    );
+    expect(DEFAULT_AUTH_METHOD_RESOLUTION.totalBudgetMs).toBeGreaterThan(0);
+    expect(DEFAULT_AUTH_METHOD_RESOLUTION.initialDelayMs).toBeGreaterThan(0);
+  });
+
+  it("resolves the real deletable types the action can then DELETE through", async () => {
+    // The whole point of the read is the polymorphic @odata.type -> typed collection hop.
+    for (const method of [PHONE, AUTHENTICATOR]) {
+      const { deps } = makeResolutionDeps([NOT_FOUND, method]);
+      const outcome = await runAuthMethodResolutionConvergence(deps, resolutionPolicy());
+      expect(outcome.resolution).toBe("found");
+      if (outcome.resolution !== "found") throw new Error("unreachable");
+      expect(DELETABLE_AUTH_METHOD_COLLECTIONS[outcome.method["@odata.type"] ?? ""]).toBeTruthy();
+    }
   });
 });

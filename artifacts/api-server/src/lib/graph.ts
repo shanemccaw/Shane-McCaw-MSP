@@ -1179,7 +1179,37 @@ export async function graphWriteForTenant(
  * Minimal by design: no consent-revocation handling (a plain read failure here means "the
  * caller's fan-out write can't proceed," not "flip a consent flag"), no retry-with-fresh-token.
  * Throws on any non-2xx; callers decide what that means for the write they were about to do.
+ *
+ * That decision needs the real STATUS, not an error message to regex, because Entra is
+ * eventually consistent: a 404 here can mean "the replica this read landed on has not
+ * converged yet" rather than "it does not exist" (#3075). So the throw carries the status
+ * on a real typed error — `GraphWriteTokenReadError`, with `isGraphWriteTokenReadNotFound()`
+ * as its 404 predicate. The message text is unchanged, so callers that only surface
+ * `err.message` behave exactly as before.
  */
+export class GraphWriteTokenReadError extends Error {
+  /** The real HTTP status Graph returned for this read. */
+  readonly status: number;
+  /** The Graph path that was read, carried for log/trail context. */
+  readonly path: string;
+
+  constructor(status: number, path: string, detail: string) {
+    super(`graphReadForTenantWithWriteToken: GET ${path} failed (${status}): ${detail}`);
+    this.name = "GraphWriteTokenReadError";
+    this.status = status;
+    this.path = path;
+  }
+}
+
+/**
+ * True for a real Graph 404 on a write-token read. Lives next to the throw site so no
+ * caller ever has to pattern-match an error string to tell a "this replica cannot see it
+ * yet" 404 apart from a 403 that no amount of retrying will change (#3075).
+ */
+export function isGraphWriteTokenReadNotFound(err: unknown): boolean {
+  return err instanceof GraphWriteTokenReadError && err.status === 404;
+}
+
 export async function graphReadForTenantWithWriteToken(tenantId: string, path: string): Promise<any> {
   const token = await getWriteAccessTokenForTenant(tenantId);
   const res = await fetch(`${GRAPH_BASE}${path}`, {
@@ -1191,7 +1221,7 @@ export async function graphReadForTenantWithWriteToken(tenantId: string, path: s
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`graphReadForTenantWithWriteToken: GET ${path} failed (${res.status}): ${text.slice(0, 300)}`);
+    throw new GraphWriteTokenReadError(res.status, path, text.slice(0, 300));
   }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
