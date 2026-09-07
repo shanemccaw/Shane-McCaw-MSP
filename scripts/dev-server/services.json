@@ -1,10 +1,10 @@
 {
-  "$comment": "Single source of truth for the port-based local dev services (Git #1782). scripts/dev-all.mjs reads the `services` array to know what to spawn/kill; desktop/BuildConsole/Services/DevServicesManager.cs reads the same array at startup to populate KnownServices, which drives BuildConsole's title-bar Services menu (built dynamically, no fixed XAML/code-behind list). Adding a real artifact here is the only edit needed for it to show up in both places — icon glyphs are cosmetic and stay in a small C#-side lookup, not here.",
+  "$comment": "Single source of truth for the port-based local dev services (Git #1782). scripts/dev-all.mjs reads the `services` array to know what to spawn/kill; desktop/BuildConsole/Services/DevServicesManager.cs reads the same array at startup to populate KnownServices, which drives BuildConsole's title-bar Services menu (built dynamically, no fixed XAML/code-behind list). Adding a real artifact here is the only edit needed for it to show up in both places — icon glyphs are cosmetic and stay in a small C#-side lookup, not here. `basePath` (Git #3085) is the explicit local-dev mount base dev-all.mjs passes as BASE_PATH; omitted/absent means the historical flat \"/\" default. Only `portal` carries one today, matching its real production mount (`.replit` line 58, `artifacts/portal/.replit-artifact/artifact.toml` BASE_PATH) so local dev, Staging, and Production agree explicitly instead of local relying on vite.config.ts's own unset/`/`-BASE_PATH self-heal fallback.",
   "services": [
     { "name": "api-server", "pkg": "@workspace/api-server", "port": 8080, "title": "API Server" },
     { "name": "shane-mccaw-consulting", "pkg": "@workspace/shane-mccaw-consulting", "port": 5173, "title": "Marketing" },
     { "name": "admin-panel", "pkg": "@workspace/admin-panel", "port": 5174, "title": "Admin" },
-    { "name": "portal", "pkg": "@workspace/portal", "port": 5175, "title": "Portal" },
+    { "name": "portal", "pkg": "@workspace/portal", "port": 5175, "title": "Portal", "basePath": "/portal/" },
     { "name": "msp-website", "pkg": "@workspace/msp-website", "port": 5176, "title": "Website" },
     { "name": "msp-console", "pkg": "@workspace/msp-console", "port": 5177, "title": "MSP Console" }
   ],

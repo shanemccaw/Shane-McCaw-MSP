@@ -206,11 +206,18 @@ function startViteApp(svc, env) {
 }
 
 function startService(svc) {
+  // Git #3085 — explicit per-service local-dev mount base, read from services.json's
+  // own `basePath` field (see its $comment). Historically every service got a flat
+  // BASE_PATH="/" here regardless of what it actually mounts under in Staging/Production,
+  // and portal.tsx's vite.config.ts alone carried an implicit "unset/'/' -> '/portal/'"
+  // fallback to compensate. Making the value explicit here means local dev, Staging
+  // (.replit-artifact/artifact.toml), and Production (.replit) all state the same
+  // BASE_PATH outright instead of one of them relying on a fallback in a single file.
   const env = {
     ...process.env,
     ...fileEnv,
     PORT: String(svc.port),
-    BASE_PATH: "/",
+    BASE_PATH: svc.basePath ?? "/",
     NODE_ENV: "development",
   };
   if (svc.name === "api-server") {
