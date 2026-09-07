@@ -90,6 +90,7 @@ import { db } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   graphFetchForTenant,
+  getInitialDomainForTenant,
   WriteBackNotEnabledError,
   WriteBackCustomerNotFoundError,
   WriteConsentRequiredError,
@@ -325,8 +326,20 @@ export async function provisionDlpRoleGroupForTenant(
       };
     } else {
       try {
+        // Connect-IPPSSession (which the container establishes per-request for
+        // this cmdlet) rejects a raw tenant GUID for -Organization outright
+        // ("Organization cannot be a Guid, please enter the name of the tenant
+        // instead.", confirmed live in the ca-ps-execution-dev container logs,
+        // Git #2871) — it needs the tenant's real (.onmicrosoft.com) domain,
+        // the same value getInitialDomainForTenant() already exists to resolve
+        // for other Connect-IPPSSession-backed checks (graph.ts's own #238
+        // doc comment). Falls back to the raw tenantId only if the Graph
+        // lookup itself fails, so a transient Graph error doesn't silently
+        // skip this step — the container will reject that fallback the same
+        // way it always has, which is a clearer failure than skipping.
+        const organization = (await getInitialDomainForTenant(tenantId)) ?? tenantId;
         const psResult = await callPsExecution("add-role-group-member", {
-          Organization: tenantId,
+          Organization: organization,
           Identity: roleGroupName,
           Member: groupId,
         });

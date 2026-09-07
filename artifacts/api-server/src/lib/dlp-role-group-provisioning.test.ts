@@ -54,6 +54,10 @@ vi.mock("./graph", () => {
       }
       return { ok: false, json: async () => ({}) };
     }),
+    // #2871: Connect-IPPSSession rejects a raw tenant GUID for -Organization
+    // outright — provisionDlpRoleGroupForTenant must resolve and pass the
+    // tenant's real domain instead. Real value confirmed live in mock/tenant.
+    getInitialDomainForTenant: vi.fn(async () => "mccawsoft2.onmicrosoft.com"),
   };
 });
 
@@ -120,6 +124,12 @@ describe("#2166 — DLP role-group provisioning targets the ps-execution app's s
     expect(result.targetAppId).toBe(PS_EXEC_APP_ID);
     expect(result.targetAppIdSource).toBe("PS_EXECUTION_APP_CLIENT_ID");
     expect(result.overallStatus).toBe("provisioned");
+
+    // #2871: Add-RoleGroupMember must be called with the tenant's real domain,
+    // never the raw tenant GUID (Connect-IPPSSession rejects a Guid outright).
+    const roleGroupCall = mockCallPsExecution.mock.calls.find(c => c[0] === "add-role-group-member");
+    expect(roleGroupCall?.[1].Organization).toBe("mccawsoft2.onmicrosoft.com");
+    expect(roleGroupCall?.[1].Organization).not.toBe(TENANT_ID);
   });
 
   it("adds that same ps-execution SP — not the READ app SP — to the security group", async () => {
