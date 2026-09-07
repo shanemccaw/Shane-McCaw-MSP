@@ -497,22 +497,32 @@ export function buildApiRouter() {
   router.get("/api/shares", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
     return sendJson(res, 200, {
-      shares: await shares.listShareLinks(user.id, ctx.url.searchParams.get("entityId")),
+      shares: await shares.listShareLinks(user.id, {
+        entityId: ctx.url.searchParams.get("entityId"),
+        listId: ctx.url.searchParams.get("listId"),
+      }),
     });
   });
 
   router.post("/api/shares", async (req, res, _params, ctx) => {
     const user = requireUser(ctx);
     const body = await readJson(req);
-    if (!body.entityId) throw badRequest("entityId is required");
+    if (!body.entityId && !body.listId) throw badRequest("entityId or listId is required");
     const share = await shares.createShareLink({
       userId: user.id,
-      entityId: body.entityId,
+      entityId: body.entityId ?? null,
+      listId: body.listId ?? null,
       label: body.label ?? null,
       canCheck: body.canCheck !== false,
       expiresInDays: body.expiresInDays ?? null,
     });
-    await audit.record({ userId: user.id, actor: "web", action: "share.create", entityId: body.entityId, detail: { shareId: share.id } });
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "share.create",
+      entityId: body.entityId ?? body.listId ?? null,
+      detail: { shareId: share.id, kind: body.listId ? "list" : "entity" },
+    });
     return sendJson(res, 201, share);
   });
 

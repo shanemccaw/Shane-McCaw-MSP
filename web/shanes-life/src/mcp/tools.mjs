@@ -324,27 +324,35 @@ export const TOOLS = [
     name: "create_share_link",
     title: "Make a no-login link",
     description:
-      "Mint a link that opens one record with no login at all -- the thing to hand to someone at the store. Set canCheck false for read-only. The URL is shown once and cannot be recovered afterwards; mint a new one instead.",
+      "Mint a link that opens one real record with no login at all -- the thing to hand to someone at the store. Pass entityId for a generic captured record, or listId for a room's own typed list (Shopping, once #3088 lands). Exactly one of the two is required. Set canCheck false for read-only. The URL is shown once and cannot be recovered afterwards; mint a new one instead.",
     inputSchema: {
       type: "object",
       properties: {
         entityId: { type: "string" },
+        listId: { type: "string" },
         label: { type: "string", description: "Who or what this link is for, e.g. 'Ronnie'. Shows up next to whatever gets ticked off." },
         canCheck: { type: "boolean", default: true },
         expiresInDays: { type: "number", description: "Omit for a link that does not expire." },
       },
-      required: ["entityId"],
       additionalProperties: false,
     },
     async handler(args, ctx) {
       const share = await shares.createShareLink({
         userId: ctx.user.id,
-        entityId: args.entityId,
+        entityId: args.entityId ?? null,
+        listId: args.listId ?? null,
         label: args.label ?? null,
         canCheck: args.canCheck !== false,
         expiresInDays: args.expiresInDays ?? null,
       });
-      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "share.create", entityId: args.entityId, detail: { shareId: share.id } });
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "share.create",
+        entityId: args.entityId ?? args.listId ?? null,
+        detail: { shareId: share.id, kind: args.listId ? "list" : "entity" },
+      });
       return share;
     },
   },

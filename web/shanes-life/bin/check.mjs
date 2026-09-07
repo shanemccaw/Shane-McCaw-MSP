@@ -350,7 +350,57 @@ async function main() {
   check("the share write is in the audit trail", activity.json?.activity?.some((a) => a.actor === "share" && a.action === "entity.item.check"));
   check("the MCP write is in the audit trail", activity.json?.activity?.some((a) => a.actor === "mcp" && a.action === "entity.create"));
 
+  // 6b. Git #3116's real decision: rooms use their own typed tables, not entities/entity_items,
+  // so the share layer has to work against one directly -- starting with lists/list_items
+  // (migration 016), Shopping's real shape. Shopping's own CRUD is #3088's scope and does not
+  // exist yet, so the list + its items are inserted directly, the same real tables #3088 will
+  // read and write.
+  cookie = savedCookie;
+  const shoppingList = await one(
+    `INSERT INTO lists (user_id, name, created_by) VALUES ($1,$2,'shane') RETURNING id, name`,
+    [userId, "Costco run"],
+  );
+  const listItem = await one(
+    `INSERT INTO list_items (list_id, text, position) VALUES ($1,$2,0) RETURNING id`,
+    [shoppingList.id, "paper towels"],
+  );
+
+  const listShare = await http("/api/shares", {
+    method: "POST",
+    body: { listId: shoppingList.id, label: "Ronnie", canCheck: true },
+  });
+  check("a share link mints against a typed list, not just entities", listShare.status === 201 && Boolean(listShare.json?.url), JSON.stringify(listShare.json));
+  const listShareToken = listShare.json?.url?.split("/s/")[1];
+
+  cookie = null;
+  const publicList = await http(`/api/public/share/${listShareToken}`, { auth: false });
+  check("the list's own share link opens with no session", publicList.status === 200 && publicList.json?.entity?.title === "Costco run", `status ${publicList.status}`);
+  check("the list share response carries the real list_items row", publicList.json?.entity?.items?.length === 1 && publicList.json?.entity?.items?.[0]?.text === "paper towels");
+
+  const listTicked = await http(`/api/public/share/${listShareToken}/items/${listItem.id}`, {
+    method: "PATCH",
+    body: { checked: true },
+    auth: false,
+  });
+  check("someone holding the list link can tick a list_item off", listTicked.status === 200 && listTicked.json?.checkedAt, `status ${listTicked.status}`);
+
+  const dbListItem = await one("SELECT done, done_at FROM list_items WHERE id = $1", [listItem.id]);
+  check("the tick is a real done/done_at write on list_items, not just the response", dbListItem?.done === true && Boolean(dbListItem?.done_at), JSON.stringify(dbListItem));
+
+  cookie = savedCookie;
+  const listActivity = await http("/api/activity");
+  check("the list share write is in the audit trail", listActivity.json?.activity?.some((a) => a.actor === "share" && a.action === "list.item.check"));
+
+  const listShares = await http(`/api/shares?listId=${shoppingList.id}`);
+  check("GET /api/shares can filter by listId", listShares.json?.shares?.some((s) => s.id === listShare.json.id && s.entity_kind === "list"), JSON.stringify(listShares.json));
+  await http(`/api/shares/${listShares.json.shares[0].id}`, { method: "DELETE" });
+  const afterListRevoke = await http(`/api/public/share/${listShareToken}`, { auth: false });
+  check("a revoked list share link stops working", afterListRevoke.status === 404, `status ${afterListRevoke.status}`);
+
+  cookie = null;
+
   // 7. revocation really revokes
+  cookie = savedCookie;
   const shares = await http(`/api/shares?entityId=${entityId}`);
   const shareId = shares.json?.shares?.[0]?.id;
   await http(`/api/shares/${shareId}`, { method: "DELETE" });
