@@ -365,6 +365,34 @@ database Shane manages by hand.
   is the same "batched by real-world moment, not clock time" and "Today view shows only
   what's next" principles from Section 3/8, just applied to meals specifically.
 
+**Real conversational generation pattern, confirmed 2026-09-07 — how Claude should
+actually build a shopping list, not just what data feeds it.** Grounded in a real chat
+("Budget grocery shopping for a week") where this genuinely worked well, versus a real
+counter-example the same night where a flat weekly-ad flyer got dumped straight into a
+list without this real process — worse, and it briefly put a real allergen (shrimp) on
+the list because nothing checked it first. The real, wanted order:
+
+1. **Establish the real budget conversationally first**, if one hasn't already been
+   stated — don't generate a list before knowing the real number to build against.
+2. **Read Shane's real stated food preferences before generating anything** (allergies:
+   hard exclusion, no exceptions; dislikes: soft avoid) — Section 5's own real allergy/
+   dislike data (once #3132 lands) exists specifically so this step is never skipped.
+   Real, concrete cost of skipping it: a deathly allergen (shrimp) made it onto a real
+   list on 2026-09-07 because this step wasn't run first.
+3. **Propose a real, honest starter list with a real running total against the stated
+   budget** — and when the math doesn't actually hit the target, say so plainly and trim
+   it for real, the way the real chat did ("that comes out closer to $55-65, not $50"),
+   not silently round down.
+4. **Iterate live as real preferences and specific must-haves come up** — swap an item,
+   recompute the real running total immediately, every time, not just at the end.
+5. **Ask what's already on hand** — a real item Shane already has (the real chat's
+   example: bouillon) comes off the buy list and onto a real, separate "already have /
+   get from home" list, the same real split pattern the original session's checklist used.
+6. **Only after the base list is real and budget-fit, layer in real weekly-ad-specific
+   pricing** (Section 5's price-comparison capability, above) as a refinement — cross-
+   reference real current deals against the already-built list, don't let the weekly ad
+   itself dictate the whole list from the start.
+
 ## 6. Pets — dogs, cats, vet records, vaccines, confirmed 2026-09-05
 
 Named in the very original brainstorm ("dogs and cats") but never locked in until now.
