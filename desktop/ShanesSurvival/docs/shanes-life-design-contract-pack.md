@@ -88,6 +88,14 @@ constraints:
   universal capture box, attached to that specific appointment record. Builds a real,
   searchable history per appointment and per provider over time, not just a single
   day-before reminder that disappears once the visit passes.
+- **Real birthdays/important dates for family and friends, confirmed 2026-09-05 —
+  solves a real, stated problem: "I miss them all 'cause I don't know until someone tells
+  me I missed it."** Captured via the same one-box capture, threaded to the person the same
+  way People & Patterns (Section 6) threads observations — factual, not reflective.
+  **Real timing difference from appointments**: a day-before reminder (Section 3, above)
+  is too late here — a birthday reminder needs genuinely more lead time, enough to actually
+  get a card or gift, not just same-day awareness. Real annual recurrence, stated once,
+  respected every year (Section 7).
 - **Nudges rationed to 1–3 per day.** Never accumulate, never shame.
 - **Tasks batch by real-world moment, not clock time** — "when heading out," "when at the
   store," not "at 3pm."
