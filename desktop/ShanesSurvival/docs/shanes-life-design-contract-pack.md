@@ -81,6 +81,13 @@ constraints:
   name, and surfaces it at that appointment's real day-before reminder (or the appointment
   itself) — not lost in a flat todo list. Same underlying appointment record as the bullet
   above, just with an attached note field; no separate system needed.
+- **Real in-visit notes and photos, confirmed 2026-09-05 — same appointment-threading
+  pattern, extended once more.** At or right after a real appointment, Shane should be able
+  to capture real notes and real photos — including photos of real documents (after-visit
+  summaries, prescription slips, referral papers, lab requisitions) — through the same
+  universal capture box, attached to that specific appointment record. Builds a real,
+  searchable history per appointment and per provider over time, not just a single
+  day-before reminder that disappears once the visit passes.
 - **Nudges rationed to 1–3 per day.** Never accumulate, never shame.
 - **Tasks batch by real-world moment, not clock time** — "when heading out," "when at the
   store," not "at 3pm."
