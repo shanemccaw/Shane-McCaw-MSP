@@ -152,6 +152,17 @@ namespace BuildConsole
                                 BuildConsole.Services.ActivityLog.Log(ch,
                                     $"[SECURITY BOUNDARY] runTest running manifest #{manifest.Issue} ({manifest.Feature}) from {manifestPath} (src='{src}') — HARD-LOCKED to TargetEnvironment.Dev ({BuildConsole.Services.BuildTrackerConfig.Load().GetBaseUrl(BuildConsole.Services.TargetEnvironment.Dev)})…");
 
+                                // Git #3084 — pre-flight: the always-on api-server (:8080) has no
+                                // supervisor keeping it alive, so if it died since the last run,
+                                // every apiTest and every UI step that proxies to it fails purely
+                                // because nothing restarted it — the exact "agents' tests fail via
+                                // shaneapp:// because I had to start the server myself" report. Bring
+                                // it up here, bounded, BEFORE the run, so a dead api-server is
+                                // self-healed instead of producing a false-red result. Best-effort:
+                                // if it genuinely can't come up in the window, the run proceeds and
+                                // fails honestly rather than hanging the agent's poll.
+                                await EnsureDevApiServerUpAsync(ch, stream);
+
                                 var result = await RunManifestAsync(manifest, isRegression: false, targetEnv: BuildConsole.Services.TargetEnvironment.Dev);
 
                                 int total = result.Steps.Count;
@@ -192,6 +203,65 @@ namespace BuildConsole
                 BuildConsole.Services.ActivityLog.Log(ch, $"runTest handler threw (backstop caught, writing failure envelope): {ex.Message}");
                 WriteShaneAppRunTestResult(req, fileArg, ok: false, error: $"runTest handler error: {ex.Message}", manifestPath: manifestPath, result: null);
                 BuildConsole.Services.ShaneAppStreamService.Instance.EndRun(false, ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Git #3084 — bring the always-on Dev api-server (:8080) up before a runTest manifest
+        /// executes, if it's down. The api-server is the one service every apiTest hits directly
+        /// and every UI step proxies through; it has no independent supervisor keeping it alive, so
+        /// a crash/kill between runs left it dead and turned every subsequent shaneapp://runTest red
+        /// for a reason unrelated to the code under test. This is a bounded, best-effort self-heal:
+        /// if it's already responding, it returns immediately; if it's down, it starts it via the
+        /// SAME dev-all launcher DevServicesManager uses and waits (bounded) for :8080 to answer
+        /// /api/healthz. It NEVER throws and NEVER blocks indefinitely — on timeout the run proceeds
+        /// and the manifest fails honestly rather than the agent's poll hanging.
+        /// </summary>
+        private static async Task EnsureDevApiServerUpAsync(string ch, BuildConsole.Services.ShaneAppStreamService stream)
+        {
+            try
+            {
+                int apiPort = BuildConsole.Services.DevServicesManager.KnownServices.TryGetValue("api-server", out var def)
+                    ? def.Port
+                    : 8080;
+
+                // Already listening? Nothing to do — the common, zero-cost path.
+                if (await BuildConsole.Services.DevServicesManager.IsPortOpenAsync(apiPort))
+                    return;
+
+                BuildConsole.Services.ActivityLog.Log(ch,
+                    $"runTest pre-flight: api-server (:{apiPort}) is DOWN — starting it before the run (#3084 self-heal)…");
+                stream.AppendLine($"[TEST] api-server (:{apiPort}) was down — starting it before the run…",
+                    BuildConsole.Services.ShaneAppLogLevel.Test);
+
+                await BuildConsole.Services.DevServicesManager.StartServiceAsync("api-server");
+
+                // Bounded wait for a genuine rebuild+bind (dev-all runs kill-port -> build.mjs ->
+                // node dist/index.mjs, so first bind can take a while). 90s ceiling so a build that
+                // never comes up can't strand the agent's poll — the run then fails honestly.
+                var deadline = DateTime.UtcNow.AddSeconds(90);
+                while (DateTime.UtcNow < deadline)
+                {
+                    if (await BuildConsole.Services.DevServicesManager.IsPortOpenAsync(apiPort))
+                    {
+                        BuildConsole.Services.ActivityLog.Log(ch, $"runTest pre-flight: api-server (:{apiPort}) is up.");
+                        stream.AppendLine($"[TEST] api-server (:{apiPort}) is up — proceeding with the run.",
+                            BuildConsole.Services.ShaneAppLogLevel.Test);
+                        return;
+                    }
+                    await Task.Delay(1500);
+                }
+
+                BuildConsole.Services.ActivityLog.Log(ch,
+                    $"runTest pre-flight: api-server (:{apiPort}) did NOT come up within 90s — running anyway (result will reflect the real state).");
+                stream.AppendLine($"[TEST] api-server (:{apiPort}) did not come up within 90s — running anyway.",
+                    BuildConsole.Services.ShaneAppLogLevel.Test);
+            }
+            catch (Exception ex)
+            {
+                // Pre-flight must never break the run itself — if the self-heal throws, log and let
+                // the manifest run (and fail honestly) rather than blocking the agent's poll.
+                BuildConsole.Services.ActivityLog.Log(ch, $"runTest pre-flight ensure-api-server failed (non-fatal): {ex.Message}");
             }
         }
 

@@ -260,6 +260,13 @@ namespace BuildConsole.Services
         /// <summary>Git #2891 — throttles the periodic "is this `running` row's real process actually
         /// still alive?" sweep run from TickAsync (see <see cref="SweepStuckRunningRowsAsync"/>).</summary>
         private DateTime _lastStuckRunningSweepUtc = DateTime.MinValue;
+        /// <summary>Git #3084 — throttles the always-on api-server liveness probe run from TickAsync
+        /// (see <see cref="MaybeEnsureApiServerUpAsync"/>).</summary>
+        private DateTime _lastApiServerProbeUtc = DateTime.MinValue;
+        /// <summary>Git #3084 — set when this instance dispatches an api-server start, so the probe
+        /// doesn't fire a second `dev-all --start api-server` (racing kill-port/build.mjs) while the
+        /// first rebuild is still finishing and :8080 hasn't bound yet.</summary>
+        private DateTime _lastApiServerStartUtc = DateTime.MinValue;
         /// <summary>
         /// Git #2891 — queue ids currently INSIDE <see cref="LaunchItem"/> (claimed → running in the
         /// DB, but not yet spawned + registered in <see cref="_running"/>). This window can be long
@@ -886,6 +893,74 @@ namespace BuildConsole.Services
 
             try { await SweepStuckRunningRowsAsync(); }
             catch (Exception ex) { ActivityLog.Log("watcher", $"Phantom-running liveness sweep failed: {ex.Message}"); }
+        }
+
+        /// <summary>Git #3084 — how often the always-on api-server liveness probe runs. Well below the
+        /// 10s tick: a dead api-server is not urgent to the second, only that it never stays dead
+        /// indefinitely with no one to revive it.</summary>
+        private const int ApiServerProbeIntervalSeconds = 45;
+        /// <summary>Git #3084 — after dispatching an api-server start, wait this long before probing
+        /// again. dev-all runs kill-port -> build.mjs -> node dist/index.mjs, so :8080 stays unbound
+        /// for the whole rebuild; probing inside that window would see "down" and fire a second start
+        /// that races the first. 120s comfortably covers a cold rebuild+bind.</summary>
+        private const int ApiServerStartCooldownSeconds = 120;
+
+        /// <summary>
+        /// Git #3084 — the always-on api-server (:8080) supervisor. This is the missing piece behind
+        /// "web services not auto-restarting — I have to start them manually": the api-server is only
+        /// ever (re)started as a SIDE EFFECT of a coordinator restart cycle firing on build completion
+        /// (refreshMainServer). When it crashes or is killed mid-session and the only pending restarts
+        /// are deferred build-set restarts that haven't completed, nothing revives it — every
+        /// shaneapp://runTest then fails until Shane starts it by hand. dev-all itself has no
+        /// restart-on-exit; SystemHealthService only PROBES. So BuildConsole's always-on tick becomes
+        /// the supervisor for the one always-on service, exactly as Shane framed it ("the only thing
+        /// that has to be on always is the API server").
+        ///
+        /// Best-effort and heavily guarded — it must never throw into or slow the core tick:
+        ///  - gated on <see cref="_appReady"/> so a heavy rebuild never competes with the app's own
+        ///    startup work (the #1883 resource-contention concern);
+        ///  - only acts when dev-all has managed api-server before (its meta file exists), so a fresh
+        ///    machine where Shane never started dev services isn't handed an unsolicited api-server;
+        ///  - skipped with a second BuildConsole open (the other instance may already be reviving it —
+        ///    same #943 guard the phantom sweep uses);
+        ///  - a post-start cooldown so a rebuild in progress isn't double-started;
+        ///  - front-ends are intentionally NOT touched — only the always-on api-server.
+        /// Runs regardless of pause: keeping the shared api-server up is orthogonal to whether new
+        /// builds are being claimed, and is desired even while the queue is paused.
+        /// </summary>
+        private async Task MaybeEnsureApiServerUpAsync()
+        {
+            if (!_appReady) return; // don't add a heavy rebuild to the startup-contention window (#1883).
+            if ((DateTime.UtcNow - _lastApiServerProbeUtc).TotalSeconds < ApiServerProbeIntervalSeconds) return;
+            _lastApiServerProbeUtc = DateTime.UtcNow;
+
+            // Still inside a start we just dispatched — the rebuild is likely finishing; don't race it.
+            if ((DateTime.UtcNow - _lastApiServerStartUtc).TotalSeconds < ApiServerStartCooldownSeconds) return;
+
+            // Two consoles: the other one may already own the revive. Same guard as the phantom sweep.
+            if (Process.GetProcessesByName("BuildConsole").Length > 1) return;
+
+            try
+            {
+                int apiPort = DevServicesManager.KnownServices.TryGetValue("api-server", out var def) ? def.Port : 8080;
+
+                // Only supervise a service dev-all has actually managed here (meta file present) —
+                // avoids handing a never-configured machine an unsolicited api-server.
+                string metaFile = Path.Combine(DevServicesManager.GetLogDir(), "api-server.meta.json");
+                if (!File.Exists(metaFile)) return;
+
+                // Real liveness: is :8080 actually listening right now?
+                if (await DevServicesManager.IsPortOpenAsync(apiPort)) return;
+
+                ActivityLog.Log("watcher",
+                    $"[#3084] Always-on api-server (:{apiPort}) is DOWN and nothing is reviving it — auto-starting it now.");
+                _lastApiServerStartUtc = DateTime.UtcNow;
+                await DevServicesManager.StartServiceAsync("api-server");
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("watcher", $"[#3084] api-server auto-revive probe failed (non-fatal): {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -1727,6 +1802,17 @@ namespace BuildConsole.Services
                 // detected and failed automatically instead of needing a manual DB UPDATE. Placed
                 // before the _appReady/_paused gates so a phantom is cleared even while paused.
                 await MaybeSweepStuckRunningRowsAsync();
+
+                // Git #3084 — always-on api-server supervisor. dev-all has no restart-on-exit and the
+                // health service only probes, so a crashed/killed api-server was revived ONLY as a
+                // side effect of a build-completion restart cycle (refreshMainServer). With stacked
+                // build sets deferring that restart, a dead api-server stayed dead until Shane started
+                // it by hand — turning every shaneapp://runTest red in the meantime. This makes the
+                // always-on tick the supervisor for the one always-on service. Best-effort, throttled,
+                // and self-gated (see the method) — placed before the _appReady/_paused gates for the
+                // same reason as the sweeps above (background self-repair, not a claim), though it
+                // additionally no-ops until _appReady so it never adds a heavy rebuild to startup.
+                await MaybeEnsureApiServerUpAsync();
 
                 // Git #3011 — demand-driven, throttled self-recovery probe for the shared #2815
                 // rate-limit circuit. The claim path below (GetNextAsync via freeSlots) is the
