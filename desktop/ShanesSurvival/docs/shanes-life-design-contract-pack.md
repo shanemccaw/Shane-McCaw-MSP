@@ -29,7 +29,7 @@ share a user.
 - **Real decision, confirmed 2026-09-05**: the WPF app stays, but its real role narrows and
   shifts. Rather than being the primary place Shane looks at his life, it becomes a real
   local automation tool — specifically, exploring WebView2 automation to pull real coupon
-  and weekly-ad data (the same real capability behind Section 4's cross-store price
+  and weekly-ad data (the same real capability behind Section 5's cross-store price
   comparison, giving it a real, automated source instead of manual feeding). **The hosted
   app (this one) becomes the primary surface for money — real dashboards, account funding,
   everything Shane currently sees in the WPF Dashboard — alongside the full life-organizer
@@ -84,11 +84,11 @@ constraints:
 - **Real "Budget Day" ritual, confirmed 2026-09-05 — anchored to Shane's actual real
   biweekly payday (every other Friday), already tracked as `next_pay_date`/
   `pay_frequency_days` on the real income source once the Section 1 unification lands.**
-  Distinct from the separate Sunday meal-planning ritual (Section 4) — two different real
+  Distinct from the separate Sunday meal-planning ritual (Section 5) — two different real
   recurring anchors, not the same day. On Budget Day, the app's real job is helping Shane
   stretch a genuinely limited real paycheck as far as possible — "extreme couponing" in
   Shane's own words. This is the real cross-store price comparison and coupon/weekly-ad
-  work from Section 4, turned toward its most aggressive, real-savings-maximizing use: given
+  work from Section 5, turned toward its most aggressive, real-savings-maximizing use: given
   the real amount landing this check and what's actually due, where can this specific
   paycheck's real grocery/household spend get the deepest real discount, not just "a"
   discount.
@@ -108,7 +108,31 @@ constraints:
   it to House B" gets logged as known information, visible when relevant, not automatically
   owned by Shane to personally fulfill.
 
-## 4. Food — Shopping and Recipes, real superseding update (2026-09-05)
+## 4. Real expense-cutting mechanisms, confirmed 2026-09-05
+
+Real ideas beyond couponing/price-watching (Section 3) and meal planning (Section 5),
+grounded in patterns from tonight itself — all confirmed wanted:
+
+- **Subscription/renewal watch.** Once Money is unified with ShanesSurvival's real data
+  (Section 1), the app should flag real renewal dates before they auto-bill at a higher
+  rate — the exact real pattern behind tonight's Allstate lapse-and-reinstatement. A nudge
+  before renewal beats finding out after.
+- **"Forgotten money" sweep.** Tonight's real couch-cushion search (Jake's account,
+  Emergency Fund, OnePay, Apple Cash) turned up over $1,500. A periodic real nudge —
+  "when did you last check for old/forgotten accounts" — not automated (can't scan accounts
+  that aren't linked), just a recurring prompt to go look.
+- **Duplicate-request catch.** If Ronnie and DJ both mention needing something similar
+  without knowing it, the app catches it before Shane buys it twice.
+- **Borrowed-from-bill detection.** Already a real, parked idea in ShanesSurvival (#2886) —
+  catching money pulled from a bill account for something other than its own real bill.
+  Once Money unifies (Section 1), this becomes real, live protection here too, not just a
+  future ShanesSurvival-only feature.
+- **Bulk-buy suggestion from real patterns.** Same pattern-anticipation principle already
+  locked in (Section 7), pointed at recurring purchases: if something gets bought often in
+  small amounts (same real shape as the 7-Eleven finding), the app should surface "this
+  might be cheaper bought in bulk."
+
+## 5. Food — Shopping and Recipes, real superseding update (2026-09-05)
 
 **Supersedes the original session's cut.** The original decision (no inventory, no
 expiration tracking, no recipe-from-pantry generation, no meal planning — "that's not even
@@ -124,7 +148,7 @@ database Shane manages by hand.
   built as an in-app database/form system.
 - No separate recipe-authoring UI, no manual meal-planning calendar — the generation
   happens in a Claude conversation, the app's job is to host, display, and let Shane check
-  items off, same division of labor as the rest of this app (see Section 8).
+  items off, same division of labor as the rest of this app (see Section 9).
 - **The original cut still stands for what it was actually about**: no automatic inventory/
   expiration tracking, no recipe-from-pantry-contents generation. Those remain out of
   scope — this update is about *how* Shopping/Recipes get populated (Claude + MCP, on
@@ -150,9 +174,9 @@ database Shane manages by hand.
   then surfaces on the Today view as simple, real, moment-based nudges — "ready to make
   dinner," "don't forget to make lunch for tomorrow" — never as a calendar to browse. This
   is the same "batched by real-world moment, not clock time" and "Today view shows only
-  what's next" principles from Section 3/6, just applied to meals specifically.
+  what's next" principles from Section 3/7, just applied to meals specifically.
 
-## 5. People & Patterns — private reflection journal (real, explicit boundaries)
+## 6. People & Patterns — private reflection journal (real, explicit boundaries)
 
 A real, distinct module Shane asked to be added on top of the main design.
 
@@ -180,7 +204,7 @@ capture used everywhere else — no separate journaling flow.
 plus a search/ask interface for pattern recall. Calm, private, journal-like visual
 language — should NOT look like a chat interface with a persona attached to it.
 
-## 6. Design principles — apply to every screen
+## 7. Design principles — apply to every screen
 
 - **Trust stated facts immediately.** No confirmation dialogs on what Shane states directly;
   second-guessing is reserved for genuinely ambiguous captures only.
@@ -193,7 +217,7 @@ language — should NOT look like a chat interface with a persona attached to it
   applied to cut expiration tracking and recipe generation. Apply it to every proposed
   feature, not just food.
 
-## 7. Real new requirements, confirmed tonight (2026-09-05) — not in the original session
+## 8. Real new requirements, confirmed tonight (2026-09-05) — not in the original session
 
 - **Real login/auth** — grown from personal prototype into something properly account-gated.
 - **Real hosting on Replit.**
@@ -203,7 +227,7 @@ language — should NOT look like a chat interface with a persona attached to it
   phone or hand to someone else, while the rest of the app stays behind real auth. A
   genuine mixed-access-model requirement.
 
-## 8. Real technical constraint to design around
+## 9. Real technical constraint to design around
 
 **Shane's Claude subscription does not cover live API costs for a production app.** The AI
 parsing/generation step should happen in a Claude conversation via MCP, not as a live API
@@ -211,7 +235,7 @@ call triggered by the hosted app itself at runtime. The hosted app stores, displ
 shares, and checks off what Claude already generated — it doesn't do its own live AI
 inference. Keep this boundary clean in the architecture.
 
-## 9. What NOT to design
+## 10. What NOT to design
 
 - No dashboard-first layout — the notification tray leads.
 - No budget/spending charts or categories anywhere — that's ShanesSurvival's job, not this
@@ -222,7 +246,7 @@ inference. Keep this boundary clean in the architecture.
 - No inventory/expiration tracking or recipe generation in Food — deliberately cut.
 - No time-of-day-scheduled notifications as the primary trigger — context/location first.
 
-## 10. Real open question for Shane, not yet decided
+## 11. Real open question for Shane, not yet decided
 
 Given the size of the full blueprint versus tonight's real immediate need (hosted
 checklists + login + shareable links), what's the real first slice to actually build? The
