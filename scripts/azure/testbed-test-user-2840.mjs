@@ -20,8 +20,15 @@
  *   --revoke-sessions     destructive smoke test: POST /users/{id}/revokeSignInSessions.
  *   --seed-phone-method   register a fictitious-range phone auth method on the test user,
  *                         so --purge-auth-methods has something real to actually DELETE.
- *   --purge-auth-methods  #1899's real fan-out: GET authentication/methods, then DELETE
- *                         each phone / Microsoft Authenticator / software OATH method.
+ *   --purge-auth-methods  #1899's real fan-out, with #2981's verification: GET
+ *                         authentication/methods, DELETE each phone / Microsoft
+ *                         Authenticator / software OATH method, then RE-enumerate until
+ *                         two consecutive delayed reads corroborate that nothing removable
+ *                         is left. Mirrors what production now runs.
+ *   --purge-auth-methods-single-pass
+ *                         #2981's repro: the ORIGINAL single-pass version (one GET, then
+ *                         deletes, then unconditional success). Against a stale replica it
+ *                         reports "0 deletable" and deletes nothing without erroring.
  *
  * Every mutating mode requires --i-mean-it as a second, explicit flag.
  */
@@ -240,24 +247,96 @@ async function seedPhoneMethod(tok, id) {
   return res.ok;
 }
 
-/** #1899's real mechanism: enumerate, then DELETE each MFA method individually. */
-async function purgeAuthMethods(tok, id) {
+const DELETABLE_AUTH_METHODS = {
+  "#microsoft.graph.phoneAuthenticationMethod": "phoneMethods",
+  "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod": "microsoftAuthenticatorMethods",
+  "#microsoft.graph.softwareOathAuthenticationMethod": "softwareOathMethods",
+};
+
+/**
+ * #1899's ORIGINAL single-pass mechanism: enumerate ONCE, then DELETE each MFA method the
+ * one read returned. Retained deliberately, behind its own flag, because this is #2981's
+ * repro — against an Entra read replica that has not converged this prints
+ * "enumerated N method(s); 0 deletable" and deletes nothing while reporting no error.
+ * Production no longer does this; see purgeAuthMethodsVerified() below.
+ */
+async function purgeAuthMethodsSinglePass(tok, id) {
   const listed = await graph(tok, "GET", `/users/${id}/authentication/methods`);
   if (!listed.ok) throw new Error(`enumerate failed ${listed.status}: ${listed.text}`);
-  const DELETABLE = {
-    "#microsoft.graph.phoneAuthenticationMethod": "phoneMethods",
-    "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod": "microsoftAuthenticatorMethods",
-    "#microsoft.graph.softwareOathAuthenticationMethod": "softwareOathMethods",
-  };
   const all = listed.json?.value || [];
-  const targets = all.filter((m) => DELETABLE[m["@odata.type"]]);
+  const targets = all.filter((m) => DELETABLE_AUTH_METHODS[m["@odata.type"]]);
   console.log(`enumerated ${all.length} method(s); ${targets.length} deletable`);
   for (const m of targets) {
-    const seg = DELETABLE[m["@odata.type"]];
+    const seg = DELETABLE_AUTH_METHODS[m["@odata.type"]];
     const res = await graph(tok, "DELETE", `/users/${id}/authentication/${seg}/${m.id}`);
     console.log(`  DELETE ${seg}/${m.id} -> ${res.status} ${res.ok ? "OK" : res.text.slice(0, 200)}`);
   }
   return targets.length;
+}
+
+/**
+ * #2981's real fix, mirroring what production now runs: enumerate -> delete ->
+ * RE-enumerate until the removable-method list is corroborated empty by
+ * `requiredCleanReads` consecutive delayed reads, or a bounded budget runs out.
+ *
+ * The authoritative implementation is
+ * `artifacts/api-server/src/lib/mfa-reregistration.ts` (runMfaReregistrationConvergence),
+ * which is where the reasoning and the unit tests live. This is its deliberate,
+ * dependency-free mirror so the same convergence can be exercised against the REAL
+ * testbed tenant from a plain node script; keep the two in step if either changes.
+ */
+async function purgeAuthMethodsVerified(tok, id, policy = {}) {
+  const { requiredCleanReads = 2, maxReads = 6, initialDelayMs = 5_000, maxDelayMs = 15_000, totalBudgetMs = 45_000 } =
+    policy;
+  const startedAt = Date.now();
+  const resolved = new Set();
+  const deleted = [];
+  let reads = 0;
+  let cleanReads = 0;
+
+  while (reads < maxReads) {
+    if (reads > 0) {
+      const remaining = totalBudgetMs - (Date.now() - startedAt);
+      if (remaining <= 0) break;
+      const delay = Math.min(Math.min(initialDelayMs * 2 ** (reads - 1), maxDelayMs), remaining);
+      console.log(`  ...waiting ${delay}ms for replica convergence`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+
+    reads++;
+    const listed = await graph(tok, "GET", `/users/${id}/authentication/methods`);
+    if (!listed.ok) throw new Error(`enumerate failed ${listed.status}: ${listed.text}`);
+    const all = listed.json?.value || [];
+    const outstanding = all.filter((m) => DELETABLE_AUTH_METHODS[m["@odata.type"]] && !resolved.has(m.id));
+    console.log(`read ${reads}: enumerated ${all.length} method(s); ${outstanding.length} outstanding deletable`);
+
+    if (outstanding.length === 0) {
+      cleanReads++;
+      if (cleanReads >= requiredCleanReads) {
+        console.log(`VERIFIED empty after ${reads} read(s), ${cleanReads} corroborating clean read(s); deleted ${deleted.length}`);
+        return { verified: true, deleted, reads };
+      }
+      continue;
+    }
+
+    if (reads > 1) {
+      console.log(`  !! re-enumeration revealed ${outstanding.length} method(s) an earlier read did not — this is the #2981 stale read`);
+    }
+    cleanReads = 0;
+    for (const m of outstanding) {
+      const seg = DELETABLE_AUTH_METHODS[m["@odata.type"]];
+      const res = await graph(tok, "DELETE", `/users/${id}/authentication/${seg}/${m.id}`);
+      console.log(`  DELETE ${seg}/${m.id} -> ${res.status} ${res.ok ? "OK" : res.text.slice(0, 200)}`);
+      if (!res.ok && res.status !== 404) {
+        return { verified: false, reason: `delete_failed ${res.status}`, deleted, reads };
+      }
+      resolved.add(m.id);
+      if (res.ok) deleted.push(`${seg}/${m.id}`);
+    }
+  }
+
+  console.log(`NOT VERIFIED after ${reads} read(s) — reporting failure rather than claiming a wipe (#2981)`);
+  return { verified: false, reason: reads >= maxReads ? "read_cap_reached" : "budget_exhausted", deleted, reads };
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
@@ -268,7 +347,8 @@ if (process.argv[1]?.endsWith("testbed-test-user-2840.mjs")) {
     has("--create") ||
     has("--revoke-sessions") ||
     has("--seed-phone-method") ||
-    has("--purge-auth-methods");
+    has("--purge-auth-methods") ||
+    has("--purge-auth-methods-single-pass");
   if (mutating && !has("--i-mean-it")) {
     console.log("Mutating mode requires --i-mean-it as an explicit second flag. Aborting.");
     process.exit(2);
@@ -291,7 +371,12 @@ if (process.argv[1]?.endsWith("testbed-test-user-2840.mjs")) {
   }
   if (user && has("--purge-auth-methods")) {
     assertReservedUpn(user.userPrincipalName);
-    console.log("\n-- #1899 fan-out: purge MFA methods -----------------------------------");
-    await purgeAuthMethods(tok, user.id);
+    console.log("\n-- #1899 fan-out + #2981 verification: purge MFA methods ---------------");
+    await purgeAuthMethodsVerified(tok, user.id);
+  }
+  if (user && has("--purge-auth-methods-single-pass")) {
+    assertReservedUpn(user.userPrincipalName);
+    console.log("\n-- #2981 REPRO: original single-pass purge (may delete nothing) --------");
+    await purgeAuthMethodsSinglePass(tok, user.id);
   }
 }

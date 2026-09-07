@@ -91,6 +91,12 @@ import fs from "fs/promises";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
 const log = logger.child({ channel: "workflow.run" });
+import {
+  DELETABLE_AUTH_METHOD_COLLECTIONS,
+  DEFAULT_MFA_REREGISTRATION_VERIFICATION,
+  runMfaReregistrationConvergence,
+  type MfaReregistrationVerificationPolicy,
+} from "./mfa-reregistration";
 import { runWithRequestContext } from "./request-context.ts";
 import { evaluateRules as runAlertRuleEvaluation } from "./alert-engine";
 import { evaluateCustomerTenantRules } from "./customer-tenant-alert-engine";
@@ -764,56 +770,118 @@ export async function resolveBaselineTemplateRequest(
  */
 const FORCE_MFA_REREGISTRATION_TEMPLATE_ID = "action.require-security-info-reregistration";
 
-/** `@odata.type` → the real typed collection segment Graph deletes that method type through. */
-const DELETABLE_AUTH_METHOD_COLLECTIONS: Record<string, string> = {
-  "#microsoft.graph.phoneAuthenticationMethod": "phoneMethods",
-  "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod": "microsoftAuthenticatorMethods",
-  "#microsoft.graph.softwareOathAuthenticationMethod": "softwareOathMethods",
-};
-
+/**
+ * The single-pass version of this fan-out reported success unconditionally once every
+ * method its ONE enumeration read returned had been deleted — so a stale Entra
+ * read-replica response (reproduced live on #2840, evidence in #2981) made a partial or
+ * no-op wipe indistinguishable from "this user has no MFA methods registered". The
+ * enumerate/delete/RE-enumerate convergence loop that replaces it lives in
+ * ./mfa-reregistration, deliberately free of db + Graph imports so it is unit-testable
+ * against real fakes; read that module's header for the real mechanism and for why a
+ * confirmed DELETE outranks a later contradicting read.
+ */
 async function runForceMfaReregistrationAgainstTenant(
   tenantId: string,
   customerId: number,
   userId: string,
   label: string,
-): Promise<BaselineTemplateExecutionResult & { methodsFound: number; methodsDeleted: number; deletedTypes: string[] }> {
+  policy: MfaReregistrationVerificationPolicy = DEFAULT_MFA_REREGISTRATION_VERIFICATION,
+): Promise<BaselineTemplateExecutionResult & {
+  methodsFound: number;
+  methodsDeleted: number;
+  deletedTypes: string[];
+  /** True only when a re-enumeration corroborated that nothing removable is left (#2981). */
+  verified: boolean;
+  /** Real convergence trail: reads taken, corroborating clean reads, ms genuinely waited. */
+  enumerationReads: number;
+  cleanReads: number;
+  convergenceWaitedMs: number;
+  /** Ids a stale read listed but Graph reported already absent (404) — not counted as deletes. */
+  alreadyAbsentIds: string[];
+  /** Set when success=false because the end state could not be corroborated. */
+  unverifiedReason?: string;
+}> {
   const { graphReadForTenantWithWriteToken, graphWriteForTenant } = await import("./graph");
   const listEndpoint = `/users/${userId}/authentication/methods`;
 
-  let methods: Array<{ id: string; "@odata.type"?: string }>;
-  try {
-    const listBody = await graphReadForTenantWithWriteToken(tenantId, listEndpoint);
-    methods = Array.isArray(listBody?.value) ? listBody.value : [];
-  } catch (err) {
-    log.warn({ err, tenantId, userId }, "runForceMfaReregistrationAgainstTenant: listing authentication methods failed");
+  const outcome = await runMfaReregistrationConvergence(
+    {
+      listMethods: async () => {
+        const listBody = await graphReadForTenantWithWriteToken(tenantId, listEndpoint);
+        return Array.isArray(listBody?.value) ? listBody.value : [];
+      },
+      deleteMethod: (collection, methodId) =>
+        graphWriteForTenant(
+          tenantId,
+          customerId,
+          `/users/${userId}/authentication/${collection}/${methodId}`,
+          "DELETE",
+          {},
+          [200, 204],
+        ),
+      sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+      context: { tenantId, userId, customerId, templateId: FORCE_MFA_REREGISTRATION_TEMPLATE_ID },
+    },
+    policy,
+  );
+
+  const trail = {
+    methodsFound: outcome.methodsFound,
+    methodsDeleted: outcome.deletedIds.length,
+    deletedTypes: outcome.deletedTypes,
+    verified: outcome.verified,
+    enumerationReads: outcome.reads,
+    cleanReads: outcome.cleanReads,
+    convergenceWaitedMs: outcome.waitedMs,
+    alreadyAbsentIds: outcome.alreadyAbsentIds,
+  };
+
+  if (outcome.verified) {
     return {
-      success: false, status: 0, errorType: "unexpected", data: err instanceof Error ? err.message : String(err),
-      endpoint: listEndpoint, method: "GET", label,
-      methodsFound: 0, methodsDeleted: 0, deletedTypes: [],
+      success: true, status: 204, data: null,
+      endpoint: listEndpoint, method: "GET+DELETE(fan-out)", label,
+      ...trail,
     };
   }
 
-  const targets = methods.filter((m) => DELETABLE_AUTH_METHOD_COLLECTIONS[m["@odata.type"] ?? ""]);
-  const deletedTypes: string[] = [];
-
-  for (const m of targets) {
-    const collection = DELETABLE_AUTH_METHOD_COLLECTIONS[m["@odata.type"]!];
-    const deleteEndpoint = `/users/${userId}/authentication/${collection}/${m.id}`;
-    const result = await graphWriteForTenant(tenantId, customerId, deleteEndpoint, "DELETE", {}, [200, 204]);
-    if (!result.success) {
-      return {
-        success: false, status: result.status, errorType: result.errorType, data: result.data,
-        endpoint: deleteEndpoint, method: "DELETE", label,
-        methodsFound: methods.length, methodsDeleted: deletedTypes.length, deletedTypes,
-      };
-    }
-    deletedTypes.push(m["@odata.type"]!);
+  if (outcome.failure === "read_failed") {
+    log.warn({ tenantId, userId, readError: outcome.readError }, "runForceMfaReregistrationAgainstTenant: listing authentication methods failed");
+    return {
+      success: false, status: 0, errorType: "unexpected", data: outcome.readError,
+      endpoint: listEndpoint, method: "GET", label,
+      ...trail, unverifiedReason: "read_failed",
+    };
   }
 
+  if (outcome.failure === "delete_failed") {
+    return {
+      success: false, status: outcome.deleteResult.status, errorType: outcome.deleteResult.errorType,
+      data: outcome.deleteResult.data,
+      endpoint: `/users/${userId}/authentication/${outcome.collection}/${outcome.methodId}`,
+      method: "DELETE", label,
+      ...trail, unverifiedReason: "delete_failed",
+    };
+  }
+
+  // Deletes did not fail, but no re-enumeration corroborated an empty removable-method
+  // list inside the budget. Reported as a FAILED step on purpose: the whole point of
+  // #2981 is that an uncorroborated read must not be allowed to mean "wipe confirmed".
+  // errorType stays inside the existing union deliberately — `switchChosenHandle` routes
+  // execute_baseline_template's outgoing edges by this exact slug, and a new value would
+  // be a handle no workflow (and no builder UI) has an edge for.
+  const detail =
+    `MFA re-registration could not be VERIFIED for user ${userId}: deleted ${outcome.deletedIds.length} ` +
+    `removable method(s) across ${outcome.reads} enumeration read(s) (${outcome.waitedMs}ms waited, ` +
+    `${outcome.cleanReads}/${policy.requiredCleanReads} corroborating clean read(s), reason ` +
+    `${outcome.unverifiedReason})` +
+    (outcome.outstanding.length > 0 ? `; still listed: ${outcome.outstanding.join(", ")}` : "") +
+    (outcome.readError ? `; last read error: ${outcome.readError}` : "") +
+    ". Entra reads are eventually consistent, so this step reports failure rather than claiming " +
+    "a wipe it could not confirm (#2981). Re-run it to converge.";
   return {
-    success: true, status: 204, data: null,
+    success: false, status: 0, errorType: "unexpected", data: detail,
     endpoint: listEndpoint, method: "GET+DELETE(fan-out)", label,
-    methodsFound: methods.length, methodsDeleted: deletedTypes.length, deletedTypes,
+    ...trail, unverifiedReason: outcome.unverifiedReason,
   };
 }
 
@@ -917,6 +985,16 @@ export async function runBaselineTemplateAgainstTenant(
           methodsFound: fanoutResult.methodsFound,
           methodsDeleted: fanoutResult.methodsDeleted,
           deletedTypes: fanoutResult.deletedTypes,
+          // #2981 — the real convergence trail, so the audit row records whether the wipe
+          // was CORROBORATED rather than just attempted. `verified: false` on a row whose
+          // action is "executed" is impossible by construction: an unverified end state
+          // returns success=false, which logs the row as "failed".
+          verified: fanoutResult.verified,
+          enumerationReads: fanoutResult.enumerationReads,
+          cleanReads: fanoutResult.cleanReads,
+          convergenceWaitedMs: fanoutResult.convergenceWaitedMs,
+          alreadyAbsentIds: fanoutResult.alreadyAbsentIds,
+          unverifiedReason: fanoutResult.unverifiedReason ?? null,
           ...(source !== undefined ? { source } : {}),
         },
       }).returning({ id: baselineActionTemplateAuditLogTable.id });
