@@ -60,5 +60,9 @@ export const config = {
   publicOrigin: (process.env.PUBLIC_ORIGIN || `http://localhost:${port}`).replace(/\/+$/, ""),
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES || 12_000_000),
   sessionTtlDays: Number(process.env.SESSION_TTL_DAYS || 30),
+  // The bill-payment vault's AES-256-GCM key (migration 017). Outside the database on purpose,
+  // so a dump on its own decrypts nothing. Read here rather than at the call site so the Vault
+  // Feature cannot accidentally ship reading it from somewhere else.
+  vaultKey: process.env.SL_VAULT_KEY ? Buffer.from(process.env.SL_VAULT_KEY, "base64") : null,
   root: ROOT,
 };

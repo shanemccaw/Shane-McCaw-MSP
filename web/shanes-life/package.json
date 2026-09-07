@@ -3,14 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shane's Life — the real hosted app foundation: auth, universal capture, generic entities, no-login share links, and a remote MCP server. Standalone; not part of the Shane-McCaw-MSP pnpm workspace.",
-  "engines": { "node": ">=20" },
+  "description": "Shane's Life -- the real hosted app foundation: passkey auth, universal capture, generic entities, no-login share links, and a remote MCP server. Shares ShanesSurvival's real Postgres (migrations 013+). Standalone; not part of the Shane-McCaw-MSP pnpm workspace.",
+  "engines": {
+    "node": ">=20"
+  },
   "main": "src/server.mjs",
   "scripts": {
     "start": "node src/server.mjs",
     "dev": "node --watch src/server.mjs",
     "migrate": "node bin/migrate.mjs",
     "create-user": "node bin/create-user.mjs",
+    "enroll-passkey": "node bin/enroll-passkey.mjs",
     "issue-mcp-token": "node bin/issue-mcp-token.mjs",
     "make-icons": "node bin/make-icons.mjs",
     "mcp-stdio": "node bin/mcp-stdio.mjs",

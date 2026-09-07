@@ -1,45 +1,25 @@
 #!/usr/bin/env node
-// Create a real account. There is no public sign-up route on purpose (contract pack Section 9 --
+// Create a real account. There is no public sign-up route on purpose (contract Section 9 --
 // account-gated app, one real user), so accounts are made here.
 //
 //   npm run create-user -- --email shane@example.com --name "Shane"
-//     ...then type the password at the prompt (it is not echoed and never reaches argv,
-//        so it stays out of the shell history and out of the process list).
 //
-// Non-interactive (CI, a scripted first boot) -- read it from an env var, never a flag:
-//   SL_PASSWORD='...' npm run create-user -- --email ... --name ... --password-from-env
+// There is no password prompt, because there is no password: the app is passkey-only (design
+// handoff, "Auth and sharing"). This prints a single-use enrolment link instead. Open it on the
+// device that should hold the passkey, approve with Face ID, and that device is signed in.
+//
+// The link expires (30 minutes) and works once. To add a second device later, or if the link
+// expires before it is used, mint another with `npm run enroll-passkey`.
 
-import { createInterface } from "node:readline";
-import { stdin, stdout } from "node:process";
-import { closePool } from "../src/db.mjs";
+import { closePool, one } from "../src/db.mjs";
 import { runMigrations } from "../src/migrate.mjs";
-import { createUser, setPassword } from "../src/core/users.mjs";
-import { one } from "../src/db.mjs";
+import { createUser } from "../src/core/users.mjs";
+import { mintEnrollment, ENROLLMENT_TTL_MINUTES } from "../src/core/credentials.mjs";
+import { config } from "../src/config.mjs";
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
   return i === -1 ? null : process.argv[i + 1];
-}
-
-function promptHidden(question) {
-  return new Promise((resolvePromise) => {
-    const rl = createInterface({ input: stdin, output: stdout, terminal: true });
-    // Suppress echo by swallowing what the readline interface would have written.
-    const originalWrite = stdout.write.bind(stdout);
-    let muted = false;
-    rl.question(question, (answer) => {
-      muted = false;
-      stdout.write = originalWrite;
-      stdout.write("\n");
-      rl.close();
-      resolvePromise(answer);
-    });
-    muted = true;
-    stdout.write = (chunk, ...rest) => {
-      if (muted && !String(chunk).includes(question)) return true;
-      return originalWrite(chunk, ...rest);
-    };
-  });
 }
 
 async function main() {
@@ -53,33 +33,23 @@ async function main() {
 
   await runMigrations({ log: () => {} });
 
-  let password;
-  if (process.argv.includes("--password-from-env")) {
-    password = process.env.SL_PASSWORD;
-    if (!password) {
-      console.error("--password-from-env was passed but SL_PASSWORD is not set.");
-      process.exitCode = 1;
-      return;
-    }
+  let user = await one("SELECT id, email, name FROM users WHERE lower(email) = lower($1)", [email]);
+  if (user) {
+    console.log(`${user.email} already exists (${user.id}). Minting a fresh enrolment link for it.`);
   } else {
-    password = await promptHidden("Password (12+ chars): ");
-    const again = await promptHidden("Repeat it: ");
-    if (password !== again) {
-      console.error("Those did not match.");
-      process.exitCode = 1;
-      return;
-    }
+    user = await createUser({ email, name });
+    console.log(`Created ${user.email} (${user.id}).`);
   }
 
-  const existing = await one("SELECT id, email FROM users WHERE lower(email) = lower($1)", [email]);
-  if (existing) {
-    await setPassword(existing.id, password);
-    console.log(`Password reset for existing account ${existing.email} (${existing.id}).`);
-    return;
-  }
-
-  const user = await createUser({ email, name, password });
-  console.log(`Created ${user.email} (${user.id}).`);
+  const enrollment = await mintEnrollment(user.id, arg("label") || "First passkey");
+  console.log("");
+  console.log("Open this once, on the device that should hold the passkey:");
+  console.log("");
+  console.log(`  ${config.publicOrigin}/#enroll=${enrollment.token}`);
+  console.log("");
+  console.log(`It works once and expires in ${ENROLLMENT_TTL_MINUTES} minutes. The token is in the`);
+  console.log("URL fragment, so it is never sent to the server in a request line and never lands");
+  console.log("in an access log. It is shown here and nowhere else.");
 }
 
 try {

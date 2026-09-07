@@ -94,26 +94,189 @@ function setInboxBadge(count) {
   badge.hidden = !count;
 }
 
-$("#login-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const error = $("#login-error");
-  const submit = $("#login-submit");
-  error.hidden = true;
-  submit.disabled = true;
-  try {
-    await api("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email: $("#email").value, password: $("#password").value }),
-    });
-    $("#password").value = "";
-    await start();
-  } catch (err) {
-    error.textContent = err.message;
-    error.hidden = false;
-  } finally {
-    submit.disabled = false;
+// ---------------------------------------------------------------------------
+// passkeys (WebAuthn)
+//
+// Design handoff, "Auth and sharing": passkeys for the app, no password screen. The browser
+// speaks ArrayBuffers and the server speaks base64url, so these two helpers are the whole
+// translation layer.
+// ---------------------------------------------------------------------------
+
+const b64urlToBytes = (str) => {
+  const padded = String(str).replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+};
+
+const bytesToB64url = (buf) => {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+
+const passkeysAvailable = () =>
+  typeof PublicKeyCredential !== "undefined" && Boolean(navigator.credentials);
+
+/** A real sign-in: fetch a challenge, get an assertion, hand it back for verification. */
+async function signInWithPasskey() {
+  const options = await api("/api/auth/passkey/options", { method: "POST", body: "{}" });
+  const assertion = await navigator.credentials.get({
+    publicKey: {
+      challenge: b64urlToBytes(options.challenge),
+      rpId: options.rpId,
+      timeout: options.timeout,
+      userVerification: options.userVerification,
+      // No allowCredentials on purpose: the passkey is discoverable, so the authenticator
+      // resolves the account itself. That is what lets this screen have no email field.
+    },
+  });
+  if (!assertion) throw new Error("No passkey was chosen.");
+  await api("/api/auth/passkey/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      challenge: options.challenge,
+      id: assertion.id,
+      response: {
+        clientDataJSON: bytesToB64url(assertion.response.clientDataJSON),
+        authenticatorData: bytesToB64url(assertion.response.authenticatorData),
+        signature: bytesToB64url(assertion.response.signature),
+        userHandle: assertion.response.userHandle ? bytesToB64url(assertion.response.userHandle) : null,
+      },
+    }),
+  });
+}
+
+/** Register a passkey — from a single-use enrolment link, or from an already-signed-in session. */
+async function createPasskey({ token = null, label = null } = {}) {
+  const options = await api("/api/auth/enroll/options", {
+    method: "POST",
+    body: JSON.stringify({ token, label }),
+  });
+  const credential = await navigator.credentials.create({
+    publicKey: {
+      challenge: b64urlToBytes(options.challenge),
+      rp: options.rp,
+      user: {
+        id: b64urlToBytes(options.user.id),
+        name: options.user.name,
+        displayName: options.user.displayName,
+      },
+      pubKeyCredParams: options.pubKeyCredParams,
+      timeout: options.timeout,
+      attestation: options.attestation,
+      authenticatorSelection: options.authenticatorSelection,
+      excludeCredentials: (options.excludeCredentials || []).map((c) => ({
+        type: c.type,
+        id: b64urlToBytes(c.id),
+        transports: c.transports,
+      })),
+    },
+  });
+  if (!credential) throw new Error("No passkey was created.");
+  return api("/api/auth/enroll/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      token,
+      label,
+      challenge: options.challenge,
+      response: {
+        clientDataJSON: bytesToB64url(credential.response.clientDataJSON),
+        attestationObject: bytesToB64url(credential.response.attestationObject),
+        transports: credential.response.getTransports ? credential.response.getTransports() : [],
+      },
+    }),
+  });
+}
+
+/**
+ * A fresh assertion inside a live session — what the vault reveal requires. Exported on the
+ * module scope so the Money Feature can call it without reimplementing the dance.
+ */
+async function reverifyWithPasskey() {
+  const options = await api("/api/auth/reverify/options", { method: "POST", body: "{}" });
+  const assertion = await navigator.credentials.get({
+    publicKey: {
+      challenge: b64urlToBytes(options.challenge),
+      rpId: options.rpId,
+      timeout: options.timeout,
+      userVerification: options.userVerification,
+      allowCredentials: (options.allowCredentials || []).map((c) => ({
+        type: c.type,
+        id: b64urlToBytes(c.id),
+        transports: c.transports,
+      })),
+    },
+  });
+  if (!assertion) throw new Error("No passkey was chosen.");
+  return api("/api/auth/reverify", {
+    method: "POST",
+    body: JSON.stringify({
+      challenge: options.challenge,
+      id: assertion.id,
+      response: {
+        clientDataJSON: bytesToB64url(assertion.response.clientDataJSON),
+        authenticatorData: bytesToB64url(assertion.response.authenticatorData),
+        signature: bytesToB64url(assertion.response.signature),
+      },
+    }),
+  });
+}
+window.shanesLife = { reverifyWithPasskey };
+
+function authError(id, err) {
+  const box = $(id);
+  // A cancelled Face ID prompt is not a failure worth shouting about; everything else is real.
+  if (err && (err.name === "NotAllowedError" || err.name === "AbortError")) {
+    box.hidden = true;
+    return;
   }
-});
+  box.textContent = err?.message || "That did not work.";
+  box.hidden = false;
+}
+
+async function runAuthAction(button, errorId, action) {
+  const error = $(errorId);
+  error.hidden = true;
+  button.disabled = true;
+  try {
+    await action();
+  } catch (err) {
+    authError(errorId, err);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+$("#passkey-signin").addEventListener("click", (event) =>
+  runAuthAction(event.currentTarget, "#login-error", async () => {
+    await signInWithPasskey();
+    await start();
+  }),
+);
+
+// The design's second control. The browser owns the cross-device picker (the QR / hybrid flow),
+// so this is the same assertion call — what differs is that it never tries the platform
+// authenticator silently first.
+$("#passkey-signin-other").addEventListener("click", (event) =>
+  runAuthAction(event.currentTarget, "#login-error", async () => {
+    await signInWithPasskey();
+    await start();
+  }),
+);
+
+$("#passkey-enroll").addEventListener("click", (event) =>
+  runAuthAction(event.currentTarget, "#enroll-error", async () => {
+    const token = enrollmentTokenFromUrl();
+    if (!token) throw new Error("This enrolment link is incomplete. Mint a new one.");
+    await createPasskey({ token });
+    // The token is single-use and already spent; get it out of the address bar.
+    history.replaceState(null, "", location.pathname + location.search);
+    await start();
+  }),
+);
 
 $("#sign-out").addEventListener("click", async () => {
   await api("/api/auth/logout", { method: "POST" });
@@ -121,10 +284,41 @@ $("#sign-out").addEventListener("click", async () => {
   showLogin();
 });
 
+/** The enrolment token rides in the fragment, so it never reaches the server in a request line. */
+function enrollmentTokenFromUrl() {
+  const match = /(?:^#|[#&])enroll=([^&]+)/.exec(location.hash || "");
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 function showLogin() {
   $("#app-view").hidden = true;
+  $("#enroll-view").hidden = true;
   $("#login-view").hidden = false;
-  $("#email").focus();
+
+  // Screen 1 has two drawings: "Continue with Face ID" on the phone, "Continue with passkey" on
+  // the desktop. Same button, and the platform decides which copy is true.
+  const onApple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
+  $("#passkey-signin-label").textContent = onApple ? "Continue with Face ID" : "Continue with passkey";
+
+  if (!passkeysAvailable()) {
+    const error = $("#login-error");
+    error.textContent = "This browser cannot use passkeys, and this app has no password to fall back on.";
+    error.hidden = false;
+    $("#passkey-signin").disabled = true;
+    $("#passkey-signin-other").disabled = true;
+  }
+}
+
+function showEnroll() {
+  $("#app-view").hidden = true;
+  $("#login-view").hidden = true;
+  $("#enroll-view").hidden = false;
+  if (!passkeysAvailable()) {
+    const error = $("#enroll-error");
+    error.textContent = "This browser cannot create passkeys. Open this link on a device that can.";
+    error.hidden = false;
+    $("#passkey-enroll").disabled = true;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -516,6 +710,77 @@ function itemRow(entityId, item) {
   return el("li", {}, [box, el("div", {}, [label, item.note ? el("span", { class: "who", text: item.note }) : null, who])]);
 }
 
+/**
+ * The passkeys on this account. A signed-in session may add another device without an enrolment
+ * token — the session it already holds is the authorisation. It may not remove the last one:
+ * there is no password to fall back on, so that would be a lockout, and the server refuses it.
+ */
+async function renderPasskeys(view) {
+  const { passkeys } = await api("/api/passkeys");
+  const section = el("section", { class: "section" }, [
+    el("h2", { text: "Passkeys" }),
+    el("p", {
+      class: "muted small",
+      text: "How you sign in. There is no password on this account.",
+    }),
+  ]);
+
+  for (const key of passkeys) {
+    section.append(
+      el("div", { class: "card" }, [
+        el("div", { class: "title", text: key.label }),
+        el("div", {
+          class: "meta",
+          text:
+            `added ${new Date(key.created_at).toLocaleDateString()} · ` +
+            (key.last_used_at ? `last used ${when(key.last_used_at)}` : "never used") +
+            (key.backed_up ? " · synced" : " · this device only"),
+        }),
+        passkeys.length > 1
+          ? el("div", { class: "row", style: "margin-top:.75rem" }, [
+              el("button", {
+                class: "small danger",
+                text: "Remove",
+                onClick: async (event) => {
+                  event.currentTarget.disabled = true;
+                  try {
+                    await api(`/api/passkeys/${key.id}`, { method: "DELETE" });
+                    await render();
+                  } catch (err) {
+                    event.currentTarget.disabled = false;
+                    alert(err.message);
+                  }
+                },
+              }),
+            ])
+          : el("div", { class: "meta", text: "The only passkey on this account — add another before removing it." }),
+      ]),
+    );
+  }
+
+  section.append(
+    el("div", { class: "row", style: "margin-top:.75rem" }, [
+      el("button", {
+        class: "small",
+        text: "Add a passkey on this device",
+        onClick: async (event) => {
+          const button = event.currentTarget;
+          button.disabled = true;
+          try {
+            await createPasskey({ label: `Passkey ${passkeys.length + 1}` });
+            await render();
+          } catch (err) {
+            button.disabled = false;
+            if (err.name !== "NotAllowedError" && err.name !== "AbortError") alert(err.message);
+          }
+        },
+      }),
+    ]),
+  );
+
+  view.append(section);
+}
+
 async function viewSettings(view) {
   const { tokens, endpoint } = await api("/api/mcp-tokens");
 
@@ -538,6 +803,8 @@ async function viewSettings(view) {
       ]),
     ]),
   );
+
+  await renderPasskeys(view);
 
   const mcp = el("section", { class: "section" }, [
     el("h2", { text: "Claude (MCP)" }),
@@ -663,9 +930,13 @@ async function render() {
 window.addEventListener("hashchange", render);
 
 async function start() {
+  // An enrolment link wins over everything: it is how the very first passkey gets created, and
+  // at that moment there is by definition no session to load.
+  if (enrollmentTokenFromUrl()) return showEnroll();
   const user = await loadMe();
   if (!user) return showLogin();
   $("#login-view").hidden = true;
+  $("#enroll-view").hidden = true;
   $("#app-view").hidden = false;
   await render();
 }

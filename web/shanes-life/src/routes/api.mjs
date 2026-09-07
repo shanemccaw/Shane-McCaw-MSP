@@ -3,8 +3,10 @@
 import { config } from "../config.mjs";
 import { Router, badRequest, forbidden, notFound, readJson, readBody, sendJson, tooMany, unauthorized } from "../http.mjs";
 import * as ratelimit from "../auth/ratelimit.mjs";
-import { SESSION_COOKIE, createSession, revokeAllSessions, revokeSession } from "../auth/sessions.mjs";
-import { authenticate, recordAuthEvent } from "../core/users.mjs";
+import { SESSION_COOKIE, createSession, markSessionVerified, revokeAllSessions, revokeSession } from "../auth/sessions.mjs";
+import { markSignedIn, recordAuthEvent } from "../core/users.mjs";
+import * as credentials from "../core/credentials.mjs";
+import * as webauthn from "../auth/webauthn.mjs";
 import * as audit from "../core/audit.mjs";
 import * as captures from "../core/captures.mjs";
 import * as categories from "../core/categories.mjs";
@@ -14,9 +16,10 @@ import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as shares from "../core/shares.mjs";
 
 // Deliberately tight: this app has one real account, so a burst of failures is an attack, not a
-// forgetful person. Both windows must pass -- per-address and per-source.
-const LOGIN_LIMIT_PER_IP = { limit: 10, windowMs: 15 * 60 * 1000 };
-const LOGIN_LIMIT_PER_EMAIL = { limit: 5, windowMs: 15 * 60 * 1000 };
+// forgetful person.
+const LOGIN_LIMIT_PER_IP = { limit: 20, windowMs: 15 * 60 * 1000 };
+// Enrolment is the one path that creates a credential, so it is limited harder than sign-in.
+const ENROLL_LIMIT_PER_IP = { limit: 10, windowMs: 60 * 60 * 1000 };
 
 function requireUser(ctx) {
   if (!ctx.session) throw unauthorized();
@@ -28,42 +31,271 @@ export function buildApiRouter() {
 
   // -- auth ---------------------------------------------------------------
 
-  router.post("/api/auth/login", async (req, res, _params, ctx) => {
-    const body = await readJson(req);
-    const email = String(body.email || "").trim();
-    const password = String(body.password || "");
-    if (!email || !password) throw badRequest("Email and password are both required.");
+  // Sign-in is a passkey assertion and nothing else. There is no /api/auth/login, no email
+  // field and no password field anywhere in this app -- design handoff screen 1 draws exactly
+  // two controls, "Continue with Face ID" and "Use a passkey from another device", and both of
+  // them are this pair of routes.
 
-    const ipGate = ratelimit.hit(`login:ip:${ctx.ip}`, LOGIN_LIMIT_PER_IP.limit, LOGIN_LIMIT_PER_IP.windowMs);
-    const emailGate = ratelimit.hit(
-      `login:email:${email.toLowerCase()}`,
-      LOGIN_LIMIT_PER_EMAIL.limit,
-      LOGIN_LIMIT_PER_EMAIL.windowMs,
-    );
-    if (!ipGate.allowed || !emailGate.allowed) {
-      await recordAuthEvent({ email, event: "login_throttled", ip: ctx.ip, userAgent: ctx.userAgent });
-      const retryMs = Math.max(ipGate.retryAfterMs, emailGate.retryAfterMs);
-      res.setHeader("Retry-After", String(Math.ceil(retryMs / 1000)));
+  router.post("/api/auth/passkey/options", async (_req, res, _params, ctx) => {
+    const gate = ratelimit.hit(`login:ip:${ctx.ip}`, LOGIN_LIMIT_PER_IP.limit, LOGIN_LIMIT_PER_IP.windowMs);
+    if (!gate.allowed) {
+      await recordAuthEvent({ event: "login_throttled", ip: ctx.ip, userAgent: ctx.userAgent });
+      res.setHeader("Retry-After", String(Math.ceil(gate.retryAfterMs / 1000)));
       throw tooMany("Too many sign-in attempts. Try again shortly.", {
-        retryAfterSeconds: Math.ceil(retryMs / 1000),
+        retryAfterSeconds: Math.ceil(gate.retryAfterMs / 1000),
+      });
+    }
+    // No allowCredentials: the passkeys this app registers are discoverable (residentKey
+    // "required"), so the authenticator itself resolves which account is signing in. That is
+    // what removes the email field from the screen -- and it means this endpoint leaks nothing
+    // about which accounts exist.
+    const challenge = await webauthn.issueChallenge("authentication");
+    return sendJson(res, 200, {
+      challenge,
+      rpId: webauthn.relyingPartyId(),
+      timeout: webauthn.CHALLENGE_TTL_SECONDS * 1000,
+      userVerification: "required",
+    });
+  });
+
+  router.post("/api/auth/passkey/verify", async (req, res, _params, ctx) => {
+    const body = await readJson(req);
+    const gate = ratelimit.hit(`login:ip:${ctx.ip}`, LOGIN_LIMIT_PER_IP.limit, LOGIN_LIMIT_PER_IP.windowMs);
+    if (!gate.allowed) {
+      await recordAuthEvent({ event: "login_throttled", ip: ctx.ip, userAgent: ctx.userAgent });
+      res.setHeader("Retry-After", String(Math.ceil(gate.retryAfterMs / 1000)));
+      throw tooMany("Too many sign-in attempts. Try again shortly.", {
+        retryAfterSeconds: Math.ceil(gate.retryAfterMs / 1000),
       });
     }
 
-    const result = await authenticate(email, password);
-    if (!result.ok) {
-      await recordAuthEvent({ email, userId: result.userId ?? null, event: result.reason, ip: ctx.ip, userAgent: ctx.userAgent });
-      // One message for every failure mode: a wrong password and an address with no account
-      // must be indistinguishable from the outside.
-      throw unauthorized("That email and password do not match an account.");
+    // One message for every failure mode below, exactly as the password flow did: an unknown
+    // credential and a bad signature must be indistinguishable from the outside.
+    const refuse = "That passkey did not sign you in.";
+
+    const consumed = await webauthn.consumeChallenge(body.challenge, "authentication");
+    if (!consumed) {
+      await recordAuthEvent({ event: "login_bad_assertion", ip: ctx.ip, userAgent: ctx.userAgent });
+      throw unauthorized(refuse);
     }
 
-    ratelimit.clear(`login:email:${email.toLowerCase()}`);
+    const credential = await credentials.findCredential(body.id);
+    if (!credential || !credential.is_active) {
+      await recordAuthEvent({
+        email: credential?.email ?? null,
+        userId: credential?.user_id ?? null,
+        event: credential ? "login_inactive" : "login_unknown_credential",
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+      });
+      throw unauthorized(refuse);
+    }
+
+    let verified;
+    try {
+      verified = webauthn.verifyAssertion({
+        expectedChallenge: consumed.challenge,
+        response: body.response,
+        credential,
+      });
+    } catch (err) {
+      await recordAuthEvent({
+        email: credential.email,
+        userId: credential.user_id,
+        event: "login_bad_assertion",
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+      });
+      if (!config.isProduction) console.error("[webauthn] assertion refused:", err.message);
+      throw unauthorized(refuse);
+    }
+
+    await credentials.touchCredential(credential.credential_id, verified.signCount, verified.backedUp);
+    await markSignedIn(credential.user_id);
     ratelimit.clear(`login:ip:${ctx.ip}`);
-    const session = await createSession(result.user.id, { userAgent: ctx.userAgent, ip: ctx.ip });
-    await recordAuthEvent({ email, userId: result.user.id, event: "login_ok", ip: ctx.ip, userAgent: ctx.userAgent });
+
+    const session = await createSession(credential.user_id, {
+      userAgent: ctx.userAgent,
+      ip: ctx.ip,
+      credentialId: credential.credential_id,
+    });
+    await recordAuthEvent({
+      email: credential.email,
+      userId: credential.user_id,
+      event: "login_ok",
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
 
     ctx.setSessionCookie(session.token, session.ttlSeconds);
-    return sendJson(res, 200, { user: result.user, expiresAt: session.expiresAt });
+    return sendJson(res, 200, {
+      user: { id: credential.user_id, email: credential.email, name: credential.name },
+      expiresAt: session.expiresAt,
+    });
+  });
+
+  // -- enrolling a passkey ------------------------------------------------
+
+  // Two ways in, and no third: a single-use enrolment token minted at a real terminal
+  // (`npm run enroll-passkey`), or an already-signed-in session adding another device. There is
+  // no self-service path, because in a passkey-only app that would be a password reset.
+  async function resolveEnrollmentSubject(body, ctx) {
+    if (body.token) {
+      const pending = await credentials.peekEnrollment(body.token);
+      if (!pending || !pending.is_active) {
+        await recordAuthEvent({ event: "enroll_bad_token", ip: ctx.ip, userAgent: ctx.userAgent });
+        throw unauthorized("That enrolment link is not valid any more. Mint a new one with `npm run enroll-passkey`.");
+      }
+      return { userId: pending.user_id, email: pending.email, name: pending.name, label: pending.label };
+    }
+    const user = requireUser(ctx);
+    return { userId: user.id, email: user.email, name: user.name, label: body.label || "Passkey" };
+  }
+
+  router.post("/api/auth/enroll/options", async (req, res, _params, ctx) => {
+    const body = await readJson(req);
+    const gate = ratelimit.hit(`enroll:ip:${ctx.ip}`, ENROLL_LIMIT_PER_IP.limit, ENROLL_LIMIT_PER_IP.windowMs);
+    if (!gate.allowed) {
+      res.setHeader("Retry-After", String(Math.ceil(gate.retryAfterMs / 1000)));
+      throw tooMany("Too many enrolment attempts. Try again later.", {
+        retryAfterSeconds: Math.ceil(gate.retryAfterMs / 1000),
+      });
+    }
+    const subject = await resolveEnrollmentSubject(body, ctx);
+    const challenge = await webauthn.issueChallenge("registration", subject.userId);
+    const existing = await credentials.listCredentials(subject.userId);
+    return sendJson(res, 200, {
+      challenge,
+      rp: { id: webauthn.relyingPartyId(), name: webauthn.relyingPartyName() },
+      // The user handle is the account's real uuid, not the email: it is stored on the
+      // authenticator forever, and an email can change.
+      user: { id: Buffer.from(subject.userId).toString("base64url"), name: subject.email, displayName: subject.name },
+      pubKeyCredParams: webauthn.SUPPORTED_ALGORITHMS.map((a) => ({ type: "public-key", alg: a.alg })),
+      timeout: webauthn.CHALLENGE_TTL_SECONDS * 1000,
+      attestation: "none",
+      authenticatorSelection: {
+        // Discoverable, so sign-in needs no email field; verified, so it is a real Face ID /
+        // fingerprint / PIN check rather than mere presence.
+        residentKey: "required",
+        requireResidentKey: true,
+        userVerification: "required",
+      },
+      excludeCredentials: existing.map((c) => ({ type: "public-key", id: c.credential_id, transports: c.transports })),
+    });
+  });
+
+  router.post("/api/auth/enroll/verify", async (req, res, _params, ctx) => {
+    const body = await readJson(req);
+    const subject = await resolveEnrollmentSubject(body, ctx);
+
+    const consumed = await webauthn.consumeChallenge(body.challenge, "registration");
+    if (!consumed || consumed.user_id !== subject.userId) {
+      throw badRequest("That registration attempt expired. Start again.");
+    }
+
+    let registration;
+    try {
+      registration = webauthn.verifyRegistration({
+        expectedChallenge: consumed.challenge,
+        response: body.response,
+      });
+    } catch (err) {
+      throw badRequest(`That passkey could not be registered: ${err.message}`);
+    }
+
+    const label = String(body.label || subject.label || "Passkey").slice(0, 80);
+    // Consume the enrolment token BEFORE storing, so a token can never survive a duplicate
+    // credential error and be reused.
+    if (body.token) {
+      const used = await credentials.consumeEnrollment(body.token, registration.credentialId);
+      if (!used) throw unauthorized("That enrolment link has already been used.");
+    }
+
+    const stored = await credentials.storeCredential(subject.userId, registration, label);
+    await recordAuthEvent({
+      email: subject.email,
+      userId: subject.userId,
+      event: "passkey_registered",
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+
+    // Enrolling from a link signs you straight in -- there is nothing else to prove.
+    if (body.token) {
+      await markSignedIn(subject.userId);
+      const session = await createSession(subject.userId, {
+        userAgent: ctx.userAgent,
+        ip: ctx.ip,
+        credentialId: registration.credentialId,
+      });
+      ctx.setSessionCookie(session.token, session.ttlSeconds);
+      return sendJson(res, 201, {
+        passkey: stored,
+        user: { id: subject.userId, email: subject.email, name: subject.name },
+        expiresAt: session.expiresAt,
+      });
+    }
+
+    return sendJson(res, 201, { passkey: stored });
+  });
+
+  router.get("/api/passkeys", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { passkeys: await credentials.listCredentials(user.id) });
+  });
+
+  router.delete("/api/passkeys/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const removed = await credentials.revokeCredential(user.id, params.id);
+    await recordAuthEvent({
+      email: user.email,
+      userId: user.id,
+      event: "passkey_revoked",
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+    return sendJson(res, 200, { ok: true, removed });
+  });
+
+  // A fresh assertion inside a live session. The vault's reveal is the caller the design names
+  // ("passkey (WebAuthn) re-auth per reveal ... a stated security requirement, not polish") --
+  // the vault UI itself is a later Feature, but the proof-of-freshness it needs lives here.
+  router.post("/api/auth/reverify/options", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const owned = await credentials.listCredentials(user.id);
+    return sendJson(res, 200, {
+      challenge: await webauthn.issueChallenge("vault", user.id),
+      rpId: webauthn.relyingPartyId(),
+      timeout: webauthn.CHALLENGE_TTL_SECONDS * 1000,
+      userVerification: "required",
+      allowCredentials: owned.map((c) => ({ type: "public-key", id: c.credential_id, transports: c.transports })),
+    });
+  });
+
+  router.post("/api/auth/reverify", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const consumed = await webauthn.consumeChallenge(body.challenge, "vault");
+    if (!consumed || consumed.user_id !== user.id) throw unauthorized("That check expired. Try again.");
+
+    const credential = await credentials.findCredential(body.id);
+    if (!credential || credential.user_id !== user.id) throw unauthorized("That passkey is not on this account.");
+
+    let verified;
+    try {
+      verified = webauthn.verifyAssertion({
+        expectedChallenge: consumed.challenge,
+        response: body.response,
+        credential,
+      });
+    } catch (err) {
+      if (!config.isProduction) console.error("[webauthn] re-verify refused:", err.message);
+      throw unauthorized("That passkey check did not pass.");
+    }
+
+    await credentials.touchCredential(credential.credential_id, verified.signCount, verified.backedUp);
+    const verifiedAt = await markSessionVerified(ctx.sessionToken, credential.credential_id);
+    return sendJson(res, 200, { ok: true, verifiedAt });
   });
 
   router.post("/api/auth/logout", async (_req, res, _params, ctx) => {
@@ -97,6 +329,8 @@ export function buildApiRouter() {
       user,
       pendingCaptures: await captures.pendingCount(user.id),
       publicOrigin: config.publicOrigin,
+      passkeyCount: await credentials.countCredentials(user.id),
+      lastVerifiedAt: ctx.session.lastVerifiedAt,
     });
   });
 

@@ -42,7 +42,7 @@ a { color: inherit; }
 .small { font-size: 0.85rem; }
 .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 0.8rem; }
 
-/* ---------- login ---------- */
+/* ---------- sign in / enrol (design handoff screen 1) ---------- */
 
 .centered {
   min-height: 100dvh;
@@ -52,11 +52,17 @@ a { color: inherit; }
 }
 
 .auth-card { width: min(400px, 100%); display: grid; gap: 0.4rem; }
-.auth-mark { border-radius: 18px; justify-self: center; margin-bottom: 0.25rem; }
-.auth-card h1 { text-align: center; }
-.auth-card > p { text-align: center; margin: 0 0 1rem; }
-.auth-card label { font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; }
-.auth-card button { margin-top: 1rem; }
+.auth-mark { border-radius: 28px; justify-self: center; margin-bottom: 0.5rem; }
+.auth-card h1 { text-align: center; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; margin: 0; }
+.auth-tagline { text-align: center; margin: 0.4rem 0 1.75rem; }
+/* 18/600, matching the screen's own "Sign in" label above the buttons. */
+.auth-heading { text-align: center; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 0.5rem; }
+/* 52px primary on the phone, per the screen. */
+.auth-primary { min-height: 52px; display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 0.25rem; }
+.auth-secondary { min-height: 44px; margin-top: 0.15rem; }
+.auth-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.auth-footnote { text-align: center; font-size: 13px; line-height: 1.5; color: var(--muted); margin: 1rem 0 0; }
+.auth-card .error { text-align: center; margin: 0.75rem 0 0; }
 
 /* ---------- shell ---------- */
 

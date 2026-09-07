@@ -1,7 +1,23 @@
--- Shane's Life -- real foundation schema (Git #3087).
+-- Shane's Life -- foundation schema (Git #3087, repointed onto the shared database by #3107).
+--
+-- WHERE THIS RUNS
+-- ---------------
+-- Against the SAME real Postgres database the ShanesSurvival WPF app already uses, on top of
+-- its real migrations 001-012 -- not a database of its own. Design handoff README, "Data model
+-- additions": "extending ShanesSurvival migrations 001-012", and contract Section 1's first
+-- locked decision: one app, one login, one Postgres.
+--
+-- 013 is the next free number after ShanesSurvival's 012_transaction_tags.sql. The number space
+-- is now SHARED across two directories -- desktop/ShanesSurvival/migrations/ and this one --
+-- so the next free number must be checked against BOTH before naming a new file. Both runners
+-- write the same real schema_migrations(filename, applied_at) ledger and each only ever executes
+-- files from its own directory, so neither can run the other's.
+--
+-- Nothing in here touches, renames or reshapes any of ShanesSurvival's own 12 tables. Every name
+-- below was checked against the live database first and none of them collide.
 --
 -- Design rules this schema exists to honour, straight out of
--- desktop/ShanesSurvival/docs/shanes-life-design-contract-pack.md:
+-- Design/design_handoff_shanes_life/ (README + contract.md):
 --
 --   * Section 3 "extensibility principle" -- the capture box is genuinely open. Claude must be
 --     able to invent a sensible NEW category on the fly ("mom is coming to visit the 12th-18th")
@@ -10,31 +26,32 @@
 --     payload alongside its typed columns.
 --   * Section 3 "single entry point" -- everything enters through captures, whatever the
 --     medium (text / voice / photo) and whatever the source (web UI, MCP, a share link).
---   * Section 9 -- real auth, plus shareable links that need NO login.
+--   * Section 9 / handoff "Auth and sharing" -- PASSKEYS (WebAuthn) for the app. There is no
+--     password column here on purpose: the design specifies passkey-only sign-in with no
+--     password screen, and #3107 replaced the scrypt columns #3087 shipped.
 --   * Section 10 -- the hosted app never calls a paid AI API at runtime. Classification arrives
 --     from a Claude conversation via MCP and is STORED here; nothing in this schema implies
 --     server-side inference.
 
+-- Same shape ShanesSurvival's own MigrationRunner.cs creates, so whichever of the two runs
+-- first on a fresh database produces a ledger the other can read and write.
 CREATE TABLE IF NOT EXISTS schema_migrations (
-    filename text PRIMARY KEY,
-    ran_at   timestamptz NOT NULL DEFAULT now()
+    filename   text PRIMARY KEY,
+    applied_at timestamptz NOT NULL DEFAULT now()
 );
 
 -- ---------------------------------------------------------------------------
 -- Real accounts + real server-side sessions
 -- ---------------------------------------------------------------------------
 
+-- No password columns. Sign-in is a WebAuthn assertion against webauthn_credentials below.
 CREATE TABLE IF NOT EXISTS users (
-    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    email           text        NOT NULL,
-    name            text        NOT NULL,
-    -- scrypt (Node built-in crypto). Real per-user salt; no shared pepper stored in the row.
-    password_hash   text        NOT NULL,
-    password_salt   text        NOT NULL,
-    password_params text        NOT NULL,
-    is_active       boolean     NOT NULL DEFAULT true,
-    created_at      timestamptz NOT NULL DEFAULT now(),
-    last_login_at   timestamptz
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    email         text        NOT NULL,
+    name          text        NOT NULL,
+    is_active     boolean     NOT NULL DEFAULT true,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    last_login_at timestamptz
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_key ON users (lower(email));
@@ -50,19 +67,81 @@ CREATE TABLE IF NOT EXISTS sessions (
     expires_at   timestamptz NOT NULL,
     revoked_at   timestamptz,
     user_agent   text,
-    ip           text
+    ip           text,
+    -- The credential this session was actually signed in with. The vault (migration 017) needs
+    -- a FRESH assertion per reveal, and "fresh" is measured against this session's last one.
+    credential_id     text,
+    last_verified_at  timestamptz
 );
 
 CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id, expires_at DESC);
 
--- Real record of every authentication outcome -- the audit trail behind the login rate limiter.
+-- ---------------------------------------------------------------------------
+-- WebAuthn (passkeys) -- the ONLY way into this app
+-- ---------------------------------------------------------------------------
+
+-- One row per registered authenticator. public_key is the COSE key exactly as the authenticator
+-- returned it; the server re-derives a verifying key from it on every assertion. Nothing secret
+-- lives here -- a public key is public, which is the entire point of choosing passkeys over a
+-- password hash for an app that guards real financial reference data.
+CREATE TABLE IF NOT EXISTS webauthn_credentials (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    credential_id text        NOT NULL UNIQUE,          -- base64url, as sent by the browser
+    public_key    bytea       NOT NULL,                 -- raw COSE_Key
+    sign_count    bigint      NOT NULL DEFAULT 0,
+    transports    text[]      NOT NULL DEFAULT '{}',
+    aaguid        text,
+    label         text        NOT NULL DEFAULT 'Passkey',
+    backed_up     boolean     NOT NULL DEFAULT false,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    last_used_at  timestamptz,
+    revoked_at    timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS webauthn_credentials_user_idx ON webauthn_credentials (user_id, created_at DESC);
+
+-- Server-issued challenges. A WebAuthn challenge is single-use and short-lived; keeping it in
+-- the database rather than in memory means a restart mid-sign-in fails closed instead of
+-- accepting a replayed one, and it is the same store both processes would read if this ever
+-- runs as more than one.
+CREATE TABLE IF NOT EXISTS webauthn_challenges (
+    challenge  text PRIMARY KEY,                        -- base64url
+    purpose    text        NOT NULL,                    -- registration | authentication | vault
+    user_id    uuid REFERENCES users(id) ON DELETE CASCADE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS webauthn_challenges_expiry_idx ON webauthn_challenges (expires_at);
+
+-- Enrolling the FIRST passkey is the one thing a passkey-only app cannot do with a passkey.
+-- A single-use, short-lived, out-of-band token (minted by `npm run enroll-passkey` at a real
+-- terminal on this machine) is what bootstraps it -- and the same mechanism adds a new laptop.
+-- Only the SHA-256 is stored, exactly like every other bearer secret in this app.
+CREATE TABLE IF NOT EXISTS webauthn_enrollments (
+    id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash text        NOT NULL UNIQUE,
+    label      text        NOT NULL DEFAULT 'Passkey',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    used_at    timestamptz,
+    credential_id text
+);
+
+CREATE INDEX IF NOT EXISTS webauthn_enrollments_user_idx ON webauthn_enrollments (user_id, created_at DESC);
+
+-- Real record of every authentication outcome -- the audit trail behind the sign-in rate limiter.
 CREATE TABLE IF NOT EXISTS auth_events (
     id         bigserial PRIMARY KEY,
     at         timestamptz NOT NULL DEFAULT now(),
     email      text,
     user_id    uuid REFERENCES users(id) ON DELETE SET NULL,
-    event      text        NOT NULL,   -- login_ok | login_bad_password | login_unknown_user
+    event      text        NOT NULL,   -- login_ok | login_bad_assertion | login_unknown_credential
                                        -- login_inactive | login_throttled | logout
+                                       -- passkey_registered | passkey_revoked | enroll_bad_token
     ip         text,
     user_agent text
 );
@@ -80,6 +159,7 @@ CREATE TABLE IF NOT EXISTS categories (
     icon        text        NOT NULL DEFAULT 'sparkles',  -- lucide-style name; UI falls back
     color       text        NOT NULL DEFAULT 'slate',
     description text,
+    lead_days   integer,                                  -- handoff: new_category(name, icon, lead_days)
     created_by  text        NOT NULL DEFAULT 'claude',    -- claude | shane | system
     created_at  timestamptz NOT NULL DEFAULT now(),
     use_count   integer     NOT NULL DEFAULT 0
@@ -104,17 +184,23 @@ CREATE TABLE IF NOT EXISTS media (
 
 CREATE INDEX IF NOT EXISTS media_user_idx ON media (user_id, created_at DESC);
 
+-- category / routed_to / build_requested are the handoff's own captures() columns. category is
+-- FREE TEXT here on purpose -- Claude's read of a capture is recorded before any category row
+-- necessarily exists, so this one deliberately does NOT reference categories(slug).
 CREATE TABLE IF NOT EXISTS captures (
-    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id       uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    kind          text        NOT NULL DEFAULT 'text',   -- text | voice | photo
-    body_text     text,
-    media_id      uuid REFERENCES media(id) ON DELETE SET NULL,
-    source        text        NOT NULL DEFAULT 'web',    -- web | mcp | share
-    status        text        NOT NULL DEFAULT 'pending',-- pending | classified | dismissed
-    entity_id     uuid,                                  -- FK added after entities exists
-    classified_at timestamptz,
-    created_at    timestamptz NOT NULL DEFAULT now()
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind            text        NOT NULL DEFAULT 'text',   -- text | voice | photo
+    body_text       text,
+    media_id        uuid REFERENCES media(id) ON DELETE SET NULL,
+    source          text        NOT NULL DEFAULT 'web',    -- web | mcp | share
+    status          text        NOT NULL DEFAULT 'pending',-- pending | classified | dismissed
+    category        text,                                  -- Claude's read; free text, not an enum
+    routed_to       text,                                  -- which room it landed in
+    build_requested boolean     NOT NULL DEFAULT false,    -- "Scope a build" -> Review's teal badge
+    entity_id       uuid,                                  -- FK added after entities exists
+    classified_at   timestamptz,
+    created_at      timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS captures_user_status_idx ON captures (user_id, status, created_at DESC);
@@ -123,9 +209,10 @@ CREATE INDEX IF NOT EXISTS captures_user_status_idx ON captures (user_id, status
 -- Entities -- one generic shape for every kind of thing (Section 3)
 -- ---------------------------------------------------------------------------
 
--- A shopping list, an appointment, a birthday, "mom is visiting the 12th-18th", a movie to
--- watch -- all the same row shape. What differs is category (open) and data (open jsonb).
--- Shopping Lists, the next Feature, is a consumer of this table, not a new table.
+-- A capture Claude files under a category nobody coded for lands here: same row shape whatever
+-- it is. The TYPED rooms the design draws (dates, pets, lists, things, ... in migrations 014-018)
+-- have real tables of their own; this is the open tail that lets a brand-new kind of thing exist
+-- on the day Claude invents it, with no schema change and no developer.
 CREATE TABLE IF NOT EXISTS entities (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,

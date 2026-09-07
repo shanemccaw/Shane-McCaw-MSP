@@ -4,19 +4,29 @@
 //   npm start          # in one terminal
 //   npm run check      # in another
 //
-// It exercises the whole foundation the way it is actually used: sign in with a real account,
-// capture something, have MCP classify it into a brand-new category nobody coded for, mint a
-// no-login share link, tick an item off through that link with no cookie at all, and confirm the
-// tick is visible to the signed-in owner. Nothing is stubbed and nothing is faked -- every
-// assertion is against real rows.
+// It exercises the whole foundation the way it is actually used: enrol a real passkey, sign in
+// with a real WebAuthn assertion, capture something, have MCP classify it into a brand-new
+// category nobody coded for, mint a no-login share link, tick an item off through that link with
+// no cookie at all, and confirm the tick is visible to the signed-in owner. Nothing is stubbed
+// and nothing is faked -- every assertion is against real rows.
+//
+// The passkey half runs against a real software authenticator (bin/soft-authenticator.mjs):
+// real P-256 keys, real ECDSA signatures, real CBOR. What it does NOT cover is the browser half
+// -- that app.js calls navigator.credentials with the right options -- and it says so in its own
+// output rather than implying coverage it does not have.
 //
 // It creates a disposable account (check+<timestamp>@shanes.life) and deletes it at the end, so
-// running it never leaves residue in real data.
+// running it never leaves residue in real data. Since #3107 that real data is the SAME database
+// ShanesSurvival uses, so it also asserts, out loud, that it has not touched a single one of
+// ShanesSurvival's own rows.
 
-import { closePool, one, query } from "../src/db.mjs";
+import { closePool, many, one, query } from "../src/db.mjs";
 import { runMigrations } from "../src/migrate.mjs";
 import { createUser } from "../src/core/users.mjs";
+import { mintEnrollment } from "../src/core/credentials.mjs";
 import { issueMcpToken } from "../src/core/mcp-tokens.mjs";
+import { relyingPartyId } from "../src/auth/webauthn.mjs";
+import { SoftAuthenticator } from "./soft-authenticator.mjs";
 
 const BASE = (process.env.SL_CHECK_URL || "http://localhost:5000").replace(/\/+$/, "");
 const results = [];
@@ -78,10 +88,42 @@ function toolResult(reply) {
 
 const stamp = Date.now();
 const email = `check+${stamp}@shanes.life`;
-const password = `check-${stamp}-passphrase`;
 // A slug no code anywhere in this repo has ever heard of -- the point of the extensibility test.
 const noveltyCategory = `check_novelty_${stamp}`;
 let userId = null;
+
+// ShanesSurvival's own tables. This check now runs against the same real database the WPF app
+// reads, holding Shane's real Plaid-synced accounts and transactions, so "it leaves no residue"
+// has to be proved rather than asserted.
+const SURVIVAL_TABLES = [
+  "accounts",
+  "transactions",
+  "debts",
+  "plaid_items",
+  "survival_snapshots",
+  "pay_period_plans",
+  "pay_period_plan_allocations",
+  "income_sources",
+  "income_entries",
+  "expected_one_time_events",
+  "transaction_tags",
+];
+
+async function survivalCounts() {
+  const rows = await many(
+    `SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = ANY($1)`,
+    [SURVIVAL_TABLES],
+  );
+  const counts = {};
+  for (const { table_name: table } of rows) {
+    const row = await one(`SELECT count(*)::int AS n FROM ${table}`);
+    counts[table] = row.n;
+  }
+  return counts;
+}
+
+let survivalBefore = null;
 
 async function main() {
   await runMigrations({ log: () => {} });
@@ -92,24 +134,115 @@ async function main() {
     return;
   }
 
-  // 1. real account, real login
-  const user = await createUser({ email, name: "Check Account", password });
-  userId = user.id;
+  // 0b. it is the SHARED database, not one of this app's own (Git #3107)
+  survivalBefore = await survivalCounts();
+  const dbName = (await one("SELECT current_database() AS db")).db;
+  check(
+    "it is running against the shared ShanesSurvival database",
+    Object.keys(survivalBefore).length === SURVIVAL_TABLES.length,
+    `${dbName}: found ${Object.keys(survivalBefore).length}/${SURVIVAL_TABLES.length} ShanesSurvival tables`,
+  );
+  const migrated = await many("SELECT filename FROM schema_migrations ORDER BY filename");
+  const names = migrated.map((m) => m.filename);
+  check(
+    "ShanesSurvival's own migrations 001-012 are applied under this app's 013+",
+    names.some((n) => n.startsWith("001_init")) && names.some((n) => n.startsWith("013_")),
+    names.join(", "),
+  );
 
-  const badLogin = await http("/api/auth/login", { method: "POST", body: { email, password: "wrong-password-entirely" }, auth: false });
-  check("a wrong password is refused", badLogin.status === 401, `status ${badLogin.status}`);
-  check("the refusal does not say whether the account exists", badLogin.json?.error === "That email and password do not match an account.", badLogin.json?.error);
+  // 1. real account, real passkey enrolment, real WebAuthn sign-in
+  const user = await createUser({ email, name: "Check Account" });
+  userId = user.id;
 
   cookie = null;
   const anon = await http("/api/entities", { auth: false });
   check("the API refuses an unauthenticated read", anon.status === 401, `status ${anon.status}`);
 
-  const login = await http("/api/auth/login", { method: "POST", body: { email, password } });
-  check("a real login succeeds", login.status === 200 && login.json?.user?.email === email, JSON.stringify(login.json));
-  check("login sets an HttpOnly session cookie", /sl_session=/.test(cookie || ""), cookie ? "cookie set" : "no cookie");
+  check(
+    "there is no password login route left anywhere",
+    (await http("/api/auth/login", { method: "POST", body: { email, password: "anything" }, auth: false })).status === 404,
+    "POST /api/auth/login",
+  );
 
+  const authenticator = new SoftAuthenticator({ rpId: relyingPartyId(), origin: BASE });
+
+  // Enrolment needs a single-use out-of-band token; the browser cannot mint one.
+  const noToken = await http("/api/auth/enroll/options", { method: "POST", body: {}, auth: false });
+  check("enrolment without a token or a session is refused", noToken.status === 401, `status ${noToken.status}`);
+
+  const badEnrollToken = await http("/api/auth/enroll/options", { method: "POST", body: { token: "not-a-real-token" }, auth: false });
+  check("an invalid enrolment token is refused", badEnrollToken.status === 401, `status ${badEnrollToken.status}`);
+
+  const enrollment = await mintEnrollment(userId, "Check passkey");
+  const regOptions = await http("/api/auth/enroll/options", { method: "POST", body: { token: enrollment.token }, auth: false });
+  check("a real enrolment token yields registration options", regOptions.status === 200 && Boolean(regOptions.json?.challenge), `status ${regOptions.status}`);
+  check("registration demands a discoverable, user-verified credential",
+    regOptions.json?.authenticatorSelection?.residentKey === "required" &&
+      regOptions.json?.authenticatorSelection?.userVerification === "required",
+    JSON.stringify(regOptions.json?.authenticatorSelection));
+
+  const registered = await http("/api/auth/enroll/verify", {
+    method: "POST",
+    body: { token: enrollment.token, challenge: regOptions.json.challenge, ...authenticator.register(regOptions.json.challenge) },
+    auth: false,
+  });
+  check("a real passkey registers", registered.status === 201 && Boolean(registered.json?.passkey?.id), JSON.stringify(registered.json).slice(0, 200));
+  check("enrolling from a link signs you straight in", registered.json?.user?.email === email);
+
+  const replayed = await http("/api/auth/enroll/options", { method: "POST", body: { token: enrollment.token }, auth: false });
+  check("a spent enrolment token cannot be reused", replayed.status === 401, `status ${replayed.status}`);
+
+  await http("/api/auth/logout", { method: "POST" });
+  cookie = null;
+
+  // The real sign-in the app actually performs.
+  const authOptions = await http("/api/auth/passkey/options", { method: "POST", body: {}, auth: false });
+  check("sign-in issues a challenge without an email address", authOptions.status === 200 && Boolean(authOptions.json?.challenge), `status ${authOptions.status}`);
+  check("the sign-in options carry no allowCredentials, so nothing leaks which accounts exist",
+    authOptions.json?.allowCredentials === undefined, JSON.stringify(Object.keys(authOptions.json || {})));
+
+  const login = await http("/api/auth/passkey/verify", {
+    method: "POST",
+    body: { challenge: authOptions.json.challenge, ...authenticator.assert(authOptions.json.challenge) },
+    auth: false,
+  });
+  check("a real passkey assertion signs in", login.status === 200 && login.json?.user?.email === email, JSON.stringify(login.json));
+  check("sign-in sets an HttpOnly session cookie", /sl_session=/.test(cookie || ""), cookie ? "cookie set" : "no cookie");
+
+  // A used challenge is dead. This is the replay test, and it must fail.
+  const savedLoginCookie = cookie;
+  cookie = null;
+  const replayAssertion = await http("/api/auth/passkey/verify", {
+    method: "POST",
+    body: { challenge: authOptions.json.challenge, ...authenticator.assert(authOptions.json.challenge) },
+    auth: false,
+  });
+  check("a replayed challenge is refused", replayAssertion.status === 401, `status ${replayAssertion.status}`);
+
+  // A tampered signature over a fresh, valid challenge must also fail -- that is the check that
+  // proves the signature is genuinely verified rather than merely parsed.
+  const freshOptions = await http("/api/auth/passkey/options", { method: "POST", body: {}, auth: false });
+  const forged = await http("/api/auth/passkey/verify", {
+    method: "POST",
+    body: {
+      challenge: freshOptions.json.challenge,
+      ...authenticator.assert(freshOptions.json.challenge, { tamperSignature: true }),
+    },
+    auth: false,
+  });
+  check("a tampered assertion signature is refused", forged.status === 401, `status ${forged.status}`);
+  check("every refusal reads the same, so nothing distinguishes the failure modes",
+    replayAssertion.json?.error === "That passkey did not sign you in." && forged.json?.error === replayAssertion.json?.error,
+    `${replayAssertion.json?.error} / ${forged.json?.error}`);
+
+  cookie = savedLoginCookie;
   const me = await http("/api/me");
   check("the session identifies the right account", me.json?.user?.email === email);
+  check("the account has exactly one registered passkey", me.json?.passkeyCount === 1, String(me.json?.passkeyCount));
+
+  const onlyKey = await http("/api/passkeys");
+  const removeLast = await http(`/api/passkeys/${onlyKey.json.passkeys[0].id}`, { method: "DELETE" });
+  check("removing the only passkey is refused, because there is no password to fall back on", removeLast.status === 400, `status ${removeLast.status}`);
 
   // 2. the universal capture box
   const capture = await http("/api/captures", { method: "POST", body: { text: "picking mom up from the airport on the 14th" } });
@@ -230,6 +363,22 @@ async function main() {
   check("the session is dead after signing out", afterLogout.status === 401, `status ${afterLogout.status}`);
 }
 
+/**
+ * The whole run happened against the database the WPF app reads. Prove nothing in it moved.
+ * A count is enough here because this check only ever inserts -- it has no code path that could
+ * update a ShanesSurvival row in place.
+ */
+async function assertSurvivalUntouched() {
+  if (!survivalBefore) return;
+  const after = await survivalCounts();
+  const moved = Object.keys(survivalBefore).filter((t) => survivalBefore[t] !== after[t]);
+  check(
+    "not one ShanesSurvival row moved during the whole run",
+    moved.length === 0,
+    moved.length ? moved.map((t) => `${t}: ${survivalBefore[t]} -> ${after[t]}`).join(", ") : Object.keys(after).length + " tables re-counted",
+  );
+}
+
 try {
   await main();
 } catch (err) {
@@ -237,14 +386,23 @@ try {
   results.push(`FAIL  unexpected error -- ${err.stack || err.message}`);
 } finally {
   // Clean up: the disposable account and everything it owns, plus the throwaway category.
+  // Scoped by this run's own user id -- it can never reach a ShanesSurvival table.
   if (userId) {
     await query("DELETE FROM users WHERE id = $1", [userId]).catch(() => {});
     await query("DELETE FROM categories WHERE slug = $1", [noveltyCategory]).catch(() => {});
   }
+  await assertSurvivalUntouched().catch((err) => {
+    failures++;
+    results.push(`FAIL  could not re-count ShanesSurvival's tables -- ${err.message}`);
+  });
   await closePool();
   console.log("");
   for (const line of results) console.log(line);
   console.log("");
   console.log(`${results.length - failures}/${results.length} checks passed against ${BASE}`);
+  console.log("");
+  console.log("Not covered here: the browser half of WebAuthn (that app.js calls");
+  console.log("navigator.credentials with the right options, and that Face ID actually fires).");
+  console.log("The server half above is real -- real P-256 keys, real signatures, real refusals.");
   process.exitCode = failures === 0 ? 0 : 1;
 }

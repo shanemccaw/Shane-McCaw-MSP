@@ -10,6 +10,7 @@ import { closePool, query } from "./db.mjs";
 import { runMigrations } from "./migrate.mjs";
 import { HttpError, clientIp, parseCookies, sendJson, sendText, serveStatic, setCookie } from "./http.mjs";
 import { SESSION_COOKIE, purgeDeadSessions, resolveSession } from "./auth/sessions.mjs";
+import { purgeDeadChallenges } from "./auth/webauthn.mjs";
 import * as ratelimit from "./auth/ratelimit.mjs";
 import { buildApiRouter } from "./routes/api.mjs";
 import { buildPublicRouter } from "./routes/public.mjs";
@@ -176,6 +177,8 @@ async function main() {
         ratelimit.sweep();
         const purged = await purgeDeadSessions();
         if (purged > 0) log(`[housekeeping] purged ${purged} dead sessions`);
+        const challenges = await purgeDeadChallenges();
+        if (challenges > 0) log(`[housekeeping] purged ${challenges} spent WebAuthn challenges`);
       } catch (err) {
         log("[housekeeping] failed:", err.message);
       }

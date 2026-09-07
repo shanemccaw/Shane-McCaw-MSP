@@ -21,19 +21,46 @@
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
-    <!-- Sign-in. Nothing else in the app renders until this passes. -->
+    <!-- Sign-in. Passkey only -- design handoff screen 1 ("Sign in") draws exactly these two
+         controls and no email or password field. Shared list links never reach this screen.
+         Nothing else in the app renders until this passes. -->
     <main id="login-view" class="centered" hidden>
-      <form id="login-form" class="card auth-card" autocomplete="on">
-        <img src="/icons/icon-192.png" alt="" width="72" height="72" class="auth-mark" />
+      <section class="card auth-card">
+        <img src="/icons/icon-192.png" alt="" width="128" height="128" class="auth-mark" />
         <h1>Shane's Life</h1>
-        <p class="muted">One box for everything.</p>
-        <label for="email">Email</label>
-        <input id="email" name="email" type="email" autocomplete="username" required />
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required />
-        <button type="submit" class="primary" id="login-submit">Sign in</button>
+        <p class="muted auth-tagline">Private. Just you.</p>
+        <h2 class="auth-heading">Sign in</h2>
+        <button type="button" class="primary auth-primary" id="passkey-signin">
+          <svg viewBox="0 0 24 24" aria-hidden="true" class="auth-icon">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" />
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+            <path d="M8 14s1.5 2 4 2 4-2 4-2" /><path d="M9 9h.01" /><path d="M15 9h.01" />
+          </svg>
+          <span id="passkey-signin-label">Continue with Face ID</span>
+        </button>
+        <button type="button" class="ghost auth-secondary" id="passkey-signin-other">
+          Use a passkey from another device
+        </button>
         <p id="login-error" class="error" role="alert" hidden></p>
-      </form>
+        <p class="auth-footnote">No passwords. Shared list links never need this screen.</p>
+      </section>
+    </main>
+
+    <!-- Enrolment. Reached only by opening a single-use link from `npm run create-user` or
+         `npm run enroll-passkey`; the token rides in the URL fragment so it never reaches a
+         server log. -->
+    <main id="enroll-view" class="centered" hidden>
+      <section class="card auth-card">
+        <img src="/icons/icon-192.png" alt="" width="128" height="128" class="auth-mark" />
+        <h1>Shane's Life</h1>
+        <p class="muted auth-tagline">Private. Just you.</p>
+        <h2 class="auth-heading">Add this device</h2>
+        <button type="button" class="primary auth-primary" id="passkey-enroll">
+          <span id="passkey-enroll-label">Create a passkey</span>
+        </button>
+        <p id="enroll-error" class="error" role="alert" hidden></p>
+        <p class="auth-footnote">This link works once. After that, Face ID is all you need.</p>
+      </section>
     </main>
 
     <!-- The app itself. -->
