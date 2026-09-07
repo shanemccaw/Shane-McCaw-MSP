@@ -432,6 +432,21 @@ call triggered by the hosted app itself at runtime. The hosted app stores, displ
 shares, and checks off what Claude already generated — it doesn't do its own live AI
 inference. Keep this boundary clean in the architecture.
 
+**Real platform decision, confirmed 2026-09-05: standalone site added to Home Screen, not
+Expo Go.** Real, direct precedent already exists — Shane built Aria (a personal AI
+assistant iPhone web app) this exact way, and already uses this same pattern for Shane's
+Playground in Admin Panel. Real reasons this wins over Expo/React Native: no Apple
+Developer Program fee or App Store review needed, pairs naturally with the real
+Replit-hosted decision already made (Section 1), and allows instant redeploy-and-refresh
+iteration instead of an app-store review cycle. **Real confirmation this actually
+supports the notification-tray-as-primary-interface requirement**: iOS has supported real
+web push for Home Screen web apps since iOS 16.4 (2023) — notifications appear on the
+lock screen and Notification Center exactly like a native app, requiring HTTPS, a valid
+manifest.json, and the app added to Home Screen first. One honest caveat from a 2025
+source: some developers report occasional reliability issues where iOS web push works
+initially then stops unexpectedly — worth monitoring in real use, not a blocker to this
+decision.
+
 ## 11. What NOT to design
 
 - No dashboard-first layout — the notification tray leads.
