@@ -233,7 +233,8 @@ app.listen(port, (err) => {
   Promise.all([
     import("./lib/change-control-write-gate"),
     import("./lib/msp-change-execution-store"),
-  ]).then(([{ settleAuthorizedChangeRequests }, { settleChangeExecutions }]) => {
+    import("./lib/portal-change-approvals-store"),
+  ]).then(([{ settleAuthorizedChangeRequests }, { settleChangeExecutions }, { escalateBreachedApprovals }]) => {
     setInterval(() => {
       settleAuthorizedChangeRequests().catch((err: unknown) => {
         logger.warn({ err }, "change-control: CR authorization reconciliation failed (non-fatal)");
@@ -242,6 +243,13 @@ app.listen(port, (err) => {
       // their run finishes, writing back the authorizing CR-<id> reference.
       settleChangeExecutions().catch((err: unknown) => {
         logger.warn({ err }, "change-control: CR execution reconciliation failed (non-fatal)");
+      });
+      // #3046 — the approval-SLA breach sweep: stamps escalatedAt (once) and
+      // logs on the notification channel for any pending approval past its
+      // computed dueAt. Idempotent and non-fatal; nothing to do when no
+      // approval is overdue.
+      escalateBreachedApprovals().catch((err: unknown) => {
+        logger.warn({ err }, "cr-approvals: breach sweep failed (non-fatal)");
       });
     }, 60_000);
   }).catch((err: unknown) => {
