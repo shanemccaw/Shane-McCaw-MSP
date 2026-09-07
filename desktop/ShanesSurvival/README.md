@@ -31,9 +31,11 @@ Requirements:
 
 Steps:
 
-1. **Create a database** for the app, e.g.:
+1. **Create a database** for the app. The real, live database this app actually runs
+   against is named `finances` (that's what `%AppData%\ShanesSurvival\settings.json`
+   contains) — use that name, not an arbitrary example:
    ```
-   psql -h localhost -U postgres -c "CREATE DATABASE shanessurvival;"
+   psql -h localhost -U postgres -c "CREATE DATABASE finances;"
    ```
 2. **Build and run the app**:
    ```
@@ -42,7 +44,7 @@ Steps:
    ```
 3. On first launch, open **Settings…** and enter the Postgres connection string, e.g.:
    ```
-   Host=localhost;Port=5432;Database=shanessurvival;Username=postgres;Password=<password>
+   Host=localhost;Port=5432;Database=finances;Username=postgres;Password=<password>
    ```
    Settings are saved to `%AppData%\ShanesSurvival\settings.json` — a per-user file **outside**
    this repo, never hardcoded in source, never logged. The app reads that file on every

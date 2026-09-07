@@ -3,7 +3,7 @@
 -- (see README.md for how the app resolves its connection string).
 --
 -- Run manually with, e.g.:
---   psql "postgresql://postgres:<password>@localhost:5432/shanessurvival" -f migrations/001_init.sql
+--   psql "postgresql://postgres:<password>@localhost:5432/finances" -f migrations/001_init.sql
 
 BEGIN;
 

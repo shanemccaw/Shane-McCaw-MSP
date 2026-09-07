@@ -26,7 +26,7 @@
 
         <TextBlock Grid.Row="1" Text="Connection string" Margin="0,0,0,4"/>
         <TextBox Grid.Row="2" x:Name="ConnectionStringTextBox" Margin="0,0,0,8"
-                 ToolTip="e.g. Host=localhost;Port=5432;Database=shanessurvival;Username=postgres;Password=..."/>
+                 ToolTip="e.g. Host=localhost;Port=5432;Database=finances;Username=postgres;Password=..."/>
 
         <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,4">
             <Button x:Name="TestConnectionButton" Content="Test Connection" Width="130" Height="26"
