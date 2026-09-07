@@ -9,7 +9,7 @@ built on top of what is here, not beside it.
 **Read the design first:** `Design/design_handoff_shanes_life/` in this directory — `README.md`
 is the handoff (screens, data model additions, auth), `contract.md` is the v2 design contract, and
 the `.dc.html` files are the real per-screen references. (`contract.md` is the same document as
-`desktop/ShanesSurvival/docs/shanes-life-design-contract-pack.md`, copied in beside the screens.)
+`docs/shanes-life-design-contract-pack.md` (in this directory — see #3097), copied in beside the screens.)
 Every decision below traces to a section of it, and the section is cited in the code.
 
 ---
