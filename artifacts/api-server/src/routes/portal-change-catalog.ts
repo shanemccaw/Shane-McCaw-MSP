@@ -27,17 +27,41 @@
  * `execute` re-reads the catalog item's `status` from the database on every
  * invocation. A revoked or still-draft item 409s — there is no cached or
  * JWT-carried "this is pre-approved" flag anywhere on the request path.
+ *
+ * ── Freeze/maintenance enforcement, same gates as the wizard path (#3044) ────
+ * A catalog execute lands "now" (`scheduledFor: "Immediate"`), so it is
+ * evaluated against an instant, not a booked span: `activeFreezeForSubmit`
+ * (same call the wizard's `raiseChangeRequest` makes for its own submit-time
+ * check) and `maintenanceCoverageForBookedSpan(ctx, now, null)` — a null
+ * `spanEnd` evaluates coverage at the `spanStart` instant, same convention
+ * `freezeForBookedWindow` already uses for a start-only span. Collision
+ * detection is NOT run here: `findCollidingChangeRequest`/
+ * `collidingChangeRequestForSubmit` only ever fire against a real booked
+ * span (`scheduledStart`), and a catalog execute has none — there is no
+ * window for it to overlap.
+ *
+ * Unlike the wizard path, a blocked catalog execute has no freeze-exception
+ * affordance and simply 409s. A Standard catalog item is pre-approved with
+ * ZERO human approval stages (`requiredStages()` is 0) specifically so it can
+ * fire immediately without CAB review; recording a freeze exception would
+ * require inserting a real approval stage for someone to sign off on, which
+ * would silently reintroduce the human-approval gate #1498 exists to skip.
+ * A blocked standard change is not lost — the customer can still raise the
+ * same change through the ordinary wizard path, which does support a written
+ * freeze exception.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, changeCatalogItemsTable, configPacksTable, mspChangeRequestsTable, type InsertMspChangeRequest } from "@workspace/db";
+import { db, changeCatalogItemsTable, configPacksTable, mspChangeRequestsTable, portalChangeControlPolicyTable, type InsertMspChangeRequest } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireAddOnEntitlement } from "../lib/portal-addon-entitlements";
 import { materializeApprovalsForChange } from "../lib/portal-change-approvals-store";
-import { formatChangeRequestCode } from "../lib/portal-change-control";
+import { formatChangeRequestCode, workloadForCategory } from "../lib/portal-change-control";
+import { activeFreezeForSubmit } from "../lib/portal-change-freeze-store";
+import { maintenanceCoverageForBookedSpan } from "../lib/portal-change-maintenance-store";
 import { CHANGE_CONTROL_FEATURE_KEY } from "./portal-change-control";
 import { logger } from "../lib/logger";
 
@@ -154,6 +178,52 @@ router.post(
       if (!pack || pack.status !== "active") {
         res.status(409).json({ error: "The runbook behind this standard change is no longer active" });
         return;
+      }
+
+      // #3044 — the same freeze/maintenance gates `raiseChangeRequest` runs for
+      // the wizard path, evaluated against "now" since a catalog execute lands
+      // immediately with no booked span. See this file's header for why
+      // collision detection is skipped and why a blocked execute 409s outright
+      // instead of offering a freeze-exception affordance.
+      const [policyRow] = await db
+        .select({
+          enabled: portalChangeControlPolicyTable.enabled,
+          enforceFreezeCalendar: portalChangeControlPolicyTable.enforceFreezeCalendar,
+          enforceMaintenanceWindows: portalChangeControlPolicyTable.enforceMaintenanceWindows,
+        })
+        .from(portalChangeControlPolicyTable)
+        .where(eq(portalChangeControlPolicyTable.customerId, scope.customerId))
+        .limit(1);
+      const freezeEnforced = policyRow?.enabled === true && policyRow?.enforceFreezeCalendar === true;
+      const maintenanceEnforced = policyRow?.enabled === true && policyRow?.enforceMaintenanceWindows === true;
+      const now = new Date();
+      const freezeCtx = { mspId: scope.mspId, tenantId: scope.tenantId, workload: workloadForCategory(item.category) };
+
+      if (freezeEnforced) {
+        const blockingFreeze = await activeFreezeForSubmit(freezeCtx, now);
+        if (blockingFreeze) {
+          log.info(
+            { customerId, mspId: scope.mspId, catalogItemId: item.id, freezeId: blockingFreeze.id, freezeName: blockingFreeze.name },
+            "standard change catalog execute blocked by an active change freeze",
+          );
+          res.status(409).json({
+            error: `"${blockingFreeze.name}" is an active change freeze. This standard change cannot be executed until it lifts.`,
+            freeze: { id: blockingFreeze.id, name: blockingFreeze.name, scope: blockingFreeze.scope },
+          });
+          return;
+        }
+      }
+
+      if (maintenanceEnforced) {
+        const covered = await maintenanceCoverageForBookedSpan(freezeCtx, now, null);
+        if (!covered) {
+          log.info(
+            { customerId, mspId: scope.mspId, catalogItemId: item.id },
+            "standard change catalog execute blocked — outside every approved maintenance window",
+          );
+          res.status(409).json({ error: "This standard change can only be executed inside an approved maintenance window.", maintenanceWindowRequired: true });
+          return;
+        }
       }
 
       const requestedBy = req.user?.email ?? "unknown";
