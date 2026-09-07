@@ -142,17 +142,20 @@ constraints:
 - **The app should model Shane's own recurring habits into the money math automatically**
   — e.g., knowing Shane tends to buy cigarettes on a given day and accounting for that in
   "available to spend," without being told each time.
-- **Real smoking tracker, confirmed 2026-09-05 — real, honest care needed on shape, not a
-  generic quit-app pattern.** Shane wants to quit and asked for a "friendly" tracker. Most
-  quit-smoking trackers use a "days smoke-free streak" that resets to zero and shames a
-  slip — that's exactly the guilt-accumulation this whole app exists to avoid (Section 7),
-  and directly conflicts with the no-gamification rule (Section 10). Real shape instead: a
-  neutral log, not a streak — each real cigarette logged (same one-box capture as
-  everything else), shown as a real frequency trend over time. No reset, no "you broke
-  your streak" framing, ever — a slip is just another real data point, not a failure
-  state. Real, honest connection to Money (see the habit-modeling bullet above): as real
-  frequency drops, that should show up as real money freed up — stated as neutral fact
-  ("this cost less this month"), never as a reward or badge.
+- **Real smoking tracker, confirmed 2026-09-05 — real, deliberate exception to the
+  no-guilt principle, corrected by Shane directly.** Shane wants to quit, and explicitly
+  wants real financial confrontation here, not neutral-only framing: e.g., "you're short
+  $X this cycle, and $Y of that went to cigarettes" — a real, factual comparison between
+  actual spend and actual shortfall. This is a deliberate, Shane-chosen override of the
+  general no-guilt principle (Section 7), scoped to this one feature — not a default
+  applied elsewhere. **Real behavioral note, also from Shane**: he starts and stops
+  smoking cyclically, not linearly — so a traditional "days smoke-free streak" (which
+  resets to zero on a slip) doesn't fit his real pattern anyway and isn't the mechanism
+  here. The financial comparison works differently: it's a true statement about what
+  already happened, regardless of whether Shane is currently mid-attempt or not, not a
+  counter that resets and re-shames a restart. Each real cigarette still logged via the
+  same one-box capture as everything else; the real financial tie-in (see the
+  habit-modeling bullet above) is the actual mechanism, not a streak.
 - **Hub-and-spoke household logistics**: supplies default to the owned house, split/
   transported to the rental only when Shane is actually heading that direction. Groceries
   are the explicit exception.
