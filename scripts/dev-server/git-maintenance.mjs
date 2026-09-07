@@ -26,7 +26,10 @@
 //      at all, which is the common case here, trivially passes that check) and
 //      unlinking any node_modules/dist junctions first so removal can never follow
 //      a reparse point into the shared dependency store (the same #1988 guard
-//      removeWorktreeSafe already uses for registered worktrees).
+//      removeWorktreeSafe already uses for registered worktrees) — and, since #2986,
+//      the same #1980 post-removal store-doctor scan+auto-repair canary too, so this
+//      duplicate removal path can no longer poison the shared store silently the way
+//      it did before removeWorktreeSafe's copy of this logic got that canary.
 //
 // Usage:
 //   node scripts/dev-server/git-maintenance.mjs [--dry-run] [--json]
@@ -46,6 +49,7 @@ import {
   worktreeLastActivityMs,
 } from "./worktree-lifecycle.mjs";
 import { findAndUnlinkWorktreeJunctions } from "./link-deps.mjs";
+import { scanSharedStore, repairSharedStore } from "./store-doctor.mjs";
 
 /** Default root agents provision isolated worktrees under (mirrors provision-worktree.mjs). */
 export function defaultWtRoot() {
@@ -387,6 +391,62 @@ export function sweepStrayWorktreeDirs(config, opts = {}) {
     removed.push({ path: dirPath, junctionsUnlinkedCount: junctionsUnlinked.length, fsRemoved });
   }
 
+  // Git #2986 — this sweep unlinks junctions and rmSync's a stray dir exactly like
+  // removeWorktreeSafe (worktree-lifecycle.mjs) does for a registered worktree, but
+  // until now it was a SEPARATE, duplicated removal code path that never carried the
+  // Git #1980 store-doctor canary that call site got. Real evidence in #2986: every
+  // "removed" log entry with a poisoned storeAfterRemoval (670 foreign / 393 dangling
+  // links, 2026-09-06T14:36Z-15:07Z) came from removeWorktreeSafe BEFORE #1980 landed
+  // at 15:46Z; every removal logged SINCE #1980 landed has come through THIS
+  // "git-maintenance:stray-dirs" path instead (no "removed" action from
+  // worktree-lifecycle.mjs appears in cleanups.log after 15:07Z), which never scanned
+  // or repaired the shared store at all -- so #1980 fixed one call site while this one,
+  // silently, kept the pre-#1980 unprotected behavior and is a live candidate for
+  // producing the exact api-server/node_modules/vitest-missing symptom #2986 reports.
+  // Only scan/repair when this sweep actually removed something -- an empty run has
+  // nothing that could have poisoned the store.
+  let storeAfterRemoval = null;
+  if (!dryRun && removed.length > 0) {
+    try {
+      const scan = scanSharedStore(config.mainRepoRoot);
+      storeAfterRemoval = {
+        clean: scan.clean,
+        foreign: scan.foreignLinks.length,
+        dangling: scan.danglingLinks.length,
+        poisonedBins: scan.poisonedBins.length,
+      };
+      if (!scan.clean) {
+        console.warn(
+          `[git-maintenance] WARNING: shared store at ${config.mainRepoRoot} is POISONED after sweeping ${removed.length} stray dir(s) ` +
+            `(foreign=${scan.foreignLinks.length}, dangling=${scan.danglingLinks.length}, poisonedBins=${scan.poisonedBins.length}). ` +
+            `Auto-repairing now (Git #1980/#2986) — see storeAutoRepair in this log entry.`
+        );
+        let repairRes = null;
+        try {
+          repairRes = repairSharedStore(config.mainRepoRoot, scan);
+        } catch (e) {
+          repairRes = { error: e.message };
+        }
+        const rescan = scanSharedStore(config.mainRepoRoot);
+        storeAfterRemoval.autoRepair = {
+          repairedLinks: repairRes?.repairedLinks?.length ?? 0,
+          repairedBins: repairRes?.repairedBins?.length ?? 0,
+          unrepairable: repairRes?.unrepairable?.length ?? 0,
+          error: repairRes?.error ?? null,
+          cleanAfterRepair: rescan.clean,
+        };
+        console.warn(
+          `[git-maintenance] store-doctor auto-repair: relinked ${storeAfterRemoval.autoRepair.repairedLinks} link(s), ` +
+            `rewrote ${storeAfterRemoval.autoRepair.repairedBins} shim(s), unrepairable ${storeAfterRemoval.autoRepair.unrepairable} — ` +
+            `store is now ${rescan.clean ? "CLEAN" : "STILL POISONED"}.` +
+            (rescan.clean ? "" : " Diagnose remaining entries with: node scripts/dev-server/store-doctor.mjs")
+        );
+      }
+    } catch (e) {
+      storeAfterRemoval = { error: e.message };
+    }
+  }
+
   const result = {
     ok: true,
     wtRoot,
@@ -396,6 +456,7 @@ export function sweepStrayWorktreeDirs(config, opts = {}) {
     removed,
     retained,
     dryRun,
+    storeAfterRemoval,
   };
 
   try {
@@ -404,6 +465,7 @@ export function sweepStrayWorktreeDirs(config, opts = {}) {
       dryRun,
       removedCount: removed.length,
       retainedCount: retained.length,
+      storeAfterRemoval,
     });
   } catch {}
 
