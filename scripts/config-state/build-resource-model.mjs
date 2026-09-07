@@ -153,7 +153,7 @@ async function main() {
         name: t.name,
         qualified_name: t.qualifiedName,
         kind: t.kind,
-        base_type: t.baseType,
+        base_type: t.baseType ? (model.resolveType(t.baseType, t.namespace)?.qualifiedName ?? null) : null,
         is_abstract: t.isAbstract,
         is_open_type: t.isOpenType,
         key_properties: JSON.stringify(t.keyProperties),
