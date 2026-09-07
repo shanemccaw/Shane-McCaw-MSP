@@ -136,11 +136,25 @@ export function rollPeekers() {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-function svgEl(symbolId, { size, className, viewBox = "0 0 120 120" } = {}) {
+/**
+ * `size` is a convenience for a square box (both width and height). For a non-square viewBox,
+ * pass `width` and/or `height` instead -- whichever one is omitted is derived from the other
+ * using the viewBox's own real aspect ratio, so the <svg>'s width/height attributes (which set
+ * its intrinsic aspect ratio, independent of viewBox) never disagree with the viewBox they're
+ * framing. Forcing both attributes to the same square `size` regardless of viewBox squeezed the
+ * wide peeker viewBox (260x64) into a square intrinsic ratio, distorting it (#3129).
+ */
+function svgEl(symbolId, { size, width, height, className, viewBox = "0 0 120 120" } = {}) {
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("viewBox", viewBox);
-  svg.setAttribute("width", String(size));
-  svg.setAttribute("height", String(size));
+  const [, , vbWidth, vbHeight] = viewBox.split(/\s+/).map(Number);
+  const aspect = vbWidth && vbHeight ? vbWidth / vbHeight : 1;
+  let w = width ?? size;
+  let h = height ?? size;
+  if (w == null && h != null) w = h * aspect;
+  if (h == null && w != null) h = w / aspect;
+  svg.setAttribute("width", String(Math.round(w * 100) / 100));
+  svg.setAttribute("height", String(Math.round(h * 100) / 100));
   svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("role", "img");
   if (className) svg.setAttribute("class", className);
@@ -194,7 +208,7 @@ export function attachPeeker(labelEl, symbolId) {
   container.style.display = "flex";
   container.style.alignItems = "flex-end";
   container.style.minHeight = "40px";
-  const svg = svgEl(symbolId, { size: 52, className: "critter-peeker", viewBox: "0 0 260 64" });
+  const svg = svgEl(symbolId, { height: 52, className: "critter-peeker", viewBox: "0 0 260 64" });
   svg.setAttribute("preserveAspectRatio", "xMidYMax meet");
   svg.style.position = "absolute";
   svg.style.left = `${labelEl.offsetWidth + 30}px`;
