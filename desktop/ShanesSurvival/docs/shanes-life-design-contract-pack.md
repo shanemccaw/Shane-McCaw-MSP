@@ -76,6 +76,15 @@ constraints:
   needs to support Claude assigning a sensible new category on the fly, not just slotting
   things into a fixed enum. This is the actual point of the whole one-box design — genuine
   extensibility, not just fewer forms.
+- **Real third tier, confirmed 2026-09-05 — the capture box is a genuine command center,
+  not just a smart classifier.** When something comes in that doesn't fit any real
+  category at all, Claude doesn't force a bad classification — it talks it through with
+  Shane, live. If that conversation reveals a real, genuine gap, it can spawn a real code
+  update, the same way every real feature in this document got built tonight: Shane says
+  something, Claude and Shane talk it through, and if it's real, Claude scopes and
+  dispatches an actual build. That's not just how tonight happened to go — it's meant to
+  be a real, designed-in part of how this app keeps growing after launch, not a one-time
+  design phase that ends once the app ships.
 - **Real appointment handling, confirmed 2026-09-05 — no new mechanism, just confirms the
   capture box handles this too.** One-off appointments captured exactly as natural speech —
   "dr appointment sept 3rd 2pm dr fonji" — parsed into date/time/type/provider
