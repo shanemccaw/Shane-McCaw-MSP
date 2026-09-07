@@ -245,6 +245,63 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>
+        /// Git #3134 — every mirrored issue currently sitting in a given board Status option
+        /// (e.g. Batter Up <c>09b1927f</c> / AI Batter Up <c>a0296971</c>), optionally filtered by
+        /// GitHub issue state (<c>"open"</c> / <c>"closed"</c>). This is the read that lets the
+        /// Batter Up / AI Batter Up panels stop firing their own separate live paginated project-page
+        /// walks (<see cref="GitHubApiClient.GetBatterUpIssuesAsync"/> and the
+        /// <c>(closed sweep)</c> pass): the mirror's periodic whole-board sweep
+        /// (<see cref="GitHubApiClient.GetAllIssueBoardStatusesAsync"/>) already captured every issue's
+        /// current Status option, so both scans are pure local reads here.
+        ///
+        /// Returns <c>null</c> when the mirror has no usable data yet (never completed a full sync) or
+        /// on ANY error — the caller falls back to its existing live project-board walk, exactly as
+        /// every other mirror read in #3113 does, so this can never make the panels worse than today,
+        /// only cheaper on the common hit. A non-null (possibly empty) list is authoritative: because
+        /// the sweep captured the whole board, an empty result genuinely means "nothing in that
+        /// column right now", not "unknown".
+        ///
+        /// Freshness (the #3134 audit): served on the same 5-minute sync interval as everything else.
+        /// That is sufficient for this use case — the pain point is Batter Up NEVER filling in (the big
+        /// live walk fails under GitHub's secondary rate limit), so a reliably ≤5-min-fresh local read
+        /// is strictly better than a live walk that never completes. The closed-sweep case is covered
+        /// because an open→closed transition preserves the row's board Status option (the sync's
+        /// mark-closed pass only flips <c>state</c>), so a just-closed Batter Up item is a real
+        /// <c>state='closed' AND board_status_option_id=…</c> mirror row.
+        /// </summary>
+        public static async Task<List<MirrorIssue>?> TryGetByBoardStatusAsync(string boardStatusOptionId, string? state = null)
+        {
+            if (string.IsNullOrWhiteSpace(boardStatusOptionId)) return null;
+            try
+            {
+                // Fail-closed to the live path until the mirror has genuinely synced at least once —
+                // an empty/never-populated table must not read as "the column is empty".
+                if (!await HasUsableDataAsync()) return null;
+
+                await using var conn = await TryOpenAsync();
+                if (conn == null) return null;
+
+                string sql = $"SELECT {SelectColumns} FROM bt_issue_mirror WHERE board_status_option_id = @opt";
+                if (!string.IsNullOrEmpty(state)) sql += " AND state = @state";
+                sql += " ORDER BY issue_number";
+
+                await using var cmd = new NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@opt", boardStatusOptionId);
+                if (!string.IsNullOrEmpty(state)) cmd.Parameters.AddWithValue("@state", state);
+
+                var list = new List<MirrorIssue>();
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync()) list.Add(MapRow(reader));
+                return list;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("issue-mirror", $"TryGetByBoardStatusAsync({boardStatusOptionId}, {state ?? "any"}) failed ({ex.Message}) — caller falls back to live.");
+                return null;
+            }
+        }
+
         /// <summary>The persisted sync bookkeeping: when the last full sync completed, whether it
         /// succeeded, and a short note. All null/false before the first ever sync.</summary>
         public static async Task<(DateTime? LastFullSyncAt, bool Ok, string? Note)> GetSyncStateAsync()

@@ -52,7 +52,7 @@ namespace BuildConsole.Services
             // it's being swept off of.
             await SweepClosedIssuesAsync(gh);
 
-            var boardItems = await gh.GetAiBatterUpIssuesAsync();
+            var boardItems = await GetAiBatterUpBoardItemsAsync(gh);
             var rows = new List<AiBatterUpRow>();
 
             foreach (var item in boardItems)
@@ -76,19 +76,58 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #3134 — the real "AI Batter Up" board rows, mirror-first: reads the local
+        /// <see cref="GitHubIssueMirror"/> (whose periodic whole-board sweep already captured every
+        /// issue's Status option) instead of firing this panel's own live paginated project-page walk
+        /// (<see cref="GitHubApiClient.GetAiBatterUpIssuesAsync"/>). Falls back to that live walk only
+        /// when the mirror has no usable data yet (never synced) or errored.
+        ///
+        /// The mirror does not store each item's ProjectV2Item node id, so a mirror-sourced row carries
+        /// an empty <see cref="AiBatterUpRow.ItemId"/>; Yes/No no longer needs it — it addresses the
+        /// item by issue NUMBER through <see cref="GitHubApiClient.SetIssueStatusByNumberAsync"/>
+        /// (see <see cref="PromoteToBatterUpAsync"/> / <see cref="DemoteToBacklogAsync"/>), resolving
+        /// the node id at click-time. A click is a live write anyway, not part of the refresh this
+        /// issue is keeping off GitHub.
+        /// </summary>
+        private static async Task<List<AiBatterUpBoardIssue>> GetAiBatterUpBoardItemsAsync(GitHubApiClient gh)
+        {
+            var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.AiBatterUpOptionId, "open");
+            if (mirror != null)
+            {
+                ActivityLog.Log("ai-batter-up", $"AI Batter Up board read from local mirror (Git #3134) — {mirror.Count} open item(s), no live project-page walk.");
+                return mirror.Select(m => new AiBatterUpBoardIssue { Number = m.Number, Title = m.Title, HtmlUrl = m.HtmlUrl, ItemId = "" }).ToList();
+            }
+            ActivityLog.Log("ai-batter-up", "AI Batter Up board — mirror not usable yet; falling back to a live project-page walk this pass.");
+            return await gh.GetAiBatterUpIssuesAsync();
+        }
+
+        /// <summary>
         /// Git #2557 — sweeps every real CLOSED issue still sitting in "AI Batter Up" status to
-        /// "Done" (<see cref="GitHubApiClient.DoneOptionId"/>), via the new closed-issue read
-        /// path (<see cref="GitHubApiClient.GetClosedAiBatterUpIssuesAsync"/>) and the existing
-        /// real <see cref="GitHubApiClient.SetIssueStatusByNumberAsync"/> mutation. Each sweep is
-        /// logged individually to the "ai-batter-up" channel (traceable, not silent) whether it
-        /// succeeds or fails; a single failed move doesn't stop the rest of the sweep.
+        /// "Done" (<see cref="GitHubApiClient.DoneOptionId"/>) and the existing real
+        /// <see cref="GitHubApiClient.SetIssueStatusByNumberAsync"/> mutation. Git #3134 — the
+        /// closed-issue READ is now mirror-first (<see cref="GitHubIssueMirror.TryGetByBoardStatusAsync"/>
+        /// with <c>state="closed"</c>), falling back to the live
+        /// <see cref="GitHubApiClient.GetClosedAiBatterUpIssuesAsync"/> project-page walk only when the
+        /// mirror isn't usable. The Done move itself stays a live write. Each sweep is logged
+        /// individually to the "ai-batter-up" channel (traceable, not silent) whether it succeeds or
+        /// fails; a single failed move doesn't stop the rest of the sweep.
         /// </summary>
         private static async Task SweepClosedIssuesAsync(GitHubApiClient gh)
         {
             List<(int Number, string Title)> stale;
             try
             {
-                stale = await gh.GetClosedAiBatterUpIssuesAsync();
+                var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.AiBatterUpOptionId, "closed");
+                if (mirror != null)
+                {
+                    stale = mirror.Select(m => (m.Number, m.Title)).ToList();
+                    if (stale.Count > 0)
+                        ActivityLog.Log("ai-batter-up", $"AI Batter Up closed-sweep read from local mirror (Git #3134) — {stale.Count} closed item(s) still in AI Batter Up, no live (closed sweep) walk.");
+                }
+                else
+                {
+                    stale = await gh.GetClosedAiBatterUpIssuesAsync();
+                }
             }
             catch (System.Exception ex)
             {
@@ -110,12 +149,18 @@ namespace BuildConsole.Services
             }
         }
 
-        /// <summary>Yes — promotes the item's Status to real "Batter Up". Does NOT queue or launch anything; #1709's panel picks it up on its own next refresh.</summary>
-        public static Task PromoteToBatterUpAsync(GitHubApiClient gh, string itemId) =>
-            gh.SetProjectItemStatusAsync(itemId, GitHubApiClient.BatterUpPromoteOptionId);
+        /// <summary>Yes — promotes the item's Status to real "Batter Up". Does NOT queue or launch
+        /// anything; #1709's panel picks it up on its own next refresh. Git #3134 — addresses the item
+        /// by issue NUMBER (<see cref="GitHubApiClient.SetIssueStatusByNumberAsync"/>, which resolves the
+        /// ProjectV2Item node id itself) rather than requiring an item id up front, so the panel can
+        /// source its rows from the local mirror (which doesn't store the node id) and still promote.</summary>
+        public static Task PromoteToBatterUpAsync(GitHubApiClient gh, int issueNumber) =>
+            gh.SetIssueStatusByNumberAsync(issueNumber, GitHubApiClient.BatterUpPromoteOptionId);
 
-        /// <summary>No — demotes the item's Status to "Backlog", same primitive the existing Cancel action already uses elsewhere in this app.</summary>
-        public static Task DemoteToBacklogAsync(GitHubApiClient gh, string itemId) =>
-            gh.SetProjectItemStatusAsync(itemId, GitHubApiClient.BacklogOptionId);
+        /// <summary>No — demotes the item's Status to "Backlog", same primitive the existing Cancel action
+        /// already uses elsewhere in this app. Git #3134 — by issue NUMBER, see
+        /// <see cref="PromoteToBatterUpAsync"/>.</summary>
+        public static Task DemoteToBacklogAsync(GitHubApiClient gh, int issueNumber) =>
+            gh.SetIssueStatusByNumberAsync(issueNumber, GitHubApiClient.BacklogOptionId);
     }
 }

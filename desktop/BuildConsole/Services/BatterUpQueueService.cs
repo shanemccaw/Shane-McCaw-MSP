@@ -178,7 +178,7 @@ namespace BuildConsole.Services
             // it's being swept off of.
             await SweepClosedIssuesAsync(gh, log);
 
-            var boardItems = await gh.GetBatterUpIssuesAsync();
+            var boardItems = await GetBatterUpBoardItemsAsync(gh, log);
             var rows = new List<BatterUpRow>();
             // Git #1997 — count of items genuinely hidden this pass because they hold a LIVE (or
             // already-landed) queue row. Surfaced in the panel header so "nothing in this lane" and
@@ -278,19 +278,53 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #3134 — the real "Batter Up" board rows, mirror-first: reads the local
+        /// <see cref="GitHubIssueMirror"/> (whose periodic whole-board sweep already captured every
+        /// issue's Status option) instead of firing this panel's own live paginated project-page walk
+        /// (<see cref="GitHubApiClient.GetBatterUpIssuesAsync"/>). Falls back to that live walk only
+        /// when the mirror has no usable data yet (never synced) or errored — the same fail-to-live
+        /// pattern every #3113 mirror read uses, so this can never be worse than the old behaviour.
+        /// </summary>
+        private static async Task<List<BatterUpBoardIssue>> GetBatterUpBoardItemsAsync(GitHubApiClient gh, Action<string> log)
+        {
+            var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.BatterUpPromoteOptionId, "open");
+            if (mirror != null)
+            {
+                log($"Batter Up board read from local mirror (Git #3134) — {mirror.Count} open item(s), no live project-page walk.");
+                return mirror.Select(m => new BatterUpBoardIssue { Number = m.Number, Title = m.Title, HtmlUrl = m.HtmlUrl }).ToList();
+            }
+            log("Batter Up board — mirror not usable yet; falling back to a live project-page walk this pass.");
+            return await gh.GetBatterUpIssuesAsync();
+        }
+
+        /// <summary>
         /// Git #2557 — sweeps every real CLOSED issue still sitting in "Batter Up" status to
-        /// "Done" (<see cref="GitHubApiClient.DoneOptionId"/>), via the new closed-issue read
-        /// path (<see cref="GitHubApiClient.GetClosedBatterUpIssuesAsync"/>) and the existing
-        /// real <see cref="GitHubApiClient.SetIssueStatusByNumberAsync"/> mutation. Each sweep
-        /// is logged individually (traceable, not silent) whether it succeeds or fails; a single
-        /// failed move doesn't stop the rest of the sweep.
+        /// "Done" (<see cref="GitHubApiClient.DoneOptionId"/>) and the existing real
+        /// <see cref="GitHubApiClient.SetIssueStatusByNumberAsync"/> mutation. Git #3134 — the
+        /// closed-issue READ is now mirror-first (<see cref="GitHubIssueMirror.TryGetByBoardStatusAsync"/>
+        /// with <c>state="closed"</c>; an open→closed transition preserves the row's board Status
+        /// option, so a just-closed Batter Up item is a real mirror row), falling back to the live
+        /// <see cref="GitHubApiClient.GetClosedBatterUpIssuesAsync"/> project-page walk only when the
+        /// mirror isn't usable. The Done move itself stays a live write (writes never read the mirror).
+        /// Each sweep is logged individually (traceable, not silent) whether it succeeds or fails; a
+        /// single failed move doesn't stop the rest of the sweep.
         /// </summary>
         private static async Task SweepClosedIssuesAsync(GitHubApiClient gh, Action<string> log)
         {
             List<(int Number, string Title)> stale;
             try
             {
-                stale = await gh.GetClosedBatterUpIssuesAsync();
+                var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.BatterUpPromoteOptionId, "closed");
+                if (mirror != null)
+                {
+                    stale = mirror.Select(m => (m.Number, m.Title)).ToList();
+                    if (stale.Count > 0)
+                        log($"Batter Up closed-sweep read from local mirror (Git #3134) — {stale.Count} closed item(s) still in Batter Up, no live (closed sweep) walk.");
+                }
+                else
+                {
+                    stale = await gh.GetClosedBatterUpIssuesAsync();
+                }
             }
             catch (Exception ex)
             {

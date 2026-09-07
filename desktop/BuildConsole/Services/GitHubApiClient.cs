@@ -1102,7 +1102,11 @@ namespace BuildConsole.Services
         // itself — Yes only flips the Status option; #1709's GetBatterUpIssuesAsync panel
         // picks the promoted item up on its own next poll. One trigger mechanism, not two.
         private const string StatusFieldId = "PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0";
-        private const string AiBatterUpOptionId = "a0296971";
+        // Git #3134 — public so BatterUpQueueService / AiBatterUpQueueService can redirect their
+        // board scans to the local mirror (SELECT … WHERE board_status_option_id = this) instead of
+        // firing their own live paginated project-page walks. Same option the "AI Batter Up" review
+        // queue read/write already use.
+        public const string AiBatterUpOptionId = "a0296971";
         public const string BatterUpPromoteOptionId = "09b1927f"; // plain "Batter Up" — same value as BatterUpOptionId above
         public const string BacklogOptionId = "63cc47c8";
 

@@ -275,10 +275,13 @@ namespace BuildConsole.Controls
 
             try
             {
+                // Git #3134 — by issue number, not the ProjectV2Item node id: the row can now be
+                // sourced from the local mirror (which doesn't store the node id), and
+                // SetIssueStatusByNumberAsync resolves it at click-time.
                 if (promote)
-                    await Services.AiBatterUpQueueService.PromoteToBatterUpAsync(gh, r.ItemId);
+                    await Services.AiBatterUpQueueService.PromoteToBatterUpAsync(gh, r.Number);
                 else
-                    await Services.AiBatterUpQueueService.DemoteToBacklogAsync(gh, r.ItemId);
+                    await Services.AiBatterUpQueueService.DemoteToBacklogAsync(gh, r.Number);
 
                 Services.ActivityLog.Log("ai-batter-up",
                     $"#{r.Number} — {(promote ? "YES: promoted to Batter Up" : "NO: demoted to Backlog")}.");
