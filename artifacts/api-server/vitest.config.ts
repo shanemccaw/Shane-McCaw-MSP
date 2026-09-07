@@ -19,13 +19,17 @@ export default defineConfig({
     // once under the full run, after #3047's glob-include fix grew the
     // discovered file count from 326 to 334 and increased parallelism
     // further. Per #2877/#3066's own diagnosis this is thread-pool
-    // transform-time/CPU contention, not a logic defect, so the actual fix
-    // is capping worker concurrency rather than raising individual timeouts
-    // again — leave one core free for the OS/Postgres/other local processes
-    // instead of vitest's default of using every logical core.
+    // transform-time/CPU contention, not a logic defect. A one-core-off cap
+    // (cpus - 1) was tried first and index.boot-smoke.test.ts still hit its
+    // own 60s ceiling once under a full-suite run with that cap in place —
+    // confirming the contention needs real headroom, not just a token
+    // reduction. Halving the pool (leaving real headroom for the local
+    // Postgres instance and other processes this suite genuinely talks to)
+    // is the actual fix, at the cost of a somewhat longer full-suite wall
+    // clock.
     poolOptions: {
       threads: {
-        maxThreads: Math.max(1, cpus().length - 1),
+        maxThreads: Math.max(1, Math.floor(cpus().length / 2)),
       },
     },
     // #3047 — this used to be an explicit ~326-entry allowlist array, not a
