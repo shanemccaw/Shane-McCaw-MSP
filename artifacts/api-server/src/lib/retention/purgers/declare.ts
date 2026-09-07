@@ -74,6 +74,30 @@ const auditLog = logger.child({ channel: "audit" });
  */
 export type TenantPurgeKeySpace = "customerId" | "tenantGuid" | "userId";
 
+/**
+ * WHEN a module's purge runs relative to the others (Git #2984).
+ *
+ * Almost every module is `"data"` and the order among them does not matter — they own
+ * disjoint tables keyed by the tenant. `"identity"` is different, and the difference is
+ * not cosmetic:
+ *
+ * `resolveTenantPurgeScope()` resolves the `userId` key space by reading
+ * `users WHERE tenant_id = ?`, once per module, INSIDE the purge transaction. The moment
+ * the identity module destroys those rows, that query returns empty — and every
+ * `keySpace: "userId"` target in every module that has not run yet silently matches
+ * nothing and reports zero. The purge would complete, the tenant would be stamped
+ * `post_termination_purged_at`, no later sweep would ever look again, and rows in
+ * `insights_generated_documents`, `live_document_shares`, `inbox_message_links`,
+ * `script_run_results`, `script_download_tokens`, `insights_automations` and
+ * `tenant_signal_history` would survive a purge that claimed to have destroyed them.
+ *
+ * So this is a real ordering constraint, not a preference, and it is expressed as a
+ * declared phase rather than left to the position of one entry in an array — where a
+ * later edit that merely re-sorts the list for tidiness would break it silently.
+ * `purgeTerminatedTenant()` runs every `"data"` purger before any `"identity"` purger.
+ */
+export type TenantPurgePhase = "data" | "identity";
+
 export interface TenantPurgeTarget {
   /** Real SQL table name, e.g. `"msp_risk_decisions"`. */
   table: string;
@@ -219,6 +243,7 @@ export async function purgeTargets(
   tx: RetentionTx,
   tenantId: number,
   targets: TenantPurgeTarget[],
+  finalize?: TenantDataPurgerDeclaration["finalize"],
 ): Promise<TenantPurgeDetail> {
   const scope = await resolveTenantPurgeScope(tx, tenantId);
   const destroyed: Record<string, number> = {};
@@ -231,6 +256,14 @@ export async function purgeTargets(
     }
     destroyed[target.table] = (destroyed[target.table] ?? 0) + (await deleteTarget(tx, target, scope));
   }
+
+  // After the declared targets, and with the SAME scope — the user ids it resolved are
+  // read before anything in this transaction destroyed them.
+  if (finalize) {
+    for (const [table, rows] of Object.entries(await finalize.run(tx, scope))) {
+      destroyed[table] = (destroyed[table] ?? 0) + rows;
+    }
+  }
   return { destroyed, absent };
 }
 
@@ -241,6 +274,33 @@ export interface TenantDataPurgerDeclaration {
   displayName: string;
   /** Every table this module holds for a customer, with the id space each is keyed by. */
   targets: TenantPurgeTarget[];
+  /** Defaults to `"data"`. See `TenantPurgePhase` for why `"identity"` must run last. */
+  phase?: TenantPurgePhase;
+  /**
+   * A step that runs AFTER every declared target, in the same transaction, for the one
+   * module whose purge genuinely is NOT a set of `column = <tenant key>` DELETEs.
+   *
+   * Deliberately not the general case. The declared-target model exists because thirty
+   * hand-written delete functions diverge, and an escape hatch that any module can reach
+   * for is how that model rots back into thirty hand-written delete functions. It is here
+   * because destroying a `users` row is genuinely different in kind: nine NO ACTION
+   * dependents block it, several of them only reachable through the user's own projects
+   * and client services, and the one correct implementation of that cascade already
+   * exists and is shared with two admin routes (`lib/user-hard-delete.ts`). Re-declaring
+   * it as targets would be a second copy of it, which is the exact drift this file
+   * prevents everywhere else.
+   */
+  finalize?: {
+    /**
+     * The `table.column` keys this step really purges, so `coverage.ts` counts them as
+     * CLAIMED. Without this the coverage test would report a table as unaccounted-for
+     * purely because the module purges it in code rather than by declaration — and the
+     * fix for that false alarm would be an exemption entry saying the opposite of what
+     * is true.
+     */
+    covers: string[];
+    run: (tx: RetentionTx, scope: TenantPurgeScope) => Promise<Record<string, number>>;
+  };
 }
 
 /**
@@ -267,8 +327,9 @@ export function declareTenantDataPurger(declaration: TenantDataPurgerDeclaration
   return {
     key: declaration.key,
     displayName: declaration.displayName,
+    phase: declaration.phase ?? "data",
     purge: async (tx, tenantId) => {
-      const detail = await purgeTargets(tx, tenantId, declaration.targets);
+      const detail = await purgeTargets(tx, tenantId, declaration.targets, declaration.finalize);
       const total = Object.values(detail.destroyed).reduce((a, b) => a + b, 0);
       auditLog.info(
         {
@@ -276,6 +337,7 @@ export function declareTenantDataPurger(declaration: TenantDataPurgerDeclaration
           tenantId,
           module: declaration.key,
           displayName: declaration.displayName,
+          phase: declaration.phase ?? "data",
           destroyed: detail.destroyed,
           absentTables: detail.absent,
           totalDestroyed: total,

@@ -88,13 +88,12 @@ export const TENANT_SCOPE_PURGE_EXEMPTIONS: Record<string, string> = {
     "The MSP's own infrastructure, scoped by msp_id, not customer data — same as " +
     "msp_sharepoint_connectors.",
 
-  // ── User accounts: a real decision, taken on its own issue, not inside a purge ──
-  "users.tenant_id":
-    "The customer's user ACCOUNTS. Whether a post-termination purge destroys them, and what " +
-    "happens to the ~50 FK edges into users(id) if it does, is a real product decision about " +
-    "identity and audit attribution — not something a table declaration should settle silently. " +
-    "Filed as #2984; every user-KEYED data row is already purged by the " +
-    "module declarations regardless of what that decides.",
+  // NOTE — `users.tenant_id` was exempted here while #2984 stood open ("a real product
+  // decision about identity and audit attribution"). It is NOT exempt any more: Shane
+  // settled it on 2026-09-07 as a full purge with users included, and `identityPurger` in
+  // `modules.ts` now claims `users.tenant_id` through its `finalize.covers`. An exemption
+  // entry left behind would read as a decision that the accounts survive — the opposite
+  // of the decision actually taken.
 
   // ── A retired table awaiting its own DROP ─────────────────────────────────
   "portal_security_plans.customer_id":
@@ -116,7 +115,18 @@ export const TENANT_SCOPE_PURGE_EXEMPTIONS: Record<string, string> = {
  */
 export const TENANT_SCOPE_UNCLAIMED: Record<string, string> = {};
 
-/** Every `table.column` claimed by a module declaration. */
+/**
+ * Every `table.column` claimed by a module declaration — its declared targets, plus the
+ * keys a `finalize` step says it purges in code.
+ *
+ * `finalize.covers` is not a second exemption list. An exemption says "this is not
+ * purged, and here is why"; `covers` says "this IS purged, by a real code path, and here
+ * is which table.column that path destroys" — the identity module's `users.tenant_id`
+ * being the only case (#2984). The distinction matters because getting it wrong in either
+ * direction is silent: a claimed-but-unpurged key hides a real gap, and a
+ * purged-but-unclaimed key produces a permanent false alarm that someone eventually
+ * silences with an exemption stating the opposite of the truth.
+ */
 export function declaredTenantScopeKeys(): Set<string> {
   const keys = new Set<string>();
   for (const declaration of ALL_TENANT_DATA_PURGER_DECLARATIONS) {
@@ -124,6 +134,7 @@ export function declaredTenantScopeKeys(): Set<string> {
       keys.add(`${target.table}.${target.column}`);
       if (target.orColumn) keys.add(`${target.table}.${target.orColumn}`);
     }
+    for (const key of declaration.finalize?.covers ?? []) keys.add(key);
   }
   return keys;
 }

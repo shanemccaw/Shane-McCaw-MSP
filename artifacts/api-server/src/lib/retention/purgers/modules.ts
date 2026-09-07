@@ -31,6 +31,8 @@
  * dev-only hard-delete roster in `routes/admin-active-directory.ts` did.
  */
 
+import { sql } from "drizzle-orm";
+import { hardDeleteUserWithinTx } from "../../user-hard-delete";
 import type { TenantDataPurgerDeclaration } from "./declare";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -301,8 +303,9 @@ export const compliancePurger: TenantDataPurgerDeclaration = {
 // share links pointing at them.
 //
 // `insights_generated_documents` keys the tenant on `msp_customer_id`; its `customer_id`
-// is a USER id and is claimed by the identity module, not here, so the two never
-// double-count the same rows.
+// is a USER id, declared here in the `userId` key space. Those ids still resolve when
+// this module runs: it is a `"data"`-phase purger, and the `"identity"` module that
+// destroys the `users` rows themselves runs strictly after every module that reads them.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const documentsPurger: TenantDataPurgerDeclaration = {
@@ -430,9 +433,9 @@ export const platformOpsPurger: TenantDataPurgerDeclaration = {
 // Directory & access — the customer's OU structure, the MSP staff scopes pointing at
 // them, and the user-keyed credential/token rows that belong to this tenant's own users.
 //
-// The `users` rows THEMSELVES are not destroyed here — see the coverage test's exemption
-// for `users`, and #2984, which owns that decision rather than leaving it to be made
-// silently inside a purge.
+// The `users` rows THEMSELVES are destroyed by `identityPurger` below, not here — #2984
+// settled that decision, and it runs in its own phase because the account rows have to go
+// after everything keyed to them.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const directoryPurger: TenantDataPurgerDeclaration = {
@@ -458,6 +461,85 @@ export const directoryPurger: TenantDataPurgerDeclaration = {
   ],
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Identity — the customer's user ACCOUNTS themselves (Git #2984).
+//
+// Shane's decision, 2026-09-07: **full purge, users included.** Nothing survives 7 years
+// post-termination, with no cold-storage exception for identity or credential data —
+// #1944 part 7's own "no point in being hoarders", applied with zero exceptions. Until
+// this module existed the purge reported success, the audit line recorded thousands of
+// rows destroyed, and every user account — name, email, password hash, MFA enrolment
+// state, manager linkage — was still there.
+//
+// WHY THIS IS A `finalize`, NOT A TARGET LIST. Every other module here declares
+// `column = <tenant key>` DELETEs, and this one cannot: nine NO ACTION dependents block a
+// `users` DELETE, several reachable only through the user's own projects and client
+// services, and the one correct implementation of that cascade already exists in
+// `lib/user-hard-delete.ts` and is shared with the two admin hard-delete routes.
+// Re-declaring it as targets would be a second copy of "what deleting one user means",
+// which is exactly the drift the declaration model prevents everywhere else. So the
+// module declares WHAT it purges (`users.tenant_id`, for the coverage test) and calls the
+// shared cascade to do it.
+//
+// WHY `phase: "identity"`. It has to run after every other module. The `userId` key space
+// is resolved by reading `users WHERE tenant_id = ?` once per module inside the purge
+// transaction; the moment these rows are gone, every remaining `keySpace: "userId"`
+// target matches nothing and reports zero for rows still sitting in the database — and
+// the tenant would then be stamped purged and never swept again.
+//
+// WHAT SURVIVES, AND WHY THAT IS NOT A HALF-MEASURE. The ~15 SET NULL edges into
+// users(id) — `audit_logs.actor_user_id`, `sales_offer_events.actor_user_id`,
+// `project_closures.signer_user_id` and the rest — leave their rows in place with the
+// attribution blanked. That is the consistent reading of "full purge", not an exception
+// to it: #1944 part 2 guarantees the permanent ACCOUNT of what happened, and an audit
+// trail that survived still naming a deleted person would be retaining that identity
+// under another column name. The account is genuinely gone; the record that it acted
+// remains, unattributed. `lib/user-hard-delete.ts` censuses every one of those columns
+// before the delete, so the audit line says exactly how many attributions were blanked.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const identityPurger: TenantDataPurgerDeclaration = {
+  key: "identity",
+  displayName: "User accounts & credentials",
+  phase: "identity",
+  targets: [],
+  finalize: {
+    // Declared so `coverage.ts` reads this table as CLAIMED. It is purged in code rather
+    // than by a target, and the coverage test must not report that as an open gap.
+    covers: ["users.tenant_id"],
+    run: async (tx, scope) => {
+      let destroyed = 0;
+      for (const userId of scope.userIds) {
+        // The SAME cascade DELETE /admin/active-directory/user/:id runs, with a real
+        // system actor rather than a synthetic user id invented for an audit line.
+        const result = await hardDeleteUserWithinTx(tx, userId, {
+          kind: "system",
+          process: "retention.post_termination_purge",
+          reason: "post_termination_window_expired",
+        });
+        if (!result.notFound) destroyed += 1;
+      }
+
+      // Fail rather than under-report. If any account for this tenant survives the loop
+      // — a row created after the scope was resolved, or a cascade that silently did not
+      // take — throwing aborts the whole purge and leaves the tenant due for the next
+      // sweep. That is the correct failure mode for an irreversible path: a retried purge
+      // is slower, a purge falsely stamped complete is unrecoverable.
+      const remaining = await tx.execute<{ n: string }>(
+        sql`SELECT count(*) AS n FROM users WHERE tenant_id = ${scope.tenantId}`,
+      );
+      const left = Number(remaining.rows[0]?.n ?? 0);
+      if (left > 0) {
+        throw new Error(
+          `retention purger "identity": ${left} users row(s) still reference tenant ${scope.tenantId} ` +
+            "after the per-user cascade — refusing to let the purge report success.",
+        );
+      }
+      return { users: destroyed };
+    },
+  },
+};
+
 /** Every module declaration, in the order they are registered. */
 export const ALL_TENANT_DATA_PURGER_DECLARATIONS: TenantDataPurgerDeclaration[] = [
   changeControlPurger,
@@ -479,4 +561,8 @@ export const ALL_TENANT_DATA_PURGER_DECLARATIONS: TenantDataPurgerDeclaration[] 
   messageCentrePurger,
   platformOpsPurger,
   directoryPurger,
+  // Last in the array AND declared `phase: "identity"`. The phase is what actually
+  // enforces it — see `orderedTenantDataPurgers()`; the array position is just so the
+  // file reads in the order it runs.
+  identityPurger,
 ];

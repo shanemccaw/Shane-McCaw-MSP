@@ -34,58 +34,12 @@ import {
   accountSetupTokensTable,
   impersonationTokensTable,
   mspAuditLogsTable,
-  // ── Phase 9 (Issue #69) hard-delete footprint — explicit-delete tables ─────
-  projectsTable,
-  workflowStepsTable,
-  kanbanTasksTable,
-  documentsTable,
-  reportsTable,
-  invoicesTable,
-  messagesTable,
-  notificationsTable,
-  projectUpdatesTable,
-  contractsTable,
-  statusReportsTable,
-  emailsTable,
-  emailDomainRulesTable,
-  clientDocumentsTable,
-  mfaChallengesTable,
-  mfaBypassCodesTable,
-  consentInviteTokensTable,
-  insightsGeneratedDocumentsTable,
-  tenantMonitorProfilesTable,
-  mspDiagnosticFindingsTable,
-  mspCustomerClickwrapsTable,
-  mspImpersonationTokensTable,
-  // ── Phase 9 census-only tables (DB auto-cascade — counted, never deleted here)
-  customerNotificationPreferencesTable,
-  clientM365ProfilesTable,
-  clientAppRegistrationsTable,
-  webauthnCredentialsTable,
-  webauthnChallengesTable,
-  clientHealthHistoryTable,
-  clientCallbackTokensTable,
-  clientScoresTable,
-  clientAutomationRunsTable,
-  assessmentSowAgreementsTable,
-  pushSubscriptionsTable,
-  quickWinPresentationsTable,
-  quickWinResultSharesTable,
   mspStaffCustomerScopesTable,
-  // ── Phase 9 census-only tables (DB auto-set-null — counted, never deleted here)
-  projectClosuresTable,
-  auditLogsTable,
-  azureTenantCredentialsTable,
-  inboxMessageLinksTable,
-  scriptRunResultsTable,
-  scriptDownloadTokensTable,
-  insightsAutomationsTable,
-  liveDocumentSharesTable,
-  salesOfferEventsTable,
   // ── Customer hard-delete (Issue #<pending>) — tenant-only tables with a
   // loose customerId/tenantId column pointing at `tenants.id`/`tenants.tenantId`
-  // but NO userId/clientUserId column of their own, so the Phase 9 per-user
-  // cascade above never reaches them. Audited fresh against lib/db/src/schema
+  // but NO userId/clientUserId column of their own, so the shared per-user
+  // cascade (`../lib/user-hard-delete.ts`) never reaches them. Audited fresh
+  // against lib/db/src/schema
   // on 2026-08-08 — every customerId/tenantId column in the schema, minus the
   // ones already covered (via a user FK) or genuinely unrelated (see the
   // route's own header comment for the full accounting).
@@ -135,6 +89,7 @@ import { adminResetMfa, isMfaMethod, MFA_METHODS } from "./mfa";
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 import { getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { getRequestContext } from "../lib/request-context.ts";
+import { hardDeleteUserWithinTx } from "../lib/user-hard-delete.ts";
 import { mergeConsentKey, graphFetchForTenant } from "../lib/graph.ts";
 import {
   buildMspTree,
@@ -1822,87 +1777,17 @@ router.post("/admin/active-directory/user/:id/impersonate", requireAdmin, async 
 // exceptions"), executed as ONE all-or-nothing database transaction. Any
 // failure anywhere rolls the whole thing back — no partial state.
 //
-// ══ TABLE FOOTPRINT — audited fresh against lib/db/src/schema on 2026-07-29 ══
-// (grep: references(() => usersTable.id) — 54 FK columns; matches the
-// refreshed post-#92 audit on Issue #69 exactly: 18 RESTRICT columns,
-// 21 cascade, 15 set-null.)
+// The per-user cascade this route runs — the full table footprint, and why each row is
+// deleted / cascaded / attribution-blanked — now lives in ONE place, with its own
+// documentation: `../lib/user-hard-delete.ts`. It moved there for Git #2984, so the
+// scheduled 7-year post-termination purge (which has no human actor) can run the exact
+// same cascade this route does rather than a second, drifting copy of it.
 //
-// A. EXPLICITLY DELETED in this route's transaction, in dependency-safe order
-//    (children referencing other listed tables go first):
-//
-//    Blocking business tables (no onDelete on their users FK → RESTRICT).
-//    Where a table also carries a projects/client_services FK, rows attached
-//    to the target's projects are deleted too — otherwise the projects
-//    delete below would be blocked by rows not keyed to the target user:
-//      1. workflow_steps        (projectId → projects, clientServiceId → client_services; RESTRICT.
-//                                NOT keyed to users at all — absent from Issue #69's users-FK
-//                                audit but REQUIRED: it blocks deleting the user's projects/services)
-//      2. kanban_tasks          (projectId → projects; RESTRICT. Same second-order case as above)
-//      3. status_reports        (clientUserId; + projectId → projects)
-//      4. project_updates       (authorUserId; + projectId → projects)
-//      5. messages              (clientUserId, senderUserId)
-//      6. notifications         (userId)
-//      7. reports               (clientUserId; + projectId → projects)
-//      8. client_documents      (uploadedBy RESTRICT; clientUserId already cascades)
-//      9. documents             (uploadedBy; + projectId → projects)
-//     10. invoices              (clientUserId; + projectId → projects)
-//     11. contracts             (userId; + projectId → projects)
-//     12. emails                (linkedUserId; linkedProjectId is set-null — DB handles)
-//     13. email_domain_rules    (linkedUserId)
-//     14. password_reset_tokens (userId)
-//     15. impersonation_tokens  (clientUserId, adminUserId)
-//     16. client_services       (clientUserId; + projectId → projects — before projects)
-//     17. projects              (clientUserId, signedOffBy — after every project child above)
-//
-//    Original AD-era list (Issue #69). Five of these now carry onDelete:
-//    "cascade" on their users FK (mfa_enrollments, mfa_challenges,
-//    mfa_bypass_codes, user_sessions, user_entitlement_overrides) — they are
-//    still deleted explicitly here, per the issue's final decision, so the
-//    wipe is explicit and auditable rather than implicit:
-//     18. mfa_enrollments             (userId)
-//     19. mfa_challenges              (userId)
-//     20. mfa_bypass_codes            (userId; createdByUserId elsewhere is set-null — DB handles)
-//     21. user_sessions               (userId)
-//     22. user_entitlement_overrides  (userId; grantedByUserId elsewhere set-null — DB handles)
-//
-//    Tenant-scoped wipe (post-#92 these carry NO users FK — loose integer/
-//    text columns; "delete removes everything about them including consent,
-//    and any tenant telemetry we have" per Shane. Keyed by the target's
-//    owning tenants row; skipped when the account has no tenant linkage):
-//     23. consent_invite_tokens       (clientUserId; tenant customerId/tenantId)
-//     24. insights_generated_documents(customerId = users.id owner; mspCustomerId = tenant)
-//     25. tenant_monitor_profiles     (tenantId = the tenant's AAD GUID)
-//     26. msp_diagnostic_findings     (runId of the runs below; customerId = tenant)
-//     27. msp_diagnostic_runs         (triggeredByUserId; customerId = tenant)
-//     28. msp_customer_clickwraps     (customerUserId; customerId = tenant)
-//     29. msp_agreement_acceptances   (userId — loose column, no FK)
-//     30. msp_impersonation_tokens    (actorUserId, targetUserId — loose columns)
-//     31. users — the account row itself, last.
-//
-// B. DB AUTO-CASCADE (onDelete: "cascade" — counted in the pre-delete census,
-//    NOT deleted here; the users delete removes them): customer_notification_
-//    preferences, account_setup_tokens, client_m365_profiles,
-//    client_app_registrations, webauthn_credentials, webauthn_challenges,
-//    client_health_history, client_callback_tokens, client_scores,
-//    client_automation_runs, assessment_sow_agreements, push_subscriptions,
-//    quick_win_presentations, quick_win_result_shares,
-//    msp_staff_customer_scopes (+ the five overlap tables in A).
-//
-// C. DB AUTO-SET-NULL (onDelete: "set null" — reference nulled, row SURVIVES;
-//    deliberately untouched per Issue #69's decision, e.g. audit-log actor
-//    references must survive as "[deleted user]"): project_closures.signer_
-//    user_id, audit_logs.actor_user_id, audit_logs.client_id,
-//    mfa_bypass_codes.created_by_user_id, azure_tenant_credentials.client_
-//    user_id, inbox_message_links.customer_id, script_run_results.customer_id,
-//    script_download_tokens.customer_id + .client_user_id,
-//    insights_generated_documents.customer_id, insights_automations.customer_
-//    id, sales_offers.customer_id, sales_offer_events.actor_user_id,
-//    user_entitlement_overrides.granted_by_user_id,
-//    msp_staff_customer_scopes.created_by_user_id.
-//
-// The FULL pre-delete state (row counts for every table in A, B and C) is
-// logged to the `audit` channel BEFORE the transaction commits, and the
-// route is gated server-side to non-production environments — fail closed.
+// The FULL pre-delete state (row counts for every table it touches, cascades or blanks)
+// is logged to the `audit` channel by that function BEFORE the transaction commits, and
+// this route is additionally gated server-side to non-production environments — fail
+// closed. That gate is the ROUTE's, not the cascade's: the retention purge is a
+// production behaviour by design.
 
 /**
  * Hard server-side non-production check for the Phase 9 delete. Reuses the
@@ -1919,372 +1804,6 @@ export function assertNonProductionEnvironment(): string | null {
   return `Hard delete is available only in a dev environment. NODE_ENV is ${
     env === undefined ? "unset" : `"${env}"`
   } — requires "development" or "test". Failing closed; nothing was deleted.`;
-}
-
-/** The transaction parameter type `db.transaction()`'s callback receives — extracted so the per-user cascade below can be typed without importing drizzle's internal transaction type directly. */
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-type UserHardDeleteResult =
-  | { notFound: true }
-  | {
-      notFound: false;
-      target: {
-        id: number;
-        email: string;
-        name: string | null;
-        mspRole: string;
-        mspId: number | null;
-        tenantId: number | null;
-      };
-      tenant: { id: number; tenantGuid: string } | null;
-      explicitCounts: Record<string, number>;
-      cascadeCounts: Record<string, number>;
-      setNullCounts: Record<string, number>;
-    };
-
-/**
- * The full Phase 9 per-user cascade (table footprint documented on the
- * DELETE /user/:id route below), extracted so it has exactly ONE
- * implementation shared by that route and the customer-level hard delete
- * further down — "what deleting one user means" must not exist twice and
- * drift. Must run inside an already-open transaction; the caller owns
- * commit/rollback. Emits the same `auditLog.info(...)` pre-state line the
- * original single-user route always has, once per user, so a tenant-wide
- * delete produces one such line per user it removes.
- */
-async function hardDeleteUserWithinTx(
-  tx: Tx,
-  userId: number,
-  actor: { id: number; email: string },
-): Promise<UserHardDeleteResult> {
-  const [target] = await tx
-        .select({
-          id: usersTable.id,
-          email: usersTable.email,
-          name: usersTable.name,
-          mspRole: usersTable.mspRole,
-          mspId: usersTable.mspId,
-          tenantId: usersTable.tenantId,
-        })
-        .from(usersTable)
-        .where(eq(usersTable.id, userId))
-        .limit(1);
-
-      if (!target) return { notFound: true as const };
-
-      // The owning tenants row keys the tenant-scoped wipe (section A,
-      // 23-28). tenants.id is the integer "customerId" successor id-space;
-      // tenants.tenantId is the AAD GUID text key telemetry rows carry.
-      const tenant =
-        target.tenantId != null
-          ? ((
-              await tx
-                .select({ id: tenantsTable.id, tenantGuid: tenantsTable.tenantId })
-                .from(tenantsTable)
-                .where(eq(tenantsTable.id, target.tenantId))
-                .limit(1)
-            )[0] ?? null)
-          : null;
-
-      const projectIds = (
-        await tx
-          .select({ id: projectsTable.id })
-          .from(projectsTable)
-          .where(or(eq(projectsTable.clientUserId, userId), eq(projectsTable.signedOffBy, userId)))
-      ).map((r) => r.id);
-
-      const clientServiceIds = (
-        await tx
-          .select({ id: clientServicesTable.id })
-          .from(clientServicesTable)
-          .where(
-            or(
-              eq(clientServicesTable.clientUserId, userId),
-              projectIds.length ? inArray(clientServicesTable.projectId, projectIds) : undefined,
-            ),
-          )
-      ).map((r) => r.id);
-
-      const diagnosticRunIds = (
-        await tx
-          .select({ runId: mspDiagnosticRunsTable.runId })
-          .from(mspDiagnosticRunsTable)
-          .where(
-            or(
-              eq(mspDiagnosticRunsTable.triggeredByUserId, userId),
-              tenant ? eq(mspDiagnosticRunsTable.customerId, tenant.id) : undefined,
-            ),
-          )
-      ).map((r) => r.runId);
-
-      // or() over the real conditions only; null means "no rows can match —
-      // skip this table entirely" (e.g. tenant-scoped tables for an account
-      // with no tenant linkage). NEVER pass an undefined where to delete().
-      const anyOf = (...conds: (SQL | undefined)[]): SQL | null => {
-        const real = conds.filter((c): c is SQL => c !== undefined);
-        return real.length ? (or(...real) as SQL) : null;
-      };
-
-      // Section A of the header comment, in that exact order.
-      const explicitDeletes: Array<{ name: string; table: PgTable; where: SQL | null }> = [
-        {
-          name: "workflow_steps",
-          table: workflowStepsTable,
-          where: anyOf(
-            projectIds.length ? inArray(workflowStepsTable.projectId, projectIds) : undefined,
-            clientServiceIds.length ? inArray(workflowStepsTable.clientServiceId, clientServiceIds) : undefined,
-          ),
-        },
-        {
-          name: "kanban_tasks",
-          table: kanbanTasksTable,
-          where: anyOf(projectIds.length ? inArray(kanbanTasksTable.projectId, projectIds) : undefined),
-        },
-        {
-          name: "status_reports",
-          table: statusReportsTable,
-          where: anyOf(
-            eq(statusReportsTable.clientUserId, userId),
-            projectIds.length ? inArray(statusReportsTable.projectId, projectIds) : undefined,
-          ),
-        },
-        {
-          name: "project_updates",
-          table: projectUpdatesTable,
-          where: anyOf(
-            eq(projectUpdatesTable.authorUserId, userId),
-            projectIds.length ? inArray(projectUpdatesTable.projectId, projectIds) : undefined,
-          ),
-        },
-        {
-          name: "messages",
-          table: messagesTable,
-          where: anyOf(eq(messagesTable.clientUserId, userId), eq(messagesTable.senderUserId, userId)),
-        },
-        { name: "notifications", table: notificationsTable, where: anyOf(eq(notificationsTable.userId, userId)) },
-        {
-          name: "reports",
-          table: reportsTable,
-          where: anyOf(
-            eq(reportsTable.clientUserId, userId),
-            projectIds.length ? inArray(reportsTable.projectId, projectIds) : undefined,
-          ),
-        },
-        {
-          name: "client_documents",
-          table: clientDocumentsTable,
-          where: anyOf(eq(clientDocumentsTable.clientUserId, userId), eq(clientDocumentsTable.uploadedBy, userId)),
-        },
-        {
-          name: "documents",
-          table: documentsTable,
-          where: anyOf(
-            eq(documentsTable.uploadedBy, userId),
-            projectIds.length ? inArray(documentsTable.projectId, projectIds) : undefined,
-          ),
-        },
-        {
-          name: "invoices",
-          table: invoicesTable,
-          where: anyOf(
-            eq(invoicesTable.clientUserId, userId),
-            projectIds.length ? inArray(invoicesTable.projectId, projectIds) : undefined,
-          ),
-        },
-        {
-          name: "contracts",
-          table: contractsTable,
-          where: anyOf(
-            eq(contractsTable.userId, userId),
-            projectIds.length ? inArray(contractsTable.projectId, projectIds) : undefined,
-          ),
-        },
-        { name: "emails", table: emailsTable, where: anyOf(eq(emailsTable.linkedUserId, userId)) },
-        { name: "email_domain_rules", table: emailDomainRulesTable, where: anyOf(eq(emailDomainRulesTable.linkedUserId, userId)) },
-        { name: "password_reset_tokens", table: passwordResetTokensTable, where: anyOf(eq(passwordResetTokensTable.userId, userId)) },
-        {
-          name: "impersonation_tokens",
-          table: impersonationTokensTable,
-          where: anyOf(eq(impersonationTokensTable.clientUserId, userId), eq(impersonationTokensTable.adminUserId, userId)),
-        },
-        {
-          name: "client_services",
-          table: clientServicesTable,
-          where: anyOf(
-            eq(clientServicesTable.clientUserId, userId),
-            projectIds.length ? inArray(clientServicesTable.projectId, projectIds) : undefined,
-          ),
-        },
-        {
-          name: "projects",
-          table: projectsTable,
-          where: anyOf(eq(projectsTable.clientUserId, userId), eq(projectsTable.signedOffBy, userId)),
-        },
-        { name: "mfa_enrollments", table: mfaEnrollmentsTable, where: anyOf(eq(mfaEnrollmentsTable.userId, userId)) },
-        { name: "mfa_challenges", table: mfaChallengesTable, where: anyOf(eq(mfaChallengesTable.userId, userId)) },
-        { name: "mfa_bypass_codes", table: mfaBypassCodesTable, where: anyOf(eq(mfaBypassCodesTable.userId, userId)) },
-        { name: "user_sessions", table: userSessionsTable, where: anyOf(eq(userSessionsTable.userId, userId)) },
-        {
-          name: "user_entitlement_overrides",
-          table: userEntitlementOverridesTable,
-          where: anyOf(eq(userEntitlementOverridesTable.userId, userId)),
-        },
-        {
-          name: "consent_invite_tokens",
-          table: consentInviteTokensTable,
-          where: anyOf(
-            eq(consentInviteTokensTable.clientUserId, userId),
-            tenant ? eq(consentInviteTokensTable.customerId, tenant.id) : undefined,
-            tenant ? eq(consentInviteTokensTable.tenantId, tenant.tenantGuid) : undefined,
-          ),
-        },
-        {
-          name: "insights_generated_documents",
-          table: insightsGeneratedDocumentsTable,
-          where: anyOf(
-            eq(insightsGeneratedDocumentsTable.customerId, userId),
-            tenant ? eq(insightsGeneratedDocumentsTable.mspCustomerId, tenant.id) : undefined,
-          ),
-        },
-        {
-          name: "tenant_monitor_profiles",
-          table: tenantMonitorProfilesTable,
-          where: anyOf(tenant ? eq(tenantMonitorProfilesTable.tenantId, tenant.tenantGuid) : undefined),
-        },
-        {
-          name: "msp_diagnostic_findings",
-          table: mspDiagnosticFindingsTable,
-          where: anyOf(
-            diagnosticRunIds.length ? inArray(mspDiagnosticFindingsTable.runId, diagnosticRunIds) : undefined,
-            tenant ? eq(mspDiagnosticFindingsTable.customerId, tenant.id) : undefined,
-          ),
-        },
-        {
-          name: "msp_diagnostic_runs",
-          table: mspDiagnosticRunsTable,
-          where: anyOf(
-            eq(mspDiagnosticRunsTable.triggeredByUserId, userId),
-            tenant ? eq(mspDiagnosticRunsTable.customerId, tenant.id) : undefined,
-          ),
-        },
-        {
-          name: "msp_customer_clickwraps",
-          table: mspCustomerClickwrapsTable,
-          where: anyOf(
-            eq(mspCustomerClickwrapsTable.customerUserId, userId),
-            tenant ? eq(mspCustomerClickwrapsTable.customerId, tenant.id) : undefined,
-          ),
-        },
-        { name: "msp_agreement_acceptances", table: mspAgreementAcceptancesTable, where: anyOf(eq(mspAgreementAcceptancesTable.userId, userId)) },
-        // live_document_shares.customer_id is a NOT NULL users.id whose FK is NO
-        // ACTION — so a user who ever minted a share link could not be hard
-        // deleted at all: the users DELETE failed on the constraint and rolled
-        // the whole transaction back. Found by the #2983 id-space audit; the
-        // share is the login's own credential, so it goes with the login.
-        { name: "live_document_shares", table: liveDocumentSharesTable, where: anyOf(eq(liveDocumentSharesTable.customerId, userId)) },
-        {
-          name: "msp_impersonation_tokens",
-          table: mspImpersonationTokensTable,
-          where: anyOf(eq(mspImpersonationTokensTable.actorUserId, userId), eq(mspImpersonationTokensTable.targetUserId, userId)),
-        },
-      ];
-
-      // Section B — rows the users delete will cascade away (census only).
-      const cascadeCensus: Array<{ name: string; table: PgTable; where: SQL }> = [
-        { name: "customer_notification_preferences", table: customerNotificationPreferencesTable, where: eq(customerNotificationPreferencesTable.userId, userId) },
-        { name: "account_setup_tokens", table: accountSetupTokensTable, where: eq(accountSetupTokensTable.userId, userId) },
-        { name: "client_m365_profiles", table: clientM365ProfilesTable, where: eq(clientM365ProfilesTable.clientId, userId) },
-        { name: "client_app_registrations", table: clientAppRegistrationsTable, where: eq(clientAppRegistrationsTable.clientUserId, userId) },
-        { name: "webauthn_credentials", table: webauthnCredentialsTable, where: eq(webauthnCredentialsTable.userId, userId) },
-        { name: "webauthn_challenges", table: webauthnChallengesTable, where: eq(webauthnChallengesTable.userId, userId) },
-        { name: "client_health_history", table: clientHealthHistoryTable, where: eq(clientHealthHistoryTable.clientId, userId) },
-        { name: "client_callback_tokens", table: clientCallbackTokensTable, where: eq(clientCallbackTokensTable.clientUserId, userId) },
-        { name: "client_scores", table: clientScoresTable, where: eq(clientScoresTable.clientId, userId) },
-        { name: "client_automation_runs", table: clientAutomationRunsTable, where: eq(clientAutomationRunsTable.clientUserId, userId) },
-        { name: "assessment_sow_agreements", table: assessmentSowAgreementsTable, where: eq(assessmentSowAgreementsTable.clientUserId, userId) },
-        { name: "push_subscriptions", table: pushSubscriptionsTable, where: eq(pushSubscriptionsTable.userId, userId) },
-        { name: "quick_win_presentations", table: quickWinPresentationsTable, where: eq(quickWinPresentationsTable.clientUserId, userId) },
-        { name: "quick_win_result_shares", table: quickWinResultSharesTable, where: eq(quickWinResultSharesTable.clientUserId, userId) },
-        { name: "msp_staff_customer_scopes", table: mspStaffCustomerScopesTable, where: eq(mspStaffCustomerScopesTable.staffUserId, userId) },
-      ];
-
-      // Section C — references the users delete will null out; rows survive.
-      const setNullCensus: Array<{ name: string; table: PgTable; where: SQL }> = [
-        { name: "project_closures.signer_user_id", table: projectClosuresTable, where: eq(projectClosuresTable.signerUserId, userId) },
-        { name: "audit_logs.actor_user_id", table: auditLogsTable, where: eq(auditLogsTable.actorUserId, userId) },
-        { name: "audit_logs.client_id", table: auditLogsTable, where: eq(auditLogsTable.clientId, userId) },
-        { name: "mfa_bypass_codes.created_by_user_id", table: mfaBypassCodesTable, where: eq(mfaBypassCodesTable.createdByUserId, userId) },
-        { name: "azure_tenant_credentials.client_user_id", table: azureTenantCredentialsTable, where: eq(azureTenantCredentialsTable.clientUserId, userId) },
-        { name: "inbox_message_links.customer_id", table: inboxMessageLinksTable, where: eq(inboxMessageLinksTable.customerId, userId) },
-        { name: "script_run_results.customer_id", table: scriptRunResultsTable, where: eq(scriptRunResultsTable.customerId, userId) },
-        { name: "script_download_tokens.customer_id", table: scriptDownloadTokensTable, where: eq(scriptDownloadTokensTable.customerId, userId) },
-        // client_user_id dropped (Git #3079) — dead column, never written by any real path.
-        { name: "insights_automations.customer_id", table: insightsAutomationsTable, where: eq(insightsAutomationsTable.customerId, userId) },
-        // #2983: tenant_signal_history.customer_id is a real tenants.id now, so a
-        // single user's delete must NOT filter on it (that is the tenant-only
-        // cascade's job). What a user delete does touch is the retained
-        // pre-#2983 provenance column, which is a users.id and is SET NULL.
-        { name: "tenant_signal_history.client_user_id", table: tenantSignalHistoryTable, where: eq(tenantSignalHistoryTable.clientUserId, userId) },
-        // sales_offers.customer_id is a tenants.id, not a users.id (#2730) — a
-        // single user's hard delete never nulls it (deleting the whole tenant
-        // does, via /admin/active-directory/customer/:id's own cascade). Not
-        // listed here; a `userId` value would filter the wrong id space.
-        { name: "sales_offer_events.actor_user_id", table: salesOfferEventsTable, where: eq(salesOfferEventsTable.actorUserId, userId) },
-        { name: "user_entitlement_overrides.granted_by_user_id", table: userEntitlementOverridesTable, where: eq(userEntitlementOverridesTable.grantedByUserId, userId) },
-        { name: "msp_staff_customer_scopes.created_by_user_id", table: mspStaffCustomerScopesTable, where: eq(mspStaffCustomerScopesTable.createdByUserId, userId) },
-      ];
-
-      const countWhere = async (table: PgTable, where: SQL): Promise<number> => {
-        const [row] = await tx.select({ n: count() }).from(table).where(where);
-        return Number(row?.n ?? 0);
-      };
-
-      const explicitCounts: Record<string, number> = {};
-      for (const entry of explicitDeletes) {
-        explicitCounts[entry.name] = entry.where ? await countWhere(entry.table, entry.where) : 0;
-      }
-      const cascadeCounts: Record<string, number> = {};
-      for (const entry of cascadeCensus) {
-        cascadeCounts[entry.name] = await countWhere(entry.table, entry.where);
-      }
-      const setNullCounts: Record<string, number> = {};
-      for (const entry of setNullCensus) {
-        setNullCounts[entry.name] = await countWhere(entry.table, entry.where);
-      }
-
-      // The FULL pre-delete state, to the audit channel, BEFORE anything is
-      // deleted and therefore before the transaction can possibly commit.
-      auditLog.info(
-        {
-          actionType: "user.hard_delete.pre_state",
-          actorUserId: actor.id,
-          actorEmail: actor.email,
-          targetUserId: target.id,
-          targetEmail: target.email,
-          targetMspRole: target.mspRole,
-          targetMspId: target.mspId,
-          targetTenantId: target.tenantId,
-          tenantGuid: tenant?.tenantGuid ?? null,
-          projectIds,
-          clientServiceIds,
-          diagnosticRunIds,
-          explicitDeleteCounts: explicitCounts,
-          dbCascadeCounts: cascadeCounts,
-          dbSetNullCounts: setNullCounts,
-          occurredAt: new Date().toISOString(),
-        },
-        "audit: FULL pre-delete state for dev-only hard delete (logged before commit)",
-      );
-
-      for (const entry of explicitDeletes) {
-        if (entry.where) await tx.delete(entry.table).where(entry.where);
-      }
-
-      // Last: the account row itself. The DB cascades section B and nulls
-      // section C as part of this statement.
-      await tx.delete(usersTable).where(eq(usersTable.id, userId));
-
-  return { notFound: false, target, tenant, explicitCounts, cascadeCounts, setNullCounts };
 }
 
 router.delete("/admin/active-directory/user/:id", requireAdmin, async (req: Request, res: Response) => {
@@ -2314,7 +1833,7 @@ router.delete("/admin/active-directory/user/:id", requireAdmin, async (req: Requ
   }
 
   try {
-    const result = await db.transaction((tx) => hardDeleteUserWithinTx(tx, userId, { id: actor.id, email: actor.email }));
+    const result = await db.transaction((tx) => hardDeleteUserWithinTx(tx, userId, { kind: "user", id: actor.id, email: actor.email }));
 
     if (result.notFound) {
       res.status(404).json({ error: "User not found" });
@@ -2465,7 +1984,7 @@ router.delete("/admin/active-directory/customer/:id", requireAdmin, async (req: 
 
       const perUserResults: Array<{ userId: number; email: string }> = [];
       for (const u of userRows) {
-        const userResult = await hardDeleteUserWithinTx(tx, u.id, { id: actor.id, email: actor.email });
+        const userResult = await hardDeleteUserWithinTx(tx, u.id, { kind: "user", id: actor.id, email: actor.email });
         if (!userResult.notFound) perUserResults.push({ userId: u.id, email: u.email });
       }
 

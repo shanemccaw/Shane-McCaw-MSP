@@ -153,11 +153,26 @@ export function __resetRetainedRecordTypesForTest(): void {
 // **SHIPS EMPTY**, exactly as the record-type registry does. The sweep treats an empty
 // registry as a REFUSAL rather than a completed no-op — see `purgeTerminatedTenant()`.
 
+/**
+ * WHEN a purger runs relative to the others (Git #2984).
+ *
+ * `"data"` (the default) is every module that owns tenant-scoped tables; the order among
+ * them does not matter. `"identity"` is the module that destroys the `users` rows
+ * themselves, and it MUST run after all of them: the `userId` key space is resolved by
+ * reading `users WHERE tenant_id = ?` once per module, so a module that runs after the
+ * accounts are gone resolves an empty user set and reports zero for rows it never
+ * touched. See `purgers/declare.ts` → `TenantPurgePhase` for the full account, and
+ * `purgeTerminatedTenant()` for the ordering itself.
+ */
+export type TenantPurgePhaseKey = "data" | "identity";
+
 export interface TenantDataPurger {
   /** Registry key — conventionally the owning module, e.g. `"risk-register"`. */
   key: string;
   /** How this data class reads to a human, for the audit account of the purge. */
   displayName: string;
+  /** Defaults to `"data"` when absent. */
+  phase?: TenantPurgePhaseKey;
   /**
    * Destroy every row this module holds for `tenantId`, inside the given transaction.
    * Returns the number of rows destroyed, which is recorded in the audit account — a
@@ -190,6 +205,20 @@ export function registerTenantDataPurger(purger: TenantDataPurger): void {
 
 export function listTenantDataPurgers(): TenantDataPurger[] {
   return [...tenantPurgers.values()];
+}
+
+/**
+ * The registered purgers in the order a purge must actually run them: every `"data"`
+ * purger, then every `"identity"` purger. Stable within a phase, so registration order is
+ * still what decides among peers.
+ *
+ * A function rather than a rule `purgeTerminatedTenant` applies inline, so the ordering
+ * is testable on its own — an ordering constraint that can only be observed by running an
+ * irreversible destructive path against a real database is not one anybody checks.
+ */
+export function orderedTenantDataPurgers(): TenantDataPurger[] {
+  const rank = (p: TenantDataPurger): number => ((p.phase ?? "data") === "identity" ? 1 : 0);
+  return [...tenantPurgers.values()].sort((a, b) => rank(a) - rank(b));
 }
 
 /** Test-only. Never call this from application code. */

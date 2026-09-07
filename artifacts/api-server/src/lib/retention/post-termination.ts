@@ -40,7 +40,7 @@ import { db, tenantsTable, RETENTION_DEFAULT_POST_TERMINATION_YEARS } from "@wor
 import { logger } from "../logger";
 import { postTerminationDueAt } from "./clock";
 import { resolveRetentionPolicy } from "./policy";
-import { listTenantDataPurgers } from "./registry";
+import { listTenantDataPurgers, orderedTenantDataPurgers } from "./registry";
 import { resolveTenantBillingState } from "../tenant-billing-state";
 
 const log = logger.child({ channel: "system.core" });
@@ -209,7 +209,13 @@ export async function purgeTerminatedTenant(
   const destroyed: Record<string, number> = {};
   try {
     await db.transaction(async (tx) => {
-      for (const purger of registered) {
+      // Phase-ordered, NOT registration-ordered (#2984). The identity purger destroys the
+      // customer's `users` rows, and every module keyed by `userId` resolves that id space
+      // by reading `users WHERE tenant_id = ?` inside this same transaction — so a module
+      // that ran after it would resolve an empty user set, delete nothing, and report zero
+      // for rows that are still there. The tenant would then be stamped purged and never
+      // looked at again. See `registry.ts` → `orderedTenantDataPurgers()`.
+      for (const purger of orderedTenantDataPurgers()) {
         destroyed[purger.key] = await purger.purge(tx, tenantId);
       }
       await tx
