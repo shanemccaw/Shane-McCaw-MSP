@@ -447,6 +447,19 @@ source: some developers report occasional reliability issues where iOS web push 
 initially then stops unexpectedly — worth monitoring in real use, not a blocker to this
 decision.
 
+**Real "enhanced alerts" — slide-down interactive responses, confirmed 2026-09-05.**
+Extends the notification-tray-as-primary-interface principle (Section 3) with real
+interactivity — act on a notification (mark done, snooze, dismiss) without opening the
+full app, matching the real slide-down/pull-down action-button pattern iOS users already
+know from native apps. **Real technical uncertainty, not yet resolved**: native iOS apps
+have well-established support for this (`UNNotificationCategory`/action buttons); how much
+of that same interactivity Safari's Home Screen web-push implementation genuinely supports
+is less clear from available documentation — some real sources suggest full action-button
+support is more consistently documented for native apps than for Safari's web-push
+specifically. Real fallback if full parity isn't achievable: tapping a notification opens
+the app directly to the relevant item, which is still fast, just not zero-tap. Needs real
+verification during build, not assumed either way.
+
 ## 11. What NOT to design
 
 - No dashboard-first layout — the notification tray leads.
