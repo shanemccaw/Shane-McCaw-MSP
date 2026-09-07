@@ -172,7 +172,6 @@ router.post("/script-ingestion", async (req: Request, res: Response) => {
     scriptId: string;
     mspId: number | null;
     customerId: number | null;
-    clientUserId: number | null;
     expiresAt: Date;
     usedAt: Date | null;
     revokedAt: Date | null;
@@ -185,7 +184,6 @@ router.post("/script-ingestion", async (req: Request, res: Response) => {
         scriptId: scriptDownloadTokensTable.scriptId,
         mspId: scriptDownloadTokensTable.mspId,
         customerId: scriptDownloadTokensTable.customerId,
-        clientUserId: scriptDownloadTokensTable.clientUserId,
         expiresAt: scriptDownloadTokensTable.expiresAt,
         usedAt: scriptDownloadTokensTable.usedAt,
         revokedAt: scriptDownloadTokensTable.revokedAt,

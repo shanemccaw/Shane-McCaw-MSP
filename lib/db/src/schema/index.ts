@@ -2439,12 +2439,10 @@ export const scriptDownloadTokensTable = pgTable("script_download_tokens", {
    * despite the column name (Git #2983).
    */
   customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
-  /**
-   * Also a `users.id`, and the reason `customerId` above could not simply be
-   * renamed to the codebase's usual users.id column name — that name is taken
-   * here. No live path writes this column; it is only read back (#2983 finding).
-   */
-  clientUserId: integer("client_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  // `client_user_id` (Git #3079) was dropped here: added alongside `customerId` at
+  // this table's creation, never written by either real writer, and its one reader
+  // discarded the value — confirmed dead. Its removal is what frees the
+  // `customerId` -> `clientUserId` rename #2983 wanted across all six tables.
   runResultId: integer("run_result_id").references(() => scriptRunResultsTable.id, { onDelete: "set null" }),
   label: text("label").notNull().default(""),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

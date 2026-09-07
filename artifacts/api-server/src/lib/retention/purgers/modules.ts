@@ -453,7 +453,8 @@ export const directoryPurger: TenantDataPurgerDeclaration = {
     // confirmed against every real writer and reader. Purge by this tenant's logins.
     { table: "inbox_message_links", column: "customer_id", keySpace: "userId" },
     { table: "script_run_results", column: "customer_id", keySpace: "userId" },
-    { table: "script_download_tokens", column: "customer_id", keySpace: "userId", orColumn: "client_user_id" },
+    // client_user_id orColumn dropped (Git #3079) — dead column, never written by any real path.
+    { table: "script_download_tokens", column: "customer_id", keySpace: "userId" },
   ],
 };
 

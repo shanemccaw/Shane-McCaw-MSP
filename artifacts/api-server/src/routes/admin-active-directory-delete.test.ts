@@ -186,7 +186,7 @@ vi.mock("@workspace/db", () => {
     azureTenantCredentialsTable: tbl("azure_tenant_credentials", ["id", "clientUserId"]),
     inboxMessageLinksTable: tbl("inbox_message_links", ["id", "customerId"]),
     scriptRunResultsTable: tbl("script_run_results", ["id", "customerId"]),
-    scriptDownloadTokensTable: tbl("script_download_tokens", ["id", "customerId", "clientUserId"]),
+    scriptDownloadTokensTable: tbl("script_download_tokens", ["id", "customerId"]),
     insightsAutomationsTable: tbl("insights_automations", ["id", "customerId"]),
     tenantSignalHistoryTable: tbl("tenant_signal_history", ["id", "customerId", "clientUserId"]),
     salesOffersTable: tbl("sales_offers", ["id", "customerId"]),

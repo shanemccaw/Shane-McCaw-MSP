@@ -2218,7 +2218,7 @@ async function hardDeleteUserWithinTx(
         { name: "inbox_message_links.customer_id", table: inboxMessageLinksTable, where: eq(inboxMessageLinksTable.customerId, userId) },
         { name: "script_run_results.customer_id", table: scriptRunResultsTable, where: eq(scriptRunResultsTable.customerId, userId) },
         { name: "script_download_tokens.customer_id", table: scriptDownloadTokensTable, where: eq(scriptDownloadTokensTable.customerId, userId) },
-        { name: "script_download_tokens.client_user_id", table: scriptDownloadTokensTable, where: eq(scriptDownloadTokensTable.clientUserId, userId) },
+        // client_user_id dropped (Git #3079) — dead column, never written by any real path.
         { name: "insights_automations.customer_id", table: insightsAutomationsTable, where: eq(insightsAutomationsTable.customerId, userId) },
         // #2983: tenant_signal_history.customer_id is a real tenants.id now, so a
         // single user's delete must NOT filter on it (that is the tenant-only

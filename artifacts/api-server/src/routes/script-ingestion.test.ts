@@ -19,7 +19,7 @@ const mockInsert = vi.fn();
 const mockUpdate = vi.fn();
 
 vi.mock("@workspace/db", () => {
-  const scriptDownloadTokensTable = { tokenHash: "tokenHash", id: "id", scriptId: "scriptId", mspId: "mspId", customerId: "customerId", clientUserId: "clientUserId", expiresAt: "expiresAt", usedAt: "usedAt", revokedAt: "revokedAt" };
+  const scriptDownloadTokensTable = { tokenHash: "tokenHash", id: "id", scriptId: "scriptId", mspId: "mspId", customerId: "customerId", expiresAt: "expiresAt", usedAt: "usedAt", revokedAt: "revokedAt" };
   const scriptRunResultsTable = { id: "id", customerId: "customerId", libraryScriptId: "libraryScriptId", rawOutput: "rawOutput", status: "status", executionSource: "executionSource", uploadedBy: "uploadedBy", uploadedAt: "uploadedAt", scriptName: "scriptName" };
   const powershellScriptsTable = { id: "id", description: "description", title: "title" };
 
@@ -83,7 +83,6 @@ function makeTokenRow(overrides: Partial<{
   scriptId: string;
   mspId: number | null;
   customerId: number | null;
-  clientUserId: number | null;
   expiresAt: Date;
   usedAt: Date | null;
   revokedAt: Date | null;
@@ -93,7 +92,6 @@ function makeTokenRow(overrides: Partial<{
     scriptId: "aaaabbbb-cccc-dddd-eeee-ffff00001111",
     mspId: 1,
     customerId: 7,
-    clientUserId: null,
     expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
     usedAt: null,
     revokedAt: null,
