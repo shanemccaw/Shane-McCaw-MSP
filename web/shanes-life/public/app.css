@@ -25,8 +25,18 @@ html, body {
   font: 16px/1.5 var(--font-sans);
   -webkit-text-size-adjust: 100%;
   overscroll-behavior-y: contain;
-  /* The room watermark (Git #3119) sits at right:-44px by design, deliberately bleeding off the
-     card edge -- this keeps that from opening a horizontal scrollbar on the page. */
+}
+
+/* `overflow-x: hidden` used to sit on BOTH html and body -- Git #3128's real bug. Setting it on
+   the root <html> element as well as body collapses Chromium's compositor scroll node for the
+   WHOLE page, not just the horizontal axis: window.scrollTo() kept working (it sets the offset
+   directly) but real wheel/touch-driven scrolling stopped dead, in both emulated mobile and
+   normal desktop rendering, on every room -- confirmed live and reproduced headless (Input
+   dispatchMouseEvent wheel: scrollY stuck at 0 with the rule on html, scrolls normally with it
+   removed from html). Clipping the room watermark's horizontal bleed (Git #3119) only needs one
+   element -- body alone -- so html is left unconstrained and the page's real scroll node stays
+   intact. */
+body {
   overflow-x: hidden;
 }
 
