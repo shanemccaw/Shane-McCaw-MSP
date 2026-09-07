@@ -115,6 +115,30 @@ namespace BuildConsole.Services
         /// staggering the real GitHub calls instead of bursting them.</summary>
         private const int MaxConcurrentItemFetches = 3;
 
+        /// <summary>Git #3073 — #2889's gate was a `using var gate = new SemaphoreSlim(...)` LOCAL to
+        /// one <see cref="BuildAsync"/> call, so it only bounded concurrency WITHIN a single chat
+        /// dock's own refresh. It did nothing to bound concurrency ACROSS simultaneous refreshes of
+        /// several different chat docks — and <c>MainWindow.xaml.cs</c>'s <c>BoardRefreshCompleted</c>
+        /// cascade (#2688) fires every open chat tab's <c>ChatDocumentContainer.RefreshDetectedAsync</c>
+        /// off the SAME event dispatch, each independently constructing its own local gate. With N
+        /// open chat tabs mentioning distinct issue numbers, that meant N × <see cref="MaxConcurrentItemFetches"/>
+        /// real GitHub calls in flight at once on one cold-start board refresh — exactly the "dozens
+        /// of distinct issue numbers within milliseconds" Shane's log showed, none of it explained by
+        /// this method's own per-dock bound. Making the gate STATIC (shared process-wide across every
+        /// concurrent <see cref="BuildAsync"/> call, not just every item within one call) is the real
+        /// fix: total real GitHub calls in flight for chat-dock enrichment now stays capped at
+        /// <see cref="MaxConcurrentItemFetches"/> no matter how many chat docks refresh at once.</summary>
+        private static readonly SemaphoreSlim SharedItemFetchGate = new(MaxConcurrentItemFetches, MaxConcurrentItemFetches);
+
+        /// <summary>Git #3073 — same real per-number cooldown shape #2890 established for
+        /// <c>BuildQueuePanel.TriggerBackgroundIssueTitleQueries</c>: a mentioned issue whose
+        /// board-status/chain-walk fetch failed recently is skipped (metadata just stays null/empty
+        /// for this pass) rather than re-attempted on literally every dock refresh across every open
+        /// chat tab. Keyed process-wide (not per-chat) since the same issue number failing for one
+        /// chat's dock will fail identically for every other chat that also mentions it.</summary>
+        private static readonly Dictionary<int, DateTime> MetadataFetchCooldownUntil = new();
+        private static readonly TimeSpan MetadataFetchRetryCooldown = TimeSpan.FromSeconds(60);
+
         public static Task<ChatDockData> BuildAsync(BuildQueuePostgresClient db, string chatUrl, int chatId) =>
             BuildAsync(db, chatUrl, chatId, null);
 
@@ -180,9 +204,12 @@ namespace BuildConsole.Services
             // GitHub calls fired at once. Gate it through a small SemaphoreSlim instead of reverting to
             // fully sequential — still concurrent (keeps #2686's real load-time fix), but real GitHub
             // calls are now capped/staggered rather than bursting.
-            using var gate = new SemaphoreSlim(MaxConcurrentItemFetches);
+            //
+            // Git #3073 — that gate must be the process-wide SharedItemFetchGate, not a local instance
+            // per call: several chat docks can (and do, via #2688's BoardRefreshCompleted cascade)
+            // refresh concurrently, and a local gate only bounds ONE dock's own fan-out.
             var itemTasks = mentioned
-                .Select(number => BuildItemThrottledAsync(gate, number, reachedGitHub, openResult, gh, liveQueueItems))
+                .Select(number => BuildItemThrottledAsync(number, reachedGitHub, openResult, gh, liveQueueItems))
                 .ToList();
             var built = await Task.WhenAll(itemTasks);
             var items = built.Where(i => i != null).Select(i => i!).ToList();
@@ -199,23 +226,25 @@ namespace BuildConsole.Services
         /// <summary>Git #2889 — acquires <see cref="MaxConcurrentItemFetches"/>'s real gate before
         /// starting this mentioned issue's real GitHub work, so <see cref="BuildAsync"/>'s
         /// <c>Task.WhenAll</c> fan-out only ever has a small, bounded number of items actually
-        /// in-flight at once instead of firing all of them simultaneously.</summary>
+        /// in-flight at once instead of firing all of them simultaneously.
+        ///
+        /// Git #3073 — that gate is now <see cref="SharedItemFetchGate"/>, held process-wide across
+        /// EVERY concurrently-refreshing chat dock, not just the items within this one call.</summary>
         private static async Task<ChatDockItem?> BuildItemThrottledAsync(
-            SemaphoreSlim gate,
             int number,
             bool reachedGitHub,
             LiveOpenIssuesResult openResult,
             GitHubApiClient? gh,
             IReadOnlyList<QueueItem>? liveQueueItems)
         {
-            await gate.WaitAsync();
+            await SharedItemFetchGate.WaitAsync();
             try
             {
                 return await BuildItemAsync(number, reachedGitHub, openResult, gh, liveQueueItems);
             }
             finally
             {
-                gate.Release();
+                SharedItemFetchGate.Release();
             }
         }
 
@@ -250,7 +279,18 @@ namespace BuildConsole.Services
             }
             catch { /* title stays the bare number — not fatal, the item is still real */ }
 
-            if (gh != null)
+            // Git #3073 — a number whose board-status/chain-walk fetch failed recently is on
+            // cooldown; skip it so a persistently-failing number doesn't get re-hit on every dock
+            // refresh across every open chat tab that happens to mention it (same real shape as
+            // #2890's title-fetch cooldown).
+            bool inMetadataCooldown;
+            lock (MetadataFetchCooldownUntil)
+            {
+                inMetadataCooldown = MetadataFetchCooldownUntil.TryGetValue(number, out var retryNotBefore)
+                    && DateTime.UtcNow < retryNotBefore;
+            }
+
+            if (gh != null && !inMetadataCooldown)
             {
                 try
                 {
@@ -261,12 +301,22 @@ namespace BuildConsole.Services
                     boardStatus = statusTask.Result?.StatusName;
                     blockedBy = blockedByTask.Result;
                     blocks = blocksTask.Result;
+
+                    // Succeeded — drop any prior cooldown for this number.
+                    lock (MetadataFetchCooldownUntil)
+                    {
+                        MetadataFetchCooldownUntil.Remove(number);
+                    }
                 }
                 catch (Exception ex)
                 {
                     // Metadata-only failure — the item itself stays in the actionable list
                     // (fail-closed), it just renders without a chain/board-status this pass.
                     ActivityLog.Log("chat.dock", $"relationship/board-status fetch failed for #{number}: {ex.Message}");
+                    lock (MetadataFetchCooldownUntil)
+                    {
+                        MetadataFetchCooldownUntil[number] = DateTime.UtcNow + MetadataFetchRetryCooldown;
+                    }
                 }
             }
 
