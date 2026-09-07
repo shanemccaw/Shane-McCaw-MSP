@@ -75,6 +75,12 @@ constraints:
   appointments — this is a real, legitimate exception to "context over clock" (Section 7),
   since an appointment is inherently date-anchored. Counts against the real 1–3/day nudge
   cap above, same as everything else — not a bonus exception to it.
+- **Real "ask next time" note, confirmed 2026-09-05 — threads to a specific real
+  appointment, not a generic reminder.** Saying "next time at Dr. Fonji, ask about X"
+  attaches that note to the next real scheduled appointment matching that provider by
+  name, and surfaces it at that appointment's real day-before reminder (or the appointment
+  itself) — not lost in a flat todo list. Same underlying appointment record as the bullet
+  above, just with an attached note field; no separate system needed.
 - **Nudges rationed to 1–3 per day.** Never accumulate, never shame.
 - **Tasks batch by real-world moment, not clock time** — "when heading out," "when at the
   store," not "at 3pm."
