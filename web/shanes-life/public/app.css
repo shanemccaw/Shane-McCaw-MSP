@@ -1,20 +1,17 @@
 /* Shane's Life -- one stylesheet, no build step, no framework.
    Dark, calm, low-chrome. Nothing accumulates visually and nothing keeps score:
    contract pack Section 2 ("guilt/shame around incomplete tasks is a non-starter") and
-   Section 11 ("no streaks, badges, completion percentages"). */
+   Section 11 ("no streaks, badges, completion percentages").
+
+   Colors, type and radii below are the REAL Shane McCaw MSP design-system tokens
+   (Git #3120), ported into /tokens/ and consumed here via hsl(var(--...)) exactly like
+   the design handoff's own prototype does -- not an app-invented palette. The app is
+   always dark (no light-mode toggle), so <html> carries the design system's own
+   `.dark` scope permanently (see index.html / share.html) and every color below reads
+   the dark values from tokens/colors.css. */
 
 :root {
-  --bg: #101317;
-  --surface: #171b21;
-  --surface-2: #1e242c;
-  --line: #2a323c;
-  --text: #e8edf3;
-  --muted: #93a1b1;
-  --accent: #f4b35a;
-  --accent-ink: #241a09;
-  --danger: #ef7b7b;
-  --ok: #79c9a1;
-  --radius: 14px;
+  /* Not a design-system token -- a device safe-area concept the app itself needs. */
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
@@ -23,9 +20,9 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--bg);
-  color: var(--text);
-  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font: 16px/1.5 var(--font-sans);
   -webkit-text-size-adjust: 100%;
   overscroll-behavior-y: contain;
   /* The room watermark (Git #3119) sits at right:-44px by design, deliberately bleeding off the
@@ -35,15 +32,33 @@ html, body {
 
 [hidden] { display: none !important; }
 
-h1 { font-size: 1.25rem; margin: 0; letter-spacing: -0.01em; }
-h2 { font-size: 0.8rem; margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+h1 {
+  font-size: var(--text-xl);
+  line-height: var(--leading-xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  margin: 0;
+}
+
+/* Section labels (design handoff README, "Screens": 11px/600, letter-spacing .1em,
+   uppercase, muted). */
+h2 {
+  font-size: 11px;
+  line-height: 1.3;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: hsl(var(--muted-foreground));
+  font-weight: var(--weight-semibold);
+}
+
 a { color: inherit; }
 
-.muted { color: var(--muted); }
-.error { color: var(--danger); }
-.ok { color: var(--ok); }
+.muted { color: hsl(var(--muted-foreground)); }
+.error { color: hsl(var(--destructive)); }
+.ok { color: hsl(var(--success)); }
 .small { font-size: 0.85rem; }
-.mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 0.8rem; }
+.mono { font-family: var(--font-mono); font-size: 0.8rem; }
 
 /* ---------- sign in / enrol (design handoff screen 1) ---------- */
 
@@ -56,15 +71,22 @@ a { color: inherit; }
 
 .auth-card { width: min(400px, 100%); display: grid; gap: 0.4rem; }
 .auth-mark { justify-self: center; margin-bottom: 0.5rem; }
-.auth-card h1 { text-align: center; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; margin: 0; }
+.auth-card h1 {
+  text-align: center;
+  font-size: 26px;
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.1;
+  margin: 0;
+}
 .auth-tagline { text-align: center; margin: 0.4rem 0 1.75rem; }
 /* 18/600, matching the screen's own "Sign in" label above the buttons. */
-.auth-heading { text-align: center; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 0.5rem; }
+.auth-heading { text-align: center; font-size: 18px; font-weight: var(--weight-semibold); letter-spacing: -0.01em; margin: 0 0 0.5rem; }
 /* 52px primary on the phone, per the screen. */
 .auth-primary { min-height: 52px; display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 0.25rem; }
 .auth-secondary { min-height: 44px; margin-top: 0.15rem; }
 .auth-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.auth-footnote { text-align: center; font-size: 13px; line-height: 1.5; color: var(--muted); margin: 1rem 0 0; }
+.auth-footnote { text-align: center; font-size: 13px; line-height: 1.5; color: hsl(var(--muted-foreground)); margin: 1rem 0 0; }
 .auth-card .error { text-align: center; margin: 0.75rem 0 0; }
 
 /* ---------- shell ---------- */
@@ -78,24 +100,31 @@ a { color: inherit; }
   justify-content: space-between;
   gap: 1rem;
   padding: max(0.9rem, env(safe-area-inset-top)) 1rem 0.7rem;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  background: color-mix(in srgb, hsl(var(--background)) 88%, transparent);
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid hsl(var(--border));
 }
 
+/* Header row title (design handoff README, "Screens": title 17/700). */
+.app-header h1 { font-size: 17px; line-height: 1.3; font-weight: var(--weight-bold); }
+
+/* Shared room chrome (design handoff README, "Screens"): 62px top padding, 16px side
+   padding, 14px gaps between sections. */
 .view {
-  padding: 1rem 1rem 12rem;
+  padding: 62px 16px 12rem;
   max-width: 720px;
   margin: 0 auto;
   display: grid;
-  gap: 1.25rem;
+  gap: 14px;
   align-content: start;
 }
 
+/* Cards (design handoff README, "Screens"): hsl(var(--card)), 1px hsl(var(--card-border)),
+   radius 16. */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  border-radius: var(--radius-2xl);
   padding: 1rem;
 }
 
@@ -106,32 +135,32 @@ a { color: inherit; }
 input, textarea, select {
   width: 100%;
   font: inherit;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-xl);
   padding: 0.65rem 0.75rem;
 }
 
 input:focus, textarea:focus, select:focus, button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid hsl(var(--ring));
   outline-offset: 1px;
 }
 
 button {
   font: inherit;
   cursor: pointer;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--surface-2);
-  color: var(--text);
+  border-radius: var(--radius-xl);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
   padding: 0.6rem 0.9rem;
 }
 
-button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
-button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+button.primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: transparent; font-weight: var(--weight-semibold); }
+button.ghost { background: transparent; border-color: transparent; color: hsl(var(--muted-foreground)); }
 button.small { padding: 0.35rem 0.6rem; font-size: 0.85rem; }
-button.danger { color: var(--danger); }
+button.danger { color: hsl(var(--destructive)); }
 button:disabled { opacity: 0.5; cursor: default; }
 
 .icon-btn {
@@ -141,11 +170,11 @@ button:disabled { opacity: 0.5; cursor: default; }
   height: 40px;
   padding: 0;
   flex: 0 0 auto;
-  background: var(--surface-2);
+  background: hsl(var(--muted));
 }
-.icon-btn svg { width: 20px; height: 20px; fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.icon-btn[aria-pressed="true"] { background: var(--danger); }
-.icon-btn[aria-pressed="true"] svg { stroke: #fff; }
+.icon-btn svg { width: 20px; height: 20px; fill: none; stroke: hsl(var(--muted-foreground)); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.icon-btn[aria-pressed="true"] { background: hsl(var(--destructive)); }
+.icon-btn[aria-pressed="true"] svg { stroke: hsl(var(--destructive-foreground)); }
 
 .row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .spread { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
@@ -159,15 +188,15 @@ button:disabled { opacity: 0.5; cursor: default; }
   bottom: calc(56px + var(--safe-bottom));
   z-index: 6;
   padding: 0.6rem 0.75rem;
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  background: color-mix(in srgb, hsl(var(--background)) 92%, transparent);
   backdrop-filter: blur(12px);
-  border-top: 1px solid var(--line);
+  border-top: 1px solid hsl(var(--border));
 }
 
 .capture-row { display: flex; gap: 0.5rem; align-items: flex-end; max-width: 720px; margin: 0 auto; }
 .capture textarea { resize: none; max-height: 8rem; min-height: 44px; }
-.capture-status { margin: 0.35rem auto 0; max-width: 720px; font-size: 0.8rem; color: var(--muted); min-height: 1.1em; }
-.attachment { max-width: 720px; margin: 0 auto 0.5rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.85rem; color: var(--muted); }
+.capture-status { margin: 0.35rem auto 0; max-width: 720px; font-size: 0.8rem; color: hsl(var(--muted-foreground)); min-height: 1.1em; }
+.attachment { max-width: 720px; margin: 0 auto 0.5rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.85rem; color: hsl(var(--muted-foreground)); }
 
 /* ---------- tabs ---------- */
 
@@ -178,8 +207,8 @@ button:disabled { opacity: 0.5; cursor: default; }
   bottom: 0;
   z-index: 7;
   display: flex;
-  border-top: 1px solid var(--line);
-  background: var(--surface);
+  border-top: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
   padding-bottom: var(--safe-bottom);
 }
 
@@ -188,11 +217,11 @@ button:disabled { opacity: 0.5; cursor: default; }
   text-align: center;
   padding: 0.8rem 0.25rem;
   font-size: 0.8rem;
-  color: var(--muted);
+  color: hsl(var(--muted-foreground));
   text-decoration: none;
 }
 
-.tabs a[aria-current="page"] { color: var(--accent); }
+.tabs a[aria-current="page"] { color: hsl(var(--primary)); }
 
 .badge {
   display: inline-grid;
@@ -201,39 +230,42 @@ button:disabled { opacity: 0.5; cursor: default; }
   height: 1.25rem;
   padding: 0 0.3rem;
   margin-left: 0.15rem;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--accent-ink);
+  border-radius: var(--radius-full);
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 /* ---------- lists ---------- */
 
+/* Room list rows (design handoff README, "Screens"): row min-height 54-60px, 16px
+   horizontal padding, card styling. */
 .tile {
   display: block;
   width: 100%;
+  min-height: 54px;
   text-align: left;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  border-radius: var(--radius-2xl);
   padding: 0.85rem 1rem;
   text-decoration: none;
   color: inherit;
 }
 
 .tile + .tile { margin-top: 0.5rem; }
-.tile .title { font-weight: 600; }
-.tile .meta { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
+.tile .title { font-size: 15px; font-weight: var(--weight-semibold); }
+.tile .meta { font-size: 13px; color: hsl(var(--muted-foreground)); margin-top: 0.15rem; }
 
 .chip {
   display: inline-block;
   font-size: 0.7rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-full);
   padding: 0.1rem 0.5rem;
 }
 
@@ -243,21 +275,21 @@ button:disabled { opacity: 0.5; cursor: default; }
   display: flex;
   align-items: flex-start;
   gap: 0.7rem;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-xl);
   padding: 0.65rem 0.8rem;
 }
 
-.checklist input[type="checkbox"] { width: 22px; height: 22px; flex: 0 0 auto; margin-top: 0.1rem; accent-color: var(--accent); }
-.checklist .done { color: var(--muted); text-decoration: line-through; }
-.checklist .who { font-size: 0.72rem; color: var(--muted); display: block; }
+.checklist input[type="checkbox"] { width: 22px; height: 22px; flex: 0 0 auto; margin-top: 0.1rem; accent-color: hsl(var(--primary)); }
+.checklist .done { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
+.checklist .who { font-size: 0.72rem; color: hsl(var(--muted-foreground)); display: block; }
 
 /* ---------- empty states ----------
    An empty state here says only that nothing has been captured yet. It never invents a row to
    fill the space, and it never scolds. */
 
-.empty { display: grid; justify-items: center; gap: 0.5rem; padding: 2rem 1rem; text-align: center; color: var(--muted); }
+.empty { display: grid; justify-items: center; gap: 0.5rem; padding: 2rem 1rem; text-align: center; color: hsl(var(--muted-foreground)); }
 .empty svg { width: 64px; height: 64px; opacity: 0.85; }
 
 /* ---------- critters (Git #3119) ----------
@@ -277,9 +309,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 .critter-watermark { pointer-events: none; }
 
 pre.token {
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-xl);
   padding: 0.7rem;
   overflow-x: auto;
   font-size: 0.75rem;

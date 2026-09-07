@@ -21,6 +21,13 @@ const SHELL = [
   "/share.js",
   "/manifest.webmanifest",
   "/icons/icon-192.png",
+  // Real design-system tokens (Git #3120) -- app.css/share.html both need these to render.
+  "/tokens/tokens.css",
+  "/tokens/fonts.css",
+  "/tokens/colors.css",
+  "/tokens/typography.css",
+  "/tokens/spacing.css",
+  "/tokens/elevation.css",
 ];
 
 self.addEventListener("install", (event) => {

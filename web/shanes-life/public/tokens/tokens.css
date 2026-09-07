@@ -1,0 +1,12 @@
+/* ============================================================
+   Shane McCaw MSP — Design System tokens, ported into Shane's Life (Git #3120)
+   Real token files copied verbatim from
+   Design/design_handoff_shanes_life/_ds/…/tokens/ — do not hand-edit values here;
+   re-port from the design system if the source tokens change. This file mirrors
+   the design system's own styles.css entry point (@import manifest only).
+   ============================================================ */
+@import "./fonts.css";
+@import "./colors.css";
+@import "./typography.css";
+@import "./spacing.css";
+@import "./elevation.css";

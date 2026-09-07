@@ -1,15 +1,18 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="utf-8" />
     <title>Shared list</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#101317" />
+    <!-- #07182c = hsl(213 74% 10%) = the real ported --background dark token; meta
+         theme-color can't read CSS custom properties so it's inlined here verbatim. -->
+    <meta name="theme-color" content="#07182c" />
     <!-- A shared link must never be indexed: the URL is the credential. -->
     <meta name="robots" content="noindex, nofollow" />
     <link rel="apple-touch-icon" href="/icons/icon-180.png" />
     <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" />
+    <link rel="stylesheet" href="/tokens/tokens.css" />
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
