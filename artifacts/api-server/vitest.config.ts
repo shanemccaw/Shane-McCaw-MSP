@@ -1,3 +1,4 @@
+import { cpus } from "node:os";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -12,6 +13,25 @@ export default defineConfig({
     // run, a small global bump is the more maintainable fix going forward.
     testTimeout: 20_000,
     hookTimeout: 20_000,
+    // #3066 — #2877's global timeout bump doesn't fully close this class:
+    // index.boot-smoke.test.ts already overrides to 60s (see the `it(...,
+    // 60_000)` call below in that file) and still hit that raised ceiling
+    // once under the full run, after #3047's glob-include fix grew the
+    // discovered file count from 326 to 334 and increased parallelism
+    // further. Per #2877/#3066's own diagnosis this is thread-pool
+    // transform-time/CPU contention, not a logic defect. A one-core-off cap
+    // (cpus - 1) was tried first and index.boot-smoke.test.ts still hit its
+    // own 60s ceiling once under a full-suite run with that cap in place —
+    // confirming the contention needs real headroom, not just a token
+    // reduction. Halving the pool (leaving real headroom for the local
+    // Postgres instance and other processes this suite genuinely talks to)
+    // is the actual fix, at the cost of a somewhat longer full-suite wall
+    // clock.
+    poolOptions: {
+      threads: {
+        maxThreads: Math.max(1, Math.floor(cpus().length / 2)),
+      },
+    },
     // #3047 — this used to be an explicit ~326-entry allowlist array, not a
     // glob: a real test file simply not named here never ran, silently (no
     // warning from the aggregate `pnpm test` run — "No test files found" only
