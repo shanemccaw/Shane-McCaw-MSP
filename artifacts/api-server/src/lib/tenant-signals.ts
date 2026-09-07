@@ -146,7 +146,7 @@ export async function resolveCustomerPortalUserId(customerId: number): Promise<n
  * inactive. This is the customer-scoped read key for the users.id-shaped data
  * tables (`insights_generated_documents.customerId`, `projects.clientUserId`,
  * `client_services.clientUserId`, `client_m365_profiles.clientId`,
- * `user_sessions.userId`, `tenant_signal_history.customer_id`): data written
+ * `user_sessions.userId`): data written
  * under ANY of a customer's linked logins — including one since deactivated —
  * belongs to the customer, so "the customer's documents/project/purchase/login"
  * must be answered across the full set, never a single arbitrarily-picked row.
@@ -1664,26 +1664,15 @@ async function recordSignalTransitions(
   firedSignals: Set<string>,
 ): Promise<void> {
   try {
-    // tenant_signal_history.customer_id's live FK constraint actually targets
-    // users.id (not mspCustomers.id, despite the column name) — see
-    // resolveCustomerPortalUserId's doc comment for the same drift.
-    //
-    // READS span ALL of the customer's linked users (the old arbitrary limit-1
-    // resolution could pick a different user per run, splitting one customer's
-    // open-signal history across two users.id values — which breaks
-    // stabilization windows and double-fires transitions). WRITES land on the
-    // single deterministic canonical user so new history stays consolidated.
-    const portalUserId = await resolveCustomerPortalUserId(customerId);
-    if (portalUserId === null) {
-      log.warn({ customerId, mspId }, "recordSignalTransitions: no active portal user for customer, skipping");
-      return;
-    }
-    const allUserIds = await resolveCustomerUserIds(customerId);
-    const historyUserIds = allUserIds.length > 0 ? allUserIds : [portalUserId];
-
+    // tenant_signal_history.customer_id is a REAL tenants.id as of Git #2983 —
+    // the id space this function is already handed. It previously held one
+    // arbitrarily-chosen users.id purely to satisfy an undocumented FK, which
+    // forced reads to fan back out over every linked login and left history
+    // orphaned whenever a login was deleted. Both detours are gone: the tenant
+    // IS the key, so the row this reads is the row it writes.
     const openRows = await db.execute(sql`
       SELECT signal_key AS "signalKey" FROM tenant_signal_history
-      WHERE customer_id IN ${sql.raw(`(${historyUserIds.map(Number).join(",")})`)} AND resolved_at IS NULL
+      WHERE customer_id = ${customerId} AND resolved_at IS NULL
     `);
     const openSignalKeys = new Set((openRows.rows as { signalKey: string }[]).map(r => r.signalKey));
 
@@ -1694,10 +1683,10 @@ async function recordSignalTransitions(
       try {
         await db.execute(sql`
           INSERT INTO tenant_signal_history (customer_id, msp_id, signal_key, fired_at)
-          VALUES (${portalUserId}, ${mspId}, ${signalKey}, NOW())
+          VALUES (${customerId}, ${mspId}, ${signalKey}, NOW())
         `);
       } catch (err) {
-        log.warn({ err, customerId, portalUserId, mspId, signalKey }, "recordSignalTransitions: failed to insert newly-fired row");
+        log.warn({ err, customerId, mspId, signalKey }, "recordSignalTransitions: failed to insert newly-fired row");
       }
     }
 
@@ -1706,10 +1695,10 @@ async function recordSignalTransitions(
         await db.execute(sql`
           UPDATE tenant_signal_history
           SET resolved_at = NOW()
-          WHERE customer_id IN ${sql.raw(`(${historyUserIds.map(Number).join(",")})`)} AND signal_key = ${signalKey} AND resolved_at IS NULL
+          WHERE customer_id = ${customerId} AND signal_key = ${signalKey} AND resolved_at IS NULL
         `);
       } catch (err) {
-        log.warn({ err, customerId, portalUserId, mspId, signalKey }, "recordSignalTransitions: failed to resolve row");
+        log.warn({ err, customerId, mspId, signalKey }, "recordSignalTransitions: failed to resolve row");
       }
     }
   } catch (err) {
@@ -1734,16 +1723,12 @@ async function recordSignalTransitions(
 export async function getStabilizedSignals(customerId: number): Promise<Set<string>> {
   try {
     // customerId here is a REAL tenants.id (the Signal Policy Engine's
-    // enumeration space) — but tenant_signal_history.customer_id rows are
-    // written in users.id space (see recordSignalTransitions). Bridge via
-    // users.tenantId and read across ALL of the customer's linked users so history
-    // written under any login (including the pre-determinism arbitrary picks)
-    // still counts for the customer.
-    const historyUserIds = await resolveCustomerUserIds(customerId);
-    if (historyUserIds.length === 0) return new Set();
+    // enumeration space), and since Git #2983 so is
+    // tenant_signal_history.customer_id — the users.tenantId bridge this read
+    // used to need is gone along with the id-space contradiction.
     const openRows = await db.execute(sql`
       SELECT signal_key AS "signalKey", fired_at AS "firedAt" FROM tenant_signal_history
-      WHERE customer_id IN ${sql.raw(`(${historyUserIds.map(Number).join(",")})`)} AND resolved_at IS NULL
+      WHERE customer_id = ${customerId} AND resolved_at IS NULL
     `);
     const openSignals = openRows.rows as { signalKey: string; firedAt: string }[];
     if (openSignals.length === 0) return new Set();

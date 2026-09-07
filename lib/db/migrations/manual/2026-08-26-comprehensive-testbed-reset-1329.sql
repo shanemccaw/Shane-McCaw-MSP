@@ -1,5 +1,19 @@
 -- 2026-08-26-comprehensive-testbed-reset-1329.sql
 --
+-- ⚠ SUPERSEDED — DO NOT RUN THIS FILE. Run
+-- 2026-08-27-testbed-reset-patch-projects-1396.sql instead; it is the single,
+-- self-sufficient testbed reset and folds in everything below. This file is
+-- kept only as the historical record of when and why each table was added.
+--
+-- It is left UNCORRECTED, and running it would do real damage: Git #2983
+-- established that live_document_shares, inbox_message_links,
+-- script_run_results, script_download_tokens, insights_generated_documents and
+-- insights_automations key `customer_id` on users.id, not tenants.id. The
+-- `DELETE ... WHERE customer_id = v_tenant_id` lines below therefore delete the
+-- rows of whichever USER happens to hold the target tenant's id — potentially
+-- another customer's — while missing every row they were meant to remove. #1396
+-- purges those six by the tenant's own user ids instead.
+--
 -- Comprehensive reset for the real testbed tenant (mccawsoft2.onmicrosoft.com,
 -- tenant_id c4c814d4-3afe-441e-9145-62461d0a4fd3). Supersedes #1299's narrower
 -- 6-table version -- a full schema search found 60+ tables scoped by

@@ -80,6 +80,7 @@ import {
   scriptRunResultsTable,
   scriptDownloadTokensTable,
   insightsAutomationsTable,
+  liveDocumentSharesTable,
   salesOfferEventsTable,
   // ── Customer hard-delete (Issue #<pending>) — tenant-only tables with a
   // loose customerId/tenantId column pointing at `tenants.id`/`tenants.tenantId`
@@ -2175,6 +2176,12 @@ async function hardDeleteUserWithinTx(
           ),
         },
         { name: "msp_agreement_acceptances", table: mspAgreementAcceptancesTable, where: anyOf(eq(mspAgreementAcceptancesTable.userId, userId)) },
+        // live_document_shares.customer_id is a NOT NULL users.id whose FK is NO
+        // ACTION — so a user who ever minted a share link could not be hard
+        // deleted at all: the users DELETE failed on the constraint and rolled
+        // the whole transaction back. Found by the #2983 id-space audit; the
+        // share is the login's own credential, so it goes with the login.
+        { name: "live_document_shares", table: liveDocumentSharesTable, where: anyOf(eq(liveDocumentSharesTable.customerId, userId)) },
         {
           name: "msp_impersonation_tokens",
           table: mspImpersonationTokensTable,
@@ -2213,6 +2220,11 @@ async function hardDeleteUserWithinTx(
         { name: "script_download_tokens.customer_id", table: scriptDownloadTokensTable, where: eq(scriptDownloadTokensTable.customerId, userId) },
         { name: "script_download_tokens.client_user_id", table: scriptDownloadTokensTable, where: eq(scriptDownloadTokensTable.clientUserId, userId) },
         { name: "insights_automations.customer_id", table: insightsAutomationsTable, where: eq(insightsAutomationsTable.customerId, userId) },
+        // #2983: tenant_signal_history.customer_id is a real tenants.id now, so a
+        // single user's delete must NOT filter on it (that is the tenant-only
+        // cascade's job). What a user delete does touch is the retained
+        // pre-#2983 provenance column, which is a users.id and is SET NULL.
+        { name: "tenant_signal_history.client_user_id", table: tenantSignalHistoryTable, where: eq(tenantSignalHistoryTable.clientUserId, userId) },
         // sales_offers.customer_id is a tenants.id, not a users.id (#2730) — a
         // single user's hard delete never nulls it (deleting the whole tenant
         // does, via /admin/active-directory/customer/:id's own cascade). Not
@@ -2529,6 +2541,11 @@ router.delete("/admin/active-directory/customer/:id", requireAdmin, async (req: 
     { name: "msp_change_requests", table: mspChangeRequestsTable, where: eq(mspChangeRequestsTable.tenantId, tenant.tenantGuid) },
     { name: "msp_sop_runs", table: mspSopRunsTable, where: eq(mspSopRunsTable.tenantId, tenant.tenantGuid) },
     { name: "msp_risk_decisions", table: mspRiskDecisionsTable, where: eq(mspRiskDecisionsTable.tenantId, tenant.tenantGuid) },
+    // Correct as of #2983: customer_id here is a real tenants.id. Before that it
+    // held users.id, so this DELETE removed whichever USER's rows happened to
+    // carry the tenant's id — another customer's — while missing every row it
+    // was meant to. (Phase A's tenant delete now also CASCADEs these away, so
+    // this usually reports 0; kept so the count is explicit in the audit record.)
     { name: "tenant_signal_history", table: tenantSignalHistoryTable, where: eq(tenantSignalHistoryTable.customerId, customerId) },
     { name: "tenant_engine_snapshots", table: tenantEngineSnapshotsTable, where: eq(tenantEngineSnapshotsTable.customerId, customerId) },
     { name: "engine_score_daily_rollup", table: engineScoreDailyRollupTable, where: eq(engineScoreDailyRollupTable.customerId, customerId) },

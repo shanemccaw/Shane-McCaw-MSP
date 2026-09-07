@@ -15,10 +15,10 @@
  *           because a purge that cannot tell them apart is a purge that destroys a
  *           customer six years early.
  *
- * The NOT-DUE tenant is not a control for tidiness. It is the assertion: the four id
- * spaces (`customerId`, `tenantGuid`, `userId`, `ambiguousCustomerId`) all key on values
+ * The NOT-DUE tenant is not a control for tidiness. It is the assertion: the three id
+ * spaces (`customerId`, `tenantGuid`, `userId`) all key on values
  * that ANOTHER tenant also has values for, and a wrong predicate — a missing WHERE, a
- * transposed id space, an unguarded `ambiguousCustomerId` — reaches its rows.
+ * transposed id space, a predicate left on the wrong column — reaches its rows.
  *
  * Skips cleanly with no `DATABASE_URL`. Every row it creates is scratch, tagged with a
  * random suffix, and removed in `afterAll` whether the test passes or fails.
@@ -52,7 +52,7 @@ interface Scratch {
  *
  *   drift_events            config-drift    tenantGuid           (text, the M365 GUID)
  *   portal_ownership_events ownership       customerId           (integer, tenants.id)
- *   tenant_signal_history   engine-scoring  ambiguousCustomerId  (the contradiction #2983 documents)
+ *   tenant_signal_history   engine-scoring  customerId + userId  (both columns #2983 settled)
  */
 async function seedTenantRows(scratch: Scratch, mspId: number): Promise<void> {
   await db.execute(sql`
@@ -63,11 +63,19 @@ async function seedTenantRows(scratch: Scratch, mspId: number): Promise<void> {
     INSERT INTO portal_ownership_events (customer_id, object_id, role_key, event_type)
     VALUES (${scratch.tenantId}, ${`obj-${SUFFIX}`}, ${"owner"}, ${"assigned"})
   `);
-  // Keyed on this tenant's own USER id — the reading the live FK enforces. The purge must
-  // reach it through `ambiguousCustomerId`'s user-id leg.
+  // TWO rows, because #2983 left this table with a real column in each id space and the
+  // purge has to reach both. `customer_id` is the tenants.id the engine writes today;
+  // `client_user_id` is the retained users.id provenance carried by every row written
+  // before that migration (and by any environment where it has not run yet). A purge that
+  // covers only one of the two silently leaves a terminated customer's signal history
+  // behind — which is precisely what happened while the column was ambiguous.
   await db.execute(sql`
     INSERT INTO tenant_signal_history (customer_id, msp_id, signal_key, fired_at)
-    VALUES (${scratch.userId}, ${mspId}, ${`signal.${SUFFIX}`}, now())
+    VALUES (${scratch.tenantId}, ${mspId}, ${`signal.${SUFFIX}`}, now())
+  `);
+  await db.execute(sql`
+    INSERT INTO tenant_signal_history (client_user_id, msp_id, signal_key, fired_at)
+    VALUES (${scratch.userId}, ${mspId}, ${`signal.legacy.${SUFFIX}`}, now())
   `);
   // #2980 — the reinstatement-request row the "commercial" purger now declares. customerId
   // id space, same as portal_ownership_events, but a real dedicated row so the assertion
@@ -89,7 +97,8 @@ async function countTenantRows(scratch: Scratch): Promise<Record<string, number>
       sql`SELECT count(*) AS n FROM portal_ownership_events WHERE customer_id = ${scratch.tenantId}`,
     ),
     tenant_signal_history: await one(
-      sql`SELECT count(*) AS n FROM tenant_signal_history WHERE customer_id = ${scratch.userId}`,
+      sql`SELECT count(*) AS n FROM tenant_signal_history
+          WHERE customer_id = ${scratch.tenantId} OR client_user_id = ${scratch.userId}`,
     ),
     retention_reinstatement_requests: await one(
       sql`SELECT count(*) AS n FROM retention_reinstatement_requests WHERE tenant_id = ${scratch.tenantId}`,
@@ -150,7 +159,7 @@ describe.skipIf(!process.env.DATABASE_URL)("#2859 — the post-termination purge
     for (const scratch of [due, notDue].filter(Boolean)) {
       await db.execute(sql`DELETE FROM drift_events WHERE tenant_id = ${scratch.tenantGuid}`);
       await db.execute(sql`DELETE FROM portal_ownership_events WHERE customer_id = ${scratch.tenantId}`);
-      await db.execute(sql`DELETE FROM tenant_signal_history WHERE customer_id = ${scratch.userId}`);
+      await db.execute(sql`DELETE FROM tenant_signal_history WHERE customer_id = ${scratch.tenantId} OR client_user_id = ${scratch.userId}`);
       await db.execute(sql`DELETE FROM retention_reinstatement_requests WHERE tenant_id = ${scratch.tenantId}`);
       await db.delete(usersTable).where(eq(usersTable.id, scratch.userId));
       await db.delete(tenantsTable).where(eq(tenantsTable.id, scratch.tenantId));
@@ -175,7 +184,7 @@ describe.skipIf(!process.env.DATABASE_URL)("#2859 — the post-termination purge
     expect(counts).toEqual({
       drift_events: 1,
       portal_ownership_events: 1,
-      tenant_signal_history: 1,
+      tenant_signal_history: 2,
       retention_reinstatement_requests: 1,
     });
 
@@ -207,7 +216,7 @@ describe.skipIf(!process.env.DATABASE_URL)("#2859 — the post-termination purge
     expect(counts).toEqual({
       drift_events: 1,
       portal_ownership_events: 1,
-      tenant_signal_history: 1,
+      tenant_signal_history: 2,
       retention_reinstatement_requests: 1,
     });
   });
@@ -223,14 +232,14 @@ describe.skipIf(!process.env.DATABASE_URL)("#2859 — the post-termination purge
 
     const result = await purgeTerminatedTenant(due.tenantId);
     expect(result.outcome).toBe("purged");
-    expect(result.totalDestroyed).toBeGreaterThanOrEqual(4);
+    expect(result.totalDestroyed).toBeGreaterThanOrEqual(5);
 
     // Per-module accounting, not just a total: the audit line records which module
     // destroyed what, and a module reporting zero when it held rows is the failure that
     // would otherwise be invisible.
     expect(result.destroyed["config-drift"]).toBe(1);
     expect(result.destroyed["ownership"]).toBe(1);
-    expect(result.destroyed["engine-scoring"]).toBe(1);
+    expect(result.destroyed["engine-scoring"]).toBe(2);
     expect(result.destroyed["commercial"]).toBeGreaterThanOrEqual(1);
 
     expect(await countTenantRows(due)).toEqual({
@@ -253,7 +262,7 @@ describe.skipIf(!process.env.DATABASE_URL)("#2859 — the post-termination purge
     expect(await countTenantRows(notDue)).toEqual({
       drift_events: 1,
       portal_ownership_events: 1,
-      tenant_signal_history: 1,
+      tenant_signal_history: 2,
       retention_reinstatement_requests: 1,
     });
 

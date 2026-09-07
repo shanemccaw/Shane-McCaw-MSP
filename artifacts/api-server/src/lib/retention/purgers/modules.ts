@@ -158,8 +158,12 @@ export const engineScoringPurger: TenantDataPurgerDeclaration = {
     { table: "engine_score_daily_rollup", column: "customer_id", keySpace: "customerId" },
     { table: "engine_baseline_history", column: "customer_id", keySpace: "customerId" },
     { table: "dashboard_executive_summaries", column: "customer_id", keySpace: "customerId" },
-    // Ambiguous id space — see AMBIGUOUS_KEY_NOTE in ./declare.ts.
-    { table: "tenant_signal_history", column: "customer_id", keySpace: "ambiguousCustomerId" },
+    // #2983 settled this column as a real tenants.id — see its schema comment.
+    { table: "tenant_signal_history", column: "customer_id", keySpace: "customerId" },
+    // …and the retained pre-#2983 provenance column, which still carries the
+    // users.id the engine wrote under on rows created before the migration (and
+    // on any environment where it has not been run yet).
+    { table: "tenant_signal_history", column: "client_user_id", keySpace: "userId" },
   ],
 };
 
@@ -292,10 +296,11 @@ export const documentsPurger: TenantDataPurgerDeclaration = {
     { table: "msp_report_definitions", column: "customer_id", keySpace: "customerId" },
     { table: "msp_report_runs", column: "customer_id", keySpace: "customerId" },
     { table: "insights_generated_documents", column: "msp_customer_id", keySpace: "customerId" },
-    { table: "insights_generated_documents", column: "customer_id", keySpace: "ambiguousCustomerId" },
-    // Ambiguous id space — see AMBIGUOUS_KEY_NOTE in ./declare.ts.
-    { table: "live_document_shares", column: "customer_id", keySpace: "ambiguousCustomerId" },
-    { table: "insights_automations", column: "customer_id", keySpace: "ambiguousCustomerId" },
+    // #2983: `customer_id` on these three is a users.id, not a tenants.id —
+    // confirmed against every real writer and reader. Purge by this tenant's logins.
+    { table: "insights_generated_documents", column: "customer_id", keySpace: "userId" },
+    { table: "live_document_shares", column: "customer_id", keySpace: "userId" },
+    { table: "insights_automations", column: "customer_id", keySpace: "userId" },
   ],
 };
 
@@ -418,10 +423,11 @@ export const directoryPurger: TenantDataPurgerDeclaration = {
     { table: "active_directory_ous", column: "tenant_id", keySpace: "customerId" },
     { table: "msp_staff_customer_scopes", column: "customer_id", keySpace: "customerId" },
     { table: "mfa_bypass_codes", column: "customer_id", keySpace: "customerId" },
-    // Ambiguous id space — see AMBIGUOUS_KEY_NOTE in ./declare.ts.
-    { table: "inbox_message_links", column: "customer_id", keySpace: "ambiguousCustomerId" },
-    { table: "script_run_results", column: "customer_id", keySpace: "ambiguousCustomerId" },
-    { table: "script_download_tokens", column: "customer_id", keySpace: "ambiguousCustomerId" },
+    // #2983: `customer_id` on these three is a users.id, not a tenants.id —
+    // confirmed against every real writer and reader. Purge by this tenant's logins.
+    { table: "inbox_message_links", column: "customer_id", keySpace: "userId" },
+    { table: "script_run_results", column: "customer_id", keySpace: "userId" },
+    { table: "script_download_tokens", column: "customer_id", keySpace: "userId", orColumn: "client_user_id" },
   ],
 };
 

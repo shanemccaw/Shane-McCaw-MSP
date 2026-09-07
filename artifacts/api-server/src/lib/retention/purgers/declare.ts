@@ -40,8 +40,12 @@
  *                   `..._customer_id_fkey -> users(id)` still enforcing it. Keyed by the
  *                   tenant's own user ids.
  *
- * A fourth, `ambiguousCustomerId`, exists because the codebase genuinely disagrees with
- * itself on a handful of those tables — see `AMBIGUOUS_KEY_NOTE` below.
+ * A fourth key space, `ambiguousCustomerId`, existed here while #2983 stood open — seven
+ * tables whose `customer_id` the codebase read as BOTH id spaces at once, so a purge had
+ * to satisfy both readings without either being able to reach a third party. #2983 settled
+ * every one of them (six are `users.id`; `tenant_signal_history` is now a real `tenants.id`
+ * with a real FK), so each target below names a single, verified id space and the
+ * both-readings key space is gone.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * A TABLE THAT DOES NOT EXIST IS SKIPPED, NOT AN ERROR — and the skip is reported
@@ -68,7 +72,7 @@ const auditLog = logger.child({ channel: "audit" });
  * The id space a target's key column is expressed in. Named per target, never inferred
  * from the column name — `customer_id` alone means all three things in this schema.
  */
-export type TenantPurgeKeySpace = "customerId" | "tenantGuid" | "userId" | "ambiguousCustomerId";
+export type TenantPurgeKeySpace = "customerId" | "tenantGuid" | "userId";
 
 export interface TenantPurgeTarget {
   /** Real SQL table name, e.g. `"msp_risk_decisions"`. */
@@ -137,38 +141,32 @@ async function relationExists(tx: RetentionTx, table: string): Promise<boolean> 
 }
 
 /**
- * WHY `ambiguousCustomerId` EXISTS, and why it is not simply "delete where customer_id =
- * the tenant id".
+ * HOW #2983 WAS SETTLED — why there is no longer a `both readings` key space.
  *
- * Several pre-refactor tables carry a `customer_id` the codebase treats BOTH ways, in
- * writing, today:
+ * Seven pre-refactor tables carried a `customer_id` the codebase read as BOTH
+ * `tenants.id` and `users.id` at once: the testbed-reset migration deleted them under a
+ * heading claiming tenants.id, while the per-user cascade nulled the same columns with a
+ * user id and the live DB enforced a `..._customer_id_fkey -> users(id)` on each. While
+ * that stood, this file carried an `ambiguousCustomerId` key space that purged both
+ * readings without either being able to reach a third party.
  *
- *   - `lib/db/migrations/manual/2026-08-27-testbed-reset-patch-projects-1396.sql` deletes
- *     them under its own heading "customer_id (integer, tenants.id) scoped tables";
- *   - `routes/admin-active-directory.ts`'s per-user cascade nulls the very same columns
- *     with a USER id, and the live database enforces that reading with a real
- *     `..._customer_id_fkey -> users(id)` constraint on each of them.
+ * A per-table trace of every real writer and reader settled it:
  *
- * Live evidence on the local database at the time of writing: `tenant_signal_history`
- * holds 6,590 rows whose `customer_id` values are 37, 39 and 56 — real `users.id` values.
- * The only `tenants.id` values that exist are 1 and 3.
+ *   - SIX are genuinely `users.id` — `inbox_message_links` (resolved straight against
+ *     `usersTable.id` by /inbox/messages/:id/crm), `insights_automations` (fed to
+ *     `client_health_history.client_id`), `insights_generated_documents` (the document
+ *     OWNER; its SCOPE is `msp_customer_id`), `live_document_shares` (written from
+ *     `req.user!.id`), `script_run_results` and `script_download_tokens`. Nothing ever
+ *     wrote a tenants.id to any of them; only the reset migration misread them.
+ *   - ONE was genuinely contradictory. `tenant_signal_history.customer_id` is now a real
+ *     `tenants.id` with a real FK (manual migration
+ *     `2026-09-07-tenant-signal-history-customer-id-2983.sql`), and the users.id it used
+ *     to hold is preserved on `client_user_id` — which is why that table appears twice in
+ *     `modules.ts`, once per column, in its own id space.
  *
- * Guessing one reading is not available here. Under the user reading, deleting
- * `customer_id = <tenants.id>` destroys the rows of whichever USER happens to hold that
- * id — potentially a different customer's, irreversibly. So this key space deletes:
- *
- *   1. every row keyed to one of THIS tenant's own user ids (correct under the user
- *      reading, and matching nothing under the tenant reading); AND
- *   2. the row keyed to the tenant's own id, but ONLY when no `users` row holds that id
- *      on behalf of somebody else — i.e. when the value cannot be another customer's.
- *
- * Both readings are therefore fully purged, and neither can reach a third party's data.
- * The underlying disagreement is a real defect and is filed as #2983; this is
- * what a purge does while that stands, not a substitute for settling it.
+ * Every target therefore names one verified id space, and a purge no longer has to
+ * satisfy a reading nobody actually writes.
  */
-export const AMBIGUOUS_KEY_NOTE =
-  "customer_id is read as tenants.id by the testbed-reset migration and as users.id by the " +
-  "per-user cascade and the live FK; both readings are purged, neither can reach another tenant";
 
 async function deleteTarget(tx: RetentionTx, target: TenantPurgeTarget, scope: TenantPurgeScope): Promise<number> {
   assertSafeIdentifier(target.table, "table");
@@ -206,17 +204,6 @@ async function deleteTarget(tx: RetentionTx, target: TenantPurgeTarget, scope: T
       if (scope.userIds.length === 0) return 0;
       where = matches(undefined, scope.userIds);
       break;
-    case "ambiguousCustomerId": {
-      const byUser = scope.userIds.length > 0 ? matches(undefined, scope.userIds) : null;
-      // The guard: take the tenant-id reading only when no `users` row holds that id on
-      // behalf of anyone else. A user with that id under this same tenant is already
-      // covered by the user-id leg above.
-      const byTenantGuarded = sql`(${matches(scope.tenantId)} AND NOT EXISTS (
-        SELECT 1 FROM users u WHERE u.id = ${scope.tenantId} AND u.tenant_id IS DISTINCT FROM ${scope.tenantId}
-      ))`;
-      where = byUser ? sql`(${byUser} OR ${byTenantGuarded})` : byTenantGuarded;
-      break;
-    }
   }
 
   const result = await tx.execute(sql`DELETE FROM ${table} WHERE ${where}`);

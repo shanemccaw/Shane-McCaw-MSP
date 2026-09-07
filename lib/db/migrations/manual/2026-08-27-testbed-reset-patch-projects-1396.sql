@@ -46,6 +46,21 @@
 -- just this tenant's own -- an orphan project should never survive a reset,
 -- because it belongs to no tenant for a reset to even target.
 --
+-- EXTENDED 2026-09-07 (Git #2983): six tables moved OUT of the customer_id
+-- (tenants.id) loop and into the user-scoped loop -- live_document_shares,
+-- inbox_message_links, script_run_results, script_download_tokens,
+-- insights_generated_documents and insights_automations. Their `customer_id` is
+-- a users.id (real `..._customer_id_fkey -> users(id)`, and every real writer and
+-- reader agrees), so `customer_id = v_tenant_id` matched none of the target
+-- tenant's rows and could instead delete whichever USER happened to hold that id
+-- -- another customer's data, irreversibly. tenant_signal_history was the one
+-- genuinely contradictory column and is now a real tenants.id with a real FK
+-- (2026-09-07-tenant-signal-history-customer-id-2983.sql), so it stays in the
+-- customer_id loop and is finally correct there; its retained pre-#2983
+-- provenance column client_user_id is swept by the user loop. Also added:
+-- insights_generated_documents.msp_customer_id, the table's real (NOT NULL)
+-- tenant scope key, which no reset run has ever keyed on.
+--
 -- Every DELETE is now guarded with `to_regclass(...) IS NOT NULL` -- a live
 -- audit for #1471 found the Replit staging DB's schema genuinely lags local
 -- dev for 13 tables (customer_alert_*, drift_*, license_assignment_snapshots,
@@ -168,7 +183,21 @@ BEGIN
       'email_domain_rules:linked_user_id','emails:linked_user_id',
       'sales_offer_events:actor_user_id','msp_invites:invited_by_user_id',
       'user_entitlement_overrides:user_id','signup_exchange_tokens:user_id',
-      'account_setup_tokens:user_id'
+      'account_setup_tokens:user_id',
+      -- Git #2983: these columns are NAMED customer_id but hold users.id, with a
+      -- real ..._customer_id_fkey -> users(id) enforcing it and every writer and
+      -- reader agreeing. They sat in the tenants.id loop below, where
+      -- `customer_id = v_tenant_id` matched none of this tenant's rows and could
+      -- instead delete the rows of whichever USER happened to hold that id --
+      -- another customer's, irreversibly. Keyed here by this tenant's own logins.
+      'live_document_shares:customer_id','inbox_message_links:customer_id',
+      'script_download_tokens:customer_id','script_download_tokens:client_user_id',
+      'script_run_results:customer_id','insights_generated_documents:customer_id',
+      'insights_automations:customer_id',
+      -- tenant_signal_history's own customer_id IS a real tenants.id as of #2983
+      -- (it stays in the loop below); this is the retained pre-#2983 provenance
+      -- column, which still carries users.id on rows written before that migration.
+      'tenant_signal_history:client_user_id'
     ] LOOP
       t := split_part(tc, ':', 1);
       col := split_part(tc, ':', 2);
@@ -188,6 +217,15 @@ BEGIN
   -- the Scope Creep Engine, the SLA Engine, war_room_interaction_events) +
   -- #2946's addition (active_directory_ou_assignments -- has both customer_id
   -- and tenant_id(text); customer_id matches this loop's existing pattern).
+  --
+  -- Git #2983 REMOVED six tables from this list -- live_document_shares,
+  -- inbox_message_links, script_run_results, script_download_tokens,
+  -- insights_generated_documents and insights_automations. Their customer_id is
+  -- a users.id, not a tenants.id, so this loop deleted the wrong principal's
+  -- rows and none of this tenant's; they are now purged by user id in the
+  -- user-scoped loop above. tenant_signal_history stays here and is now correct:
+  -- its customer_id became a real tenants.id with a real FK in
+  -- 2026-09-07-tenant-signal-history-customer-id-2983.sql.
   FOREACH t IN ARRAY ARRAY[
     'msp_staff_customer_scopes','msp_event_store','msp_dlq_store','msp_documents',
     'msp_audit_logs','fulfillment_queue','msp_job_queue','outbound_webhooks',
@@ -198,9 +236,8 @@ BEGIN
     'portal_hold_windows','portal_security_plans','portal_ownership_assignments',
     'portal_ownership_delegations','portal_ownership_rows','customer_alert_preferences',
     'customer_alert_settings','customer_alert_recipients','customer_alert_digest_queue',
-    'retainer_settings','retainer_work_log','live_document_shares','tenant_signal_history',
-    'mfa_bypass_codes','inbox_message_links','script_run_results','script_download_tokens',
-    'insights_generated_documents','assessment_sow_agreements','insights_automations',
+    'retainer_settings','retainer_work_log','tenant_signal_history',
+    'mfa_bypass_codes','assessment_sow_agreements',
     'sales_offers','tenant_engine_snapshots','tenant_pillar_snapshots',
     'engine_score_daily_rollup','policy_rule_firings','policy_rule_incidents',
     'policy_rule_suppressions','engine_baseline_history','platform_log_stream',
@@ -219,6 +256,19 @@ BEGIN
       RAISE NOTICE '  % : table does not exist on this environment, skipped', t;
     END IF;
   END LOOP;
+
+  -- insights_generated_documents.msp_customer_id (integer, tenants.id) is the
+  -- table's REAL scope key -- its own schema comment says so, and it is NOT NULL,
+  -- whereas customer_id is the nullable users.id OWNER (handled in the user loop
+  -- above). No reset run has ever keyed on it, so a document owned by no resolvable
+  -- login survived every reset. Runs after print_tokens/document_print_tokens,
+  -- which the user loop above already cleared (NO ACTION FK -- see header).
+  IF to_regclass('public.insights_generated_documents') IS NOT NULL THEN
+    DELETE FROM insights_generated_documents WHERE msp_customer_id = v_tenant_id;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    total := total + n;
+    IF n > 0 THEN RAISE NOTICE '  insights_generated_documents (msp_customer_id) : deleted % row(s)', n; END IF;
+  END IF;
 
   -- ── tenant_id (text, the real M365 tenant GUID) scoped tables ──────────
   -- #1329's original 16 + #1471's live-audit addition (drift_collection_status).

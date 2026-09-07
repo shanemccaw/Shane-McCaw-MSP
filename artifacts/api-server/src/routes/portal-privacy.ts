@@ -180,6 +180,10 @@ router.get("/portal/data-export", requireAuth, async (req: Request, res: Respons
           engineKey: engineBaselineHistoryTable.engineKey, baselineScore: engineBaselineHistoryTable.baselineScore,
           resetTriggerType: engineBaselineHistoryTable.resetTriggerType, createdAt: engineBaselineHistoryTable.createdAt,
         }).from(engineBaselineHistoryTable).where(eq(engineBaselineHistoryTable.customerId, customerId)).orderBy(desc(engineBaselineHistoryTable.createdAt)).limit(2000),
+        // #2983: this predicate is a real tenants.id match now. Until that issue
+        // was settled the column held users.id values, so this export returned
+        // the rows of whichever USER happened to hold the caller's tenant id —
+        // a different principal, potentially under a different customer.
         db.select({
           signalKey: tenantSignalHistoryTable.signalKey, category: tenantSignalHistoryTable.category,
           firedAt: tenantSignalHistoryTable.firedAt, resolvedAt: tenantSignalHistoryTable.resolvedAt,

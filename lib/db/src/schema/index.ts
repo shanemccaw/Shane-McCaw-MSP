@@ -1028,6 +1028,12 @@ export type SignupExchangeToken = typeof signupExchangeTokensTable.$inferSelect;
 export const liveDocumentSharesTable = pgTable("live_document_shares", {
   id: serial("id").primaryKey(),
   token: text("token").notNull().unique(),
+  /**
+   * `users.id` — the login that minted the share, written straight from
+   * `req.user!.id` in live-document-shares.ts. NOT a `tenants.id`, despite the
+   * column name (Git #2983 audited all seven such columns; this one was never
+   * genuinely ambiguous — only the testbed-reset migration read it wrongly).
+   */
   customerId: integer("customer_id").notNull().references(() => usersTable.id),
   variant: text("variant", { enum: ["review", "purchasing"] }).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -1189,7 +1195,38 @@ export type InsertSignalDerivationRule = typeof signalDerivationRulesTable.$infe
 
 export const tenantSignalHistoryTable = pgTable("tenant_signal_history", {
   id: serial("id").primaryKey(),
-  customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
+  /**
+   * The owning TENANT (`tenants.id`) — the real scoping key for a fired signal.
+   *
+   * Git #2983: this column previously held `users.id` values while its own
+   * comment claimed `tenants.id` and "no FK by design", and the live database
+   * carried an undocumented `..._customer_id_fkey -> users(id)` appearing in no
+   * migration in this repo. That contradiction made the portal data export read
+   * a different principal's rows and made the tenant reset miss 6,590 of them.
+   *
+   * A signal fired by tenant-level monitoring is tenant data: the only writer
+   * (tenant-signals.ts `recordSignalTransitions`) is handed a `tenants.id` and
+   * used to translate it to one arbitrary login purely to satisfy that FK, and
+   * every reader immediately fanned back out over `users.tenant_id`. Repointed
+   * at `tenantsTable.id` to match how it is genuinely produced and consumed —
+   * the same correction #2730 made to `sales_offers.customerId`. The old
+   * users.id value is preserved verbatim on `clientUserId` below.
+   *
+   * CASCADE, not SET NULL: signal history for a deleted tenant belongs to
+   * nobody. Under the old users FK's SET NULL, deleting one login orphaned the
+   * tenant's history — 103 such unattributable rows exist on the local DB.
+   *
+   * Migration: `lib/db/migrations/manual/2026-09-07-tenant-signal-history-customer-id-2983.sql`
+   */
+  customerId: integer("customer_id").references(() => tenantsTable.id, { onDelete: "cascade" }),
+  /**
+   * The login the signal engine happened to write the row under, before #2983
+   * moved scoping onto `customerId`. Retained provenance only — no live path
+   * writes it, and nothing scopes a read by it. Rows written after #2983 leave
+   * it NULL. Kept (rather than dropped) so the id-space migration is fully
+   * reversible; dropping it later is a destructive migration for Shane to run.
+   */
+  clientUserId: integer("client_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
   signalKey: text("signal_key").notNull(),
   category: text("category"),
@@ -1957,6 +1994,11 @@ export const inboxMessageLinksTable = pgTable("inbox_message_links", {
   graphMessageId: text("graph_message_id").notNull().unique(),
   leadId: integer("lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
   opportunityId: integer("opportunity_id").references(() => opportunitiesTable.id, { onDelete: "set null" }),
+  /**
+   * `users.id` — one of the three CRM entity links alongside `leadId` and
+   * `opportunityId`. `GET /inbox/messages/:id/crm` resolves it directly against
+   * `usersTable.id`. NOT a `tenants.id`, despite the column name (Git #2983).
+   */
   customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
   taskId: integer("task_id").references(() => kanbanTasksTable.id, { onDelete: "set null" }),
   direction: text("direction", { enum: ["inbound", "outbound"] }).notNull().default("inbound"),
@@ -2294,6 +2336,12 @@ export type LandingPage = typeof landingPagesTable.$inferSelect;
 // Script Run Results — persisted results for every script execution
 export const scriptRunResultsTable = pgTable("script_run_results", {
   id: serial("id").primaryKey(),
+  /**
+   * `users.id` — the client login the run belongs to. Every customer-scoped
+   * read already goes through `resolveCustomerUserIds()` (tenant-signals.ts) to
+   * span the customer's whole login set. NOT a `tenants.id`, despite the column
+   * name (Git #2983).
+   */
   customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
   scriptId: integer("script_id"),
   libraryScriptId: uuid("library_script_id").references(() => powershellScriptsTable.id, { onDelete: "set null" }),
@@ -2385,7 +2433,17 @@ export const scriptDownloadTokensTable = pgTable("script_download_tokens", {
   tokenHash: text("token_hash").notNull().unique(),
   scriptId: uuid("script_id").notNull().references(() => powershellScriptsTable.id, { onDelete: "cascade" }),
   mspId: integer("msp_id"),
+  /**
+   * `users.id` — the client login the token is minted for; carried onto
+   * `script_run_results.customerId` by script-ingestion.ts. NOT a `tenants.id`,
+   * despite the column name (Git #2983).
+   */
   customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
+  /**
+   * Also a `users.id`, and the reason `customerId` above could not simply be
+   * renamed to the codebase's usual users.id column name — that name is taken
+   * here. No live path writes this column; it is only read back (#2983 finding).
+   */
   clientUserId: integer("client_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   runResultId: integer("run_result_id").references(() => scriptRunResultsTable.id, { onDelete: "set null" }),
   label: text("label").notNull().default(""),
@@ -2449,6 +2507,11 @@ export type ClientAutomationRun = typeof clientAutomationRunsTable.$inferSelect;
 // ── Insights & Outputs — generated documents (reports + consulting deliverables)
 export const insightsGeneratedDocumentsTable = pgTable("insights_generated_documents", {
   id: serial("id").primaryKey(),
+  /**
+   * `users.id` — the document OWNER (which login generated/receives it). The
+   * SCOPE is `mspCustomerId` below, and the split is deliberate; see its own
+   * comment. Confirmed unambiguous by the Git #2983 audit.
+   */
   customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
   /**
    * The owning TENANT (`msp_customers.id`) — the real scoping key for a
@@ -2673,6 +2736,12 @@ export type AssessmentSowAgreement = typeof assessmentSowAgreementsTable.$inferS
 export const insightsAutomationsTable = pgTable("insights_automations", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  /**
+   * `users.id` — the client login the automation reports on. Consumed as one by
+   * the runner: it is passed to `fetchClientHealthScores()`, which reads
+   * `client_health_history.client_id`, and copied onto the generated document's
+   * own users.id-shaped `customerId`. NOT a `tenants.id` (Git #2983).
+   */
   customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
   projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
   automationType: text("automation_type", {

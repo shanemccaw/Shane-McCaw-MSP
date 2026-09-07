@@ -58,11 +58,11 @@ function chainStub(rows: unknown[]): Record<string, unknown> {
 }
 
 let selectRows: unknown[] = [];
-// getStabilizedSignals now resolves the customer's linked users first
-// (resolveCustomerUserIds — the customer-scoped tenant_signal_history read).
-// That query is recognized by its select shape ({ userId: ... } only) and
-// answered from `customerUserRows`; every other select (derivation rules)
-// falls through to `selectRows`.
+// getStabilizedSignals reads tenant_signal_history by tenants.id directly as of
+// #2983 — it no longer resolves the customer's linked users first. The
+// `{ userId: ... }`-shaped branch below is kept because other callers in this
+// file's module graph still resolve users that way; every other select
+// (derivation rules) falls through to `selectRows`.
 const customerUserRows: Array<{ userId: number }> = [{ userId: 42 }];
 const { mockSelect, mockExecute } = vi.hoisted(() => ({
   mockSelect: vi.fn(),
@@ -151,9 +151,11 @@ describe("getStabilizedSignals", () => {
     mockOpenRows([]);
     const result = await getStabilizedSignals(CUSTOMER_ID);
     expect(result.size).toBe(0);
-    // Exactly ONE select ran (the customer→linked-users resolution); no
-    // derivation-rule lookup is needed when there's nothing open.
-    expect(mockSelect).toHaveBeenCalledTimes(1);
+    // NO select ran at all. The open-signal read is a `db.execute`, and since
+    // #2983 made tenant_signal_history.customer_id a real tenants.id there is
+    // no longer a customer→linked-users resolution in front of it; no
+    // derivation-rule lookup is needed when there's nothing open either.
+    expect(mockSelect).toHaveBeenCalledTimes(0);
   });
 
   it("stabilizes a legacy (no-rule) signal using the flat 4h default", async () => {

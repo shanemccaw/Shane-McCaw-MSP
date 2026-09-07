@@ -236,20 +236,16 @@ async function evaluatePoliciesForCustomer(
 }
 
 export async function evaluateAllPolicies(): Promise<{ customersChecked: number; totalFired: number }> {
-  // tenant_signal_history.customer_id rows are written in users.id space (its
-  // live FK targets users.id despite the column name — see tenant-signals.ts's
-  // recordSignalTransitions). The policy engine's own queries (engine
-  // snapshots, suppressions, firings) are all keyed by REAL customer id, which
-  // since Phase 0 is tenants.id — so bridge each open-history user through
-  // users.tenant_id to the tenant it belongs to, and evaluate per distinct
-  // customer. The old enumeration passed the raw users.id straight into
-  // `WHERE msp_customers.id = ...`, which only worked when the two id spaces
-  // happened to coincide numerically.
+  // Since Git #2983, tenant_signal_history.customer_id is a real tenants.id —
+  // the same id space the policy engine's own queries (engine snapshots,
+  // suppressions, firings) already use. The users.tenant_id bridge this
+  // enumeration needed while the column held users.id values is gone.
+  // NULL customer_id rows are history orphaned by a pre-#2983 login deletion
+  // and belong to no tenant, so they enumerate nothing.
   const customerRows = await db.execute(sql`
-    SELECT DISTINCT u.tenant_id AS "customerId"
-    FROM tenant_signal_history tsh
-    JOIN users u ON u.id = tsh.customer_id
-    WHERE tsh.resolved_at IS NULL AND u.tenant_id IS NOT NULL
+    SELECT DISTINCT customer_id AS "customerId"
+    FROM tenant_signal_history
+    WHERE resolved_at IS NULL AND customer_id IS NOT NULL
   `);
   const customerIds = (customerRows.rows as { customerId: number }[]).map(r => r.customerId);
 

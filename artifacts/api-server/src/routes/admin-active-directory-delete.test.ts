@@ -164,6 +164,7 @@ vi.mock("@workspace/db", () => {
     mspCustomerClickwrapsTable: tbl("msp_customer_clickwraps", ["id", "customerId", "customerUserId"]),
     mspAgreementAcceptancesTable: tbl("msp_agreement_acceptances", ["id", "mspId", "userId", "agreementVersion", "acceptedAt", "checkboxConfirmed"]),
     mspImpersonationTokensTable: tbl("msp_impersonation_tokens", ["id", "actorUserId", "targetUserId"]),
+    liveDocumentSharesTable: tbl("live_document_shares", ["id", "customerId"]),
     // ── DB auto-cascade tables (census only — must never be deleted from) ──
     customerNotificationPreferencesTable: tbl("customer_notification_preferences", ["id", "userId"]),
     clientM365ProfilesTable: tbl("client_m365_profiles", ["id", "clientId"]),
@@ -187,6 +188,7 @@ vi.mock("@workspace/db", () => {
     scriptRunResultsTable: tbl("script_run_results", ["id", "customerId"]),
     scriptDownloadTokensTable: tbl("script_download_tokens", ["id", "customerId", "clientUserId"]),
     insightsAutomationsTable: tbl("insights_automations", ["id", "customerId"]),
+    tenantSignalHistoryTable: tbl("tenant_signal_history", ["id", "customerId", "clientUserId"]),
     salesOffersTable: tbl("sales_offers", ["id", "customerId"]),
     salesOfferEventsTable: tbl("sales_offer_events", ["id", "actorUserId"]),
   };
@@ -239,6 +241,10 @@ const EXPLICIT_DELETE_ORDER = [
   "msp_diagnostic_runs",
   "msp_customer_clickwraps",
   "msp_agreement_acceptances",
+  // #2983: live_document_shares.customer_id is a NOT NULL users.id with a NO
+  // ACTION FK, so it must be deleted explicitly — the users delete cannot
+  // cascade or null it, and without this the whole transaction rolls back.
+  "live_document_shares",
   "msp_impersonation_tokens",
   "users",
 ];
@@ -267,6 +273,10 @@ const DB_HANDLED_TABLES = [
   "script_run_results",
   "script_download_tokens",
   "insights_automations",
+  // Census only: #2983 made tenant_signal_history.customer_id a tenants.id, so a
+  // single user's delete touches nothing but the retained users.id provenance
+  // column, which the DB itself SET NULLs.
+  "tenant_signal_history",
   "sales_offers",
   "sales_offer_events",
 ];
@@ -398,14 +408,15 @@ describe("DELETE /admin/active-directory/user/:id — successful full wipe (acce
     // Captured at call time: the transaction had NOT committed yet.
     expect(preState!.committedAtCall).toBe(false);
 
-    // Every table's row count is present: all 30 explicit tables…
+    // Every table's row count is present: all 31 explicit tables…
     const explicitCounts = preState!.payload.explicitDeleteCounts as Record<string, number>;
     expect(Object.keys(explicitCounts).sort()).toEqual(EXPLICIT_DELETE_ORDER.filter((t) => t !== "users").sort());
-    // …all 15 cascade tables and all 13 set-null reference columns
+    // …all 15 cascade tables and all 14 set-null reference columns
     // (sales_offers.customer_id was repointed users -> tenants by #2730 and
-    // is no longer part of this census — see the route's own comment).
+    // is no longer part of this census — see the route's own comment;
+    // tenant_signal_history.client_user_id joined it as #2983's 14th).
     expect(Object.keys(preState!.payload.dbCascadeCounts as object)).toHaveLength(15);
-    expect(Object.keys(preState!.payload.dbSetNullCounts as object)).toHaveLength(13);
+    expect(Object.keys(preState!.payload.dbSetNullCounts as object)).toHaveLength(14);
     expect(preState!.payload.targetUserId).toBe(42);
     expect(preState!.payload.tenantGuid).toBe("aad-guid-123");
 
@@ -464,12 +475,12 @@ describe("DELETE /admin/active-directory/user/:id — rollback (acceptance c)", 
 
   it("rolls back when a failure happens after some deletes already ran", async () => {
     h.queue.push([TARGET_ROW], [{ id: 7, tenantGuid: "aad-guid-123" }], [{ id: 100 }], [{ id: 200 }], [{ runId: "run-1" }]);
-    // Let the 59 census counts drain as 0s, then fail one of the deletes:
+    // Let the 60 census counts drain as 0s, then fail one of the deletes:
     // queue entries are consumed by census selects first (defaults), so to
     // hit a DELETE we pre-load enough census defaults then an Error. The
-    // census makes exactly 59 count selects (30 explicit + 15 cascade + 14
+    // census makes exactly 60 count selects (31 explicit + 15 cascade + 14
     // set-null); give them explicit zeros, then fail the first delete.
-    for (let i = 0; i < 59; i++) h.queue.push([{ n: 0 }]);
+    for (let i = 0; i < 60; i++) h.queue.push([{ n: 0 }]);
     h.queue.push(new Error("simulated delete failure"));
 
     const res = await request(app).delete("/api/admin/active-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
