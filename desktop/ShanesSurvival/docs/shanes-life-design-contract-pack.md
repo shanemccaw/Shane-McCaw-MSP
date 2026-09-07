@@ -65,6 +65,16 @@ constraints:
 - **Notification tray is the primary interface — not a dashboard.**
 - **Universal capture box (text/voice/photo)**, parsed by AI, is the single entry point for
   everything. One box, not category-specific forms.
+- **Real appointment handling, confirmed 2026-09-05 — no new mechanism, just confirms the
+  capture box handles this too.** One-off appointments captured exactly as natural speech —
+  "dr appointment sept 3rd 2pm dr fonji" — parsed into date/time/type/provider
+  automatically, no form. **Real recurring cadences that aren't simple weekly/monthly**:
+  Shane has real appointments every 6 weeks and every 2 months — the recurrence model needs
+  to support arbitrary real intervals, not just the generic presets most calendar tools
+  offer. **Real reminder timing: the day before**, for both recurring and one-off
+  appointments — this is a real, legitimate exception to "context over clock" (Section 7),
+  since an appointment is inherently date-anchored. Counts against the real 1–3/day nudge
+  cap above, same as everything else — not a bonus exception to it.
 - **Nudges rationed to 1–3 per day.** Never accumulate, never shame.
 - **Tasks batch by real-world moment, not clock time** — "when heading out," "when at the
   store," not "at 3pm."
