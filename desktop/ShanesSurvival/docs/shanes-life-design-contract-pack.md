@@ -124,6 +124,14 @@ constraints:
   are the explicit exception.
 - **"Heading Out" checklist triggered by Tesla climate preconditioning**, not a scheduled
   time.
+- **Real second context-trigger, confirmed 2026-09-05: BuildConsole build-queue depth.**
+  Same real pattern as the Tesla trigger above, applied to a second genuine real-world
+  context — when the queue is stacked deep (e.g., 15-20 builds running in parallel), that's
+  a real, honest signal Shane isn't needed at the keyboard. BuildConsole fires a real
+  webhook at that threshold, surfacing a nudge to knock out a real physical task —
+  weed-eating, lawn, cleaning a room — while the builds run themselves. **Real open
+  technical question, not yet confirmed**: whether BuildConsole currently has outbound
+  webhook capability at all — verify before assuming this is a simple wiring job.
 - **Item location memory logs instantly, no confirmation step.**
 - **A lightweight "things that need to move or get known" queue**, distinct from Shane's
   own tasks — e.g., "no toilet paper at House B" or "grab the weedeater from House A, bring
