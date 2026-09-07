@@ -647,6 +647,11 @@ const PUBLIC_CHAT_REVIEW_LINK_PATH = "/pipeline/chat-queue";
  * confirmed created" point, for the same reason: a real ticket reference
  * beats a dead-end pointer. Public chat is deliberately push-only, never
  * emailed — see public-chat.ts's own docblock.
+ *
+ * `reinstatementRequestId` (#2999, set only by retention/reinstatement-ticket.ts) is a
+ * third optional field of the same kind: it makes this handler stamp the confirmed
+ * ticket back onto the `retention_reinstatement_requests` row that raised it, from the
+ * same "after the ticket is confirmed created" point, for the same reason.
  */
 async function handleCreateTicketJob(payload: Record<string, unknown>, mspId: number | undefined): Promise<Record<string, unknown>> {
   const departmentId =
@@ -671,6 +676,19 @@ async function handleCreateTicketJob(payload: Record<string, unknown>, mspId: nu
     },
     mspId,
   );
+
+  // #2999 — a reinstatement ticket writes its real identifiers back onto the
+  // `retention_reinstatement_requests` row that produced it, from HERE, for the same
+  // reason the notification email is sent from here rather than the request path: this is
+  // the first point at which a real ticket number genuinely exists. Only the ticket
+  // identifiers are written — `status`/`resolution` on that row belong exclusively to
+  // `resolveOpenReinstatementRequests()`, and a ticket is a notification surface, not a
+  // second source of truth for whether the customer is back in. Never throws.
+  const reinstatementRequestId = Number(payload.reinstatementRequestId);
+  if (Number.isInteger(reinstatementRequestId) && reinstatementRequestId > 0) {
+    const { recordReinstatementTicketCreated } = await import("./retention/reinstatement-ticket.ts");
+    await recordReinstatementTicketCreated(reinstatementRequestId, ticket);
+  }
 
   const notifyEmails = Array.isArray(payload.notifyEmails)
     ? payload.notifyEmails.filter((e): e is string => typeof e === "string" && e.length > 0)
@@ -798,6 +816,16 @@ export interface EnqueueEscalationTicketInput {
   notifyEmails: string[];
   notifySubject: string;
   pushNotify?: boolean;
+  /**
+   * #2999 — set ONLY by `raiseReinstatementTicket()` (retention/reinstatement-ticket.ts).
+   * The id of the `retention_reinstatement_requests` row this ticket was raised for;
+   * handleCreateTicketJob above stamps the real ticket back onto that row once Zoho
+   * confirms it exists, so the request record carries its own notification rather than
+   * the notification being fired once and stored nowhere. Same shape as `notifyEmails` /
+   * `pushNotify`: an optional payload field one caller sets, meaningless on a
+   * workflow-authored `zoho_desk_create_ticket` node.
+   */
+  reinstatementRequestId?: number;
 }
 
 export async function enqueueEscalationTicket(
