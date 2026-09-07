@@ -73,10 +73,12 @@ carries a `completeness` object precisely so this distinction survives to the sc
 - **Drift domains** (`drift.*` metrics, `drift_events`, `drift_collection_status`): a
   separate, much narrower monitor-check-driven subsystem with 18 named domains, its own
   4-value verdict enum (`approved`/`attributed_unapproved`/`unattributed`/`informational`,
-  distinct from #2759's 5-value one), and its own attribution logic
-  (`buildCaChangeRequestAttribution` in `monitor-executor.ts`) that #2759's own file header
-  explicitly calls out as the blunter, 30-day-blanket-window reasoning it improves on for the
-  config-diff domain — without retiring it. **5 of 18 drift domains have a producer today; 13 do
+  distinct from #2759's 5-value one), and its own attribution entry point
+  (`buildDriftScopeAttribution` in `drift-change-attribution.ts`). #2759's file header calls
+  out the blunter, 30-day category-blanket reasoning that entry point REPLACED: #2819 retired
+  it and rebuilt drift attribution on #2759's own `config_change_scopes` bridge, so both
+  lineages now match per resource/object/property even though their tables and verdict enums
+  stay separate. **5 of 18 drift domains have a producer today; 13 do
   not** — re-verified this session, unchanged from #1794 — see §8. Neither `drift_events` nor
   the 18 drift domains are served by any endpoint in this pack.
 

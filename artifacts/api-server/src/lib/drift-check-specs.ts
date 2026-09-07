@@ -57,8 +57,39 @@ export interface DriftScanContext {
   status: string;
 }
 
-/** Attribution strategy tag; the executor resolves it to a per-setting attribution fn. */
-export type DriftAttributionKind = "ca-change-request";
+/**
+ * Attribution strategy tag; the executor resolves it to a per-setting attribution fn.
+ *
+ * #2819 renamed the one live value from `ca-change-request` (a CATEGORY blanket —
+ * any recent completed ConditionalAccess CR marked every drifted setting
+ * `approved`) to `change-request-scope`: attribution now goes through #2759's real
+ * `config_change_scopes` bridge and matches per resource / object / property. The
+ * strategy is no longer Conditional-Access-specific, which is why the tag is not
+ * either — any domain that declares an {@link DriftSettingIdentity} can use it.
+ */
+export type DriftAttributionKind = "change-request-scope";
+
+/**
+ * How a drift `setting` path resolves to the OBJECT the change touched (#2819).
+ *
+ * Per-setting attribution needs to answer "which Conditional Access policy is
+ * `/policies/3/state` about?" — and the only thing that can answer it is the
+ * scan's own item list, because `detectDrift` walks arrays POSITIONALLY. So a
+ * domain declares where its objects live in the comparable config it built
+ * (`collection`) and which field on a scan item carries that object's stable
+ * Graph id (`idField`); `drift-change-attribution.ts` does the rest.
+ *
+ * A domain WITHOUT this cannot be attributed per setting, and therefore is not
+ * attributed at all rather than attributed by category — which is the whole
+ * point of #2819. Declaring it is only safe when the config builder emits the
+ * collection in the same order as `ctx.items`.
+ */
+export interface DriftSettingIdentity {
+  /** Top-level property of the comparable config holding the positional array. */
+  collection: string;
+  /** Field on a scan item carrying its stable object identity (e.g. the Graph `id`). */
+  idField: string;
+}
 
 export interface DriftCheckSpec {
   /** Bare drift domain slug stored on drift_events.domain_key (metric sourceKey minus "drift:"). */
@@ -67,6 +98,11 @@ export interface DriftCheckSpec {
   label: string;
   /** Optional attribution strategy the executor wires in (only CA has one today). */
   attribution?: DriftAttributionKind;
+  /**
+   * Required alongside `attribution` — without it a setting path cannot be tied
+   * to an object and nothing can be attributed. See {@link DriftSettingIdentity}.
+   */
+  identity?: DriftSettingIdentity;
   /** Pure: a completed scan → a stable comparable config, or an honest reason it isn't. */
   buildConfig(ctx: DriftScanContext): DriftConfigOutcome;
 }
@@ -245,7 +281,12 @@ export const DRIFT_CHECK_SPECS: Record<string, DriftCheckSpec> = {
   "identity:ca-policy-count": {
     domainKey: "ca-policy",
     label: "Conditional Access policy",
-    attribution: "ca-change-request",
+    attribution: "change-request-scope",
+    // `buildCaPolicyDriftConfig` emits `{ policies: ctx.items }` verbatim, so index
+    // N of the diff path IS index N of the scan items — the positional agreement
+    // per-setting attribution depends on. Do not reshape that builder without
+    // revisiting this.
+    identity: { collection: "policies", idField: "id" },
     buildConfig: buildCaPolicyDriftConfig,
   },
   "governance:public-teams-discoverable": {

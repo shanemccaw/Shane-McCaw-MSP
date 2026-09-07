@@ -30,7 +30,11 @@ describe("drift-check-specs — registry (#1287)", () => {
   });
 
   it("only Conditional Access carries a change-request attribution strategy", () => {
-    expect(DRIFT_CHECK_SPECS["identity:ca-policy-count"].attribution).toBe("ca-change-request");
+    // #2819 renamed the strategy from `ca-change-request` (a category blanket) to
+    // `change-request-scope` (a real per-resource/object/property match), and made
+    // the identity mapping it needs part of the declaration.
+    expect(DRIFT_CHECK_SPECS["identity:ca-policy-count"].attribution).toBe("change-request-scope");
+    expect(DRIFT_CHECK_SPECS["identity:ca-policy-count"].identity).toEqual({ collection: "policies", idField: "id" });
     expect(DRIFT_CHECK_SPECS["governance:public-teams-discoverable"].attribution).toBeUndefined();
     expect(DRIFT_CHECK_SPECS["compliance:eeeu-site-sharing"].attribution).toBeUndefined();
   });

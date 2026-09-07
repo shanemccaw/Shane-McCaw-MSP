@@ -252,9 +252,42 @@ export async function captureBaseline(
   return inserted.id;
 }
 
+/**
+ * What the caller learns about the comparison before it has to decide attribution
+ * (#2819). Real per-setting attribution has to bound itself to the interval the
+ * drift could have happened in, and that interval starts at the BASELINE capture —
+ * a fact only `collectDrift` holds, since the baseline is resolved inside it.
+ */
+export interface DriftAttributionContext {
+  baselineSnapshotId: number;
+  baselineCapturedAt: Date | null;
+  /**
+   * The baseline config the diff was taken against. `detectDrift` walks arrays
+   * POSITIONALLY, so an attribution layer that reads object identity out of an
+   * index has to be able to check that the index means the same object on both
+   * sides before it trusts it.
+   */
+  baselineConfig: unknown;
+}
+
+/**
+ * Async builder for {@link CollectDriftOpts.attributionFor}, invoked once per run
+ * with the resolved baseline. Returning `undefined` means "nothing can be
+ * attributed" — every event falls through to `unattributed`, which is the honest
+ * state, not a gap.
+ */
+export type DriftAttributionFactory = (
+  ctx: DriftAttributionContext,
+) => Promise<((setting: string) => DriftAttribution | undefined) | undefined>;
+
 export interface CollectDriftOpts {
   /** Look up attribution (actor / linked CR) for a changed setting path. */
   attributionFor?: (setting: string) => DriftAttribution | undefined;
+  /**
+   * Baseline-aware alternative to `attributionFor`, used when the lookup itself
+   * needs the comparison window. Ignored when `attributionFor` is supplied.
+   */
+  attributionFactory?: DriftAttributionFactory;
   /** After detecting drift, capture the fresh config as the new baseline. Default false. */
   rebaselineAfter?: boolean;
   capturedBy?: string;
@@ -291,7 +324,18 @@ export async function collectDrift(
   }
 
   const diffs = detectDrift(baseline.config, currentConfig);
-  const planned = planDriftEvents(diffs, opts.attributionFor);
+  // #2819 — the factory form is resolved here, not by the caller, because real
+  // per-setting attribution has to bound itself to the baseline capture and the
+  // baseline is only known at this point.
+  const attributionFor = opts.attributionFor
+    ?? (opts.attributionFactory
+      ? await opts.attributionFactory({
+          baselineSnapshotId: baseline.id,
+          baselineCapturedAt: baseline.capturedAt ?? null,
+          baselineConfig: baseline.config,
+        })
+      : undefined);
+  const planned = planDriftEvents(diffs, attributionFor);
   const keyFor = (p: PlannedDriftEvent) =>
     buildDriftIdempotencyKey(tenantId, domainKey, baseline.id, p.op, p.setting);
 
@@ -498,6 +542,8 @@ export interface MaybeCollectDriftParams {
   scan: DriftScanContext;
   /** Per-setting attribution (only Conditional Access supplies one today). */
   attributionFor?: (setting: string) => DriftAttribution | undefined;
+  /** Baseline-aware alternative to `attributionFor` (#2819). See {@link CollectDriftOpts}. */
+  attributionFactory?: DriftAttributionFactory;
 }
 
 export interface MaybeCollectDriftResult {
@@ -524,7 +570,7 @@ export interface MaybeCollectDriftResult {
 export async function maybeCollectDriftForCheck(
   params: MaybeCollectDriftParams,
 ): Promise<MaybeCollectDriftResult> {
-  const { checkKey, tenantId, scan, attributionFor } = params;
+  const { checkKey, tenantId, scan, attributionFor, attributionFactory } = params;
   const spec = driftSpecForCheck(checkKey);
   if (!spec) return { driftTracked: false };
 
@@ -554,7 +600,10 @@ export async function maybeCollectDriftForCheck(
       return { driftTracked: true, domainKey: spec.domainKey, status: "not_comparable", reason: outcome.reason };
     }
 
-    const result = await collectDrift(tenantId, spec.domainKey, outcome.config, { attributionFor });
+    const result = await collectDrift(tenantId, spec.domainKey, outcome.config, {
+      attributionFor,
+      attributionFactory,
+    });
     const status: DriftCollectionStatus = result.firstRun ? "baseline_captured" : "tracked";
     await recordDriftCollectionStatus(tenantId, spec.domainKey, {
       status,

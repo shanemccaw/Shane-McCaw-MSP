@@ -5269,12 +5269,13 @@ export type InsertCrExecution = typeof crExecutionsTable.$inferInsert;
 // than a human-typed status field: after the reviewer records their close code,
 // this record ALSO captures whether the same drift-detection engine that flags
 // unauthorized change re-scanned the tenant and found the change reflected in
-// its own baseline diff. `monitor-executor.ts`'s `buildCaChangeRequestAttribution`
-// only attributes drift to a CR for Conditional Access, from a completed CR
-// within a 30-day window (#1497's deliberate boundary) — this does NOT widen
-// that; `driftRescanApplicable` is false and `driftRescanStatus` stays
-// `not_applicable` for every other category, honestly, rather than pretending a
-// re-scan ran where the engine has no attribution path to run one.
+// its own baseline diff. Conditional Access is the only drift domain wired for
+// change-request attribution (#1497's deliberate boundary; since #2819 the match
+// is per resource/object/property via `config_change_scopes`, not per category)
+// — this does NOT widen that; `driftRescanApplicable` is false and
+// `driftRescanStatus` stays `not_applicable` for every other category, honestly,
+// rather than pretending a re-scan ran where the engine has no attribution path
+// to run one.
 export const CR_PIR_CLOSE_CODES = ["successful", "successful_with_issues", "failed", "rolled_back"] as const;
 export type CrPirCloseCode = (typeof CR_PIR_CLOSE_CODES)[number];
 
@@ -8483,9 +8484,10 @@ export const driftEventsTable = pgTable("drift_events", {
   crRef: text("cr_ref"),
   /**
    * #1505 — the real numeric `msp_change_requests.id` behind `crRef` above, when
-   * attribution found a covering CR (`buildCaChangeRequestAttribution` in
-   * monitor-executor.ts is the one live writer today). `crRef` stays the display
-   * string; this is what makes "drift raising a change" (the issue's own words)
+   * attribution found a covering CR (`drift-change-attribution.ts` is the one
+   * live writer today; #2819 replaced the category-wide blanket it succeeded with
+   * a real per-setting scope match). `crRef` stays the display string; this is
+   * what makes "drift raising a change" (the issue's own words)
    * an actual FK instead of a string a caller would have to re-parse. `set null`:
    * drift history is real audit trail and must survive a pruned CR.
    */

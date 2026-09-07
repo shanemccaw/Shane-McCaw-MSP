@@ -47,11 +47,12 @@ export interface DriftRescanOutcome {
 /**
  * Run the drift re-scan a PIR closes the loop with, for ONE change request.
  *
- * Scoped deliberately narrow: `monitor-executor.ts`'s `buildCaChangeRequestAttribution`
- * only attributes drift to a CR for Conditional Access (#1497's boundary, not
- * widened here). Every other category returns `not_applicable` honestly — no
- * scan is attempted, because the attribution engine has no path to credit it to
- * this CR even if one ran.
+ * Scoped deliberately narrow: Conditional Access is still the only drift domain
+ * wired for change-request attribution (#1497's boundary, not widened here —
+ * `identity:ca-policy-count` is the one `DRIFT_CHECK_SPECS` entry carrying an
+ * `attribution` strategy). Every other category returns `not_applicable`
+ * honestly — no scan is attempted, because the attribution engine has no path to
+ * credit it to this CR even if one ran.
  *
  * For Conditional Access: forces a fresh scan (`skipIdempotency: true` — a PIR
  * re-scan must observe the tenant NOW, not a cached same-trigger result) of the
@@ -83,8 +84,8 @@ export async function runDriftRescanForChange(cr: {
       otherOpenDriftCount: null,
       note:
         `Drift re-scan is only wired for Conditional Access changes today ` +
-        `(monitor-executor.ts attributes drift to a CR only for that category, within a ` +
-        `30-day window — see buildCaChangeRequestAttribution). This change's category is ` +
+        `(it is the one drift domain with a change-request attribution strategy — see ` +
+        `DRIFT_CHECK_SPECS in drift-check-specs.ts). This change's category is ` +
         `"${cr.category}", so no re-scan was attempted.`,
       ranAt: null,
     };

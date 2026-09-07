@@ -9,13 +9,16 @@
  * `lib/db/src/schema/config-attribution.ts`; this file is the engine that fills it.
  *
  * ─── What this replaces, and why it is not the same thing ──────────────────────
- * `monitor-executor.ts`'s `buildCaChangeRequestAttribution` (#1283/#1505) is the
- * existing attribution path, and its own comment states its limit plainly: "A CR
+ * `monitor-executor.ts`'s `buildCaChangeRequestAttribution` (#1283/#1505) was the
+ * previous attribution path, and its own comment stated its limit plainly: "A CR
  * describes an intended change, not a JSON path, so this cannot attribute per-setting
  * … when a qualifying CR exists, every drifted setting in this scan is attributed to
  * it the same way." One completed Conditional Access CR in the last 30 days therefore
- * marks EVERY Conditional Access drift `approved`, including drift it had nothing to
- * do with.
+ * marked EVERY Conditional Access drift `approved`, including drift it had nothing to
+ * do with. #2819 retired it: `drift-change-attribution.ts` now reuses THIS file's scope
+ * bridge, `matchScopeFor` and `compareMatches` to attribute `drift_events` per setting,
+ * so the two lineages share one attribution model even though their tables and verdict
+ * enums stay separate.
  *
  * This layer does not widen that; it replaces the guess with a join. A change request
  * is walked down to the real Graph endpoint it writes — `change_catalog_items` →
@@ -262,7 +265,7 @@ interface ScopeDraft {
 }
 
 /** `tenants.tenant_id` (the TEXT M365 GUID) → `tenants.id`. Null when not onboarded. */
-async function resolveTenantRowId(textTenantId: string): Promise<number | null> {
+export async function resolveTenantRowId(textTenantId: string): Promise<number | null> {
   const [row] = await db.select({ id: tenantsTable.id })
     .from(tenantsTable).where(eq(tenantsTable.tenantId, textTenantId)).limit(1);
   return row?.id ?? null;

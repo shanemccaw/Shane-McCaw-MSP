@@ -21,11 +21,10 @@ import {
   tenantMonitorProfilesTable,
   tenantAzureReachTable,
   tenantsTable,
-  mspChangeRequestsTable,
   type MonitorCheck,
   type MonitoringPackage,
 } from "@workspace/db";
-import { eq, and, inArray, desc, gte } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { graphFetchForTenant, ConsentRevokedError, LicenseGapError, markTenantConsentRevoked, getInitialDomainForTenant } from "./graph";
 import {
   ServiceNotConfiguredError,
@@ -35,7 +34,8 @@ import {
   recordTenantServiceState,
   serviceDisplayName,
 } from "./service-availability";
-import { maybeCollectDriftForCheck, type DriftAttribution } from "./drift-collector.ts";
+import { maybeCollectDriftForCheck, type DriftAttributionFactory } from "./drift-collector.ts";
+import { buildDriftScopeAttribution } from "./drift-change-attribution.ts";
 import { driftSpecForCheck } from "./drift-check-specs.ts";
 import { callPsExecution, PsExecutionError } from "./ps-execution-client";
 import {
@@ -64,7 +64,6 @@ import {
 import { normalizeSiteSharing, SHAREPOINT_SITE_SHARING_NORMALIZER } from "./sharepoint-sharing";
 import { normalizeDriveSharing, ONEDRIVE_DRIVE_SHARING_NORMALIZER } from "./onedrive-sharing";
 import { syncTenantServicePlans } from "./tenant-workloads.ts";
-import { formatChangeRequestCode } from "./portal-change-control";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.monitor" });
 
@@ -102,71 +101,34 @@ const FAN_OUT_RETRY_BASE_DELAY_MS = 1000;
 /** Max distinct per-item failure messages retained on the result for diagnosis. */
 const FAN_OUT_SAMPLE_ERROR_LIMIT = 5;
 
-// ── Configuration Drift attribution (#1270/#1283) ──────────────────────────────
+// ── Configuration Drift attribution (#1270/#1283, replaced by #2819) ───────────
+//
+// This used to hold `buildCaChangeRequestAttribution` and its 30-day
+// `CA_CR_ATTRIBUTION_WINDOW_DAYS` bound, which attributed drift on CATEGORY ALONE:
+// the most recent completed `category = 'ConditionalAccess'` change request in the
+// window, returned as a closure that ignored its `setting` argument, so every
+// drifted Conditional Access setting in the scan got the same `crRef`. Since
+// `deriveVerdict` returns `approved` whenever `crRef` is set, and the
+// `drift.unapproved` alert counts only `attributed_unapproved`/`unattributed`, one
+// unrelated approved CA change suppressed the unapproved-drift alert for every
+// genuinely unauthorised CA change in that tenant for up to 30 days (#2819).
+//
+// It is now `drift-change-attribution.ts`, which resolves a change request down to
+// the real Graph endpoint it wrote and matches it against the drifted setting's own
+// resource / object / property — the same `config_change_scopes` bridge #2759 built
+// for `config_diff_changes`, reused rather than duplicated. The time bound moved
+// with it: the window is the baseline capture → this scan, and it no longer has to
+// carry the correctness weight a category-only match put on it.
 
 /**
- * How far back a completed Conditional Access change request stays eligible to
- * attribute freshly-detected drift. Without a bound, a single ancient completed
- * CR would perpetually mark EVERY future CA drift `approved` (crRef set →
- * `deriveVerdict` returns `approved`), silently whitewashing genuinely
- * unapproved drift out of the `drift.unapproved` alert path
- * (customer-tenant-alert-engine counts only `attributed_unapproved`/
- * `unattributed`). Drift is deviation from an approved baseline, and a CR only
- * plausibly explains a change that landed near it in time, so only recent
- * completed CRs attribute — older drift falls through to `unattributed`, the
- * honest, floated-up state.
+ * Read a drift spec's declared object collection out of a stored baseline config.
+ * Undefined when the baseline predates the collection or was built in another shape
+ * — the positional guard is then simply not applied, never applied against garbage.
  */
-const CA_CR_ATTRIBUTION_WINDOW_DAYS = 30;
-
-/**
- * Best-effort drift attribution for Conditional Access changes: the most
- * recent completed change request against this tenant's ConditionalAccess
- * category within the last {@link CA_CR_ATTRIBUTION_WINDOW_DAYS} days, if one
- * exists. `msp_change_requests` is the platform's real "tenant audit log" for
- * MSP-initiated changes — unlike `audit_logs` (keyed to a platform user id),
- * it's keyed directly to the M365 tenant GUID and already carries a
- * ConditionalAccess category, a requester, and an approver.
- *
- * A CR describes an intended change, not a JSON path, so this cannot attribute
- * per-setting the way `planDriftEvents`'s `attributionFor` is shaped for —
- * when a qualifying CR exists, every drifted setting in this scan is
- * attributed to it the same way.
- */
-async function buildCaChangeRequestAttribution(
-  tenantId: string,
-): Promise<((setting: string) => DriftAttribution | undefined) | undefined> {
-  const cutoff = new Date(Date.now() - CA_CR_ATTRIBUTION_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-  const [cr] = await db
-    .select({
-      id: mspChangeRequestsTable.id,
-      requestedBy: mspChangeRequestsTable.requestedBy,
-      approvedBy: mspChangeRequestsTable.approvedBy,
-    })
-    .from(mspChangeRequestsTable)
-    .where(
-      and(
-        eq(mspChangeRequestsTable.tenantId, tenantId),
-        eq(mspChangeRequestsTable.category, "ConditionalAccess"),
-        eq(mspChangeRequestsTable.status, "completed"),
-        gte(mspChangeRequestsTable.updatedAt, cutoff),
-      ),
-    )
-    .orderBy(desc(mspChangeRequestsTable.updatedAt))
-    .limit(1);
-
-  if (!cr) return undefined;
-
-  // #1505 — was a hand-rolled `CR-${cr.id}` that never matched
-  // `parseChangeRequestCode`'s `CR-2026-\d+` format (portal-change-control.ts),
-  // so a drift event attributed here could never actually be resolved back to
-  // its CR by anything that parses the code. Every other writer in this
-  // codebase uses `formatChangeRequestCode`; this now does too.
-  const attribution: DriftAttribution = {
-    changedBy: cr.approvedBy ?? cr.requestedBy,
-    crRef: formatChangeRequestCode(cr.id),
-    changeRequestId: cr.id,
-  };
-  return () => attribution;
+function readDriftCollection(config: unknown, collection: string): unknown[] | undefined {
+  if (!config || typeof config !== "object") return undefined;
+  const value = (config as Record<string, unknown>)[collection];
+  return Array.isArray(value) ? value : undefined;
 }
 
 /**
@@ -194,15 +156,34 @@ async function collectDriftForCompletedCheck(
   try {
     const spec = driftSpecForCheck(check.key);
     if (!spec) return; // not a drift-tracked check — an intended no-op, not a gap
-    const attributionFor =
-      spec.attribution === "ca-change-request"
-        ? await buildCaChangeRequestAttribution(tenantId)
+    // #2819 — a factory, not a resolved function: real per-setting attribution has
+    // to bound itself to the interval the drift could have happened in, and that
+    // interval starts at the baseline capture, which only `collectDrift` knows.
+    // `identity` is required as well as `attribution` — a domain that cannot tie a
+    // setting path to an object is not attributed by category instead, it is not
+    // attributed at all.
+    const identity = spec.identity;
+    const attributionFactory: DriftAttributionFactory | undefined =
+      spec.attribution === "change-request-scope" && identity
+        ? (ctx) =>
+            buildDriftScopeAttribution({
+              tenantId,
+              endpoint: check.endpoint,
+              identity,
+              items,
+              // The same collection out of the baseline, so index N can be checked
+              // to mean the same object on both sides before its identity is read.
+              baselineItems: readDriftCollection(ctx.baselineConfig, identity.collection),
+              baselineCapturedAt: ctx.baselineCapturedAt,
+              checkKey: check.key,
+              domainKey: spec.domainKey,
+            })
         : undefined;
     await maybeCollectDriftForCheck({
       checkKey: check.key,
       tenantId,
       scan: { items, extracted, status },
-      attributionFor,
+      attributionFactory,
     });
   } catch (err) {
     log.warn({ err, tenantId, checkKey: check.key }, "monitor-executor: drift collection failed (non-fatal)");

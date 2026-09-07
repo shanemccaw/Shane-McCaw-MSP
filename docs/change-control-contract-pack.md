@@ -407,24 +407,27 @@ restricts it to `category === "ConditionalAccess"` only; every other category is
 **crRef writeback — two separate mechanisms, do not conflate:**
 - `cr_executions.crRef` — written by `settleChangeExecutions` when a bound `wf_run` completes, or at
   attest time for a human action. Scoped to `cr_executions`, not `drift_events`.
-- `drift_events.crRef` — written by `buildCaChangeRequestAttribution`
-  (`monitor-executor.ts:135–170`), triggered from a monitor scan, looking for the most recent
-  `completed` CR in category `ConditionalAccess` within a 30-day window. **Never reads
-  `cr_executions` at all** — driven off the CR's own `status` column.
+- `drift_events.crRef` — written by `buildDriftScopeAttribution`
+  (`drift-change-attribution.ts`), triggered from a monitor scan. Since **#2819** it reads
+  `cr_executions` (through #2759's `config_change_scopes` bridge) and matches the drifted
+  setting's own resource/object/property. Its predecessor did not: it looked for the most
+  recent `completed` CR in category `ConditionalAccess` within a 30-day window and attributed
+  every drifted setting in the scan to it.
 
-**The old pack's "live bug underneath this" (§6 there) — status: format bug FIXED, blanket-attribution limitation still live.**
-`deriveVerdict` (`drift-collector.ts:78–88`) is unchanged and correct: `crRef` truthy → `approved`.
-The bug was that the only real-world populator used to hand-roll `` `CR-${cr.id}` `` instead of the
-canonical `formatChangeRequestCode`, so a stamped `crRef` could never be parsed back by
-`parseChangeRequestCode`. **This is fixed** — `monitor-executor.ts:159–169` now calls
-`formatChangeRequestCode(cr.id)` directly, per its own #1505 comment. What's still true, by design,
-not a bug: `buildCaChangeRequestAttribution` is coarse — one qualifying CR attributes **every**
-drifted setting in that scan the same way ("a CR describes an intended change, not a JSON path").
-A newer, more precise join-based engine exists (`config-change-attribution.ts`, #2759) but operates
-on an entirely separate table lineage (`config_diff_changes`/`configChangeAttributionsTable`, fed by
-`config-snapshot-differ.ts`) — it is **not** wired into the `drift_events` pipeline described above.
-The two systems coexist rather than one calling the other. **OPEN GAP**, no issue currently tracks
-porting the #2759 precision model onto the older `drift_events.cr_ref` path.
+**The old pack's "live bug underneath this" (§6 there) — status: BOTH FIXED.**
+`deriveVerdict` (`drift-collector.ts`) is unchanged and correct: `crRef` truthy → `approved`.
+The format bug was that the only real-world populator used to hand-roll `` `CR-${cr.id}` `` instead
+of the canonical `formatChangeRequestCode`, so a stamped `crRef` could never be parsed back by
+`parseChangeRequestCode`. Fixed by #1505. The second, larger problem — `buildCaChangeRequestAttribution`
+was coarse, so one qualifying CR attributed **every** drifted setting in that scan the same way ("a
+CR describes an intended change, not a JSON path"), suppressing `drift.unapproved` for up to 30 days
+— is fixed by **#2819**. The precision model built for `config_diff_changes` (#2759,
+`config-change-attribution.ts`) is now shared: `drift-change-attribution.ts` reuses its
+`config_change_scopes` bridge, its `matchScopeFor` precision levels and its `compareMatches` ranking,
+and only adds the piece #2759 had no need for — turning a drift `setting` JSON-pointer path into the
+same `(resource_key, object_identity, property_path_normalized)` triple. The two table lineages
+(`drift_events` vs `config_diff_changes`/`configChangeAttributionsTable`) remain separate; only the
+attribution model is shared.
 
 ---
 
@@ -656,8 +659,8 @@ statement. Out of this module's design scope by their own explicit design, not o
 | Metrics | `artifacts/api-server/src/lib/portal-change-metrics.ts` | |
 | Customer settings | `artifacts/api-server/src/routes/portal-settings-change-control.ts`, `lib/portal-settings-change-control.ts` | |
 | Client seam (unconsumed) | `artifacts/portal/src/components/settingsChangeControlWire.ts`, `settingsChangeControlLive.ts` | |
-| Drift verdict + crRef writeback | `artifacts/api-server/src/lib/drift-collector.ts`, `artifacts/api-server/src/lib/monitor-executor.ts` | `deriveVerdict` :78, `buildCaChangeRequestAttribution` :135 |
-| Newer, unwired precision attribution engine | `artifacts/api-server/src/lib/config-change-attribution.ts` | #2759 |
+| Drift verdict + crRef writeback | `artifacts/api-server/src/lib/drift-collector.ts`, `artifacts/api-server/src/lib/drift-change-attribution.ts` | `deriveVerdict`, `buildDriftScopeAttribution` (#2819) |
+| Shared precision attribution model (both lineages) | `artifacts/api-server/src/lib/config-change-attribution.ts` | #2759, reused by #2819 |
 | Finding→CR (remediation) edge | `artifacts/api-server/src/lib/remediation-raise-change.ts`, `artifacts/api-server/src/routes/portal-remediation-checklist.ts:239` | |
 | Stored rows + enums | `lib/db/src/schema/msp.ts` | full table map, §13 |
 | MSP-only execution/CAB/PIR routes (out of scope) | `artifacts/api-server/src/routes/msp-change-executions.ts`, `msp-change-control-cab.ts`, `msp-change-pir.ts`, `msp-change-catalog.ts`, `msp-change-freeze-windows.ts`, `msp-change-maintenance-windows.ts`, `msp-change-dependencies.ts` | |
