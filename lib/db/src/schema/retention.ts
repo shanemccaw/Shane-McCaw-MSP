@@ -532,6 +532,35 @@ export const retentionReinstatementRequestsTable = pgTable("retention_reinstatem
    */
   resolution: text("resolution"),
 
+  // ── The notification the routing decision settled on (#2999) ───────────────
+  //
+  // Shane's decision, 2026-09-07: options 1 + 3 — auto-resume (which is
+  // `resolveOpenReinstatementRequests()`, above) plus ONE real Zoho Desk ticket raised
+  // the moment the row lands. These columns are why that ticket is not the "notification
+  // sent once and kept nowhere" this table's own docblock rules out: the request row
+  // carries the real ticket it produced, so the same row answers both "did they ask" and
+  // "was anyone actually told".
+  //
+  // The ticket is QUEUED, not created inline — every Zoho Desk write on this platform
+  // goes through the batch drain (~5 min). So the job id lands immediately and the real
+  // ticket identifiers land at drain time, which is why these are two groups and not one.
+  /** `msp_job_queue.job_id` of the queued `zoho_desk_create_ticket`. Set at request time. */
+  ticketJobId: text("ticket_job_id"),
+  ticketEnqueuedAt: timestamp("ticket_enqueued_at", { withTimezone: true }),
+  /** Zoho's own ticket id, written back by the drain once the ticket genuinely exists. */
+  ticketZohoId: text("ticket_zoho_id"),
+  /** The human ticket number ("#1043") — what the wall can honestly show the customer. */
+  ticketNumber: text("ticket_number"),
+  ticketUrl: text("ticket_url"),
+  ticketCreatedAt: timestamp("ticket_created_at", { withTimezone: true }),
+  /**
+   * Why no ticket exists, when none does — Zoho not connected, no resolvable contact
+   * email. Recorded rather than swallowed: a request whose notification silently failed
+   * must be distinguishable from one whose ticket is merely still queued, or the queue
+   * quietly becomes the thing nobody is watching.
+   */
+  ticketError: text("ticket_error"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -544,6 +573,12 @@ export const retentionReinstatementRequestsTable = pgTable("retention_reinstatem
   /** The operator-side queue, whichever surface ends up owning it: newest first, per MSP. */
   index("retention_reinstatement_msp_idx").on(t.mspId, t.requestedAt.desc()),
   index("retention_reinstatement_tenant_idx").on(t.tenantId, t.requestedAt.desc()),
+  /**
+   * #2999 — the drain's write-back path looks the request up by the job id it queued.
+   * Partial: a request filed before this notification existed, or one whose ticket could
+   * not be queued at all, is NULL here and does not belong in the index.
+   */
+  index("retention_reinstatement_ticket_job_idx").on(t.ticketJobId).where(sql`ticket_job_id IS NOT NULL`),
 ]);
 
 export type RetentionReinstatementRequest = typeof retentionReinstatementRequestsTable.$inferSelect;

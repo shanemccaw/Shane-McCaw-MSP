@@ -48,7 +48,40 @@ function toWireRequest(row: RetentionReinstatementRequest) {
     lapsedAt: row.lapsedAt?.toISOString() ?? null,
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
     resolution: row.resolution,
+    /**
+     * #2999 — the real Zoho Desk ticket this request raised, so the wall can say "we've
+     * opened ticket #1043" instead of the weaker "your request has been recorded".
+     *
+     * Three genuinely different states, all of them truthful, none of them invented:
+     * `status: "created"` once Zoho confirms the ticket (number/url are real then),
+     * `"queued"` while the job is waiting on the batch drain (~5 min — a real interval,
+     * not a spinner), and `"unavailable"` when no ticket could be raised at all. The
+     * customer is never shown the internal error text; the row keeps it for an operator.
+     */
+    ticket: reinstatementTicketWire(row),
   };
+}
+
+/** The ticket half of a request, in the three states it can genuinely be in. */
+function reinstatementTicketWire(row: RetentionReinstatementRequest) {
+  if (row.ticketCreatedAt) {
+    return {
+      status: "created" as const,
+      number: row.ticketNumber,
+      url: row.ticketUrl,
+      createdAt: row.ticketCreatedAt.toISOString(),
+    };
+  }
+  if (row.ticketJobId) {
+    return {
+      status: "queued" as const,
+      number: null,
+      url: null,
+      createdAt: null,
+      enqueuedAt: row.ticketEnqueuedAt?.toISOString() ?? null,
+    };
+  }
+  return { status: "unavailable" as const, number: null, url: null, createdAt: null };
 }
 
 /**

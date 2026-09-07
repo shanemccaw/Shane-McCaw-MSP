@@ -11,18 +11,29 @@
  * (`/portal/data-export`, `/portal/deletion-request`) and only needed adding to the
  * gate's allowlist. Requesting reinstatement did not exist at all; this module is it.
  *
- * NOT settled: what happens to a request once it is made. #2936's dispatch asks
- * explicitly — *"does it notify the MSP? A real support ticket? A real self-service
- * resume-if-MSP-resumes check?"* — and instructs that if it is genuinely ambiguous, the
- * options get reported rather than guessed. It is ambiguous, and the reason is
- * structural rather than a missing detail: in the cascade case the party who would
+ * Left open by #2936, and SETTLED by #2999 (Shane, 2026-09-07): what happens to a
+ * request once it is made. #2936's dispatch asked it explicitly — *"does it notify the
+ * MSP? A real support ticket? A real self-service resume-if-MSP-resumes check?"* — and
+ * instructed that if it were genuinely ambiguous, the options be reported rather than
+ * guessed. It was ambiguous, structurally: in the cascade case the party who would
  * normally act on the request is the MSP, and the MSP is the one who stopped paying.
  *
- * So this module builds only the part that is common to every option and cannot be
- * skipped by any of them — a durable, honest record that the customer asked, with a
- * snapshot of what they were gated by when they asked. Whoever the routing decision ends
- * up pointing at reads this row. None of the options can be built on a notification that
- * was fired once and stored nowhere.
+ * #2999's answer is **options 1 + 3**, the combination its own analysis identified as the
+ * one that survives the cascade case:
+ *
+ *   1. **Auto-resume** — the mechanic described below, already built and unchanged.
+ *   3. **A real Zoho Desk ticket**, raised the moment the row lands, addressed to the
+ *      PLATFORM's own Desk rather than the customer's MSP — which is what defuses the
+ *      objection #2999 raised against option 3. See `reinstatement-ticket.ts`.
+ *
+ * Options 2 (notify the customer's own MSP), 4 (a platform-side operator queue) and 5
+ * (conversion to direct billing) were explicitly not chosen and are not built.
+ *
+ * So this module holds the part that is common to both and cannot be skipped by either —
+ * a durable, honest record that the customer asked, with a snapshot of what they were
+ * gated by when they asked. The ticket reads this row and is recorded back onto it,
+ * because a notification that was fired once and stored nowhere is exactly what this
+ * table exists to avoid.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * The one mechanic that IS unambiguous, and is wired
@@ -129,6 +140,7 @@ export async function submitReinstatementRequest(
       },
       "audit: gated customer requested reinstatement",
     );
+    await notifyOnCreated(inserted[0]);
     return { outcome: "created", request: inserted[0] };
   }
 
@@ -151,7 +163,40 @@ export async function submitReinstatementRequest(
     })
     .returning();
 
+  await notifyOnCreated(retried[0]!);
   return { outcome: "created", request: retried[0]! };
+}
+
+/**
+ * #2999's notification, fired on every path that genuinely creates a row and on no other.
+ *
+ * Shane settled #2999 on 2026-09-07 as options 1 + 3: auto-resume (already built —
+ * `resolveOpenReinstatementRequests()` below) plus ONE real Zoho Desk ticket raised the
+ * moment the request lands, reusing `enqueueEscalationTicket()`. Options 2, 4 and 5
+ * (notify the customer's own MSP, a platform operator queue, conversion to direct
+ * billing) were explicitly not chosen and are not built.
+ *
+ * It hangs off the insert rather than off the route so that "the moment a row lands" is
+ * literally true — a second caller of `submitReinstatementRequest()` cannot accidentally
+ * create a silent request. It fires on `created` only: `already_open` is the wall
+ * double-submitting, and that must not raise a second ticket for the same ask.
+ *
+ * Dynamically imported so this module keeps a clean dependency shape — the retention core
+ * does not statically pull in the Zoho integration, matching the way zoho-desk.ts itself
+ * reaches for `mailer.ts`/`web-push.ts`. Never throws: a gated customer's request must be
+ * recorded even when Zoho is unreachable, and `raiseReinstatementTicket()` records the
+ * reason on the row instead (see `ticket_error`).
+ */
+async function notifyOnCreated(request: RetentionReinstatementRequest): Promise<void> {
+  try {
+    const { raiseReinstatementTicket } = await import("./reinstatement-ticket.ts");
+    await raiseReinstatementTicket(request);
+  } catch (err) {
+    log.error(
+      { err, requestId: request.id, tenantId: request.tenantId },
+      "retention: reinstatement ticket notification failed to load (non-fatal — the request itself is recorded)",
+    );
+  }
 }
 
 /** This customer's currently-open request, or null. */
@@ -191,6 +236,15 @@ export async function listReinstatementRequests(
  * the platform that knows a customer is actually back in — and which does not care
  * whether it was the customer's own subscription or their MSP's that resumed, exactly as
  * #2936 intends.
+ *
+ * **This is the ONE mechanism that resolves a reinstatement request** (#2999 point 3).
+ * The Desk ticket #2999 adds is a notification surface, not a second source of truth: a
+ * ticket being closed in Zoho does not reopen anybody's portal, and nothing in
+ * `reinstatement-ticket.ts` writes `status` or `resolution`. If an operator wants a
+ * request closed, they restore the billing and the record follows — deliberately, so
+ * there is never a row claiming to be resolved while the customer is still locked out.
+ * The only other writer of `status` is `withdrawReinstatementRequest()`, which is the
+ * customer retracting their own ask, not a resolution.
  *
  * Never throws. A request left open after the portal reopened is untidy; a resumption
  * that failed because the bookkeeping stumbled would be a customer locked out.

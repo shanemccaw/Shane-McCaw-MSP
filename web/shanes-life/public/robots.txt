@@ -1,0 +1,4 @@
+# This is a private, account-gated app. Share URLs are capability links -- the URL is the
+# credential -- so nothing here should ever be crawled or indexed.
+User-agent: *
+Disallow: /
