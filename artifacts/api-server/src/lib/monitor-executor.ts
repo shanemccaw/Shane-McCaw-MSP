@@ -2543,7 +2543,12 @@ export function sharePointPrefixFromDomain(domain: string | null | undefined): s
  * source yields a real initial domain this fails explicitly, naming what it
  * found, rather than fabricating a host.
  */
-async function resolveSharePointTenantRef(tenantId: string): Promise<SharePointTenantRef> {
+/**
+ * Exported so config-snapshot-collector.ts's `sharepoint-admin` transport
+ * (Git #2974) can resolve the SharePoint tenant prefix the identical way this
+ * check executor does, rather than re-deriving it a second way.
+ */
+export async function resolveSharePointTenantRef(tenantId: string): Promise<SharePointTenantRef> {
   const [tenantRow] = await db
     .select({ domain: tenantsTable.domain })
     .from(tenantsTable)

@@ -604,6 +604,93 @@ export async function setSiteStorageQuota(
   log.info({ aadTenantId: ref.aadTenantId, siteUrl, storageMaximumLevelMb }, "setSiteStorageQuota ok");
 }
 
+/**
+ * Read EVERY scalar property CSOM exposes on the tenant-admin `Tenant` object in
+ * one round trip (`SelectAllProperties="true"`) — the same query
+ * `Get-PnPTenant` issues, proven live against the testbed tenant under #2943
+ * (325 properties, 200 on first attempt; see
+ * docs/sharepoint-admin-transport-decision-2943.md). Unlike
+ * getTenantSharingCapability/getTenantSettings-style single-property readers
+ * above, this returns the object whole so config-snapshot-collector.ts (#2974)
+ * can store the real, unfiltered set behind several `sharepoint-admin`
+ * resource types without this module inventing a subset boundary for each one.
+ */
+export async function getTenantProperties(ref: SharePointTenantRef): Promise<Record<string, unknown>> {
+  const body =
+    "<Actions>" +
+    '<ObjectPath Id="2" ObjectPathId="1" />' +
+    '<Query Id="3" ObjectPathId="1"><Query SelectAllProperties="true"><Properties /></Query></Query>' +
+    "</Actions>" +
+    `<ObjectPaths><Constructor Id="1" TypeId="${TENANT_CSOM_TYPE_ID}" /></ObjectPaths>`;
+  const result = await csomProcessQuery(ref, body);
+  if (result.errorInfo) {
+    throw new Error(`getTenantProperties: ${result.errorInfo.ErrorMessage ?? "CSOM error"}`);
+  }
+  const obj = result.raw.find(
+    (item): item is Record<string, unknown> =>
+      item !== null && typeof item === "object" && "_ObjectType_" in (item as Record<string, unknown>),
+  );
+  if (!obj) {
+    throw new Error("getTenantProperties: no _ObjectType_ object present in CSOM response");
+  }
+  return obj;
+}
+
+/**
+ * A bare, read-only fetch against the SharePoint admin host
+ * (`{prefix}-admin.sharepoint.com`) for the small set of admin-host REST/method
+ * endpoints that are genuinely GETs or `Get*`-named methods — the same
+ * read-shape guard `probe-sharepoint-admin-transport.mjs` enforces. Callers in
+ * config-snapshot-collector.ts pass only endpoints proven live under #2943;
+ * this function does not itself gate write-shaped paths, so it is not exported
+ * for general use — see `adminHostRestGet` below, which is.
+ */
+async function adminHostRestFetch(
+  ref: SharePointTenantRef,
+  method: "GET" | "POST",
+  path: string,
+): Promise<Response> {
+  const host = adminHost(ref);
+  const token = await getSharePointToken(ref.aadTenantId, host);
+  const res = await fetch(`https://${host}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json;odata=nometadata",
+    },
+  });
+  if (res.status === 401) {
+    const text = await res.text();
+    evictSharePointToken(ref.aadTenantId);
+    log.warn({ aadTenantId: ref.aadTenantId, host, path, body: text }, "adminHostRestFetch: 401");
+    throw new SharePointAuthError(ref.aadTenantId, 401, text);
+  }
+  return res;
+}
+
+/**
+ * Read-only REST/method call against the SharePoint admin host. `method` is
+ * "POST" only for SharePoint's method-invocation-style reads (e.g.
+ * `SiteScriptUtility.GetSiteDesigns`), never a write — callers are the fixed,
+ * proven-live endpoint list in config-snapshot-collector.ts's
+ * `SHAREPOINT_ADMIN_RESOURCE_MAP`, not caller-supplied paths.
+ */
+export async function adminHostRestGet(
+  ref: SharePointTenantRef,
+  path: string,
+  method: "GET" | "POST" = "GET",
+): Promise<{ value: unknown[] | null; raw: Record<string, unknown> }> {
+  const res = await adminHostRestFetch(ref, method, path);
+  const text = await res.text();
+  if (!res.ok) {
+    log.warn({ aadTenantId: ref.aadTenantId, path, status: res.status, body: text }, "adminHostRestGet failed");
+    throw new Error(`adminHostRestGet ${path} failed: ${res.status} ${text}`);
+  }
+  const json = text.length > 0 ? (JSON.parse(text) as Record<string, unknown>) : {};
+  const value = Array.isArray(json.value) ? json.value : null;
+  return { value, raw: json };
+}
+
 /** Minimal XML escaping for values interpolated into CSOM ObjectPath payloads. */
 function escapeXml(value: string): string {
   return value

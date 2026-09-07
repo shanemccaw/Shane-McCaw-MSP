@@ -95,6 +95,13 @@ import { createHash } from "node:crypto";
 import { logger } from "./logger";
 import { ConsentRevokedError, LicenseGapError } from "./graph";
 import { PsExecutionError, callPsExecution } from "./ps-execution-client";
+import {
+  getTenantProperties,
+  adminHostRestGet,
+  sharePointAdminCredentialsPresent,
+  SharePointAuthError,
+  type SharePointTenantRef,
+} from "./sharepoint-admin";
 
 const log = logger.child({ channel: "integration.azure" });
 
@@ -623,6 +630,12 @@ export function classifySnapshotFailure(
         return { reason: "transport_error", detail: err.message };
     }
   }
+  if (err instanceof SharePointAuthError) {
+    // Same reasoning as sharepoint-admin.ts's own doc comment on this class: a
+    // SharePoint 401 is a real, distinct auth failure (missing cert, or
+    // Sites.FullControl.All never granted) — never a signal about Graph consent.
+    return { reason: "permission_denied", detail: err.message };
+  }
 
   // Git #2010: the `dns` transport has no HTTP status/body — a Node resolver
   // failure carries its own `NodeJS.ErrnoException.code` instead. Anything
@@ -847,6 +860,208 @@ export function selectReadCmdlet(resourceKey: string, cmdlets: string[]): string
  * the exact cmdlet, so an unreachable resource is a stated gap rather than an
  * absence.
  */
+// ── SharePoint-admin resource collection (Git #2974) ─────────────────────────
+//
+// #2943 established that the 23 `read_transport = 'sharepoint-admin'` resource
+// types were being dispatched into `collectPowerShellResource()` above — a
+// container that has no PnP/SharePoint session type and can never serve them —
+// while the real executor, `sharepoint-admin.ts`'s certificate app-only CSOM/
+// REST client, sat unused in the same process. Full evidence, live probe
+// output and the coverage map below are in
+// docs/sharepoint-admin-transport-decision-2943.md.
+
+type SharePointAdminReader = (ref: SharePointTenantRef) => Promise<Record<string, unknown>[]>;
+
+/**
+ * Caches the one full CSOM `Tenant` properties read (325 properties on the
+ * testbed tenant) per aadTenantId for the life of the process, keyed on the
+ * in-flight PROMISE so the seven resource types below that all read from it
+ * (running concurrently under DEFAULT_CONCURRENCY) issue exactly one CSOM
+ * round trip between them, not seven. A short TTL keeps a stale value from
+ * outliving one run; a rejected read evicts itself so the next resource retries
+ * rather than replaying a cached failure.
+ */
+const SP_TENANT_PROPERTIES_TTL_MS = 5 * 60_000;
+const spTenantPropertiesCache = new Map<string, { at: number; promise: Promise<Record<string, unknown>> }>();
+
+function cachedTenantProperties(ref: SharePointTenantRef): Promise<Record<string, unknown>> {
+  const cached = spTenantPropertiesCache.get(ref.aadTenantId);
+  if (cached && Date.now() - cached.at < SP_TENANT_PROPERTIES_TTL_MS) {
+    return cached.promise;
+  }
+  const promise = getTenantProperties(ref);
+  spTenantPropertiesCache.set(ref.aadTenantId, { at: Date.now(), promise });
+  promise.catch(() => spTenantPropertiesCache.delete(ref.aadTenantId));
+  return promise;
+}
+
+/**
+ * A resource type backed by the ONE CSOM `Tenant` read, stored whole rather
+ * than sliced into a guessed per-resource subset — #1795's full-fidelity
+ * constraint applies here exactly as it does to the PowerShell PostFilter
+ * exclusions above: an invented subset boundary that turns out wrong would be
+ * worse than the unfiltered set. `IsSingleInstance` is stamped so
+ * `resolveObjectIdentity`'s `dsc-identity` strategy (every one of these rows
+ * declares `identityPropertyNames: ["IsSingleInstance"]`) pairs correctly
+ * across snapshots instead of falling back to a content hash.
+ */
+function tenantPropertySingleton(): SharePointAdminReader {
+  return async (ref) => {
+    const props = await cachedTenantProperties(ref);
+    return [{ ...props, IsSingleInstance: props.IsSingleInstance ?? "Yes" }];
+  };
+}
+
+/**
+ * The 11 of 23 `sharepoint-admin` resource types with a proven-live mapping —
+ * 7 read from the one CSOM `Tenant` object (live evidence: SharingCapability,
+ * SharingDomainRestrictionMode, DefaultSharingLinkType,
+ * RequireAnonymousLinksExpireInDays, ConditionalAccessPolicy for
+ * SPOSharingSettings/SPOAccessControlSettings; OneDriveStorageQuota,
+ * OrphanedPersonalSitesRetentionPeriod, NotifyOwnersWhenItemsReshared,
+ * ExcludedFileExtensionsForSyncClient, BlockMacSync for ODSettings;
+ * SearchResolveExactEmailOrUPN, DisabledWebPartIds, PublicCdnEnabled,
+ * PublicCdnAllowedFileTypes for SPOTenantSettings — the last two also cover
+ * SPOTenantCdnEnabled/SPOTenantCdnPolicy; OrgNewsSiteUrl for
+ * SPOOrgAssetsLibrary — all captured 2026-09-06 via
+ * scripts/config-state/probe-sharepoint-admin-transport.mjs), 4 from
+ * admin-host REST/method reads that returned 200 on the same probe
+ * (SPOHomeSite, SPOHubSite, SPOSiteDesign, SPOSiteScript).
+ */
+const SHAREPOINT_ADMIN_RESOURCE_MAP: Readonly<Record<string, SharePointAdminReader>> = {
+  "m365dsc:SPOSharingSettings": tenantPropertySingleton(),
+  "m365dsc:SPOAccessControlSettings": tenantPropertySingleton(),
+  "m365dsc:ODSettings": tenantPropertySingleton(),
+  "m365dsc:SPOTenantSettings": tenantPropertySingleton(),
+  "m365dsc:SPOOrgAssetsLibrary": tenantPropertySingleton(),
+  "m365dsc:SPOTenantCdnEnabled": tenantPropertySingleton(),
+  "m365dsc:SPOTenantCdnPolicy": tenantPropertySingleton(),
+
+  "m365dsc:SPOHomeSite": async (ref) => {
+    const { raw } = await adminHostRestGet(ref, "/_api/SPHSite", "GET");
+    return [{ ...raw, IsSingleInstance: raw.IsSingleInstance ?? "Yes" }];
+  },
+  "m365dsc:SPOHubSite": async (ref) => {
+    const { value } = await adminHostRestGet(ref, "/_api/HubSites", "GET");
+    return (value ?? []).filter(
+      (v): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v),
+    );
+  },
+  "m365dsc:SPOSiteDesign": async (ref) => {
+    const { value } = await adminHostRestGet(
+      ref,
+      "/_api/Microsoft.SharePoint.Utilities.WebTemplateExtensions.SiteScriptUtility.GetSiteDesigns",
+      "POST",
+    );
+    return (value ?? []).filter(
+      (v): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v),
+    );
+  },
+  "m365dsc:SPOSiteScript": async (ref) => {
+    const { value } = await adminHostRestGet(
+      ref,
+      "/_api/Microsoft.SharePoint.Utilities.WebTemplateExtensions.SiteScriptUtility.GetSiteScripts",
+      "POST",
+    );
+    return (value ?? []).filter(
+      (v): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v),
+    );
+  },
+};
+
+/**
+ * The remaining 12 of 23 stay `no_executor` — each for a real, stated reason,
+ * never the old blanket "the container has no PnP" reason that described the
+ * wrong component (that reason is now only true of the ps-execution path,
+ * which this transport no longer uses at all). Recommended follow-up order
+ * for closing these is docs/sharepoint-admin-transport-decision-2943.md §7.
+ */
+const SHAREPOINT_ADMIN_DEFERRED_REASONS: Readonly<Record<string, string>> = {
+  "m365dsc:SPOBrowserIdleSignout":
+    "Not a Tenant CSOM scalar property — 0/3 probe properties present on a live full-Tenant read " +
+    "(#2943). Already served by a real collectable row on the Graph transport instead " +
+    "(graph:v1.0:/admin/sharepoint/settings -> idleSessionSignOut); no sharepoint-admin executor " +
+    "is needed for this resource key.",
+  "m365dsc:SPOStorageEntity":
+    "The admin-host REST read (/_api/web/GetStorageEntity('name')) proved live under #2943's probe, " +
+    "but it reads ONE named storage entity — Get-PnPStorageEntity enumerates ALL app-catalog storage " +
+    "entities, and there is no proven list-all endpoint to source the names from first.",
+  "m365dsc:SPOSiteDesignRights":
+    "Admin-host REST endpoint not yet exercised live — #2943's probe proved SPOHomeSite/SPOHubSite/" +
+    "SPOSiteDesign/SPOSiteScript/SPOStorageEntity only. Needs its own live-evidence pass before wiring.",
+  "m365dsc:SPOTheme":
+    "Not a Tenant CSOM scalar property — 0/1 probe properties present on a live full-Tenant read " +
+    "(#2943); Get-PnPTenantTheme/Tenant.GetSPOTheme is a distinct CSOM method not yet exercised live. " +
+    "Needs its own live-evidence pass before wiring.",
+  "m365dsc:SPOApp":
+    "Admin-host app-catalog REST endpoint not yet exercised live under #2943's probe. Needs its own " +
+    "live-evidence pass before wiring.",
+  "m365dsc:SPOSearchManagedProperty":
+    "The search admin surface returns configuration XML, not JSON, and needs its own shape work — " +
+    "deliberately deferred per the #2943 decision doc's recommended order (§7).",
+  "m365dsc:SPOSearchResultSource":
+    "The search admin surface returns configuration XML, not JSON, and needs its own shape work — " +
+    "deliberately deferred per the #2943 decision doc's recommended order (§7).",
+  "m365dsc:SPOPropertyBag":
+    "Per-site fan-out — needs one call per site collection on ANY transport (CSOM or PnP alike). " +
+    "Deliberately deferred behind an explicit per-run budget rather than run in the default snapshot " +
+    "path (#2943 decision doc §7), not something this container/client split changes.",
+  "m365dsc:SPOSiteAuditSettings":
+    "Per-site fan-out — needs one call per site collection on ANY transport. Deliberately deferred " +
+    "behind an explicit per-run budget (#2943 decision doc §7).",
+  "m365dsc:SPOSiteGroup":
+    "Per-site fan-out — needs one call per site collection on ANY transport. Deliberately deferred " +
+    "behind an explicit per-run budget (#2943 decision doc §7).",
+  "m365dsc:SPOUserProfileProperty":
+    "Per-site/per-user fan-out — needs one call per user profile on ANY transport. Deliberately " +
+    "deferred behind an explicit per-run budget (#2943 decision doc §7).",
+  "m365dsc:SPORetentionLabelsSettings":
+    "Registry row carries no read cmdlet at all (read_cmdlets = []) — nothing recorded to resolve a " +
+    "CSOM/REST mapping from. Needs its own investigation before a mapping can be written.",
+};
+
+/**
+ * Read one `sharepoint-admin` resource through the real, already-working
+ * sharepoint-admin.ts CSOM/REST client — never `collectPowerShellResource()`,
+ * which has no unfiltered catalog entry that could serve any of these 23 rows
+ * even if the container had a SharePoint session type (it does not).
+ */
+/** Exported so a test can call this directly against a real tenant (Git #2974). */
+export async function collectSharePointAdminResource(
+  entraTenantId: string,
+  rt: ConfigSnapshotResourceType,
+): Promise<RawCollection | { unreachable: string }> {
+  const deferredReason = SHAREPOINT_ADMIN_DEFERRED_REASONS[rt.resourceKey];
+  if (deferredReason) {
+    return { unreachable: deferredReason };
+  }
+  const reader = SHAREPOINT_ADMIN_RESOURCE_MAP[rt.resourceKey];
+  if (!reader) {
+    return {
+      unreachable:
+        `No sharepoint-admin mapping recorded for resource key "${rt.resourceKey}" — needs a real entry ` +
+        "in SHAREPOINT_ADMIN_RESOURCE_MAP or SHAREPOINT_ADMIN_DEFERRED_REASONS (Git #2974).",
+    };
+  }
+  if (!sharePointAdminCredentialsPresent()) {
+    return {
+      unreachable:
+        "SharePoint admin app-only credentials are not configured — needs MT_APP_CLIENT_ID, " +
+        "MT_APP_CERT_PRIVATE_KEY and MT_APP_CERT_THUMBPRINT (a certificate on the multi-tenant app registration).",
+    };
+  }
+
+  const { resolveSharePointTenantRef } = await import("./monitor-executor");
+  const ref = await resolveSharePointTenantRef(entraTenantId);
+  const objects = await reader(ref);
+  return {
+    objects,
+    pageCount: 1,
+    requestRef: `sharepoint-admin:${rt.resourceKey} (prefix ${ref.sharePointTenantPrefix})`,
+    truncated: false,
+  };
+}
+
 async function collectPowerShellResource(
   entraTenantId: string,
   organization: string,
@@ -1112,7 +1327,7 @@ export async function collectTenantConfigSnapshot(
           return;
         }
         raw = await collectGraphResource(entraTenantId, rt, maxPages);
-      } else if (rt.readTransport === "powershell" || rt.readTransport === "sharepoint-admin") {
+      } else if (rt.readTransport === "powershell") {
         const psResult = await collectPowerShellResource(entraTenantId, organization, rt);
         if ("unreachable" in psResult) {
           record({
@@ -1126,6 +1341,24 @@ export async function collectTenantConfigSnapshot(
           return;
         }
         raw = psResult;
+      } else if (rt.readTransport === "sharepoint-admin") {
+        // Git #2974: routed to the real sharepoint-admin.ts CSOM/REST client —
+        // NEVER collectPowerShellResource(), which has no unfiltered catalog
+        // entry for any of these 23 rows (the container has no PnP session type
+        // at all). See docs/sharepoint-admin-transport-decision-2943.md.
+        const spResult = await collectSharePointAdminResource(entraTenantId, rt);
+        if ("unreachable" in spResult) {
+          record({
+            ...base,
+            status: "skipped",
+            skipReason: "no_executor",
+            reasonDetail: spResult.unreachable,
+            objectCount: 0,
+            durationMs: Date.now() - t0,
+          });
+          return;
+        }
+        raw = spResult;
       } else if (rt.readTransport === "dns") {
         raw = await collectDnsResource(entraTenantId);
       } else {
@@ -1268,7 +1501,9 @@ export async function collectTenantConfigSnapshot(
         ? err.status
         : err instanceof LicenseGapError
           ? err.httpStatus
-          : null;
+          : err instanceof SharePointAuthError
+            ? err.status
+            : null;
       const body = err instanceof GraphPaginatedError
         ? err.body
         : err instanceof LicenseGapError
