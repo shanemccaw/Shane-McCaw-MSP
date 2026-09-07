@@ -42,6 +42,7 @@
  *   10. reportsTable
  *   11. notificationsTable  (unread count)
  *   12. messagesTable      (unread count)
+ *   13. portalOwnershipAssignmentsTable (#3049: pending-RACI-acceptance count)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -63,6 +64,7 @@ vi.mock("@workspace/db", () => {
       innerJoin: () => chain,
       where: () => chain,
       orderBy: () => chain,
+      groupBy: () => chain,
       limit: () => chain,
       then: (onFulfilled: any, onRejected: any) =>
         Promise.resolve(mockResultQueue.shift() ?? []).then(onFulfilled, onRejected),
@@ -85,6 +87,13 @@ vi.mock("@workspace/db", () => {
     mspSalesBundleAssignmentsTable: tbl(["customerId", "mspId", "status"]),
     mspAuditLogsTable: tbl(["id"]),
     assessmentSowAgreementsTable: tbl(["id", "clientUserId", "status"]),
+    // #3049 added an UNCONDITIONAL raciPendingAcceptance count to this route
+    // and did not extend this mock — the handler threw
+    // `No "portalOwnershipAssignmentsTable" export is defined` and its own
+    // catch turned that into a 500. See #3082.
+    portalOwnershipAssignmentsTable: tbl([
+      "id", "customerId", "objectId", "roleKey", "ownerPersonId", "acceptance",
+    ]),
     mspDiagnosticFindingsTable: tbl([
       "runId", "customerId", "checkKey", "severity", "title", "description", "createdAt",
     ]),
@@ -101,8 +110,20 @@ vi.mock("drizzle-orm", () => ({
   count: () => ({ count: true }),
 }));
 
+// #3082: this mock used to swallow `log.error({ err }, ...)` entirely, so when
+// the route's own 500 handler fired, the real cause was invisible even under
+// `vitest --disable-console-intercept`. Forward it to stderr so the next
+// regression in this handler names itself instead of only showing 500 != 200.
 vi.mock("../lib/logger", () => {
-  const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
+  const stub = {
+    info: vi.fn(),
+    error: vi.fn((obj: any, msg?: any) => {
+      const err = obj && typeof obj === "object" ? obj.err : undefined;
+      console.error("[portal dashboard error]", msg ?? obj, err instanceof Error ? err.stack : err);
+    }),
+    debug: vi.fn(),
+    warn: vi.fn(),
+  };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
@@ -181,6 +202,10 @@ function queueFullDashboard({ paid = false }: { paid?: boolean } = {}) {
   mockResultQueue.push([{ unread: 0 }]);
   // 12. messagesTable unread count
   mockResultQueue.push([{ unreadMessages: 0 }]);
+  // 13. portalOwnershipAssignmentsTable pending-RACI-acceptance count (#3049).
+  // Destructured as `const [{ raciPendingAcceptance }]`, so it must be a
+  // one-row result, not [].
+  mockResultQueue.push([{ raciPendingAcceptance: 0 }]);
 }
 
 beforeEach(() => {
@@ -232,6 +257,7 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
     mockResultQueue.push([]); // reports
     mockResultQueue.push([{ unread: 0 }]);
     mockResultQueue.push([{ unreadMessages: 0 }]);
+    mockResultQueue.push([{ raciPendingAcceptance: 0 }]); // #3049
 
     const res = await request(makeApp())
       .get("/api/portal/dashboard")
