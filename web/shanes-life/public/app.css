@@ -374,8 +374,13 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
    An empty state here says only that nothing has been captured yet. It never invents a row to
    fill the space, and it never scolds. */
 
-.empty { display: grid; justify-items: center; gap: 0.5rem; padding: 2rem 1rem; text-align: center; color: hsl(var(--muted-foreground)); }
-.empty svg { width: 64px; height: 64px; opacity: 0.85; }
+.empty { display: grid; justify-items: center; gap: 0.5rem; padding: 1.5rem 1rem; text-align: center; color: hsl(var(--muted-foreground)); }
+/* The browser's own default <p> margin doesn't collapse inside a grid container the way it
+   would in normal flow -- left alone, it stacks on top of the `gap` above instead of being
+   absorbed by it, which is what was actually inflating this block well past its intended size
+   (Git #3130). `gap` is the one spacing mechanism here; the paragraphs carry none of their own. */
+.empty p { margin: 0; }
+.empty svg { width: 88px; height: 88px; opacity: 0.85; }
 
 /* ---------- critters (Git #3119) ----------
    Same family as the sign-in fox above: soft vertical gradient body, cream belly, dark dot
