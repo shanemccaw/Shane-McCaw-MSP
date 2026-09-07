@@ -11,7 +11,8 @@
 -- is now SHARED across two directories -- desktop/ShanesSurvival/migrations/ and this one --
 -- so the next free number must be checked against BOTH before naming a new file. Both runners
 -- write the same real schema_migrations(filename, applied_at) ledger and each only ever executes
--- files from its own directory, so neither can run the other's.
+-- files from its own directory, so neither can run the other's. scripts/check-migration-numbers.mjs
+-- (Git #3118) enforces this for real -- both runners refuse to run if a number collides.
 --
 -- Nothing in here touches, renames or reshapes any of ShanesSurvival's own 12 tables. Every name
 -- below was checked against the live database first and none of them collide.

@@ -8,12 +8,14 @@
 // desktop/ShanesSurvival/migrations (001-012). Each skips whatever the other recorded, because
 // the ledger is keyed on filename and neither directory contains the other's files. That is why
 // the numbering is continuous across both -- the next free number must be checked against BOTH
-// directories before a new migration is named.
+// directories before a new migration is named. assertNoDuplicateMigrationNumbers (Git #3118)
+// turns that "check both directories" convention into a real guard instead of just a comment.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { config } from "./config.mjs";
 import { pool } from "./db.mjs";
+import { assertNoDuplicateMigrationNumbers } from "../../../scripts/check-migration-numbers.mjs";
 
 const MIGRATIONS_DIR = resolve(config.root, "migrations");
 
@@ -51,6 +53,11 @@ async function assertSharedDatabase(client) {
 }
 
 export async function runMigrations({ log = console.log } = {}) {
+  // Fail closed before touching the database at all if the two directories' number spaces
+  // have collided (Git #3118) -- a fresh-database run would otherwise apply either runner's
+  // files first with no way to tell that the order was ambiguous.
+  assertNoDuplicateMigrationNumbers();
+
   const files = readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
     .sort();

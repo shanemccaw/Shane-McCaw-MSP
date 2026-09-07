@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.RegularExpressions;
 using Npgsql;
 
 namespace ShanesSurvival.App.Data;
@@ -59,6 +60,12 @@ public sealed class MigrationRunner
         catch (DirectoryNotFoundException ex)
         {
             return new MigrationRunResult(false, [], null, ex.Message);
+        }
+
+        var duplicateNumberError = FindDuplicateMigrationNumberError(migrationsDir);
+        if (duplicateNumberError is not null)
+        {
+            return new MigrationRunResult(false, [], null, duplicateNumberError);
         }
 
         var files = Directory.GetFiles(migrationsDir, "*.sql")
@@ -137,6 +144,76 @@ public sealed class MigrationRunner
         {
             return new MigrationRunResult(false, steps, null, $"Could not reach Postgres: {ex.Message}");
         }
+    }
+
+    private static readonly Regex NumberPrefix = new(@"^(\d+)_", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Guards the migration number space this directory shares with web/shanes-life/migrations
+    /// (Git #3118). One Postgres database, two runners each reading their own directory but
+    /// writing to the same schema_migrations ledger -- neither runner can execute the other's
+    /// files, but nothing previously stopped the same leading number being reused across both
+    /// directories, which makes apply order on a fresh database ambiguous. Returns null when
+    /// the number spaces don't collide (including when web/shanes-life/migrations can't be
+    /// found at all -- that's not this check's job to flag); otherwise a real error message
+    /// naming the colliding files.
+    ///
+    /// Deliberately does NOT flag two files sharing a number within THIS SAME directory (e.g.
+    /// 010_debt_is_critical.sql / 010_expected_events.sql) -- that's an existing, already-applied,
+    /// single-runner ordering quirk, not the cross-directory ambiguity this guards against.
+    /// </summary>
+    private static string? FindDuplicateMigrationNumberError(string ownMigrationsDir)
+    {
+        // web/shanes-life/migrations lives at <repo root>/web/shanes-life/migrations. Repo root
+        // is three levels above desktop/ShanesSurvival/migrations.
+        var repoRoot = new DirectoryInfo(ownMigrationsDir).Parent?.Parent?.Parent;
+        var otherMigrationsDir = repoRoot is null
+            ? null
+            : Path.Combine(repoRoot.FullName, "web", "shanes-life", "migrations");
+
+        if (otherMigrationsDir is null || !Directory.Exists(otherMigrationsDir))
+        {
+            return null; // sibling directory not present in this checkout -- nothing to compare against
+        }
+
+        var ownNumbers = ExtractNumbers(ownMigrationsDir);
+        var otherNumbers = ExtractNumbers(otherMigrationsDir);
+
+        var collisions = ownNumbers.Keys
+            .Where(otherNumbers.ContainsKey)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        if (collisions.Length == 0)
+        {
+            return null;
+        }
+
+        var detail = string.Join("\n", collisions.Select(n =>
+            $"  {n}: {ownNumbers[n]} (desktop/ShanesSurvival/migrations) AND {otherNumbers[n]} (web/shanes-life/migrations)"));
+
+        return "Migration number collision across desktop/ShanesSurvival/migrations and " +
+            "web/shanes-life/migrations -- the same leading number was used in both directories, " +
+            "which makes apply order ambiguous on a fresh database (Git #3118):\n" + detail +
+            "\nRename the newer file to the next free number across BOTH directories before proceeding.";
+    }
+
+    private static Dictionary<string, string> ExtractNumbers(string dir)
+    {
+        var byNumber = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var file in Directory.GetFiles(dir, "*.sql"))
+        {
+            var fileName = Path.GetFileName(file);
+            var match = NumberPrefix.Match(fileName);
+            if (!match.Success)
+            {
+                continue; // unnumbered file -- not this check's concern
+            }
+            // Only the first file at a given number is recorded here; duplicates WITHIN this
+            // one directory are an accepted existing quirk (see doc comment above), not flagged.
+            byNumber.TryAdd(match.Groups[1].Value, fileName);
+        }
+        return byNumber;
     }
 
     /// <summary>

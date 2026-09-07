@@ -97,9 +97,11 @@ and this app's migrations start at **013**, on top of ShanesSurvival's real 001�
 
 The two migration runners — `src/migrate.mjs` here, `MigrationRunner.cs` there — share one real
 `schema_migrations(filename, applied_at)` ledger and each only ever executes files from its own
-directory, so neither can run the other's. The number space, though, is now genuinely shared:
-**check both `desktop/ShanesSurvival/migrations/` and `web/shanes-life/migrations/` before naming
-a new migration file.**
+directory, so neither can run the other's. The number space, though, is genuinely shared: **check
+both `desktop/ShanesSurvival/migrations/` and `web/shanes-life/migrations/` before naming a new
+migration file.** That's no longer just a comment (Git #3118) — `scripts/check-migration-numbers.mjs`
+enforces it for real. Both runners call `assertNoDuplicateMigrationNumbers()` before applying
+anything, and refuse to run if the same leading number was used in both directories.
 
 `src/migrate.mjs` refuses to run at all if `DATABASE_URL` points somewhere without
 ShanesSurvival's own tables, and names the database it actually found. That guard exists
