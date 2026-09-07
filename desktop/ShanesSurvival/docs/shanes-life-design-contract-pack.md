@@ -137,6 +137,21 @@ constraints:
   already handle the real work — these are just two more real bills belonging in the
   unified Money system (Section 1) once it exists, same as every other bill already
   tracked. No separate module needed, unlike Cars or Pets.
+- **Real service provider contacts, confirmed 2026-09-05.** Plumber, electrician, AC
+  repair, whoever's real fixed something before — name, phone, what they did, which house.
+  Solves the real problem of digging through old texts trying to remember who to call.
+  Low-sensitivity, straightforward capture via the same one-box pattern as everything
+  else.
+- **Real bill-payment reference vault, confirmed 2026-09-05 — genuinely sensitive, needs
+  real security engineering, not a casual text field.** Real problem stated: Shane
+  currently screenshots his NFCU account number and copy-pastes from the screenshot every
+  time he needs to enter it on a third-party bill site (mortgage servicer, Chrysler
+  Capital) that doesn't save it. This is real financial account data — it needs genuine
+  encryption at rest and real access controls from the first version, not "add it later."
+  **This is explicitly flagged as a real security requirement, not optional polish** — the
+  same seriousness this whole app already applies to Money (Section 1). Real scope: which
+  website to use per bill, and the specific real account number needed there, retrievable
+  without a screenshot round-trip.
 - **Real Wins log, confirmed 2026-09-05 — deliberately distinct from the "no gamification"
   rule (Section 3/8).** Streaks, badges, and completion percentages are still explicitly
   cut — those are arbitrary game mechanics that create pressure and comparison. A Wins log
