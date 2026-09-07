@@ -7112,6 +7112,178 @@ export const insertRiskInstanceSchema = createInsertSchema(riskInstancesTable).o
 export type RiskInstance = typeof riskInstancesTable.$inferSelect;
 export type InsertRiskInstance = typeof riskInstancesTable.$inferInsert;
 
+// ── msp_poams — POA&Ms: Plan of Action & Milestones (#3080, part of #1935) ─────
+//
+// Settled architecture (#1935, recorded before this build): a POA&M is a
+// first-class object, NOT a state `msp_risk_decisions` can be in. The two are
+// the sibling exits off the same unresolved finding — "we accept the
+// consequence" (RBD, #1487) vs. "we ARE fixing this, here is the plan" (this
+// table) — and #3081 (Phase 1b, blocked on this landing first) will build the
+// real bidirectional conversion between them. Nothing here anticipates that
+// conversion's own columns; #3081 adds those itself against this real table.
+//
+// Mirrors `msp_risk_decisions`'s own real pattern (this file, `mspRiskDecisionsTable`
+// above) for every field that carries over conceptually — same identity shape,
+// same unFK'd `checkKey` reasoning, same role-based accountability shape (#1511),
+// same acceptedAt/clientApprover-style signature shape — rather than inventing a
+// second version of a mechanism this codebase already has. Reuses
+// `risk-authority.ts`'s resolution functions verbatim (they resolve
+// `checkKey` + `customerId` to a workload's current/point-in-time Accountable
+// holders and were never RBD-specific in implementation, only in name) instead
+// of duplicating them for this table.
+//
+// checkKey: nullable, deliberately NO hard FK — identical reasoning to
+// `mspRiskDecisionsTable.checkKey`'s own comment above: real values outside
+// `monitor_checks` reach it too (cross-cutting check categories), so a hard FK
+// would reject real, in-use values. `additionalCheckKeys` mirrors that table's
+// own shape for the same reason (a POA&M raised against one remediation step
+// that maps to more than one check must be able to suppress re-firing on all
+// of them, exactly like an accepted risk does).
+//
+// scheduledCompletionDate vs originalScheduledCompletionDate: THE standing
+// constraint this issue names twice — "a POA&M whose date silently moves is
+// worthless". `scheduledCompletionDate` is the current, live target and MAY be
+// updated (a plan slipping is real and must be recordable);
+// `originalScheduledCompletionDate` is set identical to it at creation and is
+// NEVER rewritten after — enforced at the write path (`msp-poams.ts`), same
+// "Postgres has no write-once column, so the guarantee is a guarded UPDATE
+// plus this comment" discipline `msp_risk_decisions.acceptedAt` already uses.
+//
+// `status` is this object's OWN lifecycle (POAM_STATUSES: draft /
+// pending_signature / active / completed / cancelled) — it does NOT carry an
+// "overdue" value. Overdue is derived at read time by comparing
+// `scheduledCompletionDate` to now for a still-`active` row — real, honest,
+// and never stale, without inventing a second clock-advance job before any
+// alert consumer of it exists (`customer_tenant_alert_rules` already seeded
+// `poam.milestone_approaching` / `poam.expiring` as PENDING_DETECTOR against
+// this exact gap, in `2026-09-04-alert-catalog-risk-policy-poam-1942.sql`;
+// wiring a live detector for them is real follow-on work, not part of this
+// schema+CRUD build).
+//
+// Accountability (#1491) is resolved through the M365 workload `checkKey`
+// inherits ownership from, never a typed field a human fills in — the same
+// four columns `msp_risk_decisions` added for #1511, carrying both ends of
+// that resolution: the workload/role that authorised, and the individual who
+// exercised it.
+//
+// signedAt/signedBy/signedStatement mirror `msp_risk_decisions.acceptedAt` /
+// `.clientApprover` / `.acceptedStatement` exactly — the real customer
+// signature ceremony (#1935: "needs real customer signature, mirror #1510's
+// own trigger rule"). NEVER EDITABLE AFTER THE FACT once set, same guarded-UPDATE
+// discipline, enforced at the route.
+//
+// sowId: real, nullable FK to `mspSowsTable.sowId` (the uuid, not the serial
+// id — matching the two existing FKs onto that table's own `sowId` column
+// elsewhere in this file). Nullable because not every POA&M ties to a SOW;
+// `set null` on delete rather than cascade — a POA&M is the durable governance
+// record and must outlive a SOW row being pruned, same reasoning
+// `msp_risk_decisions`'s CR pointers already use.
+export const POAM_STATUSES = ["draft", "pending_signature", "active", "completed", "cancelled"] as const;
+export type PoamStatus = (typeof POAM_STATUSES)[number];
+
+export const mspPoamsTable = pgTable("msp_poams", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The human-facing container identifier, e.g. "POAM-2026-014" — same
+   * per-row-code convention as `msp_risk_decisions.rbdId`. Caller-supplied at
+   * creation (this table does not auto-generate it), unique per MSP. */
+  poamId: text("poam_id").notNull(),
+  tenantId: text("tenant_id").notNull(),
+  tenantName: text("tenant_name").notNull(),
+  primaryDomain: text("primary_domain").notNull(),
+
+  title: text("title").notNull(),
+  /** The weakness itself — the real narrative, same role `hazardDescription`
+   * plays on `msp_risk_decisions`. */
+  weaknessDescription: text("weakness_description").notNull(),
+
+  /** The real source finding — see header for why this is deliberately unFK'd. */
+  checkKey: text("check_key"),
+  additionalCheckKeys: jsonb("additional_check_keys").$type<string[]>(),
+
+  /** The current, live target — may move. See header. */
+  scheduledCompletionDate: date("scheduled_completion_date").notNull(),
+  /** Set identical to `scheduledCompletionDate` at creation; NEVER rewritten
+   * after. See header. */
+  originalScheduledCompletionDate: date("original_scheduled_completion_date").notNull(),
+
+  /** What protects the tenant until the plan completes. */
+  interimCompensatingControl: text("interim_compensating_control").notNull(),
+  /** What it will take to actually get this done — budget, staffing, tooling. */
+  resourcesRequired: text("resources_required").notNull(),
+
+  /** POAM_STATUSES. See header — overdue is derived, never a stored value here. */
+  status: text("status").notNull(),
+
+  // ── Role-based accountability (#1511's shape, reused for #1491) ───────────
+  // Identical four-column shape to `msp_risk_decisions`' own #1511 columns —
+  // see that table's header for the full reasoning. ALL NULLABLE: null when
+  // `checkKey` resolves to no workload (a free-standing plan, or a
+  // cross-cutting check category), the honest unresolved case.
+  authorizingWorkloadId: text("authorizing_workload_id"),
+  authorizingWorkloadLabel: text("authorizing_workload_label"),
+  authorizingHolderPersonIds: jsonb("authorizing_holder_person_ids").$type<string[]>(),
+  signedByPersonId: text("signed_by_person_id"),
+
+  // ── The signature itself (mirrors msp_risk_decisions.acceptedAt / .clientApprover) ─
+  signedAt: timestamp("signed_at", { withTimezone: true }),
+  signedBy: jsonb("signed_by").$type<ClientApprover>(),
+  /** The exact confirmation sentence the customer ticked, snapshotted at sign
+   * time — same role `msp_risk_decisions.acceptedStatement` plays. */
+  signedStatement: text("signed_statement"),
+
+  /** Real, nullable FK — see header for why this targets `mspSowsTable.sowId`. */
+  sowId: uuid("sow_id").references(() => mspSowsTable.sowId, { onDelete: "set null" }),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_poams_msp_id_idx").on(t.mspId),
+  index("msp_poams_tenant_id_idx").on(t.tenantId),
+  unique("msp_poams_msp_id_poam_id_uidx").on(t.mspId, t.poamId),
+  index("msp_poams_tenant_check_status_idx").on(t.tenantId, t.checkKey, t.status),
+  index("msp_poams_sow_id_idx").on(t.sowId),
+]);
+
+export const insertMspPoamSchema = createInsertSchema(mspPoamsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type MspPoam = typeof mspPoamsTable.$inferSelect;
+export type InsertMspPoam = typeof mspPoamsTable.$inferInsert;
+
+// ── msp_poam_milestones — the POA&M's own milestones (#3080, part of #1935) ───
+//
+// Own dates, own completion state, real FK to the parent POA&M — exactly what
+// #3080's own Build section asks for, nothing more. `dueDate` is this
+// milestone's own current target (independent of the parent's
+// `scheduledCompletionDate`); `status` is this milestone's own completion
+// state (independent of the parent's `status`). Overdue is derived the same
+// way the parent's is — comparing `dueDate` to now for a still-`pending`
+// milestone — rather than a second stored clock.
+export const POAM_MILESTONE_STATUSES = ["pending", "completed"] as const;
+export type PoamMilestoneStatus = (typeof POAM_MILESTONE_STATUSES)[number];
+
+export const mspPoamMilestonesTable = pgTable("msp_poam_milestones", {
+  id: serial("id").primaryKey(),
+  poamId: integer("poam_id").notNull().references(() => mspPoamsTable.id, { onDelete: "cascade" }),
+  /** Display order within the parent's milestone list. */
+  sortOrder: integer("sort_order").notNull().default(0),
+  title: text("title").notNull(),
+  description: text("description"),
+  dueDate: date("due_date").notNull(),
+  /** POAM_MILESTONE_STATUSES. */
+  status: text("status").notNull().default("pending"),
+  /** NULL until marked complete; NEVER rewritten after (same write-once
+   * discipline as the parent's `signedAt`), enforced at the route. */
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_poam_milestones_poam_id_idx").on(t.poamId),
+]);
+
+export const insertMspPoamMilestoneSchema = createInsertSchema(mspPoamMilestonesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type MspPoamMilestone = typeof mspPoamMilestonesTable.$inferSelect;
+export type InsertMspPoamMilestone = typeof mspPoamMilestonesTable.$inferInsert;
+
 // ── AI Dev Response Cache (#185, parent #183) ──────────────────────────────────
 // Dev-only cache of Anthropic call responses, keyed on a stable hash of that
 // call's real inputs, so iterating on a prompt in development doesn't re-spend
