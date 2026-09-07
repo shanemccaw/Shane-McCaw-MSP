@@ -69,6 +69,13 @@ async function seedTenantRows(scratch: Scratch, mspId: number): Promise<void> {
     INSERT INTO tenant_signal_history (customer_id, msp_id, signal_key, fired_at)
     VALUES (${scratch.userId}, ${mspId}, ${`signal.${SUFFIX}`}, now())
   `);
+  // #2980 — the reinstatement-request row the "commercial" purger now declares. customerId
+  // id space, same as portal_ownership_events, but a real dedicated row so the assertion
+  // proves THIS target wired correctly rather than only the id-space logic in general.
+  await db.execute(sql`
+    INSERT INTO retention_reinstatement_requests (tenant_id, msp_id, note, status)
+    VALUES (${scratch.tenantId}, ${mspId}, ${`note ${SUFFIX}`}, ${"open"})
+  `);
 }
 
 async function countTenantRows(scratch: Scratch): Promise<Record<string, number>> {
@@ -83,6 +90,9 @@ async function countTenantRows(scratch: Scratch): Promise<Record<string, number>
     ),
     tenant_signal_history: await one(
       sql`SELECT count(*) AS n FROM tenant_signal_history WHERE customer_id = ${scratch.userId}`,
+    ),
+    retention_reinstatement_requests: await one(
+      sql`SELECT count(*) AS n FROM retention_reinstatement_requests WHERE tenant_id = ${scratch.tenantId}`,
     ),
   };
 }
@@ -141,6 +151,7 @@ describe.skipIf(!process.env.DATABASE_URL)("#2859 — the post-termination purge
       await db.execute(sql`DELETE FROM drift_events WHERE tenant_id = ${scratch.tenantGuid}`);
       await db.execute(sql`DELETE FROM portal_ownership_events WHERE customer_id = ${scratch.tenantId}`);
       await db.execute(sql`DELETE FROM tenant_signal_history WHERE customer_id = ${scratch.userId}`);
+      await db.execute(sql`DELETE FROM retention_reinstatement_requests WHERE tenant_id = ${scratch.tenantId}`);
       await db.delete(usersTable).where(eq(usersTable.id, scratch.userId));
       await db.delete(tenantsTable).where(eq(tenantsTable.id, scratch.tenantId));
     }
@@ -161,7 +172,12 @@ describe.skipIf(!process.env.DATABASE_URL)("#2859 — the post-termination purge
     expect(result.totalDestroyed).toBe(0);
 
     const counts = await countTenantRows(due);
-    expect(counts).toEqual({ drift_events: 1, portal_ownership_events: 1, tenant_signal_history: 1 });
+    expect(counts).toEqual({
+      drift_events: 1,
+      portal_ownership_events: 1,
+      tenant_signal_history: 1,
+      retention_reinstatement_requests: 1,
+    });
 
     const [row] = await db
       .select({ purgedAt: tenantsTable.postTerminationPurgedAt })
@@ -188,7 +204,12 @@ describe.skipIf(!process.env.DATABASE_URL)("#2859 — the post-termination purge
     expect(result.totalDestroyed).toBe(0);
 
     const counts = await countTenantRows(notDue);
-    expect(counts).toEqual({ drift_events: 1, portal_ownership_events: 1, tenant_signal_history: 1 });
+    expect(counts).toEqual({
+      drift_events: 1,
+      portal_ownership_events: 1,
+      tenant_signal_history: 1,
+      retention_reinstatement_requests: 1,
+    });
   });
 
   it("finds the due tenant, and not the one with six years left", async () => {
@@ -202,7 +223,7 @@ describe.skipIf(!process.env.DATABASE_URL)("#2859 — the post-termination purge
 
     const result = await purgeTerminatedTenant(due.tenantId);
     expect(result.outcome).toBe("purged");
-    expect(result.totalDestroyed).toBeGreaterThanOrEqual(3);
+    expect(result.totalDestroyed).toBeGreaterThanOrEqual(4);
 
     // Per-module accounting, not just a total: the audit line records which module
     // destroyed what, and a module reporting zero when it held rows is the failure that
@@ -210,11 +231,13 @@ describe.skipIf(!process.env.DATABASE_URL)("#2859 — the post-termination purge
     expect(result.destroyed["config-drift"]).toBe(1);
     expect(result.destroyed["ownership"]).toBe(1);
     expect(result.destroyed["engine-scoring"]).toBe(1);
+    expect(result.destroyed["commercial"]).toBeGreaterThanOrEqual(1);
 
     expect(await countTenantRows(due)).toEqual({
       drift_events: 0,
       portal_ownership_events: 0,
       tenant_signal_history: 0,
+      retention_reinstatement_requests: 0,
     });
 
     const [row] = await db
@@ -231,6 +254,7 @@ describe.skipIf(!process.env.DATABASE_URL)("#2859 — the post-termination purge
       drift_events: 1,
       portal_ownership_events: 1,
       tenant_signal_history: 1,
+      retention_reinstatement_requests: 1,
     });
 
     const [row] = await db

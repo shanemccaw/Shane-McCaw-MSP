@@ -327,6 +327,10 @@ export const commercialPurger: TenantDataPurgerDeclaration = {
     { table: "msp_customer_clickwraps", column: "customer_id", keySpace: "customerId" },
     { table: "ai_usage_events", column: "customer_id", keySpace: "customerId" },
     { table: "fulfillment_queue", column: "customer_id", keySpace: "customerId" },
+    // #2980 — the customer's own request to be let back in during a subscription lapse.
+    // Lands here rather than a new module because it is a record of the same billing
+    // relationship this purger already owns, keyed the same way as tenant_subscriptions.
+    { table: "retention_reinstatement_requests", column: "tenant_id", keySpace: "customerId" },
   ],
 };
 

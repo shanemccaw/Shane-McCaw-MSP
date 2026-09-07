@@ -114,14 +114,7 @@ export const TENANT_SCOPE_PURGE_EXEMPTIONS: Record<string, string> = {
  * every run, which is the point — the alternative is what this whole file exists to
  * prevent, a table nobody purges and nobody notices.
  */
-export const TENANT_SCOPE_UNCLAIMED: Record<string, string> = {
-  "retention_reinstatement_requests.tenant_id":
-    "#2980 — the table landed on the shared dev database from a sibling retention build that " +
-    "is not on main and carries no schema in this branch, so declaring a purge target against " +
-    "it here would be taking that module's decision on unmerged work. It is a customer's own " +
-    "reinstatement request and plainly should go with the rest of that customer's data; the " +
-    "module that owns the table declares it, on that issue.",
-};
+export const TENANT_SCOPE_UNCLAIMED: Record<string, string> = {};
 
 /** Every `table.column` claimed by a module declaration. */
 export function declaredTenantScopeKeys(): Set<string> {
