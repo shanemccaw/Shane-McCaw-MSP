@@ -52,7 +52,7 @@ a { color: inherit; }
 }
 
 .auth-card { width: min(400px, 100%); display: grid; gap: 0.4rem; }
-.auth-mark { border-radius: 28px; justify-self: center; margin-bottom: 0.5rem; }
+.auth-mark { justify-self: center; margin-bottom: 0.5rem; }
 .auth-card h1 { text-align: center; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; margin: 0; }
 .auth-tagline { text-align: center; margin: 0.4rem 0 1.75rem; }
 /* 18/600, matching the screen's own "Sign in" label above the buttons. */

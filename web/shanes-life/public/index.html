@@ -21,12 +21,42 @@
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
+    <!-- The sign-in fox (critter 1t, "Shanes Life 14 - Critters.dc.html"). Fixed, never rolled --
+         the app's face, per the handoff README's Critters section -- shared by both auth screens
+         below via <use>. -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <linearGradient id="gFox" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#FDBA74" />
+          <stop offset="1" stop-color="#EA580C" />
+        </linearGradient>
+        <symbol id="c-fox" viewBox="0 0 120 120">
+          <ellipse cx="60" cy="108" rx="50" ry="9" fill="#1E3A8A" opacity=".7" />
+          <path d="M36 92 C 12 98 4 72 16 60 C 22 56 28 62 25 70 C 21 80 28 88 42 86 Z" fill="url(#gFox)" />
+          <path d="M16 60 C 10 66 8 76 13 82 C 20 77 23 71 25 66 Z" fill="#FEF3C7" />
+          <path d="M60 34 C 40 34 30 60 32 88 C 33 100 46 105 60 105 C 74 105 87 100 88 88 C 90 60 80 34 60 34 Z" fill="url(#gFox)" />
+          <path d="M60 56 C 51 56 46 72 47 94 C 51 100 69 100 73 94 C 74 72 69 56 60 56 Z" fill="#FEF3C7" opacity=".92" />
+          <path d="M46 26 L41 5 L59 20 Z" fill="#F97316" />
+          <path d="M74 26 L79 5 L61 20 Z" fill="#F97316" />
+          <path d="M47 22 L44 11 L54 19 Z" fill="#7C2D12" />
+          <path d="M73 22 L76 11 L66 19 Z" fill="#7C2D12" />
+          <circle cx="60" cy="36" r="19" fill="url(#gFox)" />
+          <ellipse cx="60" cy="43" rx="11" ry="7" fill="#FEF3C7" />
+          <circle cx="60" cy="44" r="2.2" fill="#7C2D12" />
+          <circle cx="53" cy="34" r="1.9" fill="#1F2937" />
+          <circle cx="67" cy="34" r="1.9" fill="#1F2937" />
+          <ellipse cx="50" cy="103" rx="8" ry="4" fill="#F97316" />
+          <ellipse cx="70" cy="103" rx="8" ry="4" fill="#F97316" />
+        </symbol>
+      </defs>
+    </svg>
+
     <!-- Sign-in. Passkey only -- design handoff screen 1 ("Sign in") draws exactly these two
          controls and no email or password field. Shared list links never reach this screen.
          Nothing else in the app renders until this passes. -->
     <main id="login-view" class="centered" hidden>
       <section class="card auth-card">
-        <img src="/icons/icon-192.png" alt="" width="128" height="128" class="auth-mark" />
+        <svg viewBox="0 0 120 120" width="128" height="128" class="auth-mark" role="img" aria-hidden="true"><use href="#c-fox" /></svg>
         <h1>Shane's Life</h1>
         <p class="muted auth-tagline">Private. Just you.</p>
         <h2 class="auth-heading">Sign in</h2>
@@ -51,7 +81,7 @@
          server log. -->
     <main id="enroll-view" class="centered" hidden>
       <section class="card auth-card">
-        <img src="/icons/icon-192.png" alt="" width="128" height="128" class="auth-mark" />
+        <svg viewBox="0 0 120 120" width="128" height="128" class="auth-mark" role="img" aria-hidden="true"><use href="#c-fox" /></svg>
         <h1>Shane's Life</h1>
         <p class="muted auth-tagline">Private. Just you.</p>
         <h2 class="auth-heading">Add this device</h2>
