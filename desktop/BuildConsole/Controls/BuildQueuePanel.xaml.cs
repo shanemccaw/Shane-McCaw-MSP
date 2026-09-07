@@ -344,9 +344,26 @@ namespace BuildConsole.Controls
             // automatic refilling (BatterUpPanel/AiBatterUpPanel have no timer of their own; they
             // ride RefreshAsync's QueueRefreshed/BoardRefreshCompleted cascade). Now: one real
             // one-time initial load on tab open, and otherwise only the manual refresh button
-            // (BtnRefreshGitHubTiles_Click) invokes RefreshAsync().
+            // (BtnRefreshGitHubTiles_Click) invokes the FULL RefreshAsync() (including its
+            // GitHub-calling work).
             _ = RefreshAsync();
+
+            // Git #3074 — #2900 removed the whole recurring timer above, but RefreshAsync() does
+            // two genuinely different things in one call: a local Postgres re-read of the queue's
+            // own status (_db.GetQueueAsync(), free, no rate-limit cost) and a couple of
+            // fire-and-forget `gh`-calling side effects gated deep inside it
+            // (AutoRecheckOpenIssuesOnTransitionAsync, TriggerBackgroundIssueTitleQueries).
+            // Killing the timer entirely also killed the local-only half, so the Queued/Running/
+            // Verifying/Done badges never move without a manual refresh. Resume ONLY the local
+            // half on a short automatic interval — RefreshAsync(includeGitHubWork: false) skips
+            // both `gh`-calling blocks — so the queue display stays live while GitHub-calling work
+            // stays exactly where #2900 left it: manual-refresh-only.
+            _localQueuePollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+            _localQueuePollTimer.Tick += async (_, _) => await RefreshAsync(includeGitHubWork: false);
+            _localQueuePollTimer.Start();
         }
+
+        private DispatcherTimer? _localQueuePollTimer;
 
         private string? _lastSessionsSignature;
         private bool _sessionsRefreshInFlight;
@@ -816,7 +833,19 @@ namespace BuildConsole.Controls
             return counts;
         }
 
-        public async System.Threading.Tasks.Task RefreshAsync()
+        /// <summary>
+        /// Re-reads the queue's real current status and re-renders the panel.
+        /// <paramref name="includeGitHubWork"/> (Git #3074) separates the two genuinely different
+        /// things this method does in one call: the local Postgres queue re-read
+        /// (<c>_db.GetQueueAsync()</c>) plus all in-memory rendering — free, no rate-limit cost,
+        /// safe to run on a short automatic interval — versus the couple of fire-and-forget
+        /// `gh`-calling side effects gated inside it (<see cref="AutoRecheckOpenIssuesOnTransitionAsync"/>,
+        /// <see cref="TriggerBackgroundIssueTitleQueries"/>), which stay manual-refresh-only per
+        /// #2900. Defaults to <c>true</c> so every existing manual call site (the refresh button,
+        /// post-action re-renders, etc.) is unchanged; only the #3074 local-only poll timer passes
+        /// <c>false</c>.
+        /// </summary>
+        public async System.Threading.Tasks.Task RefreshAsync(bool includeGitHubWork = true)
         {
             if (_api == null || !_api.IsConfigured) return;
             int myGeneration = ++_refreshGeneration;
@@ -843,13 +872,17 @@ namespace BuildConsole.Controls
                 CheckPriorityBuildSetCompletion(_lastItems);
                 CheckExclusiveBuildSetCompletion(_lastItems);
                 ReportActiveBuildSets(_lastItems);
-                // Git #2107 — fire-and-forget: a queue item that just transitioned into
-                // Verifying/Done is the real moment a declared blocker is most likely to have
-                // just closed (this local-DB poll runs regardless; only the `gh` call inside
-                // is gated to fire on a genuine transition, not every tick). Never awaited here
-                // so a slow/unreachable `gh` call can't stall the local queue poll this method
-                // otherwise runs on.
-                _ = AutoRecheckOpenIssuesOnTransitionAsync(previousItems, _lastItems);
+                if (includeGitHubWork)
+                {
+                    // Git #2107 — fire-and-forget: a queue item that just transitioned into
+                    // Verifying/Done is the real moment a declared blocker is most likely to have
+                    // just closed (this local-DB poll runs regardless; only the `gh` call inside
+                    // is gated to fire on a genuine transition, not every tick). Never awaited here
+                    // so a slow/unreachable `gh` call can't stall the local queue poll this method
+                    // otherwise runs on. Git #3074 — this is genuinely GitHub-calling work, so it's
+                    // skipped entirely when the local-only poll timer calls this method.
+                    _ = AutoRecheckOpenIssuesOnTransitionAsync(previousItems, _lastItems);
+                }
 
                 string restartSignature;
                 try { restartSignature = System.Text.Json.JsonSerializer.Serialize(MainWindow.GetPersistedQueueDisplayItems()); }
@@ -871,7 +904,9 @@ namespace BuildConsole.Controls
                 SyncError?.Invoke(this, _queueIsStale
                     ? $"Build Queue: showing cached data from {_queueCachedAtUtc?.ToLocalTime():g} — dev server unreachable"
                     : null);
-                TriggerBackgroundIssueTitleQueries();
+                // Git #3074 — per-issue-number `gh issue view` title warm-up is genuinely
+                // GitHub-calling work; skip it on the local-only poll timer's tick.
+                if (includeGitHubWork) TriggerBackgroundIssueTitleQueries();
                 QueueRefreshed?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
