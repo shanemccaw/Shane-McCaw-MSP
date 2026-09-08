@@ -456,6 +456,20 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
 }
 .room-header-back svg { flex-shrink: 0; }
 .room-header-title { flex: 1; min-width: 0; font-size: 17px; font-weight: var(--weight-bold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Git #3194: roomHeader()'s optional right-side icon (this room's own critter in a tinted blob
+   pebble, First Slice Prototype's "showLists" `d.cr.lists`) -- the title centers between the
+   back-link and this, same back/center/right symmetry Shopping's own header (#3178) uses.
+   NOT named ".centered" -- that's already a real, unrelated full-viewport sign-in class above. */
+.room-header-title.with-icon { text-align: center; }
+.room-header-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 45% 55% 48% 52% / 55% 45% 55% 45%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 
 /* Dates Round 2 (Git #3192): no dedicated "Shanes Life NN - Dates.dc.html" export exists yet
    (#3183's own audit confirmed it), so this scopes the established Round 2 card/pill system
@@ -475,6 +489,12 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
 .pets-room { position: relative; display: grid; gap: 14px; }
 .pets-room .tile,
 .pets-room .card { border-radius: 22px; }
+
+/* Lists Round 2 (Git #3194): native chrome via roomHeader()'s third real caller -- the row/card
+   look reuses .shop-list/.shop-check/.shop-item-row verbatim (see listsItemRow in app.js), so
+   the only new rule this room needs is its own persistent footer hint (First Slice Prototype's
+   own real, locked "showLists" line, shown whether or not any lists exist yet). */
+.lists-footer-hint { font-size: 12px; line-height: 1.5; color: hsl(var(--muted-foreground)); padding: 0 4px; }
 
 /* Pets (design contract Section 6 + README "Screens" #10): 44px initial-letter avatar, same
    real convention as .person-avatar (Section 7) -- one fixed room tint, not a per-pet hash. */

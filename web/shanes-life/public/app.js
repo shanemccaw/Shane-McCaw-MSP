@@ -2158,84 +2158,149 @@ async function viewPersonDetail(view, personId) {
 // except the Shopping singleton, which keeps its own dedicated room. No bespoke design needed
 // per the contract pack -- one simple check-circle row per item, same as the design's own
 // "sensible list treatment" line.
-function listItemRow(listId, item) {
-  const box = el("input", { type: "checkbox", ...(item.done ? { checked: true } : {}), "aria-label": item.text });
-  const label = el("span", { class: item.done ? "done" : "", text: item.text });
-  box.addEventListener("change", async () => {
-    box.disabled = true;
+// Lists (Git #3155, Round 2 visual rebuild Git #3194) -- the real, deliberately light-touch
+// case Section 3 calls out: movies/shows to watch, recommended books, and anything else Claude
+// files on the fly via `push_list`'s generic `category` path. Same real typed shape as Shopping
+// (core/lists.mjs), just every list except the Shopping singleton, which keeps its own dedicated
+// room. Real design source is the First Slice Prototype's own `showLists` block (`d.listGroups`),
+// confirmed live by screenshots/07-lists.png -- NOT "Shanes Life 12 - Shared list.dc.html", which
+// #3184 already built against for the separate no-login share page (public/share.js). Native
+// chrome reuses the generic roomHeader() Dates/Pets already established (#3192/#3193), extended
+// here with its optional right-side icon for the design's own critter blob pebble; the rows
+// reuse Shopping's already-shipped .shop-list/.shop-check/.shop-item-row (Git #3178) rather than
+// a parallel set of near-identical CSS.
+const LISTS_TINT = "165,180,252"; // ROOMS' own real tint for "lists", matching the design's glow.
+
+function listsItemRow(listId, item) {
+  const box = el("div", {
+    class: `shop-check${item.done ? " done" : ""}`,
+    role: "checkbox",
+    tabindex: "0",
+    "aria-checked": item.done ? "true" : "false",
+    "aria-label": item.text,
+    html: item.done ? SHOP_CHECK_ICON : "",
+  });
+  const nameEl = el("div", { class: `shop-item-name${item.done ? " done" : ""}`, text: item.text });
+  const subEl = item.note ? el("div", { class: "shop-item-sub", text: item.note }) : null;
+
+  const toggleDone = async () => {
+    if (box.classList.contains("pending")) return;
+    box.classList.add("pending");
     try {
       const updated = await api(`/api/lists/${listId}/items/${item.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ checked: box.checked }),
+        body: JSON.stringify({ checked: !item.done }),
       });
-      label.className = updated.done ? "done" : "";
+      item.done = updated.done;
+      box.classList.toggle("done", item.done);
+      box.innerHTML = item.done ? SHOP_CHECK_ICON : "";
+      box.setAttribute("aria-checked", item.done ? "true" : "false");
+      nameEl.classList.toggle("done", item.done);
     } finally {
-      box.disabled = false;
+      box.classList.remove("pending");
+    }
+  };
+  box.addEventListener("click", toggleDone);
+  box.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleDone();
     }
   });
-  const remove = el("button", {
-    class: "ghost small danger",
-    text: "Remove",
-    onClick: async (event) => {
-      event.currentTarget.disabled = true;
-      await api(`/api/lists/${listId}/items/${item.id}`, { method: "DELETE" });
-      render();
-    },
+  nameEl.addEventListener("click", toggleDone);
+
+  // Remove lives behind the same trailing-chevron detail panel Shopping's own row uses (Git
+  // #3178) rather than a permanent ghost button on the row -- the design never shows one
+  // permanently either.
+  const expandBtn = el("button", {
+    type: "button",
+    class: "shop-item-more",
+    "aria-label": `More actions for ${item.text}`,
+    "aria-expanded": "false",
+    html: SHOP_CHEVRON_RIGHT_ICON,
   });
-  return el("li", { class: "shopping-row" }, [
-    el("div", { class: "row" }, [
-      box,
-      el("div", { style: "flex:1" }, [label, item.note ? el("span", { class: "who", text: item.note }) : null]),
-      remove,
-    ]),
+  const detail = el("div", { class: "shop-item-detail" });
+  detail.hidden = true;
+  expandBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const opening = detail.hidden;
+    detail.hidden = !opening;
+    expandBtn.classList.toggle("open", opening);
+    expandBtn.setAttribute("aria-expanded", opening ? "true" : "false");
+    if (opening) {
+      detail.replaceChildren(
+        el("div", { class: "shop-item-detail-inner" }, [
+          el("div", { class: "row" }, [
+            el("button", {
+              class: "ghost small danger",
+              text: "Remove",
+              onClick: async (removeEvent) => {
+                removeEvent.currentTarget.disabled = true;
+                await api(`/api/lists/${listId}/items/${item.id}`, { method: "DELETE" });
+                render();
+              },
+            }),
+          ]),
+        ]),
+      );
+    }
+  });
+
+  return el("li", { class: "shop-item-row" }, [
+    el("div", { class: "shop-item-main" }, [box, el("div", { class: "shop-item-text" }, [nameEl, subEl]), expandBtn]),
+    detail,
   ]);
 }
 
-function listCard(list) {
-  const header = el("div", { class: "row", style: "align-items:baseline" }, [
-    el("h3", { text: list.name }),
-    // Same "New category" signal Dates already surfaces for an on-the-fly kind (line ~2716) --
-    // here it's `created_by`, since a list Claude minted on the fly is the on-the-fly case.
-    list.created_by === "claude" ? el("span", { class: "chip", text: "New category" }) : null,
-    el("span", { class: "meta", text: `${list.category_label || list.category || "List"} · ${list.done_count}/${list.item_count} done` }),
-  ]);
+/** One list = one design "group": an uppercase "{{name}} · N left" label (plus the same
+ *  "New category" chip Dates already surfaces for an on-the-fly kind) over a rounded card of
+ *  check-circle rows. */
+function listsGroupCard(list) {
+  const remaining = Math.max(0, (list.item_count ?? 0) - (list.done_count ?? 0));
+  const label = el("span", {
+    class: "shop-group-label",
+    text: `${list.category_label || list.category || "List"} · ${remaining} left`,
+  });
+  const newBadge = list.created_by === "claude" ? el("span", { class: "chip", text: "New category" }) : null;
 
   // Git #3183: no dedicated "Add {noun}" form -- adding to a list is a capture, same as
-  // starting one (see viewLists below). Say "watch The Bear" or "add The Bear to Watch"
-  // in the universal capture box and Claude files it onto the right list.
-  const ul = el("ul", { class: "checklist" });
-  const card = el("div", { class: "card" }, [header, ul]);
+  // starting one (see viewLists below). Say "watch The Bear" or "add The Bear to Watch" in the
+  // universal capture box and Claude files it onto the right list.
+  const ul = el("ul", { class: "shop-list" });
   api(`/api/lists/${list.id}`)
     .then((detail) => {
       ul.replaceChildren();
-      if (detail.items.length === 0) ul.append(el("li", { class: "muted small", text: "Nothing on this list yet." }));
-      else for (const item of detail.items) ul.append(listItemRow(list.id, item));
+      if (detail.items.length === 0) {
+        ul.append(el("li", { class: "muted small", style: "padding:12px 16px", text: "Nothing on this list yet." }));
+      } else {
+        for (const item of detail.items) ul.append(listsItemRow(list.id, item));
+      }
     })
     .catch(() => {
-      ul.replaceChildren(el("li", { class: "error small", text: "Couldn't load items." }));
+      ul.replaceChildren(el("li", { class: "error small", style: "padding:12px 16px", text: "Couldn't load items." }));
     });
-  return card;
+  return el("div", { style: "display:flex;flex-direction:column;gap:8px" }, [
+    el("div", { class: "row", style: "align-items:center;gap:8px" }, [label, newBadge]),
+    ul,
+  ]);
 }
+
+// The design's own real, locked line (First Slice Prototype's showLists footer) -- shown under
+// the lists whether or not any exist yet, per screenshots/07-lists.png. Copy is final.
+const LISTS_HINT = 'Say "watch …" or "read …" and it lands here. A new kind of list shows up on its own the first time you need one. No form, ever.';
 
 async function viewLists(view) {
   const { lists } = await api("/api/lists");
 
-  // Git #3183: no "New list" form -- starting a list is a capture too. Say "watch The
-  // Bear" or "read Project Hail Mary" and Claude opens (or reuses) the right list.
-  view.append(el("section", { class: "section" }, [el("h2", { text: "Lists" })]));
+  roomHeader(view, LISTS_TINT, "Lists", { icon: critterIcon("lists", { size: 36 }) });
 
   if (lists.length === 0) {
-    view.append(
-      empty(
-        "No lists yet.",
-        "Say \"watch The Bear\" or \"read Project Hail Mary\" and Claude files it here -- or start one yourself above.",
-        "notfound",
-      ),
-    );
+    view.append(empty("No lists yet.", LISTS_HINT, "notfound"));
   } else {
     const section = el("section", { class: "section" });
-    for (const list of lists) section.append(listCard(list));
+    for (const list of lists) section.append(listsGroupCard(list));
     view.append(section);
+    view.append(el("p", { class: "lists-footer-hint", text: LISTS_HINT }));
   }
 
   // Room watermark (Git #3119): "lists" (1j) is the critter slot the spec already carries for
@@ -7855,14 +7920,21 @@ const DATES_TINT = "244,114,182"; // README's own room-tint table, "Dates".
 /** Generic "Rooms (sub pages)" chrome (design README line 179): a translucent top glow
  *  tinted per room, plus the house back-link to Today. Shopping (#3178) built the back-link
  *  piece first, scoped to its own solid header band; this is the plain glow+back-link shape
- *  every *other* room's own Round 2 pass reuses verbatim. Dates is the first real caller. */
-function roomHeader(view, tintRgb, title) {
+ *  every *other* room's own Round 2 pass reuses verbatim. Dates is the first real caller.
+ *
+ *  `icon` (Git #3194, Lists is the first caller to need it) is the optional right-side blob
+ *  pebble the First Slice Prototype's own "showLists" markup draws opposite the back-link
+ *  (`d.cr.lists`) -- when passed, the title centers between the two, mirroring the same
+ *  back/center/right symmetry Shopping's own header (#3178) already uses. Omitted, this is
+ *  Dates/Pets' original plain back-link + left-flowing title, unchanged. */
+function roomHeader(view, tintRgb, title, { icon } = {}) {
   view.append(
     el("div", { class: "room-scene" }, [
       el("div", { class: "room-glow", style: `background: radial-gradient(120% 70% at 50% -20%, rgba(${tintRgb},.22), transparent 70%)` }),
       el("div", { class: "room-header" }, [
         el("a", { href: "#/today", class: "room-header-back" }, [el("span", { html: ROOM_HOUSE_ICON }), el("span", { text: "Today" })]),
-        el("div", { class: "room-header-title", text: title }),
+        el("div", { class: `room-header-title${icon ? " with-icon" : ""}`, text: title }),
+        icon ? el("div", { class: "room-header-icon", style: `background:rgba(${tintRgb},.16)` }, [icon]) : null,
       ]),
     ]),
   );
@@ -8341,13 +8413,14 @@ async function render() {
   // supplies enough context on its own, same as #3190's own real question asked. Git #3191: Meds
   // is the fourth (viewMeds' own medsHeader). Git #3192: Dates and its detail screen are the
   // fifth and sixth, via the generic roomHeader() (README "Rooms (sub pages)"). Git #3193: Pets
-  // is the seventh, the second real roomHeader() caller -- the generic bar's only other real
-  // function was "Sign out", which Settings' own "Sign out everywhere" (viewSettings) already
-  // covers, the same real check that cleared Shopping/Dates. Every other room still shows the
-  // generic bar until it gets its own redesign pass. #app-view.no-header lets .view collapse its
-  // top padding to just the native status-bar safe area instead of assuming a header row sits
-  // above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets";
+  // is the seventh, the second real roomHeader() caller. Git #3194: Lists is the eighth, the
+  // third roomHeader() caller and the first to pass its own right-side icon -- the generic bar's
+  // only other real function was "Sign out", which Settings' own "Sign out everywhere"
+  // (viewSettings) already covers, the same real check that cleared Shopping/Dates. Every other
+  // room still shows the generic bar until it gets its own redesign pass. #app-view.no-header
+  // lets .view collapse its top padding to just the native status-bar safe area instead of
+  // assuming a header row sits above it (see app.css).
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 
