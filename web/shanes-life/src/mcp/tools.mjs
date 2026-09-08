@@ -14,6 +14,7 @@ import * as categories from "../core/categories.mjs";
 import * as entities from "../core/entities.mjs";
 import * as foodPreferences from "../core/food-preferences.mjs";
 import * as lists from "../core/lists.mjs";
+import * as mealPlan from "../core/meal-plan.mjs";
 import * as medications from "../core/medications.mjs";
 import * as money from "../core/money.mjs";
 import * as prices from "../core/prices.mjs";
@@ -800,6 +801,72 @@ export const TOOLS = [
         detail: { added: result.added },
       });
       return result;
+    },
+  },
+
+  // -- meal plan / Sunday ritual (Git #3127, blocked_by #3124 and #3132) ---
+  //
+  // Section 5's real Sunday ritual: build the week's plan once, let it surface on Today as
+  // simple moment-based nudges -- never a calendar to browse. Read get_health_context and
+  // get_food_preferences before push_meal_plan, same as push_recipes -- a meal plan is exactly
+  // the kind of real food generation Section 5/#3132 both say those must gate.
+
+  {
+    name: "get_meal_plan",
+    title: "Read the real meal plan",
+    description:
+      "The real, currently-planned meals, each with a real display dish name (Claude's own dishText, or the linked saved recipe's name). Pass from/to (YYYY-MM-DD) to window it, e.g. to read back the week just pushed; omit both for everything not yet archived.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "YYYY-MM-DD, inclusive." },
+        to: { type: "string", description: "YYYY-MM-DD, inclusive." },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      return { entries: await mealPlan.listMealPlan(ctx.user.id, { from: args.from ?? null, to: args.to ?? null }) };
+    },
+  },
+
+  {
+    name: "push_meal_plan",
+    title: "Push the real Sunday meal plan",
+    description:
+      "Push the week's real meal plan -- the Sunday ritual's real entry point (Section 5: 'Sundays, Shane works with Claude to build the week's real recipe list and meal plan ... surfaces on the Today view as simple, real, moment-based nudges'). Call get_health_context and get_food_preferences first -- allergies are a hard exclusion with no exceptions, dislikes a soft avoid. Each entry names a real date and meal slot, and either a recipeId (from get_recipes/push_recipes) or a plain dishText (or both -- dishText overrides the display name if given). Set replace true to clear out every not-yet-passed entry first, matching a fresh week replacing the old one; leave false to add onto what's already planned.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        entries: {
+          type: "array",
+          description: "One or more real planned meals.",
+          items: {
+            type: "object",
+            properties: {
+              date: { type: "string", description: "YYYY-MM-DD." },
+              mealType: { type: "string", enum: ["breakfast", "lunch", "dinner"], default: "dinner" },
+              recipeId: { type: "string", description: "A real saved recipe's id (get_recipes/push_recipes), if this meal is one of them." },
+              dishText: { type: "string", description: "The real dish name/description, e.g. 'leftovers' or 'grab a rotisserie chicken' -- required if recipeId is omitted." },
+              notes: { type: "string" },
+            },
+            required: ["date"],
+          },
+        },
+        replace: { type: "boolean", default: false, description: "True archives every not-yet-passed planned meal first -- a fresh week, not an addition to the old one." },
+      },
+      required: ["entries"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const entries = await mealPlan.pushMealPlan(ctx.user.id, args.entries, { replace: Boolean(args.replace) });
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "meal_plan.push",
+        detail: { count: entries.length, replace: Boolean(args.replace) },
+      });
+      return { entries };
     },
   },
 
