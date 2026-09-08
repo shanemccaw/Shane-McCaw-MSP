@@ -224,10 +224,15 @@ export async function roomsForToday(userId, { allDates, tonight, groceries, meds
   // access entirely): "lit while the morning batch is untaken, or after 8 pm while the bed batch
   // is untaken" (README "Medicine room"). `meds.batches` is medications.getMedsToday()'s own real
   // per-batch takenToday read -- the same shape the Meds pill already renders, no new query.
+  // Batch names are Claude-assigned free text from natural-language capture, not a fixed enum
+  // (Git #3279 -- Shane's real second batch is "night", which never matched the old literal
+  // "evening"/"bed" === checks). Keyword-matched the same way medsDaypartRank() in
+  // public/app.js already generalizes batch names, so the next real name ("bedtime", "PM",
+  // etc.) doesn't hit this same gap again.
   const hourNow = hour;
   const medsBatches = meds?.batches || [];
-  const morningBatch = medsBatches.find((b) => b.batch === "morning");
-  const bedBatch = medsBatches.find((b) => b.batch === "evening" || b.batch === "bed");
+  const morningBatch = medsBatches.find((b) => /morning/i.test(b.batch));
+  const bedBatch = medsBatches.find((b) => /evening|night|bed|dinner/i.test(b.batch));
   const morningDue = Boolean(morningBatch && !morningBatch.takenToday);
   const bedDue = Boolean(bedBatch && !bedBatch.takenToday && hourNow >= 20);
   let medsRoom;
