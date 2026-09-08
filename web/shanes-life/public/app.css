@@ -217,7 +217,10 @@ button:disabled { opacity: 0.5; cursor: default; }
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(56px + var(--safe-bottom));
+  /* Git #3250: used to sit at `56px + var(--safe-bottom)` to leave room for the flat `.tabs` bar
+     below it -- that bar is gone (the house grid + the attic vent are the real nav now), so the
+     capture box claims the true bottom of the viewport itself. */
+  bottom: var(--safe-bottom);
   z-index: 6;
   padding: 0.6rem 0.75rem;
   background: color-mix(in srgb, hsl(var(--background)) 92%, transparent);
@@ -233,45 +236,6 @@ button:disabled { opacity: 0.5; cursor: default; }
 .capture button.primary.small { border-radius: 999px; }
 .capture-status { margin: 0.35rem auto 0; max-width: 720px; font-size: 0.8rem; color: hsl(var(--muted-foreground)); min-height: 1.1em; }
 .attachment { max-width: 720px; margin: 0 auto 0.5rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.85rem; color: hsl(var(--muted-foreground)); }
-
-/* ---------- tabs ---------- */
-
-.tabs {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 7;
-  display: flex;
-  border-top: 1px solid hsl(var(--border));
-  background: hsl(var(--card));
-  padding-bottom: var(--safe-bottom);
-}
-
-.tabs a {
-  flex: 1;
-  text-align: center;
-  padding: 0.8rem 0.25rem;
-  font-size: 0.8rem;
-  color: hsl(var(--muted-foreground));
-  text-decoration: none;
-}
-
-.tabs a[aria-current="page"] { color: hsl(var(--primary)); }
-
-.badge {
-  display: inline-grid;
-  place-items: center;
-  min-width: 1.25rem;
-  height: 1.25rem;
-  padding: 0 0.3rem;
-  margin-left: 0.15rem;
-  border-radius: var(--radius-full);
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-  font-size: 0.7rem;
-  font-weight: var(--weight-bold);
-}
 
 /* ---------- lists ---------- */
 
@@ -1135,10 +1099,15 @@ pre.token {
 .meds-pill-status.done { color: hsl(var(--success)); }
 
 /* Rooms -- the house (Git #3165, README "Rooms -- the house" + "Lamp rules"): roof, a two-column
-   floor grid of 8 real rooms, a lamp lit/dark per room's real state, and a yard. See
+   floor grid of real rooms, a lamp lit/dark per room's real state, and a yard. See
    roomsHouseSection() in app.js and roomsForToday() in api.mjs for the real data behind it. */
 .rooms-house { margin: 0 -6px; }
+.rooms-roof { position: relative; }
 .rooms-roof-svg { display: block; width: 100%; height: auto; }
+/* Settings = the attic (Git #3250, README "Settings = the attic"): a louvered gable vent tap
+   target sitting just under the ridge, replacing Settings' old flat-tab-bar link entirely. */
+.rooms-vent { position: absolute; top: 2px; left: 50%; transform: translateX(-50%); width: 48px; height: 34px; display: block; }
+.rooms-vent svg { display: block; width: 100%; height: 100%; }
 .rooms-body {
   margin: 0 8px;
   background: hsl(var(--card));
@@ -1228,7 +1197,10 @@ pre.token {
 .quick-toast {
   position: fixed;
   left: 50%;
-  bottom: calc(120px + var(--safe-bottom));
+  /* Git #3250: was `120px` (the capture box's own height above the old +56px .tabs offset) --
+     the capture box now sits 56px lower (straight to `var(--safe-bottom)`), so this shifts down
+     by the same 56px to stay just above it. */
+  bottom: calc(64px + var(--safe-bottom));
   transform: translateX(-50%);
   z-index: 20;
   max-width: min(320px, 86vw);

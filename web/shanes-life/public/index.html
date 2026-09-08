@@ -142,17 +142,14 @@
         <input type="file" id="capture-file" accept="image/*" capture="environment" hidden />
       </form>
 
-      <!-- Git #3165: Shopping/Recipes/Money/Dates/Pets/Lists/Things (and People) are no longer
-           tab-bar links -- they're reached through the real illustrated "Rooms -- the house"
-           grid on Today (see roomsHouseSection() in app.js), matching the design handoff's own
-           README ("Rooms -- the house"). This bar keeps only what the house grid doesn't cover:
-           Today itself, Meds (its own tray pill, not a house room), Inbox and Settings. -->
-      <nav class="tabs">
-        <a href="#/today" data-tab="today">Today</a>
-        <a href="#/meds" data-tab="meds">Meds</a>
-        <a href="#/inbox" data-tab="inbox">Inbox <span id="inbox-badge" class="badge" hidden></span></a>
-        <a href="#/settings" data-tab="settings">Settings</a>
-      </nav>
+      <!-- Git #3165 replaced Shopping/Recipes/Money/Dates/Pets/Lists/Things/People with the
+           illustrated "Rooms -- the house" grid on Today (roomsHouseSection() in app.js), but
+           left this flat `<nav class="tabs">` bar in place for Today/Meds/Inbox/Settings -- which
+           it never should have; it competed with the capture box for the same fixed `bottom:0`
+           (Git #3250). Meds and Inbox are now real house rooms too (README's own "ten rooms"
+           list), Today is reached via the little-house back-link every room page already carries
+           (Git #3165), and Settings is the attic vent tapped in the roof (roomsRoofHtml() in
+           app.js) -- so this bar is gone outright, not replaced by anything else here. -->
     </div>
 
     <script type="module" src="/app.js"></script>

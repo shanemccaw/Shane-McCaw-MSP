@@ -87,8 +87,12 @@ function fmtUsd(amount) {
  * Four rooms in the design's own grid -- Things, Lists, People, Pets -- are spec'd to "stay dark"
  * always (README: "the critter is asleep"), so those four only ever carry a real subtitle, never
  * a lit flag.
+ *
+ * `meds` and `pendingCaptures` back the Medicine and Inbox rooms (Git #3250) -- both used to be
+ * the last two links on the flat `<nav class="tabs">` bar that #3165's house grid was supposed to
+ * fully replace and never did; they're real rooms now, not a lingering flat bar sitting under it.
  */
-export async function roomsForToday(userId, { allDates, tonight, groceries }) {
+export async function roomsForToday(userId, { allDates, tonight, groceries, meds, pendingCaptures }) {
   const [thingsList, listsForUser, allPeople, allPets, recipeMatches, gate, recentWins] = await Promise.all([
     things.listThings(userId),
     lists.listListsForUser(userId),
@@ -180,6 +184,38 @@ export async function roomsForToday(userId, { allDates, tonight, groceries }) {
     winsRoom = { lit: false, subtitle: "Nothing logged yet" };
   }
 
+  // Medicine (Git #3250 -- the Meds pill's own house room, superseding its old flat-tab-bar
+  // access entirely): "lit while the morning batch is untaken, or after 8 pm while the bed batch
+  // is untaken" (README "Medicine room"). `meds.batches` is medications.getMedsToday()'s own real
+  // per-batch takenToday read -- the same shape the Meds pill already renders, no new query.
+  const hourNow = hour;
+  const medsBatches = meds?.batches || [];
+  const morningBatch = medsBatches.find((b) => b.batch === "morning");
+  const bedBatch = medsBatches.find((b) => b.batch === "evening" || b.batch === "bed");
+  const morningDue = Boolean(morningBatch && !morningBatch.takenToday);
+  const bedDue = Boolean(bedBatch && !bedBatch.takenToday && hourNow >= 20);
+  let medsRoom;
+  if (morningDue || bedDue) {
+    const due = morningDue ? morningBatch : bedBatch;
+    const yours = due.items.filter((i) => !i.isPetCare).length;
+    const pets_ = due.items.filter((i) => i.isPetCare).length;
+    medsRoom = {
+      lit: true,
+      subtitle: pets_ > 0 ? `${yours} for you, ${pets_} for the pets` : `${yours} for you`,
+    };
+  } else if (bedBatch) {
+    medsRoom = { lit: false, subtitle: "Before bed at 9" };
+  } else {
+    medsRoom = { lit: false, subtitle: "All taken today" };
+  }
+
+  // Inbox (Git #3250 -- the same house room, replacing the flat tab bar's own Inbox link):
+  // "lit while anything is held" (README "Inbox room"), the same real pendingCaptures count
+  // Today's own "N waiting in the inbox" card and the Idle Later moment both already use.
+  const inboxRoom = pendingCaptures > 0
+    ? { lit: true, subtitle: `${pendingCaptures} held for Claude` }
+    : { lit: false, subtitle: "Nothing held" };
+
   return {
     shopping,
     money: money_,
@@ -190,6 +226,8 @@ export async function roomsForToday(userId, { allDates, tonight, groceries }) {
     people: peopleRoom,
     pets: petsRoom,
     wins: winsRoom,
+    meds: medsRoom,
+    inbox: inboxRoom,
   };
 }
 
@@ -2479,6 +2517,7 @@ export function buildApiRouter() {
     };
 
     const pendingCaptures = await captures.pendingCount(user.id);
+    const medsToday = await medications.getMedsToday(user.id);
 
     return sendJson(res, 200, {
       // "Today view shows only what's next" (contract pack Section 3) -- three, not a backlog.
@@ -2496,8 +2535,8 @@ export function buildApiRouter() {
         categoryLabel: appointmentToday.category_label,
       },
       groceries,
-      meds: await medications.getMedsToday(user.id),
-      rooms: await roomsForToday(user.id, { allDates, tonight, groceries }),
+      meds: medsToday,
+      rooms: await roomsForToday(user.id, { allDates, tonight, groceries, meds: medsToday, pendingCaptures }),
       roomOrder: await roomOrder.getRoomOrder(user.id),
       later: await computeLaterMoments(user.id, { allDates, tonight, pendingCaptures }),
     });

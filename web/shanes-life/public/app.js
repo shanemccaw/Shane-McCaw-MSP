@@ -693,18 +693,11 @@ async function loadMe() {
   const me = await api("/api/me");
   state.user = me.user;
   if (me.user) {
-    setInboxBadge(me.pendingCaptures);
     // Critter daily roll (Git #3119) -- seeded from the SERVER's date, per the design handoff,
     // never the client clock, so every device rolls the same critter for a slot on a given day.
     if (me.serverDate) initCritters(me.serverDate);
   }
   return me.user;
-}
-
-function setInboxBadge(count) {
-  const badge = $("#inbox-badge");
-  badge.textContent = count > 0 ? String(count) : "";
-  badge.hidden = !count;
 }
 
 // ---------------------------------------------------------------------------
@@ -1474,11 +1467,12 @@ function medsPillSection(meds) {
 // ---------------------------------------------------------------------------
 // Rooms -- the house (Git #3165, README "Rooms -- the house" + "Lamp rules").
 //
-// Replaces the flat tab-bar links to the 8 real rooms below (see the trimmed <nav class="tabs">
-// in index.html) with the design's own illustrated house: a roof, a two-column floor grid, and a
-// real lit/dark lamp per room driven by /api/today's own `rooms` object (roomsForToday() in
-// api.mjs) -- never a guessed or hardcoded state. Floor order is the README's own literal order:
-// Things | Lists; People | Dates; Recipes | Pets; Shopping | Money.
+// Replaces the flat tab-bar links to the real rooms below (the `<nav class="tabs">` this
+// superseded is gone from index.html as of Git #3250) with the design's own illustrated house: a
+// roof, a two-column floor grid, and a real lit/dark lamp per room driven by /api/today's own
+// `rooms` object (roomsForToday() in api.mjs) -- never a guessed or hardcoded state. Floor order
+// is the README's own literal order: Things | Lists; People | Dates; Recipes | Pets; Shopping |
+// Money.
 //
 // Critter slots are reused from the existing 23-slot roster rather than inventing new artwork:
 // Dates reuses "comingup" (the owl already drawn for the Later moment of the same name) and
@@ -1501,6 +1495,12 @@ const ROOM_DEFS = [
   // spec since #3119 waiting for exactly this room to land. tint is a warm rose, deliberately
   // distinct from Money's amber bear -- quiet, not celebratory neon.
   { key: "wins", route: "#/wins", title: "Wins", critterSlot: "wins", furniture: "r-wins", tint: "253,164,175" },
+  // Git #3250: Meds and Inbox are the last two links pulled off the old flat `.tabs` bar --
+  // README's own "ten rooms" list ("Money | Medicine ... Inbox | People") gives both a real tint
+  // and furniture; appended here rather than reordering the eight rooms already shipped above,
+  // to keep this a pure addition (any saved room order, Git #3215, still reconciles cleanly).
+  { key: "meds", route: "#/meds", title: "Medicine", critterSlot: "meds", furniture: "r-meds", tint: "52,211,153" },
+  { key: "inbox", route: "#/inbox", title: "Inbox", critterSlot: "idle", furniture: "r-inbox", tint: "147,197,253" },
 ];
 
 /** The roof: polygon + ridge + chimney, README-exact geometry (viewBox 370x40). The two smoke
@@ -1563,12 +1563,13 @@ function orderedRoomDefs(order) {
   return ordered;
 }
 
-/** The whole "Rooms -- the house" section: roof, the 8-cell floor grid, and the yard. `rooms` is
- *  /api/today's own real per-room state (roomsForToday() in api.mjs); a live Tonight/Cook session
- *  (client-only state, never persisted -- see mealSession's own declaration) can additionally
- *  light the Recipes room even outside its server-computed 16:00-21:00 window, same override
- *  resolveNextKind() already applies to the Next card's own "dinner" case. `order` is the user's
- *  real saved room order (Git #3215) -- undefined/empty renders the original shipped order. */
+/** The whole "Rooms -- the house" section: roof, the floor grid (11 real rooms as of Git #3250),
+ *  and the yard. `rooms` is /api/today's own real per-room state (roomsForToday() in api.mjs); a
+ *  live Tonight/Cook session (client-only state, never persisted -- see mealSession's own
+ *  declaration) can additionally light the Recipes room even outside its server-computed
+ *  16:00-21:00 window, same override resolveNextKind() already applies to the Next card's own
+ *  "dinner" case. `order` is the user's real saved room order (Git #3215) -- undefined/empty
+ *  renders the original shipped order. */
 function roomsHouseSection(rooms, order) {
   let recipesLit = Boolean(rooms.recipes && rooms.recipes.lit);
   let recipesSubtitle = rooms.recipes ? rooms.recipes.subtitle : "Nothing planned right now";
@@ -1586,7 +1587,18 @@ function roomsHouseSection(rooms, order) {
   });
 
   return el("div", { class: "rooms-house" }, [
-    el("div", { class: "rooms-roof", html: roomsRoofHtml(recipesLit) }),
+    el("div", { class: "rooms-roof" }, [
+      el("div", { html: roomsRoofHtml(recipesLit) }),
+      // Git #3250, README "Settings = the attic": a louvered gable vent tap target in the roof
+      // is Settings' only real entry point now that the flat `.tabs` bar is gone -- the last of
+      // the four links that bar carried (Today: the per-room house-icon back-link, Meds/Inbox:
+      // the two rooms just above).
+      el("a", { href: "#/settings", class: "rooms-vent", "aria-label": "Settings", title: "Settings" }, [
+        el("span", {
+          html: `<svg viewBox="0 0 48 34" aria-hidden="true"><path d="M8 34 V22 A16 16 0 0 1 40 22 V34 Z" fill="rgba(7,16,36,.85)" stroke="rgba(226,232,240,.6)" stroke-width="1.5"/><path d="M13 24 H35 M13 28 H35 M13 32 H35" stroke="rgba(148,163,184,.5)" stroke-width="1.2"/></svg>`,
+        }),
+      ]),
+    ]),
     el("div", { class: "rooms-body" }, cells),
     el("div", { class: "rooms-yard" }),
   ]);
@@ -1594,7 +1606,6 @@ function roomsHouseSection(rooms, order) {
 
 async function viewToday(view) {
   const data = await api("/api/today");
-  setInboxBadge(data.pendingCaptures);
 
   const now = new Date();
   const hour = now.getHours();
@@ -1779,7 +1790,6 @@ function entityTile(entity) {
 
 async function viewInbox(view) {
   const { captures } = await api("/api/captures?status=pending");
-  setInboxBadge(captures.length);
 
   view.append(
     el("section", { class: "section" }, [
@@ -8432,11 +8442,6 @@ async function render() {
   // A wake lock (Git #3125) is only ever held for cook mode itself -- release it the moment
   // navigation moves anywhere else, rather than waiting on the tab losing visibility.
   if (state.route !== "cook") releaseCookWakeLock();
-
-  for (const tab of document.querySelectorAll(".tabs a")) {
-    if (tab.dataset.tab === state.route) tab.setAttribute("aria-current", "page");
-    else tab.removeAttribute("aria-current");
-  }
 
   try {
     if (state.route === "shopping") await viewShopping(view);
