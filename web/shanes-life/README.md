@@ -188,8 +188,15 @@ so in its own output, is the browser half.
 Sessions are random tokens in an `HttpOnly; SameSite=Lax` cookie, with only the SHA-256 stored.
 Not JWTs, specifically because **a JWT cannot be revoked** and "sign out everywhere" is a real
 requirement for an app that will hold financial reference data (§3, the bill-payment vault).
-`sessions.last_verified_at` records when a session last passed a real assertion — the vault's
-"fresh passkey per reveal" requirement is measured against it, via `POST /api/auth/reverify`.
+`sessions.last_verified_at` records when a session last passed a real assertion, via
+`POST /api/auth/reverify`.
+
+The vault's "fresh passkey per reveal" requirement (Git #3150) is deliberately **not** measured
+against that stamp. A reveal carries its own assertion, against a challenge issued for that one
+entry (`purpose = vault:reveal:<id>`) — so one assertion cannot unlock every entry inside a
+window, cannot be replayed to reveal the same entry twice, and cannot be pointed at a different
+entry than the one it was earned for. `last_verified_at` moves when a reveal succeeds, but no
+reveal has ever been granted by reading it.
 
 Sign-in failures are rate-limited per source, and every outcome — success, bad assertion, unknown
 credential, throttled, passkey registered, passkey revoked — is recorded in `auth_events`. The

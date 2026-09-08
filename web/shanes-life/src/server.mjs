@@ -15,6 +15,7 @@ import * as ratelimit from "./auth/ratelimit.mjs";
 import { buildApiRouter } from "./routes/api.mjs";
 import { buildPublicRouter } from "./routes/public.mjs";
 import { describeMcpEndpoint, handleMcpRequest } from "./routes/mcp.mjs";
+import { runDetectors as runCatchDetectors } from "./core/catches.mjs";
 import { findDueDayBeforeReminders } from "./core/dates.mjs";
 import { needsMonthlyRefresh, refreshFederalHolidays } from "./core/federal-holidays.mjs";
 import { findDueVaccineReminders } from "./core/pets.mjs";
@@ -212,6 +213,7 @@ async function main() {
       await runVaccineLeadReminders();
       await runMonthlyFederalHolidaysRefresh();
       await runMoneyWinDetection();
+      await runCatchesSweep();
     },
     6 * 60 * 60 * 1000,
   );
@@ -223,6 +225,7 @@ async function main() {
   await runVaccineLeadReminders();
   await runMonthlyFederalHolidaysRefresh();
   await runMoneyWinDetection();
+  await runCatchesSweep();
 }
 
 /**
@@ -292,6 +295,23 @@ async function runMoneyWinDetection() {
     }
   } catch (err) {
     log("[wins] detection failed:", err.message);
+  }
+}
+
+/**
+ * Money's Catches card (contract Section 4, Git #3153): keeps the five real detectors running
+ * even when nobody has opened the Money screen recently, so a renewal-watch window opening (a
+ * date-driven, not user-action-driven event) is caught by the next sweep rather than only the
+ * next visit. GET /api/money/catches also runs the same detectors on demand -- this is belt and
+ * suspenders, not the only path; upserts make both safe to run redundantly.
+ */
+async function runCatchesSweep() {
+  try {
+    for (const user of await listUsers()) {
+      await runCatchDetectors(user.id);
+    }
+  } catch (err) {
+    log("[catches] sweep failed:", err.message);
   }
 }
 

@@ -129,6 +129,14 @@ a { color: inherit; }
   align-content: start;
 }
 
+/* Git #3174: Today has no generic header row (see #app-header.hidden in render()) -- its own
+   fox/weather scene is the real header, immediately below the native status bar per the
+   design. Collapse the top padding that otherwise assumes a header row sits above .view down
+   to just the same safe-area allowance .app-header itself used to reserve. */
+#app-view.no-header .view {
+  padding-top: max(0.9rem, env(safe-area-inset-top));
+}
+
 /* Cards (design handoff README, "Screens"): hsl(var(--card)), 1px hsl(var(--card-border)),
    radius 16. */
 .card {
@@ -513,8 +521,9 @@ pre.token {
    Design/design_handoff_shanes_life/README.md "Today v3 -- the cute skin": blob-shaped
    critter pebbles, 22px rounder cards, 999px pill buttons, sticker badges rotated -5deg, and
    a header sky that follows the clock and the real weather (Open-Meteo, see public/weather.js).
-   Holiday/season theming is a separate, out-of-scope sibling Feature -- only time-of-day runs
-   here, so `.today-scene` never carries a holiday sky or roof/yard decoration. */
+   Holiday/season theming (a holiday sky, fox/peeker hats, weather particles) is Git #3145, in
+   the "Seasons & holidays theming" block further down this file; roof/yard decoration stays
+   out of scope for both -- there is no Rooms house grid yet to decorate (#3165). */
 
 @keyframes czBreathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-1.5px) scale(1.025); } }
 @keyframes czSpin { to { transform: rotate(360deg); } }
@@ -628,6 +637,79 @@ pre.token {
 }
 .btn-pill.primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
 .btn-pill.ghost { background: rgba(255,255,255,.06); color: hsl(var(--foreground)); }
+
+/* ---------- Seasons & holidays theming (Git #3145) ----------
+   Design/design_handoff_shanes_life/README.md "Today v3 -- Seasons and holidays": one real
+   themeKey(date) + one real flag table (public/theme.js), applied on top of the #3144 header --
+   holiday sky, fox/peeker hats, and a full-phone weather-particle layer. Roof/yard decorations
+   and the "Later" balloons' theme colors stay unbuilt here on purpose: neither the Rooms house
+   grid (#3165) nor the Later balloons row (#3144) exists yet for them to decorate. */
+
+@keyframes czFlap { from { transform: scaleY(1); } to { transform: scaleY(.45); } }
+@keyframes czGallop { from { transform: rotate(-14deg); } to { transform: rotate(14deg); } }
+@keyframes czLeaf {
+  0% { transform: translate(0,0) rotate(0); opacity: 0; }
+  8% { opacity: .95; }
+  50% { transform: translate(-26px,240px) rotate(160deg); }
+  92% { opacity: .9; }
+  100% { transform: translate(10px,470px) rotate(330deg); opacity: 0; }
+}
+@keyframes czSnow {
+  0% { transform: translate(0,0); opacity: 0; }
+  10% { opacity: .9; }
+  50% { transform: translate(10px,240px); }
+  90% { opacity: .8; }
+  100% { transform: translate(-6px,480px); opacity: 0; }
+}
+@keyframes czConf {
+  0% { transform: translate(0,0) rotate(0); opacity: 0; }
+  8% { opacity: 1; }
+  100% { transform: translate(24px,480px) rotate(560deg); opacity: 0; }
+}
+@keyframes czBat {
+  0% { transform: translate(0,0); }
+  25% { transform: translate(120px,-14px); }
+  50% { transform: translate(240px,6px); }
+  75% { transform: translate(360px,-10px); }
+  100% { transform: translate(480px,0); }
+}
+@keyframes czBurst {
+  0% { transform: scale(.1); opacity: 0; }
+  12% { opacity: 1; }
+  55% { transform: scale(1); opacity: .85; }
+  100% { transform: scale(1.2); opacity: 0; }
+}
+@keyframes czPetal {
+  0% { transform: translate(0,0) rotate(0); opacity: 0; }
+  8% { opacity: .95; }
+  50% { transform: translate(30px,230px) rotate(140deg); }
+  100% { transform: translate(-20px,470px) rotate(300deg); opacity: 0; }
+}
+@keyframes czFirefly {
+  0%, 100% { opacity: .08; transform: translate(0,0); }
+  50% { opacity: .95; transform: translate(8px,-10px); }
+}
+@keyframes czSleigh {
+  0% { transform: translate(-170px,0); }
+  25% { transform: translate(20px,-8px); }
+  50% { transform: translate(210px,4px); }
+  75% { transform: translate(400px,-6px); }
+  100% { transform: translate(590px,0); }
+}
+
+/* The full-phone weather-particle layer (README: "inset:0; z-index:2; pointer-events:none;
+   overflow:hidden"), over Today. `position:fixed` (viewport-relative, not `.view`-relative) is
+   the real "full-phone" reading of that instruction in this app's own scrolling-column shell,
+   which has no fixed 402x874 phone frame to anchor an absolute layer to; it's appended as a
+   child of `#view` purely so `view.replaceChildren()` (render()'s own per-navigation reset)
+   tears it down automatically on every route change, with no separate cleanup call needed. */
+.today-wx-particles { position: fixed; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+
+/* Fox/peeker hat overlays -- README: "draw hats directly into the overlay's coordinates, no
+   viewBox on the hat symbol itself" (see the h-*/ph-* <symbol>s in critters-sprite.svg, which
+   deliberately carry no viewBox attribute at all). */
+.today-fox-hat { position: absolute; left: 0; top: -23.5px; overflow: visible; animation: czBreathe 4s ease-in-out infinite; transform-origin: 50% 100%; pointer-events: none; }
+.peeker-hat { position: absolute; bottom: -18px; overflow: visible; pointer-events: none; }
 
 /* Meds pill (design handoff "Meds pill"): fully rounded row, blob pebble, status right. */
 .meds-pill { display: flex; align-items: center; gap: 12px; border-radius: 999px; padding: 8px 18px 8px 8px; min-height: 64px; }
@@ -805,6 +887,136 @@ pre.token {
 .money-bucket-status.funded { color: hsl(var(--success)); }
 .money-bucket-status.short { color: #fbbf24; }
 .money-bucket-status.critical { color: #f87171; }
+
+/* ---------- Money -> Vault (Git #3150) ----------
+   Handoff README §7: "lock note, rows with site + masked reference + Reveal (passkey overlay ->
+   full value shown 20 s -> Copy)". Sizes/colors are the prototype's own inline values, kept
+   rather than re-derived: 12px muted notes, a 22px-radius card, the 15px/600 row label, the
+   monospace reference, and the revealed value in the design's blue-tinted box
+   (rgba(96,165,250,.1) on a .35 border). */
+
+.vault-lock-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+}
+.vault-lock-note svg { flex-shrink: 0; }
+
+.vault-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  border-radius: 22px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.vault-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.vault-row + .vault-row { border-top: 1px solid hsl(var(--card-border)); }
+
+.vault-row-head { display: flex; align-items: center; gap: 12px; }
+.vault-row-name { flex: 1; min-width: 0; }
+.vault-row-label { font-size: 15px; font-weight: 600; }
+.vault-row-site { font-size: 12px; color: hsl(var(--muted-foreground)); }
+
+.vault-masked {
+  font-size: 14px;
+  font-family: var(--font-mono);
+  color: hsl(var(--muted-foreground));
+}
+
+.vault-reveal-btn {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vault-reveal-btn:disabled { opacity: 0.6; }
+
+.vault-value-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+}
+.vault-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+/* The live remainder of the real 20-second window, not decoration -- when it reaches 0 the
+   value is genuinely gone from the DOM and from JS memory. */
+.vault-countdown {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--muted-foreground));
+}
+.vault-copy-btn {
+  flex-shrink: 0;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: #60a5fa;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+
+.vault-row-error { font-size: 12px; color: hsl(var(--destructive)); }
+.vault-foot-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+  padding: 12px 4px;
+}
+.vault-add-title { font-size: 15px; font-weight: 600; margin: 0 0 0.4rem; }
+
+/* The design's Face ID overlay, up for exactly as long as the real assertion takes. */
+.vault-face-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(4, 13, 26, 0.82);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: #fff;
+}
+.vault-face-ring {
+  width: 96px;
+  height: 96px;
+  border-radius: 28px;
+  border: 3px solid #60a5fa;
+  color: #60a5fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 14px rgba(96, 165, 250, 0.12);
+}
+.vault-face-label { font-size: 16px; font-weight: 600; }
 /* Bills tab pending events (Git #3148): "not counted until real" -- inflow/outflow, not
    funded/short, so a distinct pair rather than reusing funded/short's color meaning. */
 .money-bucket-status.inflow { color: hsl(var(--success)); }

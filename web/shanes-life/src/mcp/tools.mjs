@@ -10,6 +10,7 @@
 
 import { record } from "../core/audit.mjs";
 import * as captures from "../core/captures.mjs";
+import * as catches from "../core/catches.mjs";
 import * as categories from "../core/categories.mjs";
 import * as contacts from "../core/contacts.mjs";
 import * as dates from "../core/dates.mjs";
@@ -60,6 +61,10 @@ const ITEMS_SCHEMA = {
           text: { type: "string" },
           note: { type: "string" },
           checked: { type: "boolean" },
+          requestedBy: {
+            type: "string",
+            description: "Who actually asked for this, e.g. 'Ronnie' -- only meaningful on a list item. Feeds the Catches duplicate-request detector (#3153): two different real names on the same item text across the same list gets flagged.",
+          },
           data: { type: "object", description: "Anything else worth keeping, e.g. quantity, store, aisle, price." },
         },
         required: ["text"],
@@ -1153,7 +1158,7 @@ export const TOOLS = [
     name: "get_gate_status",
     title: "Where the money actually stands",
     description:
-      "Shane's real, current money position, straight off the Plaid-synced balances the ShanesSurvival WPF app reads -- the same numbers, from the same rows, through the same math. Returns: available to spend (Income Gate + reserves, minus every bill account's shortfall), whether that is covered, each bill account with its target/balance/shortfall, the modeled habit and the 'really' line after subtracting it, Budget Day (the next real payday), the critical debts, and any pending one-time events (which are deliberately NOT counted in the math until they are real). Call this before answering anything about affordability, and warnings[] is real -- a bill with no target or no Plaid balance is excluded from the total and named there, never silently treated as funded.",
+      "Shane's real, current money position, straight off the Plaid-synced balances the ShanesSurvival WPF app reads -- the same numbers, from the same rows, through the same math. Returns: available to spend (Income Gate + reserves, minus every bill account's shortfall), whether that is covered, each bill account with its target/balance/shortfall, the modeled habit and the 'really' line after subtracting it, `smoking` (real this-cycle/last-cycle smoke_log totals plus the financial-confrontation line, shown only while a real shortfall exists -- see log_smoke), Budget Day (the next real payday), the critical debts, and any pending one-time events (which are deliberately NOT counted in the math until they are real). Call this before answering anything about affordability, and warnings[] is real -- a bill with no target or no Plaid balance is excluded from the total and named there, never silently treated as funded.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     async handler(_args, ctx) {
       return money.getGateStatus(ctx.user.id);
@@ -1240,6 +1245,67 @@ export const TOOLS = [
         detail: { name: habit.name, amountPerCycle: habit.amount_per_cycle, isActive: habit.is_active },
       });
       return habit;
+    },
+  },
+
+  {
+    name: "log_smoke",
+    title: "Log a real cigarette / pack",
+    description:
+      "The capture-grammar entry point for 'smoked' / 'cigarette(s)' / 'a pack' / 'bought a pack' / 'pack of' (both phrasings log the same +1 pack -- Section 3's capture grammar does not distinguish a single cigarette from a pack purchase). Appends a real row to smoke_log (017), priced from whichever active habit has logSource 'smoke_log' set via set_habit -- never a hardcoded dollar figure. No streak, nothing resets: a slip is just another real data point, per Shane's own real behavioral note that he starts and stops cyclically. get_gate_status's own `smoking` field is where the real running totals and the financial-confrontation line ('Still $X to fund this cycle...') come from -- call that after this to see the updated numbers.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        packs: { type: "number", description: "How many packs this entry represents. Defaults to 1 -- both 'smoked' and 'bought a pack' log a single entry unless Shane states a real count." },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await money.logSmoke(ctx.user.id, { packs: args.packs });
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "money.smoke.logged",
+        entityId: row.id,
+        detail: { packs: row.packs, amount: row.amount },
+      });
+      return row;
+    },
+  },
+
+  // -- Money -> Catches (Git #3153) -------------------------------------------
+  //
+  // Section 4's real expense-cutting mechanisms: renewal watch, forgotten-money sweep,
+  // duplicate-request catch, borrowed-from-bill detection, bulk-buy suggestion. See
+  // src/core/catches.mjs for what each of the five real detectors actually looks for.
+
+  {
+    name: "get_catches",
+    title: "Real money-leak catches",
+    description:
+      "Runs the five real Catches detectors (renewal watch, forgotten-money sweep, duplicate-request, borrowed-from-bill, bulk-buy) against real current data, then returns every real, undismissed catch found -- what the Money screen's Catches card shows. Safe to call any time; upserts make repeated calls idempotent rather than piling up duplicates.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      await catches.runDetectors(ctx.user.id);
+      return { catches: await catches.listCatches(ctx.user.id) };
+    },
+  },
+
+  {
+    name: "dismiss_catch",
+    title: "Got it -- dismiss a catch",
+    description: "Dismisses one real catch, same as tapping 'Got it' on the Money screen's Catches card. Idempotent.",
+    inputSchema: {
+      type: "object",
+      properties: { catchId: { type: "string" } },
+      required: ["catchId"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await catches.dismissCatch(ctx.user.id, args.catchId);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "catch.dismiss", entityId: row.id, detail: { kind: row.kind } });
+      return row;
     },
   },
 

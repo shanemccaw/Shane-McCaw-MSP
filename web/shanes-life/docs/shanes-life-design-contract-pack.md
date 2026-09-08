@@ -477,6 +477,21 @@ language — should NOT look like a chat interface with a persona attached to it
 
 ## 8. Design principles — apply to every screen
 
+- **No forms, anywhere, ever — confirmed explicitly by Shane, 2026-09-08.** The real design
+  has zero dedicated form UI for anything — no add-item forms, no edit-price forms, no
+  aisle/note input fields, no "add vehicle" forms, no settings forms. **Every real action —
+  adding, editing, removing, logging a price, setting a budget, changing a store, noting an
+  aisle — happens by Shane typing it into the one real, smart universal capture box**
+  ("Say anything...") **and the app's own capture-parsing layer understanding what he
+  means.** This is not a Shopping-specific fix — it's the same real "single entry point"
+  principle already locked in Section 3, generalized to its actual full scope: if a room
+  has a text input, a dropdown, an "Add" button, or any dedicated field for a specific
+  action, that's a real defect, not a design choice, regardless of how reasonable it looks
+  in isolation. **Real, confirmed cost of getting this wrong**: several already-built
+  Features (Things/#3156, Vehicles/#3149 among them) shipped real, explicit form UI for
+  add/edit actions — genuine violations of this principle, not yet corrected as of this
+  writing. Any future build touching a room with form-like UI should treat it as a real
+  bug to fix, not existing behavior to preserve.
 - **Trust stated facts immediately.** No confirmation dialogs on what Shane states directly;
   second-guessing is reserved for genuinely ambiguous captures only.
 - **Fewer categories always beat more precise organization.**
