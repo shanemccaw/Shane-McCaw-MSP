@@ -262,8 +262,12 @@ export async function setHabit(
  * to build here for the inference itself -- it was already real. `masked` is the one real gap
  * this issue's design flag called out and this module didn't yet surface: the account number
  * backing the inference ("$190.27 in ···1523"), now added below off the real `mask` column
- * (migration 043) using the same "•••• 1234" convention `getAccountsOverview` already uses. */
-function billFromAccount(account) {
+ * (migration 043) using the same "•••• 1234" convention `getAccountsOverview` already uses.
+ *
+ *  `today` (a real, already-normalised UTC-midnight Date) is only used for the months-behind /
+ *  owed arrears figures (Git #3207) -- the shortfall/funded math above is untouched and stays
+ *  the literal port DashboardService.ComputeAsync already is. */
+function billFromAccount(account, today) {
   const target = toCents(account.target_amount);
   const balance = toCents(account.current_balance);
   let warning = null;
@@ -271,6 +275,19 @@ function billFromAccount(account) {
   if (target === null) warning = "target not set";
   else if (balance === null) warning = "balance unknown — Sync Now";
   else shortfall = Math.max(0, target - balance);
+
+  // % funded (Git #3207): the badge that replaces the old Partially Funded chip / per-bill bar.
+  // Clamped to [0, 100] -- a rolled-over balance can genuinely exceed this cycle's target (the
+  // H2 Electric "$138.27 stays" case in the design), and 100% is still the honest ceiling for a
+  // badge whose whole job is "is this bill covered."
+  const fundedPercent =
+    target === null || balance === null ? null : Math.max(0, Math.min(100, Math.round((balance / Math.max(1, target)) * 100)));
+
+  const monthsBehind = computeMonthsBehind(account.last_paid_date ?? null, account.due_day ?? null, today);
+  // Arrears owed = one real target-amount's worth per missed monthly due date. Only meaningful
+  // once a bill actually has a monthsBehind figure -- see computeMonthsBehind's own header for
+  // why a bill missing either due_day or last_paid_date never gets one guessed at.
+  const owedCents = monthsBehind && target !== null ? monthsBehind * target : null;
 
   return {
     id: account.id,
@@ -280,6 +297,7 @@ function billFromAccount(account) {
     isGate: Boolean(account.is_gate),
     dueDay: account.due_day ?? null,
     lastPaidDate: account.last_paid_date ?? null,
+    mask: account.mask ?? null,
     // Skip Suggestions' own priority grouping (migration 044) -- 'general' is the honest default
     // for a bill nobody has categorized yet, same tier the priority sort itself falls back to for
     // an unrecognized value, so a NULL from before the backfill and an explicit 'general' rank
@@ -291,6 +309,9 @@ function billFromAccount(account) {
     // digit) -- same masking convention getAccountsOverview already established.
     masked: account.mask ? `•••• ${account.mask}` : null,
     warning,
+    fundedPercent,
+    monthsBehind,
+    owedCents,
   };
 }
 
@@ -299,8 +320,9 @@ function billFromAccount(account) {
  * the loading so whatIf and simulateTransfer can re-run it over MUTATED COPIES of the same real
  * balances without a second round trip -- and so it is testable without a database.
  */
-export function computeGateMath({ gateAccounts, billAccounts, reserveAccounts }) {
+export function computeGateMath({ gateAccounts, billAccounts, reserveAccounts }, asOf = new Date()) {
   const warnings = [];
+  const today = asUtcDate(asOf);
 
   // -- Income Gate --------------------------------------------------------
   let gateBalance = null;
@@ -324,7 +346,7 @@ export function computeGateMath({ gateAccounts, billAccounts, reserveAccounts })
   }
 
   // -- bills --------------------------------------------------------------
-  const bills = billAccounts.map(billFromAccount);
+  const bills = billAccounts.map((account) => billFromAccount(account, today));
 
   for (const bill of bills) {
     if (bill.warning) warnings.push(`"${bill.name}": ${bill.warning} — excluded from total shortfall.`);
@@ -360,6 +382,12 @@ export function computeGateMath({ gateAccounts, billAccounts, reserveAccounts })
   // "$X spoken for - Tesla, Electric, Yard" -- the design's own unfunded list, biggest first.
   const unfunded = bills.filter((b) => b.shortfallCents !== null && b.shortfallCents > 0).sort(byShortfallDesc);
 
+  // "Behind · N bills · $X owed" (Git #3207): a real, distinct list from the funded/grouped
+  // groups below it on the Bills tab -- every bill with at least one real missed monthly due
+  // date, sorted by the real amount owed, biggest first, same convention as `unfunded` above.
+  const behind = bills.filter((b) => b.monthsBehind !== null && b.monthsBehind > 0).sort((a, b) => (b.owedCents ?? 0) - (a.owedCents ?? 0));
+  const behindOwedCents = behind.reduce((sum, b) => sum + (b.owedCents ?? 0), 0);
+
   return {
     warnings,
     gateName,
@@ -368,6 +396,8 @@ export function computeGateMath({ gateAccounts, billAccounts, reserveAccounts })
     gateBills,
     otherBills,
     unfunded,
+    behind,
+    behindOwedCents,
     totalShortfallCents: totalShortfall,
     reserves,
     reserveTotalCents: reserveTotal,
@@ -727,6 +757,34 @@ function nextDueDate(dueDay, today) {
 }
 
 /**
+ * How many real monthly due dates have already passed, unpaid, since a bill's real last payment
+ * (Git #3207). Requires BOTH a real `due_day` and a real `last_paid_date` -- same convention
+ * `billFromAccount`'s own shortfall/warning split already uses: a bill missing either never gets
+ * a months-behind figure guessed at, it gets null and stays out of the Behind list entirely.
+ *
+ * The due date in the same calendar month as `lastPaidDate` is treated as the one that payment
+ * covered, so counting starts the month after it. Every due date strictly after that which has
+ * already occurred on or before `today` is one real month behind. A 60-month cap guards against
+ * looping forever over a genuinely stale/bad `last_paid_date`.
+ */
+function computeMonthsBehind(lastPaidDate, dueDay, today) {
+  if (!lastPaidDate || !dueDay) return null;
+  const paid = asUtcDate(lastPaidDate);
+  let year = paid.getUTCFullYear();
+  let month = paid.getUTCMonth() + 1; // the month right after the one last_paid_date covers
+  let months = 0;
+  while (months <= 60) {
+    const y = year + Math.floor(month / 12);
+    const m = ((month % 12) + 12) % 12;
+    const due = new Date(Date.UTC(y, m, Math.min(dueDay, daysInUtcMonth(y, m))));
+    if (due > today) break;
+    months += 1;
+    month += 1;
+  }
+  return months;
+}
+
+/**
  * Real due-versus-available math for Budget Day: which real bills come due BEFORE the next real
  * paycheck lands, and how much of each is still unfunded. Distinct from `totalShortfallCents`
  * (every bill, whenever it's due) -- this is specifically "what has to be covered before more
@@ -900,6 +958,11 @@ function billOut(bill) {
     category: bill.category,
     masked: bill.masked,
     warning: bill.warning,
+    mask: bill.mask,
+    // Git #3207: % funded badge + months-behind sticker + real arrears owed.
+    fundedPercent: bill.fundedPercent,
+    monthsBehind: bill.monthsBehind,
+    owed: toDollars(bill.owedCents),
   };
 }
 
@@ -1058,7 +1121,7 @@ export async function getGateStatus(userId, { asOf = new Date() } = {}) {
     ),
   ]);
 
-  const math = computeGateMath(accounts);
+  const math = computeGateMath(accounts, asOf);
   const habitCents = habitTotalCents(habits);
   const reallyCents = math.topLineCents === null ? null : math.topLineCents - habitCents;
   const smoking = await getSmokeSummary(userId, {
@@ -1091,6 +1154,10 @@ export async function getGateStatus(userId, { asOf = new Date() } = {}) {
     bills: math.bills.map(billOut),
     gateBills: math.gateBills.map(billOut),
     otherBills: math.otherBills.map(billOut),
+    // "Behind · N bills · $X owed" (Git #3207) -- its own distinct, sorted-by-owed list, never
+    // folded into gateBills/otherBills.
+    behind: math.behind.map(billOut),
+    behindOwed: toDollars(math.behindOwedCents),
     habit: {
       totalPerCycle: toDollars(habitCents),
       really: toDollars(reallyCents),

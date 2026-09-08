@@ -1252,6 +1252,23 @@ pre.token {
 .money-bucket-status.short { color: #fbbf24; }
 .money-bucket-status.critical { color: #f87171; }
 
+/* % funded badge (Git #3207, design "Shanes Life 17 - Money v3.dc.html" #2d) -- replaces the old
+   binary funded/short status text and the per-bill bar the design explicitly rejects. Same soft
+   pill shape as .chip.verdict, tinted by real funding tier: red under 30%, amber mid-range,
+   emerald at 100%. */
+.money-percent-badge {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius-full);
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.money-percent-badge.red { background: rgba(248, 113, 113, 0.16); color: #f87171; }
+.money-percent-badge.amber { background: rgba(251, 191, 36, 0.16); color: #fbbf24; }
+.money-percent-badge.emerald { background: rgba(52, 211, 153, 0.16); color: #34d399; }
+
 /* ---------- Money -> Vault (Git #3150) ----------
    Handoff README §7: "lock note, rows with site + masked reference + Reveal (passkey overlay ->
    full value shown 20 s -> Copy)". Sizes/colors are the prototype's own inline values, kept

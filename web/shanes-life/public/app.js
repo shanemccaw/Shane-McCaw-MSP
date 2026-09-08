@@ -1068,7 +1068,7 @@ function showQuickToast(message) {
 
 /** One pill-shaped Badge-style sticker, rotated -5deg per the cute-skin spec. `tone` picks the
  *  tint from the same accent palette the rest of the app already uses (README "Design tokens"). */
-const STICKER_TONE = { blue: "96,165,250", indigo: "165,180,252", amber: "251,191,36" };
+const STICKER_TONE = { blue: "96,165,250", indigo: "165,180,252", amber: "251,191,36", red: "248,113,113" };
 function sticker(tone, text) {
   return el("span", { class: "sticker", style: `background:rgba(${STICKER_TONE[tone]},.16);color:rgb(${STICKER_TONE[tone]})`, text });
 }
@@ -3236,36 +3236,71 @@ function bankReconnectHandler(onDone) {
   };
 }
 
+/** Git #3207 (design `Shanes Life 17 - Money v3.dc.html` #2d, "the envelope is the account's real
+ *  balance"): "$X of $Y in ···NNNN" replaces the old "target $Y · has $Z" pair. A bill with no
+ *  real target yet says so honestly instead of a fabricated $0/$0 line -- #2d again: "No Target
+ *  becomes a prompt in the bill's own words," rendered by `noTargetPrompt()` below. The real
+ *  Plaid-reported last-4 (Git #3206, `bill.mask`) is what backs "in ···NNNN" -- null, honestly,
+ *  until Plaid has actually reported it (migration 043). */
 function moneyBillMeta(bill) {
   const parts = [];
   if (bill.dueDay) parts.push(`due day ${bill.dueDay}`);
-  parts.push(`target ${dollars(bill.target)}`);
-  // The real proof behind "funded": which real Plaid-linked account, and how much is actually
-  // sitting in it -- not just the fact of a checkmark (Git #3206). `masked` is null, honestly,
-  // until Plaid has actually reported this account's real last-4 (migration 043).
-  parts.push(bill.masked ? `has ${dollars(bill.balance)} in ${bill.masked}` : `has ${dollars(bill.balance)}`);
+  const maskSuffix = bill.mask ? ` in ···${bill.mask}` : "";
+  if (bill.target === null) {
+    parts.push("no target yet");
+    parts.push(`${dollars(bill.balance)}${maskSuffix}`);
+  } else {
+    parts.push(`${dollars(bill.target)} a month`);
+    parts.push(`${dollars(bill.balance)} of ${dollars(bill.target)}${maskSuffix}`);
+  }
   return parts.join(" · ");
+}
+
+/** The bill's own words, said back for a target it doesn't have yet -- design #2d's real
+ *  example is `say "water is about 40"`; this is the same capture-grammar prompt for any bill,
+ *  not a fabricated real amount (no target exists yet to report). */
+function noTargetPrompt(bill) {
+  return `say "${bill.name.toLowerCase()} is about 50"`;
+}
+
+/** % funded badge (Git #3207, design #2d): red under 30%, amber mid-range, emerald at 100% --
+ *  replaces the old binary funded/short status text and the per-bill bar the design explicitly
+ *  rejects ("No per-bill bars; the badge and the '$x of $y' line carry it"). */
+function moneyPercentBadge(bill) {
+  const percent = bill.fundedPercent;
+  const tone = percent >= 100 ? "emerald" : percent >= 30 ? "amber" : "red";
+  return el("span", { class: `money-percent-badge ${tone}`, text: `${percent}%` });
 }
 
 /** `showGateBadge` is for the Bills tab (Git #3148): unlike Now's Protected/Urgent/Already
  *  handled buckets, which already segregate gate bills into their own section, the Bills tab
- *  lists every bill account together, so it needs the inline "gate" badge to say which ones. */
+ *  lists every bill account together, so it needs the inline "gate" badge to say which ones.
+ *
+ *  Git #3207: a bill with real months of unpaid arrears gets the same rotated -5deg red sticker
+ *  the rest of the app already uses for critical (`sticker()`, design #2d: "'Months behind' is
+ *  the −5° sticker the rest of the app uses for critical"), next to its name. */
 function moneyBillRow(bill, { showGateBadge = false } = {}) {
-  const statusClass = bill.funded ? "funded" : "short";
-  const statusText = bill.warning
-    ? bill.warning
-    : bill.funded
-      ? "funded"
-      : `short ${dollars(bill.shortfall)}`;
+  const nameChildren = [el("span", { text: bill.name })];
+  if (showGateBadge && bill.isGate) nameChildren.push(el("span", { class: "chip gate", text: "gate" }));
+  if (bill.monthsBehind) {
+    nameChildren.push(sticker("red", `${bill.monthsBehind} month${bill.monthsBehind === 1 ? "" : "s"} behind`));
+  }
+
+  let statusEl;
+  if (bill.target === null) {
+    statusEl = el("span", { class: "money-bucket-status", text: noTargetPrompt(bill) });
+  } else if (bill.warning) {
+    statusEl = el("span", { class: "money-bucket-status critical", text: bill.warning });
+  } else {
+    statusEl = moneyPercentBadge(bill);
+  }
+
   return el("div", { class: "money-bucket-row" }, [
     el("div", { class: "money-bucket-name" }, [
-      el("div", { class: "row", style: "gap:.4rem" }, [
-        el("span", { text: bill.name }),
-        showGateBadge && bill.isGate ? el("span", { class: "chip gate", text: "gate" }) : null,
-      ]),
+      el("div", { class: "row", style: "gap:.4rem" }, nameChildren),
       el("div", { class: "money-bucket-meta", text: moneyBillMeta(bill) }),
     ]),
-    el("span", { class: `money-bucket-status ${bill.warning ? "" : statusClass}`, text: statusText }),
+    statusEl,
   ]);
 }
 
@@ -3681,6 +3716,23 @@ async function viewMoneyVault(view) {
   attachRoomWatermark(view, "vault");
 }
 
+/** Git #3207 (design #2c, "Behind · 6 bills · 19 payments"): one row of the Behind summary --
+ *  bill name, real months behind, real last-paid date, real amount owed. No "for <month>" --
+ *  that's the design mockup's own inference on top of a single real `last_paid_date`, not a
+ *  field this app actually stores; `last paid <date>` is the honest version of the same fact. */
+function moneyBehindRow(bill) {
+  const meta = bill.lastPaidDate
+    ? `${bill.monthsBehind} month${bill.monthsBehind === 1 ? "" : "s"} · last paid ${whenDate(bill.lastPaidDate)}`
+    : `${bill.monthsBehind} month${bill.monthsBehind === 1 ? "" : "s"}`;
+  return el("div", { class: "money-bucket-row" }, [
+    el("div", { class: "money-bucket-name" }, [
+      el("span", { text: bill.name }),
+      el("div", { class: "money-bucket-meta", text: meta }),
+    ]),
+    el("span", { class: "money-bucket-status critical", text: dollars(bill.owed) }),
+  ]);
+}
+
 /** Money's Bills tab (Git #3148): every real bill account, plus real one-time pending events
  *  "not counted until real" -- design README screen 7. Reads the same GET /api/money/gate
  *  #3137 already built (getGateStatus() in src/core/money.mjs); no new backend, no fixture. */
@@ -3688,6 +3740,19 @@ async function viewMoneyBills(view) {
   await renderCycleCard(view, "bills");
 
   const gate = await api("/api/money/gate");
+
+  // "Behind" (Git #3207, design #2c): a real, distinct list from the funded/grouped bill
+  // accounts below it, sorted by real amount owed -- getGateStatus() already returns it
+  // pre-sorted (computeGateMath's own `behind`).
+  const behindCard = el("div", { class: "card money-bucket" }, [
+    el("div", { class: "money-bucket-label urgent", text: `Behind · ${gate.behind.length} bill${gate.behind.length === 1 ? "" : "s"} · ${dollars(gate.behindOwed)} owed` }),
+  ]);
+  if (gate.behind.length === 0) {
+    behindCard.append(el("p", { class: "muted small", style: "padding:0 1rem .7rem", text: "Nothing behind right now." }));
+  } else {
+    for (const bill of gate.behind) behindCard.append(moneyBehindRow(bill));
+  }
+  view.append(behindCard);
 
   const billsCard = el("div", { class: "card money-bucket" }, [
     el("div", { class: "money-bucket-label", text: "Bill accounts · funded from Direct Deposit" }),
