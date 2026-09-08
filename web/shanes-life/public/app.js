@@ -3511,8 +3511,6 @@ async function viewMoneyBills(view) {
 // screen that was never built, reading/writing the SAME `debts` table get_gate_status's own
 // Protected bucket reads (src/core/money.mjs), not a second, disconnected list.
 
-let bankruptcyEditId = null; // transient client-only state, same idiom as moneyTab above
-
 function debtBadges(d) {
   const chips = [];
   if (d.includedInBankruptcy) chips.push(el("span", { class: "chip", text: "in filing" }));
@@ -3539,100 +3537,15 @@ function debtCard(d) {
   if (meta.length) rows.push(el("div", { class: "small muted", text: meta.join(" · ") }));
   if (d.notes) rows.push(el("div", { class: "small", text: d.notes }));
 
+  // Git #3196: no dedicated edit/delete buttons or form -- a real natural-language capture
+  // ("Chrysler Capital's balance is now $7,900", "remove the Chrysler Capital debt") typed into
+  // the universal capture box routes through set_debt/delete_debt, same as every other real
+  // action in this app (same treatment #3182 gave the Cars tab).
   rows.push(
-    el("div", { class: "row", style: "margin-top:.5rem;gap:.5rem" }, [
-      el("button", {
-        type: "button",
-        class: "small ghost",
-        text: "Edit",
-        onClick: () => {
-          bankruptcyEditId = bankruptcyEditId === d.id ? null : d.id;
-          render();
-        },
-      }),
-      el("button", {
-        type: "button",
-        class: "small ghost danger",
-        text: "Delete",
-        onClick: async (event) => {
-          if (!confirm(`Delete ${d.creditor}? This removes it from ShanesSurvival's own debts table too.`)) return;
-          event.currentTarget.disabled = true;
-          await api(`/api/money/debts/${d.id}`, { method: "DELETE" });
-          render();
-        },
-      }),
-    ]),
+    el("div", { class: "small muted", style: "margin-top:.5rem", text: `Say what changed below, e.g. "${d.creditor}'s balance is now $X" or "remove the ${d.creditor} debt".` }),
   );
 
-  const card = el("div", { class: "card" }, rows);
-  if (bankruptcyEditId === d.id) card.append(debtForm(d));
-  return card;
-}
-
-/** Shared add/edit form. `existing` is null for "add a new debt". */
-function debtForm(existing) {
-  const v = (field, fallback = "") => (existing && existing[field] !== null && existing[field] !== undefined ? existing[field] : fallback);
-
-  const creditorInput = el("input", { placeholder: "Creditor", "aria-label": "Creditor", value: v("creditor") });
-  const balanceInput = el("input", { type: "number", step: "0.01", placeholder: "Current balance", "aria-label": "Current balance", value: v("balance") });
-  const originalBalanceInput = el("input", { type: "number", step: "0.01", placeholder: "Original balance (optional)", "aria-label": "Original balance", value: v("originalBalance") });
-  const minimumPaymentInput = el("input", { type: "number", step: "0.01", placeholder: "Minimum payment (optional)", "aria-label": "Minimum payment", value: v("minimumPayment") });
-  const debtTypeInput = el("input", { placeholder: "Type, e.g. mortgage, tax, credit_card, bnpl", "aria-label": "Debt type", value: v("debtType") });
-  const dueDayInput = el("input", { type: "number", min: "1", max: "31", placeholder: "Due day (optional)", "aria-label": "Due day", value: v("dueDay") });
-  const lastPaymentDateInput = el("input", { type: "date", "aria-label": "Last payment date", value: v("lastPaymentDate") });
-  const notesInput = el("textarea", { placeholder: "Notes", "aria-label": "Notes", rows: "2", text: v("notes") });
-  const includedInput = el("input", { type: "checkbox" });
-  includedInput.checked = Boolean(v("includedInBankruptcy", false));
-  const criticalInput = el("input", { type: "checkbox" });
-  criticalInput.checked = Boolean(v("isCritical", false));
-  const delinquentInput = el("input", { type: "checkbox" });
-  delinquentInput.checked = Boolean(v("isDelinquent", false));
-
-  const form = el("form", { class: "section", style: "margin-top:.5rem" }, [
-    el("div", { class: "row", style: "gap:.5rem;flex-wrap:wrap" }, [creditorInput, balanceInput]),
-    el("div", { class: "row", style: "gap:.5rem;flex-wrap:wrap" }, [originalBalanceInput, minimumPaymentInput, dueDayInput]),
-    el("div", { class: "row", style: "gap:.5rem;flex-wrap:wrap" }, [debtTypeInput, lastPaymentDateInput]),
-    notesInput,
-    el("label", { class: "row small", style: "gap:.35rem;align-items:center" }, [includedInput, "Part of the bankruptcy filing"]),
-    el("label", { class: "row small", style: "gap:.35rem;align-items:center" }, [criticalInput, "Critical (shown in Money's Protected bucket)"]),
-    el("label", { class: "row small", style: "gap:.35rem;align-items:center" }, [delinquentInput, "Delinquent"]),
-    el("div", { class: "row", style: "gap:.5rem" }, [
-      el("button", { type: "submit", class: "primary small", text: existing ? "Save" : "Add debt" }),
-      existing ? el("button", { type: "button", class: "small ghost", text: "Cancel", onClick: () => { bankruptcyEditId = null; render(); } }) : null,
-    ]),
-  ]);
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const body = {
-      creditor: creditorInput.value.trim(),
-      balance: balanceInput.value === "" ? undefined : Number(balanceInput.value),
-      originalBalance: originalBalanceInput.value === "" ? null : Number(originalBalanceInput.value),
-      minimumPayment: minimumPaymentInput.value === "" ? null : Number(minimumPaymentInput.value),
-      debtType: debtTypeInput.value.trim() || null,
-      dueDay: dueDayInput.value === "" ? null : Number(dueDayInput.value),
-      lastPaymentDate: lastPaymentDateInput.value || null,
-      notes: notesInput.value.trim() || null,
-      includedInBankruptcy: includedInput.checked,
-      isCritical: criticalInput.checked,
-      isDelinquent: delinquentInput.checked,
-    };
-    form.querySelectorAll("input,textarea,button").forEach((n) => (n.disabled = true));
-    try {
-      if (existing) {
-        await api(`/api/money/debts/${existing.id}`, { method: "PATCH", body: JSON.stringify(body) });
-        bankruptcyEditId = null;
-      } else {
-        if (body.balance === undefined) delete body.balance;
-        await api("/api/money/debts", { method: "POST", body: JSON.stringify(body) });
-      }
-      render();
-    } finally {
-      form.querySelectorAll("input,textarea,button").forEach((n) => (n.disabled = false));
-    }
-  });
-
-  return form;
+  return el("div", { class: "card" }, rows);
 }
 
 async function viewMoneyBankruptcy(view) {
@@ -3643,12 +3556,13 @@ async function viewMoneyBankruptcy(view) {
   );
 
   if (debts.length === 0) {
-    view.append(empty("No debts on file yet.", "Add one below, or ask Claude to.", "idle"));
+    view.append(empty("No debts on file yet.", "Say one below, e.g. \"add a debt: Chrysler Capital, $8,200\", and Claude adds it.", "idle"));
   } else {
     view.append(el("section", { class: "section" }, debts.map(debtCard)));
   }
 
-  view.append(el("div", { class: "card" }, [el("h2", { text: "Add a debt", style: "margin-top:0" }), debtForm(null)]));
+  // Git #3196: no dedicated add-debt form -- "add a debt: Chrysler Capital, $8,200, part of the
+  // bankruptcy filing" typed into the universal capture box below routes through set_debt.
 
   attachRoomWatermark(view, "moneyhdr");
 }

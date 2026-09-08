@@ -35,7 +35,7 @@ Every decision below traces to a section of it, and the section is cited in the 
 | Recipes: Tonight -- multi-dish synchronized cooking, live status/countdowns, start + done alarms, per-dish snooze (Shanes Life 05) | `recipes.cook_minutes` (migration 028), MCP `push_recipes` `cookMinutes`, `public/app.js` `#/tonight` (`mealSession`, `mealDishState`, `renderMealAlarmOverlay`) -- client-only session, deliberately not persisted; takes priority over #3127's own Today "Tonight" card while a live session is running (#3126) |
 | People & Patterns: private per-person journal, deliberately dumb word/timing/topic patterns, real search/ask, therapist export (§7, Shanes Life 11) | `src/core/people.mjs`, `people`/`person_entries` tables (migration 035), `GET/POST /api/people`, `GET/POST/DELETE /api/people/:id/...`, `public/app.js` `#/people` + `#/person/:id`, MCP `list_people`/`log_person_note`/`get_person_notes` (#3157) |
 | Enhanced alerts: real Web Push sending + act-on-notification (mark done/snooze/dismiss) (§10) | `src/push/webpush.mjs` (hand-rolled RFC 8291/8292, no dependency added), `src/core/push-subscriptions.mjs`, `push_subscriptions` table (migration 036), `POST /api/push/subscribe`\`/unsubscribe\`, `GET /api/push/vapid-public-key`, `POST /api/nudges/:id/action`, `public/sw.js` (`push`/`notificationclick`), `public/app.js` Settings "Notifications" -- real action buttons work on Chrome/Android; Safari/iOS does not honor custom action buttons on either push mechanism (confirmed, not assumed -- see §10), so it degrades to the design's own stated fallback: tap opens the app to the item (#3160) |
-| Bankruptcy/debt tracker, ported from Finance-Tracker's dead `BankruptcyItem` sub-feature -- a real overlay on ShanesSurvival's own `debts` table, not a second list (docs/shanes-life-design-contract-pack.md §12) | `debts.debt_type`/`original_balance`/`last_payment_date`/`included_in_bankruptcy` (migration 041), `src/core/money.mjs` `listDebts`/`createDebt`/`updateDebt`/`deleteDebt`, `GET/POST /api/money/debts`, `PATCH/DELETE /api/money/debts/:id`, `public/app.js` Money "Bankruptcy" tab, MCP `list_debts`/`set_debt`/`delete_debt` (#3163) |
+| Bankruptcy/debt tracker, ported from Finance-Tracker's dead `BankruptcyItem` sub-feature -- a real overlay on ShanesSurvival's own `debts` table, not a second list (docs/shanes-life-design-contract-pack.md §12) | `debts.debt_type`/`original_balance`/`last_payment_date`/`included_in_bankruptcy` (migration 042), `src/core/money.mjs` `listDebts`/`createDebt`/`updateDebt`/`deleteDebt`, `GET/POST /api/money/debts`, `PATCH/DELETE /api/money/debts/:id`, `public/app.js` Money "Bankruptcy" tab, MCP `list_debts`/`set_debt`/`delete_debt` (#3163) |
 
 ---
 
@@ -113,6 +113,39 @@ both `desktop/ShanesSurvival/migrations/` and `web/shanes-life/migrations/` befo
 migration file.** That's no longer just a comment (Git #3118) — `scripts/check-migration-numbers.mjs`
 enforces it for real. Both runners call `assertNoDuplicateMigrationNumbers()` before applying
 anything, and refuse to run if the same leading number was used in both directories.
+
+**A ledger row you don't have a file for is not always a problem (Git #3175).** That one
+`schema_migrations` table is shared by every concurrent build on this machine, but each build
+runs in its own git worktree off `origin/main` — so for the whole window between "a sibling
+build applied its migration" and "that sibling's commit reached `origin/main` and I merged it",
+your ledger is legitimately *ahead* of your own `migrations/` directory. `src/migrate.mjs` now
+tells the two apart:
+
+- **Ahead** — the row's number is higher than anything you have on disk. Nothing here can re-run
+  under it, because this checkout has no file at that number at all. Logged as a one-line notice;
+  the migration runs, the server boots, `npm run check` runs.
+- **Missing** — the row's number *is* occupied on disk under a different name. That is the real
+  #3140 hazard (an applied migration renamed, so its identical SQL re-executes under the new
+  name), or a sibling that took your number first and needs you to renumber. Still fails closed,
+  loudly, before anything is applied, and the message names which of the two it is.
+
+Before #3175 both were fatal, which meant `npm start` — and therefore `npm run check`, the whole
+end-to-end suite — was blocked most of the time whenever several builds were live.
+`node scripts/check-migration-numbers.selftest.mjs` covers the classification with real files on
+disk.
+
+**Reading only those two local directories is not enough to PICK a number, and two concurrent
+builds proved it
+(Git #3197)** — `044_income_rules.sql` and `044_money_home_tab_decision_tools.sql` both landed on
+044 the same night because neither session's worktree had the other's file on disk, and
+`origin/main` didn't either until one of them merged. **Run `node bin/next-migration-number.mjs`
+before naming a new migration file.** It reads the shared `schema_migrations` ledger — which both
+migrations directories combined cannot see, but which every session that has already run its
+migration locally (already required, real work, before merging) has already written a row into —
+unioned with both on-disk directories, and prints the real next-free number, warning loudly if the
+ledger holds a number no local file has yet (a peer's in-flight, not-yet-merged claim). This is
+advisory on top of, not a replacement for, `assertNoDuplicateMigrationNumbers()` /
+`assertNoOrphanLedgerRows()`, which remain the real enforcement.
 
 `src/migrate.mjs` refuses to run at all if `DATABASE_URL` points somewhere without
 ShanesSurvival's own tables, and names the database it actually found. That guard exists

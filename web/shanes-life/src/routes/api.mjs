@@ -1524,7 +1524,7 @@ export function buildApiRouter() {
 
   // -- Money -> Bankruptcy/debt tracker (Git #3163) -------------------------------------
   //
-  // A real overlay on ShanesSurvival's own `debts` table (migration 041) -- see
+  // A real overlay on ShanesSurvival's own `debts` table (migration 042) -- see
   // src/core/money.mjs's own header for the real investigation and decision. Full CRUD,
   // matching Finance-Tracker's `BankruptcyItem` shape (add/update/delete), because this is the
   // one real write surface in Money's own routes that writes to a ShanesSurvival table, not a

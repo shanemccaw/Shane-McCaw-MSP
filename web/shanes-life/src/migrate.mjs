@@ -27,8 +27,8 @@ const MIGRATIONS_DIR = resolve(config.root, "migrations");
 const REQUIRED_BASE_TABLES = ["accounts", "transactions", "plaid_items", "debts"];
 
 // Git #3166: `schema_migrations` is shared, live, across every concurrent worktree on this
-// machine (see CLAUDE.md's Database section). An orphan row can be another session's own
-// in-flight, still-uncommitted rename -- real evidence showed the condition self-clearing
+// machine (see CLAUDE.md's Database section). A still-fatal orphan row can be another session's
+// own in-flight, still-uncommitted rename -- real evidence showed the condition self-clearing
 // within minutes once that session committed or reverted. A short bounded retry absorbs that
 // transient window without either applying anything early (nothing runs until the ledger reads
 // clean) or hanging indefinitely: after ORPHAN_RETRY_ATTEMPTS all still see the same orphan(s),
@@ -93,7 +93,8 @@ export async function runMigrations({ log = console.log } = {}) {
     await assertSharedDatabase(client);
 
     // Fail closed, loudly, before applying anything if the ledger references a filename that
-    // no longer exists in either directory (Git #3140) -- almost always an applied migration
+    // no longer exists in either directory AND sits at a number this checkout does have on disk
+    // under another name (Git #3140, narrowed by Git #3175) -- almost always an applied migration
     // that got renamed, which would otherwise silently re-run under its new name below. Re-read
     // and re-check a few times first (Git #3166): the row set is live and shared across every
     // concurrent worktree, so an orphan can be another session's own in-flight rename that
@@ -102,7 +103,19 @@ export async function runMigrations({ log = console.log } = {}) {
     for (let attempt = 1; ; attempt++) {
       ({ rows } = await client.query("SELECT filename FROM schema_migrations"));
       try {
-        assertNoOrphanLedgerRows(rows.map((r) => r.filename));
+        // Rows that are merely AHEAD of this checkout are reported, not fatal (Git #3175):
+        // a sibling build applied a higher-numbered migration against this same shared local
+        // database and has not landed it on origin/main yet. Nothing here can re-run because
+        // of it -- this checkout has no file at that number at all.
+        const { ahead } = assertNoOrphanLedgerRows(rows.map((r) => r.filename));
+        if (ahead.length > 0) {
+          log(
+            `[migrate] ${ahead.length} ledger row(s) are ahead of this checkout -- ` +
+              `${ahead.join(", ")}. A concurrent build applied ${ahead.length === 1 ? "it" : "them"} ` +
+              `to this shared database and has not merged to origin/main yet. Not a problem: ` +
+              `nothing here re-runs, and they arrive on the next merge (Git #3175).`,
+          );
+        }
         break;
       } catch (err) {
         if (attempt >= ORPHAN_RETRY_ATTEMPTS) {
