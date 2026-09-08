@@ -2743,20 +2743,24 @@ function attachSlideToTake(track, knob, onComplete) {
   knob.addEventListener("pointercancel", release);
 }
 
+// The pill icon (lucide "Pill") the design puts in a tinted circle on every real item row.
+const PILL_ICON_PATH = '<path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"></path><path d="m8.5 8.5 7 7"></path>';
+
 function medBatchCard(batchState) {
   const { batch, items, takenToday, takenAt } = batchState;
   const label = batch.charAt(0).toUpperCase() + batch.slice(1);
 
   const itemRows = items.map((item) =>
     el("div", { class: "med-item-row" }, [
-      el("span", { text: item.name }),
+      el("div", { class: "med-item-icon" }, [lineIcon(PILL_ICON_PATH, { size: 16 })]),
+      el("span", { style: "flex:1", text: item.name }),
       item.doseNote ? el("span", { class: "med-dose", text: item.doseNote }) : null,
     ]),
   );
 
   const card = el("div", { class: "card" }, [
     el("div", { class: "spread" }, [
-      el("div", { class: "row" }, [critterIcon(medsCritterSlot(batch), { size: 32 }), el("span", { class: "title", text: label })]),
+      el("div", { class: "row" }, [critterIcon(medsCritterSlot(batch), { size: 32 }), el("span", { class: "med-batch-title", text: label })]),
       el("span", { class: "meta", text: `${items.length} ${items.length === 1 ? "item" : "items"}` }),
     ]),
     ...itemRows,
@@ -2805,18 +2809,22 @@ function medBatchCard(batchState) {
   return card;
 }
 
+// Same two icons the design puts in the two refill tiers' own tinted circles (lucide "Phone"
+// for the manual-watch tier, the same check lineIcon already uses for a taken batch for the
+// auto-refill tier).
+const REFILL_PHONE_ICON_PATH =
+  '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path>';
+const REFILL_CHECK_ICON_PATH = '<path d="M20 6 9 17l-5-5"></path>';
+
 function refillNeedsYouCard(item) {
   const daysLeft = item.daysLeft;
-  const dueSoon = daysLeft !== null && daysLeft <= 3;
-  return el("div", { class: "card refill-row" }, [
-    el("div", { style: "flex:1;min-width:0" }, [
-      el("div", { class: "refill-tier-label needs-you", text: "Needs you" }),
-      el("div", { class: "title", style: "margin-top:3px", text: daysLeft === null ? item.name : `${item.name} · ${daysLeft <= 0 ? "due now" : `${daysLeft} ${daysLeft === 1 ? "day" : "days"} left`}` }),
-      item.refillNote ? el("div", { class: `refill-days-left ${dueSoon ? "due" : ""}`, text: item.refillNote }) : null,
-    ]),
-    el("button", {
-      class: "small",
-      text: "Ordered it",
+  const titleLine =
+    daysLeft === null ? item.name : `${item.name} · ${daysLeft <= 0 ? "due now" : `${daysLeft} ${daysLeft === 1 ? "day" : "days"} left`}`;
+
+  const orderedButton = pillButton(
+    "button",
+    {
+      type: "button",
       onClick: async (event) => {
         event.currentTarget.disabled = true;
         try {
@@ -2826,7 +2834,26 @@ function refillNeedsYouCard(item) {
           event.currentTarget.disabled = false;
         }
       },
-    }),
+    },
+    "Ordered it",
+    "ghost",
+  );
+  // "Call pharmacy" (the design's own real second action) only ever appears once a real number
+  // exists to call -- never a button pointed at nothing.
+  const actions = item.pharmacyPhone
+    ? [pillButton("a", { href: `tel:${item.pharmacyPhone}` }, "Call pharmacy", "primary"), orderedButton]
+    : [orderedButton];
+
+  return el("div", { class: "card refill-card" }, [
+    el("div", { class: "refill-row" }, [
+      el("div", { class: "refill-icon needs-you" }, [lineIcon(REFILL_PHONE_ICON_PATH, { size: 18 })]),
+      el("div", { style: "flex:1;min-width:0" }, [
+        el("div", { class: "refill-tier-label needs-you", text: "Needs you" }),
+        el("div", { class: "title", style: "margin-top:3px", text: titleLine }),
+        item.refillNote ? el("div", { class: "refill-days-left", text: item.refillNote }) : null,
+      ]),
+    ]),
+    el("div", { class: "pill-row" }, actions),
   ]);
 }
 
@@ -2843,12 +2870,22 @@ function refillsSection(refills) {
   for (const item of refills.needsYou) section.append(refillNeedsYouCard(item));
 
   if (refills.handled.length > 0) {
+    // Only ever names one real shared "next delivery" date -- when the handled meds' own real
+    // nextRefillOn dates actually agree. Different real dates per item say "nothing to do"
+    // instead of picking one and implying it covers all of them.
+    const dates = refills.handled.map((h) => h.nextRefillOn).filter(Boolean);
+    const sameDate = dates.length === refills.handled.length && dates.every((d) => d === dates[0]);
+    const noteText = sameDate
+      ? `Auto-refill · next delivery ${new Date(dates[0]).toLocaleDateString([], { month: "short", day: "numeric" })} · nothing to do`
+      : "Auto-refill · nothing to do";
+
     section.append(
       el("div", { class: "card refill-row" }, [
+        el("div", { class: "refill-icon handled" }, [lineIcon(REFILL_CHECK_ICON_PATH, { size: 18 })]),
         el("div", { style: "flex:1;min-width:0" }, [
           el("div", { class: "refill-tier-label handled", text: "Handled automatically" }),
           el("div", { style: "margin-top:3px;line-height:1.45", text: refills.handled.map((h) => h.name).join(", ") }),
-          el("div", { class: "refill-days-left", text: "Auto-refill · nothing to do" }),
+          el("div", { class: "refill-days-left", text: noteText }),
         ]),
       ]),
     );
@@ -2857,15 +2894,21 @@ function refillsSection(refills) {
   return section;
 }
 
+// Git #3191: Meds' own native header -- back "Today" / centered title / spacer, same real
+// shape Today (#3174) and Shopping (#3178) already use, replacing the generic app-header this
+// room used to fall back on (see render()'s hasOwnHeader).
+function medsHeader() {
+  return el("div", { class: "meds-header" }, [
+    el("a", { href: "#/today", class: "meds-header-back" }, [chevron("left"), el("span", { text: "Today" })]),
+    el("div", { class: "meds-header-title", text: "Meds" }),
+    el("div", { class: "meds-header-spacer" }),
+  ]);
+}
+
 async function viewMeds(view) {
   const { batches, refills } = await api("/api/medications");
 
-  view.append(
-    el("section", { class: "section" }, [
-      el("h2", { text: "Meds" }),
-      el("p", { class: "muted small", text: "One slide per batch, not one tap per pill." }),
-    ]),
-  );
+  view.append(medsHeader());
 
   if (batches.length === 0) {
     view.append(
@@ -7828,11 +7871,11 @@ async function render() {
   // Git #3174: Today's own fox/weather scene (renderTodayHeader) IS the header per the real
   // design -- the generic title-bar chrome is leftover Foundation-era shell (#3087) that the
   // Today tray's Round 2 redesign never used. Git #3178: Shopping is the second room to get its
-  // own native chrome (viewShopping's own .shop-header). Every other room still shows the
-  // generic bar until it gets its own redesign pass. #app-view.no-header lets .view collapse its
-  // top padding to just the native status-bar safe area instead of assuming a header row sits
-  // above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping";
+  // own native chrome (viewShopping's own .shop-header). Git #3191: Meds is the third
+  // (viewMeds' own medsHeader). Every other room still shows the generic bar until it gets its
+  // own redesign pass. #app-view.no-header lets .view collapse its top padding to just the
+  // native status-bar safe area instead of assuming a header row sits above it (see app.css).
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "meds";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 

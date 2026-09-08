@@ -19,6 +19,7 @@ const REFILL_TIERS = new Set(["auto", "manual"]);
 const MAX_NAME_LEN = 200;
 const MAX_NOTE_LEN = 2000;
 const MAX_BATCH_LEN = 60;
+const MAX_PHONE_LEN = 40;
 
 function cleanBatch(batch) {
   const text = String(batch ?? "").trim().toLowerCase();
@@ -37,7 +38,7 @@ function coerceDate(value, field) {
 export async function getOwnedMedication(userId, medicationId) {
   return one(
     `SELECT id, name, dose_note, batch, refill_tier, supply_days, next_refill_on, refill_note,
-            position, created_at, updated_at
+            pharmacy_phone, position, created_at, updated_at
        FROM medications WHERE id = $1 AND user_id = $2 AND archived_at IS NULL`,
     [medicationId, userId],
   );
@@ -46,11 +47,13 @@ export async function getOwnedMedication(userId, medicationId) {
 /**
  * Create one real medication. `refillTier` defaults to 'manual' -- the safer default is to
  * surface as needing attention rather than silently assume auto-refill for something that
- * isn't.
+ * isn't. `pharmacyPhone` (Git #3191) is free text, not validated as a phone format, and is what
+ * drives the real "Call pharmacy" tel: link on a manual-watch refill card -- the button only
+ * ever appears once a real number is set here.
  */
 export async function createMedication(
   userId,
-  { name, doseNote, batch, refillTier = "manual", supplyDays, nextRefillOn, refillNote, position = 0 } = {},
+  { name, doseNote, batch, refillTier = "manual", supplyDays, nextRefillOn, refillNote, pharmacyPhone, position = 0 } = {},
 ) {
   const cleanName = String(name ?? "").trim().slice(0, MAX_NAME_LEN);
   if (!cleanName) throw badRequest("name is required");
@@ -59,10 +62,10 @@ export async function createMedication(
 
   const row = await one(
     `INSERT INTO medications
-       (user_id, name, dose_note, batch, refill_tier, supply_days, next_refill_on, refill_note, position)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       (user_id, name, dose_note, batch, refill_tier, supply_days, next_refill_on, refill_note, pharmacy_phone, position)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      RETURNING id, name, dose_note, batch, refill_tier, supply_days, next_refill_on, refill_note,
-               position, created_at, updated_at`,
+               pharmacy_phone, position, created_at, updated_at`,
     [
       userId,
       cleanName,
@@ -72,6 +75,7 @@ export async function createMedication(
       supplyDays === undefined || supplyDays === null ? null : Math.max(0, Math.trunc(Number(supplyDays))),
       coerceDate(nextRefillOn, "nextRefillOn"),
       refillNote ? String(refillNote).trim().slice(0, MAX_NOTE_LEN) : null,
+      pharmacyPhone ? String(pharmacyPhone).trim().slice(0, MAX_PHONE_LEN) : null,
       Number.isFinite(Number(position)) ? Math.trunc(Number(position)) : 0,
     ],
   );
@@ -85,6 +89,7 @@ const UPDATABLE = {
   supply_days: (v) => (v === null ? null : Math.max(0, Math.trunc(Number(v)))),
   next_refill_on: (v) => coerceDate(v, "nextRefillOn"),
   refill_note: (v) => (v === null ? null : String(v).trim().slice(0, MAX_NOTE_LEN)),
+  pharmacy_phone: (v) => (v === null ? null : String(v).trim().slice(0, MAX_PHONE_LEN)),
   position: (v) => Math.trunc(Number(v)),
 };
 
@@ -101,6 +106,7 @@ export async function updateMedication(userId, medicationId, patch = {}) {
     supply_days: patch.supplyDays,
     next_refill_on: patch.nextRefillOn,
     refill_note: patch.refillNote,
+    pharmacy_phone: patch.pharmacyPhone,
     position: patch.position,
   };
   for (const [column, value] of Object.entries(mapped)) {
@@ -169,7 +175,7 @@ function todayDateString() {
 export async function getMedsToday(userId) {
   const meds = await many(
     `SELECT id, name, dose_note, batch, refill_tier, supply_days, next_refill_on, refill_note,
-            position, created_at, updated_at
+            pharmacy_phone, position, created_at, updated_at
        FROM medications
       WHERE user_id = $1 AND archived_at IS NULL
       ORDER BY batch, position, created_at`,
@@ -233,6 +239,7 @@ export async function getMedsToday(userId) {
       name: m.name,
       nextRefillOn: m.next_refill_on,
       refillNote: m.refill_note,
+      pharmacyPhone: m.pharmacy_phone,
       daysLeft:
         m.next_refill_on == null
           ? null
