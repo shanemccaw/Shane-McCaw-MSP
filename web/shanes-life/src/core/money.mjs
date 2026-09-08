@@ -32,6 +32,62 @@
 // Nothing here writes to ShanesSurvival's tables, and simulateTransfer structurally cannot:
 // Plaid is read-only and NFCU has no Transfer product, so a "transfer" is arithmetic on copies
 // of real balances and nothing else.
+//
+// -- Git #3162 real architectural check: Finance-Tracker's bill envelope model does NOT
+//    transfer here, and was deliberately not ported. Recorded so a future session doesn't
+//    retry it blindly. ------------------------------------------------------------------
+//
+// `FINANCE_TRACKER_AUDIT.md` (shanemccaw/Finance-Tracker, read 2026-09-08) ranks the
+// envelope model -- `bill.assigned` (this-cycle contribution, resets on "New Cycle") kept
+// separate from `bill.envelopeBalance` (a persistent pocket), reassignment applying a DELTA
+// rather than an overwrite -- as its single most reusable pattern. It solves a real problem
+// there: Finance-Tracker has ONE pooled checking account and every bill is a virtual split of
+// it, tracked entirely in a client-side JSONB blob, so the app itself has to be the ledger of
+// "how much of that one balance is earmarked for what."
+//
+// That problem does not exist here. `accounts.role = 'bill'` rows (migration 003) are each a
+// real, separate, Plaid-linked bank account -- confirmed by `accounts.plaid_item_id NOT NULL`
+// (migration 001: every account row requires a real Plaid item, there is no manual/virtual
+// account) and by the contract pack's own real correction, confirmed the same day this issue
+// was worked (`web/shanes-life/docs/shanes-life-design-contract-pack.md`, commit e6e7a2841):
+// "Moving money from Direct Deposit into separate real bill/category accounts is literally
+// envelope-style budgeting -- that mechanism is the real system, not a side effect of it."
+// The envelope split already happens, for real, at the bank -- Shane moves real dollars
+// between real NFCU sub-accounts, and Plaid sync (not this module) is what keeps
+// `current_balance` current. There is nothing left for a shadow ledger to do except disagree
+// with the real balance it would be shadowing, which is exactly the failure this module's own
+// header above exists to prevent (two surfaces, two different numbers).
+//
+// Two more confirmations this is a real architectural mismatch, not just an unbuilt feature:
+//   * `migrations/011_bill_last_paid_date.sql`'s own comment is explicit that `last_paid_date`
+//     is "informational only... does not touch the existing bill_status/gate_status shortfall
+//     math, which stays keyed off target_amount vs. current_balance" -- i.e. ShanesSurvival
+//     already made this same call for the one place a Finance-Tracker-style ledger write
+//     (`toggleBillPaid` debiting `envelopeBalance`) could have landed, and chose not to.
+//   * There is no "New Cycle" reset anywhere in this app's model, and none is needed: a real
+//     bank balance is never zeroed by the app, so there is nothing analogous to
+//     `bill.assigned` resetting each cycle for a delta to be computed against.
+// Bill/account mutations (target_amount, last_paid_date, role) are ShanesSurvival's own MCP
+// tools' job (`desktop/ShanesSurvival/src/ShanesSurvival.Mcp/Tools/FinanceTools.cs`), not
+// this module's -- another reason a parallel envelope-assignment mutation does not belong here.
+//
+// Scope 2 of #3162 asked the same honest question of the `persist()`/`latestStateRef` stale-
+// closure fix (Finance-Tracker's #2-ranked pattern) and the answer is the same "no, and here is
+// the real evidence": this app's whole frontend (`web/shanes-life/public/*.js`) has no
+// debounced client-side autosave, no `AsyncStorage`-style local cache, and no optimistic
+// update of a client-held blob to go stale in the first place -- confirmed by grepping the
+// entire `public/` tree for `debounce`/`localStorage`/`AsyncStorage` (money.mjs's own routes
+// are the only ones money-related, and every one of them is a plain `fetch` via the shared
+// `api()` helper in `app.js`, request in, JSON response out, nothing cached client-side
+// between calls). Server-authoritative, exactly as this issue suspected. If Shane's Life's
+// client ever grows real local optimistic state for Money, re-read
+// `FINANCE_TRACKER_AUDIT.md` section 5 item 2 before inventing a fix from scratch.
+//
+// Scope 3 (Plaid webhooks) is real and still open -- neither app has one today, and this repo
+// is the one with a real internet-reachable server to receive them (ShanesSurvival is a
+// desktop app with no public endpoint). It is a genuinely large, separate feature (signature
+// verification, item-health classification, reconnect-flow wiring), so per this issue's own
+// text it was filed as its own follow-up Feature rather than squeezed in here: #3185.
 
 import { many, one } from "../db.mjs";
 import { badRequest } from "../http.mjs";
