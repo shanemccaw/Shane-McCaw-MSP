@@ -102,13 +102,16 @@ async function resolveEntityRecord(entityId) {
 }
 
 /** Resolve a token to the real row it grants (whichever kind of table it points at), or null.
- *  Also bumps the real view counter. */
+ *  Also bumps the real view counter. Joins the real owning user's `name` (Git #3184) so the
+ *  public shape can say "From Shane" instead of inventing a sharer label -- this app is
+ *  single-user today, but the join reads the real row rather than hardcoding the name. */
 export async function resolveShare(token, { countView = false } = {}) {
   if (!token) return null;
   const link = await one(
     `SELECT s.id, s.user_id, s.entity_kind, s.entity_id, s.list_id, s.label, s.can_check,
-            s.expires_at, s.view_count
+            s.expires_at, s.view_count, COALESCE(u.display_name, u.name) AS owner_name
        FROM share_links s
+       JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1
         AND s.revoked_at IS NULL
         AND (s.expires_at IS NULL OR s.expires_at > now())`,
