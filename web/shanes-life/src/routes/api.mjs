@@ -10,6 +10,7 @@ import * as webauthn from "../auth/webauthn.mjs";
 import * as audit from "../core/audit.mjs";
 import * as captures from "../core/captures.mjs";
 import * as categories from "../core/categories.mjs";
+import * as contacts from "../core/contacts.mjs";
 import * as dates from "../core/dates.mjs";
 import * as entities from "../core/entities.mjs";
 import * as federalHolidays from "../core/federal-holidays.mjs";
@@ -26,7 +27,9 @@ import * as scan from "../core/scan.mjs";
 import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
 import * as vault from "../core/vault.mjs";
+import * as things from "../core/things.mjs";
 import { orderItems } from "../core/shopping-order.mjs";
+import * as vehicles from "../core/vehicles.mjs";
 
 // Deliberately tight: this app has one real account, so a burst of failures is an attack, not a
 // forgetful person.
@@ -597,6 +600,56 @@ export function buildApiRouter() {
     return sendJson(res, 200, { stores: await storeAisles.listStores(user.id) });
   });
 
+  // Real hub/spoke item-location memory (Git #3156). Saying it again corrects the same row --
+  // see things.recordThing -- so there is deliberately no confirmation step here, matching
+  // contract Section 8's "trust stated facts immediately."
+  router.post("/api/things", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await things.recordThing(user.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "thing.record", entityId: row.id, detail: { name: row.name, place: row.place, house: row.house } });
+    return sendJson(res, 200, row);
+  });
+
+  // List/browse, optionally by house ("Lives at <house>"); ?q= for a real results list, distinct
+  // from the single-best-match /search endpoint below the "where's the..." box uses.
+  router.get("/api/things", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const house = ctx.url.searchParams.get("house");
+    const q = ctx.url.searchParams.get("q");
+    if (q) return sendJson(res, 200, { items: await things.searchThings(user.id, q) });
+    const [items, houses] = await Promise.all([things.listThings(user.id, { house }), things.listHouses(user.id)]);
+    return sendJson(res, 200, { items, houses });
+  });
+
+  // "where's the drill?" -- the app's own real, deterministic search (no AI call, per contract
+  // Section 10). Returns the single best real match, or `thing: null` when genuinely nothing is
+  // on file, which is a real, honest answer, not an error.
+  router.get("/api/things/search", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const q = ctx.url.searchParams.get("q");
+    if (!q) throw badRequest("q is required");
+    return sendJson(res, 200, { thing: await things.findThing(user.id, q) });
+  });
+
+  // "Who fixed what" -- real service-provider contact log (Git #3156). Each capture is a new
+  // real history row, not a latest-state update -- see contacts.recordContact.
+  router.post("/api/contacts", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await contacts.recordContact(user.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "contact.record", entityId: row.id, detail: { name: row.name, trade: row.trade, did: row.did } });
+    return sendJson(res, 201, row);
+  });
+
+  router.get("/api/contacts", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const q = ctx.url.searchParams.get("q");
+    const trade = ctx.url.searchParams.get("trade");
+    if (q) return sendJson(res, 200, { items: await contacts.searchContacts(user.id, q) });
+    return sendJson(res, 200, { items: await contacts.listContacts(user.id, { trade }) });
+  });
+
   router.post("/api/lists/:id/items", async (req, res, params, ctx) => {
     const user = requireUser(ctx);
     const body = await readJson(req);
@@ -1106,6 +1159,61 @@ export function buildApiRouter() {
   router.get("/api/vault/:id/reveals", async (_req, res, params, ctx) => {
     const user = requireUser(ctx);
     return sendJson(res, 200, { reveals: await vault.revealHistory(user.id, params.id) });
+  });
+
+  // -- Money -> Cars (Git #3149) --------------------------------------------------------
+  //
+  // Real per-vehicle cards: identity + the linked real loan bill account (read through
+  // src/core/vehicles.mjs, never duplicated) + insurance/registration/maintenance, aggregated
+  // into a real all-in $/mo and $/yr. See vehicles.mjs's own header for exactly what each
+  // component means and why. Reminders reuse Dates' own lead-time vocabulary rather than a
+  // second copy of it.
+
+  router.get("/api/cars", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { vehicles: await vehicles.listVehicles(user.id) });
+  });
+
+  router.post("/api/cars", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await vehicles.createVehicle(user.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "vehicle.create", entityId: row.id, detail: { name: row.name } });
+    return sendJson(res, 201, row);
+  });
+
+  router.get("/api/cars/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await vehicles.getVehicle(user.id, params.id));
+  });
+
+  router.patch("/api/cars/:id", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await vehicles.updateVehicle(user.id, params.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "vehicle.update", entityId: params.id, detail: { fields: Object.keys(body) } });
+    return sendJson(res, 200, row);
+  });
+
+  router.delete("/api/cars/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await vehicles.deleteVehicle(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "web", action: "vehicle.delete", entityId: params.id });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  router.post("/api/cars/:id/maintenance", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await vehicles.logMaintenance(user.id, params.id, body);
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "vehicle.maintenance.log",
+      entityId: params.id,
+      detail: { description: body.description, amount: body.amount },
+    });
+    return sendJson(res, 201, row);
   });
 
   // -- Dates (Git #3136) ----------------------------------------------------------------

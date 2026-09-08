@@ -1299,11 +1299,150 @@ async function viewInbox(view) {
   }
 }
 
+// Hub/spoke item-location memory + "Who fixed what" (Git #3156). Real search ("where's the
+// drill?"), instant no-confirmation location capture (contract Section 8), and the real
+// service-provider log, all real endpoints -- no fixture data.
+function thingRow(t) {
+  const where = t.house ? `${t.house}, ${t.place}` : t.place;
+  return el("div", { class: "date-row" }, [
+    el("div", { class: "body" }, [
+      el("div", { class: "title small", text: `${t.name} → ${where}` }),
+      el("div", { class: "meta", text: when(t.updated_at) || "" }),
+      t.note ? el("div", { class: "meta", text: t.note }) : null,
+    ]),
+  ]);
+}
+
+function contactRow(c) {
+  const whatWhen = [c.did, c.fixed_on ? whenDate(c.fixed_on) : null].filter(Boolean).join(" · ");
+  return el("div", { class: "date-row" }, [
+    el("div", { class: "body" }, [
+      el("div", { class: "title small", text: c.trade ? `${c.name} (${c.trade})` : c.name }),
+      whatWhen ? el("div", { class: "meta", text: whatWhen }) : null,
+      c.phone ? el("div", { class: "meta", text: c.phone }) : null,
+    ]),
+  ]);
+}
+
 async function viewThings(view) {
-  const [{ entities }, { categories }] = await Promise.all([
+  const [{ items: things, houses }, { items: contacts }, { entities }, { categories }] = await Promise.all([
+    api("/api/things"),
+    api("/api/contacts"),
     api("/api/entities?limit=200"),
     api("/api/categories"),
   ]);
+
+  // "Where's the...?" -- real, deterministic search (no AI call, per contract Section 10).
+  // Answers inline right under the box, same "trust stated facts immediately" instant-answer
+  // spirit as the design's own toast -- no page navigation needed to get the answer.
+  const searchInput = el("input", { placeholder: "Where's the…", "aria-label": "Where's the...", autocomplete: "off" });
+  const answer = el("div", { class: "meta", style: "min-height:1.2em" });
+  const searchForm = el("form", { class: "row" }, [searchInput, el("button", { class: "small", type: "submit", text: "Find" })]);
+  searchForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const q = searchInput.value.trim();
+    if (!q) return;
+    answer.textContent = "Looking…";
+    const { thing } = await api(`/api/things/search?q=${encodeURIComponent(q)}`);
+    answer.textContent = thing
+      ? `${thing.name} is ${thing.house ? `at ${thing.house}, ` : ""}${thing.place}.`
+      : `Nothing on file for "${q}" yet.`;
+  });
+  view.append(el("section", { class: "section" }, [el("h2", { text: "Things" }), searchForm, answer]));
+
+  // "Just logged" -- newest-said-first, what recordThing's upsert-by-name keeps current.
+  const recentSection = el("section", { class: "section" }, [el("h2", { text: "Just logged" })]);
+  if (things.length === 0) {
+    recentSection.append(empty("Nothing logged yet.", "Say where something is below, or ask Claude to save it.", "notfound"));
+  } else {
+    for (const t of things.slice(0, 8)) recentSection.append(thingRow(t));
+  }
+  view.append(recentSection);
+
+  if (houses.length > 0) {
+    const grouped = el("section", { class: "section" }, [el("h2", { text: "By house" })]);
+    for (const h of houses) {
+      const atHouse = things.filter((t) => t.house === h.house);
+      grouped.append(
+        el("div", { style: "margin-bottom:.6rem" }, [
+          el("div", { class: "small muted", text: `${h.house} · ${h.thing_count}` }),
+          el(
+            "div",
+            { class: "row" },
+            atHouse.map((t) => el("span", { class: "chip", text: t.name })),
+          ),
+        ]),
+      );
+    }
+    view.append(grouped);
+  }
+
+  // Real capture: "X is in the garage" filed directly, no confirmation step.
+  const thingName = el("input", { placeholder: "What", "aria-label": "Thing name" });
+  const thingPlace = el("input", { placeholder: "Where, e.g. under the sink", "aria-label": "Place" });
+  const thingHouse = el("input", { placeholder: "House (optional), e.g. Home", "aria-label": "House" });
+  const thingForm = el("form", { class: "section" }, [
+    el("div", { class: "row" }, [thingName, thingPlace]),
+    el("div", { class: "row" }, [thingHouse, el("button", { class: "primary small", type: "submit", text: "Save location" })]),
+  ]);
+  thingForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = thingName.value.trim();
+    const place = thingPlace.value.trim();
+    if (!name || !place) return;
+    thingForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    try {
+      await api("/api/things", {
+        method: "POST",
+        body: JSON.stringify({ name, place, house: thingHouse.value.trim() || null }),
+      });
+      render();
+    } finally {
+      thingForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [thingForm]));
+
+  // "Who fixed what" -- real service-provider log.
+  const contactsSection = el("section", { class: "section" }, [el("h2", { text: "Who fixed what" })]);
+  if (contacts.length === 0) {
+    contactsSection.append(empty("Nothing on file yet.", "Say who did what below, or ask Claude to save it.", "notfound"));
+  } else {
+    for (const c of contacts) contactsSection.append(contactRow(c));
+  }
+  view.append(contactsSection);
+
+  const contactName = el("input", { placeholder: "Name, e.g. Ray", "aria-label": "Contact name" });
+  const contactTrade = el("input", { placeholder: "Trade, e.g. plumber", "aria-label": "Trade" });
+  const contactDid = el("input", { placeholder: "What they did", "aria-label": "What they did" });
+  const contactPhone = el("input", { placeholder: "Phone", "aria-label": "Phone" });
+  const contactForm = el("form", { class: "section" }, [
+    el("div", { class: "row" }, [contactName, contactTrade]),
+    el("div", { class: "row" }, [contactDid, contactPhone]),
+    el("div", { class: "row" }, [el("button", { class: "primary small", type: "submit", text: "Save contact" })]),
+  ]);
+  contactForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = contactName.value.trim();
+    if (!name) return;
+    contactForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    try {
+      await api("/api/contacts", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          trade: contactTrade.value.trim() || null,
+          did: contactDid.value.trim() || null,
+          phone: contactPhone.value.trim() || null,
+          fixedOn: new Date().toISOString().slice(0, 10),
+        }),
+      });
+      render();
+    } finally {
+      contactForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [contactForm]));
 
   const used = categories.filter((c) => c.entity_count > 0);
   if (used.length > 0) {
@@ -2193,7 +2332,10 @@ function moneyBillMeta(bill) {
   return parts.join(" · ");
 }
 
-function moneyBillRow(bill) {
+/** `showGateBadge` is for the Bills tab (Git #3148): unlike Now's Protected/Urgent/Already
+ *  handled buckets, which already segregate gate bills into their own section, the Bills tab
+ *  lists every bill account together, so it needs the inline "gate" badge to say which ones. */
+function moneyBillRow(bill, { showGateBadge = false } = {}) {
   const statusClass = bill.funded ? "funded" : "short";
   const statusText = bill.warning
     ? bill.warning
@@ -2202,10 +2344,33 @@ function moneyBillRow(bill) {
       : `short ${dollars(bill.shortfall)}`;
   return el("div", { class: "money-bucket-row" }, [
     el("div", { class: "money-bucket-name" }, [
-      el("div", { text: bill.name }),
+      el("div", { class: "row", style: "gap:.4rem" }, [
+        el("span", { text: bill.name }),
+        showGateBadge && bill.isGate ? el("span", { class: "chip gate", text: "gate" }) : null,
+      ]),
       el("div", { class: "money-bucket-meta", text: moneyBillMeta(bill) }),
     ]),
     el("span", { class: `money-bucket-status ${bill.warning ? "" : statusClass}`, text: statusText }),
+  ]);
+}
+
+/** One real one-time pending event -- +$6,000 roof reimbursement, -$2,500 deductible -- shown
+ *  on the Bills tab, "not counted until real" (Git #3148, design README screen 7's own words).
+ *  Never folded into the shortfall math; money.mjs's getGateStatus() already keeps these
+ *  separate (countedInMath: false) for exactly this reason. */
+function moneyEventRow(ev) {
+  const note = [ev.contingencyNotes, ev.expectedDate ? `expected ${ev.expectedDate}` : null, ev.status !== "pending" ? ev.status : null]
+    .filter(Boolean)
+    .join(" · ");
+  return el("div", { class: "money-bucket-row" }, [
+    el("div", { class: "money-bucket-name" }, [
+      el("div", { text: ev.description }),
+      note ? el("div", { class: "money-bucket-meta", text: note }) : null,
+    ]),
+    el("span", {
+      class: `money-bucket-status ${ev.direction}`,
+      text: `${ev.direction === "inflow" ? "+" : "−"}${dollars(ev.amount)}`,
+    }),
   ]);
 }
 
@@ -2523,6 +2688,40 @@ async function viewMoneyVault(view) {
   attachRoomWatermark(view, "vault");
 }
 
+/** Money's Bills tab (Git #3148): every real bill account, plus real one-time pending events
+ *  "not counted until real" -- design README screen 7. Reads the same GET /api/money/gate
+ *  #3137 already built (getGateStatus() in src/core/money.mjs); no new backend, no fixture. */
+async function viewMoneyBills(view) {
+  const gate = await api("/api/money/gate");
+
+  const billsCard = el("div", { class: "card money-bucket" }, [
+    el("div", { class: "money-bucket-label", text: "Bill accounts · funded from Direct Deposit" }),
+  ]);
+  if (gate.bills.length === 0) {
+    billsCard.append(el("p", { class: "muted small", style: "padding:0 1rem .7rem", text: "No bill-role accounts assigned yet in ShanesSurvival." }));
+  } else {
+    for (const bill of gate.bills) billsCard.append(moneyBillRow(bill, { showGateBadge: true }));
+  }
+  view.append(billsCard);
+
+  const eventsCard = el("div", { class: "card money-bucket" }, [
+    el("div", { class: "money-bucket-label", text: "One-time, pending · not counted until real" }),
+  ]);
+  if (gate.pendingEvents.length === 0) {
+    eventsCard.append(el("p", { class: "muted small", style: "padding:0 1rem .7rem", text: "Nothing pending right now." }));
+  } else {
+    for (const ev of gate.pendingEvents) eventsCard.append(moneyEventRow(ev));
+  }
+  view.append(eventsCard);
+
+  if (gate.warnings.length > 0) {
+    view.append(el("p", { class: "muted small", text: gate.warnings.join(" ") }));
+  }
+
+  // README's watermark map: "Money Bills and Cars -> bear" (moneyhdr's c-bear/c-bear2 variants).
+  attachRoomWatermark(view, "moneyhdr");
+}
+
 async function viewMoney(view) {
   view.append(
     el("section", { class: "section" }, [
@@ -2548,6 +2747,16 @@ async function viewMoney(view) {
       ),
     ),
   );
+
+  if (moneyTab === "bills") {
+    await viewMoneyBills(view);
+    return;
+  }
+
+  if (moneyTab === "cars") {
+    await viewMoneyCars(view);
+    return;
+  }
 
   if (moneyTab === "vault") {
     await viewMoneyVault(view);
@@ -2695,6 +2904,199 @@ async function viewMoney(view) {
       ]),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Money -- "Cars" tab (Git #3149)
+// ---------------------------------------------------------------------------
+//
+// One card per real vehicle (Tesla Model 3, Kia Forte): design README line 37, "rows text,
+// all-in $/mo 22px/800, $/yr, next maintenance with lead time." Every number comes straight off
+// /api/cars, which is src/core/vehicles.mjs's own real math over the linked accounts row,
+// insurance, amortised registration and real trailing-12-month maintenance spend -- see that
+// module's own header for exactly what each component means.
+
+function carReminderLine(label, r) {
+  if (!r) return null;
+  const cls = r.overdue ? "small money-bucket-status critical" : r.dueSoon ? "small money-habit-line" : "small muted";
+  return el("div", { class: cls, text: `${label} ${dueLabel(r.dueInDays, r.on)} (${whenDate(r.on)})` });
+}
+
+function carCard(vehicle) {
+  const rows = [];
+  if (vehicle.loan) {
+    rows.push(
+      vehicle.loan.missing
+        ? el("div", { class: "small", text: "Loan account is linked but no longer exists." })
+        : el("div", { class: "small", text: `${vehicle.loan.accountName}: ${dollars(vehicle.loan.paymentDue)}/mo · ${dollars(vehicle.loan.savedTowardPayment)} saved toward it · due day ${vehicle.loan.dueDay ?? "?"}` }),
+    );
+  }
+  if (vehicle.insurance.amountPerMonth) {
+    rows.push(el("div", { class: "small", text: `Insurance: ${dollars(vehicle.insurance.amountPerMonth)}/mo` }));
+  }
+  if (vehicle.registration.amountPerYear) {
+    rows.push(el("div", { class: "small", text: `Registration: ${dollars(vehicle.registration.amountPerYear)}/yr` }));
+  }
+  rows.push(
+    el("div", {
+      class: "small",
+      text: vehicle.maintenance.spendLast12Months
+        ? `Maintenance, last 12 months: ${dollars(vehicle.maintenance.spendLast12Months)}`
+        : "Maintenance, last 12 months: nothing logged yet",
+    }),
+  );
+
+  const reminders = [
+    carReminderLine("Registration due", vehicle.registration.reminder),
+    vehicle.maintenance.next ? carReminderLine(vehicle.maintenance.next.note || "Next maintenance", vehicle.maintenance.next) : null,
+  ].filter(Boolean);
+
+  return el("a", { class: "tile", href: `#/car/${vehicle.id}` }, [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline" }, [
+      el("div", { class: "title", text: vehicle.name }),
+      el("div", { style: "text-align:right" }, [
+        el("div", { class: "money-amount", style: "font-size:22px", text: vehicle.allInPerMonthFormatted }),
+        el("div", { class: "small muted", text: `${vehicle.allInPerYearFormatted}/yr all-in` }),
+      ]),
+    ]),
+    ...rows,
+    ...reminders,
+  ]);
+}
+
+async function viewMoneyCars(view) {
+  const { vehicles } = await api("/api/cars");
+
+  if (vehicles.length === 0) {
+    view.append(empty("No vehicles on file yet.", "Add one below, or ask Claude to add one for you.", "idle"));
+  } else {
+    view.append(el("section", { class: "section" }, vehicles.map(carCard)));
+  }
+
+  const nameInput = el("input", { placeholder: "Vehicle name, e.g. Tesla Model 3", "aria-label": "Vehicle name" });
+  const addForm = el("form", { class: "section" }, [
+    el("div", { class: "row" }, [nameInput, el("button", { class: "primary small", type: "submit", text: "Add vehicle" })]),
+  ]);
+  addForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = nameInput.value.trim();
+    if (!name) return;
+    addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    try {
+      await api("/api/cars", { method: "POST", body: JSON.stringify({ name }) });
+      render();
+    } finally {
+      addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [addForm]));
+
+  // "Money Bills and Cars -> bear" per the critter spec's room-watermark map (moneyhdr slot).
+  attachRoomWatermark(view, "moneyhdr");
+}
+
+async function viewCarDetail(view, vehicleId) {
+  const vehicle = await api(`/api/cars/${vehicleId}`);
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("div", { class: "card" }, [
+        el("h1", { text: vehicle.name, style: "margin:0 0 .25rem" }),
+        el("div", { class: "money-amount", style: "font-size:22px", text: vehicle.allInPerMonthFormatted }),
+        el("div", { class: "small muted", text: `${vehicle.allInPerYearFormatted}/yr all-in` }),
+        el("div", { class: "row", style: "margin-top:.75rem" }, [
+          el("a", { class: "ghost small", href: "#/money", text: "← Money" }),
+          el("button", {
+            class: "small ghost danger",
+            text: "Delete vehicle",
+            onClick: async (event) => {
+              if (!confirm(`Delete ${vehicle.name}? This removes its maintenance history too.`)) return;
+              event.currentTarget.disabled = true;
+              await api(`/api/cars/${vehicleId}`, { method: "DELETE" });
+              location.hash = "#/money";
+            },
+          }),
+        ]),
+      ]),
+    ]),
+  );
+
+  const details = el("section", { class: "section" }, [el("h2", { text: "Details" })]);
+  const dCard = el("div", { class: "card" });
+  if (vehicle.loan) {
+    dCard.append(
+      vehicle.loan.missing
+        ? el("p", { class: "small", text: "Loan account is linked but no longer exists." })
+        : el("p", { class: "small", text: `Loan: ${vehicle.loan.accountName}, ${dollars(vehicle.loan.paymentDue)}/mo, ${dollars(vehicle.loan.savedTowardPayment)} saved, due day ${vehicle.loan.dueDay ?? "?"}` }),
+    );
+  } else {
+    dCard.append(el("p", { class: "small muted", text: "No loan account linked." }));
+  }
+  dCard.append(el("p", { class: "small", text: `Insurance: ${dollars(vehicle.insurance.amountPerMonth)}/mo` }));
+  dCard.append(
+    el("p", {
+      class: "small",
+      text: vehicle.registration.amountPerYear
+        ? `Registration: ${dollars(vehicle.registration.amountPerYear)}/yr${vehicle.registration.reminder ? ` · due ${whenDate(vehicle.registration.reminder.on)}` : ""}`
+        : "Registration: not on file.",
+    }),
+  );
+  details.append(dCard);
+  view.append(details);
+
+  const maint = el("section", { class: "section" }, [
+    el("h2", { text: "Maintenance" }),
+    vehicle.maintenance.intervalMiles
+      ? el("p", { class: "muted small", text: `Every ${vehicle.maintenance.intervalMiles.toLocaleString()} miles.` })
+      : null,
+  ]);
+  const mCard = el("div", { class: "card" });
+  mCard.append(el("p", { class: "small", text: `Spend, last 12 months: ${dollars(vehicle.maintenance.spendLast12Months)}` }));
+  if (vehicle.maintenance.next) {
+    mCard.append(el("p", { class: "small", text: `Next: ${vehicle.maintenance.next.note || "due"} -- ${dueLabel(vehicle.maintenance.next.dueInDays, vehicle.maintenance.next.on)} (${whenDate(vehicle.maintenance.next.on)})` }));
+  }
+  if (vehicle.maintenanceLog.length === 0) {
+    mCard.append(el("p", { class: "muted small", text: "No maintenance logged yet." }));
+  }
+  for (const entry of vehicle.maintenanceLog) {
+    mCard.append(
+      el("div", { class: "date-row" }, [
+        el("div", { class: "body" }, [
+          el("div", { class: "title small", text: entry.description }),
+          el("div", { class: "meta", text: `${whenDate(entry.performedOn)}${entry.mileage ? ` · ${entry.mileage.toLocaleString()} mi` : ""}` }),
+        ]),
+        el("div", { class: "when", text: dollars(entry.amount) }),
+      ]),
+    );
+  }
+
+  const descInput = el("input", { placeholder: "What was done, e.g. Oil change", "aria-label": "Maintenance description" });
+  const amountInput = el("input", { type: "number", step: "0.01", inputmode: "decimal", placeholder: "Amount", "aria-label": "Maintenance amount" });
+  const mileageInput = el("input", { type: "number", inputmode: "numeric", placeholder: "Mileage (optional)", "aria-label": "Mileage" });
+  mCard.append(
+    el("div", { class: "row", style: "margin-top:.6rem" }, [
+      descInput,
+      amountInput,
+      mileageInput,
+      el("button", {
+        class: "small",
+        text: "Log",
+        onClick: async (event) => {
+          const description = descInput.value.trim();
+          const amount = amountInput.value;
+          if (!description || !amount) return;
+          event.currentTarget.disabled = true;
+          await api(`/api/cars/${vehicleId}/maintenance`, {
+            method: "POST",
+            body: JSON.stringify({ description, amount, mileage: mileageInput.value || null }),
+          });
+          await render();
+        },
+      }),
+    ]),
+  );
+  maint.append(mCard);
+  view.append(maint);
 }
 
 async function viewEntity(view, entityId) {
@@ -4195,7 +4597,7 @@ async function viewPetDetail(view, petId) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", tonight: "Tonight" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -4206,6 +4608,7 @@ function parseRoute() {
   state.cookRecipeId = state.route === "cook" ? rest[0] : null;
   state.dateId = state.route === "date" ? rest[0] : null;
   state.petId = state.route === "pet" ? rest[0] : null;
+  state.carId = state.route === "car" ? rest[0] : null;
 }
 
 async function render() {
@@ -4236,6 +4639,7 @@ async function render() {
     else if (state.route === "date") await viewDateDetail(view, state.dateId);
     else if (state.route === "pets") await viewPets(view);
     else if (state.route === "pet") await viewPetDetail(view, state.petId);
+    else if (state.route === "car") await viewCarDetail(view, state.carId);
     else if (state.route === "lists") await viewLists(view);
     else if (state.route === "things") await viewThings(view);
     else if (state.route === "settings") await viewSettings(view);
