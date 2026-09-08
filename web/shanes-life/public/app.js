@@ -2720,6 +2720,7 @@ const MONEY_TABS = [
   { key: "now", label: "Now" },
   { key: "bills", label: "Bills" },
   { key: "banks", label: "Banks" },
+  { key: "bankruptcy", label: "Bankruptcy" },
   { key: "cars", label: "Cars" },
   { key: "vault", label: "Vault" },
   { key: "wins", label: "Wins" },
@@ -3337,6 +3338,157 @@ async function viewMoneyBills(view) {
   attachRoomWatermark(view, "moneyhdr");
 }
 
+// ---------------------------------------------------------------------------
+// Money -> "Bankruptcy" tab (Git #3163)
+// ---------------------------------------------------------------------------
+//
+// Ported from Finance-Tracker's `BankruptcyItem` -- fully modeled and CRUD'd there, never
+// surfaced on any screen (FINANCE_TRACKER_AUDIT.md §6, "dead sub-feature"). This is the real
+// screen that was never built, reading/writing the SAME `debts` table get_gate_status's own
+// Protected bucket reads (src/core/money.mjs), not a second, disconnected list.
+
+let bankruptcyEditId = null; // transient client-only state, same idiom as moneyTab above
+
+function debtBadges(d) {
+  const chips = [];
+  if (d.includedInBankruptcy) chips.push(el("span", { class: "chip", text: "in filing" }));
+  if (d.debtType) chips.push(el("span", { class: "chip", text: d.debtType }));
+  if (d.isCritical) chips.push(el("span", { class: "chip", text: "critical" }));
+  if (d.isDelinquent) chips.push(el("span", { class: "chip", text: `${d.daysPastDue ?? "?"} days past due` }));
+  return chips;
+}
+
+function debtCard(d) {
+  const rows = [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline" }, [
+      el("div", { class: "title", text: d.creditor }),
+      el("div", { class: "money-amount", style: "font-size:20px", text: dollars(d.balance) }),
+    ]),
+    el("div", { class: "row", style: "gap:.4rem;flex-wrap:wrap" }, debtBadges(d)),
+  ];
+  const meta = [
+    d.originalBalance ? `${dollars(d.balance)} of ${dollars(d.originalBalance)} original` : null,
+    d.minimumPayment ? `min ${dollars(d.minimumPayment)}/mo` : null,
+    d.dueDay ? `due day ${d.dueDay}` : null,
+    d.lastPaymentDate ? `last payment ${d.lastPaymentDate}` : null,
+  ].filter(Boolean);
+  if (meta.length) rows.push(el("div", { class: "small muted", text: meta.join(" · ") }));
+  if (d.notes) rows.push(el("div", { class: "small", text: d.notes }));
+
+  rows.push(
+    el("div", { class: "row", style: "margin-top:.5rem;gap:.5rem" }, [
+      el("button", {
+        type: "button",
+        class: "small ghost",
+        text: "Edit",
+        onClick: () => {
+          bankruptcyEditId = bankruptcyEditId === d.id ? null : d.id;
+          render();
+        },
+      }),
+      el("button", {
+        type: "button",
+        class: "small ghost danger",
+        text: "Delete",
+        onClick: async (event) => {
+          if (!confirm(`Delete ${d.creditor}? This removes it from ShanesSurvival's own debts table too.`)) return;
+          event.currentTarget.disabled = true;
+          await api(`/api/money/debts/${d.id}`, { method: "DELETE" });
+          render();
+        },
+      }),
+    ]),
+  );
+
+  const card = el("div", { class: "card" }, rows);
+  if (bankruptcyEditId === d.id) card.append(debtForm(d));
+  return card;
+}
+
+/** Shared add/edit form. `existing` is null for "add a new debt". */
+function debtForm(existing) {
+  const v = (field, fallback = "") => (existing && existing[field] !== null && existing[field] !== undefined ? existing[field] : fallback);
+
+  const creditorInput = el("input", { placeholder: "Creditor", "aria-label": "Creditor", value: v("creditor") });
+  const balanceInput = el("input", { type: "number", step: "0.01", placeholder: "Current balance", "aria-label": "Current balance", value: v("balance") });
+  const originalBalanceInput = el("input", { type: "number", step: "0.01", placeholder: "Original balance (optional)", "aria-label": "Original balance", value: v("originalBalance") });
+  const minimumPaymentInput = el("input", { type: "number", step: "0.01", placeholder: "Minimum payment (optional)", "aria-label": "Minimum payment", value: v("minimumPayment") });
+  const debtTypeInput = el("input", { placeholder: "Type, e.g. mortgage, tax, credit_card, bnpl", "aria-label": "Debt type", value: v("debtType") });
+  const dueDayInput = el("input", { type: "number", min: "1", max: "31", placeholder: "Due day (optional)", "aria-label": "Due day", value: v("dueDay") });
+  const lastPaymentDateInput = el("input", { type: "date", "aria-label": "Last payment date", value: v("lastPaymentDate") });
+  const notesInput = el("textarea", { placeholder: "Notes", "aria-label": "Notes", rows: "2", text: v("notes") });
+  const includedInput = el("input", { type: "checkbox" });
+  includedInput.checked = Boolean(v("includedInBankruptcy", false));
+  const criticalInput = el("input", { type: "checkbox" });
+  criticalInput.checked = Boolean(v("isCritical", false));
+  const delinquentInput = el("input", { type: "checkbox" });
+  delinquentInput.checked = Boolean(v("isDelinquent", false));
+
+  const form = el("form", { class: "section", style: "margin-top:.5rem" }, [
+    el("div", { class: "row", style: "gap:.5rem;flex-wrap:wrap" }, [creditorInput, balanceInput]),
+    el("div", { class: "row", style: "gap:.5rem;flex-wrap:wrap" }, [originalBalanceInput, minimumPaymentInput, dueDayInput]),
+    el("div", { class: "row", style: "gap:.5rem;flex-wrap:wrap" }, [debtTypeInput, lastPaymentDateInput]),
+    notesInput,
+    el("label", { class: "row small", style: "gap:.35rem;align-items:center" }, [includedInput, "Part of the bankruptcy filing"]),
+    el("label", { class: "row small", style: "gap:.35rem;align-items:center" }, [criticalInput, "Critical (shown in Money's Protected bucket)"]),
+    el("label", { class: "row small", style: "gap:.35rem;align-items:center" }, [delinquentInput, "Delinquent"]),
+    el("div", { class: "row", style: "gap:.5rem" }, [
+      el("button", { type: "submit", class: "primary small", text: existing ? "Save" : "Add debt" }),
+      existing ? el("button", { type: "button", class: "small ghost", text: "Cancel", onClick: () => { bankruptcyEditId = null; render(); } }) : null,
+    ]),
+  ]);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const body = {
+      creditor: creditorInput.value.trim(),
+      balance: balanceInput.value === "" ? undefined : Number(balanceInput.value),
+      originalBalance: originalBalanceInput.value === "" ? null : Number(originalBalanceInput.value),
+      minimumPayment: minimumPaymentInput.value === "" ? null : Number(minimumPaymentInput.value),
+      debtType: debtTypeInput.value.trim() || null,
+      dueDay: dueDayInput.value === "" ? null : Number(dueDayInput.value),
+      lastPaymentDate: lastPaymentDateInput.value || null,
+      notes: notesInput.value.trim() || null,
+      includedInBankruptcy: includedInput.checked,
+      isCritical: criticalInput.checked,
+      isDelinquent: delinquentInput.checked,
+    };
+    form.querySelectorAll("input,textarea,button").forEach((n) => (n.disabled = true));
+    try {
+      if (existing) {
+        await api(`/api/money/debts/${existing.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        bankruptcyEditId = null;
+      } else {
+        if (body.balance === undefined) delete body.balance;
+        await api("/api/money/debts", { method: "POST", body: JSON.stringify(body) });
+      }
+      render();
+    } finally {
+      form.querySelectorAll("input,textarea,button").forEach((n) => (n.disabled = false));
+    }
+  });
+
+  return form;
+}
+
+async function viewMoneyBankruptcy(view) {
+  const { debts } = await api("/api/money/debts");
+
+  view.append(
+    el("p", { class: "small muted", text: "Real debts already tracked in ShanesSurvival, organized for bankruptcy-filing context. Ported from Finance-Tracker's own debt tracker, which was built but never surfaced." }),
+  );
+
+  if (debts.length === 0) {
+    view.append(empty("No debts on file yet.", "Add one below, or ask Claude to.", "idle"));
+  } else {
+    view.append(el("section", { class: "section" }, debts.map(debtCard)));
+  }
+
+  view.append(el("div", { class: "card" }, [el("h2", { text: "Add a debt", style: "margin-top:0" }), debtForm(null)]));
+
+  attachRoomWatermark(view, "moneyhdr");
+}
+
 /** One real win row: the date and the real, hard-won text. `debt_paid_off` is styled like the
  *  funded/covered green used everywhere else in Money -- a real automatic milestone, not manual
  *  input, gets the same "this is settled" color as a funded bill. */
@@ -3520,6 +3672,11 @@ async function viewMoney(view) {
 
   if (moneyTab === "banks") {
     await viewMoneyBanks(view);
+    return;
+  }
+
+  if (moneyTab === "bankruptcy") {
+    await viewMoneyBankruptcy(view);
     return;
   }
 
