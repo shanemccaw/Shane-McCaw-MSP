@@ -349,17 +349,113 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
 
 .sheet-body button.tile[aria-pressed="true"] { border-color: hsl(var(--primary)); color: hsl(var(--primary)); }
 
-/* Per-store price history (Git #3112): the Shopping row's checkbox/label/remove line, plus a
-   second block below it for the log-price form / history list -- so .checklist li's own flex
-   row (above) stays the top line, not the whole row. */
-.checklist li.shopping-row { display: grid; gap: 0.4rem; align-items: stretch; }
+/* The Log price / History disclosure inside a compact item row's expand panel (below). */
 .price-tools { display: grid; gap: 0.35rem; }
 .price-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; font-size: 0.8rem; }
 
-/* ---------- Shopping: real per-run budget + put-it-back (#3111) ---------- */
+/* ---------- Shopping Round 2 (Git #3178): native room chrome ----------
+   Same "back Today / title center / spacer or icon right" shape every other room's own
+   redesign pass will use (design README, "Screens") -- Shopping is just the first to get it
+   besides Today itself (#3174). #app-view.no-header (render()) collapses .view's generic top
+   padding the same way it already does for Today. */
+.shop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: max(0.9rem, env(safe-area-inset-top));
+}
+.shop-header-back {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 76px;
+  height: 40px;
+  color: #60a5fa;
+  font-size: 15px;
+  text-decoration: none;
+}
+.shop-header-back svg { flex-shrink: 0; }
+.shop-header-center { flex: 1; min-width: 0; text-align: center; }
+.shop-header-title { font-size: 17px; font-weight: var(--weight-bold); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shop-header-sub { font-size: 12px; color: hsl(var(--muted-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shop-header-scan {
+  width: 40px;
+  height: 40px;
+  min-width: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  background: transparent;
+  border: 0;
+  color: #60a5fa;
+  cursor: pointer;
+}
+.shop-header-bar {
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, #0078d4, #00b4d8);
+  margin: 2px 0 4px;
+}
 
-.budget-total-row { cursor: pointer; }
-.budget-total { font-size: 15px; font-weight: var(--weight-bold); font-variant-numeric: tabular-nums; }
+/* Flat / Category / Best path (Git #3108) -- the design's own real segmented control. */
+.shop-segment {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  padding: 3px;
+  background: hsl(var(--muted));
+  border-radius: 10px;
+}
+.shop-segment-btn {
+  padding: 8px 0;
+  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.shop-segment-btn.active { background: hsl(var(--card)); color: hsl(var(--foreground)); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
+
+/* Combined store + budget row (design "Shanes Life 04 - Shopping.dc.html": one location-pin
+   pill with a dropdown chevron, inline with the running total). Tap either half to edit inline
+   -- no prompt(), no separate "Update store" link below it. */
+.shop-storebar { display: flex; align-items: flex-start; gap: 8px; }
+.shop-store-slot { flex-shrink: 0; }
+.shop-store-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-full);
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  font-size: 13px;
+  font-weight: var(--weight-semibold);
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.shop-store-edit, .shop-budget-edit { display: flex; align-items: center; gap: 6px; }
+.shop-store-edit input { height: 36px; }
+.shop-budget-slot { flex: 1; min-width: 0; }
+.shop-budget-pill {
+  display: block;
+  width: 100%;
+  padding: 8px 12px 9px;
+  border-radius: 14px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  cursor: pointer;
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+}
+.shop-budget-total { font-size: 15px; font-weight: var(--weight-bold); }
+.shop-budget-edit { padding: 2px 0; }
+.shop-budget-edit input { width: 100px; }
 
 .budget-bar {
   position: relative;
@@ -371,7 +467,7 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
 }
 .budget-bar-fill { position: absolute; inset: 0 auto 0 0; height: 100%; border-radius: var(--radius-full); }
 
-.put-back { display: grid; gap: 0.4rem; margin-top: 0.75rem; }
+.put-back { display: grid; gap: 0.4rem; }
 .put-back-row {
   display: flex;
   align-items: center;
@@ -381,6 +477,69 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
   padding: 0.5rem 0.6rem;
 }
 .put-back-row .who { display: block; }
+
+/* Section labels above a group (design "Shanes Life 04": 11px/600, letter-spacing .1em,
+   uppercase, muted -- same as every other room's own section-label convention, README
+   "Screens"). Used for category names in Category view and "Aisle N" in Best path. */
+.shop-group-label { font-size: 11px; font-weight: var(--weight-semibold); letter-spacing: 0.1em; text-transform: uppercase; color: hsl(var(--muted-foreground)); margin: 0 0 6px 4px; }
+
+/* One continuous card per group, hairline dividers between rows (design "Shanes Life 04" /
+   First Slice Prototype: hsl(var(--card)), 1px hsl(var(--card-border)), radius ~20, rows
+   divided by a soft top border) -- not the generic app-wide `.checklist` pill-per-row look. */
+.shop-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  border-radius: 20px;
+  overflow: hidden;
+  font-size: 16px;
+}
+
+/* Compact per-item row (Git #3178): checkbox, name + a passive "Aisle N · note" subline,
+   right-aligned price, and a tap-to-expand chevron for the four secondary actions (Remove /
+   Log price / History / aisle-save) the real design never shows permanently on the row. */
+.shop-item-row + .shop-item-row { border-top: 1px solid hsl(var(--card-border) / 0.6); }
+.shop-item-main { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 8px 16px; }
+.shop-check {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 2px solid hsl(var(--border));
+  box-sizing: border-box;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--primary-foreground));
+  cursor: pointer;
+}
+.shop-check.done { border-color: transparent; background: hsl(var(--primary)); }
+.shop-check.pending { opacity: 0.6; }
+.shop-item-text { flex: 1; min-width: 0; cursor: pointer; }
+.shop-item-name { overflow-wrap: anywhere; }
+.shop-item-name.done { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
+.shop-item-sub { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 1px; }
+.shop-item-side { flex-shrink: 0; text-align: right; }
+.shop-item-price { font-size: 12px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+.shop-item-price.scanned { color: hsla(160, 84%, 39%, 1); }
+.shop-item-more {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+}
+.shop-item-more svg { transition: transform 0.15s ease; }
+.shop-item-more.open svg { transform: rotate(90deg); }
+.shop-item-detail { padding: 0 16px 10px 56px; }
+.shop-item-detail-inner { display: grid; gap: 0.5rem; }
 
 /* ---------- empty states ----------
    An empty state here says only that nothing has been captured yet. It never invents a row to

@@ -1011,6 +1011,18 @@ $("#capture").addEventListener("submit", async (event) => {
   send.disabled = true;
   captureStatus.textContent = "Saving…";
   try {
+    // Git #3178: Shopping's own real dispatch, extracted verbatim from the design's
+    // submitCapture(door) -- the SAME single capture box, in Shopping, adds plain text straight
+    // to the run and saves a stated "<item> aisle <n> <note>" directly onto that item's aisle
+    // memory, rather than the generic /api/captures triage a bare statement gets everywhere
+    // else (which only ever surfaces on Inbox/Today, not live in the room that said it).
+    if (state.route === "shopping" && text && !state.attachment) {
+      await submitShoppingCapture(text);
+      captureText.value = "";
+      captureText.style.height = "auto";
+      return;
+    }
+
     // Real current position, if the browser already has it (or is willing to ask, natively --
     // never an in-app form). Git #3159: this is what lets "remember this as Home" carry real
     // coordinates without a dedicated location field anywhere in this UI.
@@ -4755,10 +4767,28 @@ function shareSection({ shares: shareList, onCreate, onRevoke }) {
 // #3109's own scope, built below.
 // ---------------------------------------------------------------------------
 
+// Icons for Shopping's native room chrome (Git #3178) -- extracted verbatim from the real
+// design markup ("Shanes Life - First Slice Prototype.dc.html"'s own "Today" back-link and
+// scan-viewfinder icons), not invented fresh.
+const SHOP_HOUSE_ICON =
+  '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2.5 11.5 12 3.5l9.5 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M5.5 10v10.5h13V10" fill="rgba(96,165,250,.16)" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path><rect x="10" y="13" width="4" height="4" rx="1" fill="#FDE68A"></rect></svg>';
+const SHOP_SCAN_ICON =
+  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path><path d="M8 7v10"></path><path d="M12 7v10"></path><path d="M17 7v10"></path></svg>';
+const SHOP_PIN_ICON =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>';
+const SHOP_CHEVRON_DOWN_ICON =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>';
+const SHOP_CHEVRON_RIGHT_ICON =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>';
+const SHOP_CHECK_ICON =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>';
+
 /**
  * Per-store price history (Git #3112): a "log a price" form and the item's real history, both
  * expanded inline rather than routed to a separate screen -- there is no per-item detail route
  * in this app's minimal hash router, and the design keeps Shopping to one scrolling screen.
+ * Lives inside a compact item row's tap-to-expand detail panel (Git #3178) alongside Remove and
+ * aisle-save -- see shoppingItemRow/itemDetailPanel below.
  */
 function priceTools(item) {
   const wrap = el("div", { class: "price-tools" });
@@ -4841,45 +4871,19 @@ function priceTools(item) {
   return wrap;
 }
 
-function shoppingItemRow(listId, item, { store } = {}) {
-  const box = el("input", { type: "checkbox", ...(item.done ? { checked: true } : {}), "aria-label": item.text });
-  const label = el("span", { class: item.done ? "done" : "", text: item.text });
-  box.addEventListener("change", async () => {
-    box.disabled = true;
-    try {
-      const updated = await api(`/api/lists/${listId}/items/${item.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ checked: box.checked }),
-      });
-      label.className = updated.done ? "done" : "";
-    } finally {
-      box.disabled = false;
-    }
-  });
-  const remove = el("button", {
-    class: "ghost small danger",
-    text: "Remove",
-    onClick: async (event) => {
-      event.currentTarget.disabled = true;
-      await api(`/api/lists/${listId}/items/${item.id}`, { method: "DELETE" });
-      render();
-    },
-  });
-  // "$1.89 - scanned" (design 04, 2a) vs a plain note -- price_source distinguishes a real scan
-  // from a manual price someone might type in later (#3109).
-  const priceLine =
-    item.price_cents != null
-      ? el("span", { class: item.price_source === "scan" ? "who ok" : "who", text: `${money(item.price_cents)}${item.price_source === "scan" ? " · scanned" : ""}` })
-      : null;
-  // "last time $X at Store" -- real per-store history (Git #3112), attached server-side by
-  // GET /api/shopping (prices.attachLatestPrices), not invented here.
-  const priceHint = item.lastPrice
-    ? el("span", { class: "who", text: `last time ${money(item.lastPrice.priceCents)} at ${item.lastPrice.storeName} (${whenDate(item.lastPrice.observedOn)})` })
-    : null;
+/**
+ * The four secondary actions the real design (04 / First Slice Prototype) never shows
+ * permanently on a row -- Remove, Log price + History, and manual aisle-save -- collected into
+ * one tap-to-expand panel (Git #3178). This is a real interaction-model decision, not a design
+ * literal: the canonical prototype's whole row is `onClick=toggle` with no persistent affordance
+ * for any of these four, so they move behind the row's own disclosure chevron instead of being
+ * dropped. Real aisle-save stays gated on a store being set, same as before -- store_aisles is
+ * keyed on (store, item).
+ */
+function itemDetailPanel(listId, item, { store } = {}) {
+  const wrap = el("div", { class: "shop-item-detail-inner" });
+  wrap.append(priceTools(item));
 
-  // Real aisle memory (Git #3108): "say where you found it once; next trip the list walks the
-  // store in order." Only offered once a store is set -- store_aisles is keyed on (store, item).
-  let aisleControl = null;
   if (store) {
     const aisleNum = el("input", { type: "number", min: "0", placeholder: "Aisle #", style: "width:70px", "aria-label": `Aisle for ${item.text}` });
     const aisleNote = el("input", { placeholder: "e.g. end cap", style: "flex:1", "aria-label": `Aisle note for ${item.text}` });
@@ -4901,23 +4905,99 @@ function shoppingItemRow(listId, item, { store } = {}) {
         }
       },
     });
-    aisleControl = el("div", { class: "row", style: "margin-top:.35rem" }, [aisleNum, aisleNote, saveBtn]);
+    wrap.append(el("div", { class: "row", style: "margin-top:.35rem" }, [aisleNum, aisleNote, saveBtn]));
   }
 
-  return el("li", { class: "shopping-row" }, [
-    el("div", { class: "row" }, [
-      box,
-      el("div", { style: "flex:1" }, [
-        label,
-        item.note ? el("span", { class: "who", text: item.note }) : null,
-        priceLine,
-        priceHint,
-        verdictBadge(item.weeklyAdVerdict),
-      ]),
-      remove,
+  wrap.append(
+    el("div", { class: "row", style: "margin-top:.4rem" }, [
+      el("button", {
+        class: "ghost small danger",
+        text: "Remove",
+        onClick: async (event) => {
+          event.currentTarget.disabled = true;
+          await api(`/api/lists/${listId}/items/${item.id}`, { method: "DELETE" });
+          render();
+        },
+      }),
     ]),
-    priceTools(item),
-    aisleControl,
+  );
+
+  return wrap;
+}
+
+/**
+ * The compact per-item row (Git #3178, real design 04 + First Slice Prototype): a 28px
+ * checkbox, name with a passive "Aisle N · note" subline (the same real aisle-memory text
+ * `item.note` already carries once a spot's been saved -- see POST .../aisle), a right-aligned
+ * real price ("$1.79 · scanned" or "~$1.50" from last-known history), and a coupon/verdict pill
+ * when Claude has pushed one. Everything else lives behind the trailing chevron's detail panel.
+ */
+function shoppingItemRow(listId, item, { store } = {}) {
+  const box = el("div", {
+    class: `shop-check${item.done ? " done" : ""}`,
+    role: "checkbox",
+    tabindex: "0",
+    "aria-checked": item.done ? "true" : "false",
+    "aria-label": item.text,
+    html: item.done ? SHOP_CHECK_ICON : "",
+  });
+  const nameEl = el("div", { class: `shop-item-name${item.done ? " done" : ""}`, text: item.text });
+  const subEl = item.note ? el("div", { class: "shop-item-sub", text: item.note }) : null;
+  const verdict = verdictBadge(item.weeklyAdVerdict);
+
+  // "$1.89 - scanned" (design 04, 2a) vs "~$1.50" from real per-store history (Git #3112,
+  // prices.attachLatestPrices) -- price_source distinguishes a real scan from an estimate.
+  const priceText =
+    item.price_cents != null
+      ? `${money(item.price_cents)}${item.price_source === "scan" ? " · scanned" : ""}`
+      : item.lastPrice
+        ? `~${money(item.lastPrice.priceCents)}`
+        : "";
+  const priceEl = priceText ? el("span", { class: `shop-item-price${item.price_source === "scan" ? " scanned" : ""}`, text: priceText }) : null;
+
+  const toggleDone = async () => {
+    if (box.classList.contains("pending")) return;
+    box.classList.add("pending");
+    try {
+      const updated = await api(`/api/lists/${listId}/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ checked: !item.done }) });
+      item.done = updated.done;
+      box.classList.toggle("done", item.done);
+      box.innerHTML = item.done ? SHOP_CHECK_ICON : "";
+      box.setAttribute("aria-checked", item.done ? "true" : "false");
+      nameEl.classList.toggle("done", item.done);
+    } finally {
+      box.classList.remove("pending");
+    }
+  };
+  box.addEventListener("click", toggleDone);
+  box.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleDone();
+    }
+  });
+  nameEl.addEventListener("click", toggleDone);
+
+  const expandBtn = el("button", { type: "button", class: "shop-item-more", "aria-label": `More actions for ${item.text}`, "aria-expanded": "false", html: SHOP_CHEVRON_RIGHT_ICON });
+  const detail = el("div", { class: "shop-item-detail" });
+  detail.hidden = true;
+  expandBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const opening = detail.hidden;
+    detail.hidden = !opening;
+    expandBtn.classList.toggle("open", opening);
+    expandBtn.setAttribute("aria-expanded", opening ? "true" : "false");
+    if (opening) detail.replaceChildren(itemDetailPanel(listId, item, { store }));
+  });
+
+  return el("li", { class: "shop-item-row" }, [
+    el("div", { class: "shop-item-main" }, [
+      box,
+      el("div", { class: "shop-item-text" }, [nameEl, subEl, verdict]),
+      priceEl ? el("div", { class: "shop-item-side" }, [priceEl]) : null,
+      expandBtn,
+    ]),
+    detail,
   ]);
 }
 
@@ -5165,85 +5245,210 @@ function renderScanResult(list, dialog, result) {
   return wrap;
 }
 
-// #3111: a real per-run budget + real running total + an informational "put it back" card.
-// The total is real, not estimated -- it sums list_items.price_cents, which only a real scan
-// (#3109) ever sets, so it honestly reads $0 until something on the run has actually been
-// scanned. Deliberately whole-list, not cart-vs-still-to-get: the issue's own real scope says
-// the total "updates live as items are added/removed," not as items are checked off -- that
-// richer split belongs to the store-path Feature (#3108), not this one.
-function budgetCard(list) {
+/**
+ * The combined store + budget row (Git #3178, design 04): a location-pin pill with the store
+ * name and a dropdown chevron, inline with the running total -- replacing the old two separate
+ * boxy sections ("Publix" input box, then a separate "Update store" link below it). Tapping
+ * either half swaps its display for an inline editor; there is no prompt() dialog anymore.
+ */
+function storeBudgetRow(list) {
+  const storeDisplay = el("button", { type: "button", class: "shop-store-pill" }, [
+    el("span", { html: SHOP_PIN_ICON }),
+    el("span", { text: list.store || "Set a store" }),
+    el("span", { html: SHOP_CHEVRON_DOWN_ICON }),
+  ]);
+  const storeInput = el("input", { value: list.store || "", placeholder: "e.g. Aldi", list: "known-stores", "aria-label": "Store" });
+  const storeSave = el("button", { type: "button", class: "primary small", text: "Save" });
+  const storeEdit = el("div", { class: "shop-store-edit" }, [storeInput, storeSave]);
+  storeEdit.hidden = true;
+
+  storeDisplay.addEventListener("click", () => {
+    storeDisplay.hidden = true;
+    storeEdit.hidden = false;
+    storeInput.focus();
+  });
+  const commitStore = async () => {
+    storeSave.disabled = true;
+    try {
+      await api(`/api/lists/${list.id}/store`, { method: "PATCH", body: JSON.stringify({ store: storeInput.value.trim() || null }) });
+      render();
+    } finally {
+      storeSave.disabled = false;
+    }
+  };
+  storeSave.addEventListener("click", commitStore);
+  storeInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitStore();
+    }
+  });
+
+  // #3111: a real per-run budget + real running total. The total is real, not estimated -- it
+  // sums list_items.price_cents, which only a real scan (#3109) ever sets, so it honestly reads
+  // $0 until something on the run has actually been scanned.
   const overCents = list.overBudgetCents || 0;
   const over = overCents > 0;
-
-  const totalLine = el("div", { class: "spread budget-total-row" }, [
-    el("span", { class: "budget-total", style: over ? "color:hsl(var(--destructive))" : "", text: money(list.totalCents) }),
+  const budgetTotalRow = el("div", { class: "spread" }, [
+    el("span", { class: "shop-budget-total", style: over ? "color:hsl(var(--destructive))" : "", text: money(list.totalCents) }),
     el("span", {
       class: "small muted",
       text: list.budget == null ? "set a budget" : over ? `${money(overCents)} over $${list.budget}` : `of $${list.budget}`,
     }),
   ]);
-  totalLine.addEventListener("click", async () => {
-    const draft = prompt("Budget for this run ($, blank to clear)", list.budget == null ? "" : String(list.budget));
-    if (draft === null) return;
-    const value = draft.trim() === "" ? null : Number(draft);
-    if (value !== null && (!Number.isFinite(value) || value < 0)) return;
-    await api(`/api/lists/${list.id}/budget`, { method: "PATCH", body: JSON.stringify({ budget: value }) });
-    render();
-  });
-
-  const children = [totalLine];
-
+  const budgetDisplay = el("div", { class: "shop-budget-pill", role: "button", tabindex: "0" }, [budgetTotalRow]);
   if (list.budget != null) {
     const pct = Math.min(100, (list.totalCents / (list.budget * 100 || 1)) * 100);
-    children.push(
+    budgetDisplay.append(
       el("div", { class: "budget-bar" }, [
         el("div", { class: "budget-bar-fill", style: `width:${pct}%;background:hsl(var(--${over ? "destructive" : "warning"}))` }),
       ]),
     );
   }
+  const budgetInput = el("input", { type: "number", step: "0.01", min: "0", value: list.budget == null ? "" : String(list.budget), placeholder: "Budget $", "aria-label": "Budget for this run" });
+  const budgetSave = el("button", { type: "button", class: "primary small", text: "Save" });
+  const budgetEdit = el("div", { class: "shop-budget-edit" }, [budgetInput, budgetSave]);
+  budgetEdit.hidden = true;
 
-  if (over) {
-    // Put-it-back: informational only, never blocks the add. Offers the most-recently-priced
-    // items first (design handoff's own "I put it back" / "Keep" pair) until enough of them
-    // would bring the run back under budget.
-    const priced = list.items.filter((i) => i.price_cents != null).slice().reverse();
-    let stillOver = overCents;
-    const suggestions = [];
-    for (const item of priced) {
-      if (stillOver <= 0) break;
-      suggestions.push(item);
-      stillOver -= item.price_cents;
+  const openBudgetEdit = () => {
+    budgetDisplay.hidden = true;
+    budgetEdit.hidden = false;
+    budgetInput.focus();
+  };
+  budgetDisplay.addEventListener("click", openBudgetEdit);
+  budgetDisplay.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openBudgetEdit();
     }
-    if (suggestions.length > 0) {
-      const rows = suggestions.map((item) =>
-        el("div", { class: "put-back-row" }, [
-          el("div", { style: "flex:1" }, [
-            el("span", { text: item.text }),
-            el("span", { class: "who", text: money(item.price_cents) }),
-          ]),
-          el("button", {
-            class: "small",
-            text: "I put it back",
-            onClick: async (event) => {
-              event.currentTarget.disabled = true;
-              await api(`/api/lists/${list.id}/items/${item.id}`, { method: "DELETE" });
-              render();
-            },
-          }),
-          el("button", { class: "ghost small", text: "Keep", onClick: (event) => event.currentTarget.closest(".put-back-row").remove() }),
-        ]),
-      );
-      children.push(el("div", { class: "put-back" }, rows));
+  });
+  const commitBudget = async () => {
+    const raw = budgetInput.value.trim();
+    const value = raw === "" ? null : Number(raw);
+    if (value !== null && (!Number.isFinite(value) || value < 0)) return;
+    budgetSave.disabled = true;
+    try {
+      await api(`/api/lists/${list.id}/budget`, { method: "PATCH", body: JSON.stringify({ budget: value }) });
+      render();
+    } finally {
+      budgetSave.disabled = false;
     }
+  };
+  budgetSave.addEventListener("click", commitBudget);
+  budgetInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitBudget();
+    }
+  });
+
+  return el("div", { class: "shop-storebar" }, [
+    el("div", { class: "shop-store-slot" }, [storeDisplay, storeEdit]),
+    el("div", { class: "shop-budget-slot" }, [budgetDisplay, budgetEdit]),
+  ]);
+}
+
+/**
+ * Informational-only "over budget" banner with the put-it-back / keep pair (design's own "I put
+ * it back" / "Keep" copy) -- never blocks adding more. Offers the most-recently-priced items
+ * first until enough of them would bring the run back under budget.
+ */
+function putBackBanner(list) {
+  const overCents = list.overBudgetCents || 0;
+  if (overCents <= 0) return null;
+  const priced = list.items.filter((i) => i.price_cents != null).slice().reverse();
+  let stillOver = overCents;
+  const suggestions = [];
+  for (const item of priced) {
+    if (stillOver <= 0) break;
+    suggestions.push(item);
+    stillOver -= item.price_cents;
+  }
+  if (suggestions.length === 0) return null;
+  const rows = suggestions.map((item) =>
+    el("div", { class: "put-back-row" }, [
+      el("div", { style: "flex:1" }, [el("span", { text: item.text }), el("span", { class: "who", text: money(item.price_cents) })]),
+      el("button", {
+        class: "small",
+        text: "I put it back",
+        onClick: async (event) => {
+          event.currentTarget.disabled = true;
+          await api(`/api/lists/${list.id}/items/${item.id}`, { method: "DELETE" });
+          render();
+        },
+      }),
+      el("button", { class: "ghost small", text: "Keep", onClick: (event) => event.currentTarget.closest(".put-back-row").remove() }),
+    ]),
+  );
+  return el("div", { class: "card" }, [
+    el("p", { class: "small", text: `${money(overCents)} over budget.` }),
+    el("div", { class: "put-back" }, rows),
+  ]);
+}
+
+/** Same fuzzy match as the design's own real `findItem` (First Slice Prototype): exact, then
+ *  starts-with, then substring, then every word contained -- in that order, first hit wins. */
+function findShoppingItem(items, query) {
+  const l = String(query || "").toLowerCase().trim();
+  if (!l) return null;
+  const open = items.filter((i) => !i.done);
+  const words = l.split(/\s+/);
+  return (
+    open.find((i) => i.text.toLowerCase() === l) ||
+    open.find((i) => i.text.toLowerCase().startsWith(l)) ||
+    open.find((i) => i.text.toLowerCase().includes(l)) ||
+    open.find((i) => words.every((w) => i.text.toLowerCase().includes(w))) ||
+    null
+  );
+}
+
+/**
+ * Shopping's own real capture dispatch (Git #3178), extracted from the design's own
+ * `submitCapture(door)`: split on the same separators (",", ";", "and", "then") so "milk, eggs
+ * and bread" adds three real items in one submission; a chunk shaped like "<item> aisle <n>
+ * <note>" saves real aisle memory onto a fuzzy-matched item instead of adding a new one -- only
+ * when a store is set, since store_aisles is keyed on (store, item). Everything else becomes a
+ * new list item, same as the old dedicated "Add to Shopping" box did.
+ */
+async function submitShoppingCapture(text) {
+  const list = state.shoppingList || (await api(`/api/shopping?order=${state.shoppingOrder || "flat"}`));
+  const chunks = text
+    .split(/\s*(?:,|;|\band\b|\bthen\b)\s*/i)
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  const added = [];
+  const aisleSaved = [];
+  for (const chunk of chunks) {
+    const m = list.store ? chunk.match(/^(.*?)\s*(?:is\s+(?:in|on)\s+)?aisle\s+(\d+)\s*[,.]?\s*(.*)$/i) : null;
+    const target = m ? findShoppingItem(list.items, m[1]) : null;
+    if (m && target) {
+      await api(`/api/lists/${list.id}/items/${target.id}/aisle`, {
+        method: "POST",
+        body: JSON.stringify({ store: list.store, aisle: Number(m[2]), note: m[3].trim() || null }),
+      });
+      aisleSaved.push(target.text);
+      continue;
+    }
+    const name = chunk.replace(/\b(remind me to|grab|get|buy|pick up|we need|need)\b/gi, "").trim();
+    if (!name) continue;
+    await api(`/api/lists/${list.id}/items`, { method: "POST", body: JSON.stringify({ items: [{ text: name }] }) });
+    added.push(name);
   }
 
-  return el("div", { class: "card budget-card" }, children);
+  const parts = [];
+  if (added.length) parts.push(`${added.length} to the run`);
+  if (aisleSaved.length) parts.push(`${aisleSaved.length} aisle spot${aisleSaved.length > 1 ? "s" : ""} saved`);
+  captureStatus.textContent = parts.length ? parts.join(" · ") : "Got it.";
+  setTimeout(() => (captureStatus.textContent = ""), 2200);
+  render();
 }
 
 async function viewShopping(view) {
   const order = state.shoppingOrder || "flat";
   const [list, storesResult] = await Promise.all([api(`/api/shopping?order=${order}`), api("/api/stores")]);
   const remaining = list.items.filter((i) => !i.done).length;
+  state.shoppingList = list; // read by the universal capture bar's shopping-room dispatch below.
 
   // Real stores already logged (Git #3112) -- offered as a datalist so "Log price" autocompletes
   // onto the same store rather than a typo creating a near-duplicate.
@@ -5255,52 +5460,37 @@ async function viewShopping(view) {
     ),
   );
 
+  // Native room chrome (Git #3178, design 04 + First Slice Prototype): back-to-Today link,
+  // store name + a live count subtitle, and the scan icon that used to be its own button row.
+  const subtitle = list.items.length === 0 ? "Nothing on the list" : remaining === 0 ? "all done" : `${remaining} left`;
   view.append(
-    el("section", { class: "section" }, [
-      el("div", { class: "spread" }, [
-        el("h2", { text: "The run" }),
-        el("span", { class: "chip", text: list.items.length === 0 ? "empty" : remaining === 0 ? "all done" : `${remaining} left` }),
+    el("div", { class: "shop-header" }, [
+      el("a", { href: "#/today", class: "shop-header-back" }, [el("span", { html: SHOP_HOUSE_ICON }), el("span", { text: "Today" })]),
+      el("div", { class: "shop-header-center" }, [
+        el("div", { class: "shop-header-title", text: list.store || "Shopping" }),
+        el("div", { class: "shop-header-sub", text: subtitle }),
       ]),
+      el("button", { type: "button", class: "shop-header-scan", "aria-label": "Scan a barcode", html: SHOP_SCAN_ICON, onClick: () => openScanSheet(list) }),
     ]),
   );
-
-  view.append(budgetCard(list));
-
-  // Which real store this run is at -- what Best-path ordering and aisle memory both key off.
-  const storeInput = el("input", { value: list.store || "", placeholder: "Which store? e.g. Aldi", "aria-label": "Store" });
-  const storeForm = el("form", { class: "row" }, [
-    storeInput,
-    el("button", { class: "ghost small", type: "submit", text: list.store ? "Update store" : "Set store" }),
-  ]);
-  storeForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    storeInput.disabled = true;
-    try {
-      await api(`/api/lists/${list.id}/store`, { method: "PATCH", body: JSON.stringify({ store: storeInput.value.trim() || null }) });
-      render();
-    } finally {
-      storeInput.disabled = false;
-    }
-  });
-  view.append(el("div", { class: "card" }, [storeForm]));
+  view.append(el("div", { class: "shop-header-bar" }));
 
   // Flat / Category / Best path (Git #3108) -- the design's own real segmented control.
   const segment = (mode, label) =>
     el("button", {
-      class: order === mode ? "primary small" : "ghost small",
+      type: "button",
+      class: `shop-segment-btn${order === mode ? " active" : ""}`,
       text: label,
       onClick: () => {
         state.shoppingOrder = mode;
         render();
       },
     });
-  view.append(
-    el("div", { class: "row", style: "margin:.5rem 0" }, [
-      segment("flat", "Flat"),
-      segment("category", "Category"),
-      segment("best", "Best path"),
-    ]),
-  );
+  view.append(el("div", { class: "shop-segment" }, [segment("flat", "Flat"), segment("category", "Category"), segment("best", "Best path")]));
+
+  view.append(storeBudgetRow(list));
+  const banner = putBackBanner(list);
+  if (banner) view.append(banner);
 
   if (list.items.length === 0) {
     view.append(
@@ -5310,10 +5500,10 @@ async function viewShopping(view) {
     for (const group of list.groups) {
       view.append(
         el("section", { class: "section" }, [
-          el("h3", { class: "small muted", text: group.category }),
+          el("div", { class: "shop-group-label", text: group.category }),
           el(
             "ul",
-            { class: "checklist" },
+            { class: "shop-list" },
             group.items.map((item) => shoppingItemRow(list.id, item, { store: list.store })),
           ),
         ]),
@@ -5323,10 +5513,10 @@ async function viewShopping(view) {
     for (const group of list.groups) {
       view.append(
         el("section", { class: "section" }, [
-          el("h3", { class: "small muted", text: `Aisle ${group.aisle}` }),
+          el("div", { class: "shop-group-label", text: `Aisle ${group.aisle}` }),
           el(
             "ul",
-            { class: "checklist" },
+            { class: "shop-list" },
             group.items.map((item) => shoppingItemRow(list.id, item, { store: list.store })),
           ),
         ]),
@@ -5338,46 +5528,22 @@ async function viewShopping(view) {
           el("p", { class: "small muted", style: "font-style:italic", text: list.store ? "No spot known yet -- say the aisle when you find it." : "Set a store above to start learning real aisle spots." }),
           el(
             "ul",
-            { class: "checklist" },
+            { class: "shop-list" },
             list.unknown.map((item) => shoppingItemRow(list.id, item, { store: list.store })),
           ),
         ]),
       );
     }
   } else {
-    const ul = el("ul", { class: "checklist" });
+    const ul = el("ul", { class: "shop-list" });
     for (const item of list.items) ul.append(shoppingItemRow(list.id, item, { store: list.store }));
     view.append(el("section", { class: "section" }, [ul]));
   }
 
-  const addInput = el("input", { placeholder: "Add to Shopping", "aria-label": "Add an item" });
-  const addForm = el("form", { class: "row" }, [
-    addInput,
-    el("button", { class: "primary small", type: "submit", text: "Add" }),
-  ]);
-  addForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const text = addInput.value.trim();
-    if (!text) return;
-    addInput.disabled = true;
-    try {
-      await api(`/api/lists/${list.id}/items`, { method: "POST", body: JSON.stringify({ items: [{ text }] }) });
-      render();
-    } finally {
-      addInput.disabled = false;
-    }
-  });
-  view.append(el("div", { class: "card" }, [addForm]));
-
-  view.append(
-    el("div", { class: "row" }, [
-      el("button", {
-        class: "small",
-        text: "Scan",
-        onClick: () => openScanSheet(list),
-      }),
-    ]),
-  );
+  // The dedicated "Add to Shopping" box and the standalone "Scan" button both used to live here
+  // as their own separate controls. Design 04 / the First Slice Prototype show neither -- the
+  // room has exactly one bottom bar (the universal capture box, its placeholder swapped to "Add,
+  // or say where you found it" -- see render()) and the scan icon moved into the header above.
 
   if (remaining < list.items.length) {
     view.append(
@@ -6293,12 +6459,19 @@ async function render() {
 
   // Git #3174: Today's own fox/weather scene (renderTodayHeader) IS the header per the real
   // design -- the generic title-bar chrome is leftover Foundation-era shell (#3087) that the
-  // Today tray's Round 2 redesign never used. Every other room still shows it until it gets its
-  // own redesign pass. #app-view.no-header lets .view collapse its top padding to just the
-  // native status-bar safe area instead of assuming a header row sits above it (see app.css).
-  const isToday = state.route === "today";
-  $("#app-header").hidden = isToday;
-  $("#app-view").classList.toggle("no-header", isToday);
+  // Today tray's Round 2 redesign never used. Git #3178: Shopping is the second room to get its
+  // own native chrome (viewShopping's own .shop-header). Every other room still shows the
+  // generic bar until it gets its own redesign pass. #app-view.no-header lets .view collapse its
+  // top padding to just the native status-bar safe area instead of assuming a header row sits
+  // above it (see app.css).
+  const hasOwnHeader = state.route === "today" || state.route === "shopping";
+  $("#app-header").hidden = hasOwnHeader;
+  $("#app-view").classList.toggle("no-header", hasOwnHeader);
+
+  // Git #3178: the universal capture box is the SAME single bar in Shopping, not a second one --
+  // the real design (First Slice Prototype's own submitCapture) just swaps its placeholder and,
+  // in Shopping, its dispatch (see the #capture submit handler below).
+  captureText.placeholder = state.route === "shopping" ? "Add, or say where you found it" : "Say anything…";
 
   // A wake lock (Git #3125) is only ever held for cook mode itself -- release it the moment
   // navigation moves anywhere else, rather than waiting on the tab losing visibility.
