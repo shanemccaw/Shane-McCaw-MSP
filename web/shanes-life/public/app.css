@@ -805,3 +805,11 @@ pre.token {
 .money-bucket-status.funded { color: hsl(var(--success)); }
 .money-bucket-status.short { color: #fbbf24; }
 .money-bucket-status.critical { color: #f87171; }
+/* Bills tab pending events (Git #3148): "not counted until real" -- inflow/outflow, not
+   funded/short, so a distinct pair rather than reusing funded/short's color meaning. */
+.money-bucket-status.inflow { color: hsl(var(--success)); }
+.money-bucket-status.outflow { color: #fbbf24; }
+
+/* Bills tab's inline "gate" badge (Git #3148) -- Now's own buckets already segregate gate
+   bills into Protected, so only Bills (which lists every account together) needs this. */
+.chip.gate { color: #60a5fa; border-color: rgba(96, 165, 250, 0.4); background: rgba(96, 165, 250, 0.12); }

@@ -2322,7 +2322,10 @@ function moneyBillMeta(bill) {
   return parts.join(" · ");
 }
 
-function moneyBillRow(bill) {
+/** `showGateBadge` is for the Bills tab (Git #3148): unlike Now's Protected/Urgent/Already
+ *  handled buckets, which already segregate gate bills into their own section, the Bills tab
+ *  lists every bill account together, so it needs the inline "gate" badge to say which ones. */
+function moneyBillRow(bill, { showGateBadge = false } = {}) {
   const statusClass = bill.funded ? "funded" : "short";
   const statusText = bill.warning
     ? bill.warning
@@ -2331,10 +2334,33 @@ function moneyBillRow(bill) {
       : `short ${dollars(bill.shortfall)}`;
   return el("div", { class: "money-bucket-row" }, [
     el("div", { class: "money-bucket-name" }, [
-      el("div", { text: bill.name }),
+      el("div", { class: "row", style: "gap:.4rem" }, [
+        el("span", { text: bill.name }),
+        showGateBadge && bill.isGate ? el("span", { class: "chip gate", text: "gate" }) : null,
+      ]),
       el("div", { class: "money-bucket-meta", text: moneyBillMeta(bill) }),
     ]),
     el("span", { class: `money-bucket-status ${bill.warning ? "" : statusClass}`, text: statusText }),
+  ]);
+}
+
+/** One real one-time pending event -- +$6,000 roof reimbursement, -$2,500 deductible -- shown
+ *  on the Bills tab, "not counted until real" (Git #3148, design README screen 7's own words).
+ *  Never folded into the shortfall math; money.mjs's getGateStatus() already keeps these
+ *  separate (countedInMath: false) for exactly this reason. */
+function moneyEventRow(ev) {
+  const note = [ev.contingencyNotes, ev.expectedDate ? `expected ${ev.expectedDate}` : null, ev.status !== "pending" ? ev.status : null]
+    .filter(Boolean)
+    .join(" · ");
+  return el("div", { class: "money-bucket-row" }, [
+    el("div", { class: "money-bucket-name" }, [
+      el("div", { text: ev.description }),
+      note ? el("div", { class: "money-bucket-meta", text: note }) : null,
+    ]),
+    el("span", {
+      class: `money-bucket-status ${ev.direction}`,
+      text: `${ev.direction === "inflow" ? "+" : "−"}${dollars(ev.amount)}`,
+    }),
   ]);
 }
 
@@ -2386,6 +2412,40 @@ function renderMoneyResult(container, kind, result) {
   container.append(box);
 }
 
+/** Money's Bills tab (Git #3148): every real bill account, plus real one-time pending events
+ *  "not counted until real" -- design README screen 7. Reads the same GET /api/money/gate
+ *  #3137 already built (getGateStatus() in src/core/money.mjs); no new backend, no fixture. */
+async function viewMoneyBills(view) {
+  const gate = await api("/api/money/gate");
+
+  const billsCard = el("div", { class: "card money-bucket" }, [
+    el("div", { class: "money-bucket-label", text: "Bill accounts · funded from Direct Deposit" }),
+  ]);
+  if (gate.bills.length === 0) {
+    billsCard.append(el("p", { class: "muted small", style: "padding:0 1rem .7rem", text: "No bill-role accounts assigned yet in ShanesSurvival." }));
+  } else {
+    for (const bill of gate.bills) billsCard.append(moneyBillRow(bill, { showGateBadge: true }));
+  }
+  view.append(billsCard);
+
+  const eventsCard = el("div", { class: "card money-bucket" }, [
+    el("div", { class: "money-bucket-label", text: "One-time, pending · not counted until real" }),
+  ]);
+  if (gate.pendingEvents.length === 0) {
+    eventsCard.append(el("p", { class: "muted small", style: "padding:0 1rem .7rem", text: "Nothing pending right now." }));
+  } else {
+    for (const ev of gate.pendingEvents) eventsCard.append(moneyEventRow(ev));
+  }
+  view.append(eventsCard);
+
+  if (gate.warnings.length > 0) {
+    view.append(el("p", { class: "muted small", text: gate.warnings.join(" ") }));
+  }
+
+  // README's watermark map: "Money Bills and Cars -> bear" (moneyhdr's c-bear/c-bear2 variants).
+  attachRoomWatermark(view, "moneyhdr");
+}
+
 async function viewMoney(view) {
   view.append(
     el("section", { class: "section" }, [
@@ -2411,6 +2471,11 @@ async function viewMoney(view) {
       ),
     ),
   );
+
+  if (moneyTab === "bills") {
+    await viewMoneyBills(view);
+    return;
+  }
 
   if (moneyTab !== "now") {
     const label = MONEY_TABS.find((t) => t.key === moneyTab)?.label ?? moneyTab;
