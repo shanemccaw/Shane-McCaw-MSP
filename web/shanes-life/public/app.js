@@ -9,10 +9,12 @@ import {
   resetCritterRender,
   critterIcon,
   attachPeeker,
+  attachPeekerHat,
   attachRoomWatermark,
   rollPeekers,
 } from "./critters.js";
 import { fetchWeather, sampleWeather, cachedWeather, WX_GLOW } from "./weather.js";
+import { themeFor, todayOverride } from "./theme.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -479,25 +481,74 @@ function weatherIconHtml(kind, moonColor) {
   return `<svg width="26" height="26" viewBox="0 0 28 28" style="position:relative;overflow:visible"><path d="M8 20 C 3 20 2 14 7 13 C 7 7 15 5 18 10 C 23 7 28 12 25 16 C 28 17 26 20 22 20 Z" fill="rgba(241,245,249,.9)"></path><g fill="#F8FAFC" style="animation:czRain 1.8s linear infinite"><circle cx="9" cy="22" r="1.3"></circle><circle cx="14" cy="23" r="1.3"></circle><circle cx="19" cy="22" r="1.3"></circle></g></svg>`; // snow
 }
 
+/** The full-phone weather-particle layer (Git #3145, README "Seasons and holidays -- Weather
+ *  particles"): leaves/snow/confetti/bats/fireworks/petals/fireflies/sleigh, gated by the
+ *  season/holiday theme's own flags -- not by live weather (that's weatherSkyHtml above, a
+ *  separate system). Real shapes/colors/counts/timings ported verbatim from the First Slice
+ *  Prototype; nothing here is approximated. Symbols (dk-leaf, dk-petal, dk-bat, dk-burst,
+ *  dk-sleigh) live in critters-sprite.svg alongside the rest of the critter roster. */
+function weatherParticlesHtml(theme) {
+  let html = "";
+  if (theme.wLeaves) {
+    html +=
+      '<svg width="14" height="14" viewBox="0 0 12 12" fill="#F97316" style="position:absolute;left:8%;top:-20px;animation:czLeaf 11s linear infinite"><use href="#dk-leaf"></use></svg><svg width="12" height="12" viewBox="0 0 12 12" fill="#FBBF24" style="position:absolute;left:20%;top:-20px;animation:czLeaf 12s 2s linear infinite"><use href="#dk-leaf"></use></svg><svg width="14" height="14" viewBox="0 0 12 12" fill="#EF4444" style="position:absolute;left:33%;top:-20px;animation:czLeaf 10s 4s linear infinite"><use href="#dk-leaf"></use></svg><svg width="11" height="11" viewBox="0 0 12 12" fill="#F59E0B" style="position:absolute;left:47%;top:-20px;animation:czLeaf 13s 1s linear infinite"><use href="#dk-leaf"></use></svg><svg width="14" height="14" viewBox="0 0 12 12" fill="#F97316" style="position:absolute;left:60%;top:-20px;animation:czLeaf 9.5s 6s linear infinite"><use href="#dk-leaf"></use></svg><svg width="12" height="12" viewBox="0 0 12 12" fill="#FB923C" style="position:absolute;left:72%;top:-20px;animation:czLeaf 12.5s 3s linear infinite"><use href="#dk-leaf"></use></svg><svg width="13" height="13" viewBox="0 0 12 12" fill="#EF4444" style="position:absolute;left:85%;top:-20px;animation:czLeaf 11.5s 7s linear infinite"><use href="#dk-leaf"></use></svg><svg width="11" height="11" viewBox="0 0 12 12" fill="#FBBF24" style="position:absolute;left:94%;top:-20px;animation:czLeaf 10.5s 5s linear infinite"><use href="#dk-leaf"></use></svg>';
+  }
+  if (theme.wSnow) {
+    html +=
+      '<div style="position:absolute;left:5%;top:-8px;width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.85);animation:czSnow 12s linear infinite"></div><div style="position:absolute;left:12%;top:-8px;width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.8);animation:czSnow 15s 3s linear infinite"></div><div style="position:absolute;left:20%;top:-8px;width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.9);animation:czSnow 10s 6s linear infinite"></div><div style="position:absolute;left:28%;top:-8px;width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.75);animation:czSnow 14s 1s linear infinite"></div><div style="position:absolute;left:36%;top:-8px;width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.85);animation:czSnow 11s 8s linear infinite"></div><div style="position:absolute;left:44%;top:-8px;width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.8);animation:czSnow 16s 4s linear infinite"></div><div style="position:absolute;left:52%;top:-8px;width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.9);animation:czSnow 9.5s 2s linear infinite"></div><div style="position:absolute;left:60%;top:-8px;width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.75);animation:czSnow 13s 9s linear infinite"></div><div style="position:absolute;left:68%;top:-8px;width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.85);animation:czSnow 12.5s 5s linear infinite"></div><div style="position:absolute;left:76%;top:-8px;width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.8);animation:czSnow 15.5s 7s linear infinite"></div><div style="position:absolute;left:84%;top:-8px;width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.9);animation:czSnow 10.5s 11s linear infinite"></div><div style="position:absolute;left:91%;top:-8px;width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.75);animation:czSnow 14.5s 2.5s linear infinite"></div><div style="position:absolute;left:97%;top:-8px;width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.85);animation:czSnow 11.5s 6.5s linear infinite"></div><div style="position:absolute;left:40%;top:-8px;width:2px;height:2px;border-radius:50%;background:rgba(255,255,255,.7);animation:czSnow 17s 10s linear infinite"></div>';
+  }
+  if (theme.wConfetti) {
+    html +=
+      '<div style="position:absolute;left:6%;top:-10px;width:7px;height:3px;background:#F472B6;animation:czConf 6s linear infinite"></div><div style="position:absolute;left:14%;top:-10px;width:6px;height:3px;background:#FDE68A;animation:czConf 7s 1.5s linear infinite"></div><div style="position:absolute;left:23%;top:-10px;width:7px;height:3px;background:#60A5FA;animation:czConf 5.5s 3s linear infinite"></div><div style="position:absolute;left:31%;top:-10px;width:5px;height:5px;border-radius:50%;background:#4ADE80;animation:czConf 8s .5s linear infinite"></div><div style="position:absolute;left:40%;top:-10px;width:7px;height:3px;background:#F472B6;animation:czConf 6.5s 4s linear infinite"></div><div style="position:absolute;left:48%;top:-10px;width:6px;height:3px;background:#FDE68A;animation:czConf 5s 2s linear infinite"></div><div style="position:absolute;left:56%;top:-10px;width:5px;height:5px;border-radius:50%;background:#F87171;animation:czConf 7.5s 5s linear infinite"></div><div style="position:absolute;left:64%;top:-10px;width:7px;height:3px;background:#60A5FA;animation:czConf 6s 1s linear infinite"></div><div style="position:absolute;left:72%;top:-10px;width:6px;height:3px;background:#4ADE80;animation:czConf 5.5s 3.5s linear infinite"></div><div style="position:absolute;left:80%;top:-10px;width:7px;height:3px;background:#F472B6;animation:czConf 8s 2.5s linear infinite"></div><div style="position:absolute;left:88%;top:-10px;width:5px;height:5px;border-radius:50%;background:#FDE68A;animation:czConf 6.5s 6s linear infinite"></div><div style="position:absolute;left:95%;top:-10px;width:7px;height:3px;background:#60A5FA;animation:czConf 7s 4.5s linear infinite"></div><div style="position:absolute;left:36%;top:-10px;width:6px;height:3px;background:#F87171;animation:czConf 5s 7s linear infinite"></div><div style="position:absolute;left:68%;top:-10px;width:5px;height:5px;border-radius:50%;background:#F472B6;animation:czConf 6s 8s linear infinite"></div>';
+  }
+  if (theme.wBats) {
+    html +=
+      '<svg width="34" height="16" viewBox="0 0 34 16" style="position:absolute;left:-40px;top:74px;overflow:visible;animation:czBat 14s linear infinite"><use href="#dk-bat"></use></svg><svg width="26" height="12" viewBox="0 0 34 16" style="position:absolute;left:-40px;top:112px;overflow:visible;animation:czBat 18s 5s linear infinite"><use href="#dk-bat"></use></svg><svg width="30" height="14" viewBox="0 0 34 16" style="position:absolute;left:-40px;top:44px;overflow:visible;animation:czBat 16s 9s linear infinite"><use href="#dk-bat"></use></svg>';
+  }
+  if (theme.wSleigh) {
+    html +=
+      '<svg width="150" height="44" viewBox="0 0 150 44" style="position:absolute;left:0;top:62px;overflow:visible;animation:czSleigh 24s linear infinite"><use href="#dk-sleigh"></use></svg>';
+  }
+  if (theme.wFireworks) {
+    html +=
+      '<svg width="60" height="60" viewBox="0 0 60 60" style="position:absolute;left:14%;top:30px;color:#F472B6;animation:czBurst 3.2s ease-out infinite"><use href="#dk-burst"></use></svg><svg width="50" height="50" viewBox="0 0 60 60" style="position:absolute;left:60%;top:16px;color:#FDE68A;animation:czBurst 3.6s 1.1s ease-out infinite"><use href="#dk-burst"></use></svg><svg width="44" height="44" viewBox="0 0 60 60" style="position:absolute;left:38%;top:72px;color:#60A5FA;animation:czBurst 3s 2.2s ease-out infinite"><use href="#dk-burst"></use></svg><svg width="54" height="54" viewBox="0 0 60 60" style="position:absolute;left:78%;top:58px;color:#4ADE80;animation:czBurst 3.4s .6s ease-out infinite"><use href="#dk-burst"></use></svg>';
+  }
+  if (theme.wPetals) {
+    html +=
+      '<svg width="11" height="11" viewBox="0 0 10 10" fill="#F9A8D4" style="position:absolute;left:8%;top:-16px;animation:czPetal 13s linear infinite"><use href="#dk-petal"></use></svg><svg width="9" height="9" viewBox="0 0 10 10" fill="#FBCFE8" style="position:absolute;left:21%;top:-16px;animation:czPetal 15s 3s linear infinite"><use href="#dk-petal"></use></svg><svg width="11" height="11" viewBox="0 0 10 10" fill="#FDF2F8" style="position:absolute;left:35%;top:-16px;animation:czPetal 12s 6s linear infinite"><use href="#dk-petal"></use></svg><svg width="10" height="10" viewBox="0 0 10 10" fill="#F9A8D4" style="position:absolute;left:49%;top:-16px;animation:czPetal 16s 1s linear infinite"><use href="#dk-petal"></use></svg><svg width="9" height="9" viewBox="0 0 10 10" fill="#FBCFE8" style="position:absolute;left:62%;top:-16px;animation:czPetal 14s 8s linear infinite"><use href="#dk-petal"></use></svg><svg width="11" height="11" viewBox="0 0 10 10" fill="#F9A8D4" style="position:absolute;left:75%;top:-16px;animation:czPetal 13.5s 4s linear infinite"><use href="#dk-petal"></use></svg><svg width="9" height="9" viewBox="0 0 10 10" fill="#FDF2F8" style="position:absolute;left:88%;top:-16px;animation:czPetal 15.5s 10s linear infinite"><use href="#dk-petal"></use></svg><svg width="10" height="10" viewBox="0 0 10 10" fill="#FBCFE8" style="position:absolute;left:95%;top:-16px;animation:czPetal 12.5s 2s linear infinite"><use href="#dk-petal"></use></svg>';
+  }
+  if (theme.wFireflies) {
+    html +=
+      '<div style="position:absolute;left:10%;top:120px;width:4px;height:4px;border-radius:50%;background:#FDE68A;box-shadow:0 0 6px 2px rgba(253,224,71,.6);animation:czFirefly 4s ease-in-out infinite"></div><div style="position:absolute;left:24%;top:200px;width:3px;height:3px;border-radius:50%;background:#FDE68A;box-shadow:0 0 6px 2px rgba(253,224,71,.6);animation:czFirefly 5s 1s ease-in-out infinite"></div><div style="position:absolute;left:40%;top:90px;width:4px;height:4px;border-radius:50%;background:#FDE68A;box-shadow:0 0 6px 2px rgba(253,224,71,.6);animation:czFirefly 4.5s 2s ease-in-out infinite"></div><div style="position:absolute;left:56%;top:250px;width:3px;height:3px;border-radius:50%;background:#FDE68A;box-shadow:0 0 6px 2px rgba(253,224,71,.6);animation:czFirefly 5.5s .5s ease-in-out infinite"></div><div style="position:absolute;left:70%;top:150px;width:4px;height:4px;border-radius:50%;background:#FDE68A;box-shadow:0 0 6px 2px rgba(253,224,71,.6);animation:czFirefly 4.2s 3s ease-in-out infinite"></div><div style="position:absolute;left:84%;top:320px;width:3px;height:3px;border-radius:50%;background:#FDE68A;box-shadow:0 0 6px 2px rgba(253,224,71,.6);animation:czFirefly 6s 1.5s ease-in-out infinite"></div><div style="position:absolute;left:32%;top:330px;width:4px;height:4px;border-radius:50%;background:#FDE68A;box-shadow:0 0 6px 2px rgba(253,224,71,.6);animation:czFirefly 5s 2.5s ease-in-out infinite"></div><div style="position:absolute;left:90%;top:70px;width:3px;height:3px;border-radius:50%;background:#FDE68A;box-shadow:0 0 6px 2px rgba(253,224,71,.6);animation:czFirefly 4.8s 3.5s ease-in-out infinite"></div>';
+  }
+  return html;
+}
+
 /** Builds the whole sky+night+weather+meta+fox header for the Today tray, one framed region
- *  at the top of the room ("Today v3 -- Header"). `hour` is the device-local hour; `wx` is a
- *  real `{kind, tempF, text}` from weather.js (live or the spec's own until-it-answers sample).
- *  `whereText`/`whereColor` stay real, not fabricated: no location feed exists yet (see
- *  build-journal/3144.md), so this only ever shows the one state that's actually true, "Home",
- *  never the design's "· from location" qualifier that would claim a signal we don't have. */
-function renderTodayHeader(now, wx, foxLine) {
+ *  at the top of the room ("Today v3 -- Header"). `now` is the device's real current time
+ *  (drives the hour-based sky phase -- never overridden, exactly like the prototype's own
+ *  `hour`); `dateNow` is the (possibly `?today=`-overridden) calendar date shown in the meta
+ *  row and fed to `themeFor()` -- see theme.js. `wx` is a real `{kind, tempF, text}` from
+ *  weather.js (live or the spec's own until-it-answers sample). `theme` is `themeFor(dateNow)`
+ *  (Git #3145): a holiday sky wins over time-of-day, the moon glow/color goes orange during
+ *  Halloween/birthday week, and the fox gets its holiday hat. `whereText`/`whereColor` stay
+ *  real, not fabricated: no location feed exists yet (see build-journal/3144.md), so this only
+ *  ever shows the one state that's actually true, "Home", never the design's "· from location"
+ *  qualifier that would claim a signal we don't have. */
+function renderTodayHeader(now, dateNow, wx, foxLine, theme) {
   const hour = now.getHours();
   const phase = skyPhase(hour);
   const isNight = phase === "night";
+  const orangeMoon = theme.orangeMoon && wx.kind === "moon";
   const scene = el("div", { class: "today-scene" }, [
-    el("div", { class: "today-sky", style: `background:${SKY_GRADIENT[phase]}` }),
+    el("div", { class: "today-sky", style: `background:${theme.thSky || SKY_GRADIENT[phase]}` }),
     isNight ? el("div", { class: "today-night", html: NIGHT_LAYER_HTML }) : null,
     el("div", { class: "today-wx-sky", html: weatherSkyHtml(wx.kind) }),
   ]);
 
   const meta = el("div", { class: "today-meta" }, [
     el("span", { class: "today-meta-date" }, [
-      el("span", { class: "today-date-text", text: `${WDN[now.getDay()]}, ${MONN[now.getMonth()]} ${now.getDate()}` }),
+      el("span", { class: "today-date-text", text: `${WDN[dateNow.getDay()]}, ${MONN[dateNow.getMonth()]} ${dateNow.getDate()}` }),
       el("span", { text: "·" }),
       el("span", { class: "today-where" }, [
         el("span", {
@@ -508,19 +559,25 @@ function renderTodayHeader(now, wx, foxLine) {
       ]),
     ]),
     el("span", { class: "today-wx-light" }, [
-      el("span", { class: "today-wx-glow", style: `background:radial-gradient(ellipse at center,${WX_GLOW[wx.kind] || WX_GLOW.cloud},rgba(0,0,0,0) 72%)` }),
+      el("span", { class: "today-wx-glow", style: `background:radial-gradient(ellipse at center,${orangeMoon ? "rgba(253,186,116,.42)" : WX_GLOW[wx.kind] || WX_GLOW.cloud},rgba(0,0,0,0) 72%)` }),
       wx.kind === "storm" ? el("span", { class: "today-wx-glow today-wx-glow-flash" }) : null,
       el("span", { class: "today-wx-text", text: wx.text }),
-      el("span", { class: "today-wx-icon", html: weatherIconHtml(wx.kind, "#F8FAFC") }),
+      el("span", { class: "today-wx-icon", html: weatherIconHtml(wx.kind, orangeMoon ? "#FDBA74" : "#F8FAFC") }),
     ]),
   ]);
 
   const fox = el("div", { class: "today-fox-row" }, [
-    el("div", { class: "today-fox-pebble" }, [el("span", { html: '<svg width="64" height="64" viewBox="0 0 120 120" style="display:block;animation:czBreathe 4s ease-in-out infinite;transform-origin:50% 100%"><use href="#c-fox"></use></svg>' })]),
+    el("div", { class: "today-fox-pebble" }, [
+      el("span", { html: '<svg width="64" height="64" viewBox="0 0 120 120" style="display:block;animation:czBreathe 4s ease-in-out infinite;transform-origin:50% 100%"><use href="#c-fox"></use></svg>' }),
+      theme.hatOn ? el("span", { html: `<svg width="64" height="87.5" viewBox="0 -44 120 164" class="today-fox-hat"><use href="#${theme.hat}"></use></svg>` }) : null,
+    ]),
     el("div", { class: "today-fox-bubble", text: foxLine }),
   ]);
 
   scene.append(el("div", { class: "today-scene-content" }, [meta, fox]));
+  if (theme.wLeaves || theme.wSnow || theme.wConfetti || theme.wBats || theme.wFireworks || theme.wPetals || theme.wFireflies || theme.wSleigh) {
+    scene.appendChild(el("div", { class: "today-wx-particles", html: weatherParticlesHtml(theme) }));
+  }
   return scene;
 }
 
@@ -1123,11 +1180,19 @@ async function viewToday(view) {
 
   const now = new Date();
   const hour = now.getHours();
+  // `?today=` (Git #3145) overrides only the calendar date shown and the season/holiday theme
+  // it drives -- the clock hour above stays real, exactly like the design's own dev tweak (see
+  // theme.js's `todayOverride`).
+  const dateNow = todayOverride() || now;
+  const theme = themeFor(dateNow);
   const nextKind = resolveNextKind(data, hour);
   const matchLine = foxMatchLine(nextKind, data);
-  const foxLine = matchLine ? `${foxOpener(hour)} ${matchLine}` : foxOpener(hour);
+  // A holiday's own line (README "Seasons and holidays") wins over the generic opener+matchLine
+  // pairing -- but a real doctor appointment today still wins over the holiday, exactly as the
+  // prototype's own `foxLine` ternary orders it (doctor check before `th.thFox`).
+  const foxLine = nextKind === "doctor" ? `${foxOpener(hour)} ${matchLine}` : theme.thFox || (matchLine ? `${foxOpener(hour)} ${matchLine}` : foxOpener(hour));
   const wx = cachedWeather() || sampleWeather(hour >= 7 && hour < 19);
-  view.append(renderTodayHeader(now, wx, foxLine));
+  view.append(renderTodayHeader(now, dateNow, wx, foxLine, theme));
   // The design's own stated fallback: render instantly with the sample/cached weather, then
   // swap in the real Open-Meteo read the moment it answers (decorative only -- a failed fetch
   // just leaves the sample in place, see weather.js).
@@ -1198,7 +1263,10 @@ async function viewToday(view) {
   // beyond Meds (now wired below) and get the next two (`b+1..b+2` via rollPeekers()), but
   // neither of those sections exists in this app yet -- there's no tray Later row or Rooms list
   // to attach them to. Wire those the moment those screens land.
-  attachPeeker(nextLabel, rollPeekers()[0]);
+  // Git #3145: a holiday can force a fixed peeker over the daily roll (Halloween's `pkw-ghost`
+  // "instead of the cat"), and/or add a hat riding on top of whichever peeker is showing.
+  attachPeeker(nextLabel, theme.peeker || rollPeekers()[0]);
+  if (theme.peekHatOn) attachPeekerHat(nextLabel, theme.peekHat);
 
   const medsPill = medsPillSection(data.meds);
   if (medsPill) view.append(medsPill);

@@ -221,6 +221,24 @@ export function attachPeeker(labelEl, symbolId) {
 }
 
 /**
+ * A holiday hat riding on top of a peeker already placed by attachPeeker() (Git #3145, README
+ * "Seasons and holidays": "holiday hat overlay in the same box" as the peeker). Same left/width
+ * geometry as attachPeeker so the hat tracks whichever peeker is showing; the design's own
+ * viewBox ("0 -16 260 80") and no-viewBox-on-the-symbol rule (see the ph-* <symbol>s in
+ * critters-sprite.svg) keep the hat's own coordinate space independent of the peeker beneath it.
+ */
+export function attachPeekerHat(labelEl, symbolId) {
+  const container = labelEl.parentElement;
+  const svg = svgEl(symbolId, { height: 65, className: "peeker-hat", viewBox: "0 -16 260 80" });
+  svg.setAttribute("preserveAspectRatio", "xMidYMax meet");
+  svg.style.left = `${labelEl.offsetWidth + 30}px`;
+  svg.style.right = "0";
+  svg.style.width = "auto";
+  container.append(svg);
+  return svg;
+}
+
+/**
  * The faint 260px room watermark: `opacity:.12`, `position:absolute; right:-44px; bottom:78px`,
  * `pointer-events:none`, painted over the content so it shows through list rows.
  */
