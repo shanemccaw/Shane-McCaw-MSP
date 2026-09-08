@@ -58,13 +58,31 @@ BuildConsole cross-pollination, in either direction — critters are designed fr
 Shane's Life and stay entirely within it, full stop. The critter set actually built
 (#3119) is real, original work, not a port.
 
-**Real "Round 2 UI" direction, confirmed 2026-09-07 — real, stated intent, design not
-yet finished.** Shane is working a second design pass (same real Claude Design process
-as Round 1) toward something more dynamic, prettier, and "themed cute," including real
-holiday themes and real time-of-day visual changes. No real spec exists yet — this is a
-real, stated direction to hold onto, not a locked requirement to build against until the
-actual design lands. When it does, this note should be replaced with the real, specific
-decisions the same way every other design pass tonight was.
+**Real "Round 2 UI," confirmed and landed 2026-09-07.** A second real design pass (same
+Claude Design process as Round 1) — more dynamic, prettier, "themed cute," with real
+holiday themes and real time-of-day visual changes. Real, landed design commit
+`2c49a2825` — two new real screens (`Shanes Life 15 - Seasons.dc.html`,
+`Shanes Life 16 - Later.dc.html`), a substantially expanded Today tray, and real
+screenshots confirming holiday theming (house-christmas, house-halloween) and time-of-day/
+weather awareness (today-birthday, today-christmas-top, today-halloween-night,
+today-summer-storm-rental).
+
+**Real fox contextual dialogue, confirmed 2026-09-07 — a real spec detail that didn't
+make it into the design files themselves.** The fox on the Today tray speaks about
+whatever is actually in the real "Next" card — two real parts, always in this order:
+
+1. **A real opener** — the time-of-day greeting, or the holiday-specific one when a real
+   holiday theme is active.
+2. **A real matching line for whatever's actually next**, verbatim examples Shane gave:
+   - Dinner: "Time to make dinner: chicken, potatoes, green beans."
+   - Doctor: "Dr. Fonji at 2:00 PM today. That's the one thing."
+   - Walmart / NASA / Rental: the real location-specific lines already established.
+   - Groceries: "Groceries are ready for whenever you pass a store. Nothing pressing."
+   - Nothing next: "Nothing needs you. The day's yours." — holidays keep their own real
+     version of this line too (Shane's own example: "Nothing needs you today but cake").
+
+Real note for whoever builds this: these are real, specific lines Shane wrote, not
+placeholder copy — use them as given, don't paraphrase.
 
 ## 2. The three real design failures this exists to fix
 
