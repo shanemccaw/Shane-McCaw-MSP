@@ -110,9 +110,18 @@ function fmtUsd(amount) {
  * `meds` and `pendingCaptures` back the Medicine and Inbox rooms (Git #3250) -- both used to be
  * the last two links on the flat `<nav class="tabs">` bar that #3165's house grid was supposed to
  * fully replace and never did; they're real rooms now, not a lingering flat bar sitting under it.
+ *
+ * Vault and Tesla (Git #3271) round the grid out to thirteen real rooms. Both real backend
+ * modules (vault.mjs/documents.mjs, tesla.mjs) predate this issue; this just wires their real
+ * stored state into the tile the same way every other room already does -- see the Vault and
+ * Tesla blocks below for exactly which reads back each one's own real "lit" rule.
  */
 export async function roomsForToday(userId, { allDates, tonight, groceries, meds, pendingCaptures }) {
-  const [thingsList, listsForUser, allPeople, allPets, recipeMatches, gate, recentWins] = await Promise.all([
+  const [
+    thingsList, listsForUser, allPeople, allPets, recipeMatches, gate, recentWins,
+    vaultCounts, documentList, vaultRevealOpen, documentRevealOpen,
+    teslaStatus, teslaPrecondition, teslaScheduled, teslaShortfall,
+  ] = await Promise.all([
     things.listThings(userId),
     lists.listListsForUser(userId),
     people.listPeople(userId),
@@ -120,6 +129,14 @@ export async function roomsForToday(userId, { allDates, tonight, groceries, meds
     recipes.listRecipesWithMatch(userId),
     money.getGateStatus(userId),
     wins.listWins(userId, { limit: 1 }),
+    vault.countsByKind(userId),
+    documents.listDocuments(userId),
+    vault.hasOpenReveal(userId),
+    documents.hasOpenReveal(userId),
+    teslaCore.connectionStatus(userId),
+    teslaCore.getPreconditioningStatus(userId),
+    teslaCore.listScheduledCommands(userId),
+    teslaCore.getTodaysBatteryShortfall(userId),
   ]);
 
   // Shopping: "while items remain" -- the same openCount the Next card's own "home" case reads.
@@ -235,6 +252,42 @@ export async function roomsForToday(userId, { allDates, tonight, groceries, meds
     ? { lit: true, subtitle: `${pendingCaptures} held for Claude` }
     : { lit: false, subtitle: "Nothing held" };
 
+  // Vault (Git #3271, README "Vault is a room" -- "Tile: '{n} logins · {m} bill refs · {k}
+  // documents', lit only while a reveal is open"). The count line is real regardless of lit
+  // state; "lit" comes from vault.hasOpenReveal()/documents.hasOpenReveal() -- the real audited
+  // 20-second reveal windows in vault_reveals and important_document_reveals, never a
+  // client-trusted countdown. Documents live in their own real table (Git #3244) but the room
+  // folds them into one tile, so both reveal trails have to be checked.
+  const vaultRoom = {
+    lit: vaultRevealOpen || documentRevealOpen,
+    subtitle: `${vaultCounts.login} login${vaultCounts.login === 1 ? "" : "s"} · ${vaultCounts.bill_reference} bill ref${vaultCounts.bill_reference === 1 ? "" : "s"} · ${documentList.length} document${documentList.length === 1 ? "" : "s"}`,
+  };
+
+  // Tesla (Git #3271, README "Tesla is a room" -- "Tile rule: lit while preconditioning runs, a
+  // trunk command is pending, or the commute check is short"), checked in that priority order.
+  // Every read behind this is stored state (a real inbound webhook ping, a real scheduled-command
+  // row, today's already-run housekeeping-sweep nudge) -- never a live Fleet API call, since
+  // roomsForToday runs on every /api/today load and "reads wake the car" applies to a background
+  // tile render exactly as much as an explicit visit to the room.
+  let teslaRoom;
+  if (!teslaStatus.connected) {
+    teslaRoom = { lit: false, subtitle: "Not connected" };
+  } else if (teslaPrecondition.active) {
+    teslaRoom = { lit: true, subtitle: `Warming up · ${teslaPrecondition.minutesAgo} min` };
+  } else if (teslaScheduled.length > 0) {
+    const secondsLeft = Math.max(0, Math.round((new Date(teslaScheduled[0].scheduled_for).getTime() - Date.now()) / 1000));
+    const mm = Math.floor(secondsLeft / 60);
+    const ss = String(secondsLeft % 60).padStart(2, "0");
+    teslaRoom = { lit: true, subtitle: `Trunk opens in ${mm}:${ss}` };
+  } else if (teslaShortfall) {
+    teslaRoom = { lit: true, subtitle: `${teslaShortfall.batteryRangeMiles} mi · charge tonight` };
+  } else {
+    // Connected, nothing due -- no live battery/range read here (that's the room's own on-demand
+    // "Check now", never this background tile), so this stays a real "nothing to report" line
+    // rather than a stale or fabricated number.
+    teslaRoom = { lit: false, subtitle: "Nothing needs you" };
+  }
+
   return {
     shopping,
     money: money_,
@@ -247,6 +300,8 @@ export async function roomsForToday(userId, { allDates, tonight, groceries, meds
     wins: winsRoom,
     meds: medsRoom,
     inbox: inboxRoom,
+    vault: vaultRoom,
+    tesla: teslaRoom,
   };
 }
 

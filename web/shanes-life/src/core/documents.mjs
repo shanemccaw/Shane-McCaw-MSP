@@ -309,3 +309,21 @@ export async function revealHistory(userId, id, limit = 20) {
     [id, userId, Math.min(Number(limit) || 20, 100)],
   );
 }
+
+/** Git #3271 (Vault room's house-grid tile, which folds Documents' own reveal in): same real
+ *  "is a reveal open right now" read as vault.mjs's own hasOpenReveal(), against this module's
+ *  separate important_document_reveals audit trail -- Documents keeps its own table/key/reveal
+ *  path (see this file's header), so the Vault tile has to check both real reveal trails, not
+ *  just vault.mjs's, to answer "is ANYTHING in the room currently revealed" honestly. */
+export async function hasOpenReveal(userId) {
+  const row = await one(
+    `SELECT 1
+       FROM important_document_reveals r
+       JOIN important_documents d ON d.id = r.document_id
+      WHERE d.user_id = $1
+        AND r.at > now() - ($2 || ' seconds')::interval
+      LIMIT 1`,
+    [userId, REVEAL_WINDOW_SECONDS],
+  );
+  return Boolean(row);
+}

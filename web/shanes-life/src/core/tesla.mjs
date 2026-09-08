@@ -797,6 +797,48 @@ export async function scheduleCheckoutTrunkOpen(userId) {
   return row;
 }
 
+/**
+ * Git #3271 (Tesla room's house-grid tile, "lit while preconditioning runs"): real, stored-only
+ * read -- never a live climate_state poll, same "reads wake the car" discipline
+ * getVehicleClimateState's own header states, which applies just as much to a tile rendered on
+ * every /api/today load as to an explicit page visit. The only real signal this app has that
+ * preconditioning is genuinely running, without asking the car, is the most recent real inbound
+ * /hooks/tesla ping (recordHookEvent above) -- an external automation's own observation that
+ * climate actually started. Treated as "still warming" for the same DEDUPE_WINDOW_MINUTES this
+ * file already uses to decide a repeat ping is the same warming session, not a new one -- one
+ * real constant, one meaning, in both places.
+ */
+export async function getPreconditioningStatus(userId) {
+  const row = await one(
+    `SELECT at FROM hooks
+      WHERE user_id = $1 AND kind = 'tesla'
+      ORDER BY at DESC LIMIT 1`,
+    [userId],
+  );
+  if (!row) return { active: false, startedAt: null, minutesAgo: null };
+  const startedAt = new Date(row.at);
+  const minutesAgo = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 60_000));
+  return { active: minutesAgo < DEDUPE_WINDOW_MINUTES, startedAt: startedAt.toISOString(), minutesAgo };
+}
+
+/**
+ * Git #3271 (Tesla room's house-grid tile, "lit while... the commute check is short"): reads
+ * back today's real nudge_events row (kind 'tesla_battery') that runLowBatteryCheckForUser's own
+ * 6-hour housekeeping sweep already writes the moment it finds a real shortfall -- never a
+ * second live getChargeState() call just to paint a tile (that call wakes the car; the sweep
+ * already paid that cost once today). Null when today's sweep hasn't run yet, found no
+ * shortfall, or Tesla isn't connected/enabled -- all real "nothing to report" states, not errors.
+ */
+export async function getTodaysBatteryShortfall(userId) {
+  const row = await one(
+    `SELECT payload FROM nudge_events
+      WHERE user_id = $1 AND kind = 'tesla_battery' AND day = current_date
+      ORDER BY created_at DESC LIMIT 1`,
+    [userId],
+  );
+  return row ? row.payload : null;
+}
+
 export async function listScheduledCommands(userId) {
   return many(
     `SELECT id, command, reason, scheduled_for, status, error, created_at, sent_at

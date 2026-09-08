@@ -1261,7 +1261,19 @@ pre.token {
   overflow: hidden;
 }
 .rooms-cell:nth-child(2n) { border-right: none; }
-.rooms-cell:nth-last-child(-n+2) { border-bottom: none; }
+.rooms-cell:last-child { border-bottom: none; }
+/* The second-to-last cell only shares the true LAST row (and so only it loses its own bottom
+   border here) when it sits at an odd position -- which is only ever the case when the total
+   room count is even (an even count's final row is the odd-positioned left cell + the
+   even-positioned, already-handled-above last-child right cell). With an odd count, the
+   second-to-last cell is the right half of the second-to-LAST row, which still has the wide
+   spanning room below it, so it correctly keeps its bottom border. */
+.rooms-cell:nth-last-child(2):nth-child(odd) { border-bottom: none; }
+/* Git #3271, README "Rooms -- the house": "when the room count is odd, the LAST room spans both
+   grid columns... as a wide ground floor". :last-child:nth-child(odd) is true precisely when the
+   total cell count is odd, so this rule turns itself on/off purely from the real room count --
+   no JS, no data attribute to keep in sync. */
+.rooms-cell:last-child:nth-child(odd) { grid-column: 1 / -1; border-right: none; }
 .rooms-furniture { position: absolute; top: 0; left: 0; right: 0; }
 .rooms-furniture svg { display: block; width: 100%; height: 34px; }
 .rooms-lamp { position: absolute; top: 2px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }

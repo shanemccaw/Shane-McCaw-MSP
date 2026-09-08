@@ -3,8 +3,8 @@
 // Settings card -- house order is user state here").
 //
 // The Today "Rooms -- the house" grid (Git #3165, roomsHouseSection() in public/app.js) has one
-// fixed set of real rooms (11 as of Git #3250, Meds and Inbox pulled off the old flat `.tabs` bar
-// into their own rooms -- see that issue). ROOM_KEYS
+// fixed set of real rooms (13 as of Git #3271, Vault and Tesla added to the 11 that landed via
+// #3250 -- see that issue). ROOM_KEYS
 // below is the server's own copy of that same key set --
 // duplicated rather than shared because this module has no browser/server shared bundle to put
 // it in (same reason fmtUsd() in api.mjs is duplicated rather than imported). If a room is ever
@@ -12,12 +12,16 @@
 //
 // DEFAULT_ORDER is the grid's own existing shipped order -- so a user who has never touched
 // Settings, or whose stored order has gone stale (a room added/removed since they last saved),
-// sees exactly the layout the house grid has always rendered, not a surprise reshuffle.
+// sees exactly the layout the house grid has always rendered, not a surprise reshuffle. Order is
+// the README's own literal "Default order" ("Money | Wins; Vault | Medicine; Tesla | Shopping;
+// Recipes | Things; Lists | Dates; Pets | Inbox | People") -- thirteen is odd, so People, the
+// last room, spans both grid columns as a wide ground floor (app.css's own
+// `:last-child:nth-child(odd)` rule).
 
 import { one, query } from "../db.mjs";
 import { badRequest } from "../http.mjs";
 
-export const ROOM_KEYS = ["things", "lists", "people", "dates", "recipes", "pets", "shopping", "money", "wins", "meds", "inbox"];
+export const ROOM_KEYS = ["money", "wins", "vault", "meds", "tesla", "shopping", "recipes", "things", "lists", "dates", "pets", "inbox", "people"];
 export const DEFAULT_ORDER = [...ROOM_KEYS];
 
 /** Repairs a stored order against the real, current room set: drops any key that no longer

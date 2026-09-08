@@ -1550,23 +1550,23 @@ function medsPillSection(meds) {
 // superseded is gone from index.html as of Git #3250) with the design's own illustrated house: a
 // roof, a two-column floor grid, and a real lit/dark lamp per room driven by /api/today's own
 // `rooms` object (roomsForToday() in api.mjs) -- never a guessed or hardcoded state. Floor order
-// is the README's own literal order: Things | Lists; People | Dates; Recipes | Pets; Shopping |
-// Money.
+// is the README's own literal "Default order" (Git #3271): Money | Wins; Vault | Medicine;
+// Tesla | Shopping; Recipes | Things; Lists | Dates; Pets | Inbox | People. Thirteen rooms --
+// odd, so People (the last room) spans both grid columns as a wide ground floor (app.css's own
+// `:last-child:nth-child(odd)` rule, which self-activates purely from the real room count).
 //
 // Critter slots are reused from the existing 23-slot roster rather than inventing new artwork:
-// Dates reuses "comingup" (the owl already drawn for the Later moment of the same name) and
-// Recipes reuses "dinner" (the otter-chef already drawn for the Dinner moment) -- both already
-// exist in critters-sprite.svg and thematically fit the room. Money reuses "moneyhdr" (the bear
-// already used for the Money room's own page header). People routes to the real People &
-// Patterns journal (#3157, landed the same day as this issue -- see viewPeople() below).
+// Dates reuses "comingup" (the owl already drawn for the Later moment of the same name), Recipes
+// reuses "dinner" (the otter-chef already drawn for the Dinner moment), and Tesla reuses
+// "heading" (the raccoon-in-the-Model-3/puppy pair already drawn for the "Heading out" Later
+// moment -- README's own words for the Tesla room: "the heading critter pair") -- all three
+// already exist in critters-sprite.svg and thematically fit the room. Money reuses "moneyhdr"
+// (the bear already used for the Money room's own page header). Vault gets its own dedicated
+// "vault" slot (1m, c-vault/c-vault2) -- built to full spec since #3119 waiting for exactly this
+// room to land, the same way "wins" (1n) waited for the Wins room below. People routes to the
+// real People & Patterns journal (#3157, landed the same day as this issue -- see viewPeople()
+// below).
 const ROOM_DEFS = [
-  { key: "things", route: "#/things", title: "Things", critterSlot: "things", furniture: "r-things", tint: "251,146,60" },
-  { key: "lists", route: "#/lists", title: "Lists", critterSlot: "lists", furniture: "r-lists", tint: "165,180,252" },
-  { key: "people", route: "#/people", title: "People", critterSlot: "people", furniture: "r-people", tint: "167,139,250" },
-  { key: "dates", route: "#/dates", title: "Dates", critterSlot: "comingup", furniture: "r-dates", tint: "244,114,182" },
-  { key: "recipes", route: "#/recipes", title: "Recipes", critterSlot: "dinner", furniture: "r-recipes", tint: "45,212,191" },
-  { key: "pets", route: "#/pets", title: "Pets", critterSlot: "pets", furniture: "r-pets", tint: "52,211,153" },
-  { key: "shopping", route: "#/shopping", title: "Shopping", critterSlot: "shop", furniture: "r-shop", tint: "96,165,250" },
   { key: "money", route: "#/money", title: "Money", critterSlot: "moneyhdr", furniture: "r-money", tint: "251,191,36" },
   // Git #3241: Wins pulled out of Money's own tab switcher into its own real room -- the genuine
   // counterweight to Money's heavy content deserves its own glowing cell, not a buried tab. Uses
@@ -1574,12 +1574,26 @@ const ROOM_DEFS = [
   // spec since #3119 waiting for exactly this room to land. tint is a warm rose, deliberately
   // distinct from Money's amber bear -- quiet, not celebratory neon.
   { key: "wins", route: "#/wins", title: "Wins", critterSlot: "wins", furniture: "r-wins", tint: "253,164,175" },
+  // Git #3271: the password/bill-reference/documents vault (vault.mjs + documents.mjs), folded
+  // into one room. Tint is a quiet slate, matching the README's own "safe" palette -- deliberately
+  // not amber (Money) or any other room's warmer tone, since a security surface reads calmer,
+  // not celebratory.
+  { key: "vault", route: "#/vault", title: "Vault", critterSlot: "vault", furniture: "r-vault", tint: "148,163,184" },
   // Git #3250: Meds and Inbox are the last two links pulled off the old flat `.tabs` bar --
   // README's own "ten rooms" list ("Money | Medicine ... Inbox | People") gives both a real tint
-  // and furniture; appended here rather than reordering the eight rooms already shipped above,
-  // to keep this a pure addition (any saved room order, Git #3215, still reconciles cleanly).
+  // and furniture.
   { key: "meds", route: "#/meds", title: "Medicine", critterSlot: "meds", furniture: "r-meds", tint: "52,211,153" },
+  // Git #3271: the real Tesla Fleet API room (tesla.mjs), cyan to match the README's own tint for
+  // it -- distinct from every other room's warmer palette, same reasoning Vault's slate gets.
+  { key: "tesla", route: "#/tesla", title: "Tesla", critterSlot: "heading", furniture: "r-tesla", tint: "34,211,238" },
+  { key: "shopping", route: "#/shopping", title: "Shopping", critterSlot: "shop", furniture: "r-shop", tint: "96,165,250" },
+  { key: "recipes", route: "#/recipes", title: "Recipes", critterSlot: "dinner", furniture: "r-recipes", tint: "45,212,191" },
+  { key: "things", route: "#/things", title: "Things", critterSlot: "things", furniture: "r-things", tint: "251,146,60" },
+  { key: "lists", route: "#/lists", title: "Lists", critterSlot: "lists", furniture: "r-lists", tint: "165,180,252" },
+  { key: "dates", route: "#/dates", title: "Dates", critterSlot: "comingup", furniture: "r-dates", tint: "244,114,182" },
+  { key: "pets", route: "#/pets", title: "Pets", critterSlot: "pets", furniture: "r-pets", tint: "52,211,153" },
   { key: "inbox", route: "#/inbox", title: "Inbox", critterSlot: "idle", furniture: "r-inbox", tint: "147,197,253" },
+  { key: "people", route: "#/people", title: "People", critterSlot: "people", furniture: "r-people", tint: "167,139,250" },
 ];
 
 /** The roof: polygon + ridge + chimney, README-exact geometry (viewBox 370x40). The two smoke

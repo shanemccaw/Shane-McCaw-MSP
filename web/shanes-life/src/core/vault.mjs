@@ -479,6 +479,27 @@ export async function reveal(userId, id, { credentialId, ip = null, userAgent = 
   });
 }
 
+/**
+ * Git #3271 (Vault room's house-grid tile): "lit while a reveal is open" -- read back from the
+ * real vault_reveals audit trail rather than trusted from a client-side countdown, so a stale or
+ * closed tab can never leave the tile lit. `at > now() - REVEAL_WINDOW_SECONDS` is the same real
+ * 20-second window reveal() itself hands back as `expiresAt`, checked here across every entry
+ * this user owns rather than one specific id -- the tile lights for ANY open reveal, not a
+ * particular row.
+ */
+export async function hasOpenReveal(userId) {
+  const row = await one(
+    `SELECT 1
+       FROM vault_reveals r
+       JOIN vault v ON v.id = r.vault_id
+      WHERE v.user_id = $1
+        AND r.at > now() - ($2 || ' seconds')::interval
+      LIMIT 1`,
+    [userId, REVEAL_WINDOW_SECONDS],
+  );
+  return Boolean(row);
+}
+
 /** The audit trail for one entry, newest first. Reads its own table, never the ciphertext. */
 export async function revealHistory(userId, id, limit = 20) {
   return many(
