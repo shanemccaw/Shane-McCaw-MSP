@@ -1108,6 +1108,104 @@ export async function simulateTransfer(userId, { amount, from, to }) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// bill due-date + Tax Levy notifications (Git #3161)
+// ---------------------------------------------------------------------------
+
+/** Real reuse, not a duplicate tracker (contract Section 3): a bill's due date is already
+ *  `accounts.due_day` -- this surfaces the SAME real data as a due-soon nudge instead of keeping
+ *  a second due-date store. Three days' notice is enough to check `getGateStatus`/`whatIf` and
+ *  move money before the date lands -- shorter than the 21-day `renewal` lead time (dates.mjs)
+ *  because a bill recurs monthly, not annually; a month's worth of advance notice would mean it
+ *  is almost always "due soon." */
+const BILL_LEAD_DAYS = 3;
+
+/** A debt with its own real `due_day` (today, only the $242/month Tax Levy installment --
+ *  migration 037) gets more lead time than a routine bill: Section 3 calls this one out by name
+ *  as "high-stakes enough to warrant its own real, distinct nudge." */
+const DEBT_LEAD_DAYS = 5;
+
+/** `dueDay` (1-31) resolved against `today` -> `{ dueDate, daysAway }` when that real occurrence
+ *  falls within `leadDays`, else null. Reuses the same `nextDueDate` month-end clamping Budget
+ *  Day's own due-before-next-check math already relies on. */
+function dueSoon(dueDay, today, leadDays) {
+  const due = nextDueDate(dueDay, today);
+  if (!due) return null;
+  const daysAway = Math.round((due - today) / MS_PER_DAY);
+  return daysAway >= 0 && daysAway <= leadDays ? { dueDate: utcIso(due), daysAway } : null;
+}
+
+/**
+ * Real bills (`accounts.role='bill'`) whose real due date falls within the lead window and have
+ * not already had a `kind: 'bill'` reminder queued today -- same day-scoped dedup convention as
+ * `dates.findDueDayBeforeReminders` / `pets.findDueVaccineReminders`: re-fires daily while the
+ * window stays open (a bill that's still short deserves the next day's nudge too), and a new
+ * month's occurrence naturally produces a different `dueDate` once the old one passes.
+ */
+export async function findDueBillReminders(userId, { asOf = new Date() } = {}) {
+  const today = new Date(Date.UTC(asOf.getFullYear(), asOf.getMonth(), asOf.getDate()));
+  const bills = await loadRoleAccounts(ROLE_BILL);
+
+  const candidates = [];
+  for (const b of bills) {
+    if (!b.due_day) continue;
+    const soon = dueSoon(b.due_day, today, BILL_LEAD_DAYS);
+    if (!soon) continue;
+    const target = toCents(b.target_amount);
+    const balance = toCents(b.current_balance);
+    // Same warn-and-exclude convention as computeGateMath: an unknown balance still reports the
+    // real target owed (better than no number at all), just not a computed shortfall.
+    const amountCents = target === null ? null : balance === null ? target : Math.max(0, target - balance);
+    candidates.push({ id: b.id, name: b.name, dueDate: soon.dueDate, daysAway: soon.daysAway, amountCents });
+  }
+  if (candidates.length === 0) return [];
+
+  const already = await many(
+    `SELECT payload->>'accountId' AS account_id FROM nudge_events
+      WHERE user_id = $1 AND kind = 'bill' AND day = current_date`,
+    [userId],
+  );
+  const seen = new Set(already.map((r) => r.account_id));
+  return candidates.filter((c) => !seen.has(c.id));
+}
+
+/**
+ * Real debts (`debts.due_day`) whose due date falls within their own, longer lead window --
+ * today, only the real $242/month Tax Levy installment (Treasury Offset Program, migration 037).
+ * A genuinely separate kind (`'debt_due'`) from bill reminders, and a genuinely separate table
+ * (ShanesSurvival's `debts`, not `accounts`) -- Section 3's "own real, distinct nudge... not
+ * lumped anonymously into the general bill list" without this needing to name any creditor
+ * specially: any debt that gets a real due_day is distinct by construction.
+ */
+export async function findDueDebtReminders(userId, { asOf = new Date() } = {}) {
+  const today = new Date(Date.UTC(asOf.getFullYear(), asOf.getMonth(), asOf.getDate()));
+  const debts = await many(
+    `SELECT id, creditor_name, balance, minimum_payment, due_day FROM debts WHERE due_day IS NOT NULL`,
+  );
+
+  const candidates = [];
+  for (const d of debts) {
+    const soon = dueSoon(d.due_day, today, DEBT_LEAD_DAYS);
+    if (!soon) continue;
+    candidates.push({
+      id: d.id,
+      name: d.creditor_name,
+      dueDate: soon.dueDate,
+      daysAway: soon.daysAway,
+      amountCents: toCents(d.minimum_payment),
+    });
+  }
+  if (candidates.length === 0) return [];
+
+  const already = await many(
+    `SELECT payload->>'debtId' AS debt_id FROM nudge_events
+      WHERE user_id = $1 AND kind = 'debt_due' AND day = current_date`,
+    [userId],
+  );
+  const seen = new Set(already.map((r) => r.debt_id));
+  return candidates.filter((c) => !seen.has(c.id));
+}
+
 /** Budget Day on its own, for the tray card that does not need the whole gate. */
 export async function getBudgetDay(userId, { asOf = new Date() } = {}) {
   const [sources, accounts] = await Promise.all([

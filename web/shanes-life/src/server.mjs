@@ -22,6 +22,7 @@ import { findDueVaccineReminders } from "./core/pets.mjs";
 import { queueNudge } from "./core/nudges.mjs";
 import { listUsers } from "./core/users.mjs";
 import { detectMoneyWins } from "./core/wins.mjs";
+import { findDueBillReminders, findDueDebtReminders, formatMoney } from "./core/money.mjs";
 
 const PUBLIC_DIR = resolve(config.root, "public");
 const apiRouter = buildApiRouter();
@@ -214,6 +215,7 @@ async function main() {
       await runMonthlyFederalHolidaysRefresh();
       await runMoneyWinDetection();
       await runCatchesSweep();
+      await runMoneyDueReminders();
     },
     6 * 60 * 60 * 1000,
   );
@@ -226,6 +228,7 @@ async function main() {
   await runMonthlyFederalHolidaysRefresh();
   await runMoneyWinDetection();
   await runCatchesSweep();
+  await runMoneyDueReminders();
 }
 
 /**
@@ -312,6 +315,45 @@ async function runCatchesSweep() {
     }
   } catch (err) {
     log("[catches] sweep failed:", err.message);
+  }
+}
+
+/**
+ * Money's real bill due-date and Tax Levy reminders (Git #3161, design contract Section 3):
+ * `accounts.due_day` and `debts.due_day` are already real data -- this surfaces the same real
+ * numbers as a due-soon nudge rather than maintaining a second due-date tracker. The Tax Levy's
+ * own $242/month installment (Treasury Offset Program, migration 037) queues under a genuinely
+ * separate kind (`debt_due`) from routine bills (`bill`), so it is never folded anonymously into
+ * the general bill list.
+ */
+async function runMoneyDueReminders() {
+  try {
+    for (const user of await listUsers()) {
+      const [bills, debts] = await Promise.all([findDueBillReminders(user.id), findDueDebtReminders(user.id)]);
+      for (const b of bills) {
+        await queueNudge({
+          userId: user.id,
+          kind: "bill",
+          title: `${b.name} due ${new Date(b.dueDate).toLocaleDateString()} -- ${formatMoney(b.amountCents) ?? "amount unknown"}`,
+          body: null,
+          payload: { accountId: b.id, dueDate: b.dueDate },
+        });
+      }
+      for (const d of debts) {
+        await queueNudge({
+          userId: user.id,
+          kind: "debt_due",
+          title: `${d.name} payment due ${new Date(d.dueDate).toLocaleDateString()} -- ${formatMoney(d.amountCents) ?? "amount unknown"}`,
+          body: null,
+          payload: { debtId: d.id, dueDate: d.dueDate },
+        });
+      }
+      if (bills.length > 0 || debts.length > 0) {
+        log(`[reminders] queued ${bills.length} bill / ${debts.length} debt due-date reminder(s) for ${user.email}`);
+      }
+    }
+  } catch (err) {
+    log("[reminders] money due-date sweep failed:", err.message);
   }
 }
 
