@@ -6909,12 +6909,41 @@ function verdictBadge(verdict) {
   return el("span", { class: "chip verdict", text: parts.join(" · ") });
 }
 
+// @zxing/browser is loaded on demand, never in index.html -- same reasoning as loadPlaidLink()
+// above: a third-party script tag on every page load, for something used a handful of times a
+// week, is not a trade this app makes. Vendored as a static file (see public/vendor/README.md)
+// because this app has no client-side bundler; loading it as a classic script attaches
+// `window.ZXingBrowser` (Git #3263 -- replaces the native `BarcodeDetector` API, which Safari
+// has never implemented).
+const ZXING_BROWSER_SRC = "/vendor/zxing-browser.min.js";
+let zxingBrowserLoader = null;
+
+function loadZxingBrowser() {
+  if (window.ZXingBrowser) return Promise.resolve(window.ZXingBrowser);
+  if (zxingBrowserLoader) return zxingBrowserLoader;
+  zxingBrowserLoader = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = ZXING_BROWSER_SRC;
+    script.async = true;
+    script.onload = () => resolve(window.ZXingBrowser);
+    script.onerror = () => {
+      zxingBrowserLoader = null;
+      reject(new Error("Could not load the barcode scanner. Check the connection and try again."));
+    };
+    document.head.append(script);
+  });
+  return zxingBrowserLoader;
+}
+
 /**
- * The real scan sheet (design "Shanes Life 04 - Shopping.dc.html", option 2a). Decodes with the
- * browser's native BarcodeDetector where it exists (Chrome/Edge/Android); everywhere else --
- * and if the camera itself is denied -- falls back to typing the barcode by hand. Never a
- * silent failure either way: a barcode that doesn't decode or doesn't match anything still
- * lands on a real state (unknown), never a dead end.
+ * The real scan sheet (design "Shanes Life 04 - Shopping.dc.html", option 2a). Decodes the live
+ * camera feed with @zxing/browser (vendored at /vendor/zxing-browser.min.js, loaded on demand --
+ * see loadZxingBrowser()) rather than the native `BarcodeDetector` API, which Safari has never
+ * implemented in any context (Git #3263) -- ZXing decodes in software from the same
+ * `getUserMedia` stream, so this works the same way on every browser, iOS Safari included. If
+ * the camera itself is denied, or the scanner script fails to load, falls back to typing the
+ * barcode by hand. Never a silent failure either way: a barcode that doesn't decode or doesn't
+ * match anything still lands on a real state (unknown), never a dead end.
  */
 async function openScanSheet(list) {
   const dialog = el("dialog", { class: "sheet" });
@@ -6930,6 +6959,7 @@ async function openScanSheet(list) {
   dialog.addEventListener("close", () => dialog.remove());
 
   let stream = null;
+  let scanControls = null;
   const video = el("video", { autoplay: "", playsinline: "", muted: "", class: "scan-video" });
   const status = el("p", { class: "small muted", text: "Point the camera at a barcode." });
   const manualInput = el("input", { placeholder: "Or type the barcode", inputmode: "numeric", "aria-label": "Barcode" });
@@ -6937,6 +6967,14 @@ async function openScanSheet(list) {
   const resultBox = el("div");
 
   const stopCamera = () => {
+    if (scanControls) {
+      try {
+        scanControls.stop();
+      } catch {
+        // Already stopped -- nothing more to release.
+      }
+      scanControls = null;
+    }
     if (stream) {
       for (const track of stream.getTracks()) track.stop();
       stream = null;
@@ -6971,42 +7009,36 @@ async function openScanSheet(list) {
 
   body.append(video, status, resultBox, el("div", { class: "card" }, [manualForm]));
 
-  if ("BarcodeDetector" in window) {
-    try {
-      const supported = await window.BarcodeDetector.getSupportedFormats();
-      const detector = new window.BarcodeDetector({
-        formats: supported.filter((f) => ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"].includes(f)),
-      });
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      video.srcObject = stream;
-      let stopped = false;
-      const tick = async () => {
-        if (stopped || !dialog.open) return;
-        try {
-          const codes = await detector.detect(video);
-          if (codes.length > 0) {
-            stopped = true;
-            stopCamera();
-            video.remove();
-            await runLookup(codes[0].rawValue);
-            return;
-          }
-        } catch {
-          // A single failed detect frame is not a real error -- keep scanning.
-        }
-        requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    } catch (err) {
-      // Camera denied/unavailable -- real, honest fallback to manual entry, never a dead end.
-      video.remove();
-      status.textContent = "Camera unavailable — type the barcode instead.";
+  try {
+    const ZXingBrowser = await loadZxingBrowser();
+    const reader = new ZXingBrowser.BrowserMultiFormatReader();
+    let handled = false;
+    const controls = await reader.decodeFromConstraints(
+      { video: { facingMode: "environment" } },
+      video,
+      (result) => {
+        if (handled || !dialog.open || !result) return;
+        // A single failed decode frame (no barcode in view yet) has no `result` -- not a real
+        // error, ZXing just keeps scanning the next frame on its own.
+        handled = true;
+        stopCamera();
+        video.remove();
+        runLookup(result.getText());
+      },
+    );
+    if (!dialog.open) {
+      // The sheet was closed while the scanner/camera was still starting up -- release it
+      // immediately rather than leaking a live camera stream nobody can see.
+      controls.stop();
+    } else {
+      scanControls = controls;
+      stream = video.srcObject;
     }
-  } else {
-    // No BarcodeDetector on this browser (e.g. Safari/iOS as of this writing) -- same honest
-    // fallback, not a feature that silently does nothing.
+  } catch (err) {
+    // Camera denied/unavailable, or the scanner script itself failed to load -- real, honest
+    // fallback to manual entry, never a dead end.
     video.remove();
-    status.textContent = "This browser can't scan a live camera feed — type the barcode instead.";
+    status.textContent = "Camera unavailable — type the barcode instead.";
   }
 
   dialog.showModal();
