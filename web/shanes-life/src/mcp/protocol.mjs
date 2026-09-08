@@ -90,6 +90,15 @@ async function handleMessage(msg, ctx) {
       const args = params?.arguments && typeof params.arguments === "object" ? params.arguments : {};
       try {
         const result = await runWithToolName(name, () => tool.handler(args, ctx));
+        // A handler that needs to hand back real binary content (get_capture_photo's inline
+        // image, so far the only one) returns { __mcpContent: [...], ...metadata } instead of a
+        // plain object -- __mcpContent goes out verbatim as the MCP content array (an image
+        // block Claude can actually see, not a wall of base64 text), and the rest of the object
+        // still rides along as structuredContent exactly like every other tool's reply.
+        if (result && typeof result === "object" && Array.isArray(result.__mcpContent)) {
+          const { __mcpContent, ...structured } = result;
+          return ok(id, { content: __mcpContent, structuredContent: structured, isError: false });
+        }
         const text = JSON.stringify(result, null, 2);
         return ok(id, {
           content: [{ type: "text", text }],

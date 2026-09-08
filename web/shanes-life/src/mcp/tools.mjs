@@ -20,6 +20,7 @@ import * as foodPreferences from "../core/food-preferences.mjs";
 import * as incomeRules from "../core/income-rules.mjs";
 import * as lists from "../core/lists.mjs";
 import * as mealPlan from "../core/meal-plan.mjs";
+import * as media from "../core/media.mjs";
 import * as medications from "../core/medications.mjs";
 import * as money from "../core/money.mjs";
 import * as people from "../core/people.mjs";
@@ -33,6 +34,14 @@ import * as tesla from "../core/tesla.mjs";
 import * as things from "../core/things.mjs";
 import * as vehicles from "../core/vehicles.mjs";
 import * as wins from "../core/wins.mjs";
+import { badRequest, notFound } from "../http.mjs";
+
+// The real image-content limit this tool self-enforces (Git #3261). Anthropic's own vision
+// limits top out around 5MB per image; this app has no image-resize dependency (see README --
+// one runtime dependency, `pg`, on purpose) so there is no real server-side downscale path yet.
+// A photo over this line gets a real, honest error naming its real size rather than a silent
+// truncation or a fabricated "resized" image that was never actually resized.
+const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
 
 const CATEGORY_META_PROPS = {
   categoryLabel: { type: "string", description: "Human label for the category, e.g. 'Vet visit'. Only used the first time this category slug is seen." },
@@ -151,6 +160,61 @@ export const TOOLS = [
       const row = await captures.dismissCapture(ctx.user.id, args.captureId);
       await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "capture.dismiss", detail: { captureId: args.captureId } });
       return row;
+    },
+  },
+
+  {
+    name: "get_capture_photo",
+    title: "Actually see a captured photo",
+    description:
+      "Read a photo capture's real image bytes and return them as genuine, viewable MCP image content -- list_captures only ever returns metadata (mime type, byte size, GPS), never what's actually in the picture. Call this on a pending photo capture before filing it, so the description that goes into set_thing/log_person_note/attach_visit/create_entity is a real one, not 'a photo'. Pass either captureId (from list_captures) or mediaId directly.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        captureId: { type: "string", description: "uuid of the capture, from list_captures. Preferred -- also confirms the photo belongs to this account." },
+        mediaId: { type: "string", description: "uuid of the underlying media row, if you already have it and not a captureId." },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      if (!args.captureId && !args.mediaId) throw badRequest("Provide either captureId or mediaId");
+
+      let mediaId = args.mediaId ?? null;
+      let captureRow = null;
+      if (args.captureId) {
+        captureRow = await captures.getCapture(ctx.user.id, args.captureId);
+        if (!captureRow) throw notFound("Capture not found");
+        if (!captureRow.media_id) throw badRequest("That capture has no attached photo");
+        mediaId = captureRow.media_id;
+      }
+
+      const row = await media.readMedia(ctx.user.id, mediaId);
+      if (!row) throw notFound("Attachment not found");
+      if (!row.mime_type.startsWith("image/")) {
+        throw badRequest(`That attachment is ${row.mime_type}, not a photo -- this tool only returns image content`);
+      }
+      if (row.byte_size > MAX_INLINE_IMAGE_BYTES) {
+        throw badRequest(
+          `Photo is ${(row.byte_size / (1024 * 1024)).toFixed(1)}MB, over the ${MAX_INLINE_IMAGE_BYTES / (1024 * 1024)}MB limit this tool can send inline -- no server-side downscaling exists yet (see Git #3261's follow-up).`,
+        );
+      }
+
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "capture.view_photo",
+        detail: { captureId: args.captureId ?? null, mediaId: row.id },
+      });
+
+      return {
+        __mcpContent: [{ type: "image", data: row.bytes.toString("base64"), mimeType: row.mime_type }],
+        captureId: args.captureId ?? null,
+        mediaId: row.id,
+        mimeType: row.mime_type,
+        byteSize: row.byte_size,
+        originalName: row.original_name,
+      };
     },
   },
 
