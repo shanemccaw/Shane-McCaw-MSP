@@ -408,3 +408,54 @@ pre.token {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* ---------- meds (Git #3135) ----------
+   "Single swipe per batch, not per-pill" -- one real drag track per batch, not a button per
+   medication. Design/design_handoff_shanes_life/Shanes Life 07 - Meds.dc.html draws the pill
+   track + a knob that slides to the end; this is that control in plain pointer events. */
+
+.med-item-row { display: flex; align-items: center; gap: 0.6rem; font-size: 15px; }
+.med-item-row .med-dose { font-size: 0.8rem; color: hsl(var(--muted-foreground)); margin-left: auto; }
+
+.slide-track {
+  position: relative;
+  height: 52px;
+  border-radius: var(--radius-full);
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--card-border));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: var(--weight-semibold);
+  color: hsl(var(--muted-foreground));
+  overflow: hidden;
+  touch-action: pan-y;
+  user-select: none;
+}
+.slide-track.done { color: hsl(var(--success)); background: hsl(var(--success) / 0.12); border-color: hsl(var(--success) / 0.35); }
+.slide-knob {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  transition: left 0.15s ease;
+}
+.slide-knob.dragging { transition: none; cursor: grabbing; }
+.slide-knob svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.slide-track.done .slide-knob { background: hsl(var(--success)); }
+
+.refill-row { display: flex; align-items: flex-start; gap: 0.7rem; }
+.refill-tier-label { font-size: 11px; font-weight: var(--weight-semibold); letter-spacing: 0.1em; text-transform: uppercase; }
+.refill-tier-label.needs-you { color: #fbbf24; }
+.refill-tier-label.handled { color: hsl(var(--success)); }
+.refill-days-left { font-size: 13px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
+.refill-days-left.due { color: #fbbf24; font-weight: var(--weight-semibold); }

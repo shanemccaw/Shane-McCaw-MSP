@@ -884,6 +884,263 @@ async function viewCook(view, recipeId) {
   );
 }
 
+// Meds (Git #3135). Design/design_handoff_shanes_life/Shanes Life 07 - Meds.dc.html: a batch
+// card per time of day, one real slide-to-take per batch (never per medication), and a Refills
+// section split into "Needs you" (manual-watch) and "Handled automatically" (auto-refill). No
+// adherence history or streak is shown anywhere on purpose (the design's own "Why") -- only
+// today's real state.
+
+const MEDS_CRITTER_SLOT = { morning: "morning", evening: "bedtime", bed: "bedtime" };
+function medsCritterSlot(batch) {
+  return MEDS_CRITTER_SLOT[batch] || "meds";
+}
+
+// el("svg", ...) would call document.createElement, which builds an unnamespaced element that
+// cannot render SVG children -- these two icons need the real SVG namespace.
+const SVG_NS = "http://www.w3.org/2000/svg";
+function lineIcon(pathsHtml, { size = 20 } = {}) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", size);
+  svg.setAttribute("height", size);
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2.5");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.innerHTML = pathsHtml;
+  return svg;
+}
+
+/**
+ * A real drag-to-complete control, plain pointer events -- no framework. Dragging the knob past
+ * ~70% of the track fires onComplete(); letting go short of that snaps the knob back. This is
+ * the "single swipe per batch, not per-pill" control the design's own slide track draws.
+ */
+function attachSlideToTake(track, knob, onComplete) {
+  let dragging = false;
+  let startX = 0;
+  let startLeft = 4;
+
+  const knobWidth = 44;
+  const margin = 4;
+
+  function maxLeft() {
+    return track.getBoundingClientRect().width - knobWidth - margin;
+  }
+
+  function setLeft(px) {
+    knob.style.left = `${Math.max(margin, Math.min(maxLeft(), px))}px`;
+  }
+
+  knob.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    startX = event.clientX;
+    startLeft = knob.offsetLeft;
+    knob.classList.add("dragging");
+    knob.setPointerCapture(event.pointerId);
+  });
+
+  knob.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    setLeft(startLeft + (event.clientX - startX));
+  });
+
+  function release(event) {
+    if (!dragging) return;
+    dragging = false;
+    knob.classList.remove("dragging");
+    const threshold = maxLeft() * 0.7;
+    if (knob.offsetLeft >= threshold) {
+      setLeft(maxLeft());
+      onComplete();
+    } else {
+      setLeft(margin);
+    }
+    if (event?.pointerId !== undefined && knob.hasPointerCapture?.(event.pointerId)) {
+      knob.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  knob.addEventListener("pointerup", release);
+  knob.addEventListener("pointercancel", release);
+}
+
+function medBatchCard(batchState) {
+  const { batch, items, takenToday, takenAt } = batchState;
+  const label = batch.charAt(0).toUpperCase() + batch.slice(1);
+
+  const itemRows = items.map((item) =>
+    el("div", { class: "med-item-row" }, [
+      el("span", { text: item.name }),
+      item.doseNote ? el("span", { class: "med-dose", text: item.doseNote }) : null,
+    ]),
+  );
+
+  const card = el("div", { class: "card" }, [
+    el("div", { class: "spread" }, [
+      el("div", { class: "row" }, [critterIcon(medsCritterSlot(batch), { size: 32 }), el("span", { class: "title", text: label })]),
+      el("span", { class: "meta", text: `${items.length} ${items.length === 1 ? "item" : "items"}` }),
+    ]),
+    ...itemRows,
+  ]);
+
+  if (takenToday) {
+    card.append(
+      el("div", { class: "slide-track done" }, [
+        el("span", { text: `Taken ${when(takenAt)}` }),
+        el("div", { class: "slide-knob" }, [lineIcon('<path d="M20 6 9 17l-5-5"></path>')]),
+      ]),
+      el("div", { class: "row", style: "margin-top:.5rem" }, [
+        el("button", {
+          class: "ghost small",
+          text: "Undo",
+          onClick: async (event) => {
+            event.currentTarget.disabled = true;
+            try {
+              await api(`/api/medications/batches/${encodeURIComponent(batch)}/take`, { method: "DELETE" });
+              render();
+            } finally {
+              event.currentTarget.disabled = false;
+            }
+          },
+        }),
+      ]),
+    );
+    return card;
+  }
+
+  const track = el("div", { class: "slide-track" }, [el("span", { text: "Slide when taken" })]);
+  const knob = el("div", { class: "slide-knob" }, [
+    lineIcon('<path d="m6 17 5-5-5-5"></path><path d="m13 17 5-5-5-5"></path>'),
+  ]);
+  track.append(knob);
+  card.append(track);
+
+  attachSlideToTake(track, knob, async () => {
+    try {
+      await api(`/api/medications/batches/${encodeURIComponent(batch)}/take`, { method: "POST" });
+    } finally {
+      render();
+    }
+  });
+
+  return card;
+}
+
+function refillNeedsYouCard(item) {
+  const daysLeft = item.daysLeft;
+  const dueSoon = daysLeft !== null && daysLeft <= 3;
+  return el("div", { class: "card refill-row" }, [
+    el("div", { style: "flex:1;min-width:0" }, [
+      el("div", { class: "refill-tier-label needs-you", text: "Needs you" }),
+      el("div", { class: "title", style: "margin-top:3px", text: daysLeft === null ? item.name : `${item.name} · ${daysLeft <= 0 ? "due now" : `${daysLeft} ${daysLeft === 1 ? "day" : "days"} left`}` }),
+      item.refillNote ? el("div", { class: `refill-days-left ${dueSoon ? "due" : ""}`, text: item.refillNote }) : null,
+    ]),
+    el("button", {
+      class: "small",
+      text: "Ordered it",
+      onClick: async (event) => {
+        event.currentTarget.disabled = true;
+        try {
+          await api(`/api/medications/${item.id}/ordered`, { method: "POST" });
+          render();
+        } finally {
+          event.currentTarget.disabled = false;
+        }
+      },
+    }),
+  ]);
+}
+
+function refillsSection(refills) {
+  const section = el("section", { class: "section" }, [
+    el("h2", { text: "Refills" }),
+  ]);
+
+  if (refills.needsYou.length === 0 && refills.handled.length === 0) {
+    section.append(el("p", { class: "muted small", text: "No medications on file yet." }));
+    return section;
+  }
+
+  for (const item of refills.needsYou) section.append(refillNeedsYouCard(item));
+
+  if (refills.handled.length > 0) {
+    section.append(
+      el("div", { class: "card refill-row" }, [
+        el("div", { style: "flex:1;min-width:0" }, [
+          el("div", { class: "refill-tier-label handled", text: "Handled automatically" }),
+          el("div", { style: "margin-top:3px;line-height:1.45", text: refills.handled.map((h) => h.name).join(", ") }),
+          el("div", { class: "refill-days-left", text: "Auto-refill · nothing to do" }),
+        ]),
+      ]),
+    );
+  }
+
+  return section;
+}
+
+async function viewMeds(view) {
+  const { batches, refills } = await api("/api/medications");
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("h2", { text: "Meds" }),
+      el("p", { class: "muted small", text: "One slide per batch, not one tap per pill." }),
+    ]),
+  );
+
+  if (batches.length === 0) {
+    view.append(empty("No medications on file yet.", "Add one below, or ask Claude to add one for you.", "meds"));
+  } else {
+    const list = el("section", { class: "section" });
+    for (const batchState of batches) list.append(medBatchCard(batchState));
+    view.append(list);
+  }
+
+  view.append(refillsSection(refills));
+
+  // Direct entry (same "reachable without going through Claude" idiom as createRecipe/
+  // createEntity) -- most real medications will still be added by Claude over MCP
+  // (set_medication), but there is no reason the web UI can't add one too.
+  const nameInput = el("input", { placeholder: "Medication name", "aria-label": "Medication name" });
+  const doseInput = el("input", { placeholder: "Dose, e.g. 1 tablet", "aria-label": "Dose" });
+  const batchInput = el("input", { placeholder: "Batch, e.g. morning", "aria-label": "Batch", list: "med-batches" });
+  const batchOptions = el(
+    "datalist",
+    { id: "med-batches" },
+    batches.map((b) => el("option", { value: b.batch })),
+  );
+  const tierSelect = el("select", { "aria-label": "Refill tier" }, [
+    el("option", { value: "manual", text: "Manual-watch (needs you)" }),
+    el("option", { value: "auto", text: "Auto-refill (handled)" }),
+  ]);
+  const addForm = el("form", { class: "section" }, [
+    nameInput,
+    el("div", { class: "row" }, [doseInput, batchInput, batchOptions]),
+    el("div", { class: "row" }, [tierSelect, el("button", { class: "primary small", type: "submit", text: "Add medication" })]),
+  ]);
+  addForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = nameInput.value.trim();
+    const batch = batchInput.value.trim();
+    if (!name || !batch) return;
+    addForm.querySelectorAll("input,select,button").forEach((n) => (n.disabled = true));
+    try {
+      await api("/api/medications", {
+        method: "POST",
+        body: JSON.stringify({ name, doseNote: doseInput.value.trim() || null, batch, refillTier: tierSelect.value }),
+      });
+      render();
+    } finally {
+      addForm.querySelectorAll("input,select,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [addForm]));
+
+  attachRoomWatermark(view, "meds");
+}
+
 async function viewEntity(view, entityId) {
   const entity = await api(`/api/entities/${entityId}`);
 
@@ -1900,7 +2157,7 @@ async function viewSettings(view) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", inbox: "Inbox", things: "Things", settings: "Settings", entity: "", cook: "Cook" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", inbox: "Inbox", things: "Things", settings: "Settings", entity: "", cook: "Cook" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -1931,6 +2188,7 @@ async function render() {
     if (state.route === "shopping") await viewShopping(view);
     else if (state.route === "recipes") await viewRecipes(view);
     else if (state.route === "cook") await viewCook(view, state.cookRecipeId);
+    else if (state.route === "meds") await viewMeds(view);
     else if (state.route === "inbox") await viewInbox(view);
     else if (state.route === "things") await viewThings(view);
     else if (state.route === "settings") await viewSettings(view);

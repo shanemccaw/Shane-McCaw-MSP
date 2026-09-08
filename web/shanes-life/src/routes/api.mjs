@@ -14,6 +14,7 @@ import * as entities from "../core/entities.mjs";
 import * as lists from "../core/lists.mjs";
 import * as media from "../core/media.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
+import * as medications from "../core/medications.mjs";
 import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
 import * as scan from "../core/scan.mjs";
@@ -671,6 +672,67 @@ export function buildApiRouter() {
     const healthContext = await recipes.setHealthContext(user.id, body.healthContext ?? null);
     await audit.record({ userId: user.id, actor: "web", action: "health_context.set" });
     return sendJson(res, 200, { healthContext });
+  });
+
+  // -- medications (Git #3135) ----------------------------------------------
+  //
+  // The batch-grouped Meds tray: GET returns today's real state (batches + taken-today status,
+  // refills split into needs-you/handled). Swiping a batch complete or undoing it, marking a
+  // manual-watch refill ordered, and basic CRUD for the medication list itself are all here so
+  // the web UI is fully self-serve -- Claude's own MCP path (src/mcp/tools.mjs) is the
+  // capture-grammar entry point ("took my morning meds"), not the only way in.
+
+  router.get("/api/medications", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await medications.getMedsToday(user.id));
+  });
+
+  router.post("/api/medications", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await medications.createMedication(user.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "medication.create", entityId: row.id, detail: { name: row.name, batch: row.batch } });
+    return sendJson(res, 201, row);
+  });
+
+  router.patch("/api/medications/:id", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await medications.updateMedication(user.id, params.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "medication.update", entityId: params.id });
+    return sendJson(res, 200, row);
+  });
+
+  router.delete("/api/medications/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await medications.archiveMedication(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "web", action: "medication.archive", entityId: params.id });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  // "Ordered it" -- design screen 6's real manual-watch refill action.
+  router.post("/api/medications/:id/ordered", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const row = await medications.markMedicationOrdered(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "web", action: "medication.ordered", entityId: params.id, detail: { nextRefillOn: row.next_refill_on } });
+    return sendJson(res, 200, row);
+  });
+
+  // Single swipe per batch (README non-negotiable) -- :batch is the batch name (morning,
+  // evening, ...), not a medication id.
+  router.post("/api/medications/batches/:batch/take", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const row = await medications.markBatchTaken(user.id, params.batch, { source: "web" });
+    await audit.record({ userId: user.id, actor: "web", action: "medication.batch_taken", detail: { batch: row.batch } });
+    return sendJson(res, 200, row);
+  });
+
+  // Undo (Section 8's real 5s Undo pattern) -- clears today's swipe for this batch.
+  router.delete("/api/medications/batches/:batch/take", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await medications.unmarkBatchTaken(user.id, params.batch);
+    await audit.record({ userId: user.id, actor: "web", action: "medication.batch_undo", detail: { batch: params.batch } });
+    return sendJson(res, 200, { ok: true });
   });
 
   // -- per-store price history (Git #3112) ---------------------------------

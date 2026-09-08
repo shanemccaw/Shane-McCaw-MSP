@@ -14,6 +14,7 @@ import * as categories from "../core/categories.mjs";
 import * as entities from "../core/entities.mjs";
 import * as foodPreferences from "../core/food-preferences.mjs";
 import * as lists from "../core/lists.mjs";
+import * as medications from "../core/medications.mjs";
 import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
 import * as shares from "../core/shares.mjs";
@@ -838,6 +839,91 @@ export const TOOLS = [
         detail: { dislikesAdded: args.dislikes ?? null, allergiesAdded: args.allergies ?? null },
       });
       return prefs;
+    },
+  },
+
+  // Medications (Git #3135). Section 3's real dichotomy stays enforced here too --
+  // refillTier is one of exactly 'auto'/'manual', never an open vocabulary.
+
+  {
+    name: "get_medications",
+    title: "Read today's real meds state",
+    description:
+      "Today's real batches (each with its items and whether it's already been swiped complete today) and the refills split into 'needs you' (manual-watch) and 'handled automatically' (auto-refill). Call before mark_med_batch_taken to confirm which batch name to use, and before set_medication to see what already exists.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      return medications.getMedsToday(ctx.user.id);
+    },
+  },
+
+  {
+    name: "set_medication",
+    title: "Create or update a real medication",
+    description:
+      "Create a new real medication record, or update an existing one by passing its id. batch is free text ('morning', 'evening', ...) -- the same batch groups a single swipe completes together, so a new medication in an existing batch just joins that batch's next swipe, no migration needed. refillTier is a real, locked dichotomy: 'auto' (no action ever needed from Shane) or 'manual' (surfaces under Refills > Needs you). supplyDays + nextRefillOn drive the real 'days left' countdown on a manual-watch item.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Omit to create a new medication; pass an existing id to update it." },
+        name: { type: "string" },
+        doseNote: { type: "string", description: "e.g. '1 tablet', '2 softgels'." },
+        batch: { type: "string", description: "e.g. 'morning', 'evening'." },
+        refillTier: { type: "string", enum: ["auto", "manual"] },
+        supplyDays: { type: "number", description: "How many days one fill covers." },
+        nextRefillOn: { type: "string", description: "ISO date -- manual: pharmacy due date; auto: next delivery date." },
+        refillNote: { type: "string", description: "e.g. 'Pharmacy needs a call before Thursday.'" },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = args.id
+        ? await medications.updateMedication(ctx.user.id, args.id, args)
+        : await medications.createMedication(ctx.user.id, args);
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: args.id ? "medication.update" : "medication.create",
+        entityId: row.id,
+        detail: { name: row.name, batch: row.batch },
+      });
+      return row;
+    },
+  },
+
+  {
+    name: "mark_med_batch_taken",
+    title: "Mark a real meds batch taken",
+    description:
+      "The real capture-grammar entry point for 'took my morning meds' / 'evening meds done' (README's own capture grammar, item 2). Marks the WHOLE named batch done for today in one real action -- same 'single swipe per batch, not per-pill' rule the web UI's slide-to-take uses. Idempotent: calling this twice for the same batch on the same day is a real no-op, not a duplicate record.",
+    inputSchema: {
+      type: "object",
+      properties: { batch: { type: "string", description: "e.g. 'morning', 'evening' -- must match an existing medication's batch (see get_medications)." } },
+      required: ["batch"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await medications.markBatchTaken(ctx.user.id, args.batch, { source: "mcp" });
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "medication.batch_taken", detail: { batch: row.batch } });
+      return row;
+    },
+  },
+
+  {
+    name: "mark_medication_ordered",
+    title: "Mark a manual-watch medication as ordered",
+    description:
+      "The real 'Ordered it' action (design screen 6) said in conversation instead of tapped -- advances that medication's next real refill due date forward by its supplyDays (or 30 if unset), same as the web UI button.",
+    inputSchema: {
+      type: "object",
+      properties: { medicationId: { type: "string" } },
+      required: ["medicationId"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await medications.markMedicationOrdered(ctx.user.id, args.medicationId);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "medication.ordered", entityId: args.medicationId, detail: { nextRefillOn: row.next_refill_on } });
+      return row;
     },
   },
 
