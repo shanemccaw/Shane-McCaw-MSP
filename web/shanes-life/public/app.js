@@ -2214,10 +2214,273 @@ async function viewSettings(view) {
 }
 
 // ---------------------------------------------------------------------------
+// Dates (Git #3136) -- design handoff screens 8/9.
+// ---------------------------------------------------------------------------
+
+// Tile colors, exactly screen 8's own table.
+const KIND_TINT = {
+  appointment: "#60a5fa",
+  vet: "#2dd4bf",
+  vaccine: "#2dd4bf",
+  birthday: "#f472b6",
+  event: "#fbbf24",
+  holiday: "#a78bfa",
+  visit: "#34d399",
+  renewal: "#fb923c",
+};
+
+function kindTint(kind) {
+  return KIND_TINT[kind] || "#94a3b8"; // slate, for a genuinely on-the-fly kind
+}
+
+function dateTileEl(atDateISO, kind) {
+  const d = new Date(`${String(atDateISO).slice(0, 10)}T00:00:00`);
+  const tint = kindTint(kind);
+  return el(
+    "div",
+    { class: "date-tile", style: `background:${tint}26; color:${tint}; border:1px solid ${tint}59` },
+    [
+      el("span", { class: "month", text: d.toLocaleDateString([], { month: "short" }) }),
+      el("span", { class: "day", text: String(d.getDate()) }),
+    ],
+  );
+}
+
+/** "today / tomorrow / Wed / in N days" -- design's own right-column vocabulary. */
+function dueLabel(dueInDays, atDateISO) {
+  if (dueInDays < 0) return "overdue";
+  if (dueInDays === 0) return "today";
+  if (dueInDays === 1) return "tomorrow";
+  if (dueInDays <= 6) {
+    const d = new Date(`${String(atDateISO).slice(0, 10)}T00:00:00`);
+    return d.toLocaleDateString([], { weekday: "short" });
+  }
+  return `in ${dueInDays} days`;
+}
+
+// The seven known lead-time kinds (server's LEAD_DAYS_BY_KIND, minus the synthetic 'holiday'
+// rows federal_holidays contributes) -- anything else is a genuinely on-the-fly category.
+const KNOWN_DATE_KINDS = new Set(["appointment", "vet", "birthday", "event", "visit", "renewal", "vaccine"]);
+
+function kindLabel(kind) {
+  return kind
+    .split("_")
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function dateSummaryLine(item) {
+  const bits = [item.category_label || kindLabel(item.kind)];
+  if (item.at_time) bits.push(new Date(`1970-01-01T${item.at_time}`).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+  if (item.interval_days) bits.push(`every ${item.interval_days} days`);
+  if (item.provider) bits.push(item.provider);
+  return bits.join(" · ");
+}
+
+function dateRow(item) {
+  const isOnTheFly = !item.isFederalHoliday && !KNOWN_DATE_KINDS.has(item.kind);
+  const right = el("div", { class: "when", text: dueLabel(item.due_in_days, item.at_date) });
+  const body = el("div", { class: "body" }, [
+    el("div", { class: "row" }, [
+      el("span", { class: "title", text: item.title }),
+      isOnTheFly ? el("span", { class: "chip", text: "New category" }) : null,
+    ]),
+    el("div", { class: "meta", text: dateSummaryLine(item) }),
+    el("div", { class: "meta", text: `${item.lead_days}-day lead` }),
+  ]);
+  const row = el("div", { class: "date-row" }, [dateTileEl(item.at_date, item.kind), body, right]);
+  if (item.isFederalHoliday) return el("div", { class: "tile" }, [row]);
+  return el("a", { class: "tile", href: `#/date/${item.id}` }, [row]);
+}
+
+async function viewDates(view) {
+  const { dates: items } = await api("/api/dates");
+
+  const groups = [
+    { label: "This week", items: items.filter((i) => i.due_in_days <= 6) },
+    { label: "This month", items: items.filter((i) => i.due_in_days > 6 && i.due_in_days <= 31) },
+    { label: "Later", items: items.filter((i) => i.due_in_days > 31) },
+  ];
+
+  if (items.length === 0) {
+    view.append(
+      empty(
+        "Nothing on the calendar yet.",
+        "Tell Claude something like \"dr appointment oct 3rd 2pm dr fonji every 6 weeks\" and it'll show up here.",
+      ),
+    );
+  } else {
+    for (const group of groups) {
+      if (group.items.length === 0) continue;
+      const section = el("section", { class: "section" }, [el("h2", { text: group.label })]);
+      for (const item of group.items) section.append(dateRow(item));
+      view.append(section);
+    }
+  }
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("p", { class: "muted small", text: "Federal holidays come from a real, live OPM source, refreshed monthly." }),
+    ]),
+  );
+
+  attachRoomWatermark(view, "comingup");
+}
+
+function askRow(dateId, ask) {
+  const row = el("div", { class: `ask-row${ask.asked_at ? " asked" : ""}` }, [
+    el("div", { class: "text", text: ask.text }),
+    el("button", {
+      class: "ghost small",
+      text: ask.asked_at ? "Asked" : "Mark asked",
+      onClick: async (event) => {
+        event.currentTarget.disabled = true;
+        await api(`/api/dates/${dateId}/asks/${ask.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ asked: !ask.asked_at }),
+        });
+        await render();
+      },
+    }),
+  ]);
+  return row;
+}
+
+function visitRow(dateId, visit) {
+  const photos = el("div", {}, visit.photos.map((p) =>
+    el("span", { class: "photo-chip", text: p.label || "photo" }),
+  ));
+  return el("div", { class: "visit-row" }, [
+    el("div", { class: "body" }, [
+      el("div", { class: "title small", text: whenDate(visit.visited_on) }),
+      visit.notes ? el("div", { class: "meta", text: visit.notes }) : null,
+      visit.photos.length > 0 ? photos : null,
+    ]),
+  ]);
+}
+
+async function viewDateDetail(view, dateId) {
+  const item = await api(`/api/dates/${dateId}`);
+
+  const d = new Date(`${String(item.at_date).slice(0, 10)}T00:00:00`);
+  const dateLine = d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }) + (item.at_time ? ` · ${new Date(`1970-01-01T${item.at_time}`).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "");
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("div", { class: "card" }, [
+        el("div", { class: "date-row" }, [
+          dateTileEl(item.at_date, item.kind),
+          el("div", { class: "body" }, [
+            el("h1", { text: dateLine, style: "margin:0; font-size:20px" }),
+            el("div", { class: "meta", text: dateSummaryLine(item) }),
+          ]),
+        ]),
+        el("p", { class: "meta muted small", text: `Surfaces ${item.lead_days} day${item.lead_days === 1 ? "" : "s"} ahead.` }),
+        item.notes ? el("p", { class: "muted", text: item.notes }) : null,
+        el("div", { class: "row", style: "margin-top:.75rem" }, [
+          el("button", {
+            class: "small ghost",
+            text: item.done_at ? "Mark not done" : "Mark done",
+            onClick: async (event) => {
+              event.currentTarget.disabled = true;
+              await api(`/api/dates/${dateId}`, { method: "PATCH", body: JSON.stringify({ done: !item.done_at }) });
+              location.hash = "#/dates";
+            },
+          }),
+          el("button", {
+            class: "small ghost danger",
+            text: "Delete",
+            onClick: async (event) => {
+              if (!confirm("Delete this date?")) return;
+              event.currentTarget.disabled = true;
+              await api(`/api/dates/${dateId}`, { method: "DELETE" });
+              location.hash = "#/dates";
+            },
+          }),
+        ]),
+      ]),
+    ]),
+  );
+
+  // "Ask next time" -- appointments and vet visits only, per the design.
+  if (item.kind === "appointment" || item.kind === "vet") {
+    const asks = el("section", { class: "section" }, [el("h2", { text: "Ask next time" })]);
+    const card = el("div", { class: "card" });
+    if (item.asks.length === 0) card.append(el("p", { class: "muted small", text: "Nothing queued to ask yet." }));
+    for (const ask of item.asks) card.append(askRow(dateId, ask));
+    const input = el("input", { placeholder: "Something to ask next time", "aria-label": "New question" });
+    card.append(
+      el("div", { class: "row", style: "margin-top:.6rem" }, [
+        input,
+        el("button", {
+          class: "small",
+          text: "Add",
+          onClick: async (event) => {
+            const text = input.value.trim();
+            if (!text) return;
+            event.currentTarget.disabled = true;
+            await api(`/api/dates/${dateId}/asks`, { method: "POST", body: JSON.stringify({ text }) });
+            await render();
+          },
+        }),
+      ]),
+    );
+    asks.append(card);
+    view.append(asks);
+
+    // "Notes and photos, by visit."
+    const visits = el("section", { class: "section" }, [el("h2", { text: "Notes and photos, by visit" })]);
+    const visitCard = el("div", { class: "card" });
+    if (item.visits.length === 0) visitCard.append(el("p", { class: "muted small", text: "No visits logged yet." }));
+    for (const visit of item.visits) visitCard.append(visitRow(dateId, visit));
+    const notesInput = el("textarea", { placeholder: "How did it go?", "aria-label": "Visit notes", rows: 2 });
+    visitCard.append(
+      el("div", { style: "margin-top:.6rem" }, [
+        notesInput,
+        el("div", { class: "row", style: "margin-top:.4rem" }, [
+          el("button", {
+            class: "small",
+            text: "Log this visit",
+            onClick: async (event) => {
+              event.currentTarget.disabled = true;
+              await api(`/api/dates/${dateId}/visits`, {
+                method: "POST",
+                body: JSON.stringify({ notes: notesInput.value.trim() || null }),
+              });
+              await render();
+            },
+          }),
+        ]),
+      ]),
+    );
+    visits.append(visitCard);
+    view.append(visits);
+  } else {
+    // Every other kind gets one explanatory note instead (design's own screen 9 spec).
+    const explain = {
+      holiday: "Real US federal holidays, pulled from OPM's live schedule and refreshed monthly.",
+      birthday: "Yearly, with a 10-day lead.",
+      event: "A want-to-go event, with a 14-day lead.",
+      visit: "A visit window, with a 3-day lead.",
+      renewal: "A renewal, with a 21-day lead -- worth pairing with Money's renewal watch.",
+      vaccine: "A vaccine due date, with a 30-day lead.",
+    };
+    view.append(
+      el("section", { class: "section" }, [
+        el("p", { class: "muted small", text: explain[item.kind] || "A real, on-the-fly kind Claude created for this capture." }),
+      ]),
+    );
+  }
+
+  attachRoomWatermark(view, "comingup");
+}
+
+// ---------------------------------------------------------------------------
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", inbox: "Inbox", things: "Things", settings: "Settings", entity: "", cook: "Cook" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", inbox: "Inbox", dates: "Dates", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -2226,6 +2489,7 @@ function parseRoute() {
   state.categoryFilter = state.route === "things" ? rest[0] || null : null;
   state.entity = state.route === "entity" ? rest[0] : null;
   state.cookRecipeId = state.route === "cook" ? rest[0] : null;
+  state.dateId = state.route === "date" ? rest[0] : null;
 }
 
 async function render() {
@@ -2250,6 +2514,8 @@ async function render() {
     else if (state.route === "cook") await viewCook(view, state.cookRecipeId);
     else if (state.route === "meds") await viewMeds(view);
     else if (state.route === "inbox") await viewInbox(view);
+    else if (state.route === "dates") await viewDates(view);
+    else if (state.route === "date") await viewDateDetail(view, state.dateId);
     else if (state.route === "things") await viewThings(view);
     else if (state.route === "settings") await viewSettings(view);
     else if (state.route === "entity") await viewEntity(view, state.entity);

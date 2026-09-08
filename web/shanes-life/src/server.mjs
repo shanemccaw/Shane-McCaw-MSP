@@ -15,6 +15,10 @@ import * as ratelimit from "./auth/ratelimit.mjs";
 import { buildApiRouter } from "./routes/api.mjs";
 import { buildPublicRouter } from "./routes/public.mjs";
 import { describeMcpEndpoint, handleMcpRequest } from "./routes/mcp.mjs";
+import { findDueDayBeforeReminders } from "./core/dates.mjs";
+import { needsMonthlyRefresh, refreshFederalHolidays } from "./core/federal-holidays.mjs";
+import { queueNudge } from "./core/nudges.mjs";
+import { listUsers } from "./core/users.mjs";
 
 const PUBLIC_DIR = resolve(config.root, "public");
 const apiRouter = buildApiRouter();
@@ -202,10 +206,54 @@ async function main() {
       } catch (err) {
         log("[housekeeping] failed:", err.message);
       }
+      await runDayBeforeReminders();
+      await runMonthlyFederalHolidaysRefresh();
     },
     6 * 60 * 60 * 1000,
   );
   housekeeping.unref();
+
+  // Run once at boot too -- a 6-hour interval alone would leave a genuinely due day-before
+  // reminder or a stale federal-holiday list waiting up to 6 hours after every redeploy.
+  await runDayBeforeReminders();
+  await runMonthlyFederalHolidaysRefresh();
+}
+
+/**
+ * Dates' one real clock exception (contract pack, "context over clock ... the only clock-
+ * anchored reminders are day-before appointment reminders"). Queues a real nudge_events row per
+ * due appointment/vet date, through the same 1-3/day cap everything else respects.
+ */
+async function runDayBeforeReminders() {
+  try {
+    for (const user of await listUsers()) {
+      const due = await findDueDayBeforeReminders(user.id);
+      for (const appt of due) {
+        const time = appt.at_time ? ` ${appt.at_time.slice(0, 5)}` : "";
+        await queueNudge({
+          userId: user.id,
+          kind: "appointment",
+          title: `${appt.title}${appt.provider ? ` -- ${appt.provider}` : ""} tomorrow${time}`,
+          body: null,
+          payload: { dateId: appt.id, kind: appt.kind },
+        });
+      }
+      if (due.length > 0) log(`[reminders] queued ${due.length} day-before appointment reminder(s) for ${user.email}`);
+    }
+  } catch (err) {
+    log("[reminders] failed:", err.message);
+  }
+}
+
+/** Real, live OPM refresh -- once a month is what the design calls for, not once a redeploy. */
+async function runMonthlyFederalHolidaysRefresh() {
+  try {
+    if (!(await needsMonthlyRefresh())) return;
+    const result = await refreshFederalHolidays();
+    log(`[federal-holidays] refreshed from OPM: ${result.count} holidays across ${result.years.join(", ")}`);
+  } catch (err) {
+    log("[federal-holidays] refresh failed:", err.message);
+  }
 }
 
 async function shutdown(signal) {

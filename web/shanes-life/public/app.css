@@ -398,6 +398,51 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
 .critter-peeker { pointer-events: none; }
 .critter-watermark { pointer-events: none; }
 
+/* Dates room (Git #3136) -- design handoff screen 8's 46px date tile, tinted per kind. */
+.date-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.date-tile {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-xl);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  line-height: 1.1;
+}
+.date-tile .month { display: block; font-size: 9px; font-weight: var(--weight-bold); text-transform: uppercase; }
+.date-tile .day { display: block; font-size: 18px; font-weight: var(--weight-bold); }
+.date-row .body { flex: 1 1 auto; min-width: 0; }
+.date-row .when { flex: 0 0 auto; font-size: 13px; color: hsl(var(--muted-foreground)); text-align: right; }
+
+.ask-row, .visit-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid hsl(var(--card-border) / 0.6);
+}
+.ask-row:last-child, .visit-row:last-child { border-bottom: none; }
+.ask-row.asked .text { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
+
+.photo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-full);
+  padding: 0.15rem 0.55rem;
+  margin: 0.2rem 0.3rem 0 0;
+}
+
 pre.token {
   background: hsl(var(--muted));
   border: 1px solid hsl(var(--border));

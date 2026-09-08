@@ -11,7 +11,9 @@
 import { record } from "../core/audit.mjs";
 import * as captures from "../core/captures.mjs";
 import * as categories from "../core/categories.mjs";
+import * as dates from "../core/dates.mjs";
 import * as entities from "../core/entities.mjs";
+import * as federalHolidays from "../core/federal-holidays.mjs";
 import * as foodPreferences from "../core/food-preferences.mjs";
 import * as lists from "../core/lists.mjs";
 import * as mealPlan from "../core/meal-plan.mjs";
@@ -1093,6 +1095,159 @@ export const TOOLS = [
         detail: { name: habit.name, amountPerCycle: habit.amount_per_cycle, isActive: habit.is_active },
       });
       return habit;
+    },
+  },
+
+  {
+    name: "push_date",
+    title: "Push a real date -- appointment, birthday, event, visit, renewal, vaccine, or anything new",
+    description:
+      "The capture grammar's real entry point for 'dr appointment oct 3rd 2pm dr fonji every 6 weeks', 'ronnie's birthday dec 14', 'want to go to the air show nov 7', 'mom's coming to visit the 12th-18th', 'pepper rabies due february 2027'. `kind` is one of the known lead-time kinds (appointment, vet, birthday, event, visit, renewal, vaccine -- lead time already set correctly for each) OR a genuinely new one Claude invents on the fly for a novel capture that doesn't fit ('mom's visiting' -> kind 'visit' already exists; something that truly doesn't fit gets its own kind and a real category is minted for it, returned as newCategory:true). intervalDays carries an ARBITRARY real recurrence ('every 6 weeks' = 42), not just weekly/monthly presets. Call list_dates first to avoid a duplicate.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", description: "appointment | vet | birthday | event | visit | renewal | vaccine, or a new kind for a genuinely novel capture." },
+        title: { type: "string", description: "What Shane reads at a glance, e.g. 'Dr. Fonji'." },
+        atDate: { type: "string", description: "YYYY-MM-DD of the (first) occurrence." },
+        atTime: { type: "string", description: "HH:MM 24h, if the capture stated a time. Omit for an all-day date." },
+        intervalDays: { type: "integer", description: "Real recurrence in days, e.g. 42 for 'every 6 weeks'. Omit for a one-off." },
+        leadDays: { type: "integer", description: "How many days ahead this should surface. Omit to use the real per-kind default (appointment/vet 1, birthday 10, event 14, visit 3, renewal 21, vaccine 30); a novel kind defaults to 7." },
+        provider: { type: "string", description: "Who/where, e.g. 'Dr. Fonji'. What attach_ask matches on." },
+        subjectType: { type: "string", enum: ["self", "pet", "person"], default: "self" },
+        subjectId: { type: "string", description: "pets.id or a person entity id, matching subjectType." },
+        category: { type: "string", description: "Only needed for a genuinely on-the-fly kind -- an open slug, invented if nothing fits." },
+        notes: { type: "string" },
+        ...CATEGORY_META_PROPS,
+      },
+      required: ["kind", "title", "atDate"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await dates.createDate({
+        userId: ctx.user.id,
+        kind: args.kind,
+        title: args.title,
+        atDate: args.atDate,
+        atTime: args.atTime ?? null,
+        intervalDays: args.intervalDays ?? null,
+        leadDays: args.leadDays ?? undefined,
+        provider: args.provider ?? null,
+        subjectType: args.subjectType || "self",
+        subjectId: args.subjectId ?? null,
+        category: args.category ?? null,
+        categoryMeta: categoryMeta(args),
+        source: "mcp",
+        notes: args.notes ?? null,
+      });
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "date.create", entityId: row.id, detail: { kind: row.kind, newCategory: row.newCategory } });
+      return row;
+    },
+  },
+
+  {
+    name: "list_dates",
+    title: "Read Shane's real dates",
+    description:
+      "Every real upcoming date -- appointments, birthdays, events, visits, renewals, vaccines -- plus real federal holidays merged in, all with a real dueInDays and surfacesInDays already computed from each kind's lead time. Recurring dates show their real NEXT occurrence, not the original one. Call this before push_date to avoid a duplicate.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        includeDone: { type: "boolean", default: false },
+        horizonDays: { type: "integer", minimum: 1, maximum: 800, default: 400 },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      return dates.listDates(ctx.user.id, { includeDone: Boolean(args.includeDone), horizonDays: args.horizonDays });
+    },
+  },
+
+  {
+    name: "get_date",
+    title: "Read one date in full",
+    description: "One real date with its full ask list and visit/photo history.",
+    inputSchema: {
+      type: "object",
+      properties: { dateId: { type: "string" } },
+      required: ["dateId"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await dates.getDate(ctx.user.id, args.dateId);
+      if (!row) throw new Error(`No date ${args.dateId}`);
+      return row;
+    },
+  },
+
+  {
+    name: "attach_ask",
+    title: "Attach 'next time, ask about...' to a provider's next appointment",
+    description:
+      "The capture grammar's 'next time at dr fonji ask about ...' -- attaches to whichever real appointment/vet date is that provider's soonest upcoming one, without needing its id. Matches provider case-insensitively.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        provider: { type: "string", description: "e.g. 'Dr. Fonji'. Must match an existing date's provider." },
+        text: { type: "string", description: "What to ask." },
+      },
+      required: ["provider", "text"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const result = await dates.attachAskToProvider(ctx.user.id, args.provider, args.text);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "date.ask.add", entityId: result.dateId });
+      return result;
+    },
+  },
+
+  {
+    name: "attach_visit",
+    title: "Log a real visit -- notes and photos",
+    description:
+      "Record a real completed visit to a recurring appointment: notes, and photos (each either a mediaId already uploaded through the app, or an external url). This is 'Notes and photos, by visit' on the date-detail screen.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dateId: { type: "string" },
+        visitedOn: { type: "string", description: "YYYY-MM-DD. Defaults to today." },
+        notes: { type: "string" },
+        photos: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              mediaId: { type: "string" },
+              url: { type: "string" },
+              label: { type: "string" },
+            },
+          },
+        },
+      },
+      required: ["dateId"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const visit = await dates.addVisit(ctx.user.id, args.dateId, {
+        visitedOn: args.visitedOn ?? null,
+        notes: args.notes ?? null,
+        photos: args.photos || [],
+      });
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "date.visit.add", entityId: args.dateId });
+      return visit;
+    },
+  },
+
+  {
+    name: "get_federal_holidays",
+    title: "Read the real federal holiday list",
+    description: "Real US federal holidays from OPM, refreshed monthly (Git #3136). Not user-scoped -- the same fact for everybody.",
+    inputSchema: {
+      type: "object",
+      properties: { fromYear: { type: "integer", description: "Defaults to the current year." } },
+      additionalProperties: false,
+    },
+    async handler(args) {
+      return federalHolidays.listFederalHolidays({ fromYear: args.fromYear });
     },
   },
 

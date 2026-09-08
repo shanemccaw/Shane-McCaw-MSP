@@ -10,7 +10,9 @@ import * as webauthn from "../auth/webauthn.mjs";
 import * as audit from "../core/audit.mjs";
 import * as captures from "../core/captures.mjs";
 import * as categories from "../core/categories.mjs";
+import * as dates from "../core/dates.mjs";
 import * as entities from "../core/entities.mjs";
+import * as federalHolidays from "../core/federal-holidays.mjs";
 import * as lists from "../core/lists.mjs";
 import * as mealPlan from "../core/meal-plan.mjs";
 import * as media from "../core/media.mjs";
@@ -909,6 +911,123 @@ export function buildApiRouter() {
       detail: { name: row.name, amountPerCycle: row.amount_per_cycle, isActive: row.is_active },
     });
     return sendJson(res, 200, row);
+  });
+
+  // -- Dates (Git #3136) ----------------------------------------------------------------
+
+  router.get("/api/dates", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const q = ctx.url.searchParams;
+    return sendJson(res, 200, {
+      dates: await dates.listDates(user.id, {
+        includeDone: q.get("includeDone") === "true",
+        horizonDays: q.get("horizonDays") ? Number(q.get("horizonDays")) : undefined,
+      }),
+    });
+  });
+
+  router.post("/api/dates", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await dates.createDate({
+      userId: user.id,
+      kind: body.kind,
+      title: body.title,
+      atDate: body.atDate,
+      atTime: body.atTime ?? null,
+      intervalDays: body.intervalDays ?? null,
+      leadDays: body.leadDays ?? undefined,
+      provider: body.provider ?? null,
+      subjectType: body.subjectType || "self",
+      subjectId: body.subjectId ?? null,
+      category: body.category ?? null,
+      categoryMeta: body.categoryMeta || {},
+      source: "web",
+      notes: body.notes ?? null,
+    });
+    await audit.record({ userId: user.id, actor: "web", action: "date.create", entityId: row.id, detail: { kind: row.kind } });
+    return sendJson(res, 201, row);
+  });
+
+  router.get("/api/dates/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const row = await dates.getDate(user.id, params.id);
+    if (!row) throw notFound("Date not found");
+    return sendJson(res, 200, row);
+  });
+
+  router.patch("/api/dates/:id", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await dates.updateDate(user.id, params.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "date.update", entityId: params.id, detail: { fields: Object.keys(body) } });
+    return sendJson(res, 200, row);
+  });
+
+  router.delete("/api/dates/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await dates.deleteDate(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "web", action: "date.delete", entityId: params.id });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  // "next time at dr fonji ask about ..."
+  router.post("/api/dates/:id/asks", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await dates.addAsk(user.id, params.id, body.text);
+    await audit.record({ userId: user.id, actor: "web", action: "date.ask.add", entityId: params.id });
+    return sendJson(res, 201, row);
+  });
+
+  // Tapping "Asked" on the date-detail screen -- clears back to unasked with { asked: false }.
+  router.patch("/api/dates/:id/asks/:askId", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await dates.setAskAsked(user.id, params.id, params.askId, body.asked !== false);
+    return sendJson(res, 200, row);
+  });
+
+  // "Notes and photos, by visit."
+  router.post("/api/dates/:id/visits", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await dates.addVisit(user.id, params.id, {
+      visitedOn: body.visitedOn ?? null,
+      notes: body.notes ?? null,
+      photos: body.photos || [],
+    });
+    await audit.record({ userId: user.id, actor: "web", action: "date.visit.add", entityId: params.id });
+    return sendJson(res, 201, row);
+  });
+
+  router.post("/api/dates/:id/visits/:visitId/photos", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await dates.addVisitPhoto(user.id, params.id, params.visitId, {
+      mediaId: body.mediaId ?? null,
+      url: body.url ?? null,
+      label: body.label ?? null,
+    });
+    return sendJson(res, 201, row);
+  });
+
+  // Read-only surface for the real, live-refreshed OPM federal holiday list.
+  router.get("/api/federal-holidays", async (_req, res, _params, ctx) => {
+    requireUser(ctx);
+    const q = ctx.url.searchParams;
+    return sendJson(res, 200, {
+      holidays: await federalHolidays.listFederalHolidays({ fromYear: q.get("fromYear") ? Number(q.get("fromYear")) : undefined }),
+    });
+  });
+
+  // Manual trigger for the real OPM refresh -- the monthly housekeeping sweep in server.mjs
+  // calls the same core function; this exists so a stale list never has to wait for a redeploy.
+  router.post("/api/federal-holidays/refresh", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const result = await federalHolidays.refreshFederalHolidays();
+    await audit.record({ userId: user.id, actor: "web", action: "federal_holidays.refresh", detail: result });
+    return sendJson(res, 200, result);
   });
 
   // -- today / categories / activity --------------------------------------
