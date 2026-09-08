@@ -600,6 +600,43 @@ export const TOOLS = [
   },
 
   {
+    name: "log_price",
+    title: "Log a real price you just paid",
+    description:
+      "The capture-grammar entry point for a real price Shane just states in passing -- 'chicken breasts are $3.49 now', 'paid $12 for the detergent at Aldi' -- Git #3203 replaces the Shopping room's own dedicated \"Log price\" form with this. Records the real observation in the same per-store price history get_prices reads (item_prices), AND -- if that item is currently open on Shopping's real running list -- stamps the price straight onto that item's own row, so the run's running total actually reflects it instead of only ever moving via a barcode scan. Matches list items the same normalised (lower/trim) way as everywhere else in this app.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        item: { type: "string", description: "The item's text, e.g. 'chicken breasts'." },
+        store: { type: "string", description: "Store name, e.g. 'Aldi'. Required -- a price with no store isn't a real per-store observation." },
+        priceCents: { type: "integer", description: "Price in cents, e.g. 349 for $3.49." },
+        observedOn: { type: "string", description: "ISO date this was actually paid/seen. Defaults to today." },
+        note: { type: "string", description: "Anything else worth keeping, e.g. 'on sale', 'family size'." },
+      },
+      required: ["item", "store", "priceCents"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await prices.recordPrice(ctx.user.id, {
+        storeName: args.store,
+        itemText: args.item,
+        priceCents: args.priceCents,
+        observedOn: args.observedOn ?? null,
+        note: args.note ?? null,
+        source: "shane",
+      });
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "price.record",
+        detail: { itemText: row.item_text, storeName: row.store_name, priceCents: row.price_cents },
+      });
+      return row;
+    },
+  },
+
+  {
     name: "push_deals",
     title: "Push weekly-ad prices",
     description:

@@ -4784,64 +4784,26 @@ const SHOP_CHECK_ICON =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>';
 
 /**
- * Per-store price history (Git #3112): a "log a price" form and the item's real history, both
- * expanded inline rather than routed to a separate screen -- there is no per-item detail route
- * in this app's minimal hash router, and the design keeps Shopping to one scrolling screen.
- * Lives inside a compact item row's tap-to-expand detail panel (Git #3178) alongside Remove and
- * aisle-save -- see shoppingItemRow/itemDetailPanel below.
+ * Per-store price history (Git #3112): the item's real history, expanded inline rather than
+ * routed to a separate screen -- there is no per-item detail route in this app's minimal hash
+ * router, and the design keeps Shopping to one scrolling screen. Lives inside a compact item
+ * row's tap-to-expand detail panel (Git #3178) alongside Remove and aisle-save -- see
+ * shoppingItemRow/itemDetailPanel below.
+ *
+ * Git #3203: no dedicated "Log price" form -- "chicken breasts are $3.49 now" typed into the
+ * universal capture box routes through log_price, same as every other real action in this app,
+ * and (unlike the old form) also stamps the price straight onto this item's own row so the run's
+ * running total actually moves without a barcode scan.
  */
 function priceTools(item) {
   const wrap = el("div", { class: "price-tools" });
-  const logBtn = el("button", { class: "ghost small", type: "button", text: "Log price" });
   const historyBtn = el("button", { class: "ghost small", type: "button", text: "History" });
   const panel = el("div");
-  wrap.append(el("div", { class: "row" }, [logBtn, historyBtn]), panel);
-
-  logBtn.addEventListener("click", () => {
-    if (panel.dataset.mode === "log") {
-      panel.replaceChildren();
-      panel.dataset.mode = "";
-      return;
-    }
-    panel.dataset.mode = "log";
-    const storeInput = el("input", { placeholder: "Store, e.g. Aldi", "aria-label": "Store", list: "known-stores" });
-    const priceInput = el("input", { type: "number", step: "0.01", min: "0", placeholder: "0.00", "aria-label": "Price" });
-    const dateInput = el("input", { type: "date", value: new Date().toISOString().slice(0, 10), "aria-label": "Date" });
-    const saveBtn = el("button", { class: "primary small", type: "button", text: "Save price" });
-    const msg = el("span", { class: "small" });
-    saveBtn.addEventListener("click", async () => {
-      const storeName = storeInput.value.trim();
-      const dollars = Number(priceInput.value);
-      if (!storeName || !Number.isFinite(dollars) || dollars < 0) {
-        msg.className = "small error";
-        msg.textContent = "A store and a real price are both required.";
-        return;
-      }
-      saveBtn.disabled = true;
-      try {
-        await api("/api/prices", {
-          method: "POST",
-          body: JSON.stringify({
-            storeName,
-            itemText: item.text,
-            priceCents: Math.round(dollars * 100),
-            observedOn: dateInput.value || null,
-          }),
-        });
-        render();
-      } catch (err) {
-        msg.className = "small error";
-        msg.textContent = err.message;
-        saveBtn.disabled = false;
-      }
-    });
-    panel.replaceChildren(
-      el("div", { class: "card" }, [
-        el("div", { class: "row" }, [storeInput, priceInput, dateInput]),
-        el("div", { class: "row", style: "margin-top:.4rem" }, [saveBtn, msg]),
-      ]),
-    );
-  });
+  wrap.append(
+    el("div", { class: "row" }, [historyBtn]),
+    el("p", { class: "muted small", style: "margin:.35rem 0 0", text: `Say the price below, e.g. "${item.text} is $3.49 at Aldi", and Claude logs it.` }),
+    panel,
+  );
 
   historyBtn.addEventListener("click", async () => {
     if (panel.dataset.mode === "history") {
@@ -5450,8 +5412,8 @@ async function viewShopping(view) {
   const remaining = list.items.filter((i) => !i.done).length;
   state.shoppingList = list; // read by the universal capture bar's shopping-room dispatch below.
 
-  // Real stores already logged (Git #3112) -- offered as a datalist so "Log price" autocompletes
-  // onto the same store rather than a typo creating a near-duplicate.
+  // Real stores already logged (Git #3112) -- offered as a datalist so the store-picker below
+  // autocompletes onto the same store rather than a typo creating a near-duplicate.
   view.append(
     el(
       "datalist",

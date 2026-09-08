@@ -15,7 +15,7 @@
 // mechanism here: this is one real row in the shared database per observation, reachable from
 // any signed-in session, so every device already sees the same real history.
 
-import { many, one } from "../db.mjs";
+import { many, one, query } from "../db.mjs";
 import { badRequest, notFound } from "../http.mjs";
 
 const MAX_ROWS_PER_CALL = 200;
@@ -83,12 +83,35 @@ export async function recordPrice(userId, { storeId, storeName, itemText, priceC
     throw badRequest("storeId or storeName is required");
   }
 
+  const normalisedText = normaliseItemText(label);
+  const roundedCents = Math.round(cents);
   const row = await one(
     `INSERT INTO item_prices (user_id, store_id, item_text, item_label, price_cents, observed_on, note, source)
      VALUES ($1, $2, $3, $4, $5, COALESCE($6, current_date), $7, $8)
      RETURNING id, store_id, item_text, item_label, price_cents, observed_on, note, source, created_at`,
-    [userId, store.id, normaliseItemText(label), label, Math.round(cents), observedOn || null, note ? String(note).slice(0, 2000) : null, source],
+    [userId, store.id, normalisedText, label, roundedCents, observedOn || null, note ? String(note).slice(0, 2000) : null, source],
   );
+
+  // Git #3203: a real, Shane-stated price ("chicken breasts are $3.49 now" -- typed into the
+  // capture box, or the old "Log price" mechanism) is a real observation for THIS item, not just
+  // a history row. Sync it onto every matching open list_items row too, same column
+  // core/scan.mjs's real barcode scan already writes -- otherwise Shopping's running total
+  // (lists.mjs getListDetail's totalCents) only ever moves via a scan, which #3203 confirmed is
+  // the whole real bug: most items get priced by typing, never scanning. Weekly-ad pushes
+  // (source 'weekly_ad') are a different real shape -- a store's current flyer price, not "here
+  // is what I paid" -- and deliberately do NOT touch list_items; they surface as
+  // item.weeklyAdVerdict instead (attachWeeklyAdVerdicts, above).
+  if (source === "shane") {
+    await query(
+      `UPDATE list_items li
+          SET price_cents = $3, price_source = 'manual', priced_at = now()
+         FROM lists l
+        WHERE li.list_id = l.id AND l.user_id = $1 AND l.archived_at IS NULL
+          AND lower(trim(li.text)) = $2`,
+      [userId, normalisedText, roundedCents],
+    );
+  }
+
   return { ...row, store_name: store.name };
 }
 
