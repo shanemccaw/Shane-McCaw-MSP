@@ -759,6 +759,70 @@ async function main() {
   const aisleActivity = await http("/api/activity");
   check("the aisle-memory writes are in the audit trail", aisleActivity.json?.activity?.some((a) => a.actor === "mcp" && a.action === "store_aisle.record"));
 
+  // 6e. Things -- hub/spoke item-location memory + "Who fixed what" (Git #3156).
+  cookie = savedCookie;
+  const drillName = `Check Drill ${stamp}`;
+
+  const savedThing = await http("/api/things", { method: "POST", body: { name: drillName, place: "under the sink", house: "Rental" } });
+  check("POST /api/things files a real thing-location, no confirmation step", savedThing.status === 200 && savedThing.json?.place === "under the sink" && savedThing.json?.house === "Rental", JSON.stringify(savedThing.json));
+
+  const foundIt = await http(`/api/things/search?q=${encodeURIComponent(drillName.split(" ")[1])}`);
+  check("GET /api/things/search finds it back by a real substring of the name", foundIt.json?.thing?.name === drillName, JSON.stringify(foundIt.json));
+
+  // Saying the same thing's location again CORRECTS it in place (upsert on name), not a
+  // duplicate -- contract Section 8's "trust stated facts immediately."
+  const movedThing = await http("/api/things", { method: "POST", body: { name: drillName, place: "garage shelf", house: "Home" } });
+  check("a repeat report of the same thing corrects the spot in place", movedThing.status === 200 && movedThing.json?.id === savedThing.json?.id && movedThing.json?.place === "garage shelf" && movedThing.json?.house === "Home", JSON.stringify(movedThing.json));
+
+  const thingCount = await one("SELECT count(*)::int AS n FROM things WHERE user_id = $1 AND lower(name) = lower($2)", [userId, drillName]);
+  check("no duplicate row was left behind by the repeat report", thingCount?.n === 1, JSON.stringify(thingCount));
+
+  // set_thing (MCP) -- the real capture-grammar entry point ("the drill is in the garage").
+  const passportName = `Check Passport ${stamp}`;
+  const mcpThing = await rpc(token.token, "tools/call", { name: "set_thing", arguments: { name: passportName, place: "desk drawer", house: "Home" } });
+  const mcpThingPayload = toolResult(mcpThing);
+  check("set_thing (MCP) writes a real things row", mcpThingPayload?.place === "desk drawer", JSON.stringify(mcpThingPayload));
+
+  const mcpFound = await rpc(token.token, "tools/call", { name: "find_thing", arguments: { q: passportName } });
+  const mcpFoundPayload = toolResult(mcpFound);
+  check("find_thing (MCP) reads the real answer back", mcpFoundPayload?.thing?.place === "desk drawer", JSON.stringify(mcpFoundPayload));
+
+  const noSuchThing = await http(`/api/things/search?q=${encodeURIComponent(`nothing-on-file-${stamp}`)}`);
+  check("searching for something genuinely not on file returns thing:null, not an error", noSuchThing.status === 200 && noSuchThing.json?.thing === null, JSON.stringify(noSuchThing.json));
+
+  const houseList = await http(`/api/things?house=${encodeURIComponent("Home")}`);
+  check("GET /api/things?house= filters to just that house", houseList.json?.items?.every((t) => t.house === "Home") && houseList.json.items.some((t) => t.name === passportName), JSON.stringify(houseList.json?.items?.map((t) => [t.name, t.house])));
+
+  // "Who fixed what" -- a real service-provider log entry (design: "plumber is Ray
+  // 321-555-0142"), and a second real job for the same person is a NEW row, not an overwrite.
+  const plumberName = `Check Ray ${stamp}`;
+  const savedContact = await http("/api/contacts", { method: "POST", body: { name: plumberName, phone: "321-555-0142", did: "water heater", trade: "plumber", fixedOn: "2026-09-01" } });
+  check("POST /api/contacts files a real who-fixed-what entry", savedContact.status === 201 && savedContact.json?.did === "water heater" && savedContact.json?.trade === "plumber", JSON.stringify(savedContact.json));
+
+  const secondJob = await http("/api/contacts", { method: "POST", body: { name: plumberName, phone: "321-555-0142", did: "kitchen sink", trade: "plumber", fixedOn: "2026-09-05" } });
+  check("a second real job for the same person is a new row, not an overwrite", secondJob.status === 201 && secondJob.json?.id !== savedContact.json?.id, JSON.stringify(secondJob.json));
+
+  const contactCount = await one("SELECT count(*)::int AS n FROM contacts WHERE user_id = $1 AND lower(name) = lower($2)", [userId, plumberName]);
+  check("both real jobs are really in the database", contactCount?.n === 2, JSON.stringify(contactCount));
+
+  const contactsByTrade = await http(`/api/contacts?trade=${encodeURIComponent("plumber")}`);
+  check("GET /api/contacts?trade= filters correctly and reads newest-first", contactsByTrade.json?.items?.[0]?.did === "kitchen sink", JSON.stringify(contactsByTrade.json?.items?.map((c) => c.did)));
+
+  // set_contact (MCP)
+  const mcpContact = await rpc(token.token, "tools/call", { name: "set_contact", arguments: { name: `Check Elle ${stamp}`, phone: "555-0100", did: "rewired the panel", trade: "electrician" } });
+  const mcpContactPayload = toolResult(mcpContact);
+  check("set_contact (MCP) writes a real contacts row", mcpContactPayload?.did === "rewired the panel", JSON.stringify(mcpContactPayload));
+
+  const mcpContactList = await rpc(token.token, "tools/call", { name: "list_contacts", arguments: { trade: "electrician" } });
+  const mcpContactListPayload = toolResult(mcpContactList);
+  check("list_contacts (MCP) reads it back", mcpContactListPayload?.items?.some((c) => c.did === "rewired the panel"), JSON.stringify(mcpContactListPayload));
+
+  const thingsActivity = await http("/api/activity");
+  check(
+    "the thing/contact writes are in the audit trail",
+    thingsActivity.json?.activity?.some((a) => a.action === "thing.record") && thingsActivity.json?.activity?.some((a) => a.action === "contact.record"),
+  );
+
   cookie = null;
 
   // 6b. money: the same numbers ShanesSurvival's own Dashboard shows (Git #3137)

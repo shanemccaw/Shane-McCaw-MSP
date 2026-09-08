@@ -1289,11 +1289,150 @@ async function viewInbox(view) {
   }
 }
 
+// Hub/spoke item-location memory + "Who fixed what" (Git #3156). Real search ("where's the
+// drill?"), instant no-confirmation location capture (contract Section 8), and the real
+// service-provider log, all real endpoints -- no fixture data.
+function thingRow(t) {
+  const where = t.house ? `${t.house}, ${t.place}` : t.place;
+  return el("div", { class: "date-row" }, [
+    el("div", { class: "body" }, [
+      el("div", { class: "title small", text: `${t.name} → ${where}` }),
+      el("div", { class: "meta", text: when(t.updated_at) || "" }),
+      t.note ? el("div", { class: "meta", text: t.note }) : null,
+    ]),
+  ]);
+}
+
+function contactRow(c) {
+  const whatWhen = [c.did, c.fixed_on ? whenDate(c.fixed_on) : null].filter(Boolean).join(" · ");
+  return el("div", { class: "date-row" }, [
+    el("div", { class: "body" }, [
+      el("div", { class: "title small", text: c.trade ? `${c.name} (${c.trade})` : c.name }),
+      whatWhen ? el("div", { class: "meta", text: whatWhen }) : null,
+      c.phone ? el("div", { class: "meta", text: c.phone }) : null,
+    ]),
+  ]);
+}
+
 async function viewThings(view) {
-  const [{ entities }, { categories }] = await Promise.all([
+  const [{ items: things, houses }, { items: contacts }, { entities }, { categories }] = await Promise.all([
+    api("/api/things"),
+    api("/api/contacts"),
     api("/api/entities?limit=200"),
     api("/api/categories"),
   ]);
+
+  // "Where's the...?" -- real, deterministic search (no AI call, per contract Section 10).
+  // Answers inline right under the box, same "trust stated facts immediately" instant-answer
+  // spirit as the design's own toast -- no page navigation needed to get the answer.
+  const searchInput = el("input", { placeholder: "Where's the…", "aria-label": "Where's the...", autocomplete: "off" });
+  const answer = el("div", { class: "meta", style: "min-height:1.2em" });
+  const searchForm = el("form", { class: "row" }, [searchInput, el("button", { class: "small", type: "submit", text: "Find" })]);
+  searchForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const q = searchInput.value.trim();
+    if (!q) return;
+    answer.textContent = "Looking…";
+    const { thing } = await api(`/api/things/search?q=${encodeURIComponent(q)}`);
+    answer.textContent = thing
+      ? `${thing.name} is ${thing.house ? `at ${thing.house}, ` : ""}${thing.place}.`
+      : `Nothing on file for "${q}" yet.`;
+  });
+  view.append(el("section", { class: "section" }, [el("h2", { text: "Things" }), searchForm, answer]));
+
+  // "Just logged" -- newest-said-first, what recordThing's upsert-by-name keeps current.
+  const recentSection = el("section", { class: "section" }, [el("h2", { text: "Just logged" })]);
+  if (things.length === 0) {
+    recentSection.append(empty("Nothing logged yet.", "Say where something is below, or ask Claude to save it.", "notfound"));
+  } else {
+    for (const t of things.slice(0, 8)) recentSection.append(thingRow(t));
+  }
+  view.append(recentSection);
+
+  if (houses.length > 0) {
+    const grouped = el("section", { class: "section" }, [el("h2", { text: "By house" })]);
+    for (const h of houses) {
+      const atHouse = things.filter((t) => t.house === h.house);
+      grouped.append(
+        el("div", { style: "margin-bottom:.6rem" }, [
+          el("div", { class: "small muted", text: `${h.house} · ${h.thing_count}` }),
+          el(
+            "div",
+            { class: "row" },
+            atHouse.map((t) => el("span", { class: "chip", text: t.name })),
+          ),
+        ]),
+      );
+    }
+    view.append(grouped);
+  }
+
+  // Real capture: "X is in the garage" filed directly, no confirmation step.
+  const thingName = el("input", { placeholder: "What", "aria-label": "Thing name" });
+  const thingPlace = el("input", { placeholder: "Where, e.g. under the sink", "aria-label": "Place" });
+  const thingHouse = el("input", { placeholder: "House (optional), e.g. Home", "aria-label": "House" });
+  const thingForm = el("form", { class: "section" }, [
+    el("div", { class: "row" }, [thingName, thingPlace]),
+    el("div", { class: "row" }, [thingHouse, el("button", { class: "primary small", type: "submit", text: "Save location" })]),
+  ]);
+  thingForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = thingName.value.trim();
+    const place = thingPlace.value.trim();
+    if (!name || !place) return;
+    thingForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    try {
+      await api("/api/things", {
+        method: "POST",
+        body: JSON.stringify({ name, place, house: thingHouse.value.trim() || null }),
+      });
+      render();
+    } finally {
+      thingForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [thingForm]));
+
+  // "Who fixed what" -- real service-provider log.
+  const contactsSection = el("section", { class: "section" }, [el("h2", { text: "Who fixed what" })]);
+  if (contacts.length === 0) {
+    contactsSection.append(empty("Nothing on file yet.", "Say who did what below, or ask Claude to save it.", "notfound"));
+  } else {
+    for (const c of contacts) contactsSection.append(contactRow(c));
+  }
+  view.append(contactsSection);
+
+  const contactName = el("input", { placeholder: "Name, e.g. Ray", "aria-label": "Contact name" });
+  const contactTrade = el("input", { placeholder: "Trade, e.g. plumber", "aria-label": "Trade" });
+  const contactDid = el("input", { placeholder: "What they did", "aria-label": "What they did" });
+  const contactPhone = el("input", { placeholder: "Phone", "aria-label": "Phone" });
+  const contactForm = el("form", { class: "section" }, [
+    el("div", { class: "row" }, [contactName, contactTrade]),
+    el("div", { class: "row" }, [contactDid, contactPhone]),
+    el("div", { class: "row" }, [el("button", { class: "primary small", type: "submit", text: "Save contact" })]),
+  ]);
+  contactForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = contactName.value.trim();
+    if (!name) return;
+    contactForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    try {
+      await api("/api/contacts", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          trade: contactTrade.value.trim() || null,
+          did: contactDid.value.trim() || null,
+          phone: contactPhone.value.trim() || null,
+          fixedOn: new Date().toISOString().slice(0, 10),
+        }),
+      });
+      render();
+    } finally {
+      contactForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [contactForm]));
 
   const used = categories.filter((c) => c.entity_count > 0);
   if (used.length > 0) {

@@ -11,6 +11,7 @@
 import { record } from "../core/audit.mjs";
 import * as captures from "../core/captures.mjs";
 import * as categories from "../core/categories.mjs";
+import * as contacts from "../core/contacts.mjs";
 import * as dates from "../core/dates.mjs";
 import * as entities from "../core/entities.mjs";
 import * as federalHolidays from "../core/federal-holidays.mjs";
@@ -24,6 +25,7 @@ import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
 import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
+import * as things from "../core/things.mjs";
 
 const CATEGORY_META_PROPS = {
   categoryLabel: { type: "string", description: "Human label for the category, e.g. 'Vet visit'. Only used the first time this category slug is seen." },
@@ -1388,6 +1390,104 @@ export const TOOLS = [
     },
     async handler(args) {
       return federalHolidays.listFederalHolidays({ fromYear: args.fromYear });
+    },
+  },
+
+  // -- things & contacts (Git #3156) -----------------------------------------
+  //
+  // README's own capture grammar: "X is in the garage" (item 9, requires a place word) -> Things;
+  // "plumber is Ray 321-555-0142" (item 7) -> Who fixed what. Both are real database operations,
+  // no live AI call, per contract Section 10.
+
+  {
+    name: "set_thing",
+    title: "Save where something really is (hub/spoke item memory)",
+    description:
+      "The capture grammar's real entry point for 'the drill is in the garage' / 'X is in the garage' -- requires a real place word. Saying the same thing's location again CORRECTS it in place (upsert on name) rather than creating a duplicate -- no confirmation needed, per contract Section 8's 'trust stated facts immediately.' Pass house to place it at a specific hub/spoke (H1 / H2 / the rental / ...); omit it for a thing with just one place it lives.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "e.g. 'Drill', 'Passport'." },
+        place: { type: "string", description: "e.g. 'under the sink', 'desk drawer'. Required -- a thing with no place answers nothing." },
+        house: { type: "string", description: "The hub/spoke label, e.g. 'Home', 'Rental'. Optional." },
+        note: { type: "string" },
+      },
+      required: ["name", "place"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await things.recordThing(ctx.user.id, args);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "thing.record", entityId: row.id, detail: { name: row.name, place: row.place, house: row.house } });
+      return row;
+    },
+  },
+
+  {
+    name: "find_thing",
+    title: "Where's the...?",
+    description:
+      "The capture grammar's 'where's the drill?' answer -- a real, deterministic lookup (no AI guessing) over everything saved with set_thing. Returns the single best real match, or thing:null when genuinely nothing is on file, which is a real answer, not an error.",
+    inputSchema: {
+      type: "object",
+      properties: { q: { type: "string", description: "What Shane asked for, e.g. 'drill', 'the passport'." } },
+      required: ["q"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      return { thing: await things.findThing(ctx.user.id, args.q) };
+    },
+  },
+
+  {
+    name: "list_things",
+    title: "Read everything on file (hub/spoke item memory)",
+    description: "Every real thing Shane has ever said the location of, newest-said first. Pass house to see just what lives at one hub/spoke.",
+    inputSchema: {
+      type: "object",
+      properties: { house: { type: "string" } },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      return { items: await things.listThings(ctx.user.id, { house: args.house }), houses: await things.listHouses(ctx.user.id) };
+    },
+  },
+
+  {
+    name: "set_contact",
+    title: "Save a real 'who fixed what' entry",
+    description:
+      "The capture grammar's real entry point for 'plumber is Ray 321-555-0142' -- always files a NEW real history row (this is a growing log, not a single latest-state record per person), so the same plumber can show up twice for two different real jobs. did is the real 'what they actually fixed'; fixedOn is the real 'when' (the design's own field name -- stored as fixed_on because `when` is a reserved SQL word).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "e.g. 'Ray'." },
+        phone: { type: "string", description: "e.g. '321-555-0142'." },
+        did: { type: "string", description: "What they actually fixed, e.g. 'water heater'." },
+        house: { type: "string", description: "Which hub/spoke this was at, if relevant." },
+        fixedOn: { type: "string", description: "ISO date, if known." },
+        trade: { type: "string", description: "e.g. 'plumber', 'electrician'." },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await contacts.recordContact(ctx.user.id, args);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "contact.record", entityId: row.id, detail: { name: row.name, trade: row.trade, did: row.did } });
+      return row;
+    },
+  },
+
+  {
+    name: "list_contacts",
+    title: "Read the real 'who fixed what' log",
+    description: "Every real service-provider entry on file, newest first. Pass trade to filter (e.g. 'plumber') -- useful before asking Shane who the plumber was last time.",
+    inputSchema: {
+      type: "object",
+      properties: { trade: { type: "string" } },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      return { items: await contacts.listContacts(ctx.user.id, { trade: args.trade }) };
     },
   },
 
