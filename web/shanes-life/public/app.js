@@ -2440,9 +2440,16 @@ function recipeCard(recipe) {
   // Git #3190: the status badge is this card's sticker (README "Today v3 -- the cute skin"),
   // same rotated-pill treatment as the Next card's own sticker -- green for a real go, amber for
   // a real gap, not the plain uppercase `.chip` every other room's summary counts still use.
+  // Git #3278: a real recipe can be missing 5+ ingredients, and the rotated ribbon reads badly
+  // even if it wrapped -- show the first 3 real missing items and roll the rest into "+N more"
+  // rather than the full, unbounded list.
+  const missingText =
+    recipe.missing.length > 3
+      ? `Missing ${recipe.missing.slice(0, 3).join(", ")} +${recipe.missing.length - 3} more`
+      : `Missing ${recipe.missing.join(", ")}`;
   const badge = recipe.canMake
     ? sticker("green", "You'll have everything")
-    : sticker("amber", `Missing ${recipe.missing.join(", ")}`);
+    : sticker("amber", missingText);
 
   // Cook mode (Git #3125): a recipe with no real steps saved has nothing to walk through, so
   // there's no live entry point for it -- Claude just hasn't pushed steps for this one yet.
