@@ -1810,7 +1810,7 @@ async function viewThings(view) {
   // "Just logged" -- newest-said-first, what recordThing's upsert-by-name keeps current.
   const recentSection = el("section", { class: "section" }, [el("h2", { text: "Just logged" })]);
   if (things.length === 0) {
-    recentSection.append(empty("Nothing logged yet.", "Say where something is below, or ask Claude to save it.", "notfound"));
+    recentSection.append(empty("Nothing logged yet.", "Say \"the drill is in the garage\" in the capture box and Claude files it here.", "notfound"));
   } else {
     for (const t of things.slice(0, 8)) recentSection.append(thingRow(t));
   }
@@ -1834,72 +1834,21 @@ async function viewThings(view) {
     view.append(grouped);
   }
 
-  // Real capture: "X is in the garage" filed directly, no confirmation step.
-  const thingName = el("input", { placeholder: "What", "aria-label": "Thing name" });
-  const thingPlace = el("input", { placeholder: "Where, e.g. under the sink", "aria-label": "Place" });
-  const thingHouse = el("input", { placeholder: "House (optional), e.g. Home", "aria-label": "House" });
-  const thingForm = el("form", { class: "section" }, [
-    el("div", { class: "row" }, [thingName, thingPlace]),
-    el("div", { class: "row" }, [thingHouse, el("button", { class: "primary small", type: "submit", text: "Save location" })]),
-  ]);
-  thingForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = thingName.value.trim();
-    const place = thingPlace.value.trim();
-    if (!name || !place) return;
-    thingForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
-    try {
-      await api("/api/things", {
-        method: "POST",
-        body: JSON.stringify({ name, place, house: thingHouse.value.trim() || null }),
-      });
-      render();
-    } finally {
-      thingForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
-    }
-  });
-  view.append(el("div", { class: "card" }, [thingForm]));
+  // Git #3181: no dedicated "Add thing" form -- a location is a capture, same as everywhere
+  // else in the app. Say "the drill is in the garage" in the universal capture box and Claude
+  // routes it to set_thing over MCP. The upsert-by-name logic (recordThing) is unchanged.
 
   // "Who fixed what" -- real service-provider log.
   const contactsSection = el("section", { class: "section" }, [el("h2", { text: "Who fixed what" })]);
   if (contacts.length === 0) {
-    contactsSection.append(empty("Nothing on file yet.", "Say who did what below, or ask Claude to save it.", "notfound"));
+    contactsSection.append(empty("Nothing on file yet.", "Say \"Ray the plumber fixed the sink, 321-555-0142\" in the capture box and Claude files it here.", "notfound"));
   } else {
     for (const c of contacts) contactsSection.append(contactRow(c));
   }
   view.append(contactsSection);
 
-  const contactName = el("input", { placeholder: "Name, e.g. Ray", "aria-label": "Contact name" });
-  const contactTrade = el("input", { placeholder: "Trade, e.g. plumber", "aria-label": "Trade" });
-  const contactDid = el("input", { placeholder: "What they did", "aria-label": "What they did" });
-  const contactPhone = el("input", { placeholder: "Phone", "aria-label": "Phone" });
-  const contactForm = el("form", { class: "section" }, [
-    el("div", { class: "row" }, [contactName, contactTrade]),
-    el("div", { class: "row" }, [contactDid, contactPhone]),
-    el("div", { class: "row" }, [el("button", { class: "primary small", type: "submit", text: "Save contact" })]),
-  ]);
-  contactForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = contactName.value.trim();
-    if (!name) return;
-    contactForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
-    try {
-      await api("/api/contacts", {
-        method: "POST",
-        body: JSON.stringify({
-          name,
-          trade: contactTrade.value.trim() || null,
-          did: contactDid.value.trim() || null,
-          phone: contactPhone.value.trim() || null,
-          fixedOn: new Date().toISOString().slice(0, 10),
-        }),
-      });
-      render();
-    } finally {
-      contactForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
-    }
-  });
-  view.append(el("div", { class: "card" }, [contactForm]));
+  // Git #3181: no dedicated "Add contact" form -- a service-provider record is a capture too.
+  // Say "the plumber is Ray, 321-555-0142" and Claude routes it to set_contact over MCP.
 
   const used = categories.filter((c) => c.entity_count > 0);
   if (used.length > 0) {
