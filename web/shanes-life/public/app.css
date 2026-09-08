@@ -197,6 +197,12 @@ button:disabled { opacity: 0.5; cursor: default; }
 .row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .spread { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
 
+/* Settings "House · Room order" card (Git #3215) -- one divided row per room, up/down icon
+   buttons per row (reuses .icon-btn above; text glyphs here instead of an svg <use>). */
+.room-order-row { padding: 0.6rem 0; border-bottom: 1px solid hsl(var(--card-border)); }
+.room-order-row:last-child { border-bottom: none; }
+.room-order-row .icon-btn { width: 36px; height: 36px; font-size: 1rem; }
+
 /* ---------- capture box ---------- */
 
 .capture {
@@ -1073,6 +1079,28 @@ pre.token {
   box-shadow: var(--shadow-dark-lg, 0 12px 28px rgba(0,0,0,.4));
 }
 
+/* Git #3213 (design 1f): the real Cars maintenance Undo toast -- a genuine icon + text + button
+   row, unlike the plain centered .quick-toast note above (that one has nothing to undo). */
+.car-undo-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(380px, 92vw);
+  text-align: left;
+  padding: 0.6rem 0.7rem;
+}
+.car-undo-check {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(52,211,153,.15);
+  color: #34d399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* ---------- Tonight -- multi-dish synchronized cooking (Git #3126) ----------
    Per-dish card: a thin progress bar along the top (fills as that dish cooks), the dish's own
    real name/total/live status below it. Colors mark phase, matching the prototype's own dot/glow
@@ -1251,6 +1279,52 @@ pre.token {
 .money-bucket-status.funded { color: hsl(var(--success)); }
 .money-bucket-status.short { color: #fbbf24; }
 .money-bucket-status.critical { color: #f87171; }
+
+/* % funded badge (Git #3207, design "Shanes Life 17 - Money v3.dc.html" #2d) -- replaces the old
+   binary funded/short status text and the per-bill bar the design explicitly rejects. Same soft
+   pill shape as .chip.verdict, tinted by real funding tier: red under 30%, amber mid-range,
+   emerald at 100%. */
+.money-percent-badge {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius-full);
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.money-percent-badge.red { background: rgba(248, 113, 113, 0.16); color: #f87171; }
+.money-percent-badge.amber { background: rgba(251, 191, 36, 0.16); color: #fbbf24; }
+.money-percent-badge.emerald { background: rgba(52, 211, 153, 0.16); color: #34d399; }
+
+/* ---------- Bill detail sheet (Git #3212, design "Shanes Life 17 - Money v3.dc.html" 1e) ----------
+   Same dialog.sheet shell every other sheet in this app uses -- this app's own real bottom-sheet
+   idiom (see the "scan sheet" header above), not a second modal mechanism. */
+.bill-sheet-breakdown {
+  margin-top: 12px;
+  border: 1px solid hsl(var(--card-border));
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  font-size: 15px;
+}
+.bill-sheet-breakdown-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+
+.bill-sheet-vault-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px 0 0;
+  border: none;
+  border-top: 1px solid hsl(var(--card-border) / 0.6);
+  background: none;
+  color: #60a5fa;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
 
 /* ---------- Money -> Vault (Git #3150) ----------
    Handoff README §7: "lock note, rows with site + masked reference + Reveal (passkey overlay ->

@@ -1081,7 +1081,7 @@ function showQuickToast(message) {
 
 /** One pill-shaped Badge-style sticker, rotated -5deg per the cute-skin spec. `tone` picks the
  *  tint from the same accent palette the rest of the app already uses (README "Design tokens"). */
-const STICKER_TONE = { blue: "96,165,250", indigo: "165,180,252", amber: "251,191,36" };
+const STICKER_TONE = { blue: "96,165,250", indigo: "165,180,252", amber: "251,191,36", red: "248,113,113" };
 function sticker(tone, text) {
   return el("span", { class: "sticker", style: `background:rgba(${STICKER_TONE[tone]},.16);color:rgb(${STICKER_TONE[tone]})`, text });
 }
@@ -1522,12 +1522,25 @@ function roomsCell({ key, route, title, critterSlot, furniture, tint }, lit, sub
   return cell;
 }
 
+/** ROOM_DEFS, real-ordered per `order` (a real permutation of ROOM_DEFS keys -- /api/today's own
+ *  `roomOrder`, itself the reconciled read of the user's Settings "House · Room order" card, Git
+ *  #3215). Falls back to ROOM_DEFS' own literal order (the grid's original shipped order) for any
+ *  key `order` doesn't cover, so a stale/partial order client-side can never drop a room. */
+function orderedRoomDefs(order) {
+  if (!Array.isArray(order) || order.length === 0) return ROOM_DEFS;
+  const byKey = new Map(ROOM_DEFS.map((def) => [def.key, def]));
+  const ordered = order.map((key) => byKey.get(key)).filter(Boolean);
+  for (const def of ROOM_DEFS) if (!order.includes(def.key)) ordered.push(def);
+  return ordered;
+}
+
 /** The whole "Rooms -- the house" section: roof, the 8-cell floor grid, and the yard. `rooms` is
  *  /api/today's own real per-room state (roomsForToday() in api.mjs); a live Tonight/Cook session
  *  (client-only state, never persisted -- see mealSession's own declaration) can additionally
  *  light the Recipes room even outside its server-computed 16:00-21:00 window, same override
- *  resolveNextKind() already applies to the Next card's own "dinner" case. */
-function roomsHouseSection(rooms) {
+ *  resolveNextKind() already applies to the Next card's own "dinner" case. `order` is the user's
+ *  real saved room order (Git #3215) -- undefined/empty renders the original shipped order. */
+function roomsHouseSection(rooms, order) {
   let recipesLit = Boolean(rooms.recipes && rooms.recipes.lit);
   let recipesSubtitle = rooms.recipes ? rooms.recipes.subtitle : "Nothing planned right now";
   if (mealSession && !mealSession.done) {
@@ -1535,7 +1548,7 @@ function roomsHouseSection(rooms) {
     recipesSubtitle = "Cooking now";
   }
 
-  const cells = ROOM_DEFS.map((def) => {
+  const cells = orderedRoomDefs(order).map((def) => {
     if (def.key === "recipes") return roomsCell(def, recipesLit, recipesSubtitle);
     const room = rooms[def.key];
     const lit = Boolean(room && room.lit);
@@ -1666,7 +1679,7 @@ async function viewToday(view) {
 
   // Rooms -- the house (Git #3165): the real illustrated-house nav replacing the flat tab-bar
   // links to these 8 rooms (see the trimmed <nav class="tabs"> in index.html).
-  view.append(el("section", { class: "section" }, [el("h2", { text: "Rooms" }), roomsHouseSection(data.rooms || {})]));
+  view.append(el("section", { class: "section" }, [el("h2", { text: "Rooms" }), roomsHouseSection(data.rooms || {}, data.roomOrder)]));
 
   if (data.pendingCaptures > 0) {
     view.append(
@@ -3249,37 +3262,265 @@ function bankReconnectHandler(onDone) {
   };
 }
 
+/** Git #3207 (design `Shanes Life 17 - Money v3.dc.html` #2d, "the envelope is the account's real
+ *  balance"): "$X of $Y in ···NNNN" replaces the old "target $Y · has $Z" pair. A bill with no
+ *  real target yet says so honestly instead of a fabricated $0/$0 line -- #2d again: "No Target
+ *  becomes a prompt in the bill's own words," rendered by `noTargetPrompt()` below. The real
+ *  Plaid-reported last-4 (Git #3206, `bill.mask`) is what backs "in ···NNNN" -- null, honestly,
+ *  until Plaid has actually reported it (migration 043). */
 function moneyBillMeta(bill) {
   const parts = [];
   if (bill.dueDay) parts.push(`due day ${bill.dueDay}`);
-  parts.push(`target ${dollars(bill.target)}`);
-  // The real proof behind "funded": which real Plaid-linked account, and how much is actually
-  // sitting in it -- not just the fact of a checkmark (Git #3206). `masked` is null, honestly,
-  // until Plaid has actually reported this account's real last-4 (migration 043).
-  parts.push(bill.masked ? `has ${dollars(bill.balance)} in ${bill.masked}` : `has ${dollars(bill.balance)}`);
+  const maskSuffix = bill.mask ? ` in ···${bill.mask}` : "";
+  if (bill.target === null) {
+    parts.push("no target yet");
+    parts.push(`${dollars(bill.balance)}${maskSuffix}`);
+  } else {
+    parts.push(`${dollars(bill.target)} a month`);
+    parts.push(`${dollars(bill.balance)} of ${dollars(bill.target)}${maskSuffix}`);
+  }
   return parts.join(" · ");
+}
+
+/** The bill's own words, said back for a target it doesn't have yet -- design #2d's real
+ *  example is `say "water is about 40"`; this is the same capture-grammar prompt for any bill,
+ *  not a fabricated real amount (no target exists yet to report). */
+function noTargetPrompt(bill) {
+  return `say "${bill.name.toLowerCase()} is about 50"`;
+}
+
+/** % funded badge (Git #3207, design #2d): red under 30%, amber mid-range, emerald at 100% --
+ *  replaces the old binary funded/short status text and the per-bill bar the design explicitly
+ *  rejects ("No per-bill bars; the badge and the '$x of $y' line carry it"). */
+function moneyPercentBadge(bill) {
+  const percent = bill.fundedPercent;
+  const tone = percent >= 100 ? "emerald" : percent >= 30 ? "amber" : "red";
+  return el("span", { class: `money-percent-badge ${tone}`, text: `${percent}%` });
 }
 
 /** `showGateBadge` is for the Bills tab (Git #3148): unlike Now's Protected/Urgent/Already
  *  handled buckets, which already segregate gate bills into their own section, the Bills tab
- *  lists every bill account together, so it needs the inline "gate" badge to say which ones. */
-function moneyBillRow(bill, { showGateBadge = false } = {}) {
-  const statusClass = bill.funded ? "funded" : "short";
-  const statusText = bill.warning
-    ? bill.warning
-    : bill.funded
-      ? "funded"
-      : `short ${dollars(bill.shortfall)}`;
-  return el("div", { class: "money-bucket-row" }, [
+ *  lists every bill account together, so it needs the inline "gate" badge to say which ones.
+ *
+ *  Git #3207: a bill with real months of unpaid arrears gets the same rotated -5deg red sticker
+ *  the rest of the app already uses for critical (`sticker()`, design #2d: "'Months behind' is
+ *  the −5° sticker the rest of the app uses for critical"), next to its name. */
+function moneyBillRow(bill, { showGateBadge = false, onOpenDetail = null } = {}) {
+  const nameChildren = [el("span", { text: bill.name })];
+  if (showGateBadge && bill.isGate) nameChildren.push(el("span", { class: "chip gate", text: "gate" }));
+  if (bill.monthsBehind) {
+    nameChildren.push(sticker("red", `${bill.monthsBehind} month${bill.monthsBehind === 1 ? "" : "s"} behind`));
+  }
+
+  let statusEl;
+  if (bill.target === null) {
+    statusEl = el("span", { class: "money-bucket-status", text: noTargetPrompt(bill) });
+  } else if (bill.warning) {
+    statusEl = el("span", { class: "money-bucket-status critical", text: bill.warning });
+  } else {
+    statusEl = moneyPercentBadge(bill);
+  }
+
+  const row = el("div", { class: "money-bucket-row" }, [
     el("div", { class: "money-bucket-name" }, [
-      el("div", { class: "row", style: "gap:.4rem" }, [
-        el("span", { text: bill.name }),
-        showGateBadge && bill.isGate ? el("span", { class: "chip gate", text: "gate" }) : null,
-      ]),
+      el("div", { class: "row", style: "gap:.4rem" }, nameChildren),
       el("div", { class: "money-bucket-meta", text: moneyBillMeta(bill) }),
     ]),
-    el("span", { class: `money-bucket-status ${bill.warning ? "" : statusClass}`, text: statusText }),
+    statusEl,
   ]);
+  // Git #3212: tapping a real bill row opens the real bottom-sheet detail view -- envelope
+  // breakdown, funding-history sparkline, Vault link. Optional (needs a real `bill.id`).
+  if (onOpenDetail && bill.id) {
+    row.style.cursor = "pointer";
+    row.addEventListener("click", () => onOpenDetail(bill.id));
+  }
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// Bill detail sheet (Git #3212, design `Shanes Life 17 - Money v3.dc.html` option 1e)
+// ---------------------------------------------------------------------------
+//
+// Resolved on #3209: the rolled-over/this-cycle envelope split is a real, lightweight COMPUTED
+// VIEW over two real Plaid balances (money.mjs's own header on getBillDetail has the full real
+// arithmetic) -- never a separate assigned/envelopeBalance shadow ledger. One real read,
+// GET /api/money/bills/:id, no client-side math beyond formatting.
+
+/** The funding-history sparkline -- same real visual language as `debtPayoffSparklineHtml`
+ *  (Git #3210): a real polyline over real `bill_cycle_snapshots` points, honestly just a dot
+ *  when only one real cycle has been captured so far. Wider than the debt one (this is the only
+ *  chart on the sheet, not an inline row accessory) and labeled with the real first/last cycle
+ *  dates underneath, same as the design's "Jun 12 ... Sep 18" caption -- no scrub interaction
+ *  (the design's "drag to scrub" is real polish for a later pass, not required to show real data
+ *  honestly today). */
+function billSparklineHtml(sparkline) {
+  const W = 338, H = 64, PAD_Y = 8;
+  if (!sparkline || sparkline.length === 0) return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"></svg>`;
+
+  const balances = sparkline.map((p) => Number(p.balance));
+  const min = Math.min(0, ...balances);
+  const max = Math.max(...balances, 1);
+  const range = max - min || 1;
+  const n = balances.length;
+
+  const coords = balances.map((balance, i) => {
+    const x = n === 1 ? W - 1 : 1 + (i / (n - 1)) * (W - 2);
+    const y = PAD_Y + (1 - (balance - min) / range) * (H - PAD_Y * 2);
+    return [x, y];
+  });
+  const [lastX, lastY] = coords[coords.length - 1];
+  const polyline =
+    n > 1
+      ? `<polyline fill="none" stroke="#60a5fa" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")}"></polyline>`
+      : "";
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;width:100%;height:${H}px">${polyline}<circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="3" fill="#60a5fa"></circle></svg>`;
+}
+
+/**
+ * The real bottom-sheet bill detail view (Git #3212): balance vs. target, the real gate/%-funded
+ * badges already established elsewhere in Money, the real rolled-over/this-cycle envelope
+ * breakdown, the real funding-history sparkline, and the real "Payment reference in Vault ->"
+ * link when one exists. Opened by tapping any bill row in Bills or Accounts.
+ */
+async function openBillDetailSheet(billId) {
+  const dialog = el("dialog", { class: "sheet" });
+  dialog.append(el("p", { class: "small muted", text: "Loading…" }));
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+
+  let d;
+  try {
+    d = await api(`/api/money/bills/${encodeURIComponent(billId)}`);
+  } catch (err) {
+    dialog.replaceChildren(
+      el("div", { class: "spread" }, [
+        el("span", { class: "sheet-title", text: "Bill" }),
+        el("button", { class: "ghost small", text: "Close", onClick: () => dialog.close() }),
+      ]),
+      el("p", { class: "small", style: "margin-top:.75rem", text: err?.message || "Could not load that bill." }),
+    );
+    return;
+  }
+
+  const nameChildren = [el("span", { style: "font-size:20px;font-weight:800;letter-spacing:-.01em", text: d.name })];
+  if (d.isGate) nameChildren.push(el("span", { class: "chip gate", text: "gate" }));
+  if (d.monthsBehind) nameChildren.push(sticker("red", `${d.monthsBehind} month${d.monthsBehind === 1 ? "" : "s"} behind`));
+
+  const head = el("div", { class: "row", style: "justify-content:space-between;align-items:flex-start;gap:12px" }, [
+    el("div", { style: "min-width:0" }, [
+      el("div", { class: "row", style: "gap:.5rem;align-items:center;flex-wrap:wrap" }, nameChildren),
+      el("div", { class: "small muted", style: "margin-top:3px", text: d.autoPaysLine }),
+    ]),
+    d.target !== null && !d.warning ? moneyPercentBadge(d) : null,
+  ]);
+
+  const bigBalance = el("div", { style: "display:flex;align-items:baseline;gap:10px;margin-top:14px;flex-wrap:wrap" }, [
+    el("span", { style: "font-size:32px;font-weight:800;letter-spacing:-.02em", text: dollars(d.balance) }),
+    el("span", {
+      class: "small muted",
+      text: d.target === null ? "no target set yet" : `in the envelope · target ${dollars(d.target)}`,
+    }),
+  ]);
+
+  const breakdownRows = [];
+  if (d.envelope.hasCycleSnapshot) {
+    breakdownRows.push(["Rolled over from last cycle", dollars(d.envelope.rolledOver)]);
+    breakdownRows.push(["This cycle's contribution", dollars(d.envelope.thisCycleContribution)]);
+  }
+  if (d.target !== null) {
+    breakdownRows.push(d.funded ? ["Funded", dollars(0)] : ["Short of target", dollars(d.shortfall)]);
+  }
+  const breakdown =
+    breakdownRows.length > 0
+      ? el(
+          "div",
+          { class: "bill-sheet-breakdown" },
+          breakdownRows.map(([label, value], i) =>
+            el("div", { class: "bill-sheet-breakdown-row", style: i > 0 ? "border-top:1px solid hsl(var(--card-border) / .6)" : "" }, [
+              el("span", { style: "flex:1", text: label }),
+              el("span", { style: "font-weight:600", text: value }),
+            ]),
+          ),
+        )
+      : null;
+
+  const cycleNote = el("p", {
+    class: "small muted",
+    style: "margin-top:10px",
+    text: d.envelope.hasCycleSnapshot
+      ? "Reassigning applies a delta, never an overwrite: a cycle reset leaves the rolled-over amount alone."
+      : "Still building real cycle history for this bill -- the rolled-over/this-cycle split appears once a real cycle boundary has been captured.",
+  });
+
+  const sparklineSection = el("div", { style: "margin-top:14px" }, [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline;gap:8px" }, [
+      el("span", {
+        class: "small muted",
+        style: "text-transform:uppercase;letter-spacing:.1em;font-weight:600;font-size:.68rem",
+        text: `Funded at each payday · ${d.sparkline.length} real cycle${d.sparkline.length === 1 ? "" : "s"}`,
+      }),
+    ]),
+    el("span", { style: "display:block;margin-top:6px", html: billSparklineHtml(d.sparkline) }),
+    d.sparkline.length > 0
+      ? el("div", { class: "row", style: "justify-content:space-between", "aria-hidden": "true" }, [
+          el("span", { class: "small muted", text: d.sparkline[0].label }),
+          el("span", { class: "small muted", text: d.sparkline[d.sparkline.length - 1].label }),
+        ])
+      : el("p", { class: "small muted", text: "No real cycle history captured yet." }),
+  ]);
+
+  const vaultLinkEl = d.vaultEntry
+    ? el(
+        "button",
+        {
+          type: "button",
+          class: "bill-sheet-vault-link",
+          onClick: () => {
+            dialog.close();
+            moneyTab = "vault";
+            render();
+          },
+        },
+        [
+          lineIcon('<rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>', { size: 14, strokeWidth: 2 }),
+          el("span", { text: "Payment reference in Vault" }),
+          el("span", { style: "margin-left:auto", text: "→" }),
+        ],
+      )
+    : el("p", { class: "small muted", style: "margin-top:10px", text: "No Vault entry linked to this bill yet." });
+
+  const previewBtn = el("button", {
+    type: "button",
+    class: "ghost small",
+    style: "margin-top:14px",
+    text: "Preview a hypothetical target →",
+    onClick: () => {
+      dialog.close();
+      openEditBalanceSheet({
+        id: d.id,
+        name: d.name,
+        targetFormatted: d.target === null ? null : dollars(d.target),
+        balanceFormatted: dollars(d.balance),
+      });
+    },
+  });
+
+  dialog.replaceChildren(
+    el("div", { class: "spread" }, [
+      el("span", { class: "sheet-title", text: "Bill" }),
+      el("button", { class: "ghost small", text: "Close", onClick: () => dialog.close() }),
+    ]),
+    el("div", { class: "sheet-body" }, [
+      head,
+      bigBalance,
+      breakdown,
+      cycleNote,
+      sparklineSection,
+      vaultLinkEl,
+      previewBtn,
+    ]),
+  );
 }
 
 /** One real one-time pending event -- +$6,000 roof reimbursement, -$2,500 deductible -- shown
@@ -3485,6 +3726,9 @@ function vaultRow(entry, { onReveal, onCopy }) {
       el("div", { class: "vault-row-name" }, [
         el("div", { class: "vault-row-label", text: entry.label }),
         entry.site ? el("div", { class: "vault-row-site", text: `pay at ${entry.site}` }) : null,
+        // Git #3212: the other half of the bill sheet's "Payment reference in Vault ->" link --
+        // real, so an entry already linked to a bill account says so here too.
+        entry.billAccountName ? el("div", { class: "vault-row-site", text: `for ${entry.billAccountName}` }) : null,
       ]),
       revealBtn,
     ]),
@@ -3568,7 +3812,10 @@ function vaultRow(entry, { onReveal, onCopy }) {
 }
 
 async function viewMoneyVault(view) {
-  const { entries, keyConfigured, clipboardClearSeconds } = await api("/api/vault");
+  const [{ entries, keyConfigured, clipboardClearSeconds }, gate] = await Promise.all([
+    api("/api/vault"),
+    api("/api/money/gate"),
+  ]);
 
   view.append(
     el("div", { class: "vault-lock-note" }, [
@@ -3657,10 +3904,22 @@ async function viewMoneyVault(view) {
   const siteInput = el("input", { placeholder: "mrcooper.com", "aria-label": "Site to pay at" });
   const secretInput = el("input", { type: "password", autocomplete: "off", placeholder: "Account number", "aria-label": "The account number", required: true });
   const maskedInput = el("input", { placeholder: "NFCU checking •••• 4821 (optional)", "aria-label": "Masked reference shown by default" });
+  // Git #3212: the other half of the bill sheet's real "Payment reference in Vault ->" link --
+  // a real bill account this entry is the payment reference for, so the jump has somewhere real
+  // to land. Optional: most vault entries (a login, a PIN) are for nothing bill-specific.
+  const billSelect = el(
+    "select",
+    { "aria-label": "Which bill this is the payment reference for (optional)" },
+    [
+      el("option", { value: "", text: "Not a bill payment reference" }),
+      ...gate.bills.map((b) => el("option", { value: b.id, text: b.name })),
+    ],
+  );
   const addError = el("p", { class: "vault-row-error", hidden: true });
   const addForm = el("form", { class: "section" }, [
     el("div", { class: "row" }, [labelInput, siteInput]),
     el("div", { class: "row" }, [secretInput, maskedInput]),
+    el("div", { class: "row" }, [billSelect]),
     el("button", { type: "submit", class: "ghost small", text: "Add to the vault" }),
     addError,
   ]);
@@ -3668,7 +3927,7 @@ async function viewMoneyVault(view) {
     event.preventDefault();
     if (!labelInput.value.trim() || !secretInput.value.trim()) return;
     addError.hidden = true;
-    addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    addForm.querySelectorAll("input,button,select").forEach((n) => (n.disabled = true));
     try {
       await api("/api/vault", {
         method: "POST",
@@ -3677,6 +3936,7 @@ async function viewMoneyVault(view) {
           site: siteInput.value,
           secret: secretInput.value,
           masked: maskedInput.value,
+          billAccountId: billSelect.value || null,
         }),
       });
       secretInput.value = "";
@@ -3684,7 +3944,7 @@ async function viewMoneyVault(view) {
     } catch (err) {
       addError.textContent = err?.message || "That didn't save.";
       addError.hidden = false;
-      addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+      addForm.querySelectorAll("input,button,select").forEach((n) => (n.disabled = false));
     }
   });
   view.append(el("div", { class: "card" }, [el("h3", { class: "vault-add-title", text: "Add a reference" }), addForm]));
@@ -3692,6 +3952,23 @@ async function viewMoneyVault(view) {
   // Room watermark (Git #3119): the critter spec's own room map says "Money Bills and Cars ->
   // bear, Vault -> vault".
   attachRoomWatermark(view, "vault");
+}
+
+/** Git #3207 (design #2c, "Behind · 6 bills · 19 payments"): one row of the Behind summary --
+ *  bill name, real months behind, real last-paid date, real amount owed. No "for <month>" --
+ *  that's the design mockup's own inference on top of a single real `last_paid_date`, not a
+ *  field this app actually stores; `last paid <date>` is the honest version of the same fact. */
+function moneyBehindRow(bill) {
+  const meta = bill.lastPaidDate
+    ? `${bill.monthsBehind} month${bill.monthsBehind === 1 ? "" : "s"} · last paid ${whenDate(bill.lastPaidDate)}`
+    : `${bill.monthsBehind} month${bill.monthsBehind === 1 ? "" : "s"}`;
+  return el("div", { class: "money-bucket-row" }, [
+    el("div", { class: "money-bucket-name" }, [
+      el("span", { text: bill.name }),
+      el("div", { class: "money-bucket-meta", text: meta }),
+    ]),
+    el("span", { class: "money-bucket-status critical", text: dollars(bill.owed) }),
+  ]);
 }
 
 /** Money's Bills tab (Git #3148): every real bill account, plus real one-time pending events
@@ -3702,13 +3979,28 @@ async function viewMoneyBills(view) {
 
   const gate = await api("/api/money/gate");
 
+  // "Behind" (Git #3207, design #2c): a real, distinct list from the funded/grouped bill
+  // accounts below it, sorted by real amount owed -- getGateStatus() already returns it
+  // pre-sorted (computeGateMath's own `behind`).
+  const behindCard = el("div", { class: "card money-bucket" }, [
+    el("div", { class: "money-bucket-label urgent", text: `Behind · ${gate.behind.length} bill${gate.behind.length === 1 ? "" : "s"} · ${dollars(gate.behindOwed)} owed` }),
+  ]);
+  if (gate.behind.length === 0) {
+    behindCard.append(el("p", { class: "muted small", style: "padding:0 1rem .7rem", text: "Nothing behind right now." }));
+  } else {
+    for (const bill of gate.behind) behindCard.append(moneyBehindRow(bill));
+  }
+  view.append(behindCard);
+
   const billsCard = el("div", { class: "card money-bucket" }, [
     el("div", { class: "money-bucket-label", text: "Bill accounts · funded from Direct Deposit" }),
   ]);
   if (gate.bills.length === 0) {
     billsCard.append(el("p", { class: "muted small", style: "padding:0 1rem .7rem", text: "No bill-role accounts assigned yet in ShanesSurvival." }));
   } else {
-    for (const bill of gate.bills) billsCard.append(moneyBillRow(bill, { showGateBadge: true }));
+    for (const bill of gate.bills) {
+      billsCard.append(moneyBillRow(bill, { showGateBadge: true, onOpenDetail: openBillDetailSheet }));
+    }
   }
   view.append(billsCard);
 
@@ -3907,9 +4199,12 @@ async function viewMoneyAccounts(view) {
     ]);
     for (const account of section.accounts) {
       const row = accountRow(account);
+      // Git #3212: a bill row's real tap target is now the detail sheet (envelope breakdown,
+      // funding history, Vault link) -- openEditBalanceSheet's hypothetical-target preview is
+      // still real and reachable, now as a link inside that sheet, not the row's own tap.
       if (section.role === "bill") {
         row.style.cursor = "pointer";
-        row.addEventListener("click", () => openEditBalanceSheet(account));
+        row.addEventListener("click", () => openBillDetailSheet(account.id));
       }
       sectionCard.append(row);
     }
@@ -4727,7 +5022,99 @@ function carReminderLine(label, r) {
   return el("div", { class: cls, text: `${label} ${dueLabel(r.dueInDays, r.on)} (${whenDate(r.on)})` });
 }
 
-function carCard(vehicle) {
+// Git #3213 (design 1f, "Cars · no forms"): the only real signal the client has that a capture
+// just landed on a given vehicle is "the vehicle's most recent maintenance log entry has an id I
+// haven't shown yet" -- captures classify asynchronously in a separate Claude conversation (see
+// captures.mjs's own header), so there is no request/response moment to hang a toast off of.
+// localStorage remembers the last entry id this browser has already shown per vehicle; the FIRST
+// time a vehicle is ever seen here, its current lastEntry is recorded silently (no sticker/toast)
+// so pre-existing history doesn't read as "just now" on a fresh login.
+function carLastSeenKey(vehicleId) {
+  return `carsLastSeenMaintenance:${vehicleId}`;
+}
+
+/** Returns true only when this vehicle's newest entry is genuinely new since we last looked, and
+ *  records it as seen either way -- callers get one honest "just now" per real change, not a
+ *  reshow on every reload. */
+function checkAndMarkCarMaintenanceSeen(vehicle) {
+  const entry = vehicle.maintenance.lastEntry;
+  if (!entry) return false;
+  const key = carLastSeenKey(vehicle.id);
+  const stored = localStorage.getItem(key);
+  localStorage.setItem(key, entry.id);
+  return stored !== null && stored !== entry.id;
+}
+
+function carOnboardingDismissed() {
+  return localStorage.getItem("carsOnboardingDismissed") === "1";
+}
+
+// Design 1f's "Say it, it lands" card -- the three example sentences shown once as onboarding
+// copy, dismissible once the grammar is learned (the design's own words: "shown once ... then
+// they can go"), same three examples verbatim.
+function carOnboardingCard(onDismiss) {
+  const examples = [
+    { line: '"oil change on the Kia, $84"', hint: "maintenance cost, rolled into the monthly average" },
+    { line: '"Tesla\'s at 40,900 miles"', hint: "mileage, moves the next-maintenance line" },
+    { line: '"we got a 2019 Odyssey, $410 a month, Allstate $96"', hint: "a new card here, and its loan as a bill account" },
+  ];
+  return el("div", { class: "card" }, [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline" }, [
+      el("div", { class: "small", style: "font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted-foreground)", text: "Say it, it lands" }),
+      el("button", {
+        class: "ghost small",
+        text: "Got it",
+        onClick: () => {
+          localStorage.setItem("carsOnboardingDismissed", "1");
+          onDismiss();
+        },
+      }),
+    ]),
+    ...examples.map((e) =>
+      el("div", { class: "row", style: "margin-top:.5rem;flex-direction:column;align-items:flex-start;gap:.1rem" }, [
+        el("div", { text: e.line }),
+        el("div", { class: "small muted", text: e.hint }),
+      ]),
+    ),
+    el("p", { class: "small muted", style: "margin:.6rem 0 0", text: "One number per car so \"is it worth keeping\" has an answer. Registration and oil changes use the same lead-time reminders as appointments and show up in Dates." }),
+  ]);
+}
+
+/** The five-second Undo toast (design 1f): "Logged $84.00 on the Kia Forte... Undo", a real
+ *  DELETE of that exact maintenance row, not a generic edit form. */
+function showCarMaintenanceUndoToast(vehicle, entry, onUndone) {
+  let dismissed = false;
+  const node = el("div", { class: "quick-toast car-undo-toast" }, [
+    el("div", { class: "car-undo-check" }, [
+      lineIcon('<path d="M20 6 9 17l-5-5"></path>'),
+    ]),
+    el("div", { style: "flex:1;min-width:0;text-align:left" }, [
+      el("div", { style: "font-weight:600", text: `Logged ${dollars(entry.amount)} on the ${vehicle.name}` }),
+      el("div", { class: "small muted", text: `Maintenance · ${entry.description} · in the monthly average` }),
+    ]),
+    el("button", {
+      class: "ghost small",
+      text: "Undo",
+      onClick: async (event) => {
+        if (dismissed) return;
+        dismissed = true;
+        event.currentTarget.disabled = true;
+        try {
+          await api(`/api/cars/${vehicle.id}/maintenance/${entry.id}`, { method: "DELETE" });
+        } finally {
+          node.remove();
+          onUndone();
+        }
+      },
+    }),
+  ]);
+  document.body.append(node);
+  setTimeout(() => {
+    if (!dismissed) node.remove();
+  }, 5000);
+}
+
+function carCard(vehicle, { justNow } = {}) {
   const rows = [];
   if (vehicle.loan) {
     rows.push(
@@ -4750,15 +5137,28 @@ function carCard(vehicle) {
         : "Maintenance, last 12 months: nothing logged yet",
     }),
   );
+  // Design 1f's real delta line -- only meaningful, and only shown, the moment the change that
+  // produced it is itself new; otherwise it's just restating the same average every visit.
+  if (justNow && vehicle.maintenance.lastEntry && vehicle.maintenance.previousAveragePerMonth !== null) {
+    rows.push(
+      el("div", {
+        class: "small",
+        text: `12-mo average: ${dollars(vehicle.maintenance.averagePerMonth)}/mo, was ${dollars(vehicle.maintenance.previousAveragePerMonth)} before today's ${dollars(vehicle.maintenance.lastEntry.amount)}`,
+      }),
+    );
+  }
 
   const reminders = [
     carReminderLine("Registration due", vehicle.registration.reminder),
     vehicle.maintenance.next ? carReminderLine(vehicle.maintenance.next.note || "Next maintenance", vehicle.maintenance.next) : null,
   ].filter(Boolean);
 
+  const titleRow = [el("div", { class: "title", text: vehicle.name })];
+  if (justNow) titleRow.push(sticker("blue", "just now"));
+
   return el("a", { class: "tile", href: `#/car/${vehicle.id}` }, [
     el("div", { class: "row", style: "justify-content:space-between;align-items:baseline" }, [
-      el("div", { class: "title", text: vehicle.name }),
+      el("div", { class: "row", style: "gap:.4rem;align-items:baseline" }, titleRow),
       el("div", { style: "text-align:right" }, [
         el("div", { class: "money-amount", style: "font-size:22px", text: vehicle.allInPerMonthFormatted }),
         el("div", { class: "small muted", text: `${vehicle.allInPerYearFormatted}/yr all-in` }),
@@ -4771,11 +5171,17 @@ function carCard(vehicle) {
 
 async function viewMoneyCars(view) {
   const { vehicles } = await api("/api/cars");
+  const justNowIds = new Set(vehicles.filter(checkAndMarkCarMaintenanceSeen).map((v) => v.id));
 
   if (vehicles.length === 0) {
     view.append(empty("No vehicles on file yet.", "Say the name below, e.g. \"add my Kia Forte\", and Claude adds it.", "idle"));
   } else {
-    view.append(el("section", { class: "section" }, vehicles.map(carCard)));
+    view.append(el("section", { class: "section" }, vehicles.map((v) => carCard(v, { justNow: justNowIds.has(v.id) }))));
+  }
+
+  if (!carOnboardingDismissed()) {
+    const onboarding = carOnboardingCard(() => onboarding.remove());
+    view.append(onboarding);
   }
 
   // Git #3182: no dedicated add-vehicle form -- "add my Kia Forte" typed into the universal
@@ -4783,6 +5189,14 @@ async function viewMoneyCars(view) {
 
   // "Money Bills and Cars -> bear" per the critter spec's room-watermark map (moneyhdr slot).
   attachRoomWatermark(view, "moneyhdr");
+
+  // Git #3213: the real, five-second Undo toast for whichever vehicle just got a fresh entry.
+  // At most one shows per view load (stacking several on a single tab switch reads as noise, not
+  // help) -- the newest of the freshly-seen ones wins.
+  const justNowVehicle = vehicles.find((v) => justNowIds.has(v.id));
+  if (justNowVehicle) {
+    showCarMaintenanceUndoToast(justNowVehicle, justNowVehicle.maintenance.lastEntry, () => render());
+  }
 }
 
 async function viewCarDetail(view, vehicleId) {
@@ -6006,8 +6420,99 @@ function arrayBufferToBase64url(buf) {
   return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+// Real "House · Room order" Settings card (Git #3215, `v4-settings-room-order.png`) -- the
+// first card, per github.md's own sync note. Up/down arrows (the real screenshot, not drag),
+// each real room's own current lit/subtitle read (the same roomsForToday() state the house grid
+// itself renders), and a real "Reset to the default order" action. Every reorder saves
+// immediately -- no separate "Save" button, matching the rest of Settings' own instant-save
+// actions (health context aside, which has an explicit Save because it's free text).
+async function renderRoomOrderSettings(view) {
+  const data = await api("/api/today");
+  const rooms = data.rooms || {};
+  let order = orderedRoomDefs(data.roomOrder).map((def) => def.key);
+
+  const section = el("section", { class: "section" }, [
+    el("div", { class: "section-label-row" }, [
+      el("h2", { text: "House · Room order" }),
+      el("span", { class: "meta small", text: "most used at the top" }),
+    ]),
+  ]);
+  const list = el("div", { class: "card" });
+  const resetBtn = el("button", { class: "ghost small", text: "Reset to the default order" });
+  section.append(list, resetBtn);
+  section.append(
+    el("p", {
+      class: "muted small",
+      text: "Top of the list is the top floor, left before right. The house redraws as you go.",
+    }),
+  );
+  view.append(section);
+
+  async function saveOrder() {
+    await api("/api/room-order", { method: "PATCH", body: JSON.stringify({ order }) });
+  }
+
+  function renderRows() {
+    list.replaceChildren();
+    order.forEach((key, i) => {
+      const def = ROOM_DEFS.find((d) => d.key === key);
+      const room = rooms[key];
+      list.append(
+        el("div", { class: "spread room-order-row" }, [
+          el("div", { class: "row", style: "align-items:center;gap:.6rem" }, [
+            critterIcon(def.critterSlot, { size: 32 }),
+            el("div", {}, [
+              el("div", { class: "title small", text: def.title }),
+              el("div", { class: "meta", text: room ? room.subtitle : "" }),
+            ]),
+          ]),
+          el("div", { class: "row" }, [
+            el("button", {
+              class: "ghost small icon-btn",
+              text: "↑",
+              "aria-label": `Move ${def.title} up`,
+              disabled: i === 0,
+              onClick: async () => {
+                [order[i - 1], order[i]] = [order[i], order[i - 1]];
+                renderRows();
+                await saveOrder();
+              },
+            }),
+            el("button", {
+              class: "ghost small icon-btn",
+              text: "↓",
+              "aria-label": `Move ${def.title} down`,
+              disabled: i === order.length - 1,
+              onClick: async () => {
+                [order[i + 1], order[i]] = [order[i], order[i + 1]];
+                renderRows();
+                await saveOrder();
+              },
+            }),
+          ]),
+        ]),
+      );
+    });
+  }
+
+  resetBtn.addEventListener("click", async () => {
+    resetBtn.disabled = true;
+    try {
+      const res = await api("/api/room-order", { method: "DELETE" });
+      order = res.order;
+      renderRows();
+    } finally {
+      resetBtn.disabled = false;
+    }
+  });
+
+  renderRows();
+}
+
 async function viewSettings(view) {
   const { tokens, endpoint } = await api("/api/mcp-tokens");
+
+  await renderRoomOrderSettings(view);
 
   view.append(
     el("section", { class: "section" }, [

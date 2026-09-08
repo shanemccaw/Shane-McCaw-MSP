@@ -89,10 +89,11 @@
 // verification, item-health classification, reconnect-flow wiring), so per this issue's own
 // text it was filed as its own follow-up Feature rather than squeezed in here: #3185.
 
-import { many, one, transaction } from "../db.mjs";
+import { many, one, query, transaction } from "../db.mjs";
 import { badRequest, notFound } from "../http.mjs";
 import * as lists from "./lists.mjs";
 import * as prices from "./prices.mjs";
+import * as vault from "./vault.mjs";
 
 /** Roles as ShanesSurvival's own migrations 003/006/008 define them. */
 const ROLE_INCOME_GATE = "income_gate";
@@ -262,8 +263,12 @@ export async function setHabit(
  * to build here for the inference itself -- it was already real. `masked` is the one real gap
  * this issue's design flag called out and this module didn't yet surface: the account number
  * backing the inference ("$190.27 in ···1523"), now added below off the real `mask` column
- * (migration 043) using the same "•••• 1234" convention `getAccountsOverview` already uses. */
-function billFromAccount(account) {
+ * (migration 043) using the same "•••• 1234" convention `getAccountsOverview` already uses.
+ *
+ *  `today` (a real, already-normalised UTC-midnight Date) is only used for the months-behind /
+ *  owed arrears figures (Git #3207) -- the shortfall/funded math above is untouched and stays
+ *  the literal port DashboardService.ComputeAsync already is. */
+function billFromAccount(account, today) {
   const target = toCents(account.target_amount);
   const balance = toCents(account.current_balance);
   let warning = null;
@@ -271,6 +276,19 @@ function billFromAccount(account) {
   if (target === null) warning = "target not set";
   else if (balance === null) warning = "balance unknown — Sync Now";
   else shortfall = Math.max(0, target - balance);
+
+  // % funded (Git #3207): the badge that replaces the old Partially Funded chip / per-bill bar.
+  // Clamped to [0, 100] -- a rolled-over balance can genuinely exceed this cycle's target (the
+  // H2 Electric "$138.27 stays" case in the design), and 100% is still the honest ceiling for a
+  // badge whose whole job is "is this bill covered."
+  const fundedPercent =
+    target === null || balance === null ? null : Math.max(0, Math.min(100, Math.round((balance / Math.max(1, target)) * 100)));
+
+  const monthsBehind = computeMonthsBehind(account.last_paid_date ?? null, account.due_day ?? null, today);
+  // Arrears owed = one real target-amount's worth per missed monthly due date. Only meaningful
+  // once a bill actually has a monthsBehind figure -- see computeMonthsBehind's own header for
+  // why a bill missing either due_day or last_paid_date never gets one guessed at.
+  const owedCents = monthsBehind && target !== null ? monthsBehind * target : null;
 
   return {
     id: account.id,
@@ -280,6 +298,7 @@ function billFromAccount(account) {
     isGate: Boolean(account.is_gate),
     dueDay: account.due_day ?? null,
     lastPaidDate: account.last_paid_date ?? null,
+    mask: account.mask ?? null,
     // Skip Suggestions' own priority grouping (migration 044) -- 'general' is the honest default
     // for a bill nobody has categorized yet, same tier the priority sort itself falls back to for
     // an unrecognized value, so a NULL from before the backfill and an explicit 'general' rank
@@ -291,6 +310,9 @@ function billFromAccount(account) {
     // digit) -- same masking convention getAccountsOverview already established.
     masked: account.mask ? `•••• ${account.mask}` : null,
     warning,
+    fundedPercent,
+    monthsBehind,
+    owedCents,
   };
 }
 
@@ -299,8 +321,9 @@ function billFromAccount(account) {
  * the loading so whatIf and simulateTransfer can re-run it over MUTATED COPIES of the same real
  * balances without a second round trip -- and so it is testable without a database.
  */
-export function computeGateMath({ gateAccounts, billAccounts, reserveAccounts }) {
+export function computeGateMath({ gateAccounts, billAccounts, reserveAccounts }, asOf = new Date()) {
   const warnings = [];
+  const today = asUtcDate(asOf);
 
   // -- Income Gate --------------------------------------------------------
   let gateBalance = null;
@@ -324,7 +347,7 @@ export function computeGateMath({ gateAccounts, billAccounts, reserveAccounts })
   }
 
   // -- bills --------------------------------------------------------------
-  const bills = billAccounts.map(billFromAccount);
+  const bills = billAccounts.map((account) => billFromAccount(account, today));
 
   for (const bill of bills) {
     if (bill.warning) warnings.push(`"${bill.name}": ${bill.warning} — excluded from total shortfall.`);
@@ -360,6 +383,12 @@ export function computeGateMath({ gateAccounts, billAccounts, reserveAccounts })
   // "$X spoken for - Tesla, Electric, Yard" -- the design's own unfunded list, biggest first.
   const unfunded = bills.filter((b) => b.shortfallCents !== null && b.shortfallCents > 0).sort(byShortfallDesc);
 
+  // "Behind · N bills · $X owed" (Git #3207): a real, distinct list from the funded/grouped
+  // groups below it on the Bills tab -- every bill with at least one real missed monthly due
+  // date, sorted by the real amount owed, biggest first, same convention as `unfunded` above.
+  const behind = bills.filter((b) => b.monthsBehind !== null && b.monthsBehind > 0).sort((a, b) => (b.owedCents ?? 0) - (a.owedCents ?? 0));
+  const behindOwedCents = behind.reduce((sum, b) => sum + (b.owedCents ?? 0), 0);
+
   return {
     warnings,
     gateName,
@@ -368,6 +397,8 @@ export function computeGateMath({ gateAccounts, billAccounts, reserveAccounts })
     gateBills,
     otherBills,
     unfunded,
+    behind,
+    behindOwedCents,
     totalShortfallCents: totalShortfall,
     reserves,
     reserveTotalCents: reserveTotal,
@@ -727,6 +758,34 @@ function nextDueDate(dueDay, today) {
 }
 
 /**
+ * How many real monthly due dates have already passed, unpaid, since a bill's real last payment
+ * (Git #3207). Requires BOTH a real `due_day` and a real `last_paid_date` -- same convention
+ * `billFromAccount`'s own shortfall/warning split already uses: a bill missing either never gets
+ * a months-behind figure guessed at, it gets null and stays out of the Behind list entirely.
+ *
+ * The due date in the same calendar month as `lastPaidDate` is treated as the one that payment
+ * covered, so counting starts the month after it. Every due date strictly after that which has
+ * already occurred on or before `today` is one real month behind. A 60-month cap guards against
+ * looping forever over a genuinely stale/bad `last_paid_date`.
+ */
+function computeMonthsBehind(lastPaidDate, dueDay, today) {
+  if (!lastPaidDate || !dueDay) return null;
+  const paid = asUtcDate(lastPaidDate);
+  let year = paid.getUTCFullYear();
+  let month = paid.getUTCMonth() + 1; // the month right after the one last_paid_date covers
+  let months = 0;
+  while (months <= 60) {
+    const y = year + Math.floor(month / 12);
+    const m = ((month % 12) + 12) % 12;
+    const due = new Date(Date.UTC(y, m, Math.min(dueDay, daysInUtcMonth(y, m))));
+    if (due > today) break;
+    months += 1;
+    month += 1;
+  }
+  return months;
+}
+
+/**
  * Real due-versus-available math for Budget Day: which real bills come due BEFORE the next real
  * paycheck lands, and how much of each is still unfunded. Distinct from `totalShortfallCents`
  * (every bill, whenever it's due) -- this is specifically "what has to be covered before more
@@ -900,6 +959,11 @@ function billOut(bill) {
     category: bill.category,
     masked: bill.masked,
     warning: bill.warning,
+    mask: bill.mask,
+    // Git #3207: % funded badge + months-behind sticker + real arrears owed.
+    fundedPercent: bill.fundedPercent,
+    monthsBehind: bill.monthsBehind,
+    owed: toDollars(bill.owedCents),
   };
 }
 
@@ -922,6 +986,140 @@ export async function setBillCategory(billAccountId, category) {
   );
   if (!row) throw notFound("Bill account not found");
   return billOut(billFromAccount(row));
+}
+
+// ---------------------------------------------------------------------------
+// Bill detail sheet (Git #3212, design `Shanes Life 17 - Money v3.dc.html` option 1e)
+// ---------------------------------------------------------------------------
+//
+// Resolved on #3209, Shane's own words: "it's not really software tracking, the envelope is the
+// bank account ... it's whatever is actually in the bank account." The "Rolled over from last
+// cycle" / "This cycle's contribution" split shown here is a real, lightweight COMPUTED VIEW over
+// two real Plaid balances -- never a separate assigned/envelopeBalance shadow ledger (#3162's own
+// conclusion, left standing). "Rolled over" is a real snapshot of the account's balance at the
+// start of the CURRENT cycle (captured by captureBillCycleSnapshots below); "this cycle's
+// contribution" is the real current balance minus that snapshot -- what Plaid has shown landing
+// in the account since the cycle began. Same table backs the funding-history sparkline: real
+// per-cycle-start balances, at most the last 8 real cycles captured, never a fabricated point for
+// a cycle that predates this migration.
+
+/** One real cycle-start balance snapshot per real bill account, captured idempotently -- the
+ *  unique (account_id, cycle_start) in migration 049 means a housekeeping sweep that runs again
+ *  before the next cycle starts is a real no-op, not a second, disagreeing snapshot. Deliberately
+ *  never UPDATEs an existing snapshot: it is the real balance at the moment the cycle began, and a
+ *  later balance change within that same cycle must not rewrite what "rolled over" meant. */
+export async function captureBillCycleSnapshots(asOf = new Date()) {
+  const [billAccounts, incomeSources] = await Promise.all([
+    loadRoleAccounts(ROLE_BILL),
+    many(
+      `SELECT id, name, person, pay_frequency_days, expected_per_cycle, next_pay_date, is_active
+         FROM income_sources WHERE is_active`,
+    ),
+  ]);
+  const window = resolvePayCycleWindow(incomeSources, asOf);
+  const cycleStartIso = utcIso(window.cycleStart);
+
+  let captured = 0;
+  for (const account of billAccounts) {
+    const balanceCents = toCents(account.current_balance);
+    if (balanceCents === null) continue; // no real balance from Plaid yet -- nothing honest to snapshot
+    const { rowCount } = await query(
+      `INSERT INTO bill_cycle_snapshots (account_id, cycle_start, balance_cents)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (account_id, cycle_start) DO NOTHING`,
+      [account.id, cycleStartIso, balanceCents],
+    );
+    if (rowCount > 0) captured += 1;
+  }
+  return { cycleStart: cycleStartIso, capturedCount: captured, billAccountCount: billAccounts.length };
+}
+
+/** "Bill account · NFCU •••• 7710 · auto-pays Fri, Sep 26" -- the design's own account-line
+ *  format, from the same real `due_day` -> next real occurrence logic Budget Day already uses
+ *  (`nextDueDate`), never a second date computation. */
+function autoPaysLine({ institutionName, mask, dueDay }, today) {
+  const parts = [];
+  parts.push(institutionName ? `Bill account · ${institutionName}${mask ? ` •••• ${mask}` : ""}` : "Bill account");
+  const due = nextDueDate(dueDay, today);
+  if (due) parts.push(`auto-pays ${formatPayDate(utcIso(due))}`);
+  return parts.join(" · ");
+}
+
+/**
+ * The real bottom-sheet bill detail view (Git #3212): balance vs. target, the real rolled-
+ * over/this-cycle envelope breakdown, the real funding-history sparkline (at most 8 real cycles),
+ * and the real "Payment reference in Vault ->" link when one exists. `userId` is only needed for
+ * the vault lookup -- vault entries are the one piece of this screen scoped per-user.
+ */
+export async function getBillDetail(userId, billAccountId, { asOf = new Date() } = {}) {
+  const account = await one(
+    `SELECT a.id, a.name, a.current_balance, a.target_amount, a.is_gate, a.due_day,
+            a.last_paid_date, a.bill_category, a.mask, a.role,
+            pi.institution_name
+       FROM accounts a
+       LEFT JOIN plaid_items pi ON pi.id = a.plaid_item_id
+      WHERE a.id = $1`,
+    [billAccountId],
+  );
+  if (!account) throw notFound("Bill account not found");
+  if (account.role !== ROLE_BILL) {
+    throw badRequest(`"${account.name}" is not a bill account -- it has no envelope to show.`);
+  }
+
+  const today = asUtcDate(asOf);
+  const bill = billFromAccount(account, today);
+
+  const incomeSources = await many(
+    `SELECT id, name, person, pay_frequency_days, expected_per_cycle, next_pay_date, is_active
+       FROM income_sources WHERE is_active`,
+  );
+  const window = resolvePayCycleWindow(incomeSources, asOf);
+  const cycleStartIso = utcIso(window.cycleStart);
+
+  const snapshots = await many(
+    `SELECT cycle_start, balance_cents FROM bill_cycle_snapshots
+      WHERE account_id = $1 ORDER BY cycle_start`,
+    [billAccountId],
+  );
+
+  const currentCycleSnapshot = snapshots.find((s) => isoDate(s.cycle_start) === cycleStartIso);
+  const rolledOverCents = currentCycleSnapshot ? Number(currentCycleSnapshot.balance_cents) : null;
+  const thisCycleContributionCents =
+    rolledOverCents !== null && bill.balanceCents !== null
+      ? Math.max(0, bill.balanceCents - rolledOverCents)
+      : null;
+
+  // At most the real last 8 cycles captured -- the design's own "8 cycles" -- never padded with
+  // invented earlier points. Target is applied retroactively from the bill's CURRENT target,
+  // since no historical target is recorded anywhere in this schema; stated plainly in the field
+  // name (targetAtRead) rather than implying it was the real target on that historical date.
+  const sparkline = snapshots.slice(-8).map((s) => ({
+    cycleStart: isoDate(s.cycle_start),
+    label: formatShortDate(isoDate(s.cycle_start)),
+    balance: toDollars(Number(s.balance_cents)),
+    targetAtRead: bill.targetCents === null ? null : toDollars(bill.targetCents),
+  }));
+
+  const vaultEntry = await vault.findEntryForBillAccount(userId, billAccountId);
+
+  return {
+    ...billOut(bill),
+    institutionName: account.institution_name,
+    autoPaysLine: autoPaysLine({ institutionName: account.institution_name, mask: account.mask, dueDay: bill.dueDay }, today),
+    envelope: {
+      balance: toDollars(bill.balanceCents),
+      target: toDollars(bill.targetCents),
+      shortfall: toDollars(bill.shortfallCents),
+      rolledOver: rolledOverCents === null ? null : toDollars(rolledOverCents),
+      thisCycleContribution: thisCycleContributionCents === null ? null : toDollars(thisCycleContributionCents),
+      // No real snapshot captured yet for this cycle -- honest, not zeroed, so the sheet can say
+      // "still building history" rather than implying nothing rolled over.
+      hasCycleSnapshot: currentCycleSnapshot !== null && currentCycleSnapshot !== undefined,
+      cycleStart: cycleStartIso,
+    },
+    sparkline,
+    vaultEntry,
+  };
 }
 
 function habitTotalCents(habits) {
@@ -1058,7 +1256,7 @@ export async function getGateStatus(userId, { asOf = new Date() } = {}) {
     ),
   ]);
 
-  const math = computeGateMath(accounts);
+  const math = computeGateMath(accounts, asOf);
   const habitCents = habitTotalCents(habits);
   const reallyCents = math.topLineCents === null ? null : math.topLineCents - habitCents;
   const smoking = await getSmokeSummary(userId, {
@@ -1091,6 +1289,10 @@ export async function getGateStatus(userId, { asOf = new Date() } = {}) {
     bills: math.bills.map(billOut),
     gateBills: math.gateBills.map(billOut),
     otherBills: math.otherBills.map(billOut),
+    // "Behind · N bills · $X owed" (Git #3207) -- its own distinct, sorted-by-owed list, never
+    // folded into gateBills/otherBills.
+    behind: math.behind.map(billOut),
+    behindOwed: toDollars(math.behindOwedCents),
     habit: {
       totalPerCycle: toDollars(habitCents),
       really: toDollars(reallyCents),

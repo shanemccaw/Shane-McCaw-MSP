@@ -32,6 +32,7 @@ import * as plaid from "../core/plaid.mjs";
 import * as pushSubscriptions from "../core/push-subscriptions.mjs";
 import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
+import * as roomOrder from "../core/room-order.mjs";
 import * as scan from "../core/scan.mjs";
 import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
@@ -1008,6 +1009,27 @@ export function buildApiRouter() {
     return sendJson(res, 200, { healthContext });
   });
 
+  // -- room order (Git #3215) -- the first Settings card's "House · Room order" ---------
+  router.get("/api/room-order", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { order: await roomOrder.getRoomOrder(user.id) });
+  });
+
+  router.patch("/api/room-order", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const order = await roomOrder.setRoomOrder(user.id, body.order);
+    await audit.record({ userId: user.id, actor: "web", action: "room_order.set", detail: { order } });
+    return sendJson(res, 200, { order });
+  });
+
+  router.delete("/api/room-order", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const order = await roomOrder.resetRoomOrder(user.id);
+    await audit.record({ userId: user.id, actor: "web", action: "room_order.reset" });
+    return sendJson(res, 200, { order });
+  });
+
   // -- medications (Git #3135) ----------------------------------------------
   //
   // The batch-grouped Meds tray: GET returns today's real state (batches + taken-today status,
@@ -1645,6 +1667,14 @@ export function buildApiRouter() {
     );
   });
 
+  // The real bill detail bottom sheet (Git #3212, design 1e): balance vs. target, the real
+  // rolled-over/this-cycle envelope breakdown, the funding-history sparkline, and the real
+  // Vault link when one exists. `userId` is only needed for the vault lookup.
+  router.get("/api/money/bills/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await money.getBillDetail(user.id, params.id));
+  });
+
   // -- Money -> Vault (Git #3150) -------------------------------------------------------
   //
   // The bill-payment reference vault. Design contract Section 9 flags this as "a real security
@@ -1924,6 +1954,15 @@ export function buildApiRouter() {
       detail: { description: body.description, amount: body.amount },
     });
     return sendJson(res, 201, row);
+  });
+
+  // Real Undo (Git #3213, design 1f) for the entry just logged above -- the five-second Undo
+  // toast on the Cars card calls this, not a generic edit form.
+  router.delete("/api/cars/:id/maintenance/:entryId", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const row = await vehicles.deleteMaintenanceEntry(user.id, params.id, params.entryId);
+    await audit.record({ userId: user.id, actor: "web", action: "vehicle.maintenance.undo", entityId: params.id, detail: { entryId: params.entryId } });
+    return sendJson(res, 200, row);
   });
 
   // -- Wins (Git #3151) -----------------------------------------------------
@@ -2215,6 +2254,7 @@ export function buildApiRouter() {
       groceries,
       meds: await medications.getMedsToday(user.id),
       rooms: await roomsForToday(user.id, { allDates, tonight, groceries }),
+      roomOrder: await roomOrder.getRoomOrder(user.id),
       later: await computeLaterMoments(user.id, { allDates, tonight, pendingCaptures }),
     });
   });

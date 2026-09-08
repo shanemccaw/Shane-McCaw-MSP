@@ -1,0 +1,23 @@
+-- Shane's Life -- real per-user "House · Room order" preference (Git #3215).
+--
+-- Numbered 050, not 049: `schema_migrations` on the shared local `finances` database already
+-- carries a row for `049_bill_cycle_snapshots.sql` (a concurrent sibling build's own file, not
+-- yet landed in this checkout's `migrations/` directory at the time this was written -- same
+-- live-drift shape 037/034's own headers document). Filed as a real finding rather than
+-- overwriting that number.
+--
+-- The Today "Rooms -- the house" grid (Git #3165, roomsHouseSection() in public/app.js) has
+-- always rendered its 8 rooms in one fixed order (the ROOM_DEFS array's own literal order:
+-- things, lists, people, dates, recipes, pets, shopping, money). #3215's real screenshot
+-- (`v4-settings-room-order.png`) adds a first Settings card letting Shane reorder that grid
+-- himself -- "house order is user state here" per github.md's own sync note -- and nothing in
+-- this schema stores that state today.
+--
+-- `room_order` is a nullable jsonb array of the real room keys, in the user's chosen order.
+-- Nullable (not a NOT NULL with a default array) so "never touched Settings" reads as "use the
+-- existing shipped order" rather than needing a redundant default array kept in sync by hand;
+-- the application layer (src/core/room-order.mjs) is the one source of truth for both the
+-- canonical key set and the default order, and validates/repairs a stored array against it (so
+-- a future room addition or removal never leaves a user's saved order stale or incomplete).
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS room_order jsonb;

@@ -92,6 +92,20 @@ async function maintenanceSpendCents(vehicleId, asOf) {
   return toCents(row.total) ?? 0;
 }
 
+/** The single most recent real maintenance entry, or null when nothing has ever been logged --
+ *  this is what drives both the client's "just now" sticker (a freshly-seen entry it hasn't
+ *  shown before) and the "was $X before today's $Y" delta line below. */
+async function latestMaintenanceEntry(vehicleId) {
+  return one(
+    `SELECT id, performed_on, description, amount, mileage, created_at
+       FROM vehicle_maintenance_log
+      WHERE vehicle_id = $1
+      ORDER BY performed_on DESC, created_at DESC
+      LIMIT 1`,
+    [vehicleId],
+  );
+}
+
 /**
  * One real vehicle card's worth of numbers: identity, the linked loan bill account (read-only,
  * through the same `accounts` row get_gate_status uses), and the all-in $/mo and $/yr totals.
@@ -137,6 +151,16 @@ async function buildCard(vehicle, asOf) {
   const allInYearlyCents =
     loanMonthlyCents * 12 + insuranceMonthlyCents * 12 + registrationAnnualCents + maintenanceAnnualCents;
 
+  // Design 1f's "$41/mo, was $34 before today's $84" -- the real 12-month average recomputed
+  // with the single most recent entry pulled back out, so the client can show the real delta
+  // that one entry made. Only meaningful when that entry actually falls inside the trailing-12-
+  // month window this card is already summing (it always will, being the newest); null entirely
+  // when nothing has ever been logged.
+  const lastEntry = await latestMaintenanceEntry(vehicle.id);
+  const lastEntryAmountCents = lastEntry ? toCents(lastEntry.amount) ?? 0 : 0;
+  const previousMaintenanceAnnualCents = lastEntry ? Math.max(0, maintenanceAnnualCents - lastEntryAmountCents) : null;
+  const previousMaintenanceMonthlyCents = previousMaintenanceAnnualCents === null ? null : Math.round(previousMaintenanceAnnualCents / 12);
+
   return {
     id: vehicle.id,
     name: vehicle.name,
@@ -150,8 +174,19 @@ async function buildCard(vehicle, asOf) {
     maintenance: {
       intervalMiles: vehicle.maintenance_interval_miles,
       spendLast12Months: toDollars(maintenanceAnnualCents),
+      averagePerMonth: toDollars(maintenanceMonthlyCents),
+      previousAveragePerMonth: previousMaintenanceMonthlyCents === null ? null : toDollars(previousMaintenanceMonthlyCents),
       next: vehicle.next_maintenance_on
         ? { ...reminder(isoDate(vehicle.next_maintenance_on), MAINTENANCE_LEAD_DAYS, asOf), note: vehicle.next_maintenance_note }
+        : null,
+      lastEntry: lastEntry
+        ? {
+            id: lastEntry.id,
+            performedOn: isoDate(lastEntry.performed_on),
+            description: lastEntry.description,
+            amount: toDollars(lastEntryAmountCents),
+            mileage: lastEntry.mileage,
+          }
         : null,
     },
     allInPerMonth: toDollars(allInMonthlyCents),
@@ -342,6 +377,24 @@ export async function logMaintenance(
     await query(`UPDATE vehicles SET ${sets.join(", ")} WHERE id = $1 AND user_id = $2`, params);
   }
 
+  return getVehicle(userId, vehicleId);
+}
+
+/**
+ * Real Undo (design 1f: "Logged $84.00 on the Kia Forte... Undo", five seconds to reverse it) --
+ * removes exactly the one maintenance log row, scoped to both the vehicle and the user so a
+ * stale/foreign id can't delete someone else's entry. Does not touch next_maintenance_on/note --
+ * those were a separate, optional statement in the same logMaintenance call and undoing the cost
+ * entry shouldn't silently un-set a due date that was true regardless.
+ */
+export async function deleteMaintenanceEntry(userId, vehicleId, entryId) {
+  const vehicle = await getOwnedVehicle(userId, vehicleId);
+  if (!vehicle) throw notFound("Vehicle not found");
+  const { rowCount } = await query(
+    "DELETE FROM vehicle_maintenance_log WHERE id = $1 AND vehicle_id = $2 AND user_id = $3",
+    [entryId, vehicleId, userId],
+  );
+  if (rowCount === 0) throw notFound("Maintenance entry not found");
   return getVehicle(userId, vehicleId);
 }
 
