@@ -311,15 +311,32 @@ async function loadMoneyAccounts() {
 
 const MS_PER_DAY = 86_400_000;
 
-/** A `date` column comes back as a local-midnight Date; rebuild it as a UTC calendar date so day
- *  arithmetic can never be knocked sideways by a timezone offset. */
+/**
+ * A `date` column comes back from pg as a LOCAL-midnight Date (2026-09-11 arrives as
+ * 2026-09-11T04:00:00Z in EDT); rebuild it as the same calendar day at UTC midnight so day
+ * arithmetic can never be knocked sideways by a timezone offset.
+ *
+ * Call this exactly once per value. Feeding an already-normalised UTC-midnight Date back through
+ * it reads the LOCAL getters of a UTC midnight and walks the date back a day west of Greenwich --
+ * which is precisely how a real Sep 11 payday first rendered here as "Thu, Sep 10".
+ */
 function asUtcDate(value) {
+  if (typeof value === "string") {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+    if (match) return new Date(Date.UTC(+match[1], +match[2] - 1, +match[3]));
+  }
   const d = value instanceof Date ? value : new Date(value);
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
 }
 
+/** An already-normalised UTC-midnight Date -> "YYYY-MM-DD". Never re-normalises. */
+function utcIso(utcDate) {
+  return utcDate.toISOString().slice(0, 10);
+}
+
+/** A raw database date value -> "YYYY-MM-DD", normalising exactly once. */
 function isoDate(value) {
-  return asUtcDate(value).toISOString().slice(0, 10);
+  return utcIso(asUtcDate(value));
 }
 
 /** "Fri, Sep 18" -- the design's own payLine format, computed from a real date. */
@@ -371,8 +388,8 @@ export function computeBudgetDay(sources, asOf = new Date()) {
         person: source.person ?? null,
         payFrequencyDays: cycle,
         expectedPerCycle: toDollars(toCents(source.expected_per_cycle)),
-        storedNextPayDate: isoDate(anchor),
-        nextPayDate: isoDate(next),
+        storedNextPayDate: utcIso(anchor),
+        nextPayDate: utcIso(next),
         daysAway,
         isToday: daysAway === 0,
         // A real signal that ShanesSurvival has not planned a pay period in a while, not a

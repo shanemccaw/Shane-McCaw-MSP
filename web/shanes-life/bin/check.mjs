@@ -761,6 +761,167 @@ async function main() {
 
   cookie = null;
 
+  // 6b. money: the same numbers ShanesSurvival's own Dashboard shows (Git #3137)
+  //
+  // The point of these checks is that Shane's Life and the WPF app must never disagree about
+  // real money. So nothing here asserts a hardcoded figure -- every expected value is recomputed
+  // independently, in SQL, straight off the same real `accounts` rows, and compared to what the
+  // API served. If someone "simplifies" the exclusion rule in money.mjs, this goes red.
+  cookie = savedCookie;
+
+  const gate = await http("/api/money/gate");
+  check("the money gate endpoint answers for a signed-in session", gate.status === 200, `status ${gate.status}`);
+
+  const sums = await one(
+    `SELECT
+       (SELECT current_balance FROM accounts WHERE role = 'income_gate' ORDER BY name LIMIT 1)      AS gate_balance,
+       (SELECT name           FROM accounts WHERE role = 'income_gate' ORDER BY name LIMIT 1)       AS gate_name,
+       COALESCE((SELECT sum(current_balance) FROM accounts
+                  WHERE role = 'reserve' AND current_balance IS NOT NULL), 0)                       AS reserve_total,
+       COALESCE((SELECT sum(GREATEST(0, target_amount - current_balance)) FROM accounts
+                  WHERE role = 'bill' AND target_amount IS NOT NULL AND current_balance IS NOT NULL), 0)
+                                                                                                    AS total_shortfall`,
+  );
+  const money = (v) => (v === null || v === undefined ? null : Number(v));
+  const expectedShortfall = money(sums.total_shortfall);
+  const expectedReserve = money(sums.reserve_total);
+  const expectedAvailable = sums.gate_balance === null ? null : money(sums.gate_balance) + expectedReserve;
+  const expectedTop = expectedAvailable === null ? null : Number((expectedAvailable - expectedShortfall).toFixed(2));
+
+  check(
+    "total shortfall matches a straight SQL recomputation off the same real accounts",
+    gate.json?.totalShortfall === expectedShortfall,
+    `api ${gate.json?.totalShortfall} vs sql ${expectedShortfall}`,
+  );
+  check("reserve total matches the real role='reserve' balances", gate.json?.reserveTotal === expectedReserve, `api ${gate.json?.reserveTotal} vs sql ${expectedReserve}`);
+  check("the Income Gate is the real named account, not a guess", gate.json?.gate?.name === sums.gate_name, `api ${gate.json?.gate?.name} vs sql ${sums.gate_name}`);
+  check(
+    "available to spend = Income Gate + reserves - shortfall, exactly",
+    gate.json?.availableToSpend === expectedTop,
+    `api ${gate.json?.availableToSpend} vs sql ${expectedTop}`,
+  );
+  check("isCovered is the sign of that number and nothing else", gate.json?.isCovered === (expectedTop === null ? null : expectedTop >= 0));
+
+  // The exclusion rule, which is the easiest thing in the whole port to quietly break.
+  const excluded = await one(
+    `SELECT count(*)::int AS n FROM accounts
+      WHERE role = 'bill' AND (target_amount IS NULL OR current_balance IS NULL)`,
+  );
+  const excludedInApi = (gate.json?.bills ?? []).filter((b) => b.warning).length;
+  check(
+    "a bill with no target or no Plaid balance is excluded and warned about, never counted as $0",
+    excludedInApi === excluded.n && excludedInApi === (gate.json?.warnings ?? []).filter((w) => w.includes("excluded from total shortfall")).length,
+    `db ${excluded.n}, api ${excludedInApi}`,
+  );
+  check(
+    "one-time events are returned but deliberately not folded into the math",
+    (gate.json?.pendingEvents ?? []).every((e) => e.countedInMath === false),
+  );
+
+  // Budget Day is a real date off income_sources, rolled forward whole cycles so the card can
+  // never claim a payday that has already happened.
+  const payday = await one(
+    `SELECT next_pay_date, pay_frequency_days FROM income_sources
+      WHERE is_active AND next_pay_date IS NOT NULL ORDER BY next_pay_date LIMIT 1`,
+  );
+  const budgetDay = await http("/api/money/budget-day");
+  if (payday) {
+    check("Budget Day comes back for a real active income source", !!budgetDay.json?.budgetDay?.nextPayDate, JSON.stringify(budgetDay.json));
+    check("Budget Day is never in the past", (budgetDay.json?.budgetDay?.daysAway ?? -1) >= 0, `daysAway ${budgetDay.json?.budgetDay?.daysAway}`);
+    check(
+      "a rolled-forward Budget Day lands on a real multiple of the pay cycle",
+      budgetDay.json?.budgetDay?.rolledForwardCycles === 0 ||
+        (new Date(budgetDay.json.budgetDay.nextPayDate) - new Date(budgetDay.json.budgetDay.storedNextPayDate)) /
+          86_400_000 ===
+          budgetDay.json.budgetDay.rolledForwardCycles * budgetDay.json.budgetDay.payFrequencyDays,
+      JSON.stringify(budgetDay.json?.budgetDay),
+    );
+  } else {
+    check("Budget Day says nothing rather than inventing a payday when no income source is set", budgetDay.json?.budgetDay === null);
+  }
+
+  // The habit model (migration 026). Stated through the real MCP tool, exactly the way it would
+  // be stated in conversation -- no seeded row anywhere.
+  const habitSet = await rpc(token.token, "tools/call", {
+    name: "set_habit",
+    arguments: { name: "Check habit", amountPerCycle: 148, unitLabel: "pack", unitCost: 8.4 },
+  });
+  check("set_habit records a real habit model", toolResult(habitSet)?.name === "Check habit", JSON.stringify(toolResult(habitSet)));
+
+  const withHabit = await http("/api/money/gate");
+  check("the habit total is the real stated amount per cycle", withHabit.json?.habit?.totalPerCycle === 148);
+  check(
+    "the 'really' line is exactly available-to-spend minus the habit",
+    withHabit.json?.habit?.really === Number(((withHabit.json?.availableToSpend ?? 0) - 148).toFixed(2)),
+    `${withHabit.json?.habit?.really} vs ${(withHabit.json?.availableToSpend ?? 0) - 148}`,
+  );
+
+  // Additive, like set_food_preferences: restating the amount must not wipe the unit price.
+  await rpc(token.token, "tools/call", { name: "set_habit", arguments: { name: "check habit", amountPerCycle: 160 } });
+  const habitRows = await many("SELECT name, amount_per_cycle, unit_cost FROM money_habits WHERE user_id = $1", [userId]);
+  check("restating a habit updates the one row instead of stacking a second one", habitRows.length === 1, JSON.stringify(habitRows));
+  check("restating the amount leaves the unit price alone", Number(habitRows[0]?.unit_cost) === 8.4 && Number(habitRows[0]?.amount_per_cycle) === 160, JSON.stringify(habitRows[0]));
+
+  // what_if: top - habit - amount, and it names the real first casualty when that goes negative.
+  const whatIf = await rpc(token.token, "tools/call", { name: "what_if", arguments: { amount: 60 } });
+  const wi = toolResult(whatIf);
+  check(
+    "what_if is available-to-spend minus the habit minus the amount",
+    wi?.left === Number(((wi?.availableToSpend ?? 0) - (wi?.habitPerCycle ?? 0) - 60).toFixed(2)),
+    JSON.stringify(wi),
+  );
+  const biggestShort = (withHabit.json?.bills ?? [])
+    .filter((b) => b.shortfall > 0)
+    .sort((a, b) => b.shortfall - a.shortfall)[0];
+  if (wi && wi.stillCovered === false) {
+    check(
+      "a short what_if names the real biggest-shortfall account as the first to go unfunded",
+      wi.firstUnfunded?.name === biggestShort?.name,
+      `${wi.firstUnfunded?.name} vs ${biggestShort?.name}`,
+    );
+  }
+
+  // simulate_transfer: arithmetic on copies, never a real move.
+  const aBill = (withHabit.json?.bills ?? []).find((b) => b.balance !== null);
+  const otherBill = (withHabit.json?.bills ?? []).find((b) => b.balance !== null && b.id !== aBill?.id);
+  if (aBill && otherBill) {
+    const sim = await rpc(token.token, "tools/call", {
+      name: "simulate_transfer",
+      arguments: { amount: 50, from: aBill.name, to: otherBill.name },
+    });
+    const s = toolResult(sim);
+    check("simulate_transfer resolves both real account names", s?.resolvable === true, JSON.stringify(s));
+    check("simulate_transfer never executes", s?.executed === false);
+    check("simulate_transfer says out loud that it moved nothing", s?.footer === "Never moves money. Do it at NFCU, then it syncs.");
+    check("a move out of a bill account is flagged borrowed-from-bill", !!s?.borrowedFromBill, String(s?.borrowedFromBill));
+    check(
+      "the simulated destination balance is the real one plus the amount",
+      s?.to?.balanceAfter === Number((otherBill.balance + 50).toFixed(2)),
+      `${s?.to?.balanceAfter} vs ${otherBill.balance + 50}`,
+    );
+    const stillReal = await one("SELECT current_balance FROM accounts WHERE id = $1", [aBill.id]);
+    check(
+      "the real account balance did not move a cent",
+      Number(stillReal.current_balance) === aBill.balance,
+      `${stillReal.current_balance} vs ${aBill.balance}`,
+    );
+  }
+
+  const unknownMove = await rpc(token.token, "tools/call", {
+    name: "simulate_transfer",
+    arguments: { amount: 10, from: "an account that does not exist", to: "another one" },
+  });
+  check(
+    "an account name that matches nothing says so instead of guessing",
+    toolResult(unknownMove)?.resolvable === false,
+    JSON.stringify(toolResult(unknownMove)),
+  );
+
+  const moneyActivity = await http("/api/activity");
+  check("the simulated transfer is in the audit trail", moneyActivity.json?.activity?.some((a) => a.action === "money.transfer.simulated"));
+
+  cookie = null;
+
   // 7. revocation really revokes
   cookie = savedCookie;
   const shares = await http(`/api/shares?entityId=${entityId}`);
