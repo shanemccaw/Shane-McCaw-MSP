@@ -16,13 +16,11 @@
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
-    <!-- Deliberately no sign-in prompt, no tabs, no capture box. Whoever opens this was handed a
-         link, not an account (contract pack Section 9). -->
-    <header class="app-header">
-      <h1 id="title">Shared</h1>
-      <span id="mode" class="chip"></span>
-    </header>
-    <main id="view" class="view" style="padding-bottom:3rem" aria-live="polite"></main>
+    <!-- Deliberately no sign-in prompt, no tabs, no capture box, and (Git #3184) no generic
+         app-header bar either -- the real design ("Shanes Life 12 - Shared list.dc.html", 1t)
+         puts the badge/title/subtitle inline in the page itself, not in a chrome row, since
+         whoever opens this was handed a link, not an account (contract pack Section 9). -->
+    <main id="view" class="view share-page" aria-live="polite"></main>
     <script type="module" src="/share.js"></script>
   </body>
 </html>

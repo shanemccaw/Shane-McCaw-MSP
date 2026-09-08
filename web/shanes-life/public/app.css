@@ -394,6 +394,35 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
 .empty p { margin: 0; }
 .empty svg { width: 88px; height: 88px; opacity: 0.85; }
 
+/* ---------- shared list, no login (Git #3184) ----------
+   Design "Shanes Life 12 - Shared list.dc.html", option 1t -- the base the design's own final
+   decision (turn 2) builds on. Teal marks this surface everywhere on purpose: "so it obvious
+   which door you came through" -- it must never look like the private (blue) app. Layout is
+   inline in the page itself (badge, title, subtitle, card) rather than a chrome header row,
+   matching that screen's own composition -- share.html carries no .app-header. */
+.share-page { max-width: 480px; margin: 0 auto; padding: 1.1rem 1rem calc(2rem + var(--safe-bottom)); display: grid; gap: 0.6rem; }
+.share-title { font-size: 28px; font-weight: var(--weight-bold); letter-spacing: -0.02em; line-height: 1.1; margin: 0.6rem 0 0; }
+.share-subtitle { font-size: 14px; color: hsl(var(--muted-foreground)); margin: 0.25rem 0 0.6rem; }
+
+/* Same generic `.chip` used everywhere else (see `.chip.verdict` / `.chip.gate`), given the
+   teal treatment this one surface uses in place of the private app's blue. */
+.chip.teal {
+  text-transform: none;
+  letter-spacing: normal;
+  color: hsl(var(--foreground));
+  background: hsla(172, 66%, 50%, 0.16);
+  border-color: hsla(172, 66%, 50%, 0.4);
+  width: fit-content;
+}
+
+/* Real checkbox convention already used by every other room's .checklist (native input,
+   accent-color) -- just teal instead of the app's primary blue, for the same reason as the
+   badge above. Not a bespoke custom checkbox: the design mockup draws one for polish, but
+   matching the app's own already-shipped checkbox component is the real "same visual language
+   as the rest of the app" the issue asks for. */
+.share-page .checklist input[type="checkbox"] { accent-color: var(--accent-teal); }
+.share-page .checklist .note { font-size: 0.78rem; color: hsl(var(--muted-foreground)); display: block; }
+
 /* ---------- critters (Git #3119) ----------
    Same family as the sign-in fox above: soft vertical gradient body, cream belly, dark dot
    eyes, blush #F472B6, one navy ground shadow. Decorative only, never a mechanic. */

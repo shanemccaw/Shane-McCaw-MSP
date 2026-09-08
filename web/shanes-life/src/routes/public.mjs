@@ -16,6 +16,7 @@ function publicShape(record, link) {
   return {
     canCheck: link.can_check,
     sharedAs: link.label,
+    sharedBy: link.owner_name,
     expiresAt: link.expires_at,
     entity: {
       id: record.id,
