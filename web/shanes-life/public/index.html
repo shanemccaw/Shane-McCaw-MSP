@@ -113,6 +113,17 @@
         <button id="sign-out" class="ghost small">Sign out</button>
       </header>
 
+      <!-- Git #3268: custom pull-to-refresh indicator. iOS Home Screen PWAs (standalone
+           display mode) have no browser chrome to natively pull down from, so this is a real
+           in-app gesture (see attachPullToRefresh in app.js) rather than relying on the
+           browser's own pull-to-refresh, which only exists in a real tab anyway. Fixed above
+           #view so it can slide into view as the room content is dragged down. -->
+      <div id="ptr-indicator" class="ptr-indicator" aria-hidden="true">
+        <svg class="ptr-spinner" viewBox="0 0 24 24" width="22" height="22">
+          <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="42" stroke-dashoffset="32" />
+        </svg>
+      </div>
+
       <main id="view" class="view" aria-live="polite"></main>
 
       <!-- The universal capture box. It is fixed to the bottom of every screen on purpose:

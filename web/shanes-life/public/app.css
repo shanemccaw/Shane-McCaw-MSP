@@ -132,6 +132,49 @@ a { color: inherit; }
 /* Header row title (design handoff README, "Screens": title 17/700). */
 .app-header h1 { font-size: 17px; line-height: 1.3; font-weight: var(--weight-bold); }
 
+/* Git #3268: pull-to-refresh indicator (attachPullToRefresh in app.js). Fixed just below the
+   safe area / header, hidden via opacity+scale at rest and translated down as the room content
+   is dragged -- see the inline transform/opacity the gesture handler sets on this element and
+   on #view itself. `pointer-events: none` so it never intercepts the gesture it's showing
+   feedback for. */
+.ptr-indicator {
+  position: fixed;
+  left: 50%;
+  top: max(0.6rem, env(safe-area-inset-top));
+  width: 36px;
+  height: 36px;
+  margin-left: -18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  color: hsl(var(--primary));
+  opacity: 0;
+  transform: translateY(-100%) scale(0.6);
+  z-index: 6;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.ptr-indicator.ptr-visible { transition: none; }
+
+.ptr-indicator.ptr-armed { color: hsl(var(--success)); }
+
+.ptr-indicator.ptr-refreshing .ptr-spinner {
+  animation: ptr-spin 0.7s linear infinite;
+}
+
+@keyframes ptr-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Applied to #view only once a pull is released (not during the drag itself, which sets
+   transform directly per-frame with no transition so it tracks the finger exactly) so the
+   room content eases back to rest instead of snapping. */
+.view.ptr-settling { transition: transform 0.2s ease; }
+
 /* Shared room chrome (design handoff README, "Screens"): 62px top padding, 16px side
    padding, 14px gaps between sections. */
 .view {
