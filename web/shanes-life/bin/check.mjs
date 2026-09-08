@@ -1547,6 +1547,90 @@ async function main() {
   const orphanReveals = await many("SELECT id FROM vault_reveals WHERE user_id = $1", [userId]);
   check("deleting an entry takes its reveal history with it", orphanReveals.length === 0, `${orphanReveals.length} left`);
 
+  // 6e. Money -> Important documents (Git #3244) -- wills, life insurance, and the like.
+  //
+  // Same real security bar as the vault above, on a different content type: doc_type/name/
+  // location are real plaintext (so real search answers "where's my will" without a reveal),
+  // and `details` (provider, policy number, beneficiary, executor, whatever matters) is
+  // encrypted and gated behind a real passkey assertion, exactly like the vault's secret.
+  const docRoom = await http("/api/documents");
+  check("the documents room loads", docRoom.status === 200, `status ${docRoom.status}`);
+  check(
+    "documents report the same real encryption key as the vault is configured",
+    docRoom.json?.keyConfigured === true,
+    "SL_VAULT_KEY must be set for documents to work at all",
+  );
+
+  const willDetails = "Original at Smith & Assoc, 100 Main St. Executor: Jane Doe. Signed 2024-03-01.";
+  const willDoc = await http("/api/documents", {
+    method: "POST",
+    body: { docType: "Will", name: "Last will and testament", location: "Safe deposit box at NFCU", details: willDetails },
+  });
+  check("a document can be added", willDoc.status === 201, `status ${willDoc.status} ${JSON.stringify(willDoc.json)}`);
+  check("the create response never echoes the encrypted details back", !JSON.stringify(willDoc.json).includes("Jane Doe"), JSON.stringify(willDoc.json));
+
+  const lifeDetails = "Northwestern Mutual, policy #NM-88213. Beneficiary: Jane Doe, 60%; John Doe Jr, 40%.";
+  const lifeDoc = await http("/api/documents", {
+    method: "POST",
+    body: { docType: "Life insurance", name: "Northwestern Mutual term life", location: "Filing cabinet, home office", summaryHint: "Northwestern Mutual -- policy on file", details: lifeDetails },
+  });
+  check("a second document can be added", lifeDoc.status === 201, `status ${lifeDoc.status}`);
+
+  const docList = await http("/api/documents");
+  check(
+    "listing documents carries no encrypted content at all",
+    !JSON.stringify(docList.json).includes("Jane Doe") && !JSON.stringify(docList.json).includes("NM-88213"),
+  );
+  const storedDoc = await one("SELECT ciphertext, iv, auth_tag FROM important_documents WHERE id = $1", [willDoc.json.id]);
+  check("the stored row really has no plaintext column at all", !("details" in storedDoc) && !("value" in storedDoc), Object.keys(storedDoc).join(","));
+
+  // Real search (item 2 of the issue's scope): "where's my will" answered directly from stored
+  // data, no reveal required.
+  const willSearch = await http(`/api/documents/search?q=${encodeURIComponent("will")}`);
+  check(
+    "searching \"will\" finds the will by real doc_type/name, and answers directly with its location",
+    willSearch.json?.documents?.some((d) => d.id === willDoc.json.id && d.location === "Safe deposit box at NFCU"),
+    JSON.stringify(willSearch.json),
+  );
+  const lifeSearch = await http(`/api/documents/search?q=${encodeURIComponent("life insurance")}`);
+  check(
+    "searching \"life insurance\" finds the right document, ready for the beneficiary reveal below",
+    lifeSearch.json?.documents?.some((d) => d.id === lifeDoc.json.id),
+    JSON.stringify(lifeSearch.json),
+  );
+
+  const docRevealNoAssertion = await http(`/api/documents/${willDoc.json.id}/reveal`, { method: "POST", body: {} });
+  check("a live session alone does not reveal a document", docRevealNoAssertion.status === 401, `status ${docRevealNoAssertion.status}`);
+
+  const docRevealOptions = await http(`/api/documents/${lifeDoc.json.id}/reveal/options`, { method: "POST", body: {} });
+  check("a document reveal issues its own challenge", docRevealOptions.status === 200 && Boolean(docRevealOptions.json?.challenge), `status ${docRevealOptions.status}`);
+  check("the document reveal challenge demands user verification, not just presence", docRevealOptions.json?.userVerification === "required");
+
+  const docRevealed = await http(`/api/documents/${lifeDoc.json.id}/reveal`, {
+    method: "POST",
+    body: { challenge: docRevealOptions.json.challenge, ...authenticator.assert(docRevealOptions.json.challenge) },
+  });
+  check("a real passkey assertion reveals the document's real details", docRevealed.status === 200, `status ${docRevealed.status} ${JSON.stringify(docRevealed.json)}`);
+  check(
+    "\"who's my life insurance beneficiary\" is answered by the real round-tripped AES-256-GCM value",
+    docRevealed.json?.details === lifeDetails,
+    String(docRevealed.json?.details),
+  );
+
+  const docRevealReplay = await http(`/api/documents/${lifeDoc.json.id}/reveal`, {
+    method: "POST",
+    body: { challenge: docRevealOptions.json.challenge, ...authenticator.assert(docRevealOptions.json.challenge) },
+  });
+  check("that assertion cannot be replayed to reveal the same document twice", docRevealReplay.status === 401, `status ${docRevealReplay.status}`);
+
+  const docRevealAudit = await http(`/api/documents/${lifeDoc.json.id}/reveals`);
+  check("exactly one audit row for exactly one real document reveal", docRevealAudit.json?.reveals?.length === 1, String(docRevealAudit.json?.reveals?.length));
+
+  await http(`/api/documents/${willDoc.json.id}`, { method: "DELETE" });
+  await http(`/api/documents/${lifeDoc.json.id}`, { method: "DELETE" });
+  const orphanDocReveals = await many("SELECT id FROM important_document_reveals WHERE user_id = $1", [userId]);
+  check("deleting a document takes its reveal history with it", orphanDocReveals.length === 0, `${orphanDocReveals.length} left`);
+
   cookie = null;
 
   // 7. revocation really revokes

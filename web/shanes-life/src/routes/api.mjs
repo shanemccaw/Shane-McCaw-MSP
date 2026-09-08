@@ -13,6 +13,7 @@ import * as catches from "../core/catches.mjs";
 import * as categories from "../core/categories.mjs";
 import * as contacts from "../core/contacts.mjs";
 import * as dates from "../core/dates.mjs";
+import * as documents from "../core/documents.mjs";
 import * as entities from "../core/entities.mjs";
 import * as federalHolidays from "../core/federal-holidays.mjs";
 import * as lists from "../core/lists.mjs";
@@ -88,13 +89,14 @@ function fmtUsd(amount) {
  * a lit flag.
  */
 export async function roomsForToday(userId, { allDates, tonight, groceries }) {
-  const [thingsList, listsForUser, allPeople, allPets, recipeMatches, gate] = await Promise.all([
+  const [thingsList, listsForUser, allPeople, allPets, recipeMatches, gate, recentWins] = await Promise.all([
     things.listThings(userId),
     lists.listListsForUser(userId),
     people.listPeople(userId),
     pets.listPets(userId),
     recipes.listRecipesWithMatch(userId),
     money.getGateStatus(userId),
+    wins.listWins(userId, { limit: 1 }),
   ]);
 
   // Shopping: "while items remain" -- the same openCount the Next card's own "home" case reads.
@@ -161,6 +163,23 @@ export async function roomsForToday(userId, { allDates, tonight, groceries }) {
     subtitle: allPets.length > 0 ? allPets.map((p) => p.name).join(", ") : "No pets yet",
   };
 
+  // Wins (Git #3241 -- pulled out of Money into its own room): "lit" for 3 days after the most
+  // recent real win, the same quiet-glow-then-fade feel a genuine relief moment deserves, not a
+  // permanent trophy case. Subtitle shows that win's own real text while lit; once it fades the
+  // room goes dark like Things/Lists/People/Pets, showing the real total instead -- never a
+  // streak or percentage (Section 3/8 still applies here, this is a house-grid subtitle, not a
+  // gamification mechanic).
+  const mostRecentWin = recentWins[0] || null;
+  let winsRoom;
+  if (mostRecentWin) {
+    const daysSince = Math.floor((Date.now() - new Date(mostRecentWin.happened_on).getTime()) / 86400000);
+    winsRoom = daysSince <= 3
+      ? { lit: true, subtitle: mostRecentWin.text }
+      : { lit: false, subtitle: mostRecentWin.text };
+  } else {
+    winsRoom = { lit: false, subtitle: "Nothing logged yet" };
+  }
+
   return {
     shopping,
     money: money_,
@@ -170,6 +189,7 @@ export async function roomsForToday(userId, { allDates, tonight, groceries }) {
     lists: listsRoom,
     people: peopleRoom,
     pets: petsRoom,
+    wins: winsRoom,
   };
 }
 
@@ -1880,6 +1900,175 @@ export function buildApiRouter() {
   router.get("/api/vault/:id/reveals", async (_req, res, params, ctx) => {
     const user = requireUser(ctx);
     return sendJson(res, 200, { reveals: await vault.revealHistory(user.id, params.id) });
+  });
+
+  // -- Money -> Important documents (Git #3244) ------------------------------------------
+  //
+  // Wills, life insurance, and the like -- real documents/policies, distinct in content type
+  // from the vault's own bill-payment references, but the same real security tier: AES-256-GCM
+  // under the same SL_VAULT_KEY, a fresh passkey assertion per reveal, a real per-reveal audit
+  // row (src/core/documents.mjs owns all of that). What lives here is the same thing the vault
+  // routes above carve out for the same reason -- the real WebAuthn assertion cannot live in the
+  // core module, only in a route that can actually see the request.
+
+  const DOCUMENT_REVEAL_LIMIT = { limit: 30, windowMs: 60 * 60 * 1000 };
+
+  function documentError(err) {
+    if (err instanceof documents.VaultKeyUnavailable) return new HttpError(503, err.message);
+    return err;
+  }
+
+  router.get("/api/documents", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, {
+      documents: await documents.listDocuments(user.id),
+      keyConfigured: documents.keyIsConfigured(),
+      windowSeconds: documents.REVEAL_WINDOW_SECONDS,
+    });
+  });
+
+  // Real search (item 2 of the issue's scope): "where's my will", "who's my life insurance
+  // beneficiary" -- answered directly from the real doc_type/name/location columns, no reveal
+  // required to find the right document. Registered ahead of the plain GET routes below so a
+  // literal path segment never shadows it.
+  router.get("/api/documents/search", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const q = ctx.url.searchParams.get("q");
+    return sendJson(res, 200, { documents: q ? await documents.searchDocuments(user.id, q) : [] });
+  });
+
+  router.post("/api/documents", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    if (!body.docType) throw badRequest("docType is required");
+    if (!body.name) throw badRequest("name is required");
+    if (!body.details) throw badRequest("details is required");
+    let doc;
+    try {
+      doc = await documents.createDocument(user.id, body);
+    } catch (err) {
+      throw documentError(err);
+    }
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "document.created",
+      entityId: doc.id,
+      detail: { docType: doc.docType, name: doc.name },
+    });
+    return sendJson(res, 201, doc);
+  });
+
+  router.patch("/api/documents/:id", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    let doc;
+    try {
+      doc = await documents.updateDocument(user.id, params.id, body);
+    } catch (err) {
+      throw documentError(err);
+    }
+    if (!doc) throw notFound("Document not found");
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "document.updated",
+      entityId: doc.id,
+      detail: { docType: doc.docType, name: doc.name, detailsChanged: Boolean(body.details) },
+    });
+    return sendJson(res, 200, doc);
+  });
+
+  router.delete("/api/documents/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const removed = await documents.deleteDocument(user.id, params.id);
+    if (!removed) throw notFound("Document not found");
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "document.deleted",
+      entityId: params.id,
+      detail: {},
+    });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  router.post("/api/documents/:id/reveal/options", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const owned = (await documents.listDocuments(user.id)).some((d) => d.id === params.id);
+    if (!owned) throw notFound("Document not found");
+
+    const credentialList = await credentials.listCredentials(user.id);
+    if (credentialList.length === 0) {
+      throw forbidden("No passkey is enrolled, and a reveal requires one every time.");
+    }
+    return sendJson(res, 200, {
+      challenge: await webauthn.issueChallenge(`documents:reveal:${params.id}`, user.id),
+      rpId: webauthn.relyingPartyId(),
+      timeout: webauthn.CHALLENGE_TTL_SECONDS * 1000,
+      userVerification: "required",
+      allowCredentials: credentialList.map((c) => ({
+        type: "public-key",
+        id: c.credential_id,
+        transports: c.transports,
+      })),
+    });
+  });
+
+  router.post("/api/documents/:id/reveal", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const gate = ratelimit.hit(`documents:reveal:${user.id}`, DOCUMENT_REVEAL_LIMIT.limit, DOCUMENT_REVEAL_LIMIT.windowMs);
+    if (!gate.allowed) {
+      throw tooMany("Too many reveals in a row. Wait a bit.", { retryAfterMs: gate.retryAfterMs });
+    }
+
+    const body = await readJson(req);
+    const consumed = await webauthn.consumeChallenge(body.challenge, `documents:reveal:${params.id}`);
+    if (!consumed || consumed.user_id !== user.id) throw unauthorized("That check expired. Try again.");
+
+    const credential = await credentials.findCredential(body.id);
+    if (!credential || credential.user_id !== user.id) throw unauthorized("That passkey is not on this account.");
+
+    let verified;
+    try {
+      verified = webauthn.verifyAssertion({
+        expectedChallenge: consumed.challenge,
+        response: body.response,
+        credential,
+      });
+    } catch (err) {
+      if (!config.isProduction) console.error("[documents] reveal refused:", err.message);
+      throw unauthorized("That passkey check did not pass.");
+    }
+
+    await credentials.touchCredential(credential.credential_id, verified.signCount, verified.backedUp);
+    await markSessionVerified(ctx.sessionToken, credential.credential_id);
+
+    let revealed;
+    try {
+      revealed = await documents.reveal(user.id, params.id, {
+        credentialId: credential.credential_id,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+      });
+    } catch (err) {
+      throw documentError(err);
+    }
+    if (!revealed) throw notFound("Document not found");
+
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "document.revealed",
+      entityId: revealed.id,
+      detail: { docType: revealed.docType, name: revealed.name, credentialId: credential.credential_id },
+    });
+    return sendJson(res, 200, revealed);
+  });
+
+  router.get("/api/documents/:id/reveals", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { reveals: await documents.revealHistory(user.id, params.id) });
   });
 
   // -- Money -> the smoking tracker (Git #3154) -------------------------------------------
