@@ -8963,10 +8963,117 @@ async function render() {
 
 window.addEventListener("hashchange", render);
 
+// ---------------------------------------------------------------------------
+// Pull-to-refresh (Git #3268, sub-issue of #3220/#3086)
+//
+// iOS Home Screen PWAs run in standalone display mode -- no URL bar/browser chrome, so there is
+// nothing to natively pull down from once Shane's installed the app. This is a real in-app
+// gesture rather than a reliance on native browser behavior, the same real class of platform
+// quirk #3263 already found and fixed for getUserMedia/camera. Works the same in a regular
+// browser tab too, so there's exactly one code path, not a standalone-detection branch.
+// ---------------------------------------------------------------------------
+
+const PTR_THRESHOLD = 64; // px of (resisted) pull distance before release triggers a refresh
+const PTR_MAX_PULL = 100; // px cap on how far the indicator/content can be dragged
+const PTR_RESISTANCE = 0.5; // real finger travel is damped so the drag never feels 1:1/rubbery
+
+function attachPullToRefresh() {
+  const view = $("#view");
+  const indicator = $("#ptr-indicator");
+  if (!view || !indicator) return;
+
+  let startY = null;
+  let pulling = false;
+  let armed = false;
+  let refreshing = false;
+
+  const setPull = (distance) => {
+    const eased = Math.min(distance, PTR_MAX_PULL);
+    view.style.transform = distance > 0 ? `translateY(${eased}px)` : "";
+    indicator.classList.add("ptr-visible");
+    indicator.style.opacity = String(Math.min(eased / PTR_THRESHOLD, 1));
+    indicator.style.transform = `translateY(${eased}px) scale(${Math.min(0.6 + eased / PTR_THRESHOLD * 0.4, 1)})`;
+    armed = eased >= PTR_THRESHOLD;
+    indicator.classList.toggle("ptr-armed", armed);
+  };
+
+  const reset = () => {
+    view.classList.add("ptr-settling");
+    view.style.transform = "";
+    indicator.classList.remove("ptr-visible", "ptr-armed", "ptr-refreshing");
+    indicator.style.opacity = "";
+    indicator.style.transform = "";
+    window.setTimeout(() => view.classList.remove("ptr-settling"), 220);
+    startY = null;
+    pulling = false;
+    armed = false;
+  };
+
+  document.addEventListener(
+    "touchstart",
+    (e) => {
+      // Only the genuine "already at the very top, pulling further down" gesture -- not mid-scroll,
+      // never while a refresh from a previous pull is still in flight, and never on the sign-in/
+      // enrolment screens (attachPullToRefresh is wired once at startup, before we know which
+      // screen is showing).
+      if (refreshing || window.scrollY > 0 || e.touches.length !== 1 || $("#app-view").hidden) return;
+      startY = e.touches[0].clientY;
+      pulling = true;
+    },
+    { passive: true },
+  );
+
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!pulling || startY == null || refreshing) return;
+      const deltaY = e.touches[0].clientY - startY;
+      // A real upward drag, or the page having scrolled away from the top mid-gesture (e.g. a
+      // room's own content grew), hands the gesture back to normal scrolling.
+      if (deltaY <= 0 || window.scrollY > 0) {
+        if (pulling) reset();
+        return;
+      }
+      // Only once we're actually dragging past the top do we take over the touch -- this is what
+      // stops the gesture from ever interfering with normal in-room scrolling.
+      e.preventDefault();
+      view.classList.remove("ptr-settling");
+      setPull(deltaY * PTR_RESISTANCE);
+    },
+    { passive: false },
+  );
+
+  const finishPull = async () => {
+    if (!pulling) return;
+    pulling = false;
+    if (!armed) return reset();
+
+    refreshing = true;
+    indicator.classList.add("ptr-refreshing");
+    view.style.transform = `translateY(${PTR_THRESHOLD}px)`;
+    indicator.style.opacity = "1";
+    indicator.style.transform = `translateY(${PTR_THRESHOLD}px) scale(1)`;
+    try {
+      // render() (~line 8901) already re-fetches and redraws the current room's data -- the same
+      // real hook the issue names, not a new refetch built alongside it.
+      await render();
+    } finally {
+      refreshing = false;
+      reset();
+    }
+  };
+
+  document.addEventListener("touchend", finishPull, { passive: true });
+  document.addEventListener("touchcancel", () => reset(), { passive: true });
+}
+
 async function start() {
   // The critter sprite (Git #3119) loads in parallel with everything else -- it's decorative,
   // so nothing in the real startup path waits on it.
   loadCritterSprite();
+  // Wired once at startup regardless of route -- the gesture itself checks window.scrollY on
+  // every touch, so it's always live for whichever room is on screen, not re-attached per room.
+  attachPullToRefresh();
   // An enrolment link wins over everything: it is how the very first passkey gets created, and
   // at that moment there is by definition no session to load.
   if (enrollmentTokenFromUrl()) return showEnroll();
