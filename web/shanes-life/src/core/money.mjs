@@ -151,7 +151,7 @@ export function parseAmountCents(value, label = "amount", { allowNegative = fals
  */
 export async function loadRoleAccounts(role) {
   return many(
-    `SELECT id, name, current_balance, target_amount, is_gate, due_day, last_paid_date, bill_category
+    `SELECT id, name, current_balance, target_amount, is_gate, due_day, last_paid_date, bill_category, mask
        FROM accounts
       WHERE role = $1
       ORDER BY name`,
@@ -249,7 +249,20 @@ export async function setHabit(
 // ---------------------------------------------------------------------------
 
 /** One real bill account row -> the internal bill shape computeGateMath/setBillCategory both
- *  build, so the shortfall/warning logic exists in exactly one place. */
+ *  build, so the shortfall/warning logic exists in exactly one place.
+ *
+ * `funded` (Git #3206 -- "Paid ✓ can't be a checkbox. It's inferred when Plaid sees the debit
+ * leave the bill account.") is already exactly that inference, confirmed by re-reading this
+ * function rather than assumed: `shortfall === 0` off the account's own `current_balance` vs
+ * `target_amount`, and `current_balance` is never written by this app -- ShanesSurvival's real
+ * Plaid sync is the only writer (see this module's own header). There is no separate paid flag,
+ * no checkbox, and no route in this app that lets Shane toggle a bill "paid" by hand; the only
+ * manual field in this shape is `last_paid_date`, which is informational-only and explicitly
+ * excluded from this math (migration 011's own comment, quoted in this module's header). Nothing
+ * to build here for the inference itself -- it was already real. `masked` is the one real gap
+ * this issue's design flag called out and this module didn't yet surface: the account number
+ * backing the inference ("$190.27 in ···1523"), now added below off the real `mask` column
+ * (migration 043) using the same "•••• 1234" convention `getAccountsOverview` already uses. */
 function billFromAccount(account) {
   const target = toCents(account.target_amount);
   const balance = toCents(account.current_balance);
@@ -274,6 +287,9 @@ function billFromAccount(account) {
     category: account.bill_category ?? "general",
     shortfallCents: shortfall,
     funded: shortfall === null ? null : shortfall === 0,
+    // Real Plaid-reported last-4, or null when Plaid hasn't delivered it yet (never a fabricated
+    // digit) -- same masking convention getAccountsOverview already established.
+    masked: account.mask ? `•••• ${account.mask}` : null,
     warning,
   };
 }
@@ -882,6 +898,7 @@ function billOut(bill) {
     dueDay: bill.dueDay,
     lastPaidDate: bill.lastPaidDate ? isoDate(bill.lastPaidDate) : null,
     category: bill.category,
+    masked: bill.masked,
     warning: bill.warning,
   };
 }

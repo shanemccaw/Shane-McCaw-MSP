@@ -2876,6 +2876,12 @@ async function viewMeds(view) {
 // invented for this -- there is no MCP tool or capture-grammar entry in the design's own spec
 // that writes one, and a tap that didn't call any real mutation would be exactly the kind of fake
 // interactivity this app refuses to ship.
+//
+// Git #3206 re-confirmed this against "Shanes Life 17 - Money v3.dc.html"'s own flag ("Paid ✓
+// can't be a checkbox. It's inferred when Plaid sees the debit leave the bill account.") -- there
+// is still no checkbox anywhere in this file. The one real gap the design's own example row
+// ("Electric H2 · due today · $190.27 in ···1523 for $52") called out was the masked account
+// number itself, not shown anywhere before this: moneyBillMeta below now surfaces it.
 
 let moneyTab = "now"; // transient client-only state, same idiom as cookSession above
 
@@ -3133,7 +3139,10 @@ function moneyBillMeta(bill) {
   const parts = [];
   if (bill.dueDay) parts.push(`due day ${bill.dueDay}`);
   parts.push(`target ${dollars(bill.target)}`);
-  parts.push(`has ${dollars(bill.balance)}`);
+  // The real proof behind "funded": which real Plaid-linked account, and how much is actually
+  // sitting in it -- not just the fact of a checkmark (Git #3206). `masked` is null, honestly,
+  // until Plaid has actually reported this account's real last-4 (migration 043).
+  parts.push(bill.masked ? `has ${dollars(bill.balance)} in ${bill.masked}` : `has ${dollars(bill.balance)}`);
   return parts.join(" · ");
 }
 
