@@ -491,6 +491,36 @@ async function viewToday(view) {
   const data = await api("/api/today");
   setInboxBadge(data.pendingCaptures);
 
+  // #3127's real "Tonight" teaser -- today's real planned dinner, matched against what Claude
+  // pushed for the Sunday ritual. A label, not a timer: multi-dish Cook-mode timing is a
+  // separate, explicitly out-of-scope sibling Feature.
+  if (data.tonight) {
+    view.append(
+      el("section", { class: "section" }, [
+        el("a", { class: "card", href: "#/recipes" }, [
+          el("div", { class: "meta small", text: "Tonight" }),
+          el("div", { class: "title", text: data.tonight.dishText }),
+        ]),
+      ]),
+    );
+  }
+
+  // The rest of #3127's real moment-based meal nudges -- "don't forget to make lunch for
+  // tomorrow," etc -- straight off whatever Claude pushed via push_meal_plan. Never a calendar;
+  // the Tonight card above already covers tonight's own dinner nudge.
+  const remainingNudges = (data.mealNudges || []).filter((n) => !(data.tonight && n.entryId === data.tonight.id));
+  if (remainingNudges.length > 0) {
+    const meals = el("section", { class: "section" }, [el("h2", { text: "Meals" })]);
+    for (const nudge of remainingNudges) {
+      meals.append(
+        el("a", { class: "tile", href: "#/recipes" }, [
+          el("div", { class: "title", text: nudge.text }),
+        ]),
+      );
+    }
+    view.append(meals);
+  }
+
   // The label sits in its own row, separate from the card list below it -- attachPeeker turns
   // this row (and only this row) into the spec's "position:relative; display:flex;
   // align-items:flex-end" label row; the cards stay in normal block flow beneath it.
@@ -694,6 +724,36 @@ function recipeCard(recipe) {
 
 async function viewRecipes(view) {
   const { recipes } = await api("/api/recipes");
+  const { entries: planEntries } = await api("/api/meal-plan");
+
+  // #3127's real Sunday ritual: the week Claude planned, hosted and displayed here -- no
+  // manual meal-planning calendar to author it in, only the one archive action to correct a
+  // bad push (same "host, display, let Shane act" division of labor as Shopping/Recipes).
+  if (planEntries.length > 0) {
+    const plan = el("section", { class: "section" }, [el("h2", { text: "This week's plan" })]);
+    for (const entry of planEntries) {
+      plan.append(
+        el("div", { class: "card" }, [
+          el("div", { class: "spread" }, [
+            el("div", {}, [
+              el("div", { class: "meta small", text: `${entry.date} · ${entry.mealType}` }),
+              el("div", { class: "title", text: entry.dishText }),
+            ]),
+            el("button", {
+              class: "ghost small danger",
+              text: "Remove",
+              onClick: async (event) => {
+                event.currentTarget.disabled = true;
+                await api(`/api/meal-plan/${entry.id}`, { method: "DELETE" });
+                render();
+              },
+            }),
+          ]),
+        ]),
+      );
+    }
+    view.append(plan);
+  }
 
   view.append(
     el("section", { class: "section" }, [
