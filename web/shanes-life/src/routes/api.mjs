@@ -28,6 +28,7 @@ import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
 import * as vault from "../core/vault.mjs";
 import * as things from "../core/things.mjs";
+import * as wins from "../core/wins.mjs";
 import { orderItems } from "../core/shopping-order.mjs";
 import * as vehicles from "../core/vehicles.mjs";
 
@@ -1214,6 +1215,27 @@ export function buildApiRouter() {
       detail: { description: body.description, amount: body.amount },
     });
     return sendJson(res, 201, row);
+  });
+
+  // -- Wins (Git #3151) -----------------------------------------------------
+  //
+  // Manual "I did it" capture straight from the Wins tab (source: 'shane') -- distinct from the
+  // universal capture box's classify-later pipeline, because Wins is a fixed real category, not
+  // one Claude needs to pick. Automatic wins (a real debt hitting $0, a critical debt resolved, a
+  // deferred bill caught up) are detected server-side (see src/core/wins.mjs detectMoneyWins,
+  // wired into server.mjs housekeeping) and read back through the same GET.
+
+  router.get("/api/money/wins", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { wins: await wins.listWins(user.id) });
+  });
+
+  router.post("/api/money/wins", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await wins.createWin(user.id, { text: body.text, happenedOn: body.happenedOn ?? null, source: "shane" });
+    await audit.record({ userId: user.id, actor: "web", action: "win.create", entityId: row.id, detail: { text: row.text } });
+    return sendJson(res, 200, row);
   });
 
   // -- Dates (Git #3136) ----------------------------------------------------------------

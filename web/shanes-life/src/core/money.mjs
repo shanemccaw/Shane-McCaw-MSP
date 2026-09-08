@@ -295,8 +295,9 @@ export function computeGateMath({ gateAccounts, billAccounts, reserveAccounts })
 }
 
 /** Load every real account this math needs, in one place, so a simulation and a live read can
- *  never disagree about what "the accounts" are. */
-async function loadMoneyAccounts() {
+ *  never disagree about what "the accounts" are. Exported for wins.mjs's automatic-trigger
+ *  detection (Git #3151), which needs the same real bill shortfalls without a second query. */
+export async function loadMoneyAccounts() {
   const [gateAccounts, billAccounts, reserveAccounts] = await Promise.all([
     loadRoleAccounts(ROLE_INCOME_GATE),
     loadRoleAccounts(ROLE_BILL),
