@@ -14,6 +14,7 @@ import * as entities from "../core/entities.mjs";
 import * as lists from "../core/lists.mjs";
 import * as mealPlan from "../core/meal-plan.mjs";
 import * as media from "../core/media.mjs";
+import * as money from "../core/money.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as medications from "../core/medications.mjs";
 import * as prices from "../core/prices.mjs";
@@ -841,6 +842,73 @@ export function buildApiRouter() {
       detail: { barcode: body.barcode, itemId: result.item.id, priceCents: result.item.price_cents },
     });
     return sendJson(res, 200, result);
+  });
+
+  // -- money (Git #3137) ---------------------------------------------------
+  //
+  // Every number here comes out of ShanesSurvival's own real tables in the SAME real Postgres
+  // (#3107) and through the math ported from its own DashboardService.cs -- see
+  // src/core/money.mjs. Reads only: the one endpoint that talks about moving money simulates it
+  // and says so in its own response body, because Plaid is read-only and NFCU has no Transfer
+  // product.
+
+  router.get("/api/money/gate", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await money.getGateStatus(user.id));
+  });
+
+  router.get("/api/money/budget-day", async (_req, res, _params, ctx) => {
+    requireUser(ctx);
+    return sendJson(res, 200, { budgetDay: await money.getBudgetDay() });
+  });
+
+  // GET, not POST: a what-if changes nothing, and a shareable/refreshable URL is the right shape
+  // for a question that is pure arithmetic over current balances.
+  router.get("/api/money/what-if", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const url = new URL(req.url, "http://internal");
+    return sendJson(res, 200, await money.whatIf(user.id, url.searchParams.get("amount")));
+  });
+
+  // POST despite never writing anything: the request carries three real fields and reads far
+  // better as a body than a query string. `executed: false` in every response is structural --
+  // there is no code path in this app that can move real money.
+  router.post("/api/money/simulate-transfer", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const result = await money.simulateTransfer(user.id, {
+      amount: body.amount,
+      from: body.from,
+      to: body.to,
+    });
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "money.transfer.simulated",
+      detail: { amount: body.amount, from: body.from, to: body.to, resolvable: result.resolvable },
+    });
+    return sendJson(res, 200, result);
+  });
+
+  router.get("/api/money/habits", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { habits: await money.listHabits(user.id, { includeInactive: true }) });
+  });
+
+  // The only real write in this section, and it writes to Shane's Life's own table (026), never
+  // to a ShanesSurvival one.
+  router.patch("/api/money/habits", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await money.setHabit(user.id, body);
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.habit.set",
+      entityId: row.id,
+      detail: { name: row.name, amountPerCycle: row.amount_per_cycle, isActive: row.is_active },
+    });
+    return sendJson(res, 200, row);
   });
 
   // -- today / categories / activity --------------------------------------
