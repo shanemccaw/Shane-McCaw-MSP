@@ -191,6 +191,10 @@ function toWire(row) {
     // entries are already linked.
     billAccountId: row.bill_account_id ?? null,
     billAccountName: row.bill_account_name ?? null,
+    // Git #3272: "forces the existing Face ID reveal path per entry even with a trusted
+    // device" -- migration 062. Meaningless today (no device is ever trusted yet, #3276's own
+    // scope), but real and stored now so the room can show the lock and capture can flip it.
+    alwaysAsk: Boolean(row.always_ask),
   };
 }
 
@@ -227,7 +231,7 @@ export async function listEntries(userId, { kind = null, q = null } = {}) {
 
   const rows = await many(
     `SELECT v.id, v.kind, v.label, v.site, v.username, v.masked, v.key_id, v.position,
-            v.created_at, v.updated_at, v.secret_updated_at,
+            v.created_at, v.updated_at, v.secret_updated_at, v.always_ask,
             (v.notes_ciphertext IS NOT NULL) AS has_notes,
             v.bill_account_id, a.name AS bill_account_name,
             r.last_revealed_at, COALESCE(r.reveal_count, 0) AS reveal_count
@@ -276,7 +280,7 @@ async function ownedRow(userId, id) {
   return one(
     `SELECT id, user_id, kind, label, site, username, masked, ciphertext, iv, auth_tag,
             notes_ciphertext, notes_iv, notes_auth_tag, key_id, position,
-            created_at, updated_at, secret_updated_at, bill_account_id
+            created_at, updated_at, secret_updated_at, bill_account_id, always_ask
        FROM vault
       WHERE id = $1 AND user_id = $2`,
     [id, userId],
@@ -318,7 +322,8 @@ export async function createEntry(
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
              COALESCE($15, (SELECT COALESCE(max(position), -1) + 1 FROM vault WHERE user_id = $2)), $16)
      RETURNING id, kind, label, site, username, masked, key_id, position, created_at, updated_at,
-               secret_updated_at, (notes_ciphertext IS NOT NULL) AS has_notes, bill_account_id`,
+               secret_updated_at, (notes_ciphertext IS NOT NULL) AS has_notes, bill_account_id,
+               always_ask`,
     [
       id,
       userId,
@@ -371,6 +376,9 @@ export async function updateEntry(userId, id, patch = {}) {
   }
   if (patch.position !== undefined) set("position", Number(patch.position));
   if (patch.billAccountId !== undefined) set("bill_account_id", patch.billAccountId || null);
+  // Git #3272: "settable per-entry via capture" -- flipped by the room's own capture grammar
+  // ("Navy Federal always asks" / "stop asking for Amazon") or the row's Edit form.
+  if (patch.alwaysAsk !== undefined) set("always_ask", Boolean(patch.alwaysAsk));
 
   const newSecret =
     patch.secret === undefined || patch.secret === null ? null : String(patch.secret).trim();
@@ -417,7 +425,8 @@ export async function updateEntry(userId, id, patch = {}) {
     `UPDATE vault SET ${fields.join(", ")}, updated_at = now()
       WHERE id = $${values.length - 1} AND user_id = $${values.length}
       RETURNING id, kind, label, site, username, masked, key_id, position, created_at, updated_at,
-                secret_updated_at, (notes_ciphertext IS NOT NULL) AS has_notes, bill_account_id`,
+                secret_updated_at, (notes_ciphertext IS NOT NULL) AS has_notes, bill_account_id,
+                always_ask`,
     values,
   );
   return row ? toWire(row) : null;
@@ -513,6 +522,55 @@ export async function revealHistory(userId, id, limit = 20) {
     [id, userId, Math.min(Number(limit) || 20, 100)],
   );
 }
+
+// -- Browser trusted devices (Git #3272, migration 062) --------------------------------------
+//
+// The 30-day trusted-browser model the README's "Sep 8 night" pass describes: one real WebAuthn
+// reveal mints a token (shape of widget_tokens, 046 -- high-entropy, only its SHA-256 stored,
+// scoped to one user, revocable), so a later autofill from that same browser can skip Face ID
+// until the token expires or is Forgotten. Minting/consuming (POST /api/vault/:id/fill, the
+// extension's own popup) is #3276's real scope, including the mint function itself -- this
+// room only ever lists what this table already holds and Forgets a row, so only those two real
+// reads/writes are added here.
+
+/** Real trusted-browser rows for the room's own Browser add-on card, newest first. Revoked rows
+ *  are dropped entirely (Forgotten means gone, not just marked); a row past its own `expires_at`
+ *  still comes back so the card can render it dim rather than making it vanish silently. */
+export async function listTrustedDevices(userId) {
+  const rows = await many(
+    `SELECT id, label, created_at, last_used_at, expires_at
+       FROM vault_device_trust
+      WHERE user_id = $1 AND revoked_at IS NULL
+      ORDER BY created_at DESC`,
+    [userId],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    label: row.label,
+    createdAt: row.created_at,
+    lastUsedAt: row.last_used_at,
+    expiresAt: row.expires_at,
+    lapsed: new Date(row.expires_at).getTime() <= Date.now(),
+  }));
+}
+
+/** "Forget" (README, the Browser add-on card's own real action): a real revoke, not a delete --
+ *  the row stays for whatever audit value it has, it just stops being trusted and stops being
+ *  listed (see the WHERE above). Returns false for an id that isn't this user's or is already
+ *  gone, same idiom as deleteEntry/deleteDocument above. */
+export async function forgetDevice(userId, id) {
+  const { rowCount } = await query(
+    `UPDATE vault_device_trust SET revoked_at = now()
+      WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL`,
+    [id, userId],
+  );
+  return rowCount > 0;
+}
+
+// Minting a real trust token (the extension's own popup, "Trust this Chrome for 30 days") is
+// #3276's scope, not this issue's -- this room's own Browser add-on card only ever lists what
+// already exists and Forgets it, so no mint function is added here unused; #3276 adds the real
+// minting route and its own core function together, exercised by that route from the start.
 
 // -- LastPass CSV import (Git #3247) -------------------------------------------------------
 //

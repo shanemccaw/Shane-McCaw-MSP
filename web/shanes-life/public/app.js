@@ -1095,6 +1095,22 @@ $("#capture").addEventListener("submit", async (event) => {
       return;
     }
 
+    // Git #3272: the Vault room's own real dispatch, same precedent as Shopping's above --
+    // "where's my will", "new login for X, user Y" and the always-ask toggle all need real
+    // server calls this room already owns, not the generic /api/captures triage.
+    if (state.route === "vault" && lines.length && !state.attachment) {
+      const results = [];
+      for (const line of lines) results.push(await submitVaultCapture(line));
+      captureText.value = "";
+      captureText.style.height = "auto";
+      updateCaptureSendState();
+      captureStatus.textContent =
+        lines.length > 1 ? `${lines.length} lines, each filed on its own.` : results[0] || "";
+      if (captureStatus.textContent) setTimeout(() => (captureStatus.textContent = ""), 2400);
+      if (state.route === "vault") render();
+      return;
+    }
+
     // Real current position, if the browser already has it (or is willing to ask, natively --
     // never an in-app form). Git #3159: this is what lets "remember this as Home" carry real
     // coordinates without a dedicated location field anywhere in this UI.
@@ -4362,6 +4378,20 @@ function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds, onChanged })
       ? el("div", { class: "vault-row-site", text: `password set ${agoShort(entry.secretUpdatedAt)}` })
       : null;
 
+  // Git #3272: "login rows show a lock + 'always asks' when set" -- the Vault Autofill add-on's
+  // trust bypass (#3276) will never apply to this entry once it exists; today, with no device
+  // ever trusted yet, this is purely the room saying out loud what the flag will mean.
+  const alwaysAskEl =
+    isLogin && entry.alwaysAsk
+      ? el("div", { class: "vault-always-ask" }, [
+          lineIcon(
+            '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
+            { size: 11, strokeWidth: 2 },
+          ),
+          el("span", { text: "always asks" }),
+        ])
+      : null;
+
   const row = el("div", { class: "vault-row" }, [
     el("div", { class: "vault-row-head" }, [
       el("div", { class: "vault-row-name" }, [
@@ -4376,6 +4406,7 @@ function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds, onChanged })
         // real, so an entry already linked to a bill account says so here too.
         entry.billAccountName ? el("div", { class: "vault-row-site", text: `for ${entry.billAccountName}` }) : null,
         ageEl,
+        alwaysAskEl,
       ]),
       el("div", { class: "vault-row-actions" }, [editBtn, deleteBtn, revealBtn]),
     ]),
@@ -4486,6 +4517,14 @@ function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds, onChanged })
       secretInput.value = generatePassword();
       secretInput.focus();
     });
+    // Git #3272: the same real flag the room's Browser add-on card and capture grammar
+    // ("Navy Federal always asks") flip -- the Edit form is the third, most direct way to set it.
+    const alwaysAskInput = isLogin
+      ? el("input", { type: "checkbox", checked: entry.alwaysAsk || false })
+      : null;
+    const alwaysAskLabel = isLogin
+      ? el("label", { class: "vault-always-ask-toggle" }, [alwaysAskInput, el("span", { text: "Always ask, even from a trusted browser" })])
+      : null;
     const editError = el("p", { class: "vault-row-error", hidden: true });
     const saveBtn = el("button", { type: "submit", class: "primary small", text: "Save" });
     const cancelBtn = el("button", { type: "button", class: "ghost small", text: "Cancel" });
@@ -4495,6 +4534,7 @@ function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds, onChanged })
       usernameInput ? el("div", { class: "row" }, [usernameInput]) : null,
       maskedInput ? el("div", { class: "row" }, [maskedInput]) : null,
       el("div", { class: "row" }, [secretInput, generateBtn]),
+      alwaysAskLabel,
       editError,
       el("div", { class: "vault-edit-actions" }, [saveBtn, cancelBtn]),
     ]);
@@ -4514,6 +4554,7 @@ function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds, onChanged })
       }
       if (maskedInput && maskedInput.value.trim() !== (entry.masked || "")) patch.masked = maskedInput.value.trim();
       if (secretInput.value.trim()) patch.secret = secretInput.value.trim();
+      if (alwaysAskInput && alwaysAskInput.checked !== Boolean(entry.alwaysAsk)) patch.alwaysAsk = alwaysAskInput.checked;
       try {
         await api(`/api/vault/${entry.id}`, { method: "PATCH", body: JSON.stringify(patch) });
         await onChanged();
@@ -5182,6 +5223,344 @@ async function viewMoneyDocuments(view) {
   // own (Bills/Banks/Accounts/Cars) -- only Vault and Wins got one in the critter spec's room
   // map.
   attachRoomWatermark(view, "moneyhdr");
+}
+
+// -- Vault room (Git #3272) -----------------------------------------------------------------
+//
+// The dedicated room the README's "Sep 8 late" pass calls for: "Vault is a room; Documents
+// live inside it." One search pill over all three real kinds (login / bill_reference from
+// vault.mjs, document from documents.mjs), the same four chips, one card per kind, the real
+// Browser add-on card (trusted devices, migration 062), and the real capture grammar. This is
+// additive -- Money's own Vault/Documents sub-tabs (viewMoneyVault/viewMoneyDocuments above)
+// are untouched; #3273 (Money nav restructure) is what removes them from Money's segmented
+// control, not this issue.
+//
+// Every row on screen is `vaultRow`/`documentRow` themselves -- the exact same shared functions
+// Money's own tabs use, so a login edited or revealed here is the same real row, same real
+// security ceremony, not a second parallel rendering of the same data.
+
+const VAULT_TINT = "148,163,184"; // README's own room-tint table, "Vault" -- a quiet slate.
+
+/** Transient client-only room state (same idiom as vaultQuery/vaultKindFilter above), kept
+ *  separate from Money's own Vault tab state so navigating between the room and the old tab
+ *  never clobbers the other's search or chip. */
+let vaultRoomQuery = "";
+let vaultRoomFilter = "all"; // all | login | bill_reference | document
+
+const VAULT_ROOM_FILTERS = [
+  { key: "all", label: "All" },
+  { key: "login", label: "Logins" },
+  { key: "bill_reference", label: "Bill refs" },
+  { key: "document", label: "Documents" },
+];
+
+/** Green while genuinely trusted, amber inside its last 3 real days, dim once it has actually
+ *  lapsed -- README: "green dot, amber in the last 3 days, dim once lapsed". Computed from the
+ *  server's own real `expiresAt`/`lapsed`, never guessed client-side. */
+function deviceTrustStatus(device) {
+  if (device.lapsed) return "lapsed";
+  const msLeft = new Date(device.expiresAt).getTime() - Date.now();
+  return msLeft <= 3 * 24 * 60 * 60 * 1000 ? "amber" : "active";
+}
+
+function deviceTrustRow(device, { onForgotten }) {
+  const status = deviceTrustStatus(device);
+  const meta = device.lapsed
+    ? `Trust ended ${agoShort(device.expiresAt)}`
+    : `Trusted until ${whenDate(device.expiresAt)}${device.lastUsedAt ? ` · last fill ${agoShort(device.lastUsedAt)}` : ""}`;
+  const forgetBtn = el("button", { type: "button", class: "vault-copy-btn ghostish danger", text: "Forget" });
+  forgetBtn.addEventListener("click", async () => {
+    if (!confirm(`Forget "${device.label}"? It will need Face ID again next time.`)) return;
+    forgetBtn.disabled = true;
+    try {
+      await api(`/api/vault/device-trust/${device.id}`, { method: "DELETE" });
+      await onForgotten();
+    } catch (err) {
+      showQuickToast(err?.message || "That did not forget.");
+      forgetBtn.disabled = false;
+    }
+  });
+  return el("div", { class: `vault-row${status === "lapsed" ? " vault-row-dim" : ""}` }, [
+    el("div", { class: "vault-row-head" }, [
+      el("div", { class: "vault-row-name" }, [
+        el("div", { class: "vault-row-label" }, [
+          el("span", { class: `vault-trust-dot${status === "active" ? "" : ` ${status}`}` }),
+          el("span", { text: device.label }),
+        ]),
+        el("div", { class: "vault-row-site", text: meta }),
+      ]),
+      forgetBtn,
+    ]),
+  ]);
+}
+
+/** README (Sep 8 night pass, item 3): "the Vault room's Browser add-on card lists trusted
+ *  browsers... on All and Logins". A real, honest empty state when nothing is trusted yet --
+ *  which is every real deployment today, since #3276 (the extension's own trust ceremony) is
+ *  what will ever populate this table; no fixture row stands in for it here. */
+function vaultAddonCard(devices, onChanged) {
+  const card = el("div", { class: "vault-card" }, [
+    el("h3", { class: "vault-add-title", text: "Browser add-on" }),
+    el("p", { class: "small muted", style: "padding:0 16px 10px; margin:0", text: "Vault Autofill for Chrome fills a login right on the page. Trust a browser once with Face ID and it fills without asking again for 30 days." }),
+  ]);
+  if (devices.length === 0) {
+    card.append(el("p", { class: "small muted", style: "padding:0 16px 14px", text: "No trusted browsers yet." }));
+  } else {
+    for (const device of devices) card.append(deviceTrustRow(device, { onForgotten: onChanged }));
+  }
+  return card;
+}
+
+/** Same fuzzy match idiom as findShoppingItem above (exact, then starts-with, then substring),
+ *  applied to a login's label/site -- what "Navy Federal always asks" has to resolve against. */
+function findVaultEntry(entries, query) {
+  const l = String(query || "").toLowerCase().trim();
+  if (!l) return null;
+  return (
+    entries.find((e) => e.label.toLowerCase() === l) ||
+    entries.find((e) => (e.site || "").toLowerCase() === l) ||
+    entries.find((e) => e.label.toLowerCase().startsWith(l)) ||
+    entries.find((e) => e.label.toLowerCase().includes(l)) ||
+    entries.find((e) => (e.site || "").toLowerCase().includes(l)) ||
+    null
+  );
+}
+
+const VAULT_ALWAYS_ASKS_RE = /^(.+?)\s+always\s+asks?$/i;
+const VAULT_STOP_ASKING_RE = /^stop\s+asking\s+for\s+(.+)$/i;
+const VAULT_WHERES_RE = /^where(?:'s|\s+is)\s+(?:my|the|a)\s+(.+?)\??$/i;
+const VAULT_NEW_LOGIN_RE = /^new\s+login\s+for\s+(.+?)(?:,?\s+user\s+(.+))?$/i;
+
+/**
+ * The room's own real capture dispatch (Git #3272 scope item 6), same real precedent as
+ * Shopping's `submitShoppingCapture` (Git #3178) -- a room with genuine grammar of its own runs
+ * it here rather than sending everything through the generic /api/captures triage that only
+ * ever surfaces on Inbox/Today. Returns a short status string for the capture bar's own
+ * aggregate line; a real answer (the "where's my will" case) is its own toast, per the design's
+ * own words ("the answer as a toast"), not folded into that status line.
+ */
+async function submitVaultCapture(text) {
+  const clean = text.trim();
+
+  const stopAsk = clean.match(VAULT_STOP_ASKING_RE);
+  const alwaysAsk = !stopAsk ? clean.match(VAULT_ALWAYS_ASKS_RE) : null;
+  if (stopAsk || alwaysAsk) {
+    const target = (stopAsk ? stopAsk[1] : alwaysAsk[1]).trim();
+    const { entries } = await api("/api/vault");
+    const entry = findVaultEntry(entries.filter((e) => e.kind === "login"), target);
+    if (!entry) return `Nothing in the vault matches "${target}".`;
+    await api(`/api/vault/${entry.id}`, { method: "PATCH", body: JSON.stringify({ alwaysAsk: Boolean(alwaysAsk) }) });
+    return alwaysAsk ? `${entry.label} always asks now.` : `${entry.label} won't always ask anymore.`;
+  }
+
+  const wheres = clean.match(VAULT_WHERES_RE);
+  if (wheres) {
+    const q = wheres[1].trim();
+    const { documents: hits } = await api(`/api/documents/search?q=${encodeURIComponent(q)}`);
+    vaultRoomFilter = "document";
+    vaultRoomQuery = "";
+    if (hits.length === 0) {
+      showQuickToast(`Nothing on file matches "${q}".`);
+    } else {
+      showQuickToast([hits[0].location, hits[0].summaryHint].filter(Boolean).join(" · ") || hits[0].name);
+    }
+    return "";
+  }
+
+  const newLogin = clean.match(VAULT_NEW_LOGIN_RE);
+  if (newLogin) {
+    const site = newLogin[1].trim();
+    const username = (newLogin[2] || "").trim() || null;
+    if (!site) return "That needs a site to make a login for.";
+    const label = site.replace(/\.[a-z]{2,}$/i, "").replace(/\b\w/g, (c) => c.toUpperCase());
+    await api("/api/vault", {
+      method: "POST",
+      body: JSON.stringify({ kind: "login", label, site, username, secret: generatePassword() }),
+    });
+    return `New login for ${label} saved -- a real generated password, not typed here.`;
+  }
+
+  // Section 10: anything left over is a genuine capture, same as every other room with no
+  // grammar of its own for it -- it lands in Inbox for Claude's next pull, not silently dropped.
+  await api("/api/captures", { method: "POST", body: JSON.stringify({ text: clean, kind: "text", source: "web" }) });
+  return "Got it.";
+}
+
+async function viewVault(view) {
+  // devices load inside refresh() below, same as entries/documents -- it repaints on every
+  // search/filter change and a Forget, so there is no separate "first load" copy to keep in sync.
+  const [vaultFirst, docFirst, gate] = await Promise.all([
+    api("/api/vault"),
+    api("/api/documents"),
+    api("/api/money/gate"),
+  ]);
+
+  roomHeader(view, VAULT_TINT, "Vault");
+
+  view.append(
+    el("div", { class: "vault-lock-note" }, [
+      lineIcon(
+        '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
+        { size: 14, strokeWidth: 2 },
+      ),
+      el("span", {
+        text: "Encrypted at rest. Face ID to reveal. Revealed for 20 seconds, then gone. No screenshot round-trip.",
+      }),
+    ]),
+  );
+
+  // Same real deployment fact viewMoneyVault/viewMoneyDocuments already say out loud -- both
+  // real kinds live under the same SL_VAULT_KEY, so one missing key takes the whole room down,
+  // not a partial room quietly missing a card.
+  if (!vaultFirst.keyConfigured || !docFirst.keyConfigured) {
+    view.append(
+      el("div", { class: "card" }, [
+        el("p", { text: "The vault's encryption key isn't set on this server, so nothing here can be added or revealed." }),
+        el("p", { class: "small muted", text: "SL_VAULT_KEY needs 32 bytes of base64 randomness in the environment. It lives outside the database on purpose." }),
+      ]),
+    );
+    attachRoomWatermark(view, "vault");
+    return;
+  }
+
+  const { clipboardClearSeconds } = vaultFirst;
+  const copy = (revealed) =>
+    vaultCopy(revealed.value, "Copied — Clears from the clipboard in 60 seconds. Never a screenshot.", clipboardClearSeconds);
+  const revealEntry = async (entry) => {
+    const options = await api(`/api/vault/${entry.id}/reveal/options`, { method: "POST", body: "{}" });
+    return api(`/api/vault/${entry.id}/reveal`, { method: "POST", body: JSON.stringify(await passkeyAssertion(options)) });
+  };
+  const docCopy = async (revealed) => {
+    try {
+      await navigator.clipboard.writeText(revealed.details);
+    } catch {
+      showQuickToast("This browser wouldn't let the app write to the clipboard.");
+      return;
+    }
+    showQuickToast("Copied.");
+  };
+  const revealDoc = async (doc) => {
+    const options = await api(`/api/documents/${doc.id}/reveal/options`, { method: "POST", body: "{}" });
+    return api(`/api/documents/${doc.id}/reveal`, { method: "POST", body: JSON.stringify(await passkeyAssertion(options)) });
+  };
+
+  // The one search pill, filtering every kind at once by label/site/username (vault entries) or
+  // type/name/location (documents) -- never by secret, since there is no plaintext secret to
+  // search. README: "one 44px search pill... filters every kind at once".
+  const searchInput = el("input", {
+    type: "search",
+    class: "vault-search",
+    autocomplete: "off",
+    placeholder: "Find · navy federal · where's my will",
+    "aria-label": "Search the Vault",
+    value: vaultRoomQuery,
+  });
+  const filterRow = el("div", { class: "vault-filters" });
+  const addonSlot = el("div");
+  const list = el("div");
+
+  async function refresh() {
+    hideVaultReveal();
+    hideDocumentReveal();
+
+    const q = vaultRoomQuery.trim();
+    const [{ entries, counts }, docAll, docHits, devices] = await Promise.all([
+      api(`/api/vault${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+      api("/api/documents"), // real, whole-vault documents count -- same idiom as vault.countsByKind
+      q ? api(`/api/documents/search?q=${encodeURIComponent(q)}`) : null,
+      api("/api/vault/device-trust"),
+    ]);
+    const documentsShown = q ? docHits.documents : docAll.documents;
+    const kindCounts = { ...counts, document: docAll.documents.length };
+    kindCounts.all = kindCounts.all + kindCounts.document;
+
+    filterRow.replaceChildren(
+      ...VAULT_ROOM_FILTERS.map((f) =>
+        el("button", {
+          type: "button",
+          class: `vault-filter${vaultRoomFilter === f.key ? " active" : ""}`,
+          text: `${f.label} ${kindCounts[f.key] ?? 0}`,
+          onClick: () => {
+            vaultRoomFilter = f.key;
+            refresh();
+          },
+        }),
+      ),
+    );
+
+    addonSlot.replaceChildren(
+      vaultRoomFilter === "all" || vaultRoomFilter === "login" ? vaultAddonCard(devices.devices, refresh) : null,
+    );
+
+    const logins = entries.filter((e) => e.kind === "login");
+    const billRefs = entries.filter((e) => e.kind === "bill_reference");
+    const nothingMatches = q && logins.length === 0 && billRefs.length === 0 && documentsShown.length === 0;
+
+    if (nothingMatches) {
+      list.replaceChildren(
+        empty(`Nothing matches "${q}".`, "Search looks at the name, the site, the username, the type and the location — never the password, and never the encrypted document details.", "vault"),
+      );
+      return;
+    }
+
+    const sections = [];
+    if (vaultRoomFilter === "all" || vaultRoomFilter === "login") {
+      const card = el("div", { class: "vault-card" }, [el("h3", { class: "vault-add-title", text: "Logins" })]);
+      if (logins.length === 0) {
+        card.append(el("p", { class: "small muted", style: "padding:0 16px 14px", text: q ? "No logins match." : "Nothing here yet." }));
+      } else {
+        for (const entry of logins) card.append(vaultRow(entry, { onReveal: revealEntry, onCopy: copy, clipboardClearSeconds, onChanged: refresh }));
+      }
+      sections.push(card);
+    }
+    if (vaultRoomFilter === "all" || vaultRoomFilter === "bill_reference") {
+      const card = el("div", { class: "vault-card" }, [el("h3", { class: "vault-add-title", text: "Bill refs" })]);
+      if (billRefs.length === 0) {
+        card.append(el("p", { class: "small muted", style: "padding:0 16px 14px", text: q ? "No bill refs match." : "Nothing here yet." }));
+      } else {
+        for (const entry of billRefs) card.append(vaultRow(entry, { onReveal: revealEntry, onCopy: copy, clipboardClearSeconds, onChanged: refresh }));
+      }
+      sections.push(card);
+    }
+    if (vaultRoomFilter === "all" || vaultRoomFilter === "document") {
+      const card = el("div", { class: "vault-card" }, [el("h3", { class: "vault-add-title", text: "Documents" })]);
+      if (documentsShown.length === 0) {
+        card.append(el("p", { class: "small muted", style: "padding:0 16px 14px", text: q ? "No documents match." : "Nothing here yet." }));
+      } else {
+        for (const doc of documentsShown) card.append(documentRow(doc, { onReveal: revealDoc, onCopy: docCopy }));
+      }
+      sections.push(card);
+    }
+    list.replaceChildren(...sections);
+  }
+
+  let searchTimer = null;
+  searchInput.addEventListener("input", () => {
+    vaultRoomQuery = searchInput.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(refresh, 180);
+  });
+  searchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") event.preventDefault();
+  });
+
+  view.append(el("div", { class: "vault-search-row" }, [searchInput]), filterRow, addonSlot, list);
+  await refresh();
+
+  view.append(
+    el("p", {
+      class: "vault-foot-note",
+      text: "Every login, which account number goes where, and the documents worth surfacing at a glance — one room, one search, one real security bar.",
+    }),
+  );
+
+  // The real "add" forms (Section 8's documented exception, same reasoning vaultAddCard's own
+  // header gives) live here too, so the room is a genuine replacement for Money's own tabs, not
+  // a read-only mirror of them.
+  view.append(vaultAddCard(gate, refresh));
+  view.append(vaultImportCard(refresh));
+
+  attachRoomWatermark(view, "vault");
 }
 
 /** Git #3207 (design #2c, "Behind · 6 bills · 19 payments"): one row of the Behind summary --
@@ -9390,10 +9769,11 @@ async function render() {
   // Things, People, Money, Wins and Inbox are the ninth through thirteenth -- the last five real
   // rooms in ROOM_DEFS that were still falling through to the old generic bar (whose only real
   // action, "Sign out", Settings already covers -- so those five had NO way back to Today at all).
-  // Git #3270: Tesla is the fourteenth roomHeader() caller. Every real ROOM_DEFS room now has its
-  // own header. #app-view.no-header lets .view collapse its top padding to just the native
-  // status-bar safe area instead of assuming a header row sits above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox" || state.route === "tesla";
+  // Git #3270: Tesla is the fourteenth roomHeader() caller; Git #3272 makes Vault the fifteenth.
+  // Every real ROOM_DEFS room now has its own header. #app-view.no-header lets .view collapse
+  // its top padding to just the native status-bar safe area instead of assuming a header row
+  // sits above it (see app.css).
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox" || state.route === "tesla" || state.route === "vault";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 
@@ -9414,6 +9794,7 @@ async function render() {
     else if (state.route === "meds") await viewMeds(view);
     else if (state.route === "money") await viewMoney(view);
     else if (state.route === "wins") await viewWins(view);
+    else if (state.route === "vault") await viewVault(view);
     else if (state.route === "inbox") await viewInbox(view);
     else if (state.route === "dates") await viewDates(view);
     else if (state.route === "date") await viewDateDetail(view, state.dateId);

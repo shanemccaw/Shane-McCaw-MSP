@@ -2320,6 +2320,31 @@ export function buildApiRouter() {
     return sendJson(res, 200, outcome);
   });
 
+  // -- Vault room -> Browser add-on card (Git #3272, migration 062) -----------------------
+  //
+  // Real trusted-browser rows for the room's own "Browser add-on" card. Minting one is #3276's
+  // scope (the extension's own Face ID + "Trust this Chrome for 30 days" ceremony); this room
+  // only ever lists what already exists and Forgets it.
+
+  router.get("/api/vault/device-trust", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { devices: await vault.listTrustedDevices(user.id) });
+  });
+
+  router.delete("/api/vault/device-trust/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const forgotten = await vault.forgetDevice(user.id, params.id);
+    if (!forgotten) throw notFound("Trusted browser not found");
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "vault.device_trust.forgotten",
+      entityId: params.id,
+      detail: {},
+    });
+    return sendJson(res, 200, { ok: true });
+  });
+
   // -- Money -> Important documents (Git #3244) ------------------------------------------
   //
   // Wills, life insurance, and the like -- real documents/policies, distinct in content type
