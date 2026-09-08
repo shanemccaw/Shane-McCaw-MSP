@@ -28,6 +28,7 @@ import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
 import * as things from "../core/things.mjs";
 import { orderItems } from "../core/shopping-order.mjs";
+import * as vehicles from "../core/vehicles.mjs";
 
 // Deliberately tight: this app has one real account, so a burst of failures is an attack, not a
 // forgetful person.
@@ -978,6 +979,61 @@ export function buildApiRouter() {
       detail: { name: row.name, amountPerCycle: row.amount_per_cycle, isActive: row.is_active },
     });
     return sendJson(res, 200, row);
+  });
+
+  // -- Money -> Cars (Git #3149) --------------------------------------------------------
+  //
+  // Real per-vehicle cards: identity + the linked real loan bill account (read through
+  // src/core/vehicles.mjs, never duplicated) + insurance/registration/maintenance, aggregated
+  // into a real all-in $/mo and $/yr. See vehicles.mjs's own header for exactly what each
+  // component means and why. Reminders reuse Dates' own lead-time vocabulary rather than a
+  // second copy of it.
+
+  router.get("/api/cars", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { vehicles: await vehicles.listVehicles(user.id) });
+  });
+
+  router.post("/api/cars", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await vehicles.createVehicle(user.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "vehicle.create", entityId: row.id, detail: { name: row.name } });
+    return sendJson(res, 201, row);
+  });
+
+  router.get("/api/cars/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await vehicles.getVehicle(user.id, params.id));
+  });
+
+  router.patch("/api/cars/:id", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await vehicles.updateVehicle(user.id, params.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "vehicle.update", entityId: params.id, detail: { fields: Object.keys(body) } });
+    return sendJson(res, 200, row);
+  });
+
+  router.delete("/api/cars/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await vehicles.deleteVehicle(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "web", action: "vehicle.delete", entityId: params.id });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  router.post("/api/cars/:id/maintenance", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await vehicles.logMaintenance(user.id, params.id, body);
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "vehicle.maintenance.log",
+      entityId: params.id,
+      detail: { description: body.description, amount: body.amount },
+    });
+    return sendJson(res, 201, row);
   });
 
   // -- Dates (Git #3136) ----------------------------------------------------------------

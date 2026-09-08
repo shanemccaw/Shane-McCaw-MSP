@@ -26,6 +26,7 @@ import * as recipes from "../core/recipes.mjs";
 import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
 import * as things from "../core/things.mjs";
+import * as vehicles from "../core/vehicles.mjs";
 
 const CATEGORY_META_PROPS = {
   categoryLabel: { type: "string", description: "Human label for the category, e.g. 'Vet visit'. Only used the first time this category slug is seen." },
@@ -1237,6 +1238,72 @@ export const TOOLS = [
         detail: { name: habit.name, amountPerCycle: habit.amount_per_cycle, isActive: habit.is_active },
       });
       return habit;
+    },
+  },
+
+  // -- Money -> Cars (Git #3149) ---------------------------------------------
+
+  {
+    name: "get_cars",
+    title: "Real per-vehicle money cards",
+    description:
+      "Every real vehicle (Tesla Model 3, Kia Forte) with its all-in $/mo and $/yr: the linked real loan bill account (payment due, what's saved toward it), insurance, registration (amortised from the real annual amount) and real maintenance spend from the last 12 months (also amortised) -- so 'is this car actually worth keeping' has one real aggregated number instead of scattered bills. Registration and next-maintenance reminders carry the same dueSoon/overdue shape Dates uses, with a matching real lead time.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      return { vehicles: await vehicles.listVehicles(ctx.user.id) };
+    },
+  },
+
+  {
+    name: "log_car_maintenance",
+    title: "Log real maintenance actually done on a vehicle",
+    description:
+      "The capture-grammar entry point for 'did an oil change on the Kia, $45' or 'Tesla tire rotation today, $60, at 32000 miles'. Records real spend (this is what get_cars' maintenance total is built from) and, in the same call, can restate when the NEXT maintenance is expected (nextMaintenanceOn/nextMaintenanceNote) -- omit those to leave the existing next-due date alone. `vehicle` matches by name (case-insensitive, prefix or substring, same resolution as simulate_transfer's account matching) -- call get_cars first if unsure of the exact name.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        vehicle: { type: "string", description: "The vehicle's name, e.g. 'Kia' or 'Tesla Model 3'." },
+        description: { type: "string", description: "What was actually done, e.g. 'Oil change'." },
+        amount: { type: "number", description: "Real dollars it actually cost." },
+        performedOn: { type: "string", description: "YYYY-MM-DD it was actually done. Defaults to today." },
+        mileage: { type: "integer", description: "Real odometer reading at the time, if known." },
+        nextMaintenanceOn: { type: "string", description: "YYYY-MM-DD the next maintenance is expected, if stated. Omit to leave unchanged." },
+        nextMaintenanceNote: { type: "string", description: "What the next maintenance is, e.g. 'Tire rotation'. Omit to leave unchanged." },
+      },
+      required: ["vehicle", "description", "amount"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const all = await vehicles.listVehicles(ctx.user.id);
+      const needle = String(args.vehicle ?? "").trim().toLowerCase();
+      const tiers = [
+        all.filter((v) => v.name.toLowerCase() === needle),
+        all.filter((v) => v.name.toLowerCase().startsWith(needle)),
+        all.filter((v) => v.name.toLowerCase().includes(needle)),
+      ];
+      let match = null;
+      for (const tier of tiers) {
+        if (tier.length === 1) {
+          match = tier[0];
+          break;
+        }
+        if (tier.length > 1) {
+          throw new Error(`"${args.vehicle}" matches ${tier.map((v) => v.name).join(", ")} -- say which one.`);
+        }
+      }
+      if (!match) throw new Error(`There is no vehicle called "${args.vehicle}". Call get_cars to see real vehicle names.`);
+
+      const { vehicle: _vehicle, ...patch } = args;
+      const row = await vehicles.logMaintenance(ctx.user.id, match.id, patch);
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "vehicle.maintenance.log",
+        entityId: match.id,
+        detail: { description: args.description, amount: args.amount },
+      });
+      return row;
     },
   },
 
