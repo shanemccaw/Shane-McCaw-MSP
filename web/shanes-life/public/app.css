@@ -552,3 +552,93 @@ pre.token {
 }
 .meal-alarm-primary { height: 56px; border: 0; background: #fff; color: hsl(var(--primary)); font-size: 1.05rem; }
 .meal-alarm-secondary { height: 44px; border: 1px solid hsl(var(--primary-foreground) / 0.4); background: transparent; color: hsl(var(--primary-foreground)); font-size: 0.9rem; }
+
+/* ---------- Money -- "Now" tab (Git #3147) ----------
+   Design handoff README screen 7: segmented Now/Bills/Cars/Vault/Wins tabs (only Now is real
+   here -- the rest are their own Feature per the issue), the 40px available-to-spend amount, the
+   one real bar, the habit "really" line, what-if / transfer-simulator result boxes, the Budget
+   Day card, and the Protected / Urgent / Already handled buckets. Colors are the design's own
+   literal hex values, same convention as .refill-tier-label above. */
+
+.money-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+  padding: 3px;
+  background: hsl(var(--muted));
+  border-radius: var(--radius-lg);
+}
+.money-tab {
+  padding: 0.5rem 0;
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 3px);
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 12.5px;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.money-tab.active { background: hsl(var(--card)); color: hsl(var(--foreground)); }
+
+.money-budgetday-card { border-color: rgba(96, 165, 250, 0.45) !important; }
+
+.money-amount {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.money-habit-line {
+  font-size: 13px;
+  line-height: 1.45;
+  padding-top: 0.5rem;
+  border-top: 1px solid hsl(var(--card-border) / 0.6);
+}
+
+.money-result-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-lg);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.money-result-box.whatif { background: rgba(96, 165, 250, 0.1); border: 1px solid rgba(96, 165, 250, 0.3); }
+.money-result-box.transfer { background: rgba(45, 212, 191, 0.08); border: 1px solid rgba(45, 212, 191, 0.3); flex-direction: column; }
+.money-result-box .money-result-head { font-weight: 700; }
+.money-result-box .money-result-clear { color: #60a5fa; font-weight: 600; cursor: pointer; background: none; border: 0; padding: 2px; font-size: 13px; }
+.money-result-borrowed { color: #fbbf24; font-weight: 600; }
+.money-result-footer { font-size: 12px; color: hsl(var(--muted-foreground)); }
+
+.money-bucket { overflow: hidden; }
+.money-bucket-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0.7rem 1rem 0.4rem;
+  font-size: 11px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+.money-bucket-label.urgent { color: #60a5fa; }
+.money-bucket.handled { opacity: 0.75; }
+.money-bucket-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  font-size: 15px;
+  border-top: 1px solid hsl(var(--card-border) / 0.6);
+}
+.money-bucket-row:first-of-type { border-top: 0; }
+.money-bucket-row .money-bucket-name { flex: 1; min-width: 0; }
+.money-bucket-row .money-bucket-meta { font-size: 12px; color: hsl(var(--muted-foreground)); }
+.money-bucket-row .money-bucket-status { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.money-bucket-status.funded { color: hsl(var(--success)); }
+.money-bucket-status.short { color: #fbbf24; }
+.money-bucket-status.critical { color: #f87171; }

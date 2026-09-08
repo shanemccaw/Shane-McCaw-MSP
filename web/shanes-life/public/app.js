@@ -362,6 +362,18 @@ function money(cents) {
   return `$${(Number(cents) / 100).toFixed(2)}`;
 }
 
+/** "$1,230.22" / "-$5,239.69" from a real DOLLAR amount (not cents) -- the shape money.mjs's own
+ *  routes return (`toDollars()`), for the Money "Now" tab (Git #3147). Distinct from money()
+ *  above because that one takes integer cents; this one does not, and mixing them up silently
+ *  divides a real balance by 100. null/undefined (an unknown balance, never "$0") renders as
+ *  an em dash, matching money.mjs's own null-means-unknown convention. */
+function dollars(amount) {
+  if (amount === null || amount === undefined) return "—";
+  const negative = amount < 0;
+  const abs = Math.abs(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${negative ? "-" : ""}$${abs}`;
+}
+
 /** A plain `date` column (YYYY-MM-DD), not a timestamp -- `when()` above is for the latter. */
 function whenDate(isoDate) {
   if (!isoDate) return "";
@@ -1773,6 +1785,276 @@ async function viewMeds(view) {
   view.append(el("div", { class: "card" }, [addForm]));
 
   attachRoomWatermark(view, "meds");
+}
+
+// ---------------------------------------------------------------------------
+// Money -- "Now" tab (Git #3147)
+// ---------------------------------------------------------------------------
+//
+// The math and every real number here come from src/core/money.mjs's own /api/money/* routes
+// (Git #3137, already live) -- this is pure UI wiring, no schema and no new endpoint. Bills,
+// Cars, Vault and Wins are each their own real Feature on top of this one per the issue; the
+// segmented control below still shows all five (matching the design), but only "Now" renders
+// real content -- the rest say plainly that they aren't built yet, which is not fabricated data,
+// just an honest placeholder.
+//
+// Protected / Urgent / Already handled read straight off getGateStatus()'s own real bill split:
+// Protected = the gate bills (money already spoken for by the Income Gate's own due bills) plus
+// the critical debts; Urgent = the other real bill accounts still short; Already handled = the
+// other real bill accounts that are already fully funded. No separate "mark handled" table is
+// invented for this -- there is no MCP tool or capture-grammar entry in the design's own spec
+// that writes one, and a tap that didn't call any real mutation would be exactly the kind of fake
+// interactivity this app refuses to ship.
+
+let moneyTab = "now"; // transient client-only state, same idiom as cookSession above
+
+const MONEY_TABS = [
+  { key: "now", label: "Now" },
+  { key: "bills", label: "Bills" },
+  { key: "cars", label: "Cars" },
+  { key: "vault", label: "Vault" },
+  { key: "wins", label: "Wins" },
+];
+
+function moneyBillMeta(bill) {
+  const parts = [];
+  if (bill.dueDay) parts.push(`due day ${bill.dueDay}`);
+  parts.push(`target ${dollars(bill.target)}`);
+  parts.push(`has ${dollars(bill.balance)}`);
+  return parts.join(" · ");
+}
+
+function moneyBillRow(bill) {
+  const statusClass = bill.funded ? "funded" : "short";
+  const statusText = bill.warning
+    ? bill.warning
+    : bill.funded
+      ? "funded"
+      : `short ${dollars(bill.shortfall)}`;
+  return el("div", { class: "money-bucket-row" }, [
+    el("div", { class: "money-bucket-name" }, [
+      el("div", { text: bill.name }),
+      el("div", { class: "money-bucket-meta", text: moneyBillMeta(bill) }),
+    ]),
+    el("span", { class: `money-bucket-status ${bill.warning ? "" : statusClass}`, text: statusText }),
+  ]);
+}
+
+function moneyDebtRow(debt) {
+  return el("div", { class: "money-bucket-row" }, [
+    el("div", { class: "money-bucket-name" }, [
+      el("div", { text: debt.creditor }),
+      el("div", {
+        class: "money-bucket-meta",
+        text: ["critical", debt.isDelinquent ? `${debt.daysPastDue ?? "?"} days past due` : null, debt.notes]
+          .filter(Boolean)
+          .join(" · "),
+      }),
+    ]),
+    el("span", { class: "money-bucket-status critical", text: dollars(debt.balance) }),
+  ]);
+}
+
+/** Renders the what-if / transfer-simulator result inside an already-appended container, or
+ *  empties it when there is nothing to show -- so "Clear" and re-asking both just re-call this. */
+function renderMoneyResult(container, kind, result) {
+  container.replaceChildren();
+  if (!result) return;
+
+  if (kind === "whatif") {
+    const box = el("div", { class: "money-result-box whatif" }, [
+      el("div", { style: "flex:1;min-width:0" }, [
+        result.answerable ? el("div", { class: "money-result-head", text: result.headline }) : null,
+        el("div", { text: result.text }),
+      ]),
+      el("button", { type: "button", class: "money-result-clear", text: "Clear", onClick: () => renderMoneyResult(container, kind, null) }),
+    ]);
+    container.append(box);
+    return;
+  }
+
+  // transfer
+  const box = el("div", { class: "money-result-box transfer" }, [
+    el("div", { style: "display:flex;align-items:flex-start;gap:10px" }, [
+      el("div", { style: "flex:1;min-width:0" }, [
+        result.headline ? el("div", { class: "money-result-head", text: result.headline }) : null,
+        el("div", { text: result.text }),
+      ]),
+      el("button", { type: "button", class: "money-result-clear", text: "Clear", onClick: () => renderMoneyResult(container, kind, null) }),
+    ]),
+    result.borrowedFromBill ? el("div", { class: "money-result-borrowed", text: result.borrowedFromBill }) : null,
+    result.resolvable ? el("div", { class: "money-result-footer", text: result.footer }) : null,
+  ]);
+  container.append(box);
+}
+
+async function viewMoney(view) {
+  view.append(
+    el("section", { class: "section" }, [
+      el("h2", { text: "Money" }),
+      el("p", { class: "muted small", text: "Never moves money. Do it at NFCU, then it syncs." }),
+    ]),
+  );
+
+  view.append(
+    el(
+      "div",
+      { class: "money-tabs" },
+      MONEY_TABS.map((tab) =>
+        el("button", {
+          type: "button",
+          class: `money-tab${moneyTab === tab.key ? " active" : ""}`,
+          text: tab.label,
+          onClick: () => {
+            moneyTab = tab.key;
+            render();
+          },
+        }),
+      ),
+    ),
+  );
+
+  if (moneyTab !== "now") {
+    const label = MONEY_TABS.find((t) => t.key === moneyTab)?.label ?? moneyTab;
+    view.append(
+      el("div", { class: "card" }, [
+        el("p", { class: "muted", text: `${label} is its own real Feature, built on top of this one -- not wired here yet.` }),
+      ]),
+    );
+    return;
+  }
+
+  const gate = await api("/api/money/gate");
+
+  if (gate.budgetDay) {
+    view.append(
+      el("div", { class: "card money-budgetday-card" }, [
+        el("div", { class: "row", style: "justify-content:space-between" }, [
+          el("span", { class: "small muted", style: "font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#60a5fa", text: "Budget Day · payday" }),
+        ]),
+        el("p", { text: gate.budgetDay.line }),
+      ]),
+    );
+  }
+
+  const availableCard = el("div", { class: "card section" });
+  availableCard.append(
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline" }, [
+      el("span", { class: "small muted", text: "Available to spend" }),
+      gate.budgetDay ? el("span", { class: "small muted", text: gate.budgetDay.line }) : null,
+    ]),
+    el("div", {
+      class: "money-amount",
+      style: gate.isCovered === false ? "color:#f87171" : "",
+      text: gate.availableToSpendFormatted ?? "unknown",
+    }),
+  );
+
+  if (gate.availableToSpend !== null) {
+    const barColor = gate.isCovered === false ? "#f87171" : gate.spokenForPercent >= 60 ? "#fbbf24" : "hsl(var(--success))";
+    availableCard.append(
+      el("p", { class: "small muted", text: `${dollars(gate.totalAvailable)} available, ${dollars(gate.totalShortfall)} spoken for.` }),
+      el("div", { class: "budget-bar" }, [el("div", { class: "budget-bar-fill", style: `width:${gate.spokenForPercent}%;background:${barColor}` })]),
+      el("div", { class: "row", style: "justify-content:space-between" }, [
+        el("span", {
+          class: "small muted",
+          style: "min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
+          text: gate.unfundedNames.length ? `${dollars(gate.totalShortfall)} spoken for · ${gate.unfundedNames.join(", ")}` : "Nothing spoken for",
+        }),
+        el("span", {
+          class: "small",
+          style: `font-weight:600;white-space:nowrap;color:${gate.isCovered ? "hsl(var(--success))" : "#f87171"}`,
+          text: gate.isCovered ? "Covered" : `Short ${dollars(-gate.availableToSpend)}`,
+        }),
+      ]),
+    );
+  } else {
+    availableCard.append(el("p", { class: "small muted", text: gate.warnings[0] ?? "Available to spend is unknown right now." }));
+  }
+
+  if (gate.habit.line) {
+    availableCard.append(el("p", { class: "money-habit-line", text: gate.habit.line }));
+  }
+
+  const whatIfResultEl = el("div");
+  const whatIfInput = el("input", { type: "number", step: "0.01", inputmode: "decimal", placeholder: "60", "aria-label": "What-if amount" });
+  const whatIfForm = el("form", { class: "row" }, [
+    whatIfInput,
+    el("button", { type: "submit", class: "ghost small", text: "What if I spend this?" }),
+  ]);
+  whatIfForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const amount = whatIfInput.value;
+    if (!amount) return;
+    const result = await api(`/api/money/what-if?amount=${encodeURIComponent(amount)}`);
+    renderMoneyResult(whatIfResultEl, "whatif", result);
+  });
+  availableCard.append(whatIfForm, whatIfResultEl);
+
+  const transferResultEl = el("div");
+  const fromInput = el("input", { placeholder: "From, e.g. Direct Deposit", "aria-label": "Transfer source account" });
+  const toInput = el("input", { placeholder: "To, e.g. Tesla", "aria-label": "Transfer destination account" });
+  const amountInput = el("input", { type: "number", step: "0.01", inputmode: "decimal", placeholder: "200", "aria-label": "Transfer amount" });
+  const transferForm = el("form", { class: "section" }, [
+    el("div", { class: "row" }, [fromInput, toInput, amountInput]),
+    el("button", { type: "submit", class: "ghost small", text: "Simulate a transfer" }),
+  ]);
+  transferForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!fromInput.value || !toInput.value || !amountInput.value) return;
+    transferForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    try {
+      const result = await api("/api/money/simulate-transfer", {
+        method: "POST",
+        body: JSON.stringify({ from: fromInput.value, to: toInput.value, amount: amountInput.value }),
+      });
+      renderMoneyResult(transferResultEl, "transfer", result);
+    } finally {
+      transferForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  availableCard.append(transferForm, transferResultEl);
+
+  availableCard.append(
+    el("p", { class: "small muted", text: 'Ask below, from here or from Claude on your phone: "what if I spend 60" · "move 200 from Direct Deposit to Tesla"' }),
+  );
+
+  view.append(availableCard);
+
+  // Protected -- money already spoken for: the Income Gate's own gate bills, plus critical debts.
+  const protectedRows = [...gate.gateBills.map(moneyBillRow), ...gate.protectedDebts.map(moneyDebtRow)];
+  if (protectedRows.length) {
+    view.append(el("div", { class: "card money-bucket" }, [el("div", { class: "money-bucket-label", text: "Protected" }), ...protectedRows]));
+  }
+
+  const urgentBills = gate.otherBills.filter((b) => b.funded === false);
+  if (urgentBills.length) {
+    view.append(
+      el("div", { class: "card money-bucket" }, [
+        el("div", { class: "money-bucket-label urgent", text: "Urgent" }),
+        ...urgentBills.map(moneyBillRow),
+      ]),
+    );
+  }
+
+  const handledBills = gate.otherBills.filter((b) => b.funded === true);
+  if (handledBills.length) {
+    view.append(
+      el("div", { class: "card money-bucket handled" }, [
+        el("div", { class: "money-bucket-label", text: "Already handled" }),
+        ...handledBills.map(moneyBillRow),
+      ]),
+    );
+  }
+
+  if (gate.warnings.length) {
+    view.append(
+      el("div", { class: "card section" }, [
+        el("p", { class: "small muted", text: "Warnings" }),
+        ...gate.warnings.map((w) => el("p", { class: "small", text: w })),
+      ]),
+    );
+  }
 }
 
 async function viewEntity(view, entityId) {
@@ -3273,7 +3555,7 @@ async function viewPetDetail(view, petId) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", tonight: "Tonight" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", tonight: "Tonight" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -3308,6 +3590,7 @@ async function render() {
     else if (state.route === "tonight") await viewTonight(view);
     else if (state.route === "cook") await viewCook(view, state.cookRecipeId);
     else if (state.route === "meds") await viewMeds(view);
+    else if (state.route === "money") await viewMoney(view);
     else if (state.route === "inbox") await viewInbox(view);
     else if (state.route === "dates") await viewDates(view);
     else if (state.route === "date") await viewDateDetail(view, state.dateId);
