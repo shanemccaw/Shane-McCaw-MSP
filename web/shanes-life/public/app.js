@@ -6916,11 +6916,45 @@ async function openScanSheet(list) {
 }
 
 /** Renders one of the three real match states (exact / near / unknown) plus the price form. */
+/** Real Open Food Facts enrichment (Git #3260) -- product image + per-100g nutrition facts +
+ *  "genuinely high" flags, common to all three match states. `null` fields render nothing, the
+ *  honest degrade for a barcode OFF has no data for. */
+function renderOffEnrichment(result) {
+  if (!result.productImage && !result.nutrition) return null;
+  const parts = [];
+  if (result.productImage) {
+    parts.push(el("img", { src: result.productImage, alt: result.productName || "Product photo", class: "scan-product-image" }));
+  }
+  if (result.nutrition) {
+    const n = result.nutrition;
+    const flags = result.nutritionFlags || {};
+    const row = (label, value, unit, isHigh) => {
+      if (value == null) return null;
+      const chips = [el("span", { class: "small", text: `${label} ${value}${unit}/100g` })];
+      if (isHigh) chips.push(el("span", { class: "chip warn", text: "High" }));
+      return el("div", { class: "row" }, chips);
+    };
+    const rows = [
+      row("Sodium", n.sodiumG100g, "g", flags.highSodium),
+      row("Saturated fat", n.saturatedFatG100g, "g", flags.highSaturatedFat),
+      row("Sugars", n.sugarsG100g, "g", flags.highSugar),
+      row("Fiber", n.fiberG100g, "g", false),
+    ].filter(Boolean);
+    if (rows.length > 0) {
+      parts.push(el("div", { class: "card scan-nutrition" }, [el("div", { class: "small muted", text: "Per 100g" }), ...rows]));
+    }
+  }
+  return parts.length > 0 ? el("div", { class: "scan-enrichment" }, parts) : null;
+}
+
 function renderScanResult(list, dialog, result) {
   const wrap = el("div", { class: "section" });
   const priceInput = el("input", { type: "number", step: "0.01", min: "0", placeholder: "0.00", inputmode: "decimal", "aria-label": "Price" });
   let chosenItemId = null;
   let chosenText = null;
+
+  const enrichment = renderOffEnrichment(result);
+  if (enrichment) wrap.append(enrichment);
 
   if (result.match === "exact") {
     wrap.append(

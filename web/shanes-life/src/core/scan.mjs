@@ -16,9 +16,9 @@
 import { many, one, query, transaction } from "../db.mjs";
 import { badRequest, notFound } from "../http.mjs";
 import { getOwnedList, getListDetail } from "./lists.mjs";
+import { getOffProduct } from "./nutrition.mjs";
 import { recordPrice } from "./prices.mjs";
 
-const OFF_TIMEOUT_MS = 6000;
 const STOPWORDS = new Set(["the", "and", "with", "for", "from", "your", "this", "that"]);
 
 function normaliseBarcode(raw) {
@@ -58,32 +58,15 @@ function rankCandidates(openItems, productName) {
 }
 
 /**
- * Real lookup against Open Food Facts (world.openfoodfacts.org) -- free, unauthenticated, no
- * credential to manage. A genuinely unreachable network or an unrecognised barcode both return
- * null here; the caller degrades to the "unknown" match state rather than surfacing an error, per
- * the design's own "none of them block" rule.
- */
-export async function lookupProductName(barcode) {
-  try {
-    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`, {
-      signal: AbortSignal.timeout(OFF_TIMEOUT_MS),
-      headers: { "User-Agent": "ShanesLife/1.0 (personal use; shanes-life barcode scan)" },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.status !== 1 || !data.product) return null;
-    const name = data.product.product_name || data.product.generic_name || null;
-    return name ? String(name).trim().slice(0, 200) : null;
-  } catch {
-    // Network unreachable / timed out / malformed response -- real failure, not faked; the
-    // caller's "unknown, no product name" branch is the honest degrade.
-    return null;
-  }
-}
-
-/**
  * Resolve a scanned barcode against a real list into one of the three real match states. Never
  * throws for "didn't recognise the barcode" -- that's the unknown state, not an error.
+ *
+ * Also attaches real Open Food Facts enrichment (Git #3260) -- product image + per-100g
+ * nutrition facts + "genuinely high" flags -- to whichever state is returned. Reads through the
+ * shared, barcode-keyed cache (nutrition.getOffProduct), so this is one real network round-trip
+ * per never-before-seen barcode, not one per scan. A real, honest fallback: OFF having nothing
+ * for this barcode (or being unreachable) degrades to `offProduct.found === false` -- the
+ * exact/near/unknown match states above are computed independently of OFF and are unaffected.
  */
 export async function lookupBarcode(userId, listId, rawBarcode) {
   const list = await getOwnedList(userId, listId);
@@ -95,11 +78,15 @@ export async function lookupBarcode(userId, listId, rawBarcode) {
     [listId],
   );
 
-  const link = await one(
-    `SELECT barcode, item_text, last_price_cents, last_seen_at FROM barcode_links
-      WHERE user_id = $1 AND barcode = $2`,
-    [userId, barcode],
-  );
+  const [link, offProduct] = await Promise.all([
+    one(
+      `SELECT barcode, item_text, last_price_cents, last_seen_at FROM barcode_links
+        WHERE user_id = $1 AND barcode = $2`,
+      [userId, barcode],
+    ),
+    getOffProduct(barcode),
+  ]);
+  const enrichment = { productImage: offProduct.imageUrl, brand: offProduct.brand, nutrition: offProduct.nutrition, nutritionFlags: offProduct.flags };
 
   if (link) {
     // Exact: a barcode seen before. Try to find the still-open item it maps to on THIS run --
@@ -112,10 +99,11 @@ export async function lookupBarcode(userId, listId, rawBarcode) {
       productName: link.item_text,
       lastPriceCents: link.last_price_cents,
       itemId: matched?.id ?? null,
+      ...enrichment,
     };
   }
 
-  const productName = await lookupProductName(barcode);
+  const productName = offProduct.productName;
   const candidates = productName ? rankCandidates(openItems, productName) : [];
 
   if (candidates.length > 0) {
@@ -124,10 +112,11 @@ export async function lookupBarcode(userId, listId, rawBarcode) {
       barcode,
       productName,
       candidates: candidates.map((c) => ({ id: c.id, text: c.text })),
+      ...enrichment,
     };
   }
 
-  return { match: "unknown", barcode, productName };
+  return { match: "unknown", barcode, productName, ...enrichment };
 }
 
 /**

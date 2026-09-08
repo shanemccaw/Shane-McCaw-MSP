@@ -23,6 +23,7 @@ import * as mealPlan from "../core/meal-plan.mjs";
 import * as media from "../core/media.mjs";
 import * as medications from "../core/medications.mjs";
 import * as money from "../core/money.mjs";
+import * as nutrition from "../core/nutrition.mjs";
 import * as people from "../core/people.mjs";
 import * as pets from "../core/pets.mjs";
 import * as places from "../core/places.mjs";
@@ -665,6 +666,24 @@ export const TOOLS = [
   },
 
   {
+    name: "get_nutrition",
+    title: "Read a scanned item's real Open Food Facts nutrition",
+    description:
+      "Real per-100g nutrition facts (sodium, saturated fat, sugars, fiber) for an item Shane has actually barcode-scanned (Git #3260), pulled from Open Food Facts and cached by barcode. Call this before push_recipes alongside get_health_context, so a heart-healthy call is grounded in a real, concrete number for items Shane actually buys ('the pasta sauce he scanned is high-sodium') instead of your own general judgment alone. Matches the same normalised (lower/trim) item text get_prices/push_list use. Returns found:false honestly when the item was never scanned, or OFF has no data for its barcode -- not every real product is in OFF's database, which is expected and not an error.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        item: { type: "string", description: "The item's text, e.g. 'pasta sauce'." },
+      },
+      required: ["item"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      return nutrition.getNutritionForItem(ctx.user.id, args.item);
+    },
+  },
+
+  {
     name: "log_price",
     title: "Log a real price you just paid",
     description:
@@ -842,7 +861,7 @@ export const TOOLS = [
     name: "push_recipes",
     title: "Push generated recipes",
     description:
-      "Push one or more real, ready-to-use recipes into the app -- the Recipes room's real generation entry point (Section 5: recipes are Claude-generated and pushed in via MCP, not authored in-app). Call get_health_context first so heart-healthy choices are favored where it genuinely applies, and set heartHealthy true on the recipes where it does. Set cookMinutes on any recipe genuinely meant to be one dish of a Tonight synchronized multi-dish meal (Git #3126) -- it's the one real number Tonight's start-offset math needs, and a recipe with no cookMinutes cannot be picked as a Tonight dish. Set replace true to swap out every previously saved recipe for this fresh set; leave false to add onto what's already saved.",
+      "Push one or more real, ready-to-use recipes into the app -- the Recipes room's real generation entry point (Section 5: recipes are Claude-generated and pushed in via MCP, not authored in-app). Call get_health_context first so heart-healthy choices are favored where it genuinely applies, and set heartHealthy true on the recipes where it does -- where a recipe calls for an item Shane has actually barcode-scanned, call get_nutrition (Git #3260) too, so that call is grounded in a real per-100g sodium/saturated-fat/sugar number for that real product instead of general judgment alone. Set cookMinutes on any recipe genuinely meant to be one dish of a Tonight synchronized multi-dish meal (Git #3126) -- it's the one real number Tonight's start-offset math needs, and a recipe with no cookMinutes cannot be picked as a Tonight dish. Set replace true to swap out every previously saved recipe for this fresh set; leave false to add onto what's already saved.",
     inputSchema: {
       type: "object",
       properties: {
