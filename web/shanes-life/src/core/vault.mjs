@@ -36,6 +36,7 @@
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { config } from "../config.mjs";
 import { many, one, query, transaction } from "../db.mjs";
+import { fingerprint, mintToken } from "../auth/tokens.mjs";
 
 /** The design's own number: "full value shown 20 s". The client counts it down; the response
  *  carries the real deadline so the two can never drift apart. */
@@ -440,9 +441,11 @@ export async function deleteEntry(userId, id) {
 /**
  * Decrypt one entry and record that it happened.
  *
- * `credentialId` is required and not defaulted on purpose: it is the id of the passkey that just
- * passed a real assertion for this reveal, and requiring it here means there is no way to reach a
- * plaintext from a code path that skipped that step. The audit insert and the decrypt share one
+ * Exactly one of `credentialId` / `deviceTrustId` is required and neither is defaulted on
+ * purpose: one is the id of the passkey that just passed a real assertion for this reveal, the
+ * other (Git #3276) is the id of the trusted browser whose token the route already verified is
+ * live, unexpired and unrevoked. Requiring one or the other here means there is no way to reach
+ * a plaintext from a code path that skipped both. The audit insert and the decrypt share one
  * transaction, so a reveal that is handed back to the caller is always a reveal that was written
  * down -- the audit row cannot be the thing that fails after the secret is already out.
  *
@@ -451,17 +454,23 @@ export async function deleteEntry(userId, id) {
  * end up in them are worth no less than the password they sit beside. One assertion, one row,
  * everything that row holds, one audit line saying so.
  */
-export async function reveal(userId, id, { credentialId, ip = null, userAgent = null }) {
-  if (!credentialId) throw new Error("reveal requires the credential that authorised it");
+export async function reveal(
+  userId,
+  id,
+  { credentialId = null, deviceTrustId = null, ip = null, userAgent = null, via = "owner" },
+) {
+  if (!credentialId && !deviceTrustId) {
+    throw new Error("reveal requires either the credential or the trusted device that authorised it");
+  }
   const row = await ownedRow(userId, id);
   if (!row) return null;
 
   return transaction(async (client) => {
     const { rows } = await client.query(
-      `INSERT INTO vault_reveals (vault_id, user_id, credential_id, ip, user_agent)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO vault_reveals (vault_id, user_id, credential_id, device_trust_id, ip, user_agent, via)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, at`,
-      [row.id, userId, credentialId, ip, userAgent],
+      [row.id, userId, credentialId, deviceTrustId, ip, userAgent, via],
     );
     const audited = rows[0];
     // Deliberately after the audit insert: if the decrypt throws (a tampered row, a wrong key)
@@ -523,22 +532,21 @@ export async function revealHistory(userId, id, limit = 20) {
   );
 }
 
-// -- Browser trusted devices (Git #3272, migration 062) --------------------------------------
+// -- Browser trusted devices (Git #3272 migration 062; minting + fill is Git #3276) ----------
 //
 // The 30-day trusted-browser model the README's "Sep 8 night" pass describes: one real WebAuthn
 // reveal mints a token (shape of widget_tokens, 046 -- high-entropy, only its SHA-256 stored,
 // scoped to one user, revocable), so a later autofill from that same browser can skip Face ID
-// until the token expires or is Forgotten. Minting/consuming (POST /api/vault/:id/fill, the
-// extension's own popup) is #3276's real scope, including the mint function itself -- this
-// room only ever lists what this table already holds and Forgets a row, so only those two real
-// reads/writes are added here.
+// until the token expires or is Forgotten. listTrustedDevices/forgetDevice below are #3272's;
+// mintTrustedDevice/resolveTrustedDevice/revokeAllTrustedDevices/fillWithTrust further down are
+// #3276's -- the real minting + consuming halves the 062 comment above deferred to this issue.
 
 /** Real trusted-browser rows for the room's own Browser add-on card, newest first. Revoked rows
  *  are dropped entirely (Forgotten means gone, not just marked); a row past its own `expires_at`
  *  still comes back so the card can render it dim rather than making it vanish silently. */
 export async function listTrustedDevices(userId) {
   const rows = await many(
-    `SELECT id, label, created_at, last_used_at, expires_at
+    `SELECT id, label, created_at, last_used_at, last_used_site, expires_at
        FROM vault_device_trust
       WHERE user_id = $1 AND revoked_at IS NULL
       ORDER BY created_at DESC`,
@@ -549,6 +557,9 @@ export async function listTrustedDevices(userId) {
     label: row.label,
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at,
+    // Git #3276: the device row's own "last fill yesterday, navyfederal.org" (migration 063) --
+    // stamped by fillWithTrust below, never derived after the fact.
+    lastUsedSite: row.last_used_site,
     expiresAt: row.expires_at,
     lapsed: new Date(row.expires_at).getTime() <= Date.now(),
   }));
@@ -567,10 +578,108 @@ export async function forgetDevice(userId, id) {
   return rowCount > 0;
 }
 
-// Minting a real trust token (the extension's own popup, "Trust this Chrome for 30 days") is
-// #3276's scope, not this issue's -- this room's own Browser add-on card only ever lists what
-// already exists and Forgets it, so no mint function is added here unused; #3276 adds the real
-// minting route and its own core function together, exercised by that route from the start.
+/** How long a minted trust token lasts, clamped to the options page's own real choices
+ *  (README, 1d: "7 / 30 / 90 days"). Anything else sent in is a bad request, not silently
+ *  clamped -- a caller asking for some other number is worth a real error, not a guess. */
+export const TRUST_DAYS = [7, 30, 90];
+export const DEFAULT_TRUST_DAYS = 30;
+
+export function normaliseTrustDays(days) {
+  if (days === undefined || days === null || days === "") return DEFAULT_TRUST_DAYS;
+  const n = Number(days);
+  if (!TRUST_DAYS.includes(n)) throw new Error(`days must be one of: ${TRUST_DAYS.join(", ")}`);
+  return n;
+}
+
+const TRUST_TOKEN_PREFIX = "slvault_";
+
+/**
+ * Mint a real `vault_device_trust` token -- called only from the end of a real WebAuthn reveal
+ * that already passed (the route's own job, not this function's; see api.mjs's
+ * `/api/vault/:id/reveal`). Same shape as `widget-tokens.mjs`'s `issueWidgetToken`: a
+ * high-entropy value handed back exactly once, only its SHA-256 ever stored.
+ */
+export async function mintTrustedDevice(userId, label, days = DEFAULT_TRUST_DAYS) {
+  const cleanDays = normaliseTrustDays(days);
+  const token = TRUST_TOKEN_PREFIX + mintToken(32);
+  const row = await one(
+    `INSERT INTO vault_device_trust (user_id, token_hash, label, expires_at)
+     VALUES ($1, $2, $3, now() + ($4 || ' days')::interval)
+     RETURNING id, label, created_at, expires_at`,
+    [userId, fingerprint(token), String(label || "This Chrome").slice(0, 120), cleanDays],
+  );
+  return { id: row.id, label: row.label, createdAt: row.created_at, expiresAt: row.expires_at, token };
+}
+
+/**
+ * Resolve a bearer trust token back to the user + row it belongs to, the same real shape
+ * `resolveWidgetToken` uses -- revoked or past its own `expires_at` both fail closed rather
+ * than degrading into "trust anyway". Returns null for anything that doesn't check out, never
+ * throws, so the fill route can turn "no valid trust" into one honest 401.
+ */
+export async function resolveTrustedDevice(token) {
+  if (!token) return null;
+  const row = await one(
+    `SELECT id, user_id, label
+       FROM vault_device_trust
+      WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()`,
+    [fingerprint(token)],
+  );
+  return row ? { id: row.id, userId: row.user_id, label: row.label } : null;
+}
+
+/** "Sign out everywhere" ends every trusted browser too (README: "'Sign out everywhere' in
+ *  Settings, or Forget this device, ends the trust instantly") -- a real revoke on every live
+ *  row, same idiom as forgetDevice, just unscoped to one id. Returns the count for the caller's
+ *  own audit line. */
+export async function revokeAllTrustedDevices(userId) {
+  const { rowCount } = await query(
+    `UPDATE vault_device_trust SET revoked_at = now()
+      WHERE user_id = $1 AND revoked_at IS NULL`,
+    [userId],
+  );
+  return rowCount;
+}
+
+/**
+ * The trusted-device fill itself (README: "POST /api/vault/:id/fill with the trust token:
+ * returns the plaintext once, writes a vault_reveals row with via = 'extension-trusted'.
+ * Refuses always-ask entries"). Deliberately a thin wrapper around the same real `reveal()`
+ * above rather than a second decrypt path -- one crypto path, one audit table, this just
+ * supplies a different kind of proof (a bearer token instead of a fresh assertion) and a
+ * different `via`. `deviceTrustId` stands in for `credentialId`: reveal()'s own NOT NULL check
+ * on that argument is what already guarantees a fill can never happen without SOME real proof
+ * of authorisation, and the route is what already checked that proof was a live, unexpired,
+ * unrevoked token before calling this.
+ */
+export async function fillWithTrust(userId, id, { deviceTrustId, site = null, ip = null, userAgent = null }) {
+  if (!deviceTrustId) throw new Error("fillWithTrust requires the trust token that authorised it");
+  const existing = await ownedRow(userId, id);
+  if (existing?.always_ask) {
+    throw new Error("This login always asks -- Face ID is required even on a trusted browser.");
+  }
+
+  const revealed = await reveal(userId, id, {
+    // vault_reveals.credential_id is nullable precisely for this row shape (migration 063): a
+    // trusted-device fill has no passkey assertion of its own to record. device_trust_id (same
+    // migration) is the real authorisation this row carries instead.
+    deviceTrustId,
+    ip,
+    userAgent,
+    via: "extension-trusted",
+  });
+  if (!revealed) return null;
+
+  // Real usage signal, same reasoning as widget-tokens.mjs's own screenshot_count bump --
+  // "last fill yesterday, navyfederal.org" (the design's own device-row copy) has to come from
+  // somewhere real, not a guess made at render time.
+  await query(
+    "UPDATE vault_device_trust SET last_used_at = now(), last_used_site = $2 WHERE id = $1",
+    [deviceTrustId, site || revealed.site || null],
+  );
+
+  return revealed;
+}
 
 // -- LastPass CSV import (Git #3247) -------------------------------------------------------
 //

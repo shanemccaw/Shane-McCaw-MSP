@@ -635,8 +635,13 @@ export function buildApiRouter() {
   router.post("/api/auth/logout-everywhere", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
     const count = await revokeAllSessions(user.id);
+    // Git #3276, README: "'Sign out everywhere' in Settings... ends the trust instantly." A
+    // trusted browser is its own real bearer credential, independent of the session cookie
+    // being cleared here -- without this it would keep filling logins one-click after a real
+    // sign-out-everywhere, which defeats the whole point of that button.
+    const devicesRevoked = await vault.revokeAllTrustedDevices(user.id);
     ctx.clearSessionCookie();
-    return sendJson(res, 200, { ok: true, revoked: count });
+    return sendJson(res, 200, { ok: true, revoked: count, devicesRevoked });
   });
 
   router.get("/api/me", async (_req, res, _params, ctx) => {
@@ -2285,7 +2290,31 @@ export function buildApiRouter() {
         credentialId: credential.credential_id,
       },
     });
-    return sendJson(res, 200, revealed);
+
+    // Git #3276, the design's own words: "minted only at the end of a real WebAuthn reveal
+    // ceremony" -- this IS that ceremony, the exact same one every in-app Reveal already runs.
+    // No second assertion, no separate mint route: the extension's own popup (extensionReveal in
+    // app.js) asks for this by sending `trustDevice: true` on the SAME request that just proved
+    // Face ID, alongside the label it guessed for this browser and the days preference from the
+    // extension's options page. Refused, not silently ignored, if `days` isn't one of the real
+    // choices the options page offers -- see vault.normaliseTrustDays.
+    let trust = null;
+    if (body.trustDevice) {
+      try {
+        trust = await vault.mintTrustedDevice(user.id, body.deviceLabel, body.trustDays);
+      } catch (err) {
+        throw badRequest(err.message);
+      }
+      await audit.record({
+        userId: user.id,
+        actor: "owner",
+        action: "vault.device_trust.minted",
+        entityId: trust.id,
+        detail: { label: trust.label },
+      });
+    }
+
+    return sendJson(res, 200, { ...revealed, trust });
   });
 
   router.get("/api/vault/:id/reveals", async (_req, res, params, ctx) => {
@@ -2322,9 +2351,9 @@ export function buildApiRouter() {
 
   // -- Vault room -> Browser add-on card (Git #3272, migration 062) -----------------------
   //
-  // Real trusted-browser rows for the room's own "Browser add-on" card. Minting one is #3276's
-  // scope (the extension's own Face ID + "Trust this Chrome for 30 days" ceremony); this room
-  // only ever lists what already exists and Forgets it.
+  // Real trusted-browser rows for the room's own "Browser add-on" card. Minting one happens
+  // inside POST /api/vault/:id/reveal above (Git #3276); this room only ever lists what already
+  // exists and Forgets it.
 
   router.get("/api/vault/device-trust", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
@@ -2343,6 +2372,59 @@ export function buildApiRouter() {
       detail: {},
     });
     return sendJson(res, 200, { ok: true });
+  });
+
+  // -- Vault Autofill add-on -> the one-click fill (Git #3276) -----------------------------
+  //
+  // The extension's OWN bearer-token auth plane, not the session cookie -- a trusted-browser
+  // fill is deliberately the one real cross-origin call in this whole app: it comes straight
+  // from the extension's privileged background context (chrome-extension://<id>, host-permitted
+  // but genuinely foreign), never routed through the app's own origin the way the reveal popup
+  // is. checkOrigin (server.mjs) exempts exactly this path for exactly that reason -- a foreign
+  // Origin header here is the extension working as designed, not a CSRF attempt. Authenticated
+  // instead by the trust token itself (same real bearer-token discipline as widget_tokens/
+  // mcp_tokens: presenting it correctly-hashed IS the proof), and rate-limited same as a normal
+  // reveal so a stolen/leaked token still can't be hammered.
+  //
+  // Refuses an always-ask entry outright (vault.fillWithTrust's own check) -- README: "Refuses
+  // always-ask entries (they take the existing reveal path)". The extension is expected to have
+  // already routed those to SL_REQUEST_REVEAL instead of ever calling this, but the real
+  // enforcement lives here, not in the extension's own (client-side, spoofable) judgment.
+  router.post("/api/vault/:id/fill", async (req, res, params, ctx) => {
+    const body = await readJson(req);
+    const trust = await vault.resolveTrustedDevice(body.token);
+    if (!trust) throw unauthorized("This browser isn't trusted any more. Face ID once to renew.");
+
+    const gate = ratelimit.hit(`vault:fill:${trust.userId}`, VAULT_REVEAL_LIMIT.limit, VAULT_REVEAL_LIMIT.windowMs);
+    if (!gate.allowed) {
+      throw tooMany("Too many fills in a row. Wait a bit.", { retryAfterMs: gate.retryAfterMs });
+    }
+
+    let revealed;
+    try {
+      revealed = await vault.fillWithTrust(trust.userId, params.id, {
+        deviceTrustId: trust.id,
+        site: body.site || null,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+      });
+    } catch (err) {
+      if (err instanceof vault.VaultKeyUnavailable) throw vaultError(err);
+      // "This login always asks" (fillWithTrust's own message) is a real refusal the extension
+      // has to fall back from, not a server bug -- 409 says "try the other path", not 400/500.
+      throw new HttpError(409, err.message);
+    }
+    if (!revealed) throw notFound("Vault entry not found");
+
+    await audit.record({
+      userId: trust.userId,
+      actor: "owner",
+      actorLabel: trust.label,
+      action: "vault.revealed",
+      entityId: revealed.id,
+      detail: { kind: revealed.kind, label: revealed.label, site: revealed.site, via: "extension-trusted" },
+    });
+    return sendJson(res, 200, revealed);
   });
 
   // -- Money -> Important documents (Git #3244) ------------------------------------------

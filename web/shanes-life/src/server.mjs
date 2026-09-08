@@ -58,6 +58,15 @@ function checkOrigin(req, url) {
   return host ? origin === `https://${host}` || origin === `http://${host}` : false;
 }
 
+// Git #3276: the ONE real, deliberately cross-origin caller in this app. The Vault Autofill
+// extension's one-click fill runs from its own privileged background context
+// (chrome-extension://<id>, host-permitted but genuinely foreign to this app's origin) rather
+// than through the app's own origin the way the existing reveal popup does -- see
+// extension/background.js and src/core/vault.mjs's fillWithTrust. Its real auth is the trust
+// token itself, presented in the JSON body, not the session cookie checkOrigin exists to
+// protect; refusing this on Origin grounds would just break the feature it exists to serve.
+const VAULT_FILL_PATH = /^\/api\/vault\/[^/]+\/fill$/;
+
 async function handle(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   const pathname = url.pathname;
@@ -161,7 +170,7 @@ async function handle(req, res) {
 
   const apiMatch = apiRouter.match(method, pathname);
   if (apiMatch) {
-    if (method !== "GET" && !checkOrigin(req, url)) {
+    if (method !== "GET" && !VAULT_FILL_PATH.test(pathname) && !checkOrigin(req, url)) {
       throw new HttpError(403, "Cross-origin request refused.");
     }
     return apiMatch.handler(req, res, apiMatch.params, ctx);
