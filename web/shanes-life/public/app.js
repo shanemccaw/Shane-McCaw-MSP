@@ -20,7 +20,46 @@ const state = {
   route: "today",
   entity: null,
   attachment: null, // { mediaId, kind, label }
+  cookRecipeId: null,
 };
+
+// Cook mode's own transient client state (Git #3125) -- deliberately not persisted server-side
+// or to localStorage, same as the design's own `this.setState({ cook: { id, step, checks } })`:
+// it's a single real cooking session in front of Shane right now, reset whenever he leaves it or
+// reloads. { recipeId, stepIndex, checks: { "<stepIndex>-<ingIndex>": true } }.
+let cookSession = null;
+
+// Wake Lock API handle (Git #3125's "screen stays awake in cook mode"). Feature-detected --
+// unsupported browsers just don't get the lock, cook mode still works otherwise.
+let wakeLock = null;
+
+async function requestCookWakeLock() {
+  if (wakeLock || !("wakeLock" in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => {
+      wakeLock = null;
+    });
+  } catch {
+    // Denied (not visible, battery saver, etc) -- cook mode still works, the screen just may sleep.
+  }
+}
+
+async function releaseCookWakeLock() {
+  if (!wakeLock) return;
+  try {
+    await wakeLock.release();
+  } catch {
+    // Already released.
+  }
+  wakeLock = null;
+}
+
+// A wake lock is auto-released by the browser whenever the tab loses visibility; re-acquire it
+// if Shane comes back to the tab while still genuinely in cook mode.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && state.route === "cook") requestCookWakeLock();
+});
 
 // ---------------------------------------------------------------------------
 // fetch helpers
@@ -677,6 +716,13 @@ function recipeCard(recipe) {
     },
   });
 
+  // Cook mode (Git #3125): a recipe with no real steps saved has nothing to walk through, so
+  // there's no live entry point for it -- Claude just hasn't pushed steps for this one yet.
+  const cookBtn =
+    recipe.steps.length > 0
+      ? el("button", { class: "primary small", text: "Cook", onClick: () => { location.hash = `#/cook/${recipe.id}`; } })
+      : null;
+
   return el("div", { class: "card" }, [
     el("div", { class: "spread" }, [
       el("div", {}, [
@@ -688,7 +734,7 @@ function recipeCard(recipe) {
     recipe.needs.length > 0
       ? el("p", { class: "small muted", style: "margin:.5rem 0 0", text: recipe.needs.join(", ") })
       : null,
-    el("div", { class: "row", style: "margin-top:.6rem" }, [addMissingBtn, removeBtn].filter(Boolean)),
+    el("div", { class: "row", style: "margin-top:.6rem" }, [cookBtn, addMissingBtn, removeBtn].filter(Boolean)),
   ]);
 }
 
@@ -717,6 +763,382 @@ async function viewRecipes(view) {
     for (const recipe of recipes) list.append(recipeCard(recipe));
     view.append(list);
   }
+}
+
+/** A step is a bare string (#3124-era pushes) or `{text, ings}` (Git #3125 onward) -- see
+ *  recipes.mjs's normaliseSteps for the same real distinction, server-side. */
+function stepText(step) {
+  return typeof step === "string" ? step : step.text;
+}
+function stepIngs(step) {
+  return typeof step === "string" ? [] : step.ings || [];
+}
+
+// Cook mode -- real step-by-step cooking view (Git #3125), the sibling Feature #3124 explicitly
+// left out. "Unchecked ingredients never block Next" and "Screen stays awake in cook mode" are
+// the design's own two locked, verbatim lines (contract pack prototype's real `cookFoot` text) --
+// copied here exactly, not paraphrased.
+async function viewCook(view, recipeId) {
+  const { recipes } = await api("/api/recipes");
+  const recipe = recipes.find((r) => r.id === recipeId);
+
+  if (!recipe) {
+    view.append(empty("Recipe not found.", "It may have been removed."));
+    return;
+  }
+  const steps = recipe.steps || [];
+  if (steps.length === 0) {
+    view.append(empty("No steps saved for this recipe.", "Ask Claude to push real steps for it next time."));
+    return;
+  }
+
+  if (!cookSession || cookSession.recipeId !== recipeId) {
+    cookSession = { recipeId, stepIndex: 0, checks: {} };
+  }
+  cookSession.stepIndex = Math.min(cookSession.stepIndex, steps.length - 1);
+
+  await requestCookWakeLock();
+
+  const stepIndex = cookSession.stepIndex;
+  const step = steps[stepIndex];
+  const isLast = stepIndex + 1 >= steps.length;
+  const ings = stepIngs(step);
+
+  const exitToRecipes = () => {
+    cookSession = null;
+    location.hash = "#/recipes";
+  };
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("div", { class: "spread" }, [
+        el("button", { class: "ghost small", text: "← Recipes", onClick: exitToRecipes }),
+        el("div", { style: "text-align:right" }, [
+          el("div", { class: "title", text: recipe.name }),
+          el("div", { class: "meta", text: `Step ${stepIndex + 1} of ${steps.length}` }),
+        ]),
+      ]),
+    ]),
+  );
+
+  const ingList =
+    ings.length > 0
+      ? el(
+          "ul",
+          { class: "checklist" },
+          ings.map((ing, i) => {
+            const key = `${stepIndex}-${i}`;
+            const done = !!cookSession.checks[key];
+            const box = el("input", { type: "checkbox", ...(done ? { checked: true } : {}) });
+            const label = el("span", { class: done ? "done" : "", text: ing });
+            box.addEventListener("change", () => {
+              cookSession.checks[key] = box.checked;
+              render();
+            });
+            return el("li", {}, [box, label]);
+          }),
+        )
+      : null;
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("div", { class: "card" }, [
+        el("div", { class: "small muted", text: `Step ${stepIndex + 1}`, style: "text-transform:uppercase;letter-spacing:.05em" }),
+        el("p", { style: "font-size:1.3rem;font-weight:700;margin:.35rem 0 0", text: stepText(step) }),
+        ingList,
+      ]),
+    ]),
+  );
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("div", { class: "row", style: "display:grid;grid-template-columns:1fr 2fr;gap:.6rem" }, [
+        el("button", {
+          class: "ghost",
+          text: "Back",
+          onClick: () => {
+            if (stepIndex > 0) cookSession.stepIndex = stepIndex - 1;
+            else exitToRecipes();
+            render();
+          },
+        }),
+        el("button", {
+          class: "primary",
+          text: isLast ? "Done cooking" : "Next step",
+          onClick: () => {
+            if (!isLast) {
+              cookSession.stepIndex = stepIndex + 1;
+              render();
+            } else {
+              exitToRecipes();
+            }
+          },
+        }),
+      ]),
+      el("p", {
+        class: "muted small",
+        style: "text-align:center;margin-top:.5rem",
+        text: "Screen stays awake in cook mode. Unchecked ingredients never block Next.",
+      }),
+    ]),
+  );
+}
+
+// Meds (Git #3135). Design/design_handoff_shanes_life/Shanes Life 07 - Meds.dc.html: a batch
+// card per time of day, one real slide-to-take per batch (never per medication), and a Refills
+// section split into "Needs you" (manual-watch) and "Handled automatically" (auto-refill). No
+// adherence history or streak is shown anywhere on purpose (the design's own "Why") -- only
+// today's real state.
+
+const MEDS_CRITTER_SLOT = { morning: "morning", evening: "bedtime", bed: "bedtime" };
+function medsCritterSlot(batch) {
+  return MEDS_CRITTER_SLOT[batch] || "meds";
+}
+
+// el("svg", ...) would call document.createElement, which builds an unnamespaced element that
+// cannot render SVG children -- these two icons need the real SVG namespace.
+const SVG_NS = "http://www.w3.org/2000/svg";
+function lineIcon(pathsHtml, { size = 20 } = {}) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", size);
+  svg.setAttribute("height", size);
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2.5");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.innerHTML = pathsHtml;
+  return svg;
+}
+
+/**
+ * A real drag-to-complete control, plain pointer events -- no framework. Dragging the knob past
+ * ~70% of the track fires onComplete(); letting go short of that snaps the knob back. This is
+ * the "single swipe per batch, not per-pill" control the design's own slide track draws.
+ */
+function attachSlideToTake(track, knob, onComplete) {
+  let dragging = false;
+  let startX = 0;
+  let startLeft = 4;
+
+  const knobWidth = 44;
+  const margin = 4;
+
+  function maxLeft() {
+    return track.getBoundingClientRect().width - knobWidth - margin;
+  }
+
+  function setLeft(px) {
+    knob.style.left = `${Math.max(margin, Math.min(maxLeft(), px))}px`;
+  }
+
+  knob.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    startX = event.clientX;
+    startLeft = knob.offsetLeft;
+    knob.classList.add("dragging");
+    knob.setPointerCapture(event.pointerId);
+  });
+
+  knob.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    setLeft(startLeft + (event.clientX - startX));
+  });
+
+  function release(event) {
+    if (!dragging) return;
+    dragging = false;
+    knob.classList.remove("dragging");
+    const threshold = maxLeft() * 0.7;
+    if (knob.offsetLeft >= threshold) {
+      setLeft(maxLeft());
+      onComplete();
+    } else {
+      setLeft(margin);
+    }
+    if (event?.pointerId !== undefined && knob.hasPointerCapture?.(event.pointerId)) {
+      knob.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  knob.addEventListener("pointerup", release);
+  knob.addEventListener("pointercancel", release);
+}
+
+function medBatchCard(batchState) {
+  const { batch, items, takenToday, takenAt } = batchState;
+  const label = batch.charAt(0).toUpperCase() + batch.slice(1);
+
+  const itemRows = items.map((item) =>
+    el("div", { class: "med-item-row" }, [
+      el("span", { text: item.name }),
+      item.doseNote ? el("span", { class: "med-dose", text: item.doseNote }) : null,
+    ]),
+  );
+
+  const card = el("div", { class: "card" }, [
+    el("div", { class: "spread" }, [
+      el("div", { class: "row" }, [critterIcon(medsCritterSlot(batch), { size: 32 }), el("span", { class: "title", text: label })]),
+      el("span", { class: "meta", text: `${items.length} ${items.length === 1 ? "item" : "items"}` }),
+    ]),
+    ...itemRows,
+  ]);
+
+  if (takenToday) {
+    card.append(
+      el("div", { class: "slide-track done" }, [
+        el("span", { text: `Taken ${when(takenAt)}` }),
+        el("div", { class: "slide-knob" }, [lineIcon('<path d="M20 6 9 17l-5-5"></path>')]),
+      ]),
+      el("div", { class: "row", style: "margin-top:.5rem" }, [
+        el("button", {
+          class: "ghost small",
+          text: "Undo",
+          onClick: async (event) => {
+            event.currentTarget.disabled = true;
+            try {
+              await api(`/api/medications/batches/${encodeURIComponent(batch)}/take`, { method: "DELETE" });
+              render();
+            } finally {
+              event.currentTarget.disabled = false;
+            }
+          },
+        }),
+      ]),
+    );
+    return card;
+  }
+
+  const track = el("div", { class: "slide-track" }, [el("span", { text: "Slide when taken" })]);
+  const knob = el("div", { class: "slide-knob" }, [
+    lineIcon('<path d="m6 17 5-5-5-5"></path><path d="m13 17 5-5-5-5"></path>'),
+  ]);
+  track.append(knob);
+  card.append(track);
+
+  attachSlideToTake(track, knob, async () => {
+    try {
+      await api(`/api/medications/batches/${encodeURIComponent(batch)}/take`, { method: "POST" });
+    } finally {
+      render();
+    }
+  });
+
+  return card;
+}
+
+function refillNeedsYouCard(item) {
+  const daysLeft = item.daysLeft;
+  const dueSoon = daysLeft !== null && daysLeft <= 3;
+  return el("div", { class: "card refill-row" }, [
+    el("div", { style: "flex:1;min-width:0" }, [
+      el("div", { class: "refill-tier-label needs-you", text: "Needs you" }),
+      el("div", { class: "title", style: "margin-top:3px", text: daysLeft === null ? item.name : `${item.name} · ${daysLeft <= 0 ? "due now" : `${daysLeft} ${daysLeft === 1 ? "day" : "days"} left`}` }),
+      item.refillNote ? el("div", { class: `refill-days-left ${dueSoon ? "due" : ""}`, text: item.refillNote }) : null,
+    ]),
+    el("button", {
+      class: "small",
+      text: "Ordered it",
+      onClick: async (event) => {
+        event.currentTarget.disabled = true;
+        try {
+          await api(`/api/medications/${item.id}/ordered`, { method: "POST" });
+          render();
+        } finally {
+          event.currentTarget.disabled = false;
+        }
+      },
+    }),
+  ]);
+}
+
+function refillsSection(refills) {
+  const section = el("section", { class: "section" }, [
+    el("h2", { text: "Refills" }),
+  ]);
+
+  if (refills.needsYou.length === 0 && refills.handled.length === 0) {
+    section.append(el("p", { class: "muted small", text: "No medications on file yet." }));
+    return section;
+  }
+
+  for (const item of refills.needsYou) section.append(refillNeedsYouCard(item));
+
+  if (refills.handled.length > 0) {
+    section.append(
+      el("div", { class: "card refill-row" }, [
+        el("div", { style: "flex:1;min-width:0" }, [
+          el("div", { class: "refill-tier-label handled", text: "Handled automatically" }),
+          el("div", { style: "margin-top:3px;line-height:1.45", text: refills.handled.map((h) => h.name).join(", ") }),
+          el("div", { class: "refill-days-left", text: "Auto-refill · nothing to do" }),
+        ]),
+      ]),
+    );
+  }
+
+  return section;
+}
+
+async function viewMeds(view) {
+  const { batches, refills } = await api("/api/medications");
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("h2", { text: "Meds" }),
+      el("p", { class: "muted small", text: "One slide per batch, not one tap per pill." }),
+    ]),
+  );
+
+  if (batches.length === 0) {
+    view.append(empty("No medications on file yet.", "Add one below, or ask Claude to add one for you.", "meds"));
+  } else {
+    const list = el("section", { class: "section" });
+    for (const batchState of batches) list.append(medBatchCard(batchState));
+    view.append(list);
+  }
+
+  view.append(refillsSection(refills));
+
+  // Direct entry (same "reachable without going through Claude" idiom as createRecipe/
+  // createEntity) -- most real medications will still be added by Claude over MCP
+  // (set_medication), but there is no reason the web UI can't add one too.
+  const nameInput = el("input", { placeholder: "Medication name", "aria-label": "Medication name" });
+  const doseInput = el("input", { placeholder: "Dose, e.g. 1 tablet", "aria-label": "Dose" });
+  const batchInput = el("input", { placeholder: "Batch, e.g. morning", "aria-label": "Batch", list: "med-batches" });
+  const batchOptions = el(
+    "datalist",
+    { id: "med-batches" },
+    batches.map((b) => el("option", { value: b.batch })),
+  );
+  const tierSelect = el("select", { "aria-label": "Refill tier" }, [
+    el("option", { value: "manual", text: "Manual-watch (needs you)" }),
+    el("option", { value: "auto", text: "Auto-refill (handled)" }),
+  ]);
+  const addForm = el("form", { class: "section" }, [
+    nameInput,
+    el("div", { class: "row" }, [doseInput, batchInput, batchOptions]),
+    el("div", { class: "row" }, [tierSelect, el("button", { class: "primary small", type: "submit", text: "Add medication" })]),
+  ]);
+  addForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = nameInput.value.trim();
+    const batch = batchInput.value.trim();
+    if (!name || !batch) return;
+    addForm.querySelectorAll("input,select,button").forEach((n) => (n.disabled = true));
+    try {
+      await api("/api/medications", {
+        method: "POST",
+        body: JSON.stringify({ name, doseNote: doseInput.value.trim() || null, batch, refillTier: tierSelect.value }),
+      });
+      render();
+    } finally {
+      addForm.querySelectorAll("input,select,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [addForm]));
+
+  attachRoomWatermark(view, "meds");
 }
 
 async function viewEntity(view, entityId) {
@@ -1735,7 +2157,7 @@ async function viewSettings(view) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", inbox: "Inbox", things: "Things", settings: "Settings", entity: "" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", inbox: "Inbox", things: "Things", settings: "Settings", entity: "", cook: "Cook" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -1743,6 +2165,7 @@ function parseRoute() {
   state.route = head || "today";
   state.categoryFilter = state.route === "things" ? rest[0] || null : null;
   state.entity = state.route === "entity" ? rest[0] : null;
+  state.cookRecipeId = state.route === "cook" ? rest[0] : null;
 }
 
 async function render() {
@@ -1752,6 +2175,10 @@ async function render() {
   resetCritterRender(); // Git #3119: a slot's pair-alt only advances within a single screen.
   $("#view-title").textContent = TITLES[state.route] ?? "";
 
+  // A wake lock (Git #3125) is only ever held for cook mode itself -- release it the moment
+  // navigation moves anywhere else, rather than waiting on the tab losing visibility.
+  if (state.route !== "cook") releaseCookWakeLock();
+
   for (const tab of document.querySelectorAll(".tabs a")) {
     if (tab.dataset.tab === state.route) tab.setAttribute("aria-current", "page");
     else tab.removeAttribute("aria-current");
@@ -1760,6 +2187,8 @@ async function render() {
   try {
     if (state.route === "shopping") await viewShopping(view);
     else if (state.route === "recipes") await viewRecipes(view);
+    else if (state.route === "cook") await viewCook(view, state.cookRecipeId);
+    else if (state.route === "meds") await viewMeds(view);
     else if (state.route === "inbox") await viewInbox(view);
     else if (state.route === "things") await viewThings(view);
     else if (state.route === "settings") await viewSettings(view);

@@ -30,6 +30,7 @@ Every decision below traces to a section of it, and the section is cited in the 
 | Shopping: weekly-ad cross-store verdicts, coupons, multi-buy (§3, §5, Shanes Life 04) | `src/core/prices.mjs` (`pushDeals`/`pushCoupons`/`fetchWeeklyAd`/`attachWeeklyAdVerdicts`), `GET /api/shopping` (`weeklyAdVerdict` per item), MCP `push_deals`/`push_coupons`/`fetch_weekly_ad` (#3110) |
 | Recipes: core list, real can-make matching against Shopping, add missing, heart-healthy context (§5, Shanes Life 05) | `src/core/recipes.mjs`, `GET /api/recipes`, `POST /api/recipes/:id/add-missing`, `GET/PATCH /api/health-context`, `public/app.js` `#/recipes`, MCP `push_recipes`/`get_recipes`/`add_missing_ingredients`/`get_health_context`/`set_health_context` (#3124) |
 | Food preferences: dislikes (soft avoid) and allergies (hard exclusion) (§5) | `src/core/food-preferences.mjs`, `food_preferences` table (migration 024), MCP `get_food_preferences`/`set_food_preferences` -- additive, no separate settings form (#3132) |
+| Recipes: Cook mode -- step-by-step view, next/back, unchecked never blocks, screen stays awake (Shanes Life 05) | `public/app.js` `#/cook/<id>` (`viewCook`, `cookSession`, Wake Lock API), `recipes.mjs`'s `normaliseSteps` now carries real per-step `{text, ings}` (#3125) |
 
 ---
 
@@ -368,6 +369,32 @@ real judgement at push time, not something this server computes.
 Explicitly not built here, per the issue's own scope: Cook mode (step-by-step, ingredient
 checkboxes, the in-step timer), Tonight (multi-dish timing), and the Sunday meal-planning ritual
 — each a separate, real sibling Feature under #3086.
+
+## Recipes — Cook mode (#3125)
+
+Real step-by-step cooking view for a single recipe, `#/cook/<recipeId>` in `public/app.js`,
+reachable from a "Cook" button on any recipe with real steps saved. `recipes.mjs`'s
+`normaliseSteps` now carries each step's real intended shape — `{text, ings}` (the design's own
+seed data shape, contract pack prototype's `RECIPES`), not the bare string #3124 stored, since
+nothing read the `ings` half until Cook mode needed real per-step ingredients to check off. A
+plain string step (anything pushed before this) still normalises fine, with an empty `ings`.
+
+Next/back step navigation and per-ingredient checks are real client-side state
+(`public/app.js`'s `cookSession` — `{recipeId, stepIndex, checks}`), deliberately not persisted
+server-side or to `localStorage`: same "one real cooking session in front of Shane right now"
+model as the design's own `this.setState({cook: {...}})`, reset on leaving cook mode or a reload.
+Per the issue's own locked line, copied verbatim into the UI's own footer text: **"Screen stays
+awake in cook mode. Unchecked ingredients never block Next."** An unchecked ingredient is only
+ever a display state, never a gate on the Next button.
+
+"Screen stays awake" is the real Wake Lock API (`navigator.wakeLock.request("screen")`),
+requested on entering cook mode and released the moment navigation leaves it (or on
+`visibilitychange` regaining visibility while still in cook mode, since the browser auto-releases
+a wake lock the instant a tab isn't visible). Feature-detected — a browser without Wake Lock
+support just doesn't get the lock; cook mode itself still works.
+
+Explicitly not built here, per the issue's own scope: the in-step timer, Tonight (multi-dish
+timing), and the Sunday meal-planning ritual — each a separate, real sibling Feature under #3086.
 
 ## Not built here, on purpose
 

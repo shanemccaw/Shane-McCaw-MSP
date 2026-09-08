@@ -1,5 +1,7 @@
 -- Shane's Life -- the real modeled recurring habit behind Money's "really" line (Git #3137).
 --
+-- Numbered 027, not 026: #3135's 026_medications.sql landed on main while this was in flight.
+--
 -- Design/design_handoff_shanes_life/README.md, "Money math (mirror `DashboardService.cs`)":
 --   "Habit modeling: subtract the modeled recurring habit (cigarettes, $148/cycle) in the
 --    'really' line."
