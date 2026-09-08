@@ -20,6 +20,7 @@ import * as lists from "../core/lists.mjs";
 import * as mealPlan from "../core/meal-plan.mjs";
 import * as medications from "../core/medications.mjs";
 import * as money from "../core/money.mjs";
+import * as people from "../core/people.mjs";
 import * as pets from "../core/pets.mjs";
 import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
@@ -1604,6 +1605,85 @@ export const TOOLS = [
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     async handler() {
       return categories.listCategories();
+    },
+  },
+
+  // -- People & Patterns (Git #3157, design contract Section 7) ---------------
+  //
+  // NOT a companion or chatbot persona -- a private journal capturing Shane's own words about
+  // people in his life. "Threaded under the relevant person automatically based on who's
+  // mentioned" is this pair of tools: read the inbox with list_captures, recognise who a pending
+  // capture is genuinely about, then call log_person_note with that person's real name. The app
+  // itself does no inference of its own (Section 10) -- the recognition happens here, in this
+  // conversation; the tool only ever persists what you already decided.
+
+  {
+    name: "list_people",
+    title: "List people on file",
+    description:
+      "Everyone Shane has a real journal thread for, with how many notes and when the last one landed. Check here before log_person_note so 'Mom' and 'Mother' don't become two different people -- names match case-insensitively, but only if they're spelled the same.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      return { items: await people.listPeople(ctx.user.id) };
+    },
+  },
+
+  {
+    name: "log_person_note",
+    title: "File a real note about a person",
+    description:
+      "The real threading step for People & Patterns: after recognising a pending capture is a vent, a recap, or an observation about a specific person, file it here in Shane's own words -- never rewritten, never summarized. Creates the person on first mention (matches an existing one case-insensitively by name first). Tone boundary that matters here more than anywhere else in this app: this is a private mirror, not a companion -- do not add commentary, advice, or an opinion about the person; pass Shane's words through as written.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        personName: { type: "string", description: "Who this is about, e.g. 'Dana'. Call list_people first to reuse an existing name exactly." },
+        relationship: { type: "string", description: "Only on first mention of a genuinely new person, if stated, e.g. 'property manager'. Omit otherwise -- it never overwrites what's already on file." },
+        text: { type: "string", description: "The note, in Shane's own words, unedited." },
+        kind: { type: "string", description: "text (default) | voice | photo -- how the original capture arrived." },
+        happenedAt: { type: "string", description: "ISO date/time if Shane says this happened earlier than now, e.g. 'after the call Tuesday'. Defaults to now." },
+        captureId: { type: "string", description: "uuid of the capture this came from, if it came from the inbox. Marks that capture classified." },
+      },
+      required: ["personName", "text"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const { person, entry } = await people.addPersonEntry(ctx.user.id, {
+        personName: args.personName,
+        relationship: args.relationship ?? null,
+        bodyText: args.text,
+        kind: args.kind ?? "text",
+        happenedAt: args.happenedAt ?? null,
+        captureId: args.captureId ?? null,
+        source: "claude",
+      });
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "person.entry.create",
+        entityId: entry.id,
+        detail: { personId: person.id, personName: person.name },
+      });
+      return { person, entry };
+    },
+  },
+
+  {
+    name: "get_person_notes",
+    title: "Read one person's real thread",
+    description:
+      "Every real note on file for one person, oldest fact first in the returned patterns (word/timing counts, quoted verbatim, no invented interpretation -- see the app's own patterns panel), notes newest-first. Use this when Shane asks something like 'how have things with Dana been' in conversation -- read the real notes and answer from them directly; do not add a diagnosis or advice framed as certainty (Section 7's own explicit boundary).",
+    inputSchema: {
+      type: "object",
+      properties: { personName: { type: "string", description: "Exact name, e.g. 'Dana'. Case-insensitive." } },
+      required: ["personName"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const person = await people.findPersonByName(ctx.user.id, args.personName);
+      if (!person) return { person: null, entries: [], patterns: [] };
+      const entries = await people.listPersonEntries(ctx.user.id, person.id);
+      return { person, entries, patterns: people.computePatterns(entries, person.name) };
     },
   },
 ];
