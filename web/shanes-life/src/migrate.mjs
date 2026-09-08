@@ -26,6 +26,18 @@ const MIGRATIONS_DIR = resolve(config.root, "migrations");
 // foreign key into accounts, so this is a hard requirement, not a nicety.
 const REQUIRED_BASE_TABLES = ["accounts", "transactions", "plaid_items", "debts"];
 
+// Git #3166: `schema_migrations` is shared, live, across every concurrent worktree on this
+// machine (see CLAUDE.md's Database section). An orphan row can be another session's own
+// in-flight, still-uncommitted rename -- real evidence showed the condition self-clearing
+// within minutes once that session committed or reverted. A short bounded retry absorbs that
+// transient window without either applying anything early (nothing runs until the ledger reads
+// clean) or hanging indefinitely: after ORPHAN_RETRY_ATTEMPTS all still see the same orphan(s),
+// this fails closed exactly as before, now pointing at bin/reconcile-ledger.mjs as well.
+const ORPHAN_RETRY_ATTEMPTS = 3;
+const ORPHAN_RETRY_DELAY_MS = 4_000;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 /**
  * Fail closed if DATABASE_URL points somewhere that is not the real ShanesSurvival database.
  *
@@ -80,11 +92,37 @@ export async function runMigrations({ log = console.log } = {}) {
 
     await assertSharedDatabase(client);
 
-    const { rows } = await client.query("SELECT filename FROM schema_migrations");
     // Fail closed, loudly, before applying anything if the ledger references a filename that
     // no longer exists in either directory (Git #3140) -- almost always an applied migration
-    // that got renamed, which would otherwise silently re-run under its new name below.
-    assertNoOrphanLedgerRows(rows.map((r) => r.filename));
+    // that got renamed, which would otherwise silently re-run under its new name below. Re-read
+    // and re-check a few times first (Git #3166): the row set is live and shared across every
+    // concurrent worktree, so an orphan can be another session's own in-flight rename that
+    // clears on its own within minutes.
+    let rows;
+    for (let attempt = 1; ; attempt++) {
+      ({ rows } = await client.query("SELECT filename FROM schema_migrations"));
+      try {
+        assertNoOrphanLedgerRows(rows.map((r) => r.filename));
+        break;
+      } catch (err) {
+        if (attempt >= ORPHAN_RETRY_ATTEMPTS) {
+          throw new Error(
+            `${err.message}\n\nThis persisted across ${ORPHAN_RETRY_ATTEMPTS} checks over ` +
+              `~${Math.round(((ORPHAN_RETRY_ATTEMPTS - 1) * ORPHAN_RETRY_DELAY_MS) / 1000)}s, so ` +
+              `it is not another session's transient in-flight rename. If you know this ` +
+              `session's own rename or duplicate is safe, reconcile it yourself with:\n` +
+              `  node bin/reconcile-ledger.mjs rename <old filename> <new filename>\n` +
+              `  node bin/reconcile-ledger.mjs delete <filename>`,
+          );
+        }
+        log(
+          `[migrate] orphan ledger row(s) detected (attempt ${attempt}/${ORPHAN_RETRY_ATTEMPTS}) -- ` +
+            `retrying in ${ORPHAN_RETRY_DELAY_MS}ms in case this is another session's transient, ` +
+            `in-flight rename (Git #3166)`,
+        );
+        await sleep(ORPHAN_RETRY_DELAY_MS);
+      }
+    }
     const done = new Set(rows.map((r) => r.filename));
 
     for (const file of files) {

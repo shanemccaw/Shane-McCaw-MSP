@@ -12,6 +12,7 @@
     "start": "node src/server.mjs",
     "dev": "node --watch src/server.mjs",
     "migrate": "node bin/migrate.mjs",
+    "reconcile-ledger": "node bin/reconcile-ledger.mjs",
     "create-user": "node bin/create-user.mjs",
     "enroll-passkey": "node bin/enroll-passkey.mjs",
     "issue-mcp-token": "node bin/issue-mcp-token.mjs",
