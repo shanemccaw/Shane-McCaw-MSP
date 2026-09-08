@@ -1227,6 +1227,108 @@ function medsPillSection(meds) {
   ]);
 }
 
+// ---------------------------------------------------------------------------
+// Rooms -- the house (Git #3165, README "Rooms -- the house" + "Lamp rules").
+//
+// Replaces the flat tab-bar links to the 8 real rooms below (see the trimmed <nav class="tabs">
+// in index.html) with the design's own illustrated house: a roof, a two-column floor grid, and a
+// real lit/dark lamp per room driven by /api/today's own `rooms` object (roomsForToday() in
+// api.mjs) -- never a guessed or hardcoded state. Floor order is the README's own literal order:
+// Things | Lists; People | Dates; Recipes | Pets; Shopping | Money.
+//
+// Critter slots are reused from the existing 23-slot roster rather than inventing new artwork:
+// Dates reuses "comingup" (the owl already drawn for the Later moment of the same name) and
+// Recipes reuses "dinner" (the otter-chef already drawn for the Dinner moment) -- both already
+// exist in critters-sprite.svg and thematically fit the room. Money reuses "moneyhdr" (the bear
+// already used for the Money room's own page header). People routes to the real People &
+// Patterns journal (#3157, landed the same day as this issue -- see viewPeople() below).
+const ROOM_DEFS = [
+  { key: "things", route: "#/things", title: "Things", critterSlot: "things", furniture: "r-things", tint: "251,146,60" },
+  { key: "lists", route: "#/lists", title: "Lists", critterSlot: "lists", furniture: "r-lists", tint: "165,180,252" },
+  { key: "people", route: "#/people", title: "People", critterSlot: "people", furniture: "r-people", tint: "167,139,250" },
+  { key: "dates", route: "#/dates", title: "Dates", critterSlot: "comingup", furniture: "r-dates", tint: "244,114,182" },
+  { key: "recipes", route: "#/recipes", title: "Recipes", critterSlot: "dinner", furniture: "r-recipes", tint: "45,212,191" },
+  { key: "pets", route: "#/pets", title: "Pets", critterSlot: "pets", furniture: "r-pets", tint: "52,211,153" },
+  { key: "shopping", route: "#/shopping", title: "Shopping", critterSlot: "shop", furniture: "r-shop", tint: "96,165,250" },
+  { key: "money", route: "#/money", title: "Money", critterSlot: "moneyhdr", furniture: "r-money", tint: "251,191,36" },
+];
+
+/** The roof: polygon + ridge + chimney, README-exact geometry (viewBox 370x40). The two smoke
+ *  puffs only show "while the kitchen lamp is lit" -- i.e. while the real Recipes room is lit. */
+function roomsRoofHtml(recipesLit) {
+  const smoke = recipesLit
+    ? `<circle cx="282" cy="2" r="3.5" fill="rgba(226,232,240,.4)" style="animation:czDrift 4s ease-in-out infinite"/>
+       <circle cx="288" cy="0" r="2.6" fill="rgba(226,232,240,.35)" style="animation:czDrift 4s 2s ease-in-out infinite"/>`
+    : "";
+  return `<svg viewBox="0 0 370 40" class="rooms-roof-svg" preserveAspectRatio="none" aria-hidden="true">
+    <polygon points="0,40 185,2 370,40" fill="rgba(148,163,184,.30)"/>
+    <polyline points="0,40 185,2 370,40" fill="none" stroke="rgba(226,232,240,.35)" stroke-width="1.5"/>
+    <rect x="276" y="5" width="16" height="22" fill="rgba(148,163,184,.55)"/>
+    <rect x="273" y="2" width="22" height="4" fill="rgba(203,213,225,.6)"/>
+    ${smoke}
+  </svg>`;
+}
+
+/** One floor cell: furniture back wall, lamp, critter (asleep with two z's when dark), name and
+ *  real subtitle line -- all tap-through to the room's own real page. */
+function roomsCell({ key, route, title, critterSlot, furniture, tint }, lit, subtitle) {
+  const cell = el(
+    "a",
+    {
+      class: `rooms-cell ${lit ? "lit" : "dark"}`,
+      href: route,
+      style: lit
+        ? `background:radial-gradient(60% 60% at 50% 0%,rgba(253,224,71,.16),transparent), rgba(${tint},.14)`
+        : `background:rgba(${tint},.08)`,
+    },
+    [
+      el("div", { class: "rooms-furniture", html: `<svg viewBox="0 0 170 34" preserveAspectRatio="xMidYMin meet" aria-hidden="true"><use href="#${furniture}"></use></svg>` }),
+      el("div", { class: "rooms-lamp" }, [
+        el("div", { class: "rooms-lamp-cord" }),
+        el("div", { class: "rooms-lamp-bulb" }),
+      ]),
+      el("div", { class: "rooms-critter" }, [
+        critterIcon(critterSlot, { size: 40 }),
+        !lit ? el("span", { class: "rooms-z", text: "z" }) : null,
+        !lit ? el("span", { class: "rooms-z", text: "z" }) : null,
+      ]),
+      el("div", { class: "rooms-cell-body" }, [
+        el("div", { class: "rooms-cell-name", text: title }),
+        el("div", { class: "rooms-cell-line", text: subtitle }),
+      ]),
+    ],
+  );
+  return cell;
+}
+
+/** The whole "Rooms -- the house" section: roof, the 8-cell floor grid, and the yard. `rooms` is
+ *  /api/today's own real per-room state (roomsForToday() in api.mjs); a live Tonight/Cook session
+ *  (client-only state, never persisted -- see mealSession's own declaration) can additionally
+ *  light the Recipes room even outside its server-computed 16:00-21:00 window, same override
+ *  resolveNextKind() already applies to the Next card's own "dinner" case. */
+function roomsHouseSection(rooms) {
+  let recipesLit = Boolean(rooms.recipes && rooms.recipes.lit);
+  let recipesSubtitle = rooms.recipes ? rooms.recipes.subtitle : "Nothing planned right now";
+  if (mealSession && !mealSession.done) {
+    recipesLit = true;
+    recipesSubtitle = "Cooking now";
+  }
+
+  const cells = ROOM_DEFS.map((def) => {
+    if (def.key === "recipes") return roomsCell(def, recipesLit, recipesSubtitle);
+    const room = rooms[def.key];
+    const lit = Boolean(room && room.lit);
+    const subtitle = room ? room.subtitle : "";
+    return roomsCell(def, lit, subtitle);
+  });
+
+  return el("div", { class: "rooms-house" }, [
+    el("div", { class: "rooms-roof", html: roomsRoofHtml(recipesLit) }),
+    el("div", { class: "rooms-body" }, cells),
+    el("div", { class: "rooms-yard" }),
+  ]);
+}
+
 async function viewToday(view) {
   const data = await api("/api/today");
   setInboxBadge(data.pendingCaptures);
@@ -1322,10 +1424,11 @@ async function viewToday(view) {
   view.append(next);
 
   // Peeker (Git #3119): "Next" is the one tray section label this app actually has today, so it
-  // gets the day's first peek roll (`b`). Later/Rooms are the spec's other two tray labels
-  // beyond Meds (now wired below) and get the next two (`b+1..b+2` via rollPeekers()), but
-  // neither of those sections exists in this app yet -- there's no tray Later row or Rooms list
-  // to attach them to. Wire those the moment those screens land.
+  // gets the day's first peek roll (`b`). "Later" is the spec's other real label beyond Meds and
+  // Rooms and gets the next roll (`b+1` via rollPeekers()), but that balloon row doesn't exist in
+  // this app yet -- there's no tray Later row to attach it to. Wire that the moment it lands.
+  // Rooms (Git #3165, below) is spec'd with a plain "Label row 32px" of its own, no peeker
+  // described for it the way Next/Later carry one -- so it stays unattached, matching that.
   // Git #3145: a holiday can force a fixed peeker over the daily roll (Halloween's `pkw-ghost`
   // "instead of the cat"), and/or add a hat riding on top of whichever peeker is showing.
   attachPeeker(nextLabel, theme.peeker || rollPeekers()[0]);
@@ -1333,6 +1436,10 @@ async function viewToday(view) {
 
   const medsPill = medsPillSection(data.meds);
   if (medsPill) view.append(medsPill);
+
+  // Rooms -- the house (Git #3165): the real illustrated-house nav replacing the flat tab-bar
+  // links to these 8 rooms (see the trimmed <nav class="tabs"> in index.html).
+  view.append(el("section", { class: "section" }, [el("h2", { text: "Rooms" }), roomsHouseSection(data.rooms || {})]));
 
   if (data.pendingCaptures > 0) {
     view.append(

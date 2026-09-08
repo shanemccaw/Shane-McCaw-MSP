@@ -759,6 +759,60 @@ pre.token {
 .meds-pill-status.pending { color: #fbbf24; }
 .meds-pill-status.done { color: hsl(var(--success)); }
 
+/* Rooms -- the house (Git #3165, README "Rooms -- the house" + "Lamp rules"): roof, a two-column
+   floor grid of 8 real rooms, a lamp lit/dark per room's real state, and a yard. See
+   roomsHouseSection() in app.js and roomsForToday() in api.mjs for the real data behind it. */
+.rooms-house { margin: 0 -6px; }
+.rooms-roof-svg { display: block; width: 100%; height: auto; }
+.rooms-body {
+  margin: 0 8px;
+  background: hsl(var(--card));
+  border: 1.5px solid rgba(148,163,184,.34);
+  border-top: none;
+  border-radius: 0 0 20px 20px;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+}
+.rooms-cell {
+  position: relative;
+  box-sizing: border-box;
+  min-height: 76px;
+  padding: 6px 8px 7px 6px;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  border-right: 1.5px solid rgba(148,163,184,.26);
+  border-bottom: 1.5px solid rgba(148,163,184,.26);
+  text-decoration: none;
+  color: inherit;
+  overflow: hidden;
+}
+.rooms-cell:nth-child(2n) { border-right: none; }
+.rooms-cell:nth-last-child(-n+2) { border-bottom: none; }
+.rooms-furniture { position: absolute; top: 0; left: 0; right: 0; }
+.rooms-furniture svg { display: block; width: 100%; height: 34px; }
+.rooms-lamp { position: absolute; top: 2px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
+.rooms-lamp-cord { width: 1px; height: 6px; background: rgba(148,163,184,.4); }
+.rooms-lamp-bulb { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,.16); }
+.rooms-cell.lit .rooms-lamp-bulb { background: #FDE68A; box-shadow: 0 0 10px 3px rgba(253,224,71,.45); animation: czGlow 4s ease-in-out infinite; }
+.rooms-critter { position: relative; flex-shrink: 0; z-index: 1; line-height: 0; }
+.rooms-cell.dark .rooms-critter svg { opacity: .85; }
+.rooms-z { position: absolute; font-size: 9px; font-weight: 700; color: rgba(226,232,240,.65); left: 30px; top: 10px; animation: czZ 3.6s ease-in infinite; }
+.rooms-z + .rooms-z { left: 36px; top: 4px; animation-delay: 1.2s; }
+.rooms-cell-body { position: relative; z-index: 1; min-width: 0; flex: 1; }
+.rooms-cell-name { font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+.rooms-cell-line { font-size: 12px; color: hsl(var(--muted-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rooms-yard { margin: 30px 22px 0; height: 14px; border-radius: 50%; background: rgba(30,58,138,.6); }
+
+@keyframes czGlow { 0%, 100% { opacity: .75; } 50% { opacity: 1; } }
+@keyframes czZ { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: .8; } 100% { transform: translateY(-14px); opacity: 0; } }
+@keyframes czDrift { 0%, 100% { transform: translateY(0); opacity: .35; } 50% { transform: translateY(-4px); opacity: .85; } }
+@keyframes czFlutter { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+@keyframes czSway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+@keyframes czSwim { 0%, 100% { transform: translateX(0) scaleX(1); } 50% { transform: translateX(6px) scaleX(-1); } }
+@keyframes czCoin { 0%, 10% { transform: translateY(0); opacity: 1; } 55% { transform: translateY(16px); opacity: 1; } 65%, 100% { transform: translateY(16px); opacity: 0; } }
+
 /* A brief, self-dismissing note (see showQuickToast) -- not the design's full Toast+Undo
    overlay (that stays unbuilt, README's own "Overlays" section), just enough to answer a real
    tap without inventing one. */
