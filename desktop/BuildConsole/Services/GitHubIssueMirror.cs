@@ -71,7 +71,21 @@ namespace BuildConsole.Services
         /// ~10s watcher tick while GitHub is down; this backs that off to once per
         /// <see cref="FailedAttemptBackoff"/>.</summary>
         private static DateTime _lastAttemptUtc = DateTime.MinValue;
-        private static readonly TimeSpan FailedAttemptBackoff = TimeSpan.FromSeconds(60);
+
+        /// <summary>Git #3254 — exposed (was private) so the Build Queue panel's countdown display
+        /// can show an honest "Retrying in Xs" during the failed-attempt backoff window instead of a
+        /// misleading full-interval countdown.</summary>
+        public static readonly TimeSpan FailedAttemptBackoff = TimeSpan.FromSeconds(60);
+
+        /// <summary>Git #3254 — true while a sync is genuinely in flight (single-flight guard above).
+        /// Cheap in-memory read; the Build Queue panel's live countdown uses this to show "Syncing…"
+        /// honestly instead of a stale/misleading countdown during an actual sync.</summary>
+        public static bool IsSyncing => Interlocked.CompareExchange(ref _syncing, 0, 0) != 0;
+
+        /// <summary>Git #3254 — UTC time of the last sync ATTEMPT (success or failure), exposed
+        /// in-memory (no DB read) so the countdown display can compute a real "Retrying in Xs" during
+        /// the post-failure backoff window.</summary>
+        public static DateTime LastAttemptUtc => _lastAttemptUtc;
 
         /// <summary>Git #3131 — throttles the "we deliberately skipped this call" observability lines
         /// so the two silent early-returns in <see cref="MaybeSyncAsync"/> leave a trace (a real no-op
