@@ -265,12 +265,48 @@ button:disabled { opacity: 0.5; cursor: default; }
   border-top: 1px solid hsl(var(--border));
 }
 
-.capture-row { display: flex; gap: 0.5rem; align-items: flex-end; max-width: 720px; margin: 0 auto; }
-/* Pill-shaped capture (Git #3144, "the cute skin": pill-shaped capture/buttons, 999px) -- the
-   design's own 50px pill input + circular action buttons, everywhere the capture bar shows. */
-.capture textarea { resize: none; max-height: 8rem; min-height: 50px; border-radius: 999px; padding: 0.75rem 1.1rem; box-shadow: 0 10px 28px rgba(0,0,0,.32); }
-.capture .icon-btn { border-radius: 999px; width: 50px; height: 50px; }
-.capture button.primary.small { border-radius: 999px; }
+/* Capture pill (Git #3275, "Capture bar redrawn"): one 26px-radius pill holds the textarea
+   AND the three 40px round action buttons together -- the textarea itself carries no bg/
+   border/shadow of its own, unlike the earlier Git #3144 "pill input + circular buttons"
+   layout this replaces. */
+.capture-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.3rem;
+  max-width: 720px;
+  margin: 0 auto;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  border-radius: 26px;
+  padding: 5px 5px 5px 16px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.32);
+}
+.capture textarea {
+  flex: 1;
+  resize: none;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 10px 0;
+  min-height: 40px;
+  font-size: 15px;
+  line-height: 1.35;
+  /* Real auto-grow, up to 5 lines before scrolling internally (README "Capture bar redrawn").
+     Where `field-sizing: content` isn't supported, app.js's input-listener sets an explicit
+     inline height instead, capped at the same 5-line max-height below. */
+  field-sizing: content;
+  max-height: 122px; /* 5 lines * 15px * 1.35 line-height + 10px*2 vertical padding */
+  overflow-y: auto;
+}
+.capture .icon-btn { border-radius: 999px; background: transparent; }
+/* Send: accent fill once there's something to send, faint fill while empty. */
+#capture-send.has-text { background: hsl(var(--primary)); }
+#capture-send.has-text svg { stroke: hsl(var(--primary-foreground)); }
+#capture-send:not(.has-text) { background: rgba(255,255,255,.08); }
+/* Mic while recording: accent fill + 4px ring (not the generic destructive-red
+   `.icon-btn[aria-pressed="true"]` rule above, which is for other icon buttons). */
+#capture-voice[aria-pressed="true"] { background: hsl(var(--primary)); box-shadow: 0 0 0 4px hsl(var(--primary) / .35); }
+#capture-voice[aria-pressed="true"] svg { stroke: hsl(var(--primary-foreground)); }
 .capture-status { margin: 0.35rem auto 0; max-width: 720px; font-size: 0.8rem; color: hsl(var(--muted-foreground)); min-height: 1.1em; }
 .attachment { max-width: 720px; margin: 0 auto 0.5rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.85rem; color: hsl(var(--muted-foreground)); }
 
@@ -982,17 +1018,22 @@ pre.token {
 
 .today-fox-row { display: flex; align-items: flex-end; gap: 12px; }
 .today-fox-pebble { position: relative; width: 64px; height: 64px; flex-shrink: 0; }
+/* Git #3275: translucent so the sky (clouds/weather scene behind it) shows through, per
+   README "Fox bubble on Today is translucent". */
 .today-fox-bubble {
   position: relative;
   flex: 1;
   margin-bottom: 2px;
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--card-border));
+  background: rgba(10, 26, 48, 0.38);
+  backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 18px 18px 18px 6px;
   padding: 10px 14px;
   font-size: 15px;
   line-height: 1.35;
-  font-weight: 500;
+  font-weight: 600;
+  color: #F8FAFC;
+  text-shadow: 0 1px 2px rgba(2, 6, 23, 0.55);
 }
 .today-fox-bubble::after {
   content: "";
@@ -1001,9 +1042,10 @@ pre.token {
   bottom: 9px;
   width: 12px;
   height: 12px;
-  background: hsl(var(--card));
-  border-left: 1px solid hsl(var(--card-border));
-  border-bottom: 1px solid hsl(var(--card-border));
+  background: rgba(10, 26, 48, 0.38);
+  backdrop-filter: blur(14px) saturate(1.2);
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
   transform: rotate(45deg);
   border-radius: 0 0 0 3px;
 }

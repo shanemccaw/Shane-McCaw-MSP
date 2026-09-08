@@ -953,16 +953,32 @@ function showEnroll() {
 
 const captureText = $("#capture-text");
 const captureStatus = $("#capture-status");
+const captureSend = $("#capture-send");
+
+// Git #3275: 5 lines at 15px/1.35 line-height + the textarea's own 10px*2 vertical padding --
+// kept in sync with app.css's `.capture textarea { max-height: 122px }`.
+const CAPTURE_TEXTAREA_MAX_HEIGHT = 122;
+// `field-sizing: content` (app.css) auto-grows the textarea itself where supported; this is
+// only the JS fallback README's own "Real auto-grow" bullet calls for on browsers without it.
+const SUPPORTS_FIELD_SIZING = typeof CSS !== "undefined" && CSS.supports?.("field-sizing", "content");
+
+function updateCaptureSendState() {
+  captureSend.classList.toggle("has-text", !!(captureText.value.trim() || state.attachment));
+}
 
 captureText.addEventListener("input", () => {
-  captureText.style.height = "auto";
-  captureText.style.height = Math.min(captureText.scrollHeight, 128) + "px";
+  if (!SUPPORTS_FIELD_SIZING) {
+    captureText.style.height = "auto";
+    captureText.style.height = Math.min(captureText.scrollHeight, CAPTURE_TEXTAREA_MAX_HEIGHT) + "px";
+  }
+  updateCaptureSendState();
 });
 
-// Enter sends, Shift+Enter breaks the line. Capture friction is the core enemy
-// (contract pack Section 2) -- reaching for a button should be optional.
+// Enter inserts a newline (the textarea's own default behavior -- this used to preventDefault
+// and submit on a bare Enter, which is exactly the friction README's "Capture bar redrawn"
+// pass calls out). Only Send or ⌘/Ctrl+Enter submits.
 captureText.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+  if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.isComposing) {
     event.preventDefault();
     $("#capture").requestSubmit();
   }
@@ -972,6 +988,7 @@ function setAttachment(attachment) {
   state.attachment = attachment;
   $("#capture-attachment").hidden = !attachment;
   if (attachment) $("#capture-attachment-label").textContent = attachment.label;
+  updateCaptureSendState();
 }
 
 $("#capture-attachment-clear").addEventListener("click", () => setAttachment(null));
@@ -1042,9 +1059,12 @@ $("#capture-voice").addEventListener("click", async () => {
 
 $("#capture").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const text = captureText.value.trim();
-  if (!text && !state.attachment) return;
-  const send = $("#capture-send");
+  // Git #3275: a multi-line capture (the textarea now auto-grows to 5 lines instead of
+  // submitting on Enter) is filed ONE LINE AT A TIME, each through the normal capture
+  // grammar independently, then a single "N lines, each filed on its own" toast.
+  const lines = captureText.value.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (!lines.length && !state.attachment) return;
+  const send = captureSend;
   send.disabled = true;
   captureStatus.textContent = "Saving…";
   try {
@@ -1053,10 +1073,17 @@ $("#capture").addEventListener("submit", async (event) => {
     // to the run and saves a stated "<item> aisle <n> <note>" directly onto that item's aisle
     // memory, rather than the generic /api/captures triage a bare statement gets everywhere
     // else (which only ever surfaces on Inbox/Today, not live in the room that said it).
-    if (state.route === "shopping" && text && !state.attachment) {
-      await submitShoppingCapture(text);
+    if (state.route === "shopping" && lines.length && !state.attachment) {
+      for (const line of lines) await submitShoppingCapture(line);
       captureText.value = "";
       captureText.style.height = "auto";
+      updateCaptureSendState();
+      if (lines.length > 1) {
+        captureStatus.textContent = `${lines.length} lines, each filed on its own.`;
+        setTimeout(() => (captureStatus.textContent = ""), 1800);
+      } else {
+        captureStatus.textContent = "";
+      }
       return;
     }
 
@@ -1064,21 +1091,26 @@ $("#capture").addEventListener("submit", async (event) => {
     // never an in-app form). Git #3159: this is what lets "remember this as Home" carry real
     // coordinates without a dedicated location field anywhere in this UI.
     const position = await getRealPosition();
-    await api("/api/captures", {
-      method: "POST",
-      body: JSON.stringify({
-        text: text || null,
-        mediaId: state.attachment?.mediaId ?? null,
-        kind: state.attachment?.kind || "text",
-        latitude: position?.latitude ?? null,
-        longitude: position?.longitude ?? null,
-      }),
-    });
+    const linesToFile = lines.length ? lines : [""];
+    for (let i = 0; i < linesToFile.length; i++) {
+      // The attachment (if any) rides only on the first line -- a multi-line capture with a
+      // photo/voice note attached shouldn't re-attach the same media to every filed line.
+      await api("/api/captures", {
+        method: "POST",
+        body: JSON.stringify({
+          text: linesToFile[i] || null,
+          mediaId: i === 0 ? state.attachment?.mediaId ?? null : null,
+          kind: i === 0 ? state.attachment?.kind || "text" : "text",
+          latitude: position?.latitude ?? null,
+          longitude: position?.longitude ?? null,
+        }),
+      });
+    }
     captureText.value = "";
     captureText.style.height = "auto";
     setAttachment(null);
     // Trust stated facts immediately (Section 8) -- it is saved, no confirmation dialog.
-    captureStatus.textContent = "Got it.";
+    captureStatus.textContent = lines.length > 1 ? `${lines.length} lines, each filed on its own.` : "Got it.";
     setTimeout(() => (captureStatus.textContent = ""), 1800);
     await loadMe();
     if (state.route === "inbox" || state.route === "today") render();
