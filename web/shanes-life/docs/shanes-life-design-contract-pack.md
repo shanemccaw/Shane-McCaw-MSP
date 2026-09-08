@@ -178,8 +178,15 @@ placeholder copy — use them as given, don't paraphrase.
   moments — swipe-based).
 - **Medication system**: batched by time-of-day, single swipe to complete, split into
   auto-refill and manual-watch tiers.
-- **Money triage view — explicitly NOT a budget app.** Three neutral buckets: Protected /
-  Urgent / Already Handled. No categories, no charts, no monthly totals.
+- **Real correction, confirmed 2026-09-08 — this IS budgeting, by bucket, and saying
+  otherwise was inaccurate.** Moving money from Direct Deposit into separate real bill/
+  category accounts is literally envelope-style budgeting — that mechanism is the real
+  system, not a side effect of it. What's actually true, and what the original "not a
+  budget app" line was reaching for: the **triage view** avoids traditional budget-app
+  trappings — no spending-category charts, no monthly totals, no pie charts, no trend
+  graphs for their own sake. Three neutral buckets only: Protected / Urgent / Already
+  Handled. Don't describe this app as "not budgeting" to Design or in future docs — it
+  is; it just doesn't look or feel like a typical budgeting app's UI.
 - **Real "available to spend" + "what if I spend $X" check, confirmed 2026-09-05, meant to
   work from Claude mobile while Shane is out.** Given Section 1's real architecture
   pivot, this isn't a second system reading someone else's data — the real financial data
