@@ -3929,28 +3929,13 @@ async function viewMoneyCars(view) {
   const { vehicles } = await api("/api/cars");
 
   if (vehicles.length === 0) {
-    view.append(empty("No vehicles on file yet.", "Add one below, or ask Claude to add one for you.", "idle"));
+    view.append(empty("No vehicles on file yet.", "Say the name below, e.g. \"add my Kia Forte\", and Claude adds it.", "idle"));
   } else {
     view.append(el("section", { class: "section" }, vehicles.map(carCard)));
   }
 
-  const nameInput = el("input", { placeholder: "Vehicle name, e.g. Tesla Model 3", "aria-label": "Vehicle name" });
-  const addForm = el("form", { class: "section" }, [
-    el("div", { class: "row" }, [nameInput, el("button", { class: "primary small", type: "submit", text: "Add vehicle" })]),
-  ]);
-  addForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = nameInput.value.trim();
-    if (!name) return;
-    addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
-    try {
-      await api("/api/cars", { method: "POST", body: JSON.stringify({ name }) });
-      render();
-    } finally {
-      addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
-    }
-  });
-  view.append(el("div", { class: "card" }, [addForm]));
+  // Git #3182: no dedicated add-vehicle form -- "add my Kia Forte" typed into the universal
+  // capture box below routes through set_vehicle, same as every other real action in this app.
 
   // "Money Bills and Cars -> bear" per the critter spec's room-watermark map (moneyhdr slot).
   attachRoomWatermark(view, "moneyhdr");
@@ -3967,17 +3952,11 @@ async function viewCarDetail(view, vehicleId) {
         el("div", { class: "small muted", text: `${vehicle.allInPerYearFormatted}/yr all-in` }),
         el("div", { class: "row", style: "margin-top:.75rem" }, [
           el("a", { class: "ghost small", href: "#/money", text: "← Money" }),
-          el("button", {
-            class: "small ghost danger",
-            text: "Delete vehicle",
-            onClick: async (event) => {
-              if (!confirm(`Delete ${vehicle.name}? This removes its maintenance history too.`)) return;
-              event.currentTarget.disabled = true;
-              await api(`/api/cars/${vehicleId}`, { method: "DELETE" });
-              location.hash = "#/money";
-            },
-          }),
         ]),
+        // Git #3182: no dedicated delete button -- "remove the {vehicle.name}" typed into the
+        // universal capture box below routes through delete_vehicle, and removes its maintenance
+        // history along with it, same as the form used to.
+        el("p", { class: "muted small", style: "margin:.5rem 0 0", text: `Say "remove the ${vehicle.name}" below to delete it.` }),
       ]),
     ]),
   );
@@ -4031,30 +4010,11 @@ async function viewCarDetail(view, vehicleId) {
     );
   }
 
-  const descInput = el("input", { placeholder: "What was done, e.g. Oil change", "aria-label": "Maintenance description" });
-  const amountInput = el("input", { type: "number", step: "0.01", inputmode: "decimal", placeholder: "Amount", "aria-label": "Maintenance amount" });
-  const mileageInput = el("input", { type: "number", inputmode: "numeric", placeholder: "Mileage (optional)", "aria-label": "Mileage" });
+  // Git #3182: no dedicated maintenance-logging form -- "oil change on the {vehicle.name}, $60"
+  // typed into the universal capture box below routes through log_car_maintenance, same as the
+  // form used to.
   mCard.append(
-    el("div", { class: "row", style: "margin-top:.6rem" }, [
-      descInput,
-      amountInput,
-      mileageInput,
-      el("button", {
-        class: "small",
-        text: "Log",
-        onClick: async (event) => {
-          const description = descInput.value.trim();
-          const amount = amountInput.value;
-          if (!description || !amount) return;
-          event.currentTarget.disabled = true;
-          await api(`/api/cars/${vehicleId}/maintenance`, {
-            method: "POST",
-            body: JSON.stringify({ description, amount, mileage: mileageInput.value || null }),
-          });
-          await render();
-        },
-      }),
-    ]),
+    el("p", { class: "muted small", style: "margin-top:.6rem", text: `Say what was done below, e.g. "oil change on the ${vehicle.name}, $60".` }),
   );
   maint.append(mCard);
   view.append(maint);

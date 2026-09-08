@@ -1443,6 +1443,76 @@ export const TOOLS = [
     },
   },
 
+  {
+    name: "set_vehicle",
+    title: "Create or update a real vehicle",
+    description:
+      "The capture-grammar entry point for 'add my Kia Forte' (create) or 'the Tesla's insurance is $180 a month now' (update) -- Git #3182 replaces the Cars tab's own dedicated add-vehicle form with this. Create a new real vehicle, or update an existing one by passing its id (call get_cars first to find it -- same pattern as set_pet/set_debt). loanBillId links a real bill account so its own payment/due-day math feeds the all-in total get_cars returns; pass null to unlink.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Omit to create a new vehicle; pass an existing id to update it." },
+        name: { type: "string", description: "e.g. 'Tesla Model 3'. Required on create." },
+        loanBillId: { type: "string", description: "A real account id from the linked loan bill, if this vehicle is financed. Pass null to unlink." },
+        insuranceAmount: { type: "number", description: "Real dollars per month." },
+        registrationDue: { type: "string", description: "ISO date registration is next due." },
+        registrationAmount: { type: "number", description: "Real dollars per year." },
+        maintenanceIntervalMiles: { type: "integer", description: "Real recurring maintenance interval, in miles, if there is one." },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const { id, ...fields } = args;
+      const row = id ? await vehicles.updateVehicle(ctx.user.id, id, fields) : await vehicles.createVehicle(ctx.user.id, fields);
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: id ? "vehicle.update" : "vehicle.create",
+        entityId: row.id,
+        detail: { name: row.name },
+      });
+      return row;
+    },
+  },
+
+  {
+    name: "delete_vehicle",
+    title: "Delete a real vehicle",
+    description:
+      "The capture-grammar entry point for 'remove the Tesla' / 'sold the Kia, take it off' -- Git #3182 replaces the Cars tab's own dedicated delete button with this. Removes the real vehicle row and its maintenance history entirely. `vehicle` matches by name (case-insensitive, prefix or substring -- same resolution as log_car_maintenance's own matching); call get_cars first if unsure of the exact name.",
+    inputSchema: {
+      type: "object",
+      properties: { vehicle: { type: "string", description: "The vehicle's name, e.g. 'Kia' or 'Tesla Model 3'." } },
+      required: ["vehicle"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const all = await vehicles.listVehicles(ctx.user.id);
+      const needle = String(args.vehicle ?? "").trim().toLowerCase();
+      const tiers = [
+        all.filter((v) => v.name.toLowerCase() === needle),
+        all.filter((v) => v.name.toLowerCase().startsWith(needle)),
+        all.filter((v) => v.name.toLowerCase().includes(needle)),
+      ];
+      let match = null;
+      for (const tier of tiers) {
+        if (tier.length === 1) {
+          match = tier[0];
+          break;
+        }
+        if (tier.length > 1) {
+          throw new Error(`"${args.vehicle}" matches ${tier.map((v) => v.name).join(", ")} -- say which one.`);
+        }
+      }
+      if (!match) throw new Error(`There is no vehicle called "${args.vehicle}". Call get_cars to see real vehicle names.`);
+
+      await vehicles.deleteVehicle(ctx.user.id, match.id);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "vehicle.delete", entityId: match.id, detail: { name: match.name } });
+      return { id: match.id, name: match.name, deleted: true };
+    },
+  },
+
   // -- Wins (Git #3151) -------------------------------------------------------
   //
   // The design README's own tool list names this `log_win(text)`. It is the Claude-conversation
