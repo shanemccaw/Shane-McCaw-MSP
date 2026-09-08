@@ -4074,12 +4074,19 @@ async function vaultCopy(text, message, clearSeconds) {
  * anyway, and making it cost a passkey assertion would spend the assertion on the wrong half
  * while training the habit that assertions are cheap. The password stays behind the mask.
  */
-function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds }) {
+function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds, onChanged }) {
   const isLogin = entry.kind === "login";
   const secretBox = el("div", { class: "vault-secret" });
   const maskEl = el("div", { class: "vault-masked", text: entry.masked });
   const revealBtn = el("button", { type: "button", class: "vault-reveal-btn", text: "Reveal" });
   const errorEl = el("div", { class: "vault-row-error", hidden: true });
+
+  // Git #3248: edit and delete onto the same PATCH/DELETE /api/vault/:id that #3150 already
+  // shipped and tested -- the room could create and reveal an entry but never fix or remove one,
+  // so a wrong entry (rotated password, moved username, closed account) stayed wrong forever.
+  const editBtn = el("button", { type: "button", class: "vault-copy-btn ghostish", text: "Edit" });
+  const deleteBtn = el("button", { type: "button", class: "vault-copy-btn ghostish danger", text: "Delete" });
+  const editForm = el("div", { class: "vault-edit-form", hidden: true });
 
   // The real username line, with its own copy — the whole daily point of a password manager
   // without autofill is that neither half has to be retyped from a screenshot.
@@ -4118,12 +4125,13 @@ function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds }) {
         entry.billAccountName ? el("div", { class: "vault-row-site", text: `for ${entry.billAccountName}` }) : null,
         ageEl,
       ]),
-      revealBtn,
+      el("div", { class: "vault-row-actions" }, [editBtn, deleteBtn, revealBtn]),
     ]),
     usernameRow,
     maskEl,
     secretBox,
     errorEl,
+    editForm,
   ]);
 
   function showMasked() {
@@ -4196,6 +4204,112 @@ function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds }) {
     } finally {
       overlay.remove();
       revealBtn.disabled = false;
+    }
+  });
+
+  // Real edit -- prefilled from the masked entry the room already has, never a re-reveal. The
+  // whole point (see this function's own header) is that fixing a label or rotating a password
+  // must not cost re-typing the password just to change what's around it: `secret` is only sent
+  // if the "New password" field is actually filled in, and `updateEntry` leaves the ciphertext
+  // (and secret_updated_at) alone when it's omitted.
+  function openEdit() {
+    errorEl.hidden = true;
+    const labelInput = el("input", { "aria-label": "What this is for", value: entry.label, required: true });
+    const siteInput = el("input", { "aria-label": "Site", value: entry.site || "" });
+    const usernameInput = isLogin
+      ? el("input", { autocomplete: "off", "aria-label": "Username", value: entry.username || "" })
+      : null;
+    const maskedInput = !isLogin
+      ? el("input", { "aria-label": "Masked hint shown by default", value: entry.masked || "" })
+      : null;
+    const secretInput = el("input", {
+      type: "password",
+      autocomplete: "new-password",
+      "aria-label": isLogin ? "New password (leave blank to keep the current one)" : "New account number (leave blank to keep the current one)",
+      placeholder: isLogin ? "New password — leave blank to keep the current one" : "New account number — leave blank to keep the current one",
+    });
+    const generateBtn = isLogin ? el("button", { type: "button", class: "ghost small", text: "Generate" }) : null;
+    generateBtn?.addEventListener("click", () => {
+      secretInput.type = "text";
+      secretInput.value = generatePassword();
+      secretInput.focus();
+    });
+    const editError = el("p", { class: "vault-row-error", hidden: true });
+    const saveBtn = el("button", { type: "submit", class: "primary small", text: "Save" });
+    const cancelBtn = el("button", { type: "button", class: "ghost small", text: "Cancel" });
+
+    const form = el("form", { class: "vault-edit-fields" }, [
+      el("div", { class: "row" }, [labelInput, siteInput]),
+      usernameInput ? el("div", { class: "row" }, [usernameInput]) : null,
+      maskedInput ? el("div", { class: "row" }, [maskedInput]) : null,
+      el("div", { class: "row" }, [secretInput, generateBtn]),
+      editError,
+      el("div", { class: "vault-edit-actions" }, [saveBtn, cancelBtn]),
+    ]);
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const cleanLabel = labelInput.value.trim();
+      if (!cleanLabel) return;
+      editError.hidden = true;
+      const controls = form.querySelectorAll("input,button,textarea");
+      controls.forEach((n) => (n.disabled = true));
+      const patch = {};
+      if (cleanLabel !== entry.label) patch.label = cleanLabel;
+      if (siteInput.value.trim() !== (entry.site || "")) patch.site = siteInput.value.trim();
+      if (usernameInput && usernameInput.value.trim() !== (entry.username || "")) {
+        patch.username = usernameInput.value.trim();
+      }
+      if (maskedInput && maskedInput.value.trim() !== (entry.masked || "")) patch.masked = maskedInput.value.trim();
+      if (secretInput.value.trim()) patch.secret = secretInput.value.trim();
+      try {
+        await api(`/api/vault/${entry.id}`, { method: "PATCH", body: JSON.stringify(patch) });
+        await onChanged();
+      } catch (err) {
+        editError.textContent = err?.message || "That did not save.";
+        editError.hidden = false;
+        controls.forEach((n) => (n.disabled = false));
+      }
+    });
+
+    cancelBtn.addEventListener("click", () => closeEdit());
+
+    editForm.replaceChildren(form);
+    editForm.hidden = false;
+    maskEl.hidden = true;
+    secretBox.replaceChildren();
+    revealBtn.hidden = true;
+    editBtn.hidden = true;
+    deleteBtn.hidden = true;
+    labelInput.focus();
+  }
+
+  function closeEdit() {
+    editForm.hidden = true;
+    editForm.replaceChildren();
+    editBtn.hidden = false;
+    deleteBtn.hidden = false;
+    showMasked();
+  }
+
+  editBtn.addEventListener("click", openEdit);
+
+  // Delete is irreversible and takes the reveal history with it (ON DELETE CASCADE) -- a real
+  // confirm step, same idiom this app already uses for other irreversible deletes (e.g. removing
+  // a pet's care record), not a bare button one misclick away.
+  deleteBtn.addEventListener("click", async () => {
+    if (!confirm(`Delete "${entry.label}"? This can't be undone.`)) return;
+    errorEl.hidden = true;
+    deleteBtn.disabled = true;
+    editBtn.disabled = true;
+    try {
+      await api(`/api/vault/${entry.id}`, { method: "DELETE" });
+      await onChanged();
+    } catch (err) {
+      errorEl.textContent = err?.message || "That did not delete.";
+      errorEl.hidden = false;
+      deleteBtn.disabled = false;
+      editBtn.disabled = false;
     }
   });
 
@@ -4461,7 +4575,7 @@ async function viewMoneyVault(view) {
 
     const card = el("div", { class: "vault-card" });
     for (const entry of entries) {
-      card.append(vaultRow(entry, { onReveal: reveal, onCopy: copy, clipboardClearSeconds }));
+      card.append(vaultRow(entry, { onReveal: reveal, onCopy: copy, clipboardClearSeconds, onChanged: refresh }));
     }
     list.replaceChildren(card);
   }
