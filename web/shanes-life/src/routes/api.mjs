@@ -21,15 +21,18 @@ import * as media from "../core/media.mjs";
 import * as money from "../core/money.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as medications from "../core/medications.mjs";
+import * as nudges from "../core/nudges.mjs";
 import * as people from "../core/people.mjs";
 import * as pets from "../core/pets.mjs";
 import * as places from "../core/places.mjs";
+import * as pushSubscriptions from "../core/push-subscriptions.mjs";
 import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
 import * as scan from "../core/scan.mjs";
 import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
 import * as vault from "../core/vault.mjs";
+import * as webpush from "../push/webpush.mjs";
 import * as things from "../core/things.mjs";
 import * as wins from "../core/wins.mjs";
 import { orderItems } from "../core/shopping-order.mjs";
@@ -1731,6 +1734,78 @@ export function buildApiRouter() {
     await mcpTokens.revokeMcpToken(user.id, params.id);
     await audit.record({ userId: user.id, actor: "web", action: "mcp_token.revoke", detail: { tokenId: params.id } });
     return sendJson(res, 200, { ok: true });
+  });
+
+  // -- push subscriptions + real act-on-notification (Git #3160) ---------
+
+  router.get("/api/push/vapid-public-key", async (_req, res, _params, ctx) => {
+    requireUser(ctx);
+    const publicKey = pushSubscriptions.isConfigured() ? webpush.vapidPublicKey() : null;
+    return sendJson(res, 200, { publicKey });
+  });
+
+  router.post("/api/push/subscribe", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    if (!body.endpoint) throw badRequest("endpoint is required");
+    const row = await pushSubscriptions.saveSubscription(user.id, {
+      endpoint: body.endpoint,
+      keys: body.keys || {},
+      userAgent: req.headers["user-agent"] || null,
+    });
+    await audit.record({ userId: user.id, actor: "web", action: "push.subscribe", detail: { subscriptionId: row.id } });
+    return sendJson(res, 201, { ok: true, id: row.id });
+  });
+
+  router.post("/api/push/unsubscribe", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    if (!body.endpoint) throw badRequest("endpoint is required");
+    await pushSubscriptions.removeSubscription(user.id, body.endpoint);
+    await audit.record({ userId: user.id, actor: "web", action: "push.unsubscribe", detail: {} });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  router.get("/api/nudges", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, {
+      cap: await nudges.todayCapStatus(user.id),
+      nudges: await nudges.listToday(user.id),
+    });
+  });
+
+  /**
+   * The real act-on-notification endpoint (Section 10's "mark done, snooze, dismiss").
+   *
+   * This is what BOTH paths call: a service worker's background fetch on a slide-down action
+   * button (no app open -- the real zero-tap case) and the in-app fallback UI, if the tray ever
+   * surfaces a nudge with its own action buttons. Same effect either way -- there is exactly one
+   * real place a nudge action happens.
+   */
+  router.post("/api/nudges/:id/action", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const action = body.action;
+    if (!["done", "snooze", "dismiss"].includes(action)) {
+      throw badRequest('action must be one of "done", "snooze", "dismiss"');
+    }
+    const event = await nudges.getNudgeEvent(user.id, params.id);
+    if (!event) throw notFound("Nudge not found");
+
+    // "Done" performs the real underlying effect the nudge was actually about -- marking a
+    // notification done with nothing behind it would be exactly the fabricated-completion-state
+    // failure this app's own design rules out elsewhere.
+    if (action === "done") {
+      if (event.kind === "appointment" && event.payload?.dateId) {
+        await dates.updateDate(user.id, event.payload.dateId, { done: true });
+      } else if (event.kind === "vaccine" && event.payload?.petId && event.payload?.vaccineId) {
+        await pets.markVaccineGiven(user.id, event.payload.petId, event.payload.vaccineId, {});
+      }
+    }
+
+    const updated = await nudges.setNudgeAction(user.id, params.id, action);
+    await audit.record({ userId: user.id, actor: "web", action: `nudge.${action}`, detail: { nudgeId: params.id, kind: event.kind } });
+    return sendJson(res, 200, updated);
   });
 
   // Guard against a route ever being added that expects a signed-in user but forgets to say so.

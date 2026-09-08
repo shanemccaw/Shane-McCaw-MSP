@@ -34,6 +34,7 @@ Every decision below traces to a section of it, and the section is cited in the 
 | Recipes: Sunday meal-planning ritual + Today surfacing (§5) | `src/core/meal-plan.mjs`, `meal_plan_entries` table (migration 026), `GET/DELETE /api/meal-plan`, `GET /api/today` (`mealNudges`/`tonight`), `public/app.js` Today "Tonight" card + `#/recipes` "This week's plan", MCP `push_meal_plan`/`get_meal_plan` (#3127) |
 | Recipes: Tonight -- multi-dish synchronized cooking, live status/countdowns, start + done alarms, per-dish snooze (Shanes Life 05) | `recipes.cook_minutes` (migration 028), MCP `push_recipes` `cookMinutes`, `public/app.js` `#/tonight` (`mealSession`, `mealDishState`, `renderMealAlarmOverlay`) -- client-only session, deliberately not persisted; takes priority over #3127's own Today "Tonight" card while a live session is running (#3126) |
 | People & Patterns: private per-person journal, deliberately dumb word/timing/topic patterns, real search/ask, therapist export (§7, Shanes Life 11) | `src/core/people.mjs`, `people`/`person_entries` tables (migration 035), `GET/POST /api/people`, `GET/POST/DELETE /api/people/:id/...`, `public/app.js` `#/people` + `#/person/:id`, MCP `list_people`/`log_person_note`/`get_person_notes` (#3157) |
+| Enhanced alerts: real Web Push sending + act-on-notification (mark done/snooze/dismiss) (§10) | `src/push/webpush.mjs` (hand-rolled RFC 8291/8292, no dependency added), `src/core/push-subscriptions.mjs`, `push_subscriptions` table (migration 036), `POST /api/push/subscribe`\`/unsubscribe\`, `GET /api/push/vapid-public-key`, `POST /api/nudges/:id/action`, `public/sw.js` (`push`/`notificationclick`), `public/app.js` Settings "Notifications" -- real action buttons work on Chrome/Android; Safari/iOS does not honor custom action buttons on either push mechanism (confirmed, not assumed -- see §10), so it degrades to the design's own stated fallback: tap opens the app to the item (#3160) |
 
 ---
 
@@ -260,6 +261,7 @@ account, and per `CLAUDE.md` an agent does not perform a hosting deploy.
    | `PGSSLMODE` | `require` |
    | `NODE_ENV` | `production` |
    | `SL_VAULT_KEY` | 32 random bytes, base64 — see `.env.example` |
+   | `SL_VAPID_PUBLIC_KEY` / `SL_VAPID_PRIVATE_KEY` | `node bin/generate-vapid-keys.mjs`, once — see `.env.example` |
 
    `PUBLIC_ORIGIN` is load-bearing twice over: it is what share links and the MCP endpoint are
    built from, **and** its hostname is the WebAuthn Relying Party ID. A passkey enrolled against
@@ -276,7 +278,10 @@ account, and per `CLAUDE.md` an agent does not perform a hosting deploy.
    no public sign-up route, by design.
 6. **Add it to the Home Screen** — Safari → Share → Add to Home Screen. HTTPS, the manifest and
    the service worker are all already in place, which is what iOS requires before it will grant
-   web push (§10).
+   web push (§10). Once added, open Settings inside the app and "Turn on notifications" to
+   actually subscribe this device — real day-before appointment/vaccine nudges arrive as real OS
+   push after that, with mark done/snooze/dismiss where the platform honors action buttons (Git
+   #3160; §10 documents the real, confirmed gap on Safari specifically).
 7. **Verify the live deployment:**
    ```bash
    SL_CHECK_URL=https://<host> npm run check

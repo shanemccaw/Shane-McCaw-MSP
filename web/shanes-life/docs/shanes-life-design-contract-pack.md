@@ -574,6 +574,26 @@ specifically. Real fallback if full parity isn't achievable: tapping a notificat
 the app directly to the relevant item, which is still fast, just not zero-tap. Needs real
 verification during build, not assumed either way.
 
+**Real, resolved, 2026-09-08 (Git #3160) — the uncertainty flagged above is now checked, not
+assumed.** Real web sources (Apple Developer Forums thread confirming direct testing, WebKit's
+own blog) agree: the traditional service-worker `showNotification({ actions: [...] })` array is
+NOT honored on iOS/iPadOS Safari today -- only a default "View" action ever shows; custom action
+buttons are silently dropped. Safari's newer Declarative Web Push (iOS/iPadOS 18.4+, Safari
+18.5+, no service worker required) adds a real `actions` concept, but each action is a
+**navigate-to-URL**, not a background action -- selecting one opens the app to that URL, it does
+not run code invisibly the way a native `UNNotificationCategory` action or an Android/Chrome
+push action does. **Real conclusion: true zero-tap act-on-notification (mark done/snooze/dismiss
+with the app never opening) is not achievable on Safari/iOS as of this session, on either the
+old or new push mechanism.** This build (#3160) still implements the full real `actions` +
+background-fetch `notificationclick` code path in `public/sw.js` -- it is real, correct code
+that fully works today on Chrome/Android (which does honor the `actions` array and fire
+`event.action` without opening a window) -- and it degrades safely on Safari to exactly the
+fallback this section already named: tapping the notification (there is no custom button to tap
+separately) opens the app straight to the relevant item. No physical iPhone was available to
+this build session to confirm empirically; the above is web-sourced, not device-tested -- a real
+device check is still worth doing when one is available, but the documented behavior is
+consistent enough across independent sources to build against with confidence.
+
 **Real correction, confirmed 2026-09-05: Expo Go doesn't win this one by being "a real
 native app."** Checked directly — there's a long, well-documented history (spanning Expo
 SDK 39 through SDK 49, across several years) of developers reporting that interactive
