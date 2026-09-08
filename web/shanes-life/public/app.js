@@ -7878,6 +7878,8 @@ async function viewSettings(view) {
   );
   view.append(widget);
 
+  await renderTeslaSettings(view);
+
   const { activity } = await api("/api/activity?limit=25");
   const log = el("section", { class: "section" }, [
     el("h2", { text: "Recent activity" }),
@@ -7896,6 +7898,172 @@ async function viewSettings(view) {
     }
   }
   view.append(log);
+}
+
+// Tesla (Git #3158): the real OAuth connection + vehicle pick + the webhook tokens that back the
+// "Heading Out" checklist's real climate-preconditioning trigger. Connecting is a real top-level
+// navigation (a plain <a href="/auth/tesla/start">), not a fetch -- Tesla's own authorize page is
+// a whole separate site the browser has to actually visit, the same reason Plaid's Link SDK
+// exists as client-side redirect handling rather than something `api()` could do.
+async function renderTeslaSettings(view) {
+  const status = await api("/api/tesla/status");
+  const section = el("section", { class: "section" }, [
+    el("h2", { text: "Tesla" }),
+    el("p", { class: "muted small", text: "Powers the real \"Heading out\" nudge, triggered by climate preconditioning starting -- not a scheduled time." }),
+  ]);
+
+  if (!status.configured) {
+    section.append(el("p", { class: "muted small", text: "Not configured on this server." }));
+    view.append(section);
+    return;
+  }
+
+  if (!status.connected) {
+    section.append(
+      el("div", { class: "card" }, [
+        pillButton("a", { href: "/auth/tesla/start" }, "Connect Tesla", "primary"),
+      ]),
+    );
+    view.append(section);
+    return;
+  }
+
+  const vehicleCard = el("div", { class: "card" });
+  if (status.vehicleId) {
+    vehicleCard.append(
+      el("div", { class: "title", text: status.vehicleDisplayName || "Vehicle connected" }),
+      el("div", { class: "meta", text: `Connected ${agoShort(status.connectedAt)}` }),
+    );
+    const climateOut = el("div", { class: "meta", style: "margin-top:.5rem" });
+    vehicleCard.append(
+      el("div", { class: "row", style: "margin-top:.6rem" }, [
+        el("button", {
+          class: "ghost small",
+          text: "Check climate now",
+          onClick: async (event) => {
+            event.target.disabled = true;
+            try {
+              const climate = await api("/api/tesla/climate");
+              climateOut.textContent = climate.isPreconditioning
+                ? "Preconditioning now"
+                : climate.isClimateOn
+                  ? "Climate on"
+                  : "Climate off";
+            } catch (err) {
+              climateOut.textContent = err.message;
+            } finally {
+              event.target.disabled = false;
+            }
+          },
+        }),
+        el("button", {
+          class: "ghost small danger",
+          text: "Disconnect",
+          onClick: async (event) => {
+            event.target.disabled = true;
+            await api("/api/tesla/disconnect", { method: "POST" });
+            render();
+          },
+        }),
+      ]),
+      climateOut,
+    );
+  } else {
+    // Connected to Tesla but no real vehicle chosen yet -- the account can hold more than one.
+    const picker = el("div", { class: "muted small", text: "Loading vehicles…" });
+    vehicleCard.append(el("div", { class: "title", text: "Connected -- pick a vehicle" }), picker);
+    api("/api/tesla/vehicles")
+      .then(({ vehicles }) => {
+        if (vehicles.length === 0) {
+          picker.textContent = "No vehicles found on this Tesla account.";
+          return;
+        }
+        picker.replaceChildren(
+          ...vehicles.map((v) =>
+            el("div", { class: "row", style: "margin-top:.4rem" }, [
+              el("button", {
+                class: "ghost small",
+                text: v.displayName || v.vin,
+                onClick: async (event) => {
+                  event.target.disabled = true;
+                  await api("/api/tesla/vehicles/select", {
+                    method: "POST",
+                    body: JSON.stringify({ vehicleId: v.id, vin: v.vin, displayName: v.displayName }),
+                  });
+                  render();
+                },
+              }),
+            ]),
+          ),
+        );
+      })
+      .catch((err) => {
+        picker.textContent = err.message;
+      });
+  }
+  section.append(vehicleCard);
+
+  // The real webhook tokens -- same shape/discipline as MCP and widget tokens above: a
+  // high-entropy value shown exactly once, only its SHA-256 kept.
+  const { tokens: hookTokens } = await api("/api/tesla/hook-tokens");
+  section.append(
+    el("p", { class: "muted small", style: "margin-top:.75rem", text: "A webhook link an external automation (iOS Shortcuts, IFTTT, Home Assistant) posts to when it observes real climate preconditioning start." }),
+  );
+  for (const token of hookTokens.filter((t) => !t.revoked_at)) {
+    section.append(
+      el("div", { class: "card" }, [
+        el("div", { class: "spread" }, [
+          el("div", {}, [
+            el("div", { class: "title", text: token.label }),
+            el("div", { class: "meta", text: token.last_used_at ? `last used ${agoShort(token.last_used_at)}` : "never used" }),
+          ]),
+          el("button", {
+            class: "ghost small danger",
+            text: "Revoke",
+            onClick: async (event) => {
+              event.target.disabled = true;
+              await api(`/api/tesla/hook-tokens/${token.id}`, { method: "DELETE" });
+              render();
+            },
+          }),
+        ]),
+      ]),
+    );
+  }
+
+  const hookNameInput = el("input", { placeholder: "Name this trigger, e.g. Shortcuts automation", "aria-label": "Webhook label" });
+  const hookIssued = el("div");
+  section.append(
+    el("div", { class: "card" }, [
+      hookNameInput,
+      el("div", { class: "row", style: "margin-top:.6rem" }, [
+        el("button", {
+          class: "primary small",
+          text: "Create webhook link",
+          onClick: async (event) => {
+            event.target.disabled = true;
+            try {
+              const issued = await api("/api/tesla/hook-tokens", {
+                method: "POST",
+                body: JSON.stringify({ label: hookNameInput.value.trim() }),
+              });
+              hookIssued.replaceChildren(
+                el("p", { class: "small ok", text: "Shown once. Copy it now." }),
+                el("pre", { class: "token", text: issued.hookUrl }),
+              );
+              hookNameInput.value = "";
+            } catch (err) {
+              hookIssued.replaceChildren(el("p", { class: "small error", text: err.message }));
+            } finally {
+              event.target.disabled = false;
+            }
+          },
+        }),
+      ]),
+      hookIssued,
+    ]),
+  );
+  view.append(section);
 }
 
 // The real, per-client tool-call summary Recent activity shows (Git #3214: "Claude Desktop ·

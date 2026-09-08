@@ -16,6 +16,7 @@ import { buildApiRouter } from "./routes/api.mjs";
 import { buildPublicRouter } from "./routes/public.mjs";
 import { buildWidgetRouter } from "./routes/widget.mjs";
 import { handlePlaidWebhook } from "./routes/plaid-webhook.mjs";
+import { handleTeslaHook, serveTeslaPublicKey } from "./routes/tesla.mjs";
 import * as plaid from "./core/plaid.mjs";
 import { describeMcpEndpoint, handleMcpRequest } from "./routes/mcp.mjs";
 import { runDetectors as runCatchDetectors } from "./core/catches.mjs";
@@ -88,6 +89,29 @@ async function handle(req, res) {
       return res.end();
     }
     return handlePlaidWebhook(req, res, { ip: clientIp(req) || "unknown", log: (m) => log(m) });
+  }
+
+  // ---- Tesla webhook: authenticated by its own bearer token in the path, never by the session
+  // cookie -- the external trigger (Shortcuts, IFTTT, Home Assistant) posting here is not a
+  // browser and holds no session. Same shape as /widget/t/:token. See src/routes/tesla.mjs.
+  if (pathname.startsWith("/hooks/tesla/")) {
+    if (method !== "POST") {
+      res.writeHead(405, { allow: "POST" });
+      return res.end();
+    }
+    const token = decodeURIComponent(pathname.slice("/hooks/tesla/".length));
+    return handleTeslaHook(req, res, token, { log: (m) => log(m) });
+  }
+
+  // ---- Tesla's real vehicle-pairing well-known public key: public by definition, no auth at
+  // all. Has to be checked ahead of the blanket `.well-known` 404 further down (a deliberate,
+  // real fix for an unrelated MCP OAuth-discovery-probe bug -- see that check's own comment).
+  if (pathname === "/.well-known/appspecific/com.tesla.3p.public-key.pem") {
+    if (method !== "GET" && method !== "HEAD") {
+      res.writeHead(405, { allow: "GET, HEAD" });
+      return res.end();
+    }
+    return serveTeslaPublicKey(res);
   }
 
   // ---- health --------------------------------------------------------------------------

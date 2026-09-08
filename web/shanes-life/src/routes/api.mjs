@@ -1,13 +1,30 @@
 // The signed-in JSON API the web app itself talks to.
 
 import { config } from "../config.mjs";
-import { HttpError, Router, badRequest, forbidden, notFound, readJson, readBody, sendJson, sendText, tooMany, unauthorized } from "../http.mjs";
+import {
+  HttpError,
+  Router,
+  badRequest,
+  forbidden,
+  notFound,
+  parseCookies,
+  readJson,
+  readBody,
+  redirect,
+  sendJson,
+  sendText,
+  setCookie,
+  tooMany,
+  unauthorized,
+} from "../http.mjs";
 import * as ratelimit from "../auth/ratelimit.mjs";
 import { SESSION_COOKIE, createSession, markSessionVerified, revokeAllSessions, revokeSession } from "../auth/sessions.mjs";
+import { mintToken } from "../auth/tokens.mjs";
 import { markSignedIn, recordAuthEvent } from "../core/users.mjs";
 import * as credentials from "../core/credentials.mjs";
 import * as webauthn from "../auth/webauthn.mjs";
 import * as audit from "../core/audit.mjs";
+import * as teslaCore from "../core/tesla.mjs";
 import * as captures from "../core/captures.mjs";
 import * as catches from "../core/catches.mjs";
 import * as categories from "../core/categories.mjs";
@@ -1543,6 +1560,113 @@ export function buildApiRouter() {
       detail: { institutionName: row.institution_name, healthy, health: item?.health ?? null },
     });
     return sendJson(res, 200, { healthy, item, webhook });
+  });
+
+  // -- Tesla (Git #3158): OAuth connect/disconnect, vehicle selection, on-demand climate read,
+  // and the webhook tokens for the real external climate-preconditioning trigger. The webhook
+  // itself (/hooks/tesla/:token) and the vehicle-pairing well-known route are NOT here -- both
+  // are public, token/env-authenticated, and live in server.mjs + routes/tesla.mjs instead, the
+  // same split Plaid's own webhook receiver uses.
+
+  const TESLA_OAUTH_STATE_COOKIE = "sl_tesla_oauth_state";
+
+  router.get("/api/tesla/status", async (_req, res, _params, ctx) => {
+    requireUser(ctx);
+    return sendJson(res, 200, await teslaCore.connectionStatus(ctx.session.user.id));
+  });
+
+  /** Real redirect to Tesla's own authorize page. `state` is a fresh random value, both sent to
+   *  Tesla and stashed in a short-lived cookie -- the callback below refuses unless they match,
+   *  the standard OAuth CSRF defense. */
+  router.get("/auth/tesla/start", async (_req, res, _params, ctx) => {
+    requireUser(ctx);
+    if (!teslaCore.teslaConfigured()) throw badRequest("Tesla is not configured on this server.");
+    const state = mintToken(24);
+    setCookie(res, TESLA_OAUTH_STATE_COOKIE, state, { maxAge: 600, secure: config.isProduction });
+    return redirect(res, teslaCore.authorizeUrl(state));
+  });
+
+  /** Tesla's own redirect back, after Shane approves (or denies) the connection in its UI. */
+  router.get("/auth/tesla/callback", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const url = new URL(req.url, "http://internal");
+    const error = url.searchParams.get("error");
+    if (error) throw badRequest(`Tesla declined the connection: ${error}`);
+
+    const code = url.searchParams.get("code");
+    const returnedState = url.searchParams.get("state");
+    const cookies = parseCookies(req);
+    const expectedState = cookies[TESLA_OAUTH_STATE_COOKIE];
+    if (!code || !returnedState || !expectedState || returnedState !== expectedState) {
+      throw badRequest("Tesla's callback did not carry a matching state -- start the connection again.");
+    }
+    setCookie(res, TESLA_OAUTH_STATE_COOKIE, "", { maxAge: 0, secure: config.isProduction });
+
+    const tokens = await teslaCore.exchangeCode(code);
+    await teslaCore.saveTokens(user.id, tokens);
+    await audit.record({ userId: user.id, actor: "owner", action: "tesla.connected" });
+    return redirect(res, "/#/settings");
+  });
+
+  router.post("/api/tesla/disconnect", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const disconnected = await teslaCore.disconnect(user.id);
+    if (disconnected) await audit.record({ userId: user.id, actor: "owner", action: "tesla.disconnected" });
+    return sendJson(res, 200, { disconnected });
+  });
+
+  router.get("/api/tesla/vehicles", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { vehicles: await teslaCore.listVehicles(user.id) });
+  });
+
+  router.post("/api/tesla/vehicles/select", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    if (!body.vehicleId) throw badRequest("vehicleId is required");
+    await teslaCore.selectVehicle(user.id, {
+      vehicleId: body.vehicleId,
+      vin: body.vin,
+      displayName: body.displayName,
+    });
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "tesla.vehicle-selected",
+      detail: { vehicleId: body.vehicleId, displayName: body.displayName ?? null },
+    });
+    return sendJson(res, 200, await teslaCore.connectionStatus(user.id));
+  });
+
+  /** On-demand real climate read (not an auto-poll -- see tesla.mjs's own header on why). */
+  router.get("/api/tesla/climate", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await teslaCore.getVehicleClimateState(user.id));
+  });
+
+  router.get("/api/tesla/hook-tokens", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { tokens: await teslaCore.listHookTokens(user.id) });
+  });
+
+  /** The real token value is returned exactly once, here -- same discipline as MCP/widget
+   *  tokens: only its SHA-256 is ever stored, so this is the one moment it can be shown. */
+  router.post("/api/tesla/hook-tokens", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const issued = await teslaCore.issueHookToken(user.id, body.label);
+    await audit.record({ userId: user.id, actor: "owner", action: "tesla.hook-token-issued", detail: { label: issued.label } });
+    return sendJson(res, 200, {
+      ...issued,
+      hookUrl: `${config.publicOrigin}/hooks/tesla/${issued.token}`,
+    });
+  });
+
+  router.delete("/api/tesla/hook-tokens/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await teslaCore.revokeHookToken(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "owner", action: "tesla.hook-token-revoked", entityId: params.id });
+    return sendJson(res, 200, { revoked: true });
   });
 
   // -- Money -> Home-tab decision tools (Git #3171) -------------------------------------

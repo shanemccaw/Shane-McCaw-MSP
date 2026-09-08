@@ -29,6 +29,7 @@ import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
 import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
+import * as tesla from "../core/tesla.mjs";
 import * as things from "../core/things.mjs";
 import * as vehicles from "../core/vehicles.mjs";
 import * as wins from "../core/wins.mjs";
@@ -1617,6 +1618,17 @@ export const TOOLS = [
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     async handler(_args, ctx) {
       return { vehicles: await vehicles.listVehicles(ctx.user.id) };
+    },
+  },
+
+  {
+    name: "get_car_climate_status",
+    title: "Real, on-demand Tesla climate read",
+    description:
+      "The real, current climate state of Shane's connected Tesla (Git #3158) -- is it on, is it actively preconditioning, real inside/outside temps. On-demand only, never auto-polled (waking the vehicle to answer costs real 12V battery and Tesla's own Fleet API rate-limits reads) -- ask when it is genuinely useful to know right now (e.g. \"is the car warming up\"), not on a schedule. Throws a real, descriptive error if Tesla isn't connected or no vehicle is selected yet -- point Shane at Settings -> Tesla rather than guessing.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      return tesla.getVehicleClimateState(ctx.user.id);
     },
   },
 

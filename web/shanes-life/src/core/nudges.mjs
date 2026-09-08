@@ -115,6 +115,10 @@ async function pushNudge(row) {
 function pushUrlForNudge(row) {
   if (row.kind === "appointment") return `/#/date/${row.payload?.dateId ?? ""}`;
   if (row.kind === "vaccine") return `/#/pet/${row.payload?.petId ?? ""}`;
+  // Tesla (Git #3158): the Heading Out checklist has no dedicated deep link -- same real
+  // route the tray's own "Heading out" later-moment balloon already uses (lists.mjs's
+  // getHeadingOutSignal, api.mjs's computeLaterMoments).
+  if (row.kind === "tesla") return "/#/lists";
   return "/";
 }
 

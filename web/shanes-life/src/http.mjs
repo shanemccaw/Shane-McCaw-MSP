@@ -131,6 +131,14 @@ export function sendJson(res, status, payload) {
   res.end(body);
 }
 
+/** A real 302 to another URL -- Tesla's OAuth start/callback (Git #3158) are the first two real
+ *  server-driven redirects this app needs; Plaid's own flow is entirely client-side (the Link
+ *  SDK), so nothing existing already covered this. */
+export function redirect(res, location) {
+  res.writeHead(302, { location });
+  res.end();
+}
+
 export function sendText(res, status, text, contentType = "text/plain; charset=utf-8") {
   res.writeHead(status, {
     "content-type": contentType,

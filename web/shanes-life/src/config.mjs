@@ -73,5 +73,19 @@ export const config = {
   // Only set when the URI is genuinely registered in the Plaid dashboard -- Plaid rejects an
   // unregistered redirect_uri outright, so the variable's presence is the proof of registration.
   plaidRedirectUri: process.env.SL_PLAID_REDIRECT_URI || null,
+  // Real Tesla Fleet API (Git #3158). Read here, never at a call site, same reasoning as Plaid
+  // above -- absent credentials are a real, reportable state, not a silent broken button.
+  teslaClientId: process.env.TESLA_CLIENT_ID || null,
+  teslaClientSecret: process.env.TESLA_CLIENT_SECRET || null,
+  // The real registered redirect URI, developer.tesla.com app registration (per #3199's own
+  // comment): https://<this app's host>/auth/tesla/callback. Only set once genuinely
+  // registered there -- Tesla rejects an unregistered redirect_uri outright, same as Plaid.
+  teslaRedirectUri: process.env.TESLA_REDIRECT_URI || null,
+  // The real public key Tesla's vehicle-pairing flow fetches from
+  // /.well-known/appspecific/com.tesla.3p.public-key.pem on the deployed domain. PEM text,
+  // not a path -- Replit Secrets hold values, not files. The matching private key
+  // (TESLA_PRIVATE_KEY) is reserved for the real vehicle-command signing this build
+  // deliberately does not implement (see migration 055's header) and is not read here.
+  teslaPublicKey: process.env.TESLA_PUBLIC_KEY || null,
   root: ROOT,
 };
