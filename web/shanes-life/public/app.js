@@ -2477,6 +2477,11 @@ async function viewMoney(view) {
     return;
   }
 
+  if (moneyTab === "cars") {
+    await viewMoneyCars(view);
+    return;
+  }
+
   if (moneyTab !== "now") {
     const label = MONEY_TABS.find((t) => t.key === moneyTab)?.label ?? moneyTab;
     view.append(
@@ -2618,6 +2623,199 @@ async function viewMoney(view) {
       ]),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Money -- "Cars" tab (Git #3149)
+// ---------------------------------------------------------------------------
+//
+// One card per real vehicle (Tesla Model 3, Kia Forte): design README line 37, "rows text,
+// all-in $/mo 22px/800, $/yr, next maintenance with lead time." Every number comes straight off
+// /api/cars, which is src/core/vehicles.mjs's own real math over the linked accounts row,
+// insurance, amortised registration and real trailing-12-month maintenance spend -- see that
+// module's own header for exactly what each component means.
+
+function carReminderLine(label, r) {
+  if (!r) return null;
+  const cls = r.overdue ? "small money-bucket-status critical" : r.dueSoon ? "small money-habit-line" : "small muted";
+  return el("div", { class: cls, text: `${label} ${dueLabel(r.dueInDays, r.on)} (${whenDate(r.on)})` });
+}
+
+function carCard(vehicle) {
+  const rows = [];
+  if (vehicle.loan) {
+    rows.push(
+      vehicle.loan.missing
+        ? el("div", { class: "small", text: "Loan account is linked but no longer exists." })
+        : el("div", { class: "small", text: `${vehicle.loan.accountName}: ${dollars(vehicle.loan.paymentDue)}/mo · ${dollars(vehicle.loan.savedTowardPayment)} saved toward it · due day ${vehicle.loan.dueDay ?? "?"}` }),
+    );
+  }
+  if (vehicle.insurance.amountPerMonth) {
+    rows.push(el("div", { class: "small", text: `Insurance: ${dollars(vehicle.insurance.amountPerMonth)}/mo` }));
+  }
+  if (vehicle.registration.amountPerYear) {
+    rows.push(el("div", { class: "small", text: `Registration: ${dollars(vehicle.registration.amountPerYear)}/yr` }));
+  }
+  rows.push(
+    el("div", {
+      class: "small",
+      text: vehicle.maintenance.spendLast12Months
+        ? `Maintenance, last 12 months: ${dollars(vehicle.maintenance.spendLast12Months)}`
+        : "Maintenance, last 12 months: nothing logged yet",
+    }),
+  );
+
+  const reminders = [
+    carReminderLine("Registration due", vehicle.registration.reminder),
+    vehicle.maintenance.next ? carReminderLine(vehicle.maintenance.next.note || "Next maintenance", vehicle.maintenance.next) : null,
+  ].filter(Boolean);
+
+  return el("a", { class: "tile", href: `#/car/${vehicle.id}` }, [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline" }, [
+      el("div", { class: "title", text: vehicle.name }),
+      el("div", { style: "text-align:right" }, [
+        el("div", { class: "money-amount", style: "font-size:22px", text: vehicle.allInPerMonthFormatted }),
+        el("div", { class: "small muted", text: `${vehicle.allInPerYearFormatted}/yr all-in` }),
+      ]),
+    ]),
+    ...rows,
+    ...reminders,
+  ]);
+}
+
+async function viewMoneyCars(view) {
+  const { vehicles } = await api("/api/cars");
+
+  if (vehicles.length === 0) {
+    view.append(empty("No vehicles on file yet.", "Add one below, or ask Claude to add one for you.", "idle"));
+  } else {
+    view.append(el("section", { class: "section" }, vehicles.map(carCard)));
+  }
+
+  const nameInput = el("input", { placeholder: "Vehicle name, e.g. Tesla Model 3", "aria-label": "Vehicle name" });
+  const addForm = el("form", { class: "section" }, [
+    el("div", { class: "row" }, [nameInput, el("button", { class: "primary small", type: "submit", text: "Add vehicle" })]),
+  ]);
+  addForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = nameInput.value.trim();
+    if (!name) return;
+    addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    try {
+      await api("/api/cars", { method: "POST", body: JSON.stringify({ name }) });
+      render();
+    } finally {
+      addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [addForm]));
+
+  // "Money Bills and Cars -> bear" per the critter spec's room-watermark map (moneyhdr slot).
+  attachRoomWatermark(view, "moneyhdr");
+}
+
+async function viewCarDetail(view, vehicleId) {
+  const vehicle = await api(`/api/cars/${vehicleId}`);
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("div", { class: "card" }, [
+        el("h1", { text: vehicle.name, style: "margin:0 0 .25rem" }),
+        el("div", { class: "money-amount", style: "font-size:22px", text: vehicle.allInPerMonthFormatted }),
+        el("div", { class: "small muted", text: `${vehicle.allInPerYearFormatted}/yr all-in` }),
+        el("div", { class: "row", style: "margin-top:.75rem" }, [
+          el("a", { class: "ghost small", href: "#/money", text: "← Money" }),
+          el("button", {
+            class: "small ghost danger",
+            text: "Delete vehicle",
+            onClick: async (event) => {
+              if (!confirm(`Delete ${vehicle.name}? This removes its maintenance history too.`)) return;
+              event.currentTarget.disabled = true;
+              await api(`/api/cars/${vehicleId}`, { method: "DELETE" });
+              location.hash = "#/money";
+            },
+          }),
+        ]),
+      ]),
+    ]),
+  );
+
+  const details = el("section", { class: "section" }, [el("h2", { text: "Details" })]);
+  const dCard = el("div", { class: "card" });
+  if (vehicle.loan) {
+    dCard.append(
+      vehicle.loan.missing
+        ? el("p", { class: "small", text: "Loan account is linked but no longer exists." })
+        : el("p", { class: "small", text: `Loan: ${vehicle.loan.accountName}, ${dollars(vehicle.loan.paymentDue)}/mo, ${dollars(vehicle.loan.savedTowardPayment)} saved, due day ${vehicle.loan.dueDay ?? "?"}` }),
+    );
+  } else {
+    dCard.append(el("p", { class: "small muted", text: "No loan account linked." }));
+  }
+  dCard.append(el("p", { class: "small", text: `Insurance: ${dollars(vehicle.insurance.amountPerMonth)}/mo` }));
+  dCard.append(
+    el("p", {
+      class: "small",
+      text: vehicle.registration.amountPerYear
+        ? `Registration: ${dollars(vehicle.registration.amountPerYear)}/yr${vehicle.registration.reminder ? ` · due ${whenDate(vehicle.registration.reminder.on)}` : ""}`
+        : "Registration: not on file.",
+    }),
+  );
+  details.append(dCard);
+  view.append(details);
+
+  const maint = el("section", { class: "section" }, [
+    el("h2", { text: "Maintenance" }),
+    vehicle.maintenance.intervalMiles
+      ? el("p", { class: "muted small", text: `Every ${vehicle.maintenance.intervalMiles.toLocaleString()} miles.` })
+      : null,
+  ]);
+  const mCard = el("div", { class: "card" });
+  mCard.append(el("p", { class: "small", text: `Spend, last 12 months: ${dollars(vehicle.maintenance.spendLast12Months)}` }));
+  if (vehicle.maintenance.next) {
+    mCard.append(el("p", { class: "small", text: `Next: ${vehicle.maintenance.next.note || "due"} -- ${dueLabel(vehicle.maintenance.next.dueInDays, vehicle.maintenance.next.on)} (${whenDate(vehicle.maintenance.next.on)})` }));
+  }
+  if (vehicle.maintenanceLog.length === 0) {
+    mCard.append(el("p", { class: "muted small", text: "No maintenance logged yet." }));
+  }
+  for (const entry of vehicle.maintenanceLog) {
+    mCard.append(
+      el("div", { class: "date-row" }, [
+        el("div", { class: "body" }, [
+          el("div", { class: "title small", text: entry.description }),
+          el("div", { class: "meta", text: `${whenDate(entry.performedOn)}${entry.mileage ? ` · ${entry.mileage.toLocaleString()} mi` : ""}` }),
+        ]),
+        el("div", { class: "when", text: dollars(entry.amount) }),
+      ]),
+    );
+  }
+
+  const descInput = el("input", { placeholder: "What was done, e.g. Oil change", "aria-label": "Maintenance description" });
+  const amountInput = el("input", { type: "number", step: "0.01", inputmode: "decimal", placeholder: "Amount", "aria-label": "Maintenance amount" });
+  const mileageInput = el("input", { type: "number", inputmode: "numeric", placeholder: "Mileage (optional)", "aria-label": "Mileage" });
+  mCard.append(
+    el("div", { class: "row", style: "margin-top:.6rem" }, [
+      descInput,
+      amountInput,
+      mileageInput,
+      el("button", {
+        class: "small",
+        text: "Log",
+        onClick: async (event) => {
+          const description = descInput.value.trim();
+          const amount = amountInput.value;
+          if (!description || !amount) return;
+          event.currentTarget.disabled = true;
+          await api(`/api/cars/${vehicleId}/maintenance`, {
+            method: "POST",
+            body: JSON.stringify({ description, amount, mileage: mileageInput.value || null }),
+          });
+          await render();
+        },
+      }),
+    ]),
+  );
+  maint.append(mCard);
+  view.append(maint);
 }
 
 async function viewEntity(view, entityId) {
@@ -4118,7 +4316,7 @@ async function viewPetDetail(view, petId) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", tonight: "Tonight" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -4129,6 +4327,7 @@ function parseRoute() {
   state.cookRecipeId = state.route === "cook" ? rest[0] : null;
   state.dateId = state.route === "date" ? rest[0] : null;
   state.petId = state.route === "pet" ? rest[0] : null;
+  state.carId = state.route === "car" ? rest[0] : null;
 }
 
 async function render() {
@@ -4159,6 +4358,7 @@ async function render() {
     else if (state.route === "date") await viewDateDetail(view, state.dateId);
     else if (state.route === "pets") await viewPets(view);
     else if (state.route === "pet") await viewPetDetail(view, state.petId);
+    else if (state.route === "car") await viewCarDetail(view, state.carId);
     else if (state.route === "lists") await viewLists(view);
     else if (state.route === "things") await viewThings(view);
     else if (state.route === "settings") await viewSettings(view);
