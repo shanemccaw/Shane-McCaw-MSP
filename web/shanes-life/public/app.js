@@ -3947,6 +3947,187 @@ async function viewMoneyBanks(view) {
   );
 }
 
+/** Transfer Instructions' own card -- pulled into a function because both the initial Now-tab
+ *  render and Distribute Paycheck's own "Apply" step need to redraw it (a fresh plan changes what
+ *  it shows) without reloading the whole tab. */
+async function renderTransferInstructions(container) {
+  container.replaceChildren();
+  const data = await api("/api/money/transfer-instructions");
+  if (data.groups.length === 0) {
+    container.append(
+      el("div", { class: "card money-bucket" }, [
+        el("div", { class: "money-bucket-label", text: "Transfer instructions" }),
+        el("p", { class: "muted small", style: "padding:0 1rem .7rem", text: "No real pending plan right now -- run Distribute Paycheck below to create one." }),
+      ]),
+    );
+    return;
+  }
+
+  const rows = data.groups.map((g) =>
+    el("div", { class: "money-bucket-row" }, [
+      el("div", { class: "money-bucket-name" }, [
+        el("span", { text: g.accountName }),
+      ]),
+      el("div", { class: "row", style: "gap:.5rem;align-items:center" }, [
+        el("span", { class: "money-bucket-status", text: g.amountFormatted }),
+        el("button", {
+          type: "button",
+          class: "ghost small",
+          text: "Mark as Transferred",
+          onClick: async (event) => {
+            event.currentTarget.disabled = true;
+            await api(`/api/money/transfer-instructions/${encodeURIComponent(g.accountId)}/mark-transferred`, { method: "POST" });
+            await renderTransferInstructions(container);
+          },
+        }),
+      ]),
+    ]),
+  );
+
+  const copyBtn = el("button", {
+    type: "button",
+    class: "small",
+    text: "Copy transfer instructions",
+    onClick: () => {
+      const lines = ["Transfer Instructions", ""];
+      for (const g of data.groups) lines.push(`Transfer ${g.amountFormatted} → ${g.accountName}`);
+      navigator.clipboard?.writeText(lines.join("\n"));
+    },
+  });
+
+  container.append(
+    el("div", { class: "card money-bucket" }, [
+      el("div", { class: "row", style: "justify-content:space-between;align-items:baseline;padding:0 1rem" }, [
+        el("div", { class: "money-bucket-label", text: `Transfer instructions · ${data.totalFormatted} total` }),
+      ]),
+      ...rows,
+      el("div", { class: "row", style: "padding:.6rem 1rem" }, [copyBtn]),
+      el("p", { class: "small muted", style: "padding:0 1rem .7rem", text: data.footer }),
+    ]),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Money -- Home-tab decision tools (Git #3171)
+// ---------------------------------------------------------------------------
+//
+// Real port of Finance-Tracker's Home/Overview screen (FINANCE_TRACKER_AUDIT.md section 1/5,
+// contract pack Section 12), adapted to the real architecture already established in money.mjs's
+// own header for this app: a Shane's Life "bill" is its own real, separate bank account, not a
+// virtual split of one pooled checking account -- see money.mjs's own section header for the full
+// translation. Four tools, rendered on the Now tab right after the Available-to-spend card, the
+// same real position Finance-Tracker's own Home tab puts them (right after its Safe-to-Spend
+// hero, before its Attention Needed alerts).
+
+async function renderMoneyDecisionTools(view) {
+  // -- Period Review --------------------------------------------------------
+  const review = await api("/api/money/period-review");
+  view.append(
+    el("div", { class: "card section" }, [
+      el("div", { class: "small muted", text: "Period Review · this pay cycle" }),
+      el("div", { class: "row", style: "justify-content:space-between;margin-top:.5rem" }, [
+        el("div", {}, [el("div", { class: "small muted", text: "Available" }), el("div", { style: "font-weight:700", text: review.availableFormatted ?? "unknown" })]),
+        el("div", {}, [el("div", { class: "small muted", text: "Spent" }), el("div", { style: "font-weight:700", text: review.spentFormatted })]),
+        el("div", {}, [
+          el("div", { class: "small muted", text: "Still Due" }),
+          el("div", { style: `font-weight:700;color:${review.stillDue > 0 ? "#f87171" : ""}`, text: review.stillDueFormatted }),
+        ]),
+      ]),
+      el("p", { class: "small muted", style: "margin-top:.5rem", text: review.identity }),
+    ]),
+  );
+
+  // -- Skip Suggestions -------------------------------------------------------
+  const skip = await api("/api/money/skip-suggestions");
+  if (skip.shown && skip.suggestions.length > 0) {
+    view.append(
+      el("div", { class: "card money-bucket" }, [
+        el("div", { class: "money-bucket-label urgent", text: `Skip suggestions · short ${skip.deficitFormatted}` }),
+        ...skip.suggestions.map((b) => moneyBillRow(b)),
+        el("p", { class: "small muted", style: "padding:0 1rem .7rem", text: skip.text }),
+      ]),
+    );
+  }
+
+  // -- Distribute Paycheck ----------------------------------------------------
+  // Git #3183 no-forms audit: a real-time calculation tool (preview, then an editable plan),
+  // same reasoning as the what-if/transfer-simulator forms above -- not a form for adding or
+  // editing a fact about the world.
+  const distributeResultEl = el("div");
+  const distributeAmountInput = el("input", { type: "number", step: "0.01", inputmode: "decimal", placeholder: "3000", "aria-label": "Paycheck amount" });
+  const distributeForm = el("form", { class: "row" }, [
+    distributeAmountInput,
+    el("button", { type: "submit", class: "ghost small", text: "Distribute this paycheck" }),
+  ]);
+  distributeForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const amount = distributeAmountInput.value;
+    if (!amount) return;
+    const preview = await api(`/api/money/distribute-preview?amount=${encodeURIComponent(amount)}`);
+    renderDistributePreview(distributeResultEl, amount, preview);
+  });
+
+  view.append(
+    el("div", { class: "card section" }, [
+      el("div", { class: "small muted", text: "Distribute Paycheck" }),
+      distributeForm,
+      distributeResultEl,
+    ]),
+  );
+
+  // -- Transfer Instructions ----------------------------------------------------
+  const transferInstructionsEl = el("div");
+  await renderTransferInstructions(transferInstructionsEl);
+  view.append(transferInstructionsEl);
+
+  /** Step 2 of Distribute Paycheck: the preview's own allocations, each editable, with Apply
+   *  persisting them as the real pending plan and redrawing Transfer Instructions above. */
+  function renderDistributePreview(container, sourceAmount, preview) {
+    container.replaceChildren();
+    if (preview.allocations.length === 0) {
+      container.append(el("p", { class: "small muted", text: preview.text }));
+      return;
+    }
+
+    const rows = preview.allocations.map((a) => {
+      const input = el("input", { type: "number", step: "0.01", inputmode: "decimal", value: a.amount, style: "width:5.5rem", "aria-label": `Amount for ${a.name}` });
+      return { accountId: a.accountId, input, row: el("div", { class: "money-bucket-row" }, [
+        el("div", { class: "money-bucket-name" }, [
+          el("span", { text: a.name }),
+          el("div", { class: "money-bucket-meta", text: `shortfall ${dollars(a.shortfall)}` }),
+        ]),
+        input,
+      ]) };
+    });
+
+    const applyBtn = el("button", { type: "button", class: "small", text: "Apply this plan" });
+    applyBtn.addEventListener("click", async () => {
+      applyBtn.disabled = true;
+      try {
+        await api("/api/money/distribute", {
+          method: "POST",
+          body: JSON.stringify({
+            sourceAmount,
+            allocations: rows.map((r) => ({ accountId: r.accountId, amount: r.input.value })),
+          }),
+        });
+        container.replaceChildren(el("p", { class: "small ok", text: "Plan saved. See Transfer Instructions below." }));
+        await renderTransferInstructions(transferInstructionsEl);
+      } finally {
+        applyBtn.disabled = false;
+      }
+    });
+
+    container.append(
+      el("div", { class: "money-bucket", style: "margin-top:.5rem" }, [
+        el("p", { class: "small muted", style: "padding:.6rem 1rem 0", text: preview.text }),
+        ...rows.map((r) => r.row),
+        el("div", { class: "row", style: "padding:.6rem 1rem" }, [applyBtn]),
+      ]),
+    );
+  }
+}
+
 async function viewMoney(view) {
   view.append(
     el("section", { class: "section" }, [
@@ -4143,6 +4324,8 @@ async function viewMoney(view) {
   );
 
   view.append(availableCard);
+
+  await renderMoneyDecisionTools(view);
 
   // Protected -- money already spoken for: the Income Gate's own gate bills, plus critical debts.
   const protectedRows = [...gate.gateBills.map(moneyBillRow), ...gate.protectedDebts.map(moneyDebtRow)];
