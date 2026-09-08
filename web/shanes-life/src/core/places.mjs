@@ -1,4 +1,4 @@
-// Real physical places + foreground nearby-matching (Git #3159, migration 037).
+// Real physical places + foreground nearby-matching (Git #3159, migration 040).
 //
 // See docs/location-aware-content-surfacing-findings.md for the real investigation this is
 // built on. Short version: a Home Screen web app cannot detect arrival at a place in the
@@ -9,7 +9,7 @@
 // A place is never created through a dedicated form (Section 3, "no forms, anywhere, ever").
 // It comes from `push_place` (src/mcp/tools.mjs), which Claude calls after reading a geo-tagged
 // capture -- "remember this as Home", said while the real coordinates rode along silently on
-// that capture (captures.latitude/longitude, migration 037).
+// that capture (captures.latitude/longitude, migration 040).
 
 import { many, one } from "../db.mjs";
 import { badRequest } from "../http.mjs";

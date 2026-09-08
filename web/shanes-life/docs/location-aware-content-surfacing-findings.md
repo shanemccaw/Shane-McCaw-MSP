@@ -63,9 +63,9 @@ signal of shipping.
 Rather than stop at "can't do the ambient version," this ships the honest, fully-buildable
 foreground half, using real data only:
 
-- **`places` table** (migration 037): a real named place (label + real lat/lng + radius +
+- **`places` table** (migration 040): a real named place (label + real lat/lng + radius +
   optional note), created only via `push_place` (MCP) — never a fabricated location, never a
-  form. See `captures.latitude`/`longitude` (also migration 037): the browser silently attaches
+  form. See `captures.latitude`/`longitude` (also migration 040): the browser silently attaches
   Shane's real current position to a capture when it already has permission, so "remember this
   as Home" carries real coordinates without a dedicated location field anywhere in the UI
   (Section 3, "no forms, anywhere, ever," confirmed 2026-09-08).

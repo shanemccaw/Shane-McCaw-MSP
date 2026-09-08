@@ -5,7 +5,7 @@
 // arrived. It carries no category, because classification is a separate step that happens in a
 // Claude conversation (Section 10: the hosted app does no runtime inference of its own).
 //
-// latitude/longitude (migration 037, Git #3159) are the same idea applied to real position: the
+// latitude/longitude (migration 040, Git #3159) are the same idea applied to real position: the
 // browser silently attaches Shane's real current coordinates when it already has permission, no
 // new form field, no forced prompt on every capture. Claude reads them back over MCP (list_captures/
 // get_capture) to answer "remember this as Home" with a real push_place call -- see

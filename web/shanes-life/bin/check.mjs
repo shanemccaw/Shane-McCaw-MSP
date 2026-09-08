@@ -892,7 +892,7 @@ async function main() {
   const peopleActivity = await http("/api/activity");
   check("the People writes are in the audit trail", peopleActivity.json?.activity?.some((a) => a.action === "person.entry.create"), JSON.stringify(peopleActivity.json?.activity?.map((a) => a.action)));
 
-  // 6g. Places -- real physical places + foreground nearby-matching (Git #3159, migration 037).
+  // 6g. Places -- real physical places + foreground nearby-matching (Git #3159, migration 040).
   // NASA Johnson Space Center's real public coordinates stand in for "a real place Shane is
   // physically at" -- a real-shaped fixture, not an assertion about Shane's actual location.
   const nasaLat = 29.5502;
