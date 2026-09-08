@@ -780,9 +780,15 @@ export async function stopPreconditioning(userId) {
 
 /** Real, immediate trunk open -- the room's own two-tap-confirmed "Open the trunk" row. The
  *  confirm step lives client-side (the design's own "tap, then confirm within 4 seconds"); by
- *  the time this is called the real confirmation already happened. */
+ *  the time this is called the real confirmation already happened.
+ *
+ *  Git #3285 -- Tesla's real `actuate_trunk` endpoint requires a `which_trunk` body param
+ *  ("front" or "rear"); calling it with no body at all is exactly the shape that produced the
+ *  real "invalid_value" rejection Shane hit. Shane's Model 3 has no front-accessible frunk
+ *  release for this flow -- the design's own "pops the rear trunk" and Shane's stated intent
+ *  both point at "rear". */
 export async function openTrunkNow(userId) {
-  return sendVehicleCommand(userId, "actuate_trunk");
+  return sendVehicleCommand(userId, "actuate_trunk", { which_trunk: "rear" });
 }
 
 /** Real per-user opt-in for the checkout-to-trunk automation -- defaults off (migration 056);
@@ -898,7 +904,11 @@ export async function dispatchDueCommands() {
   let sent = 0;
   for (const row of due) {
     try {
-      await sendVehicleCommand(row.user_id, row.command);
+      // Git #3285 -- actuate_trunk genuinely needs which_trunk in its body (see openTrunkNow's
+      // own header); this scheduled path (scheduleCheckoutTrunkOpen) hit the same real
+      // "invalid_value" rejection sending no body at all.
+      const body = row.command === "actuate_trunk" ? { which_trunk: "rear" } : {};
+      await sendVehicleCommand(row.user_id, row.command, body);
       await query(`UPDATE tesla_scheduled_commands SET status = 'sent', sent_at = now() WHERE id = $1`, [row.id]);
       sent += 1;
     } catch (err) {
