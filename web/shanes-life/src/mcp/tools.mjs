@@ -14,6 +14,7 @@ import * as categories from "../core/categories.mjs";
 import * as entities from "../core/entities.mjs";
 import * as foodPreferences from "../core/food-preferences.mjs";
 import * as lists from "../core/lists.mjs";
+import * as money from "../core/money.mjs";
 import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
 import * as shares from "../core/shares.mjs";
@@ -821,6 +822,107 @@ export const TOOLS = [
         detail: { dislikesAdded: args.dislikes ?? null, allergiesAdded: args.allergies ?? null },
       });
       return prefs;
+    },
+  },
+
+  // -- money (Git #3137) ----------------------------------------------------
+  //
+  // The design README's own tool list: get_gate_status(), what_if(amount),
+  // simulate_transfer(amount, from, to). Every number these return comes from ShanesSurvival's
+  // own real tables in the shared Postgres, through the math ported from its DashboardService.cs.
+  // None of them can move money -- see simulate_transfer's own description.
+
+  {
+    name: "get_gate_status",
+    title: "Where the money actually stands",
+    description:
+      "Shane's real, current money position, straight off the Plaid-synced balances the ShanesSurvival WPF app reads -- the same numbers, from the same rows, through the same math. Returns: available to spend (Income Gate + reserves, minus every bill account's shortfall), whether that is covered, each bill account with its target/balance/shortfall, the modeled habit and the 'really' line after subtracting it, Budget Day (the next real payday), the critical debts, and any pending one-time events (which are deliberately NOT counted in the math until they are real). Call this before answering anything about affordability, and warnings[] is real -- a bill with no target or no Plaid balance is excluded from the total and named there, never silently treated as funded.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      return money.getGateStatus(ctx.user.id);
+    },
+  },
+
+  {
+    name: "what_if",
+    title: "What if I spend this",
+    description:
+      "Answer 'what if I spend 60'. Computes available-to-spend minus the modeled habit minus the amount. If that goes negative it names the real bill account with the biggest shortfall as the first thing that would go unfunded. Read-only arithmetic over real current balances -- it changes nothing and records nothing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        amount: { type: "number", description: "Dollars Shane is thinking about spending, e.g. 60." },
+      },
+      required: ["amount"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      return money.whatIf(ctx.user.id, args.amount);
+    },
+  },
+
+  {
+    name: "simulate_transfer",
+    title: "Simulate moving money between accounts",
+    description:
+      "Answer 'move 200 from Direct Deposit to Tesla'. THIS NEVER MOVES REAL MONEY AND CANNOT: Plaid is read-only and NFCU has no Transfer product, so this applies the move to copies of the real balances, recomputes the gate math, and reports what would change -- what gets funded, what is still short, and what available-to-spend becomes. If the source is a bill account it flags borrowed-from-bill, because that money was already spoken for. Always tell Shane the move has not happened; the response carries the exact wording ('Never moves money. Do it at NFCU, then it syncs.'). Account names are matched against his real accounts -- an ambiguous name comes back asking which one rather than guessing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        amount: { type: "number", description: "Dollars to move, e.g. 200." },
+        from: { type: "string", description: "The account the money would come out of, in Shane's own words, e.g. 'Direct Deposit'." },
+        to: { type: "string", description: "The account it would go into, e.g. 'Tesla'." },
+      },
+      required: ["amount", "from", "to"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const result = await money.simulateTransfer(ctx.user.id, {
+        amount: args.amount,
+        from: args.from,
+        to: args.to,
+      });
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "money.transfer.simulated",
+        detail: { amount: args.amount, from: args.from, to: args.to, resolvable: result.resolvable },
+      });
+      return result;
+    },
+  },
+
+  {
+    name: "set_habit",
+    title: "State what a recurring habit really costs",
+    description:
+      "Record the real modeled cost of a recurring personal habit per PAY CYCLE (not per month) -- the number get_gate_status and what_if subtract to produce the 'really' line. The capture-grammar entry point for 'cigarettes run me about $148 a cycle' said in passing. Per cycle because the whole Money screen is denominated in the real pay cycle; a monthly figure would silently mix units with the shortfall it is subtracted against. Additive, like set_food_preferences: an omitted field keeps its current value, so restating the amount does not wipe the unit price stated earlier. Never invent an amount -- if Shane has not said one, ask.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "What the habit is called, e.g. 'Cigarettes'. Matching is case-insensitive, so restating it updates rather than duplicating." },
+        amountPerCycle: { type: "number", description: "Real dollars it costs across one pay cycle. Required the first time this habit is named." },
+        unitLabel: { type: "string", description: "What one unit is called, e.g. 'pack'. Optional." },
+        unitCost: { type: "number", description: "Real dollars for one unit, e.g. 8.40. Optional." },
+        logSource: { type: "string", description: "The real table that logs this habit, if one does. 'smoke_log' is the only real value today." },
+        isActive: { type: "boolean", description: "false stops subtracting it without deleting the history of what it cost." },
+        note: { type: "string", description: "Anything worth keeping about the model, in Shane's own words." },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const habit = await money.setHabit(ctx.user.id, args);
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "money.habit.set",
+        entityId: habit.id,
+        detail: { name: habit.name, amountPerCycle: habit.amount_per_cycle, isActive: habit.is_active },
+      });
+      return habit;
     },
   },
 
