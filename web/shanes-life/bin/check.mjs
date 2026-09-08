@@ -1092,6 +1092,50 @@ async function main() {
   const moneyActivity = await http("/api/activity");
   check("the simulated transfer is in the audit trail", moneyActivity.json?.activity?.some((a) => a.action === "money.transfer.simulated"));
 
+  // 6b-ii. Money -> Banks (Git #3168) -- real Plaid item health.
+  //
+  // Asserted here rather than in bin/selftest-plaid-webhook.mjs because this is the read side a
+  // signed-in browser actually gets, and because it is the one place that can prove the screen's
+  // row count comes from the real plaid_items table and not from anything invented. The webhook
+  // receiver and the ES256 verification have their own real harness; this is the API surface.
+  // Snapshotted BEFORE the room is opened, so the assertion below is a real before/after
+  // comparison rather than a restatement of whatever the second read happened to return.
+  const cursorsBefore = JSON.stringify(
+    await many("SELECT id, sync_cursor, last_synced_at FROM plaid_items ORDER BY id"),
+  );
+  const banks = await http("/api/money/banks");
+  check("the banks room loads", banks.status === 200, `status ${banks.status}`);
+  const realItemCount = (await one("SELECT count(*)::int AS n FROM plaid_items")).n;
+  check(
+    "every connected bank on screen is a real plaid_items row",
+    banks.json?.items?.length === realItemCount,
+    `api ${banks.json?.items?.length} vs sql ${realItemCount}`,
+  );
+  const allowedHealth = ["ok", "login_required", "pending_expiration", "pending_disconnect", "revoked", "error"];
+  check(
+    "every bank carries a real health status from the locked vocabulary",
+    (banks.json?.items ?? []).every((i) => allowedHealth.includes(i.health)),
+    (banks.json?.items ?? []).map((i) => i.health).join(","),
+  );
+  check(
+    "the webhook URL is derived from this server's own origin",
+    banks.json?.webhookUrl === `${BASE}/api/plaid/webhook`,
+    String(banks.json?.webhookUrl),
+  );
+  check(
+    "a localhost origin is reported as undeliverable rather than implying live webhooks",
+    banks.json?.webhookDeliverable === false,
+    String(banks.json?.webhookDeliverable),
+  );
+  const bankEvents = await http("/api/money/banks/events?limit=5");
+  check("the webhook receipt log loads", bankEvents.status === 200 && Array.isArray(bankEvents.json?.events));
+  // Shane's Life must never become a second writer on the cursor the WPF app owns -- two writers
+  // on one /transactions/sync cursor is the exact failure this split was designed to avoid.
+  const cursorsAfter = JSON.stringify(
+    await many("SELECT id, sync_cursor, last_synced_at FROM plaid_items ORDER BY id"),
+  );
+  check("reading the banks room moved no sync cursor and no last_synced_at", cursorsBefore === cursorsAfter);
+
   // 6c. Money -> Vault (Git #3150) -- the bill-payment reference vault.
   //
   // The design contract calls this "a real security requirement, not optional polish", so what

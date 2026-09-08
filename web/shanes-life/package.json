@@ -20,7 +20,8 @@
     "mcp-stdio": "node bin/mcp-stdio.mjs",
     "check": "node bin/check.mjs",
     "generate-vapid-keys": "node bin/generate-vapid-keys.mjs",
-    "selftest-webpush": "node bin/selftest-webpush.mjs"
+    "selftest-webpush": "node bin/selftest-webpush.mjs",
+    "selftest-plaid-webhook": "node bin/selftest-plaid-webhook.mjs"
   },
   "dependencies": {
     "pg": "^8.20.0"
