@@ -141,12 +141,29 @@ a { color: inherit; }
   display: grid;
   gap: 14px;
   align-content: start;
-  /* Git #3264: the room watermark's real horizontal bleed (Git #3119, attachRoomWatermark() in
-     critters.js: `right: -44px` on a `position: absolute` SVG) is clipped here now instead of on
-     `body` -- `.view` is the actual container every watermark is painted onto (see render() in
-     app.js), and unlike `body` it is not an ancestor of the fixed `#capture` bar, so this can't
-     recreate the ancestor-overflow containing-block trap the comment above `[hidden]` explains. */
+  /* Git #3264 (commit 298bd12c5): `overflow-x: hidden` moved here from `body` -- the room
+     watermark's real horizontal bleed (Git #3119, attachRoomWatermark() in critters.js:
+     `right: -44px` on a `position: absolute` SVG) is clipped at `.view`, the container it's
+     actually painted onto, instead of on `body`, which is an ancestor of the fixed `#capture` bar.
+     Confirmed live (real Chromium mobile-viewport emulation + a real touch-scroll gesture,
+     agent-verify test user against local Postgres): unclipped descendant overflow anywhere in the
+     ancestor chain up to `body` inflates `document.documentElement.scrollWidth`, and real mobile
+     browsers use that to zoom the whole page out to fit -- which grows `window.innerHeight` past
+     the true screen height and drags `.capture`'s `position: fixed; bottom: 0` down with it
+     ("stuck mid-page"). `.view` isn't the scroll container (the document is), so nothing about
+     real vertical scrolling changes.
+     `grid-template-columns: minmax(0, 1fr)` is this same session's own follow-up: `.view` had no
+     explicit column at all, so its one implicit `auto` column grew to fit the max-content of its
+     widest child (`.money-tabs` below, wanting ~1015px to lay out 8 real tabs unwrapped) --
+     `overflow-x: hidden` clips that internal blowout from *painting* past `.view`'s real 402px box
+     and from inflating scrollWidth, but doesn't shrink it: `.money-tabs` itself still measured
+     1015px wide even with the clip in place (confirmed via getBoundingClientRect on the live grid,
+     not just the page-level metrics `overflow-x: hidden` alone happens to fix), so 4 of its 8 real
+     tabs (Accounts/Cars/Vault/Documents) were genuinely unreachable off the clipped right edge.
+     Capping the column itself to the real available width is what makes `.money-tabs`' own
+     `minmax(0, 1fr)` columns (below) divide up the *correct* 402px, not a phantom 1015px. */
   overflow-x: hidden;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 /* Git #3174: Today has no generic header row (see #app-header.hidden in render()) -- its own
@@ -1313,7 +1330,21 @@ pre.token {
 
 .money-tabs {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* Git #3264: was `repeat(5, 1fr)`, stale from when MONEY_TABS (app.js) had 5 entries -- Banks,
+     Bankruptcy, Accounts and Documents were added later without updating this count. With only 5
+     explicit tracks, grid placed the last 3 tabs into implicit auto-sized columns, wrapping the
+     row and leaving Accounts/Cars/Vault/Documents genuinely unreachable off the right edge of a
+     402px device -- confirmed live (getBoundingClientRect on every `.money-tab`). Bare `1fr`
+     alone doesn't fix it either: an `fr` track's floor is still its content's own min-content
+     width unless overridden, and "Bankruptcy"/"Documents" are each one unbreakable word wider
+     than an even 1/8th share, so `repeat(8, 1fr)` alone still pushed 4 of 8 tabs off-screen.
+     `minmax(0, 1fr)` removes that per-column content floor so all 8 columns are forced strictly
+     equal and nothing overflows `.money-tabs`' own box, confirmed live: every tab's
+     getBoundingClientRect is now fully within the 402px viewport. (This was never the #3264
+     capture-bar bug itself -- `.view`'s own overflow-x:hidden, commit 298bd12c5, already contains
+     that regardless of tab count -- this is a real, separate reachability bug on the same
+     element, fixed in the same pass rather than left for later.) */
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 3px;
   padding: 3px;
   background: hsl(var(--muted));
