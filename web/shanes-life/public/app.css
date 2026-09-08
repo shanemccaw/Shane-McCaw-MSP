@@ -805,3 +805,133 @@ pre.token {
 .money-bucket-status.funded { color: hsl(var(--success)); }
 .money-bucket-status.short { color: #fbbf24; }
 .money-bucket-status.critical { color: #f87171; }
+
+/* ---------- Money -> Vault (Git #3150) ----------
+   Handoff README §7: "lock note, rows with site + masked reference + Reveal (passkey overlay ->
+   full value shown 20 s -> Copy)". Sizes/colors are the prototype's own inline values, kept
+   rather than re-derived: 12px muted notes, a 22px-radius card, the 15px/600 row label, the
+   monospace reference, and the revealed value in the design's blue-tinted box
+   (rgba(96,165,250,.1) on a .35 border). */
+
+.vault-lock-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+}
+.vault-lock-note svg { flex-shrink: 0; }
+
+.vault-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  border-radius: 22px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.vault-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.vault-row + .vault-row { border-top: 1px solid hsl(var(--card-border)); }
+
+.vault-row-head { display: flex; align-items: center; gap: 12px; }
+.vault-row-name { flex: 1; min-width: 0; }
+.vault-row-label { font-size: 15px; font-weight: 600; }
+.vault-row-site { font-size: 12px; color: hsl(var(--muted-foreground)); }
+
+.vault-masked {
+  font-size: 14px;
+  font-family: var(--font-mono);
+  color: hsl(var(--muted-foreground));
+}
+
+.vault-reveal-btn {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vault-reveal-btn:disabled { opacity: 0.6; }
+
+.vault-value-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+}
+.vault-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+/* The live remainder of the real 20-second window, not decoration -- when it reaches 0 the
+   value is genuinely gone from the DOM and from JS memory. */
+.vault-countdown {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--muted-foreground));
+}
+.vault-copy-btn {
+  flex-shrink: 0;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: #60a5fa;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+
+.vault-row-error { font-size: 12px; color: hsl(var(--destructive)); }
+.vault-foot-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+  padding: 12px 4px;
+}
+.vault-add-title { font-size: 15px; font-weight: 600; margin: 0 0 0.4rem; }
+
+/* The design's Face ID overlay, up for exactly as long as the real assertion takes. */
+.vault-face-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(4, 13, 26, 0.82);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: #fff;
+}
+.vault-face-ring {
+  width: 96px;
+  height: 96px;
+  border-radius: 28px;
+  border: 3px solid #60a5fa;
+  color: #60a5fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 14px rgba(96, 165, 250, 0.12);
+}
+.vault-face-label { font-size: 16px; font-weight: 600; }

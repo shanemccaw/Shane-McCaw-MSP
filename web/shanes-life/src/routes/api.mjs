@@ -1,7 +1,7 @@
 // The signed-in JSON API the web app itself talks to.
 
 import { config } from "../config.mjs";
-import { Router, badRequest, forbidden, notFound, readJson, readBody, sendJson, tooMany, unauthorized } from "../http.mjs";
+import { HttpError, Router, badRequest, forbidden, notFound, readJson, readBody, sendJson, tooMany, unauthorized } from "../http.mjs";
 import * as ratelimit from "../auth/ratelimit.mjs";
 import { SESSION_COOKIE, createSession, markSessionVerified, revokeAllSessions, revokeSession } from "../auth/sessions.mjs";
 import { markSignedIn, recordAuthEvent } from "../core/users.mjs";
@@ -25,6 +25,7 @@ import * as recipes from "../core/recipes.mjs";
 import * as scan from "../core/scan.mjs";
 import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
+import * as vault from "../core/vault.mjs";
 import { orderItems } from "../core/shopping-order.mjs";
 
 // Deliberately tight: this app has one real account, so a burst of failures is an attack, not a
@@ -926,6 +927,185 @@ export function buildApiRouter() {
       detail: { name: row.name, amountPerCycle: row.amount_per_cycle, isActive: row.is_active },
     });
     return sendJson(res, 200, row);
+  });
+
+  // -- Money -> Vault (Git #3150) -------------------------------------------------------
+  //
+  // The bill-payment reference vault. Design contract Section 9 flags this as "a real security
+  // requirement, not optional polish", and the handoff README's own §7 line is the spec these
+  // routes implement: "rows with site + masked reference + Reveal (passkey overlay -> full value
+  // shown 20 s -> Copy)". src/core/vault.mjs owns the AES-256-GCM and the audit write; what
+  // lives here is the part that cannot live there -- the real WebAuthn assertion.
+  //
+  // The reveal is deliberately TWO requests carrying one assertion, not a check against
+  // `sessions.last_verified_at`. Gating on the session's last-verified stamp would make one
+  // assertion good for every entry inside a window, which is precisely the "not just session
+  // presence" the issue rules out. Instead the challenge is issued per entry
+  // (purpose `vault:reveal:<id>`), so an assertion obtained for one row cannot reveal another,
+  // and `consumeChallenge`'s atomic UPDATE ... WHERE consumed_at IS NULL means it cannot be
+  // replayed to reveal the same row twice either.
+
+  const VAULT_REVEAL_LIMIT = { limit: 30, windowMs: 60 * 60 * 1000 };
+
+  /** VaultKeyUnavailable is a real deployment fact (no SL_VAULT_KEY), not a bad request -- 503
+   *  says "this feature cannot work right now" rather than blaming the caller. */
+  function vaultError(err) {
+    if (err instanceof vault.VaultKeyUnavailable) return new HttpError(503, err.message);
+    return err;
+  }
+
+  router.get("/api/vault", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, {
+      // Masked rows only -- listEntries has no plaintext path at all, by design.
+      entries: await vault.listEntries(user.id),
+      // The room says so out loud rather than failing at the first Reveal tap.
+      keyConfigured: vault.keyIsConfigured(),
+      windowSeconds: vault.REVEAL_WINDOW_SECONDS,
+      clipboardClearSeconds: vault.CLIPBOARD_CLEAR_SECONDS,
+    });
+  });
+
+  router.post("/api/vault", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    if (!body.label) throw badRequest("label is required");
+    if (!body.secret) throw badRequest("secret is required");
+    let entry;
+    try {
+      entry = await vault.createEntry(user.id, body);
+    } catch (err) {
+      throw vaultError(err);
+    }
+    // The detail column is a real audit trail, so it carries what the row IS, never what it
+    // holds -- no secret, and not even the masked hint's digits.
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "vault.entry.created",
+      entityId: entry.id,
+      detail: { label: entry.label, site: entry.site },
+    });
+    return sendJson(res, 201, entry);
+  });
+
+  router.patch("/api/vault/:id", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    let entry;
+    try {
+      entry = await vault.updateEntry(user.id, params.id, body);
+    } catch (err) {
+      throw vaultError(err);
+    }
+    if (!entry) throw notFound("Vault entry not found");
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "vault.entry.updated",
+      entityId: entry.id,
+      detail: { label: entry.label, site: entry.site, secretChanged: Boolean(body.secret) },
+    });
+    return sendJson(res, 200, entry);
+  });
+
+  router.delete("/api/vault/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const removed = await vault.deleteEntry(user.id, params.id);
+    if (!removed) throw notFound("Vault entry not found");
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "vault.entry.deleted",
+      entityId: params.id,
+      detail: {},
+    });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  // Step 1 of a reveal: a challenge bound to THIS entry. Issued only for an entry the caller
+  // actually owns, so a probe cannot use this to learn which ids exist.
+  router.post("/api/vault/:id/reveal/options", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const owned = (await vault.listEntries(user.id)).some((e) => e.id === params.id);
+    if (!owned) throw notFound("Vault entry not found");
+
+    const credentialList = await credentials.listCredentials(user.id);
+    if (credentialList.length === 0) {
+      throw forbidden("No passkey is enrolled, and a reveal requires one every time.");
+    }
+    return sendJson(res, 200, {
+      challenge: await webauthn.issueChallenge(`vault:reveal:${params.id}`, user.id),
+      rpId: webauthn.relyingPartyId(),
+      timeout: webauthn.CHALLENGE_TTL_SECONDS * 1000,
+      userVerification: "required",
+      allowCredentials: credentialList.map((c) => ({
+        type: "public-key",
+        id: c.credential_id,
+        transports: c.transports,
+      })),
+    });
+  });
+
+  // Step 2: the assertion itself. Nothing decrypts until this verifies.
+  router.post("/api/vault/:id/reveal", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const gate = ratelimit.hit(`vault:reveal:${user.id}`, VAULT_REVEAL_LIMIT.limit, VAULT_REVEAL_LIMIT.windowMs);
+    if (!gate.allowed) {
+      throw tooMany("Too many reveals in a row. Wait a bit.", { retryAfterMs: gate.retryAfterMs });
+    }
+
+    const body = await readJson(req);
+    const consumed = await webauthn.consumeChallenge(body.challenge, `vault:reveal:${params.id}`);
+    if (!consumed || consumed.user_id !== user.id) throw unauthorized("That check expired. Try again.");
+
+    const credential = await credentials.findCredential(body.id);
+    if (!credential || credential.user_id !== user.id) throw unauthorized("That passkey is not on this account.");
+
+    let verified;
+    try {
+      verified = webauthn.verifyAssertion({
+        expectedChallenge: consumed.challenge,
+        response: body.response,
+        credential,
+      });
+    } catch (err) {
+      if (!config.isProduction) console.error("[vault] reveal refused:", err.message);
+      throw unauthorized("That passkey check did not pass.");
+    }
+
+    await credentials.touchCredential(credential.credential_id, verified.signCount, verified.backedUp);
+    // A reveal is also a genuine proof of presence, so the session's own stamp moves with it --
+    // but note the reveal did NOT read that stamp to decide whether to proceed.
+    await markSessionVerified(ctx.sessionToken, credential.credential_id);
+
+    let revealed;
+    try {
+      revealed = await vault.reveal(user.id, params.id, {
+        credentialId: credential.credential_id,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+      });
+    } catch (err) {
+      throw vaultError(err);
+    }
+    if (!revealed) throw notFound("Vault entry not found");
+
+    // vault_reveals is the real audit row (written inside vault.reveal's own transaction); this
+    // second line is the app-wide activity feed, and carries no plaintext either.
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "vault.revealed",
+      entityId: revealed.id,
+      detail: { label: revealed.label, site: revealed.site, credentialId: credential.credential_id },
+    });
+    return sendJson(res, 200, revealed);
+  });
+
+  router.get("/api/vault/:id/reveals", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { reveals: await vault.revealHistory(user.id, params.id) });
   });
 
   // -- Dates (Git #3136) ----------------------------------------------------------------

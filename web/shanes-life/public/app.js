@@ -676,11 +676,12 @@ async function createPasskey({ token = null, label = null } = {}) {
 }
 
 /**
- * A fresh assertion inside a live session — what the vault reveal requires. Exported on the
- * module scope so the Money Feature can call it without reimplementing the dance.
+ * Run one real assertion against server-issued options, and shape the result into the body the
+ * verifying endpoint expects. Shared by the two callers that need a fresh proof inside a live
+ * session — the generic re-verify below, and the vault's per-entry reveal (Git #3150), which
+ * uses its own challenge rather than this one's.
  */
-async function reverifyWithPasskey() {
-  const options = await api("/api/auth/reverify/options", { method: "POST", body: "{}" });
+async function passkeyAssertion(options) {
   const assertion = await navigator.credentials.get({
     publicKey: {
       challenge: b64urlToBytes(options.challenge),
@@ -695,17 +696,26 @@ async function reverifyWithPasskey() {
     },
   });
   if (!assertion) throw new Error("No passkey was chosen.");
+  return {
+    challenge: options.challenge,
+    id: assertion.id,
+    response: {
+      clientDataJSON: bytesToB64url(assertion.response.clientDataJSON),
+      authenticatorData: bytesToB64url(assertion.response.authenticatorData),
+      signature: bytesToB64url(assertion.response.signature),
+    },
+  };
+}
+
+/**
+ * A fresh assertion inside a live session — what the vault reveal requires. Exported on the
+ * module scope so the Money Feature can call it without reimplementing the dance.
+ */
+async function reverifyWithPasskey() {
+  const options = await api("/api/auth/reverify/options", { method: "POST", body: "{}" });
   return api("/api/auth/reverify", {
     method: "POST",
-    body: JSON.stringify({
-      challenge: options.challenge,
-      id: assertion.id,
-      response: {
-        clientDataJSON: bytesToB64url(assertion.response.clientDataJSON),
-        authenticatorData: bytesToB64url(assertion.response.authenticatorData),
-        signature: bytesToB64url(assertion.response.signature),
-      },
-    }),
+    body: JSON.stringify(await passkeyAssertion(options)),
   });
 }
 window.shanesLife = { reverifyWithPasskey };
@@ -1903,14 +1913,14 @@ function medsCritterSlot(batch) {
 // el("svg", ...) would call document.createElement, which builds an unnamespaced element that
 // cannot render SVG children -- these two icons need the real SVG namespace.
 const SVG_NS = "http://www.w3.org/2000/svg";
-function lineIcon(pathsHtml, { size = 20 } = {}) {
+function lineIcon(pathsHtml, { size = 20, strokeWidth = 2.5 } = {}) {
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("width", size);
   svg.setAttribute("height", size);
   svg.setAttribute("fill", "none");
   svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2.5");
+  svg.setAttribute("stroke-width", strokeWidth);
   svg.setAttribute("stroke-linecap", "round");
   svg.setAttribute("stroke-linejoin", "round");
   svg.innerHTML = pathsHtml;
@@ -2247,6 +2257,272 @@ function renderMoneyResult(container, kind, result) {
   container.append(box);
 }
 
+// Money -> Vault (Git #3150)
+// ---------------------------------------------------------------------------
+//
+// The bill-payment reference vault. Design contract Section 9 flags it as "a real security
+// requirement, not optional polish", and handoff README §7 is the layout spec: "lock note, rows
+// with site + masked reference + Reveal (passkey overlay -> full value shown 20 s -> Copy).
+// Copy clears the clipboard in 60 s."
+//
+// The real security lives on the server (src/core/vault.mjs + the /api/vault* routes): the
+// plaintext is AES-256-GCM ciphertext in the column, the key is outside the database, and every
+// reveal costs a real WebAuthn assertion bound to that one entry and writes a real vault_reveals
+// row. Nothing here can weaken any of that -- this file never holds a ciphertext and cannot ask
+// for a plaintext without an assertion the server verifies itself.
+//
+// What this file IS responsible for is the second half of the promise: that a revealed value
+// stops being on screen. That is a real timer against the server's own `expiresAt`, not a
+// decorative one, and the plaintext is dropped from JS memory when it fires.
+
+/** The one entry currently revealed, and the timers keeping that honest. Module scope because
+ *  only ever ONE value is on screen: revealing a second entry has to put the first one back
+ *  behind its mask, not leave two plaintexts sitting there with only one live countdown. */
+let vaultReveal = null; // { id, value, expiresAt, tick, restore }
+let vaultClipboardTimer = null;
+
+function hideVaultReveal() {
+  if (!vaultReveal) return;
+  clearInterval(vaultReveal.tick);
+  const { restore } = vaultReveal;
+  vaultReveal = null; // dropped before restore(), so the plaintext is gone even if that throws
+  restore();
+}
+
+/** The design's Face ID overlay — "passkey overlay 900ms" in the README, except this one is up
+ *  for exactly as long as the real assertion takes, which is the honest version of that. */
+function vaultFaceOverlay() {
+  const node = el("div", { class: "vault-face-overlay" }, [
+    el("div", { class: "vault-face-ring" }, [
+      lineIcon(
+        '<path d="M8 14s1.5 2 4 2 4-2 4-2"></path><path d="M9 9h.01"></path><path d="M15 9h.01"></path>',
+        { size: 46, strokeWidth: 2 },
+      ),
+    ]),
+    el("div", { class: "vault-face-label", text: "Face ID to reveal" }),
+  ]);
+  document.body.append(node);
+  return node;
+}
+
+/**
+ * One vault row. Masked by default, always — the full value only ever replaces the mask after
+ * `onReveal` has come back from a real, server-verified assertion.
+ */
+function vaultRow(entry, { onReveal, onCopy }) {
+  const secretBox = el("div", { class: "vault-secret" });
+  const maskEl = el("div", { class: "vault-masked", text: entry.masked });
+  const revealBtn = el("button", { type: "button", class: "vault-reveal-btn", text: "Reveal" });
+  const errorEl = el("div", { class: "vault-row-error", hidden: true });
+
+  const row = el("div", { class: "vault-row" }, [
+    el("div", { class: "vault-row-head" }, [
+      el("div", { class: "vault-row-name" }, [
+        el("div", { class: "vault-row-label", text: entry.label }),
+        entry.site ? el("div", { class: "vault-row-site", text: `pay at ${entry.site}` }) : null,
+      ]),
+      revealBtn,
+    ]),
+    maskEl,
+    secretBox,
+    errorEl,
+  ]);
+
+  function showMasked() {
+    secretBox.replaceChildren();
+    maskEl.hidden = false;
+    revealBtn.hidden = false;
+  }
+
+  function showValue(revealed) {
+    maskEl.hidden = true;
+    revealBtn.hidden = true;
+
+    const countdown = el("span", { class: "vault-countdown" });
+    const copyBtn = el("button", {
+      type: "button",
+      class: "vault-copy-btn",
+      text: "Copy",
+      onClick: () => onCopy(revealed),
+    });
+    secretBox.replaceChildren(
+      el("div", { class: "vault-value-box" }, [
+        el("span", { class: "vault-value", text: revealed.value }),
+        countdown,
+        copyBtn,
+      ]),
+    );
+
+    // The real window, measured against the server's own deadline rather than a local 20s
+    // countdown started whenever this happened to render — the two cannot drift apart.
+    const deadline = new Date(revealed.expiresAt).getTime();
+    const secondsLeft = () => Math.ceil((deadline - Date.now()) / 1000);
+    const tick = setInterval(() => {
+      // The room can be navigated away from mid-window. A detached node still holds the value,
+      // so the timer has to notice and drop it rather than counting down into nothing.
+      if (!row.isConnected || secondsLeft() <= 0) {
+        hideVaultReveal();
+        return;
+      }
+      countdown.textContent = `${secondsLeft()}s`;
+    }, 250);
+    countdown.textContent = `${Math.max(0, secondsLeft())}s`;
+
+    // Whatever was revealed before this goes back behind its own mask first -- one value on
+    // screen at a time, each with a live countdown that is genuinely counting it down.
+    hideVaultReveal();
+    vaultReveal = {
+      id: entry.id,
+      value: revealed.value,
+      expiresAt: revealed.expiresAt,
+      tick,
+      restore: showMasked,
+    };
+  }
+
+  revealBtn.addEventListener("click", async () => {
+    errorEl.hidden = true;
+    revealBtn.disabled = true;
+    const overlay = vaultFaceOverlay();
+    try {
+      showValue(await onReveal(entry));
+    } catch (err) {
+      // A cancelled Face ID prompt is a decision, not a failure worth shouting about — same
+      // judgement the sign-in screen already makes.
+      if (err && (err.name === "NotAllowedError" || err.name === "AbortError")) return;
+      errorEl.textContent = err?.message || "That did not reveal.";
+      errorEl.hidden = false;
+    } finally {
+      overlay.remove();
+      revealBtn.disabled = false;
+    }
+  });
+
+  showMasked();
+  return row;
+}
+
+async function viewMoneyVault(view) {
+  const { entries, keyConfigured, clipboardClearSeconds } = await api("/api/vault");
+
+  view.append(
+    el("div", { class: "vault-lock-note" }, [
+      lineIcon(
+        '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
+        { size: 14, strokeWidth: 2 },
+      ),
+      el("span", {
+        text: "Encrypted at rest. Face ID every time. Revealed for 20 seconds, then gone. No screenshot round-trip.",
+      }),
+    ]),
+  );
+
+  // A real deployment fact, said out loud here rather than failing at the first Reveal tap: with
+  // no SL_VAULT_KEY in the environment there is no key to decrypt with, and the honest answer is
+  // that the room cannot work, not that the entries are missing.
+  if (!keyConfigured) {
+    view.append(
+      el("div", { class: "card" }, [
+        el("p", { text: "The vault's encryption key isn't set on this server, so nothing here can be added or revealed." }),
+        el("p", { class: "small muted", text: "SL_VAULT_KEY needs 32 bytes of base64 randomness in the environment. It lives outside the database on purpose." }),
+      ]),
+    );
+    attachRoomWatermark(view, "vault");
+    return;
+  }
+
+  const copy = async (revealed) => {
+    try {
+      await navigator.clipboard.writeText(revealed.value);
+    } catch {
+      showQuickToast("This browser wouldn't let the app write to the clipboard.");
+      return;
+    }
+    showQuickToast("Copied — Clears from the clipboard in 60 seconds. Never a screenshot.");
+    // The real wipe. Best-effort by nature: a browser can refuse a clipboard write with no user
+    // gesture behind it, and nothing can clear a clipboard the user has already pasted from --
+    // so this narrows the window rather than pretending to close it.
+    if (vaultClipboardTimer) clearTimeout(vaultClipboardTimer);
+    vaultClipboardTimer = setTimeout(async () => {
+      try {
+        await navigator.clipboard.writeText("");
+      } catch {
+        /* refused without a gesture; the 20-second display window is the real guarantee */
+      }
+    }, (clipboardClearSeconds ?? 60) * 1000);
+  };
+
+  const reveal = async (entry) => {
+    const options = await api(`/api/vault/${entry.id}/reveal/options`, { method: "POST", body: "{}" });
+    return api(`/api/vault/${entry.id}/reveal`, {
+      method: "POST",
+      body: JSON.stringify(await passkeyAssertion(options)),
+    });
+  };
+
+  if (entries.length === 0) {
+    view.append(
+      empty(
+        "Nothing in the vault yet.",
+        "Which site to pay a bill at, and the account number that site needs. Add the first one below.",
+        "vault",
+      ),
+    );
+  } else {
+    const card = el("div", { class: "vault-card" });
+    for (const entry of entries) {
+      card.append(vaultRow(entry, { onReveal: reveal, onCopy: copy }));
+    }
+    view.append(card);
+  }
+
+  view.append(
+    el("p", { class: "vault-foot-note", text: "Which site, which account, nothing else. Real encryption from version one, flagged as a requirement, not polish." }),
+  );
+
+  // Adding an entry is a real write, so it is a real form -- not a placeholder. The value goes
+  // straight into an AES-256-GCM ciphertext server-side and is never echoed back by any list.
+  const labelInput = el("input", { placeholder: "Mortgage · servicer", "aria-label": "What this is for", required: true });
+  const siteInput = el("input", { placeholder: "mrcooper.com", "aria-label": "Site to pay at" });
+  const secretInput = el("input", { type: "password", autocomplete: "off", placeholder: "Account number", "aria-label": "The account number", required: true });
+  const maskedInput = el("input", { placeholder: "NFCU checking •••• 4821 (optional)", "aria-label": "Masked reference shown by default" });
+  const addError = el("p", { class: "vault-row-error", hidden: true });
+  const addForm = el("form", { class: "section" }, [
+    el("div", { class: "row" }, [labelInput, siteInput]),
+    el("div", { class: "row" }, [secretInput, maskedInput]),
+    el("button", { type: "submit", class: "ghost small", text: "Add to the vault" }),
+    addError,
+  ]);
+  addForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!labelInput.value.trim() || !secretInput.value.trim()) return;
+    addError.hidden = true;
+    addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    try {
+      await api("/api/vault", {
+        method: "POST",
+        body: JSON.stringify({
+          label: labelInput.value,
+          site: siteInput.value,
+          secret: secretInput.value,
+          masked: maskedInput.value,
+        }),
+      });
+      secretInput.value = "";
+      render();
+    } catch (err) {
+      addError.textContent = err?.message || "That didn't save.";
+      addError.hidden = false;
+      addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [el("h3", { class: "vault-add-title", text: "Add a reference" }), addForm]));
+
+  // Room watermark (Git #3119): the critter spec's own room map says "Money Bills and Cars ->
+  // bear, Vault -> vault".
+  attachRoomWatermark(view, "vault");
+}
+
 async function viewMoney(view) {
   view.append(
     el("section", { class: "section" }, [
@@ -2272,6 +2548,11 @@ async function viewMoney(view) {
       ),
     ),
   );
+
+  if (moneyTab === "vault") {
+    await viewMoneyVault(view);
+    return;
+  }
 
   if (moneyTab !== "now") {
     const label = MONEY_TABS.find((t) => t.key === moneyTab)?.label ?? moneyTab;
