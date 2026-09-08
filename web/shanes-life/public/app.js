@@ -5522,7 +5522,59 @@ async function viewMoney(view) {
     );
   }
 
+  await appendCatchesCard(view);
   await appendIncomeRulesCard(view);
+}
+
+// ---------------------------------------------------------------------------
+// Money -> Catches (Git #3153, wired to the Now tab Git #3201)
+// ---------------------------------------------------------------------------
+//
+// The design's own Catches card (README, Money screen section: "Catches (Renewal watch,
+// Forgotten money, Duplicate request, Borrowed from a bill, Bulk buy; 'Got it' dismisses)"),
+// backed by src/core/catches.mjs's five real detectors -- see that module's own header for
+// exactly what each one looks for. GET /api/money/catches runs the detectors fresh on every
+// screen open (cheap upserts against already-synced data) so this is never stale. "Got it" is
+// the one real action here, same single-click-dismiss shape as the Inbox's Dismiss button and
+// Income Rules' Remove -- Section 8's "no forms" rule doesn't reach it.
+
+const CATCH_KIND_LABELS = Object.freeze({
+  renewal: "Renewal watch",
+  forgotten_money: "Forgotten money",
+  duplicate_request: "Duplicate request",
+  borrowed_from_bill: "Borrowed from a bill",
+  bulk_buy: "Bulk buy",
+});
+
+function catchRow(c) {
+  return el("div", { class: "money-bucket-row" }, [
+    el("div", { class: "money-bucket-name" }, [
+      el("div", { class: "money-bucket-meta", text: CATCH_KIND_LABELS[c.kind] ?? c.kind }),
+      el("span", { text: c.text }),
+    ]),
+    el("button", {
+      type: "button",
+      class: "ghost small",
+      text: "Got it",
+      onClick: async (event) => {
+        event.target.disabled = true;
+        await api(`/api/money/catches/${c.id}/dismiss`, { method: "POST", body: "{}" });
+        render();
+      },
+    }),
+  ]);
+}
+
+async function appendCatchesCard(view) {
+  const { catches } = await api("/api/money/catches");
+
+  const card = el("div", { class: "card section" }, [
+    el("div", { class: "row", style: "justify-content:space-between" }, [
+      el("span", { class: "small muted", style: "font-weight:600;letter-spacing:.05em;text-transform:uppercase", text: "Catches" }),
+    ]),
+    ...(catches.length ? catches.map(catchRow) : [el("p", { class: "small muted", text: "Nothing caught right now." })]),
+  ]);
+  view.append(card);
 }
 
 // ---------------------------------------------------------------------------
