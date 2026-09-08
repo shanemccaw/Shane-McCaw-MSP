@@ -4768,6 +4768,15 @@ async function render() {
   resetCritterRender(); // Git #3119: a slot's pair-alt only advances within a single screen.
   $("#view-title").textContent = TITLES[state.route] ?? "";
 
+  // Git #3174: Today's own fox/weather scene (renderTodayHeader) IS the header per the real
+  // design -- the generic title-bar chrome is leftover Foundation-era shell (#3087) that the
+  // Today tray's Round 2 redesign never used. Every other room still shows it until it gets its
+  // own redesign pass. #app-view.no-header lets .view collapse its top padding to just the
+  // native status-bar safe area instead of assuming a header row sits above it (see app.css).
+  const isToday = state.route === "today";
+  $("#app-header").hidden = isToday;
+  $("#app-view").classList.toggle("no-header", isToday);
+
   // A wake lock (Git #3125) is only ever held for cook mode itself -- release it the moment
   // navigation moves anywhere else, rather than waiting on the tab losing visibility.
   if (state.route !== "cook") releaseCookWakeLock();

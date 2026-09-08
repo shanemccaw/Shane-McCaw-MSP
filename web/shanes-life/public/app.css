@@ -129,6 +129,14 @@ a { color: inherit; }
   align-content: start;
 }
 
+/* Git #3174: Today has no generic header row (see #app-header.hidden in render()) -- its own
+   fox/weather scene is the real header, immediately below the native status bar per the
+   design. Collapse the top padding that otherwise assumes a header row sits above .view down
+   to just the same safe-area allowance .app-header itself used to reserve. */
+#app-view.no-header .view {
+  padding-top: max(0.9rem, env(safe-area-inset-top));
+}
+
 /* Cards (design handoff README, "Screens"): hsl(var(--card)), 1px hsl(var(--card-border)),
    radius 16. */
 .card {
