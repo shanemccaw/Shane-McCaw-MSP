@@ -62,6 +62,234 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Tonight -- multi-dish synchronized cooking (Git #3126, sub-issue of #3086, reuses Cook mode's
+// (#3125) per-dish step/timer shape and #3124's recipes as the real dishes).
+//
+// Deliberately NOT persisted server-side or to localStorage -- same real intent as cookSession
+// above (#3125): a live multi-dish cook is a single real session in front of Shane right now,
+// reset if he leaves the tab and comes back later, matching the First Slice Prototype's own
+// PERSIST list, which excludes `meal`/`alarm` for the exact same reason.
+//
+// { dishes: [{id, name, minutes, steps}], startedAt, started: {id: epochMs}, snoozed: {id:
+// epochMs}, done }. `dishes` is a snapshot of the recipes picked at Start time -- Tonight's own
+// real dish set for this session, not re-fetched every tick.
+let mealSession = null;
+// The one real alarm showing right now, if any: { kind: "start", dishId, big, label, next } or
+// { kind: "done", label, next }. Only one alarm is ever shown at a time (matches the prototype's
+// own `!st.alarm` tick guard).
+let mealAlarm = null;
+// Which recipes are checked in the idle "pick tonight's dishes" screen, before Start is pressed.
+let mealSelection = new Set();
+let mealTickTimer = null;
+let mealWakeLock = null;
+let mealAudioCtx = null;
+let mealBeepTimer = null;
+
+const MEAL_SNOOZE_MS = 2 * 60 * 1000; // real 2 minutes, matching the design's own snooze shift
+
+function mmss(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function mealTotalMinutes(dishes) {
+  return Math.max(...dishes.map((d) => d.minutes));
+}
+
+/** The real moment everything finishes: the latest of every ALREADY-STARTED dish's own real
+ *  finish time, falling back to the plan (start + total) before anything has started -- exactly
+ *  the prototype's own `mealFinish`. A snoozed, not-yet-started dish can genuinely push this
+ *  later once it does start; that's real, correct behavior, not a bug. */
+function mealFinishTime(session) {
+  const finishTimes = session.dishes.filter((d) => session.started[d.id]).map((d) => session.started[d.id] + d.minutes * 60000);
+  if (finishTimes.length > 0) return Math.max(...finishTimes);
+  return session.startedAt + mealTotalMinutes(session.dishes) * 60000;
+}
+
+/** One dish's real live state against the session, at a given moment -- the prototype's own
+ *  `dishState`. Every dish is already past "idle" the instant a session exists (the longest dish
+ *  starts immediately in `startMeal`), so this only ever returns cooking/due/waiting/done. */
+function mealDishState(dish, session, now) {
+  if (session.started[dish.id]) {
+    const leftMs = dish.minutes * 60000 - (now - session.started[dish.id]);
+    return leftMs <= 0 ? { phase: "done", leftMs: 0 } : { phase: "cooking", leftMs };
+  }
+  const fin = mealFinishTime(session);
+  const startsAt = session.snoozed[dish.id] || fin - dish.minutes * 60000;
+  const dt = startsAt - now;
+  return dt <= 0 ? { phase: "due", startsInMs: 0 } : { phase: "waiting", startsInMs: dt };
+}
+
+function playMealBeep() {
+  try {
+    if (!mealAudioCtx) mealAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const beep = () => {
+      const o = mealAudioCtx.createOscillator();
+      const g = mealAudioCtx.createGain();
+      o.type = "square";
+      o.frequency.value = 880;
+      g.gain.value = 0.15;
+      o.connect(g);
+      g.connect(mealAudioCtx.destination);
+      o.start();
+      o.stop(mealAudioCtx.currentTime + 0.18);
+    };
+    beep();
+    if (!mealBeepTimer) mealBeepTimer = setInterval(beep, 450);
+  } catch {
+    // No AudioContext (or blocked before any user gesture) -- the alarm still shows visually.
+  }
+}
+function stopMealBeep() {
+  if (mealBeepTimer) {
+    clearInterval(mealBeepTimer);
+    mealBeepTimer = null;
+  }
+}
+
+async function requestMealWakeLock() {
+  if (mealWakeLock || !("wakeLock" in navigator)) return;
+  try {
+    mealWakeLock = await navigator.wakeLock.request("screen");
+    mealWakeLock.addEventListener("release", () => {
+      mealWakeLock = null;
+    });
+  } catch {
+    // Denied -- the session still runs, the screen just may sleep.
+  }
+}
+async function releaseMealWakeLock() {
+  if (!mealWakeLock) return;
+  try {
+    await mealWakeLock.release();
+  } catch {
+    // Already released.
+  }
+  mealWakeLock = null;
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && mealSession && !mealSession.done) requestMealWakeLock();
+});
+
+function ensureMealTick() {
+  if (mealTickTimer) return;
+  mealTickTimer = setInterval(onMealTick, 1000);
+}
+function stopMealTick() {
+  if (mealTickTimer) {
+    clearInterval(mealTickTimer);
+    mealTickTimer = null;
+  }
+}
+
+/** Runs every second for the life of a real Tonight session, independent of whichever screen
+ *  Shane is actually looking at -- a "start this dish now" alert has to be able to interrupt him
+ *  on Shopping just as much as on Tonight itself. Matches the prototype's own global `onTick`. */
+function onMealTick() {
+  if (!mealSession || mealSession.done || mealAlarm) return;
+  const now = Date.now();
+  const fin = mealFinishTime(mealSession);
+  const due = mealSession.dishes.find((d) => !mealSession.started[d.id] && now >= (mealSession.snoozed[d.id] || fin - d.minutes * 60000));
+  if (due) {
+    const lead = mealSession.dishes.find((d) => mealSession.started[d.id] && d.id !== due.id);
+    const leadText = lead ? ` · ${lead.name.toLowerCase()} has ${mmss(Math.max(0, lead.minutes * 60000 - (now - mealSession.started[lead.id])))} left` : "";
+    mealAlarm = {
+      kind: "start",
+      dishId: due.id,
+      big: `${due.minutes}:00`,
+      label: `${due.name} goes in now`,
+      next: `${due.name} · ${due.minutes} min${leadText}`,
+    };
+    playMealBeep();
+    renderMealAlarmOverlay();
+    return;
+  }
+  const allIn = mealSession.dishes.every((d) => mealSession.started[d.id]);
+  const allDone = allIn && mealSession.dishes.every((d) => now - mealSession.started[d.id] >= d.minutes * 60000);
+  if (allDone) {
+    mealSession.done = true;
+    mealAlarm = { kind: "done", label: "Everything's done", next: "Plate up. Half for the Rental." };
+    playMealBeep();
+    renderMealAlarmOverlay();
+    return;
+  }
+  // Nothing due -- just refresh the live countdown text if Tonight is the screen actually
+  // showing it, recomputed from the cached `mealSession.dishes` snapshot, not a re-fetch. Cook
+  // mode's own mealChipStrip only updates on Shane's next real interaction there (Back/Next/a
+  // dish's own alarm) rather than every second, to avoid re-fetching /api/recipes on a timer.
+  if (state.route === "tonight") render();
+}
+
+function startMeal(dishes) {
+  const total = mealTotalMinutes(dishes);
+  const first = dishes.find((d) => d.minutes === total) || dishes[0];
+  const now = Date.now();
+  mealSession = { dishes, startedAt: now, started: { [first.id]: now }, snoozed: {}, done: false };
+  mealAlarm = null;
+  mealSelection = new Set();
+  ensureMealTick();
+  requestMealWakeLock();
+  renderMealAlarmOverlay();
+}
+
+function stopMeal() {
+  mealSession = null;
+  mealAlarm = null;
+  stopMealTick();
+  stopMealBeep();
+  releaseMealWakeLock();
+  renderMealAlarmOverlay();
+}
+
+/** The one real full-screen alarm overlay, appended directly to <body> rather than the routed
+ *  `#view` -- it has to keep showing across a hash navigation Shane makes while it's up (e.g. he
+ *  taps into Shopping while "Potatoes go in now" is ringing), which `view.replaceChildren()` on
+ *  every render() would otherwise wipe. Hidden whenever there is no real alarm to show. */
+function renderMealAlarmOverlay() {
+  let overlay = document.getElementById("meal-alarm-overlay");
+  if (!overlay) {
+    overlay = el("div", { id: "meal-alarm-overlay", class: "meal-alarm-overlay" });
+    document.body.append(overlay);
+  }
+  if (!mealAlarm) {
+    overlay.hidden = true;
+    overlay.replaceChildren();
+    return;
+  }
+  const a = mealAlarm;
+  const stop = () => {
+    stopMealBeep();
+    if (a.kind === "start") {
+      mealSession.started[a.dishId] = Date.now();
+    }
+    mealAlarm = null;
+    renderMealAlarmOverlay();
+    render();
+  };
+  const snooze = () => {
+    stopMealBeep();
+    if (a.kind === "start") {
+      mealSession.snoozed[a.dishId] = Date.now() + MEAL_SNOOZE_MS;
+    }
+    mealAlarm = null;
+    renderMealAlarmOverlay();
+    render();
+  };
+  overlay.hidden = false;
+  overlay.replaceChildren(
+    el("div", { class: "meal-alarm-card" }, [
+      el("div", { class: "meal-alarm-big", text: a.kind === "start" ? a.big : "0:00" }),
+      el("div", { class: "meal-alarm-label", text: a.label }),
+      el("div", { class: "meal-alarm-next", text: a.next }),
+      el("div", { class: "meal-alarm-actions" }, [
+        el("button", { class: "meal-alarm-primary", text: a.kind === "start" ? "It's in" : "Plate up", onClick: stop }),
+        el("button", { class: "meal-alarm-secondary", text: a.kind === "start" ? "Give me 2 minutes" : "Keep warm 5 minutes", onClick: snooze }),
+      ]),
+    ]),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // fetch helpers
 // ---------------------------------------------------------------------------
 
@@ -530,10 +758,28 @@ async function viewToday(view) {
   const data = await api("/api/today");
   setInboxBadge(data.pendingCaptures);
 
-  // #3127's real "Tonight" teaser -- today's real planned dinner, matched against what Claude
-  // pushed for the Sunday ritual. A label, not a timer: multi-dish Cook-mode timing is a
-  // separate, explicitly out-of-scope sibling Feature.
-  if (data.tonight) {
+  // Tonight teaser (Git #3126) -- purely real client state (mealSession is never persisted
+  // server-side, see its own declaration), so this only ever shows while a live synchronized
+  // cook session genuinely exists right now. Takes priority over #3127's own "Tonight" plan
+  // label below when both would otherwise apply -- a live cook in progress is the more urgent
+  // real state than a reminder of what the plan said.
+  if (mealSession) {
+    const label = mealSession.done ? "Done · plate up" : `everything done in ${mmss(Math.max(0, mealFinishTime(mealSession) - Date.now()))}`;
+    view.append(
+      el("section", { class: "section" }, [
+        el("a", { class: "tile", href: "#/tonight", style: "display:flex;align-items:center;justify-content:space-between" }, [
+          el("div", {}, [
+            el("div", { class: "title", text: "Tonight · one finish" }),
+            el("div", { class: "meta", text: `${mealSession.dishes.map((d) => d.name).join(", ")} · ${label}` }),
+          ]),
+          el("span", { class: "chip", text: "Open" }),
+        ]),
+      ]),
+    );
+  } else if (data.tonight) {
+    // #3127's real "Tonight" teaser -- today's real planned dinner, matched against what Claude
+    // pushed for the Sunday ritual. A label, not a timer: multi-dish Cook-mode timing is Git
+    // #3126, above -- shown instead of this the moment a real synchronized session is running.
     view.append(
       el("section", { class: "section" }, [
         el("a", { class: "card", href: "#/recipes" }, [
@@ -811,6 +1057,21 @@ async function viewRecipes(view) {
     ]),
   );
 
+  // Tonight (Git #3126): cooking two or more dishes so everything finishes together is its own
+  // real screen, not another button on a recipe card -- surfaced here since Recipes is where
+  // Shane already looks for what to make.
+  view.append(
+    el("section", { class: "section" }, [
+      el("a", { class: "tile", href: "#/tonight", style: "display:flex;align-items:center;justify-content:space-between" }, [
+        el("div", {}, [
+          el("div", { class: "title", text: mealSession ? "Tonight — in progress" : "Tonight" }),
+          el("div", { class: "meta", text: mealSession ? "A synchronized meal is cooking now" : "Cook two or more dishes so everything finishes together" }),
+        ]),
+        el("span", { class: "chip", text: mealSession ? "Open" : "Start" }),
+      ]),
+    ]),
+  );
+
   if (recipes.length === 0) {
     view.append(
       empty(
@@ -838,6 +1099,11 @@ function stepIngs(step) {
 // left out. "Unchecked ingredients never block Next" and "Screen stays awake in cook mode" are
 // the design's own two locked, verbatim lines (contract pack prototype's real `cookFoot` text) --
 // copied here exactly, not paraphrased.
+//
+// Git #3126 reuses this exact per-dish step view for a dish opened from inside a live Tonight
+// session -- `cookMeal` mirrors the prototype's own `cookMeal`/`mealOn` distinction: back/done
+// return to Tonight instead of Recipes, and a compact strip of every other dish's live status
+// shows above the step card so Shane isn't blind to the rest of the meal while checking one dish.
 async function viewCook(view, recipeId) {
   const { recipes } = await api("/api/recipes");
   const recipe = recipes.find((r) => r.id === recipeId);
@@ -864,15 +1130,19 @@ async function viewCook(view, recipeId) {
   const isLast = stepIndex + 1 >= steps.length;
   const ings = stepIngs(step);
 
+  const cookMeal = !!(mealSession && !mealSession.done && mealSession.dishes.some((d) => d.id === recipeId));
+  const exitTarget = cookMeal ? "#/tonight" : "#/recipes";
   const exitToRecipes = () => {
     cookSession = null;
-    location.hash = "#/recipes";
+    location.hash = exitTarget;
   };
+
+  if (cookMeal) view.append(mealChipStrip(recipeId));
 
   view.append(
     el("section", { class: "section" }, [
       el("div", { class: "spread" }, [
-        el("button", { class: "ghost small", text: "← Recipes", onClick: exitToRecipes }),
+        el("button", { class: "ghost small", text: cookMeal ? "← Tonight" : "← Recipes", onClick: exitToRecipes }),
         el("div", { style: "text-align:right" }, [
           el("div", { class: "title", text: recipe.name }),
           el("div", { class: "meta", text: `Step ${stepIndex + 1} of ${steps.length}` }),
@@ -924,7 +1194,7 @@ async function viewCook(view, recipeId) {
         }),
         el("button", {
           class: "primary",
-          text: isLast ? "Done cooking" : "Next step",
+          text: isLast ? (cookMeal ? "Back to Tonight" : "Done cooking") : "Next step",
           onClick: () => {
             if (!isLast) {
               cookSession.stepIndex = stepIndex + 1;
@@ -940,6 +1210,191 @@ async function viewCook(view, recipeId) {
         style: "text-align:center;margin-top:.5rem",
         text: "Screen stays awake in cook mode. Unchecked ingredients never block Next.",
       }),
+    ]),
+  );
+}
+
+// Tonight -- real multi-dish synchronized cooking (Git #3126). One dish starts immediately (the
+// longest one), the rest start later so every dish finishes at the same real moment -- the
+// prototype's own "longest dish starts first, shorter dishes start later so all finish together"
+// logic, against real recipes with a real `cookMinutes` set instead of the prototype's fixed
+// three-dish demo meal.
+
+/** The compact strip of every OTHER dish's live status shown above Cook mode's step card while
+ *  a Tonight session is active -- the prototype's own `mealChips`, so Shane isn't blind to the
+ *  rest of the meal while he's checked into one dish's steps. */
+function mealChipStrip(activeRecipeId) {
+  const now = Date.now();
+  const chips = mealSession.dishes.map((d) => {
+    const ds = mealDishState(d, mealSession, now);
+    const text = {
+      cooking: `${d.name} · ${mmss(ds.leftMs)}`,
+      due: `${d.name} · go now`,
+      waiting: `${d.name} · in ${mmss(ds.startsInMs)}`,
+      done: `${d.name} · done`,
+    }[ds.phase];
+    return el("span", { class: `chip${d.id === activeRecipeId ? " ok" : ""}`, text });
+  });
+  return el("section", { class: "section" }, [el("div", { class: "row" }, chips)]);
+}
+
+function mealDishCard(dish) {
+  const now = Date.now();
+  const ds = mealDishState(dish, mealSession, now);
+  const statusText = {
+    cooking: `${mmss(ds.leftMs)} left`,
+    due: "go now",
+    waiting: `starts in ${mmss(ds.startsInMs)}`,
+    done: "done",
+  }[ds.phase];
+  const pct = ds.phase === "done" ? 100 : ds.phase === "cooking" ? Math.round(100 - (ds.leftMs / (dish.minutes * 60000)) * 100) : 0;
+
+  // The design's own "canStart" affordance (prototype: `ds.phase === 'due'`) -- a due dish can be
+  // started directly from its own card, not only via the alarm overlay's "It's in".
+  const startNowBtn =
+    ds.phase === "due"
+      ? el("button", {
+          class: "primary small",
+          text: "It's in",
+          onClick: () => {
+            mealSession.started[dish.id] = Date.now();
+            if (mealAlarm && mealAlarm.dishId === dish.id) {
+              stopMealBeep();
+              mealAlarm = null;
+              renderMealAlarmOverlay();
+            }
+            render();
+          },
+        })
+      : null;
+
+  const cookBtn = el("button", { class: "ghost small", text: "Cook", onClick: () => { location.hash = `#/cook/${dish.id}`; } });
+
+  return el("div", { class: `meal-dish meal-dish-${ds.phase}` }, [
+    el("div", { class: "meal-dish-bar" }, [el("div", { class: "meal-dish-bar-fill", style: `width:${pct}%` })]),
+    el("div", { class: "spread" }, [
+      el("div", {}, [
+        el("div", { class: "title", text: dish.name }),
+        el("div", { class: "meta", text: `${dish.minutes} min total · ${statusText}` }),
+      ]),
+      el("div", { class: "row" }, [startNowBtn, cookBtn].filter(Boolean)),
+    ]),
+  ]);
+}
+
+async function viewTonight(view) {
+  if (mealSession) {
+    renderActiveMeal(view);
+    return;
+  }
+
+  const { recipes } = await api("/api/recipes");
+  // Eligibility, per migration 028's own real reasoning: a dish needs both a real cook time to
+  // synchronize against and real steps to actually cook through.
+  const eligible = recipes.filter((r) => r.cookMinutes && r.steps.length > 0);
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("h2", { text: "Tonight" }),
+      el("p", {
+        class: "muted small",
+        text: "Pick tonight's dishes -- Tonight works out when each one has to start so everything finishes together.",
+      }),
+    ]),
+  );
+
+  if (eligible.length === 0) {
+    view.append(
+      empty(
+        "No dishes ready for Tonight yet.",
+        "Ask Claude to push a recipe with a real cook time (cookMinutes) and real steps -- that's what makes a recipe eligible to cook as part of a synchronized Tonight meal.",
+      ),
+    );
+    return;
+  }
+
+  const list = el("section", { class: "section" });
+  for (const recipe of eligible) {
+    const checkbox = el("input", { type: "checkbox", ...(mealSelection.has(recipe.id) ? { checked: true } : {}) });
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) mealSelection.add(recipe.id);
+      else mealSelection.delete(recipe.id);
+      render();
+    });
+    list.append(
+      el("label", { class: "tile", style: "display:flex;align-items:center;gap:.75rem;cursor:pointer" }, [
+        checkbox,
+        el("div", { style: "flex:1" }, [
+          el("div", { class: "title", text: recipe.name }),
+          el("div", { class: "meta", text: `${recipe.cookMinutes} min` }),
+        ]),
+      ]),
+    );
+  }
+  view.append(list);
+
+  const selectedCount = eligible.filter((r) => mealSelection.has(r.id)).length;
+  view.append(
+    el("section", { class: "section" }, [
+      el("button", {
+        class: "primary",
+        text: selectedCount > 0 ? `Start Tonight — ${selectedCount} dish${selectedCount === 1 ? "" : "es"}` : "Pick at least one dish",
+        ...(selectedCount === 0 ? { disabled: true } : {}),
+        onClick: () => {
+          const dishes = eligible
+            .filter((r) => mealSelection.has(r.id))
+            .map((r) => ({ id: r.id, name: r.name, minutes: r.cookMinutes, steps: r.steps }));
+          if (dishes.length === 0) return;
+          startMeal(dishes);
+          render();
+        },
+      }),
+    ]),
+  );
+}
+
+function renderActiveMeal(view) {
+  const session = mealSession;
+
+  if (session.done) {
+    view.append(
+      el("section", { class: "section" }, [
+        el("div", { class: "card" }, [
+          el("div", { class: "title", text: "Everything's done" }),
+          el("p", { class: "muted", style: "margin:.35rem 0 0", text: "Plate up. Half for the Rental." }),
+        ]),
+      ]),
+    );
+    view.append(
+      el("section", { class: "section" }, [
+        el("button", { class: "primary", text: "Clear tonight", onClick: () => { stopMeal(); render(); } }),
+      ]),
+    );
+    return;
+  }
+
+  const leftMs = Math.max(0, mealFinishTime(session) - Date.now());
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("div", { class: "spread" }, [
+        el("h2", { text: "Tonight" }),
+        el("span", { class: "chip", text: "everything done together" }),
+      ]),
+      el("div", { class: "card" }, [
+        el("div", { class: "meta", text: "Everything done in" }),
+        el("div", { style: "font-size:2rem;font-weight:700;margin-top:.15rem", text: mmss(leftMs) }),
+      ]),
+    ]),
+  );
+
+  const list = el("section", { class: "section" });
+  for (const dish of session.dishes) list.append(mealDishCard(dish));
+  view.append(list);
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("button", { class: "ghost danger", text: "Stop cooking", onClick: () => { stopMeal(); render(); } }),
     ]),
   );
 }
@@ -2480,7 +2935,7 @@ async function viewDateDetail(view, dateId) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", inbox: "Inbox", dates: "Dates", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", inbox: "Inbox", dates: "Dates", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "", tonight: "Tonight" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -2511,6 +2966,7 @@ async function render() {
   try {
     if (state.route === "shopping") await viewShopping(view);
     else if (state.route === "recipes") await viewRecipes(view);
+    else if (state.route === "tonight") await viewTonight(view);
     else if (state.route === "cook") await viewCook(view, state.cookRecipeId);
     else if (state.route === "meds") await viewMeds(view);
     else if (state.route === "inbox") await viewInbox(view);

@@ -727,7 +727,7 @@ export const TOOLS = [
     name: "push_recipes",
     title: "Push generated recipes",
     description:
-      "Push one or more real, ready-to-use recipes into the app -- the Recipes room's real generation entry point (Section 5: recipes are Claude-generated and pushed in via MCP, not authored in-app). Call get_health_context first so heart-healthy choices are favored where it genuinely applies, and set heartHealthy true on the recipes where it does. Set replace true to swap out every previously saved recipe for this fresh set; leave false to add onto what's already saved.",
+      "Push one or more real, ready-to-use recipes into the app -- the Recipes room's real generation entry point (Section 5: recipes are Claude-generated and pushed in via MCP, not authored in-app). Call get_health_context first so heart-healthy choices are favored where it genuinely applies, and set heartHealthy true on the recipes where it does. Set cookMinutes on any recipe genuinely meant to be one dish of a Tonight synchronized multi-dish meal (Git #3126) -- it's the one real number Tonight's start-offset math needs, and a recipe with no cookMinutes cannot be picked as a Tonight dish. Set replace true to swap out every previously saved recipe for this fresh set; leave false to add onto what's already saved.",
     inputSchema: {
       type: "object",
       properties: {
@@ -759,6 +759,11 @@ export const TOOLS = [
                 },
               },
               heartHealthy: { type: "boolean", default: false, description: "True if this recipe genuinely fits Shane's real stated health context (get_health_context)." },
+              cookMinutes: {
+                type: ["integer", "null"],
+                description:
+                  "This dish's own real total cook time, in whole minutes (e.g. 40 for the prototype's own sheet-pan chicken thighs) -- ONLY set this for a recipe genuinely meant to be one dish of a Tonight synchronized multi-dish meal (Git #3126). Omit or pass null for an ordinary standalone recipe; a recipe with no cookMinutes just cannot be picked as a Tonight dish.",
+              },
             },
             required: ["name"],
           },

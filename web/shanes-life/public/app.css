@@ -504,3 +504,51 @@ pre.token {
 .refill-tier-label.handled { color: hsl(var(--success)); }
 .refill-days-left { font-size: 13px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
 .refill-days-left.due { color: #fbbf24; font-weight: var(--weight-semibold); }
+
+/* ---------- Tonight -- multi-dish synchronized cooking (Git #3126) ----------
+   Per-dish card: a thin progress bar along the top (fills as that dish cooks), the dish's own
+   real name/total/live status below it. Colors mark phase, matching the prototype's own dot/glow
+   language (waiting = neutral, cooking/due = active primary, done = success) without inventing a
+   new palette. */
+
+.meal-dish {
+  position: relative;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  border-radius: var(--radius-2xl);
+  padding: 0.85rem 1rem;
+  overflow: hidden;
+}
+.meal-dish + .meal-dish { margin-top: 0.5rem; }
+.meal-dish-bar { position: absolute; inset: 0 0 auto 0; height: 3px; background: hsl(var(--muted)); }
+.meal-dish-bar-fill { height: 100%; background: hsl(var(--primary)); transition: width 1s linear; }
+.meal-dish-due { border-color: hsl(var(--primary)); box-shadow: 0 0 0 3px hsl(var(--primary) / 0.18); }
+.meal-dish-cooking { border-color: hsl(var(--primary) / 0.5); }
+.meal-dish-done .meal-dish-bar-fill { background: hsl(var(--success)); }
+.meal-dish-done { opacity: 0.75; }
+
+/* The one real full-screen alarm, appended directly to <body> (see renderMealAlarmOverlay) so it
+   survives a hash navigation Shane makes while it's ringing. */
+.meal-alarm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+.meal-alarm-card { display: grid; justify-items: center; gap: 1.1rem; text-align: center; width: min(360px, 100%); }
+.meal-alarm-big { font-size: 3.5rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.meal-alarm-label { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.01em; }
+.meal-alarm-next { font-size: 0.95rem; opacity: 0.85; max-width: 280px; }
+.meal-alarm-actions { display: grid; gap: 0.6rem; width: 100%; margin-top: 0.5rem; }
+.meal-alarm-primary, .meal-alarm-secondary {
+  border-radius: var(--radius-xl);
+  font-weight: 700;
+  cursor: pointer;
+}
+.meal-alarm-primary { height: 56px; border: 0; background: #fff; color: hsl(var(--primary)); font-size: 1.05rem; }
+.meal-alarm-secondary { height: 44px; border: 1px solid hsl(var(--primary-foreground) / 0.4); background: transparent; color: hsl(var(--primary-foreground)); font-size: 0.9rem; }

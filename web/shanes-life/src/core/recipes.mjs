@@ -9,8 +9,15 @@
 // Real scope, per #3124: (1) the list itself -- name/time/needs, (2) a real can-make status per
 // recipe matched against what's currently on the Shopping run, (3) "Add missing" onto that same
 // run, (4) real heart-healthy context, stated once and read by Claude before it generates.
-// Explicitly NOT here: Cook mode, Tonight (multi-dish timing), the Sunday ritual -- each its own
-// separate, real sibling Feature under #3086.
+// Explicitly NOT here (at #3124 time): Cook mode, Tonight (multi-dish timing), the Sunday
+// ritual -- each its own separate, real sibling Feature under #3086.
+//
+// Git #3126 (Tonight, multi-dish synchronized cooking) is the first real consumer of
+// `cook_minutes` -- a recipe's own real total cook time in minutes, the one number the
+// prototype's own sync math (`MEAL_TOTAL = max(dish.min)`, each dish's start-offset
+// `MEAL_TOTAL - dish.min`) needs and neither `time_text` (free prose) nor `steps` supplies.
+// Nullable: a recipe with no `cook_minutes` set just isn't eligible to be picked as a Tonight
+// dish (see migration 028's own real reasoning).
 
 import { many, one, query } from "../db.mjs";
 import { badRequest, notFound } from "../http.mjs";
@@ -73,10 +80,24 @@ function normaliseSteps(steps) {
   });
 }
 
+/** `cook_minutes` (Git #3126) -- a recipe's own real total cook time, in whole minutes, used only
+ *  for Tonight's synchronized start-offset math. Undefined/null clears it (not Tonight-eligible);
+ *  anything else must be a real positive integer -- the same constraint migration 028 enforces at
+ *  the database level, checked here too so a bad push fails with a real message, not a raw
+ *  constraint-violation error. */
+function normaliseCookMinutes(cookMinutes) {
+  if (cookMinutes === undefined || cookMinutes === null || cookMinutes === "") return null;
+  const n = Number(cookMinutes);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+    throw badRequest("cookMinutes must be a positive whole number of minutes, or null");
+  }
+  return n;
+}
+
 /** Ownership check + the raw row, used by every other export here. */
 export async function getOwnedRecipe(userId, recipeId) {
   return one(
-    `SELECT id, name, time_text, needs, steps, heart_healthy, created_by, created_at, updated_at
+    `SELECT id, name, time_text, needs, steps, heart_healthy, cook_minutes, created_by, created_at, updated_at
        FROM recipes WHERE id = $1 AND user_id = $2 AND archived_at IS NULL`,
     [recipeId, userId],
   );
@@ -84,13 +105,13 @@ export async function getOwnedRecipe(userId, recipeId) {
 
 /** Create one real recipe. `createdBy` defaults to 'claude' -- the design's own real generation
  *  path (Section 5); a manually-typed recipe from the web UI passes 'shane'. */
-export async function createRecipe(userId, { name, timeText, needs, steps, heartHealthy, createdBy = "claude" }) {
+export async function createRecipe(userId, { name, timeText, needs, steps, heartHealthy, cookMinutes, createdBy = "claude" }) {
   const cleanName = String(name || "").trim().slice(0, 200);
   if (!cleanName) throw badRequest("name is required");
   const row = await one(
-    `INSERT INTO recipes (user_id, name, time_text, needs, steps, heart_healthy, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
-     RETURNING id, name, time_text, needs, steps, heart_healthy, created_by, created_at, updated_at`,
+    `INSERT INTO recipes (user_id, name, time_text, needs, steps, heart_healthy, cook_minutes, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+     RETURNING id, name, time_text, needs, steps, heart_healthy, cook_minutes, created_by, created_at, updated_at`,
     [
       userId,
       cleanName,
@@ -98,6 +119,7 @@ export async function createRecipe(userId, { name, timeText, needs, steps, heart
       normaliseNeeds(needs),
       JSON.stringify(normaliseSteps(steps)),
       Boolean(heartHealthy),
+      normaliseCookMinutes(cookMinutes),
       createdBy === "shane" ? "shane" : "claude",
     ],
   );
@@ -125,6 +147,7 @@ export async function pushRecipes(userId, recipes, { replace = false } = {}) {
         needs: r.needs,
         steps: r.steps,
         heartHealthy: r.heartHealthy,
+        cookMinutes: r.cookMinutes,
         createdBy: "claude",
       }),
     );
@@ -148,7 +171,7 @@ export async function archiveRecipe(userId, recipeId) {
  */
 export async function listRecipesWithMatch(userId) {
   const recipes = await many(
-    `SELECT id, name, time_text, needs, steps, heart_healthy, created_by, created_at, updated_at
+    `SELECT id, name, time_text, needs, steps, heart_healthy, cook_minutes, created_by, created_at, updated_at
        FROM recipes WHERE user_id = $1 AND archived_at IS NULL ORDER BY created_at DESC`,
     [userId],
   );
@@ -167,6 +190,7 @@ export async function listRecipesWithMatch(userId) {
       needs: r.needs || [],
       steps: r.steps || [],
       heartHealthy: r.heart_healthy,
+      cookMinutes: r.cook_minutes,
       createdBy: r.created_by,
       createdAt: r.created_at,
       updatedAt: r.updated_at,

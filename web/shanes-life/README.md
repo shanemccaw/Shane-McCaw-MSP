@@ -32,6 +32,7 @@ Every decision below traces to a section of it, and the section is cited in the 
 | Food preferences: dislikes (soft avoid) and allergies (hard exclusion) (§5) | `src/core/food-preferences.mjs`, `food_preferences` table (migration 024), MCP `get_food_preferences`/`set_food_preferences` -- additive, no separate settings form (#3132) |
 | Recipes: Cook mode -- step-by-step view, next/back, unchecked never blocks, screen stays awake (Shanes Life 05) | `public/app.js` `#/cook/<id>` (`viewCook`, `cookSession`, Wake Lock API), `recipes.mjs`'s `normaliseSteps` now carries real per-step `{text, ings}` (#3125) |
 | Recipes: Sunday meal-planning ritual + Today surfacing (§5) | `src/core/meal-plan.mjs`, `meal_plan_entries` table (migration 026), `GET/DELETE /api/meal-plan`, `GET /api/today` (`mealNudges`/`tonight`), `public/app.js` Today "Tonight" card + `#/recipes` "This week's plan", MCP `push_meal_plan`/`get_meal_plan` (#3127) |
+| Recipes: Tonight -- multi-dish synchronized cooking, live status/countdowns, start + done alarms, per-dish snooze (Shanes Life 05) | `recipes.cook_minutes` (migration 028), MCP `push_recipes` `cookMinutes`, `public/app.js` `#/tonight` (`mealSession`, `mealDishState`, `renderMealAlarmOverlay`) -- client-only session, deliberately not persisted; takes priority over #3127's own Today "Tonight" card while a live session is running (#3126) |
 
 ---
 
