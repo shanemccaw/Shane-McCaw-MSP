@@ -186,7 +186,7 @@ export async function getListDetail(userId, listId) {
   if (!list) return null;
   const items = await many(
     `SELECT id, position, text, note, done, done_at, created_at, requested_by,
-            price_cents, price_source, priced_at
+            price_cents, price_source, priced_at, added_by, checked_by
        FROM list_items WHERE list_id = $1 ORDER BY position, created_at`,
     [listId],
   );
@@ -219,8 +219,16 @@ export async function setListBudget(userId, listId, budgetCents) {
   return getListDetail(userId, listId);
 }
 
-/** Append items, ownership-checked. Mirrors core/entities.mjs's addItems for the typed shape. */
-export async function addListItems(userId, listId, items) {
+/**
+ * Append items, ownership-checked. Mirrors core/entities.mjs's addItems for the typed shape.
+ *
+ * `addedBy` (Git #3186) is the real provenance marker Shane's decision comment asked for --
+ * "owner" for the owner's own adds, "share" / "share:<label>" for a can_add-enabled share link
+ * (see routes/public.mjs) -- applied to every item in this one call, since they all came from
+ * the same real actor in the same request. Mirrors entity_items' existing checked_by
+ * convention (013_shanes_life_foundation.sql), extended to cover who added a row too.
+ */
+export async function addListItems(userId, listId, items, { addedBy = null } = {}) {
   const owned = await getOwnedList(userId, listId);
   if (!owned) throw notFound("List not found");
   const normalised = normaliseListItems(items);
@@ -234,9 +242,9 @@ export async function addListItems(userId, listId, items) {
     let next = Number(rows[0].max) + 1;
     for (const item of normalised) {
       await client.query(
-        `INSERT INTO list_items (list_id, position, text, note, done, done_at, requested_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [listId, next++, item.text, item.note, item.checked, item.checked ? new Date().toISOString() : null, item.requestedBy],
+        `INSERT INTO list_items (list_id, position, text, note, done, done_at, requested_by, added_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [listId, next++, item.text, item.note, item.checked, item.checked ? new Date().toISOString() : null, item.requestedBy, addedBy],
       );
     }
     await client.query("UPDATE lists SET updated_at = now() WHERE id = $1", [listId]);
@@ -317,7 +325,7 @@ export async function clearCheckedItems(userId, listId) {
  */
 export async function getListForShare(listId) {
   const list = await one(
-    `SELECT l.id, l.name, l.updated_at,
+    `SELECT l.id, l.name, l.store, l.updated_at,
             c.slug  AS category, c.label AS category_label, c.icon AS category_icon,
             c.color AS category_color, c.item_noun AS category_item_noun
        FROM lists l
@@ -328,7 +336,7 @@ export async function getListForShare(listId) {
   if (!list) return null;
 
   const items = await many(
-    `SELECT id, position, text, note, done, done_at
+    `SELECT id, position, text, note, done, done_at, added_by, checked_by
        FROM list_items WHERE list_id = $1 ORDER BY position, created_at`,
     [listId],
   );
@@ -346,16 +354,21 @@ export async function getListForShare(listId) {
     category_icon: list.category_icon || "list-checks",
     category_color: list.category_color || "sky",
     category_item_noun: list.category_item_noun || "item",
-    // list_items has no checked_by column -- the design's own literal shape (016's header quotes
-    // the handoff verbatim: `list_items(list_id, text, done)`) -- so who ticked it lives only in
-    // the audit trail (actor/actorLabel on activity_log), not on the row itself.
+    // The real store this run is being shopped at (#3108) -- server-side only. routes/public.mjs
+    // uses it to compute Best-path aisle grouping for a can_add-enabled share; it is never put on
+    // the public wire shape itself (the store name isn't something a share holder needs to see,
+    // only the ordering it produces).
+    store: list.store,
+    // Real provenance (Git #3186's decision comment): NULL reads as "the owner", same convention
+    // entity_items' checked_by already used ("owner" | "share:<label>").
     items: items.map((i) => ({
       id: i.id,
       position: i.position,
       text: i.text,
       note: i.note,
       checked_at: i.done_at,
-      checked_by: null,
+      checked_by: i.checked_by,
+      added_by: i.added_by,
       data: {},
     })),
   };
@@ -376,14 +389,18 @@ export async function setListItemNote(listId, itemId, note) {
   return row;
 }
 
-/** Tick / untick a list item. Mirrors core/entities.mjs's setItemChecked for the typed shape. */
-export async function setListItemChecked(listId, itemId, checked) {
+/** Tick / untick a list item. Mirrors core/entities.mjs's setItemChecked for the typed shape.
+ *  `checkedBy` (Git #3186) is the real provenance marker -- "owner" | "share" | "share:<label>",
+ *  the same convention entity_items' own checked_by already uses. Cleared back to NULL on an
+ *  uncheck, same as entities.mjs, so a stale attribution never survives an untick. */
+export async function setListItemChecked(listId, itemId, checked, checkedBy = null) {
   const row = await one(
     `UPDATE list_items
-        SET done = $3, done_at = CASE WHEN $3 THEN now() ELSE NULL END
+        SET done = $3, done_at = CASE WHEN $3 THEN now() ELSE NULL END,
+            checked_by = CASE WHEN $3 THEN $4::text ELSE NULL END
       WHERE id = $1 AND list_id = $2
-      RETURNING id, position, text, note, done, done_at`,
-    [itemId, listId, Boolean(checked)],
+      RETURNING id, position, text, note, done, done_at, checked_by, added_by`,
+    [itemId, listId, Boolean(checked), checkedBy],
   );
   if (!row) return null;
   await query("UPDATE lists SET updated_at = now() WHERE id = $1", [listId]);
@@ -393,7 +410,8 @@ export async function setListItemChecked(listId, itemId, checked) {
     text: row.text,
     note: row.note,
     checked_at: row.done_at,
-    checked_by: null,
+    checked_by: row.checked_by,
+    added_by: row.added_by,
     data: {},
   };
 }

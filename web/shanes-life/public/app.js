@@ -4607,19 +4607,22 @@ async function viewEntity(view, entityId) {
  * kind-agnostic (entityId or listId) -- this stays kind-agnostic too, driven purely by the
  * onCreate/onRevoke callbacks a caller supplies.
  */
-function shareSection({ shares: shareList, onCreate, onRevoke }) {
+function shareSection({ shares: shareList, onCreate, onRevoke, supportsAdd = false }) {
   const section = el("section", { class: "section" }, [el("h2", { text: "Shared links" })]);
   const live = shareList.filter((s) => !s.revoked_at);
   if (live.length === 0) {
     section.append(el("p", { class: "muted small", text: "Not shared with anyone." }));
   }
   for (const share of live) {
+    const metaParts = [share.can_check ? "can tick items" : "view only"];
+    if (share.can_add) metaParts.push("can add items");
+    metaParts.push(`opened ${share.view_count}x`);
     section.append(
       el("div", { class: "card" }, [
         el("div", { class: "spread" }, [
           el("div", {}, [
             el("div", { class: "title", text: share.label || "Unlabelled link" }),
-            el("div", { class: "meta", text: `${share.can_check ? "can tick items" : "view only"} · opened ${share.view_count}x` }),
+            el("div", { class: "meta", text: metaParts.join(" · ") }),
           ]),
           el("button", {
             class: "ghost small danger",
@@ -4636,10 +4639,20 @@ function shareSection({ shares: shareList, onCreate, onRevoke }) {
   }
 
   const labelInput = el("input", { placeholder: "Who is this for? e.g. Ronnie", "aria-label": "Share label" });
+  // Real capability expansion (Git #3186): off by default, same as can_check defaults on --
+  // this is the one owner-facing control for a decision Shane made explicitly on the issue, not
+  // a silent default flip for every link ever minted before it existed.
+  const canAddInput = supportsAdd
+    ? el("label", { class: "row small", style: "align-items:center;gap:.4rem;margin-top:.5rem" }, [
+        el("input", { type: "checkbox", "aria-label": "Let this link add items too" }),
+        el("span", { text: "Let this link add items too (aisle ordering + live activity)" }),
+      ])
+    : null;
   const result = el("div");
   section.append(
     el("div", { class: "card" }, [
       labelInput,
+      canAddInput,
       el("div", { class: "row", style: "margin-top:.6rem" }, [
         el("button", {
           class: "primary small",
@@ -4647,7 +4660,8 @@ function shareSection({ shares: shareList, onCreate, onRevoke }) {
           onClick: async (event) => {
             event.target.disabled = true;
             try {
-              const share = await onCreate(labelInput.value.trim() || null);
+              const canAdd = canAddInput ? canAddInput.querySelector("input").checked : false;
+              const share = await onCreate(labelInput.value.trim() || null, canAdd);
               result.replaceChildren(
                 el("p", { class: "small ok", text: "Copy it now — the link is shown once and cannot be recovered." }),
                 el("pre", { class: "token", text: share.url }),
@@ -4819,6 +4833,13 @@ function shoppingItemRow(listId, item, { store } = {}) {
   });
   const nameEl = el("div", { class: `shop-item-name${item.done ? " done" : ""}`, text: item.text });
   const subEl = item.note ? el("div", { class: "shop-item-sub", text: item.note }) : null;
+  // Real provenance (Git #3186's decision comment): "so Shane can tell what a link holder added
+  // vs. what he added himself" -- shown only for a share-originated add ("share" / "share:<label>",
+  // never plain "owner"), which is the one case that actually needs calling out.
+  const addedByEl =
+    item.added_by && item.added_by !== "owner"
+      ? el("div", { class: "shop-item-sub", text: `Added by ${item.added_by.replace(/^share:?/, "") || "a shared link"}` })
+      : null;
   const verdict = verdictBadge(item.weeklyAdVerdict);
 
   // "$1.89 - scanned" (design 04, 2a) vs "~$1.50" from real per-store history (Git #3112,
@@ -4869,7 +4890,7 @@ function shoppingItemRow(listId, item, { store } = {}) {
   return el("li", { class: "shop-item-row" }, [
     el("div", { class: "shop-item-main" }, [
       box,
-      el("div", { class: "shop-item-text" }, [nameEl, subEl, verdict]),
+      el("div", { class: "shop-item-text" }, [nameEl, subEl, addedByEl, verdict]),
       priceEl ? el("div", { class: "shop-item-side" }, [priceEl]) : null,
       expandBtn,
     ]),
@@ -5474,7 +5495,8 @@ async function viewShopping(view) {
   view.append(
     shareSection({
       shares: list.shares,
-      onCreate: (label) => api("/api/shares", { method: "POST", body: JSON.stringify({ listId: list.id, label, canCheck: true }) }),
+      supportsAdd: true,
+      onCreate: (label, canAdd) => api("/api/shares", { method: "POST", body: JSON.stringify({ listId: list.id, label, canCheck: true, canAdd }) }),
       onRevoke: (id) => api(`/api/shares/${id}`, { method: "DELETE" }),
     }),
   );

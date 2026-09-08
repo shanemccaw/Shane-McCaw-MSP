@@ -47,6 +47,12 @@ export async function createShareLink({
   listId = null,
   label = null,
   canCheck = true,
+  // Real, explicit capability expansion beyond #3116's original check-off-only decision
+  // (Shane's decision comment on #3186): off by default, so every share minted before this
+  // existed -- and any new one that doesn't ask for it -- keeps the old check-off-only shape.
+  // Only meaningful for a list-kind target; see routes/public.mjs's add-item route, which also
+  // refuses entity-kind regardless of this flag (no real entity-kind share has ever needed it).
+  canAdd = false,
   expiresInDays = null,
 }) {
   const target = await ownedTarget(userId, { entityId, listId });
@@ -61,9 +67,9 @@ export async function createShareLink({
   }
 
   const row = await one(
-    `INSERT INTO share_links (user_id, entity_kind, entity_id, list_id, token_hash, label, can_check, expires_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-     RETURNING id, entity_kind, label, can_check, expires_at, created_at`,
+    `INSERT INTO share_links (user_id, entity_kind, entity_id, list_id, token_hash, label, can_check, can_add, expires_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+     RETURNING id, entity_kind, label, can_check, can_add, expires_at, created_at`,
     [
       userId,
       target.kind,
@@ -72,6 +78,7 @@ export async function createShareLink({
       fingerprint(token),
       label ? String(label).slice(0, 120) : null,
       Boolean(canCheck),
+      Boolean(canAdd),
       expires,
     ],
   );
@@ -108,7 +115,7 @@ async function resolveEntityRecord(entityId) {
 export async function resolveShare(token, { countView = false } = {}) {
   if (!token) return null;
   const link = await one(
-    `SELECT s.id, s.user_id, s.entity_kind, s.entity_id, s.list_id, s.label, s.can_check,
+    `SELECT s.id, s.user_id, s.entity_kind, s.entity_id, s.list_id, s.label, s.can_check, s.can_add,
             s.expires_at, s.view_count, COALESCE(u.display_name, u.name) AS owner_name
        FROM share_links s
        JOIN users u ON u.id = s.user_id
@@ -148,7 +155,7 @@ export async function listShareLinks(userId, { entityId = null, listId = null } 
   }
   const filter = where.length ? `AND ${where.join(" AND ")}` : "";
   return many(
-    `SELECT s.id, s.entity_kind, s.entity_id, s.list_id, s.label, s.can_check, s.expires_at,
+    `SELECT s.id, s.entity_kind, s.entity_id, s.list_id, s.label, s.can_check, s.can_add, s.expires_at,
             s.revoked_at, s.view_count, s.last_seen_at, s.created_at,
             COALESCE(e.title, l.name) AS entity_title
        FROM share_links s

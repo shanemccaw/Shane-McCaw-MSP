@@ -900,7 +900,16 @@ export function buildApiRouter() {
   router.post("/api/lists/:id/items", async (req, res, params, ctx) => {
     const user = requireUser(ctx);
     const body = await readJson(req);
-    return sendJson(res, 201, await lists.addListItems(user.id, params.id, body.items));
+    const detail = await lists.addListItems(user.id, params.id, body.items, { addedBy: "owner" });
+    // Real audit rows (Git #3186) -- what the Shared list page's live activity feed reads via
+    // audit.recentForEntity. One row per item, same granularity as a check event, so the feed
+    // can say "Shane just added Milk" rather than a single opaque "added some items" line.
+    for (const raw of body.items || []) {
+      const text = typeof raw === "string" ? raw : raw?.text;
+      if (!text) continue;
+      await audit.record({ userId: user.id, actor: "web", action: "list.item.add", entityId: params.id, detail: { text: String(text).trim().slice(0, 500) } });
+    }
+    return sendJson(res, 201, detail);
   });
 
   router.patch("/api/lists/:id/items/:itemId", async (req, res, params, ctx) => {
@@ -909,12 +918,13 @@ export function buildApiRouter() {
     if (!owned) throw notFound("List not found");
     const body = await readJson(req);
     if (body.checked === undefined) throw badRequest("checked is required");
-    const item = await lists.setListItemChecked(params.id, params.itemId, body.checked);
+    const item = await lists.setListItemChecked(params.id, params.itemId, body.checked, "owner");
     if (!item) throw notFound("Item not found");
+    await audit.record({ userId: user.id, actor: "web", action: "list.item.check", entityId: params.id, detail: { itemId: item.id, checked: Boolean(body.checked), text: item.text } });
     // setListItemChecked returns the entity-shaped keys (checked_at/checked_by) the share layer
     // needs -- remapped here onto the same raw done/done_at shape every other owner-side list
     // endpoint (GET /api/shopping, POST items, clear-checked) already returns.
-    return sendJson(res, 200, { id: item.id, position: item.position, text: item.text, note: item.note, done: Boolean(item.checked_at), done_at: item.checked_at });
+    return sendJson(res, 200, { id: item.id, position: item.position, text: item.text, note: item.note, done: Boolean(item.checked_at), done_at: item.checked_at, added_by: item.added_by, checked_by: item.checked_by });
   });
 
   router.delete("/api/lists/:id/items/:itemId", async (_req, res, params, ctx) => {
@@ -2205,6 +2215,7 @@ export function buildApiRouter() {
       listId: body.listId ?? null,
       label: body.label ?? null,
       canCheck: body.canCheck !== false,
+      canAdd: Boolean(body.canAdd),
       expiresInDays: body.expiresInDays ?? null,
     });
     await audit.record({

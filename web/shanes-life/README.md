@@ -331,10 +331,46 @@ below. "One run": `GET /api/shopping` finds-or-creates the one real `lists` row 
 `clearCheckedItems`, `replaceListItems`), reachable both from the signed-in web UI
 (`#/shopping` in `public/app.js`) and from Claude over MCP: `push_list` (the capture-grammar
 entry point — add onto the run, or `replace: true` for a fresh one), `get_list`, and
-`check_list_item`. The no-login share link reuses #3116's kind-agnostic `share_links` layer
-unchanged. Barcode scan, aisle memory, weekly-ad verdicts and per-run budget (all real, all
-drawn in `Shanes Life 04 - Shopping.dc.html`) are each their own separate Feature, `blocked_by`
-this one — not built here.
+`check_list_item`. The no-login share link reuses #3116's kind-agnostic `share_links` layer,
+extended for real add capability + live activity by #3186 (see its own section below). Barcode
+scan (#3109), aisle memory + Best-path (#3108), weekly-ad verdicts (#3110) and per-run budget
+(#3111) — all real, all drawn in `Shanes Life 04 - Shopping.dc.html` — each landed as their own
+separate Feature after this one; barcode scan specifically was NOT extended to the share-link
+side by #3186 (a deliberate scope cut, not an oversight — see that issue's completion comment).
+
+## Shopping — Shared list: real add + Best-path + live activity (#3186)
+
+Real, explicit capability expansion beyond #3116's original check-off-only decision — Shane's
+own decision comment on #3186, not a guess: "Share links get the full real capability the design
+specifies." Design `Shanes Life 12 - Shared list.dc.html`, turn 2 / option 2a is the target.
+
+- **`can_add`** — a second per-share flag alongside `can_check` (migration 047), set at creation
+  time from the owner's own "Shared links" card (`public/app.js`'s `shareSection`). Off by
+  default, so every share minted before this existed keeps its old check-off-only shape.
+- **Real provenance** — `list_items.added_by` / `.checked_by` (migration 047), "owner" for the
+  owner's own writes, "share" / "share:\<label\>" for a can_add-enabled link's own writes, mirroring
+  `entity_items.checked_by`'s existing convention. Shown back to the owner as "Added by \<label\>"
+  on the private Shopping room's own item rows.
+- **Flat / Category / Best-path** on the public shape too (`routes/public.mjs`'s `orderForShare`),
+  reusing `core/shopping-order.mjs` + `core/store-aisles.mjs` verbatim — not a re-derived copy.
+  Flat/Category are a pure function of item text, so any can_check link gets them; Best-path
+  additionally needs the list's real current store + its accumulated aisle map, which is real,
+  private data about the owner's shopping habits — gated to a can_add-enabled link specifically,
+  per Shane's own decision comment, never shown to a plain check-off link even if it asks for it.
+- **Live activity** — `GET /api/public/share/:token/activity` polls `audit.recentForEntity`
+  (`core/audit.mjs`), a real query scoped to exactly this list's own `entity_id` (defense in
+  depth: filtered on the link's real `user_id` too), never a general per-user stream. Both the
+  owner's own web actions and a share's actions now write real `list.item.check` /
+  `list.item.add` audit rows with the item's own text, so "Shane just checked off Milk" /
+  "Ronnie just added Bread" is real narration of real events either side of the link can already
+  see on refresh, not a new exposure.
+- **Add** — `POST /api/public/share/:token/items`, gated on `can_add` (and list-kind only; no
+  real entity-kind share has ever needed this, verified live against `share_links` before
+  building it — see the #3186 completion comment).
+- **Deliberately not extended to a share link**: barcode scan (#3109). Real, external
+  network calls (Open Food Facts) and a materially larger write surface for a real, uncontrolled
+  privacy-boundary tradeoff the issue's own verification ask didn't require — a scope cut, not an
+  oversight.
 
 ## Shopping — per-store price history (#3112)
 

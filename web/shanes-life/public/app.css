@@ -592,6 +592,42 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
 .share-page .checklist input[type="checkbox"] { accent-color: var(--accent-teal); }
 .share-page .checklist .note { font-size: 0.78rem; color: hsl(var(--muted-foreground)); display: block; }
 
+/* ---------- shared list: real capability (Git #3186) ----------
+   Design "Shanes Life 12 - Shared list.dc.html", turn 2 / option 2a -- Flat/Category/Best-path
+   toggle, an add box, and a live activity line, all on the teal share surface rather than the
+   app's own blue. Reuses the private Shopping room's own .shop-segment / .shop-group-label
+   classes verbatim (Git #3108) -- same real control, same real group-header convention, no
+   teal override needed since neither uses the app's blue --primary token. */
+
+.share-add { margin-top: 0.4rem; }
+.share-add-row { display: flex; gap: 0.5rem; align-items: center; }
+.share-add-row input {
+  flex: 1;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+.share-add-row button { flex-shrink: 0; height: 48px; border-radius: 12px; padding: 0 1.1rem; background: var(--accent-teal); color: #07182c; border: 0; }
+
+/* "Shane just checked off X" / "Ronnie just added Y" -- a real, live-updating line (poll-based,
+   see share.js), scoped strictly to this one list's own events (routes/public.mjs's
+   audit.recentForEntity call), never a general account-activity stream. */
+.share-activity { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.share-activity-text { font-size: 14px; font-weight: var(--weight-semibold); }
+.share-activity-live { font-size: 13px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
+.share-activity > div:last-child { flex: 1; min-width: 0; }
+.share-activity::before {
+  content: "";
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: hsla(172, 66%, 50%, 0.16);
+  flex-shrink: 0;
+}
+
 /* ---------- critters (Git #3119) ----------
    Same family as the sign-in fox above: soft vertical gradient body, cream belly, dark dot
    eyes, blush #F472B6, one navy ground shadow. Decorative only, never a mechanic. */
