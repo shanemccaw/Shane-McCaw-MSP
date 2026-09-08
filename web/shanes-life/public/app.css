@@ -1468,6 +1468,30 @@ pre.token {
 }
 .money-tab.active { background: hsl(var(--card)); color: hsl(var(--foreground)); }
 
+/* Git #3274 ("Settings restructure -- House/You/Connected/Activity tabs"): the design's own
+   "same segmented control under the header" for Settings -- same visual pattern as `.money-tabs`
+   above (design README 1b), just four cells instead of five and its own class so a future change
+   to one doesn't silently reflow the other. */
+.settings-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  background: hsl(var(--muted));
+  border-radius: var(--radius-lg);
+}
+.settings-tab {
+  padding: 0.5rem 0;
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 3px);
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 12.5px;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.settings-tab.active { background: hsl(var(--card)); color: hsl(var(--foreground)); }
+
 .money-budgetday-card { border-color: rgba(96, 165, 250, 0.45) !important; }
 
 /* Git #3205: the real, shared two-week cycle card -- design 17 - Money v3.dc.html, options

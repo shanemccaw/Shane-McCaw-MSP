@@ -3320,6 +3320,18 @@ const MONEY_TABS = [
   { key: "cars", label: "Cars" },
 ];
 
+// Git #3274 ("Settings restructure"): same transient client-only idiom as `moneyTab` above --
+// which four-cell tab is showing resets on a real page reload, same as Money's own tab does; the
+// design's own "persisted state" describes the prototype's localStorage model (README "State"),
+// not a requirement this real app didn't already choose to skip for its sibling tab switcher.
+let settingsTab = "house";
+const SETTINGS_TABS = [
+  { key: "house", label: "House" },
+  { key: "you", label: "You" },
+  { key: "connected", label: "Connected" },
+  { key: "activity", label: "Activity" },
+];
+
 // Git #3205: the real, shared two-week cycle card at the top of Now and Bills. `cycleCardOffset`
 // is deliberately ONE piece of transient state shared by both tabs (not per-tab) -- paging back
 // through cycles is a property of the real pay period itself, not of which tab happens to be
@@ -8181,8 +8193,11 @@ async function renderRoomOrderSettings(view) {
  * `bankReconnectHandler`, and the real webhook receipts card underneath -- proof the receiver
  * is genuinely being called, not a claim.
  */
-async function renderBankSettings(view) {
-  const data = await api("/api/money/banks");
+async function renderBankSettings(view, preloadedData) {
+  // Git #3274: viewSettings' own Connected tab already fetches this to compute its header
+  // subtitle ("N banks need you") before this section renders -- accept it instead of a second
+  // real network round-trip for the exact same data.
+  const data = preloadedData ?? (await api("/api/money/banks"));
   const section = el("section", { class: "section" }, [el("h2", { text: "Banks" })]);
 
   if (!data.configured) {
@@ -8280,106 +8295,184 @@ async function renderBankSettings(view) {
   view.append(section);
 }
 
+// Git #3274 ("Settings restructure"): same quiet slate as Vault's own tint (README's room-tint
+// table gives Settings the same "slate glow rgba(148,163,184,.22)" the attic's own vent uses).
+const SETTINGS_TINT = "148,163,184";
+
 async function viewSettings(view) {
-  const { tokens, endpoint } = await api("/api/mcp-tokens");
+  roomHeader(view, SETTINGS_TINT, "Settings · the attic");
 
-  await renderRoomOrderSettings(view);
+  // Git #3273's own real "a bank needs you" signal, surfaced here as the header's own per-tab
+  // subtitle (design README 1b: "the header sub follows the tab (\"the attic · 2 banks need
+  // you\")") -- fetched unconditionally (cheap, same call renderBankSettings below makes) so the
+  // subtitle is honest even before the Connected tab itself has been opened once this render.
+  const banksData = await api("/api/money/banks");
+  const banksNeedYou = banksData.configured ? banksData.items.filter((i) => i.needsReconnect).length : 0;
+  const SETTINGS_SUBTITLES = {
+    house: "the attic · room order",
+    you: "the attic · you",
+    connected: banksNeedYou > 0 ? `the attic · ${banksNeedYou} bank${banksNeedYou === 1 ? "" : "s"} need you` : "the attic · all banks connected",
+    activity: "the attic · recent activity",
+  };
+  view.append(el("p", { class: "muted small", text: SETTINGS_SUBTITLES[settingsTab] ?? "the attic" }));
 
   view.append(
-    el("section", { class: "section" }, [
-      el("h2", { text: "Account" }),
-      el("div", { class: "card" }, [
-        el("div", { class: "title", text: state.user.name }),
-        el("div", { class: "meta", text: state.user.email }),
-        // No password column exists anywhere in this schema (migration 013's own design
-        // choice) -- sign-in is always a real WebAuthn assertion, so this is a real statement
-        // of fact, not marketing copy.
-        el("div", { class: "meta", style: "margin-top:.25rem", text: "Signed in with a passkey. No password exists for this account." }),
-        el("div", { class: "row", style: "margin-top:.75rem" }, [
-          el("button", {
-            class: "small danger",
-            text: "Sign out everywhere",
-            onClick: async () => {
-              await api("/api/auth/logout-everywhere", { method: "POST" });
-              showLogin();
-            },
-          }),
-        ]),
-      ]),
-    ]),
+    el(
+      "div",
+      { class: "settings-tabs" },
+      SETTINGS_TABS.map((tab) =>
+        el("button", {
+          type: "button",
+          class: `settings-tab${settingsTab === tab.key ? " active" : ""}`,
+          text: tab.label,
+          onClick: () => {
+            settingsTab = tab.key;
+            render();
+          },
+        }),
+      ),
+    ),
   );
 
-  await renderPasskeys(view);
-  await renderPushSettings(view);
+  // -- House: room order (Git #3215, unchanged content -- just re-homed under its own tab). --
+  if (settingsTab === "house") {
+    await renderRoomOrderSettings(view);
+    return;
+  }
 
-  // Section 5's real health context -- stated once, read by Claude before it generates recipes
-  // (Section 8: "state once, respected everywhere, forever"). Editable here too so it never has
-  // to be re-said in a Claude conversation just because a session started this way instead.
-  const { healthContext } = await api("/api/health-context");
-  const healthInput = el("textarea", {
-    rows: 3,
-    placeholder: "e.g. stage 2 heart disease, hypertension — favor heart-healthy meals",
-    "aria-label": "Health context",
-    text: healthContext || "",
-  });
-  view.append(
-    el("section", { class: "section" }, [
-      el("h2", { text: "Health context" }),
-      el("p", { class: "muted small", text: "Stated once, read by Claude before it generates recipes — never re-asked." }),
-      el("div", { class: "card" }, [
-        healthInput,
-        el("div", { class: "row", style: "margin-top:.6rem" }, [
-          el("button", {
-            class: "primary small",
-            text: "Save",
-            onClick: async (event) => {
-              event.currentTarget.disabled = true;
-              try {
-                await api("/api/health-context", { method: "PATCH", body: JSON.stringify({ healthContext: healthInput.value.trim() || null }) });
-              } finally {
-                event.currentTarget.disabled = false;
-              }
-            },
-          }),
+  // -- You: Account, Passkeys, Notifications, Health context (Git #3214, unchanged content). --
+  if (settingsTab === "you") {
+    view.append(
+      el("section", { class: "section" }, [
+        el("h2", { text: "Account" }),
+        el("div", { class: "card" }, [
+          el("div", { class: "title", text: state.user.name }),
+          el("div", { class: "meta", text: state.user.email }),
+          // No password column exists anywhere in this schema (migration 013's own design
+          // choice) -- sign-in is always a real WebAuthn assertion, so this is a real statement
+          // of fact, not marketing copy.
+          el("div", { class: "meta", style: "margin-top:.25rem", text: "Signed in with a passkey. No password exists for this account." }),
+          el("div", { class: "row", style: "margin-top:.75rem" }, [
+            el("button", {
+              class: "small danger",
+              text: "Sign out everywhere",
+              onClick: async () => {
+                await api("/api/auth/logout-everywhere", { method: "POST" });
+                showLogin();
+              },
+            }),
+          ]),
         ]),
       ]),
-    ]),
-  );
+    );
 
-  // Git #3273 ("Money nav restructure"): Banks moved here from Money's own now-removed Banks
-  // tab. Lands right before Places, matching the design's own "Connected" grouping reading
-  // order (Banks + Plaid webhooks, Places, Tesla, Claude (MCP), Home Screen widget) -- the real
-  // House/You/Connected/Activity tab structure that grouping belongs to is #3274's own scope,
-  // so this is a plain flat section for now, same as every other Settings section here.
-  await renderBankSettings(view);
+    await renderPasskeys(view);
+    await renderPushSettings(view);
 
-  // Real saved places (Git #3159). No add-place form here (Section 3, "no forms, anywhere,
-  // ever") -- a place is only ever created by saying "remember this as Home" into the real
-  // capture box while actually standing there; Claude files it over MCP (push_place). This is
-  // read-only-plus-forget, same tier as "Sign out everywhere" / "Revoke" above -- a plain action
-  // button, not a dedicated input field.
-  const { items: savedPlaces } = await api("/api/places");
-  const placesSection = el("section", { class: "section" }, [
-    el("h2", { text: "Places" }),
-    el("p", { class: "muted small", text: "Say “remember this as …” while you're actually there, and Claude files it here — with real content surfaced on Today when you're back." }),
-  ]);
-  if (savedPlaces.length === 0) {
-    placesSection.append(el("p", { class: "muted small", text: "None saved yet." }));
-  } else {
-    for (const place of savedPlaces) {
-      placesSection.append(
+    // Section 5's real health context -- stated once, read by Claude before it generates recipes
+    // (Section 8: "state once, respected everywhere, forever"). Editable here too so it never has
+    // to be re-said in a Claude conversation just because a session started this way instead.
+    const { healthContext } = await api("/api/health-context");
+    const healthInput = el("textarea", {
+      rows: 3,
+      placeholder: "e.g. stage 2 heart disease, hypertension — favor heart-healthy meals",
+      "aria-label": "Health context",
+      text: healthContext || "",
+    });
+    view.append(
+      el("section", { class: "section" }, [
+        el("h2", { text: "Health context" }),
+        el("p", { class: "muted small", text: "Stated once, read by Claude before it generates recipes — never re-asked." }),
+        el("div", { class: "card" }, [
+          healthInput,
+          el("div", { class: "row", style: "margin-top:.6rem" }, [
+            el("button", {
+              class: "primary small",
+              text: "Save",
+              onClick: async (event) => {
+                event.currentTarget.disabled = true;
+                try {
+                  await api("/api/health-context", { method: "PATCH", body: JSON.stringify({ healthContext: healthInput.value.trim() || null }) });
+                } finally {
+                  event.currentTarget.disabled = false;
+                }
+              },
+            }),
+          ]),
+        ]),
+      ]),
+    );
+    return;
+  }
+
+  // -- Connected: Banks + Plaid webhooks, Places, Claude (MCP), Home Screen widget, Tesla. --
+  // Design README 1b's own grouping order; unchanged content from each section, just re-homed.
+  if (settingsTab === "connected") {
+    // Git #3273 ("Money nav restructure"): Banks moved here from Money's own now-removed Banks
+    // tab. Reuses the same `banksData` fetch above rather than a second real round-trip.
+    await renderBankSettings(view, banksData);
+
+    // Real saved places (Git #3159). No add-place form here (Section 3, "no forms, anywhere,
+    // ever") -- a place is only ever created by saying "remember this as Home" into the real
+    // capture box while actually standing there; Claude files it over MCP (push_place). This is
+    // read-only-plus-forget, same tier as "Sign out everywhere" / "Revoke" above -- a plain
+    // action button, not a dedicated input field.
+    const { items: savedPlaces } = await api("/api/places");
+    const placesSection = el("section", { class: "section" }, [
+      el("h2", { text: "Places" }),
+      el("p", { class: "muted small", text: "Say “remember this as …” while you're actually there, and Claude files it here — with real content surfaced on Today when you're back." }),
+    ]);
+    if (savedPlaces.length === 0) {
+      placesSection.append(el("p", { class: "muted small", text: "None saved yet." }));
+    } else {
+      for (const place of savedPlaces) {
+        placesSection.append(
+          el("div", { class: "card" }, [
+            el("div", { class: "spread" }, [
+              el("div", {}, [
+                el("div", { class: "title", text: place.label }),
+                el("div", { class: "meta", text: [place.house ? `House ${place.house.toUpperCase()}` : null, place.note || `${place.radius_meters}m radius`].filter(Boolean).join(" · ") }),
+              ]),
+              el("button", {
+                class: "ghost small danger",
+                text: "Forget",
+                onClick: async (event) => {
+                  event.target.disabled = true;
+                  await api(`/api/places/${place.id}`, { method: "DELETE" });
+                  render();
+                },
+              }),
+            ]),
+          ]),
+        );
+      }
+    }
+    view.append(placesSection);
+
+    const { tokens, endpoint } = await api("/api/mcp-tokens");
+    const mcp = el("section", { class: "section" }, [
+      el("h2", { text: "Claude (MCP)" }),
+      el("p", { class: "muted small", text: "A token lets a Claude conversation write straight into this app. Everything it does is recorded under its label." }),
+      el("div", { class: "card" }, [
+        el("div", { class: "meta", text: "Endpoint" }),
+        el("pre", { class: "token", text: endpoint }),
+      ]),
+    ]);
+
+    for (const token of tokens.filter((t) => !t.revoked_at)) {
+      mcp.append(
         el("div", { class: "card" }, [
           el("div", { class: "spread" }, [
             el("div", {}, [
-              el("div", { class: "title", text: place.label }),
-              el("div", { class: "meta", text: [place.house ? `House ${place.house.toUpperCase()}` : null, place.note || `${place.radius_meters}m radius`].filter(Boolean).join(" · ") }),
+              el("div", { class: "title", text: token.label }),
+              el("div", { class: "meta", text: `${token.call_count} ${token.call_count === 1 ? "call" : "calls"} · ${token.last_used_at ? `last used ${when(token.last_used_at)}` : "never used"}` }),
             ]),
             el("button", {
               class: "ghost small danger",
-              text: "Forget",
+              text: "Revoke",
               onClick: async (event) => {
                 event.target.disabled = true;
-                await api(`/api/places/${place.id}`, { method: "DELETE" });
+                await api(`/api/mcp-tokens/${token.id}`, { method: "DELETE" });
                 render();
               },
             }),
@@ -8387,154 +8480,124 @@ async function viewSettings(view) {
         ]),
       );
     }
-  }
-  view.append(placesSection);
 
-  const mcp = el("section", { class: "section" }, [
-    el("h2", { text: "Claude (MCP)" }),
-    el("p", { class: "muted small", text: "A token lets a Claude conversation write straight into this app. Everything it does is recorded under its label." }),
-    el("div", { class: "card" }, [
-      el("div", { class: "meta", text: "Endpoint" }),
-      el("pre", { class: "token", text: endpoint }),
-    ]),
-  ]);
-
-  for (const token of tokens.filter((t) => !t.revoked_at)) {
+    const nameInput = el("input", { placeholder: "Name this connection, e.g. Claude on my phone", "aria-label": "Token label" });
+    const issued = el("div");
     mcp.append(
       el("div", { class: "card" }, [
-        el("div", { class: "spread" }, [
-          el("div", {}, [
-            el("div", { class: "title", text: token.label }),
-            el("div", { class: "meta", text: `${token.call_count} ${token.call_count === 1 ? "call" : "calls"} · ${token.last_used_at ? `last used ${when(token.last_used_at)}` : "never used"}` }),
-          ]),
+        nameInput,
+        el("div", { class: "row", style: "margin-top:.6rem" }, [
           el("button", {
-            class: "ghost small danger",
-            text: "Revoke",
+            class: "primary small",
+            text: "Create token",
             onClick: async (event) => {
               event.target.disabled = true;
-              await api(`/api/mcp-tokens/${token.id}`, { method: "DELETE" });
-              render();
+              try {
+                const token = await api("/api/mcp-tokens", {
+                  method: "POST",
+                  body: JSON.stringify({ label: nameInput.value.trim() }),
+                });
+                issued.replaceChildren(
+                  el("p", { class: "small ok", text: "Shown once. Copy it now." }),
+                  el("pre", { class: "token", text: token.token }),
+                  el("p", { class: "small muted", text: "For a client that cannot set a header, use this URL instead:" }),
+                  el("pre", { class: "token", text: token.urlForm }),
+                );
+                nameInput.value = "";
+              } catch (err) {
+                issued.replaceChildren(el("p", { class: "small error", text: err.message }));
+              } finally {
+                event.target.disabled = false;
+              }
             },
           }),
         ]),
+        issued,
       ]),
     );
-  }
+    view.append(mcp);
 
-  const nameInput = el("input", { placeholder: "Name this connection, e.g. Claude on my phone", "aria-label": "Token label" });
-  const issued = el("div");
-  mcp.append(
-    el("div", { class: "card" }, [
-      nameInput,
-      el("div", { class: "row", style: "margin-top:.6rem" }, [
-        el("button", {
-          class: "primary small",
-          text: "Create token",
-          onClick: async (event) => {
-            event.target.disabled = true;
-            try {
-              const token = await api("/api/mcp-tokens", {
-                method: "POST",
-                body: JSON.stringify({ label: nameInput.value.trim() }),
-              });
-              issued.replaceChildren(
-                el("p", { class: "small ok", text: "Shown once. Copy it now." }),
-                el("pre", { class: "token", text: token.token }),
-                el("p", { class: "small muted", text: "For a client that cannot set a header, use this URL instead:" }),
-                el("pre", { class: "token", text: token.urlForm }),
-              );
-              nameInput.value = "";
-            } catch (err) {
-              issued.replaceChildren(el("p", { class: "small error", text: err.message }));
-            } finally {
-              event.target.disabled = false;
-            }
-          },
-        }),
-      ]),
-      issued,
-    ]),
-  );
-  view.append(mcp);
+    // Home Screen widget (Git #3188) -- a third-party iOS "Widget Web" app's own token, since its
+    // WKWebView shares neither this app's session cookie nor its passkeys.
+    const { tokens: widgetTokenList } = await api("/api/widget-tokens");
+    const widget = el("section", { class: "section" }, [
+      el("h2", { text: "Home Screen widget" }),
+      el("p", { class: "muted small", text: "Paste this URL into a Widget Web-style app (e.g. Widget Web 26) as the widget's page. It shows the same Next card Today does." }),
+    ]);
 
-  // Home Screen widget (Git #3188) -- a third-party iOS "Widget Web" app's own token, since its
-  // WKWebView shares neither this app's session cookie nor its passkeys.
-  const { tokens: widgetTokenList } = await api("/api/widget-tokens");
-  const widget = el("section", { class: "section" }, [
-    el("h2", { text: "Home Screen widget" }),
-    el("p", { class: "muted small", text: "Paste this URL into a Widget Web-style app (e.g. Widget Web 26) as the widget's page. It shows the same Next card Today does." }),
-  ]);
-
-  for (const token of widgetTokenList.filter((t) => !t.revoked_at)) {
-    widget.append(
-      el("div", { class: "card" }, [
-        el("div", { class: "spread" }, [
-          el("div", {}, [
-            el("div", { class: "title", text: token.label }),
-            el("div", {
-              class: "meta",
-              // Screenshot count IS how often the widget app has actually rendered the page
-              // (Git #3214) -- a real, live usage signal, not just "a link was minted once".
-              text: token.last_used_at
-                ? `${token.screenshot_count} screenshot${token.screenshot_count === 1 ? "" : "s"} · last ${agoShort(token.last_used_at)}`
-                : "never loaded",
+    for (const token of widgetTokenList.filter((t) => !t.revoked_at)) {
+      widget.append(
+        el("div", { class: "card" }, [
+          el("div", { class: "spread" }, [
+            el("div", {}, [
+              el("div", { class: "title", text: token.label }),
+              el("div", {
+                class: "meta",
+                // Screenshot count IS how often the widget app has actually rendered the page
+                // (Git #3214) -- a real, live usage signal, not just "a link was minted once".
+                text: token.last_used_at
+                  ? `${token.screenshot_count} screenshot${token.screenshot_count === 1 ? "" : "s"} · last ${agoShort(token.last_used_at)}`
+                  : "never loaded",
+              }),
+            ]),
+            el("button", {
+              class: "ghost small danger",
+              text: "Revoke",
+              onClick: async (event) => {
+                event.target.disabled = true;
+                await api(`/api/widget-tokens/${token.id}`, { method: "DELETE" });
+                render();
+              },
             }),
           ]),
+        ]),
+      );
+    }
+
+    const widgetNameInput = el("input", { placeholder: "Name this widget, e.g. Home Screen", "aria-label": "Widget label" });
+    const widgetIssued = el("div");
+    widget.append(
+      el("div", { class: "card" }, [
+        widgetNameInput,
+        el("div", { class: "row", style: "margin-top:.6rem" }, [
           el("button", {
-            class: "ghost small danger",
-            text: "Revoke",
+            class: "primary small",
+            text: "Create widget link",
             onClick: async (event) => {
               event.target.disabled = true;
-              await api(`/api/widget-tokens/${token.id}`, { method: "DELETE" });
-              render();
+              try {
+                const token = await api("/api/widget-tokens", {
+                  method: "POST",
+                  body: JSON.stringify({ label: widgetNameInput.value.trim() }),
+                });
+                widgetIssued.replaceChildren(
+                  el("p", { class: "small ok", text: "Shown once. Copy it now." }),
+                  el("pre", { class: "token", text: token.urlForm }),
+                );
+                widgetNameInput.value = "";
+              } catch (err) {
+                widgetIssued.replaceChildren(el("p", { class: "small error", text: err.message }));
+              } finally {
+                event.target.disabled = false;
+              }
             },
           }),
         ]),
+        widgetIssued,
       ]),
     );
+    widget.append(
+      el("div", { class: "row" }, [
+        el("a", { class: "small", href: "/api/widget-preview", target: "_blank", rel: "noopener", text: "Preview the widget page →" }),
+      ]),
+    );
+    view.append(widget);
+
+    await renderTeslaSettings(view);
+    return;
   }
 
-  const widgetNameInput = el("input", { placeholder: "Name this widget, e.g. Home Screen", "aria-label": "Widget label" });
-  const widgetIssued = el("div");
-  widget.append(
-    el("div", { class: "card" }, [
-      widgetNameInput,
-      el("div", { class: "row", style: "margin-top:.6rem" }, [
-        el("button", {
-          class: "primary small",
-          text: "Create widget link",
-          onClick: async (event) => {
-            event.target.disabled = true;
-            try {
-              const token = await api("/api/widget-tokens", {
-                method: "POST",
-                body: JSON.stringify({ label: widgetNameInput.value.trim() }),
-              });
-              widgetIssued.replaceChildren(
-                el("p", { class: "small ok", text: "Shown once. Copy it now." }),
-                el("pre", { class: "token", text: token.urlForm }),
-              );
-              widgetNameInput.value = "";
-            } catch (err) {
-              widgetIssued.replaceChildren(el("p", { class: "small error", text: err.message }));
-            } finally {
-              event.target.disabled = false;
-            }
-          },
-        }),
-      ]),
-      widgetIssued,
-    ]),
-  );
-  widget.append(
-    el("div", { class: "row" }, [
-      el("a", { class: "small", href: "/api/widget-preview", target: "_blank", rel: "noopener", text: "Preview the widget page →" }),
-    ]),
-  );
-  view.append(widget);
-
-  await renderTeslaSettings(view);
-
+  // -- Activity: Recent activity (Git #3214, unchanged content). --
   const { activity } = await api("/api/activity?limit=25");
   const log = el("section", { class: "section" }, [
     el("h2", { text: "Recent activity" }),
@@ -9689,10 +9752,13 @@ async function render() {
   // rooms in ROOM_DEFS that were still falling through to the old generic bar (whose only real
   // action, "Sign out", Settings already covers -- so those five had NO way back to Today at all).
   // Git #3270: Tesla is the fourteenth roomHeader() caller; Git #3272 makes Vault the fifteenth.
+  // Git #3274: Settings is the sixteenth -- it now has a real tab bar (House/You/Connected/
+  // Activity) that wants a "Settings · the attic" header of its own to sit under, same as
+  // Money's segmented control sits under Money's.
   // Every real ROOM_DEFS room now has its own header. #app-view.no-header lets .view collapse
   // its top padding to just the native status-bar safe area instead of assuming a header row
   // sits above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox" || state.route === "tesla" || state.route === "vault";
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox" || state.route === "tesla" || state.route === "vault" || state.route === "settings";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 
