@@ -12,6 +12,7 @@ import * as captures from "../core/captures.mjs";
 import * as categories from "../core/categories.mjs";
 import * as entities from "../core/entities.mjs";
 import * as lists from "../core/lists.mjs";
+import * as mealPlan from "../core/meal-plan.mjs";
 import * as media from "../core/media.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as medications from "../core/medications.mjs";
@@ -735,6 +736,30 @@ export function buildApiRouter() {
     return sendJson(res, 200, { ok: true });
   });
 
+  // -- meal plan (Git #3127, blocked_by #3124 and #3132) -------------------
+  //
+  // Section 5's real Sunday ritual: "no manual meal-planning calendar" holds here too -- this is
+  // a real, read-only display of what Claude already pushed via push_meal_plan (MCP), plus the
+  // one archive action to correct a bad push. There is no POST here on purpose; the app hosts
+  // and displays the plan, it does not author it.
+
+  router.get("/api/meal-plan", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, {
+      entries: await mealPlan.listMealPlan(user.id, {
+        from: ctx.url.searchParams.get("from"),
+        to: ctx.url.searchParams.get("to"),
+      }),
+    });
+  });
+
+  router.delete("/api/meal-plan/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await mealPlan.archiveMealPlanEntry(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "web", action: "meal_plan.archive", entityId: params.id });
+    return sendJson(res, 200, { ok: true });
+  });
+
   // -- per-store price history (Git #3112) ---------------------------------
 
   router.get("/api/stores", async (_req, res, _params, ctx) => {
@@ -822,11 +847,16 @@ export function buildApiRouter() {
 
   router.get("/api/today", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
+    // #3127's real moment-based meal nudges + "Tonight" teaser -- read off whatever Claude
+    // pushed via push_meal_plan for today/tomorrow, never a calendar to browse.
+    const { nudges: mealNudges, tonight } = await mealPlan.getTodayNudges(user.id);
     return sendJson(res, 200, {
       // "Today view shows only what's next" (contract pack Section 3) -- three, not a backlog.
       next: await entities.nextUp(user.id, 3),
       pendingCaptures: await captures.pendingCount(user.id),
       recent: await entities.listEntities(user.id, { limit: 8 }),
+      mealNudges,
+      tonight,
     });
   });
 
