@@ -2037,6 +2037,13 @@ pre.token {
 .recipe-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .recipe-pill-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 0.75rem; }
 .recipe-pill-row .btn-pill { padding: 0 18px; }
+
+/* Git #3283 (corrects #3278): plain inline status line, not a rotated .sticker -- matches the
+   First Slice Prototype's real structure (line 585/589 of the .dc.html). */
+.recipe-status-line { font-size: 13px; margin-top: 0.35rem; line-height: 1.4; }
+.recipe-status-ok { color: #34d399; }
+.recipe-missing-line { color: hsl(var(--muted-foreground)); cursor: pointer; }
+.recipe-missing-action { color: #60a5fa; font-weight: 600; }
 /* README "Screens" line: "all buttons in 999px pill wrappers (outline -> ghost)" -- Remove keeps
    its existing red-text destructive meaning (README's own red #f87171 accent), just moved into
    the same pill wrapper family instead of the plain rectangular button. */

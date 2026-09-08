@@ -2465,19 +2465,30 @@ async function viewLists(view) {
 // ritual are each separate, real sibling Features; this screen only lists, matches against the
 // real Shopping run, and lets Shane add what's missing or archive a recipe he doesn't want kept.
 function recipeCard(recipe) {
-  // Git #3190: the status badge is this card's sticker (README "Today v3 -- the cute skin"),
-  // same rotated-pill treatment as the Next card's own sticker -- green for a real go, amber for
-  // a real gap, not the plain uppercase `.chip` every other room's summary counts still use.
-  // Git #3278: a real recipe can be missing 5+ ingredients, and the rotated ribbon reads badly
-  // even if it wrapped -- show the first 3 real missing items and roll the rest into "+N more"
-  // rather than the full, unbounded list.
-  const missingText =
-    recipe.missing.length > 3
-      ? `Missing ${recipe.missing.slice(0, 3).join(", ")} +${recipe.missing.length - 3} more`
-      : `Missing ${recipe.missing.join(", ")}`;
-  const badge = recipe.canMake
-    ? sticker("green", "You'll have everything")
-    : sticker("amber", missingText);
+  // Git #3283 (corrects #3278): the First Slice Prototype's own real structure (the newer
+  // file that wins over the older one-off "05 - Recipes.dc.html" per Shane's standing rule)
+  // shows this was never a rotated sticker -- both the go case and the gap case are a plain
+  // inline text line under the title row: "You'll have everything" in green (#34d399), or
+  // "Missing {list} · add to Shopping" in muted-foreground with the action portion in accent
+  // blue. #3278's truncation ("+N more") was a real, reasonable fix for the wrong treatment;
+  // it's dead code once this is plain text that wraps naturally, so it's removed here rather
+  // than left behind.
+  const addMissing = async (event) => {
+    event.currentTarget.disabled = true;
+    try {
+      await api(`/api/recipes/${recipe.id}/add-missing`, { method: "POST" });
+      render();
+    } finally {
+      if (event.currentTarget) event.currentTarget.disabled = false;
+    }
+  };
+
+  const statusLine = recipe.canMake
+    ? el("div", { class: "recipe-status-line recipe-status-ok", text: "You'll have everything" })
+    : el("div", { class: "recipe-status-line recipe-missing-line", onClick: addMissing }, [
+        el("span", { text: `Missing ${recipe.missing.join(", ")} · ` }),
+        el("span", { class: "recipe-missing-action", text: "add to Shopping" }),
+      ]);
 
   // Cook mode (Git #3125): a recipe with no real steps saved has nothing to walk through, so
   // there's no live entry point for it -- Claude just hasn't pushed steps for this one yet.
@@ -2488,23 +2499,7 @@ function recipeCard(recipe) {
 
   const addMissingBtn = recipe.canMake
     ? null
-    : pillButton(
-        "button",
-        {
-          type: "button",
-          onClick: async (event) => {
-            event.currentTarget.disabled = true;
-            try {
-              await api(`/api/recipes/${recipe.id}/add-missing`, { method: "POST" });
-              render();
-            } finally {
-              event.currentTarget.disabled = false;
-            }
-          },
-        },
-        "Add missing to Shopping",
-        "ghost",
-      );
+    : pillButton("button", { type: "button", onClick: addMissing }, "Add missing to Shopping", "ghost");
 
   // README "Screens": "all buttons in 999px pill wrappers (outline -> ghost)" -- Remove keeps
   // its real destructive meaning (red text, README's own #f87171 red accent) but moves into the
@@ -2529,8 +2524,8 @@ function recipeCard(recipe) {
         el("div", { class: "title", text: recipe.name }),
         el("div", { class: "meta", text: [recipe.timeText, recipe.heartHealthy ? "heart-healthy" : null].filter(Boolean).join(" · ") }),
       ]),
-      badge,
     ]),
+    statusLine,
     recipe.needs.length > 0
       ? el("p", { class: "small muted", style: "margin:.5rem 0 0", text: recipe.needs.join(", ") })
       : null,
