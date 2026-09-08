@@ -28,6 +28,7 @@ Every decision below traces to a section of it, and the section is cited in the 
 | Shopping: one running list, real capture-grammar push, no-login share (§5, §9, Shanes Life 04) | `src/core/lists.mjs`, `GET /api/shopping`, `public/app.js` `#/shopping`, MCP `push_list`/`get_list`/`check_list_item` (#3088) |
 | Shopping: per-store price history, real dated observations (Shanes Life 04) | `src/core/prices.mjs`, `GET/POST /api/stores`, `GET/POST /api/prices`, `public/app.js` "Log price"/"History" on each Shopping row, MCP `get_prices` (#3112) |
 | Shopping: weekly-ad cross-store verdicts, coupons, multi-buy (§3, §5, Shanes Life 04) | `src/core/prices.mjs` (`pushDeals`/`pushCoupons`/`fetchWeeklyAd`/`attachWeeklyAdVerdicts`), `GET /api/shopping` (`weeklyAdVerdict` per item), MCP `push_deals`/`push_coupons`/`fetch_weekly_ad` (#3110) |
+| Recipes: core list, real can-make matching against Shopping, add missing, heart-healthy context (§5, Shanes Life 05) | `src/core/recipes.mjs`, `GET /api/recipes`, `POST /api/recipes/:id/add-missing`, `GET/PATCH /api/health-context`, `public/app.js` `#/recipes`, MCP `push_recipes`/`get_recipes`/`add_missing_ingredients`/`get_health_context`/`set_health_context` (#3124) |
 
 ---
 
@@ -337,6 +338,35 @@ capture-grammar wording. A weekly-ad price older than 10 days stops counting tow
 "weekly" means this week's, not a forgotten push from a month ago. `public/app.js` renders it as a
 real badge ("Kroger $2.49/loaf · 2 for $2.49") on the matching Shopping row, next to (not
 replacing) the `lastPrice` hint.
+
+## Recipes — core list + ingredient matching (#3124)
+
+Section 5's real superseding update, applied: "Recipes are real, wanted full-screen modes ...
+populated by Claude-generated content pushed in via MCP, not built as an in-app database/form
+system." `src/core/recipes.mjs` is the real CRUD + matching (`createRecipe`, `pushRecipes`,
+`archiveRecipe`, `listRecipesWithMatch`, `addMissingIngredients`), a `recipes` table (migration
+024) holding `name`/`time_text`/`needs` (the real ingredient list)/`steps`/`heart_healthy`, and a
+`users.health_context` column for Section 5's real, stated-once heart-healthy context.
+
+`GET /api/recipes` (`#/recipes` in `public/app.js`) matches each real recipe's `needs` against
+what's currently on the one real Shopping list (`getOrCreateShoppingList` + `getListDetail`, the
+same real run #3088 built) using the same case-insensitive, both-ways substring match #3110's
+weekly-ad verdicts use — a recipe with everything already on the run shows `canMake: true`; one
+missing something lists the real gap. "Add missing" (`POST /api/recipes/:id/add-missing`)
+recomputes the gap at call time and pushes it straight onto the run via `lists.addListItems` —
+the same write path `push_list`/the Shopping screen already use.
+
+Reachable both ways: the signed-in web UI, and Claude over MCP — `get_recipes` (real list +
+match), `push_recipes` (the real generation entry point; `replace: true` swaps out every
+previously saved recipe for a fresh set), `add_missing_ingredients`, and `get_health_context`/
+`set_health_context` for Section 5's real heart-healthy context, read before generation rather
+than re-asked every time (Section 8: "state once, respected everywhere, forever"). The app still
+does no AI inference of its own (Section 10) — `heart_healthy` on a pushed recipe is Claude's own
+real judgement at push time, not something this server computes.
+
+Explicitly not built here, per the issue's own scope: Cook mode (step-by-step, ingredient
+checkboxes, the in-step timer), Tonight (multi-dish timing), and the Sunday meal-planning ritual
+— each a separate, real sibling Feature under #3086.
 
 ## Not built here, on purpose
 

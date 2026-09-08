@@ -14,6 +14,7 @@ import * as categories from "../core/categories.mjs";
 import * as entities from "../core/entities.mjs";
 import * as lists from "../core/lists.mjs";
 import * as prices from "../core/prices.mjs";
+import * as recipes from "../core/recipes.mjs";
 import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
 
@@ -666,6 +667,119 @@ export const TOOLS = [
     },
     async handler(args, ctx) {
       return prices.fetchWeeklyAd(ctx.user.id, args);
+    },
+  },
+
+  // -- recipes (Git #3124, blocked_by #3088) -------------------------------
+  //
+  // Section 5's real division of labor: Claude generates recipes in a real conversation and
+  // pushes them in; the app stores, matches against the real Shopping run, and lets Shane add
+  // what's missing. Read get_health_context before calling push_recipes -- Section 5's real
+  // heart-healthy context is stated once and never re-asked (Section 8).
+
+  {
+    name: "get_health_context",
+    title: "Read Shane's real stated health context",
+    description:
+      "The real health context Shane has already disclosed (e.g. a cardiac condition), stated once and never re-asked (Section 8). Read this before push_recipes so heart-healthy choices are favored where it applies -- the app does no AI judgement of its own, so factoring it in is your call, not a filter the server applies.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      return { healthContext: await recipes.getHealthContext(ctx.user.id) };
+    },
+  },
+
+  {
+    name: "set_health_context",
+    title: "Save Shane's real stated health context",
+    description:
+      "Save (or replace) the real health context in Shane's own words, e.g. 'stage 2 heart disease, hypertension -- favor heart-healthy meals.' Pass null to clear it. This replaces whatever was there, matching how Shane would actually correct or extend a stated fact rather than accumulate duplicates.",
+    inputSchema: {
+      type: "object",
+      properties: { healthContext: { type: ["string", "null"] } },
+      required: ["healthContext"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const value = await recipes.setHealthContext(ctx.user.id, args.healthContext);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "health_context.set" });
+      return { healthContext: value };
+    },
+  },
+
+  {
+    name: "get_recipes",
+    title: "Read the real recipe list",
+    description:
+      "Every saved recipe, each with a real can-make status matched against what's currently on Shane's one real Shopping run -- call this before push_recipes to see what's already saved, and to answer 'what can I make tonight' directly.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      return { recipes: await recipes.listRecipesWithMatch(ctx.user.id) };
+    },
+  },
+
+  {
+    name: "push_recipes",
+    title: "Push generated recipes",
+    description:
+      "Push one or more real, ready-to-use recipes into the app -- the Recipes room's real generation entry point (Section 5: recipes are Claude-generated and pushed in via MCP, not authored in-app). Call get_health_context first so heart-healthy choices are favored where it genuinely applies, and set heartHealthy true on the recipes where it does. Set replace true to swap out every previously saved recipe for this fresh set; leave false to add onto what's already saved.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        recipes: {
+          type: "array",
+          description: "One or more recipes.",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              time: { type: "string", description: "e.g. '35 min · serves 4, leftovers for the Rental'." },
+              needs: { type: "array", items: { type: "string" }, description: "Real ingredient list, matched against the Shopping run's item text." },
+              steps: { type: "array", items: { type: "string" }, description: "Real step text, in order. Stored for the later Cook-mode Feature; not driven by anything here yet." },
+              heartHealthy: { type: "boolean", default: false, description: "True if this recipe genuinely fits Shane's real stated health context (get_health_context)." },
+            },
+            required: ["name"],
+          },
+        },
+        replace: { type: "boolean", default: false, description: "True archives every previously saved recipe first -- a fresh set, not an addition to the old one." },
+      },
+      required: ["recipes"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const created = await recipes.pushRecipes(ctx.user.id, args.recipes, { replace: Boolean(args.replace) });
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "recipes.push",
+        detail: { count: created.length, replace: Boolean(args.replace) },
+      });
+      return { recipes: created };
+    },
+  },
+
+  {
+    name: "add_missing_ingredients",
+    title: "Add a recipe's missing ingredients to Shopping",
+    description:
+      "The real gap between one recipe's needs and what's currently on the Shopping run, pushed straight onto that run -- the same MCP/UI entry point as get_recipes' own `missing` field, but as a write.",
+    inputSchema: {
+      type: "object",
+      properties: { recipeId: { type: "string" } },
+      required: ["recipeId"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const result = await recipes.addMissingIngredients(ctx.user.id, args.recipeId);
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "recipe.add_missing",
+        entityId: args.recipeId,
+        detail: { added: result.added },
+      });
+      return result;
     },
   },
 

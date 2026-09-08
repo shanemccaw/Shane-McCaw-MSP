@@ -15,6 +15,7 @@ import * as lists from "../core/lists.mjs";
 import * as media from "../core/media.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as prices from "../core/prices.mjs";
+import * as recipes from "../core/recipes.mjs";
 import * as scan from "../core/scan.mjs";
 import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
@@ -617,6 +618,59 @@ export function buildApiRouter() {
       throw badRequest("budget must be a non-negative number or null");
     }
     return sendJson(res, 200, await lists.setListBudget(user.id, params.id, budgetCents));
+  });
+
+  // -- recipes (Git #3124, blocked_by #3088) -------------------------------
+  //
+  // "No separate recipe-authoring UI, no manual meal-planning calendar" (Section 5) -- the web
+  // UI here only lists, matches, and lets Shane add missing ingredients or archive a recipe he
+  // no longer wants; the real generation happens in a Claude conversation over MCP (push_recipes,
+  // below in src/mcp/tools.mjs). createRecipe is still reachable directly (createdBy: 'shane')
+  // for the rare case Shane wants to type one in himself.
+
+  router.get("/api/recipes", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { recipes: await recipes.listRecipesWithMatch(user.id) });
+  });
+
+  router.post("/api/recipes", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await recipes.createRecipe(user.id, { ...body, createdBy: "shane" });
+    await audit.record({ userId: user.id, actor: "web", action: "recipe.create", entityId: row.id, detail: { name: row.name } });
+    return sendJson(res, 201, row);
+  });
+
+  router.delete("/api/recipes/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await recipes.archiveRecipe(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "web", action: "recipe.archive", entityId: params.id });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  // #3124's real scope item 3: the recipe's real currently-missing ingredients, pushed straight
+  // onto the one real Shopping run -- same run push_list and the Shopping screen already write to.
+  router.post("/api/recipes/:id/add-missing", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const result = await recipes.addMissingIngredients(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "web", action: "recipe.add_missing", entityId: params.id, detail: { added: result.added } });
+    return sendJson(res, 200, result);
+  });
+
+  // Section 5's real health context -- stated once, read by Claude (get_health_context, MCP)
+  // before it generates recipes. Surfaced here too so the web UI (Settings) can show/edit it
+  // without going through Claude every time.
+  router.get("/api/health-context", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { healthContext: await recipes.getHealthContext(user.id) });
+  });
+
+  router.patch("/api/health-context", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const healthContext = await recipes.setHealthContext(user.id, body.healthContext ?? null);
+    await audit.record({ userId: user.id, actor: "web", action: "health_context.set" });
+    return sendJson(res, 200, { healthContext });
   });
 
   // -- per-store price history (Git #3112) ---------------------------------
