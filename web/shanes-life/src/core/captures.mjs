@@ -4,6 +4,12 @@
 // from a Claude conversation over MCP. A capture is deliberately dumb -- raw content plus how it
 // arrived. It carries no category, because classification is a separate step that happens in a
 // Claude conversation (Section 10: the hosted app does no runtime inference of its own).
+//
+// latitude/longitude (migration 037, Git #3159) are the same idea applied to real position: the
+// browser silently attaches Shane's real current coordinates when it already has permission, no
+// new form field, no forced prompt on every capture. Claude reads them back over MCP (list_captures/
+// get_capture) to answer "remember this as Home" with a real push_place call -- see
+// docs/location-aware-content-surfacing-findings.md for why that has to be the entry point.
 
 import { many, one, query } from "../db.mjs";
 import { badRequest, notFound } from "../http.mjs";
@@ -11,7 +17,20 @@ import { badRequest, notFound } from "../http.mjs";
 const KINDS = new Set(["text", "voice", "photo"]);
 const SOURCES = new Set(["web", "mcp", "share"]);
 
-export async function createCapture({ userId, kind = "text", bodyText = null, mediaId = null, source = "web" }) {
+/** A real position is a real PAIR -- a lone valid longitude next to a dropped latitude is a
+ *  broken half-coordinate, not a usable reading, so an invalid half drops both silently rather
+ *  than leaving the other one behind. Never fatal to the capture itself either way. */
+function normalisePosition(latitude, longitude) {
+  if (latitude === undefined || latitude === null || longitude === undefined || longitude === null) {
+    return { lat: null, lng: null };
+  }
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  const valid = Number.isFinite(lat) && lat >= -90 && lat <= 90 && Number.isFinite(lng) && lng >= -180 && lng <= 180;
+  return valid ? { lat, lng } : { lat: null, lng: null };
+}
+
+export async function createCapture({ userId, kind = "text", bodyText = null, mediaId = null, source = "web", latitude = null, longitude = null }) {
   if (!KINDS.has(kind)) throw badRequest(`kind must be one of: ${[...KINDS].join(", ")}`);
   if (!SOURCES.has(source)) throw badRequest(`source must be one of: ${[...SOURCES].join(", ")}`);
 
@@ -24,11 +43,13 @@ export async function createCapture({ userId, kind = "text", bodyText = null, me
     if (!media) throw notFound("Attachment not found");
   }
 
+  const { lat, lng } = normalisePosition(latitude, longitude);
+
   return one(
-    `INSERT INTO captures (user_id, kind, body_text, media_id, source)
-     VALUES ($1,$2,$3,$4,$5)
-     RETURNING id, kind, body_text, media_id, source, status, entity_id, created_at`,
-    [userId, kind, text || null, mediaId, source],
+    `INSERT INTO captures (user_id, kind, body_text, media_id, source, latitude, longitude)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     RETURNING id, kind, body_text, media_id, source, status, entity_id, latitude, longitude, created_at`,
+    [userId, kind, text || null, mediaId, source, lat, lng],
   );
 }
 
@@ -42,6 +63,7 @@ export async function listCaptures(userId, { status = "pending", limit = 100 } =
   params.push(Math.min(Number(limit) || 100, 500));
   return many(
     `SELECT c.id, c.kind, c.body_text, c.media_id, c.source, c.status, c.entity_id,
+            c.latitude, c.longitude,
             c.classified_at, c.created_at,
             m.mime_type, m.byte_size, m.original_name,
             e.title AS entity_title, e.category AS entity_category

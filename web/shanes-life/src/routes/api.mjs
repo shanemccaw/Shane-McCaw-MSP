@@ -22,6 +22,7 @@ import * as money from "../core/money.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as medications from "../core/medications.mjs";
 import * as pets from "../core/pets.mjs";
+import * as places from "../core/places.mjs";
 import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
 import * as scan from "../core/scan.mjs";
@@ -399,12 +400,16 @@ export function buildApiRouter() {
     const user = requireUser(ctx);
     const body = await readJson(req);
     const kind = body.mediaId && !body.kind ? "photo" : body.kind || "text";
+    // latitude/longitude (Git #3159): the browser's own native geolocation permission, attached
+    // silently when it's already there -- never a new form field. See captures.mjs's own header.
     const row = await captures.createCapture({
       userId: user.id,
       kind,
       bodyText: body.text ?? null,
       mediaId: body.mediaId ?? null,
       source: "web",
+      latitude: body.latitude ?? null,
+      longitude: body.longitude ?? null,
     });
     await audit.record({ userId: user.id, actor: "web", action: "capture.create", detail: { captureId: row.id, kind } });
     return sendJson(res, 201, row);
@@ -650,6 +655,37 @@ export function buildApiRouter() {
     const trade = ctx.url.searchParams.get("trade");
     if (q) return sendJson(res, 200, { items: await contacts.searchContacts(user.id, q) });
     return sendJson(res, 200, { items: await contacts.listContacts(user.id, { trade }) });
+  });
+
+  // -- places (Git #3159) --------------------------------------------------
+  //
+  // A place is only ever created by push_place (src/mcp/tools.mjs), from a geo-tagged capture --
+  // no add-place form here (Section 3, "no forms, anywhere, ever"). The web routes below are
+  // read-only-plus-forget: list what's saved, forget one (a plain action, not a form -- same
+  // tier as Settings' existing "Revoke"/"Sign out everywhere" buttons), and the one real
+  // foreground check the Today view calls when it already has a real current position.
+
+  router.get("/api/places", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { items: await places.listPlaces(user.id) });
+  });
+
+  router.delete("/api/places/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await places.deletePlace(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "web", action: "place.delete", entityId: params.id });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  // Foreground-only, on demand: the client sends its OWN real current position (from
+  // navigator.geolocation, with permission already granted) -- this route never guesses or
+  // polls on its own. See docs/location-aware-content-surfacing-findings.md.
+  router.get("/api/places/nearby", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const lat = ctx.url.searchParams.get("lat");
+    const lng = ctx.url.searchParams.get("lng");
+    if (lat === null || lng === null) throw badRequest("lat and lng are required");
+    return sendJson(res, 200, { items: await places.findNearby(user.id, { latitude: lat, longitude: lng }) });
   });
 
   router.post("/api/lists/:id/items", async (req, res, params, ctx) => {

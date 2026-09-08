@@ -323,6 +323,43 @@ async function api(path, options = {}) {
   return payload;
 }
 
+// ---------------------------------------------------------------------------
+// Location (Git #3159, "Location-aware content surfacing")
+//
+// Real investigation finding (docs/location-aware-content-surfacing-findings.md): a Home
+// Screen web app cannot detect arrival at a place in the background -- neither iOS nor Android
+// exposes background geolocation/geofencing to browser JS. What IS real and buildable is
+// foreground/on-demand: ask for the real current position only while the app is actually open,
+// and never force the native permission prompt on every load -- that's genuinely annoying, and
+// the design's own "nudges rationed" spirit (Section 3) applies just as much to a permission
+// dialog as it does to a notification.
+//
+// getRealPosition() is used two ways: (1) a capture submit always tries it, low-power, short
+// timeout -- the browser's OWN native prompt asks the first time, never an in-app form (Section
+// 3, "no forms, anywhere, ever"); a denial or timeout just means the capture saves with no
+// coordinates, exactly as if this feature didn't exist. (2) the Today view only tries it
+// silently when permission is ALREADY granted, so opening Today never itself triggers a prompt.
+async function geoPermissionState() {
+  if (!navigator.permissions?.query) return "unsupported"; // Safari's Permissions API coverage for geolocation is inconsistent -- treat "can't tell" as "don't assume granted"
+  try {
+    const status = await navigator.permissions.query({ name: "geolocation" });
+    return status.state; // "granted" | "prompt" | "denied"
+  } catch {
+    return "unsupported";
+  }
+}
+
+function getRealPosition({ timeout = 4000 } = {}) {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      () => resolve(null), // denied, unavailable, or timed out -- all the same real answer: no position this time
+      { enableHighAccuracy: false, maximumAge: 5 * 60 * 1000, timeout }, // low-power: a few hundred meters of accuracy is plenty to match a saved place's radius, and battery is a real cost (contract pack's own "not assumed simple" flag)
+    );
+  });
+}
+
 const el = (tag, props = {}, children = []) => {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
@@ -973,12 +1010,18 @@ $("#capture").addEventListener("submit", async (event) => {
   send.disabled = true;
   captureStatus.textContent = "Saving…";
   try {
+    // Real current position, if the browser already has it (or is willing to ask, natively --
+    // never an in-app form). Git #3159: this is what lets "remember this as Home" carry real
+    // coordinates without a dedicated location field anywhere in this UI.
+    const position = await getRealPosition();
     await api("/api/captures", {
       method: "POST",
       body: JSON.stringify({
         text: text || null,
         mediaId: state.attachment?.mediaId ?? null,
         kind: state.attachment?.kind || "text",
+        latitude: position?.latitude ?? null,
+        longitude: position?.longitude ?? null,
       }),
     });
     captureText.value = "";
@@ -1212,6 +1255,16 @@ async function viewToday(view) {
     });
   }
 
+  // Real physical-place surfacing (Git #3159) -- foreground-only, on demand, same deferred
+  // "render instantly, swap in the real read the moment it answers" pattern as weather above.
+  // Only ever checks when permission is ALREADY granted (see getRealPosition's own header) --
+  // opening Today never itself prompts for location. An empty slot reserves the real position
+  // in the layout; fillNearbyPlaceSlot only ever puts something in it when a real match exists,
+  // so a Shane with no places saved (or not near one) sees nothing here at all.
+  const geoSlot = el("div");
+  view.append(geoSlot);
+  fillNearbyPlaceSlot(geoSlot);
+
   // Tonight teaser (Git #3126) -- purely real client state (mealSession is never persisted
   // server-side, see its own declaration), so this only ever shows while a live synchronized
   // cook session genuinely exists right now. Takes priority over #3127's own "Tonight" plan
@@ -1306,6 +1359,33 @@ async function viewToday(view) {
     for (const item of data.recent) recent.append(entityTile(item));
   }
   view.append(recent);
+}
+
+/** Git #3159 -- fills `slot` with a real "You're at <place>" card if (and only if) the app
+ *  already has location permission and a real saved place actually contains the real current
+ *  position. Never requests permission itself, never shows a loading/empty state -- silence is
+ *  the correct outcome for "no permission" and "nothing nearby" alike. */
+async function fillNearbyPlaceSlot(slot) {
+  if ((await geoPermissionState()) !== "granted") return;
+  const position = await getRealPosition({ timeout: 3000 });
+  if (!position || state.route !== "today") return;
+  let nearby;
+  try {
+    nearby = (await api(`/api/places/nearby?lat=${position.latitude}&lng=${position.longitude}`)).items;
+  } catch {
+    return; // a failed real-time check is silent, same as no match -- never an error card here
+  }
+  if (!nearby?.length || state.route !== "today") return;
+  const place = nearby[0]; // nearest real match only -- Today shows "only what's next" (Section 3), not a list
+  slot.append(
+    el("section", { class: "section" }, [
+      el("div", { class: "card" }, [
+        el("div", { class: "meta small", text: "You're at" }),
+        el("div", { class: "title", text: place.label }),
+        ...(place.note ? [el("div", { class: "meta muted small", text: place.note })] : []),
+      ]),
+    ]),
+  );
 }
 
 function entityTile(entity) {
@@ -4176,6 +4256,43 @@ async function viewSettings(view) {
       ]),
     ]),
   );
+
+  // Real saved places (Git #3159). No add-place form here (Section 3, "no forms, anywhere,
+  // ever") -- a place is only ever created by saying "remember this as Home" into the real
+  // capture box while actually standing there; Claude files it over MCP (push_place). This is
+  // read-only-plus-forget, same tier as "Sign out everywhere" / "Revoke" above -- a plain action
+  // button, not a dedicated input field.
+  const { items: savedPlaces } = await api("/api/places");
+  const placesSection = el("section", { class: "section" }, [
+    el("h2", { text: "Places" }),
+    el("p", { class: "muted small", text: "Say “remember this as …” while you're actually there, and Claude files it here — with real content surfaced on Today when you're back." }),
+  ]);
+  if (savedPlaces.length === 0) {
+    placesSection.append(el("p", { class: "muted small", text: "None saved yet." }));
+  } else {
+    for (const place of savedPlaces) {
+      placesSection.append(
+        el("div", { class: "card" }, [
+          el("div", { class: "spread" }, [
+            el("div", {}, [
+              el("div", { class: "title", text: place.label }),
+              el("div", { class: "meta", text: place.note || `${place.radius_meters}m radius` }),
+            ]),
+            el("button", {
+              class: "ghost small danger",
+              text: "Forget",
+              onClick: async (event) => {
+                event.target.disabled = true;
+                await api(`/api/places/${place.id}`, { method: "DELETE" });
+                render();
+              },
+            }),
+          ]),
+        ]),
+      );
+    }
+  }
+  view.append(placesSection);
 
   const mcp = el("section", { class: "section" }, [
     el("h2", { text: "Claude (MCP)" }),

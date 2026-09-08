@@ -823,6 +823,45 @@ async function main() {
     thingsActivity.json?.activity?.some((a) => a.action === "thing.record") && thingsActivity.json?.activity?.some((a) => a.action === "contact.record"),
   );
 
+  // 6f. Places -- real physical places + foreground nearby-matching (Git #3159, migration 037).
+  // NASA Johnson Space Center's real public coordinates stand in for "a real place Shane is
+  // physically at" -- a real-shaped fixture, not an assertion about Shane's actual location.
+  const nasaLat = 29.5502;
+  const nasaLng = -95.0937;
+  const placeLabel = `Check Place ${stamp}`;
+
+  // A geo-tagged capture (Git #3159): the browser silently attaches real coordinates -- this is
+  // what push_place reads to answer "remember this as ..." with a real position, never a guess.
+  const geoCapture = await http("/api/captures", { method: "POST", body: { text: `remember this as ${placeLabel}`, latitude: nasaLat, longitude: nasaLng } });
+  check("POST /api/captures stores the real lat/lng it was given", geoCapture.status === 201 && geoCapture.json?.latitude === nasaLat && geoCapture.json?.longitude === nasaLng, JSON.stringify(geoCapture.json));
+
+  // push_place (MCP) -- the real entry point; there is no add-place form anywhere in this app.
+  const mcpPlace = await rpc(token.token, "tools/call", { name: "push_place", arguments: { label: placeLabel, latitude: nasaLat, longitude: nasaLng, radiusMeters: 500, note: "badge office" } });
+  const mcpPlacePayload = toolResult(mcpPlace);
+  check("push_place (MCP) writes a real place row from the geo-tagged capture's own coordinates", mcpPlacePayload?.label === placeLabel && mcpPlacePayload?.radius_meters === 500, JSON.stringify(mcpPlacePayload));
+
+  const mcpPlaceList = await rpc(token.token, "tools/call", { name: "list_places", arguments: {} });
+  check("list_places (MCP) reads it back", toolResult(mcpPlaceList)?.items?.some((p) => p.label === placeLabel), JSON.stringify(toolResult(mcpPlaceList)));
+
+  cookie = savedCookie;
+  const webPlaces = await http("/api/places");
+  check("GET /api/places (web, Settings' read-only list) sees the same real place", webPlaces.json?.items?.some((p) => p.label === placeLabel), JSON.stringify(webPlaces.json));
+
+  const nearHit = await http(`/api/places/nearby?lat=${nasaLat}&lng=${nasaLng}`);
+  check("GET /api/places/nearby matches a real position actually inside the radius", nearHit.json?.items?.some((p) => p.label === placeLabel), JSON.stringify(nearHit.json));
+
+  const nearMiss = await http(`/api/places/nearby?lat=${nasaLat + 5}&lng=${nasaLng + 5}`);
+  check("GET /api/places/nearby returns nothing for a real position far outside every saved radius", !nearMiss.json?.items?.some((p) => p.label === placeLabel), JSON.stringify(nearMiss.json));
+
+  const forgetIt = await http(`/api/places/${mcpPlacePayload.id}`, { method: "DELETE" });
+  check("DELETE /api/places/:id (the Settings 'Forget' button) really removes it", forgetIt.status === 200, JSON.stringify(forgetIt.json));
+
+  const afterForget = await http("/api/places");
+  check("the forgotten place is really gone", !afterForget.json?.items?.some((p) => p.label === placeLabel), JSON.stringify(afterForget.json));
+
+  const placesActivity = await http("/api/activity");
+  check("the place record/delete writes are in the audit trail", placesActivity.json?.activity?.some((a) => a.action === "place.record") && placesActivity.json?.activity?.some((a) => a.action === "place.delete"));
+
   cookie = null;
 
   // 6b. money: the same numbers ShanesSurvival's own Dashboard shows (Git #3137)

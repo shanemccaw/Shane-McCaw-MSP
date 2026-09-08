@@ -22,6 +22,7 @@ import * as mealPlan from "../core/meal-plan.mjs";
 import * as medications from "../core/medications.mjs";
 import * as money from "../core/money.mjs";
 import * as pets from "../core/pets.mjs";
+import * as places from "../core/places.mjs";
 import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
 import * as shares from "../core/shares.mjs";
@@ -1659,6 +1660,64 @@ export const TOOLS = [
     },
     async handler(args, ctx) {
       return { items: await contacts.listContacts(ctx.user.id, { trade: args.trade }) };
+    },
+  },
+
+  // Real physical places (Git #3159). No add-place form exists anywhere in this app (Section 3,
+  // "no forms, anywhere, ever") -- this tool IS the only way a place gets created. The real
+  // coordinates come from a geo-tagged capture (list_captures/get_capture return latitude/
+  // longitude when the browser had permission and attached them) -- Shane says "remember this
+  // as Home" while actually standing there, and this files it with those exact real numbers.
+  // Do not invent or estimate coordinates -- if a capture has none, ask Shane to say it again
+  // from his phone rather than guessing at where "Home" might be.
+  {
+    name: "push_place",
+    title: "Save a real physical place",
+    description:
+      "File (or re-center) a real named place Shane can be physically at -- 'remember this as Home', 'this is the NASA badge office'. latitude/longitude MUST come from a real geo-tagged capture (list_captures/get_capture) -- never estimate or geocode an address yourself. Saying the same label again re-centers that place at the new real position rather than creating a duplicate. Call list_places first to avoid re-asking for one already on file.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        label: { type: "string", description: "Shane's own word for the place, e.g. 'Home', 'Walmart', 'NASA'." },
+        latitude: { type: "number", description: "Real latitude from the geo-tagged capture this came from." },
+        longitude: { type: "number", description: "Real longitude from the geo-tagged capture this came from." },
+        radiusMeters: { type: "integer", description: "How close counts as 'there'. Default 150 -- widen for a large real site (e.g. a NASA campus), narrow for a single small building." },
+        note: { type: "string", description: "What to surface when Shane is here, in his own words, e.g. 'grab the shopping list'." },
+      },
+      required: ["label", "latitude", "longitude"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await places.upsertPlace(ctx.user.id, { ...args, createdBy: "claude" });
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "place.record", entityId: row.id, detail: { label: row.label } });
+      return row;
+    },
+  },
+
+  {
+    name: "list_places",
+    title: "Read every real saved place",
+    description: "Every real place on file with its real coordinates and radius -- check here before push_place so 'remember this as Home' updates the existing Home rather than asking Shane to name it something else.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(args, ctx) {
+      return { items: await places.listPlaces(ctx.user.id) };
+    },
+  },
+
+  {
+    name: "forget_place",
+    title: "Forget a real saved place",
+    description: "Delete a real place Shane no longer wants tracked, e.g. after moving out of the rental. Call list_places first to get the real id.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "places.id, from list_places." } },
+      required: ["id"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await places.deletePlace(ctx.user.id, args.id);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "place.delete", entityId: row.id });
+      return { ok: true };
     },
   },
 
