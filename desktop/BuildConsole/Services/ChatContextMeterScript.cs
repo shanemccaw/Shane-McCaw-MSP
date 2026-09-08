@@ -32,8 +32,17 @@ namespace BuildConsole.Services
   // mounted right now. A genuinely different conversation id resets it; a re-render
   // of the same id never does.
   function conversationId() {
-    // Same /chat/<uuid> shape used host-side at MainWindow.xaml.cs:1871.
-    const m = /\/chat\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/.exec(location.pathname);
+    // Git #3167 — this is re-read on EVERY poll (via store()), so a tab that started on
+    // /new correctly picks up its real id the moment claude.ai's router flips the URL to
+    // /chat/<uuid>. The frozen-gauge root cause was NOT a memoised/one-shot read — it was
+    // this regex being malformed: a UUID is 8-4-4-4-12 (five hyphen-separated groups) and
+    // this pattern had only 8-4-4-12 (four groups, one {4} group missing), so it returned
+    // null for EVERY well-formed /chat/<uuid> pathname. The [link 1] diagnostic proved it
+    // live: pathname='/chat/110b8198-222f-40dd-8b9a-493b399c3246' → convId=<NULL>. With the
+    // id always null, ChatContextMeterStore.Merge was skipped forever and the store was
+    // never written. Use the real 5-group UUID shape — the same one the working chat-
+    // association regexes already use (MainWindow.xaml.cs ExtractConversationId ~4912).
+    const m = /\/chat\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/.exec(location.pathname);
     return m ? m[1] : null;
   }
 
