@@ -35,6 +35,12 @@ function normaliseListItems(items) {
       text: text.slice(0, 500),
       note: item.note ? String(item.note).slice(0, 2000) : null,
       checked: Boolean(item.checked),
+      // Who actually asked for this, e.g. "Ronnie" -- free text, not a person_id FK (Section 3's
+      // "genuinely open" principle again). Purely additive: every existing caller that never
+      // passes it keeps working exactly as before. Feeds the Catches' duplicate-request detector
+      // (core/catches.mjs, #3153) -- two different real names on the same real item text is the
+      // whole signal it looks for.
+      requestedBy: item.requestedBy ? String(item.requestedBy).trim().slice(0, 120) || null : null,
     };
   });
 }
@@ -179,7 +185,7 @@ export async function getListDetail(userId, listId) {
   const list = await getOwnedList(userId, listId);
   if (!list) return null;
   const items = await many(
-    `SELECT id, position, text, note, done, done_at, created_at,
+    `SELECT id, position, text, note, done, done_at, created_at, requested_by,
             price_cents, price_source, priced_at
        FROM list_items WHERE list_id = $1 ORDER BY position, created_at`,
     [listId],
@@ -228,9 +234,9 @@ export async function addListItems(userId, listId, items) {
     let next = Number(rows[0].max) + 1;
     for (const item of normalised) {
       await client.query(
-        `INSERT INTO list_items (list_id, position, text, note, done, done_at)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [listId, next++, item.text, item.note, item.checked, item.checked ? new Date().toISOString() : null],
+        `INSERT INTO list_items (list_id, position, text, note, done, done_at, requested_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [listId, next++, item.text, item.note, item.checked, item.checked ? new Date().toISOString() : null, item.requestedBy],
       );
     }
     await client.query("UPDATE lists SET updated_at = now() WHERE id = $1", [listId]);

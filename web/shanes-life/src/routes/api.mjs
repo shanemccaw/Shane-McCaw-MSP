@@ -9,6 +9,7 @@ import * as credentials from "../core/credentials.mjs";
 import * as webauthn from "../auth/webauthn.mjs";
 import * as audit from "../core/audit.mjs";
 import * as captures from "../core/captures.mjs";
+import * as catches from "../core/catches.mjs";
 import * as categories from "../core/categories.mjs";
 import * as contacts from "../core/contacts.mjs";
 import * as dates from "../core/dates.mjs";
@@ -1187,6 +1188,26 @@ export function buildApiRouter() {
     const user = requireUser(ctx);
     const status = await money.getGateStatus(user.id);
     return sendJson(res, 200, status.smoking);
+  });
+
+  // -- Money -> Catches (Git #3153) -----------------------------------------------------
+  //
+  // Section 4's real expense-cutting mechanisms -- see src/core/catches.mjs for what each of
+  // the five real detectors looks for. GET runs the detectors fresh every time (they are plain
+  // upserts against real, already-synced data, cheap enough for a screen open) so the Catches
+  // card is never stale just because the 6-hour server sweep (server.mjs) hasn't run yet.
+
+  router.get("/api/money/catches", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    await catches.runDetectors(user.id);
+    return sendJson(res, 200, { catches: await catches.listCatches(user.id) });
+  });
+
+  router.post("/api/money/catches/:id/dismiss", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const row = await catches.dismissCatch(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "owner", action: "catch.dismiss", entityId: row.id, detail: { kind: row.kind } });
+    return sendJson(res, 200, row);
   });
 
   // -- Money -> Cars (Git #3149) --------------------------------------------------------

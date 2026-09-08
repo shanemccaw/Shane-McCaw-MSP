@@ -10,6 +10,7 @@
 
 import { record } from "../core/audit.mjs";
 import * as captures from "../core/captures.mjs";
+import * as catches from "../core/catches.mjs";
 import * as categories from "../core/categories.mjs";
 import * as contacts from "../core/contacts.mjs";
 import * as dates from "../core/dates.mjs";
@@ -59,6 +60,10 @@ const ITEMS_SCHEMA = {
           text: { type: "string" },
           note: { type: "string" },
           checked: { type: "boolean" },
+          requestedBy: {
+            type: "string",
+            description: "Who actually asked for this, e.g. 'Ronnie' -- only meaningful on a list item. Feeds the Catches duplicate-request detector (#3153): two different real names on the same item text across the same list gets flagged.",
+          },
           data: { type: "object", description: "Anything else worth keeping, e.g. quantity, store, aisle, price." },
         },
         required: ["text"],
@@ -1264,6 +1269,41 @@ export const TOOLS = [
         entityId: row.id,
         detail: { packs: row.packs, amount: row.amount },
       });
+      return row;
+    },
+  },
+
+  // -- Money -> Catches (Git #3153) -------------------------------------------
+  //
+  // Section 4's real expense-cutting mechanisms: renewal watch, forgotten-money sweep,
+  // duplicate-request catch, borrowed-from-bill detection, bulk-buy suggestion. See
+  // src/core/catches.mjs for what each of the five real detectors actually looks for.
+
+  {
+    name: "get_catches",
+    title: "Real money-leak catches",
+    description:
+      "Runs the five real Catches detectors (renewal watch, forgotten-money sweep, duplicate-request, borrowed-from-bill, bulk-buy) against real current data, then returns every real, undismissed catch found -- what the Money screen's Catches card shows. Safe to call any time; upserts make repeated calls idempotent rather than piling up duplicates.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      await catches.runDetectors(ctx.user.id);
+      return { catches: await catches.listCatches(ctx.user.id) };
+    },
+  },
+
+  {
+    name: "dismiss_catch",
+    title: "Got it -- dismiss a catch",
+    description: "Dismisses one real catch, same as tapping 'Got it' on the Money screen's Catches card. Idempotent.",
+    inputSchema: {
+      type: "object",
+      properties: { catchId: { type: "string" } },
+      required: ["catchId"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await catches.dismissCatch(ctx.user.id, args.catchId);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "catch.dismiss", entityId: row.id, detail: { kind: row.kind } });
       return row;
     },
   },
