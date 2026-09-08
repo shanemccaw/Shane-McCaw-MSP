@@ -1082,7 +1082,7 @@ export const TOOLS = [
     name: "set_medication",
     title: "Create or update a real medication",
     description:
-      "Create a new real medication record, or update an existing one by passing its id. batch is free text ('morning', 'evening', ...) -- the same batch groups a single swipe completes together, so a new medication in an existing batch just joins that batch's next swipe, no migration needed. refillTier is a real, locked dichotomy: 'auto' (no action ever needed from Shane) or 'manual' (surfaces under Refills > Needs you). supplyDays + nextRefillOn drive the real 'days left' countdown on a manual-watch item. pharmacyPhone drives the real 'Call pharmacy' button on a manual-watch item -- the button only shows once this is set.",
+      "Create a new real medication record, or update an existing one by passing its id. batch is free text ('morning', 'evening', ...) -- the same batch groups a single swipe completes together, so a new medication in an existing batch just joins that batch's next swipe, no migration needed. refillTier is a real, locked dichotomy: 'auto' (no action ever needed from Shane) or 'manual' (surfaces under Refills > Needs you). supplyDays + nextRefillOn drive the real 'days left' countdown on a manual-watch item. pharmacyPhone drives the real 'Call pharmacy' button on a manual-watch item -- the button only shows once this is set. courseStartDate/courseActiveDays/courseCycleDays are for a real cyclical course medication (e.g. Terbinafine, 15 days on then dormant for a repeating cycle) -- set all three together to make it a course (it then only appears in its batch during the real active window, and disappears the rest of the cycle), or pass all three as null to clear it back to an ordinary always-in-batch medication. A capture like 'starting my 15-day Terbinafine course today' only needs to pass courseStartDate on an id that already has courseActiveDays/courseCycleDays set -- it resets just the start date and keeps the rest.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1095,6 +1095,9 @@ export const TOOLS = [
         nextRefillOn: { type: "string", description: "ISO date -- manual: pharmacy due date; auto: next delivery date." },
         refillNote: { type: "string", description: "e.g. 'Pharmacy needs a call before Thursday.'" },
         pharmacyPhone: { type: "string", description: "e.g. '555-123-4567' -- the manual-watch tier's real 'Call pharmacy' number." },
+        courseStartDate: { type: "string", description: "ISO date the current/most recent course actually began. Real cyclical course medications only -- set together with courseActiveDays + courseCycleDays." },
+        courseActiveDays: { type: "number", description: "How many days into the cycle it's actually taken, e.g. 15 for a 15-days-on Terbinafine course." },
+        courseCycleDays: { type: "number", description: "The full real cycle length (active + dormant) before it repeats, e.g. 75 for a 15-on/60-off pattern." },
       },
       additionalProperties: false,
     },

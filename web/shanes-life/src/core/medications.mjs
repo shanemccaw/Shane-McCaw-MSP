@@ -38,10 +38,78 @@ function coerceDate(value, field) {
 export async function getOwnedMedication(userId, medicationId) {
   return one(
     `SELECT id, name, dose_note, batch, refill_tier, supply_days, next_refill_on, refill_note,
-            pharmacy_phone, position, created_at, updated_at
+            pharmacy_phone, position, course_start_date, course_active_days, course_cycle_days,
+            created_at, updated_at
        FROM medications WHERE id = $1 AND user_id = $2 AND archived_at IS NULL`,
     [medicationId, userId],
   );
+}
+
+/**
+ * Course fields (Git #3267) are all-or-none: a real cyclical medication (e.g. Terbinafine,
+ * 15 days on then dormant for a repeating cycle) sets all three; an ordinary daily/as-needed
+ * medication leaves all three null. Mirrors the DB CHECK constraint in migration 061 so a bad
+ * combination is rejected here with a real message instead of a raw constraint-violation error.
+ */
+function cleanCourseFields({ courseStartDate, courseActiveDays, courseCycleDays }, existing = {}) {
+  const anySet = courseStartDate !== undefined || courseActiveDays !== undefined || courseCycleDays !== undefined;
+  if (!anySet) return undefined;
+
+  // A partial update (e.g. resetting just courseStartDate to today for "starting my 15-day
+  // Terbinafine course today") merges onto the medication's already-set course values, if any --
+  // it only has to stand alone as all-or-none against a medication that isn't a course yet.
+  const merged = {
+    courseStartDate: courseStartDate !== undefined ? courseStartDate : existing.course_start_date ?? null,
+    courseActiveDays: courseActiveDays !== undefined ? courseActiveDays : existing.course_active_days ?? null,
+    courseCycleDays: courseCycleDays !== undefined ? courseCycleDays : existing.course_cycle_days ?? null,
+  };
+
+  const allNull = merged.courseStartDate == null && merged.courseActiveDays == null && merged.courseCycleDays == null;
+  if (allNull) {
+    return { course_start_date: null, course_active_days: null, course_cycle_days: null };
+  }
+
+  if (merged.courseStartDate == null || merged.courseActiveDays == null || merged.courseCycleDays == null) {
+    throw badRequest("courseStartDate, courseActiveDays and courseCycleDays must be set together, or all cleared with null");
+  }
+  ({ courseStartDate, courseActiveDays, courseCycleDays } = merged);
+  const activeDays = Math.trunc(Number(courseActiveDays));
+  const cycleDays = Math.trunc(Number(courseCycleDays));
+  if (!Number.isFinite(activeDays) || !Number.isFinite(cycleDays) || activeDays <= 0 || cycleDays <= 0) {
+    throw badRequest("courseActiveDays and courseCycleDays must be positive numbers");
+  }
+  if (activeDays > cycleDays) {
+    throw badRequest("courseActiveDays cannot be greater than courseCycleDays");
+  }
+  return {
+    course_start_date: coerceDate(courseStartDate, "courseStartDate"),
+    course_active_days: activeDays,
+    course_cycle_days: cycleDays,
+  };
+}
+
+/**
+ * Whether a course medication is inside its real active window today. Non-course medications
+ * (any of the three fields null) are always considered active -- this only ever narrows a real
+ * course medication's batch appearance, never affects an ordinary one.
+ */
+function isCourseActiveToday(med, today = todayDateString()) {
+  if (med.course_start_date == null || med.course_active_days == null || med.course_cycle_days == null) {
+    return true;
+  }
+  // pg returns a DATE column as a JS Date already (local-midnight), not a string -- normalize to
+  // YYYY-MM-DD first so this always compares real UTC calendar days regardless of which shape
+  // came back (raw driver row vs. an already-.toISOString()'d value elsewhere).
+  const startStr =
+    med.course_start_date instanceof Date
+      ? med.course_start_date.toISOString().slice(0, 10)
+      : String(med.course_start_date).slice(0, 10);
+  const start = new Date(`${startStr}T00:00:00Z`);
+  const now = new Date(`${today}T00:00:00Z`);
+  const daysSinceStart = Math.floor((now - start) / 86_400_000);
+  if (daysSinceStart < 0) return false; // course hasn't started yet
+  const dayInCycle = daysSinceStart % med.course_cycle_days;
+  return dayInCycle < med.course_active_days;
 }
 
 /**
@@ -53,19 +121,39 @@ export async function getOwnedMedication(userId, medicationId) {
  */
 export async function createMedication(
   userId,
-  { name, doseNote, batch, refillTier = "manual", supplyDays, nextRefillOn, refillNote, pharmacyPhone, position = 0 } = {},
+  {
+    name,
+    doseNote,
+    batch,
+    refillTier = "manual",
+    supplyDays,
+    nextRefillOn,
+    refillNote,
+    pharmacyPhone,
+    position = 0,
+    courseStartDate,
+    courseActiveDays,
+    courseCycleDays,
+  } = {},
 ) {
   const cleanName = String(name ?? "").trim().slice(0, MAX_NAME_LEN);
   if (!cleanName) throw badRequest("name is required");
   const cleanTier = String(refillTier ?? "manual").trim().toLowerCase();
   if (!REFILL_TIERS.has(cleanTier)) throw badRequest(`refillTier must be one of: ${[...REFILL_TIERS].join(", ")}`);
+  const course = cleanCourseFields({ courseStartDate, courseActiveDays, courseCycleDays }) ?? {
+    course_start_date: null,
+    course_active_days: null,
+    course_cycle_days: null,
+  };
 
   const row = await one(
     `INSERT INTO medications
-       (user_id, name, dose_note, batch, refill_tier, supply_days, next_refill_on, refill_note, pharmacy_phone, position)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       (user_id, name, dose_note, batch, refill_tier, supply_days, next_refill_on, refill_note, pharmacy_phone,
+        position, course_start_date, course_active_days, course_cycle_days)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      RETURNING id, name, dose_note, batch, refill_tier, supply_days, next_refill_on, refill_note,
-               pharmacy_phone, position, created_at, updated_at`,
+               pharmacy_phone, position, course_start_date, course_active_days, course_cycle_days,
+               created_at, updated_at`,
     [
       userId,
       cleanName,
@@ -77,6 +165,9 @@ export async function createMedication(
       refillNote ? String(refillNote).trim().slice(0, MAX_NOTE_LEN) : null,
       pharmacyPhone ? String(pharmacyPhone).trim().slice(0, MAX_PHONE_LEN) : null,
       Number.isFinite(Number(position)) ? Math.trunc(Number(position)) : 0,
+      course.course_start_date,
+      course.course_active_days,
+      course.course_cycle_days,
     ],
   );
   return row;
@@ -120,6 +211,21 @@ export async function updateMedication(userId, medicationId, patch = {}) {
     if (!REFILL_TIERS.has(cleanTier)) throw badRequest(`refillTier must be one of: ${[...REFILL_TIERS].join(", ")}`);
     params.push(cleanTier);
     sets.push(`refill_tier = $${params.length}`);
+  }
+
+  const course = cleanCourseFields(
+    {
+      courseStartDate: patch.courseStartDate,
+      courseActiveDays: patch.courseActiveDays,
+      courseCycleDays: patch.courseCycleDays,
+    },
+    existing,
+  );
+  if (course !== undefined) {
+    for (const [column, value] of Object.entries(course)) {
+      params.push(value);
+      sets.push(`${column} = $${params.length}`);
+    }
   }
 
   if (sets.length === 0) throw badRequest("No updatable fields supplied");
@@ -175,7 +281,8 @@ function todayDateString() {
 export async function getMedsToday(userId) {
   const meds = await many(
     `SELECT id, name, dose_note, batch, refill_tier, supply_days, next_refill_on, refill_note,
-            pharmacy_phone, position, created_at, updated_at
+            pharmacy_phone, position, course_start_date, course_active_days, course_cycle_days,
+            created_at, updated_at
        FROM medications
       WHERE user_id = $1 AND archived_at IS NULL
       ORDER BY batch, position, created_at`,
@@ -200,6 +307,12 @@ export async function getMedsToday(userId) {
   const batchOrder = [];
   const byBatch = new Map();
   for (const med of meds) {
+    // Git #3267: a real cyclical course medication (e.g. Terbinafine, 15 days on then dormant
+    // for a repeating cycle) only ever appears in its assigned batch DURING its real active
+    // window -- outside it, it simply doesn't appear here (no separate paused UI for v1). This
+    // never touches an ordinary daily/as-needed medication, whose course fields are all null and
+    // isCourseActiveToday always treats as active.
+    if (!isCourseActiveToday(med, today)) continue;
     if (!byBatch.has(med.batch)) {
       byBatch.set(med.batch, []);
       batchOrder.push(med.batch);
