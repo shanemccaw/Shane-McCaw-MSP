@@ -26,8 +26,21 @@
 // entirely. That pair (and any future genuinely-historical pair) is allowlisted explicitly below
 // so the check fails only on NEW collisions, not on landed history.
 //
+// Git #3175: the ledger-orphan half of this file (assertNoOrphanLedgerRows, below) used to treat
+// every ledger row without a file on disk as the same thing, and fail closed on all of them.
+// That is wrong on this machine, because the ledger is ONE shared table and each build runs in
+// its own worktree off origin/main -- so between "sibling applied its migration" and "sibling's
+// commit reached origin/main and I merged it", every concurrent build's ledger is legitimately
+// ahead of its own migrations/ directory. #3175 measured that window moving four times in ~20
+// minutes across 5-10 live builds, each move a separate failed server boot, which took out
+// `npm start` and therefore `npm run check` (the whole 192-check end-to-end suite) as well as
+// `npm run migrate`. classifyOrphanLedgerFilenames now separates a row that is AHEAD of this
+// checkout (harmless -- nothing here can re-run under it) from one that is genuinely MISSING
+// (the rename hazard #3140 exists for, still fatal).
+//
 // Run standalone: node scripts/check-migration-numbers.mjs
 // Also called from web/shanes-life/src/migrate.mjs before every real migration run.
+// Self-test:     node scripts/check-migration-numbers.selftest.mjs
 
 import { readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -188,24 +201,106 @@ export function findOrphanLedgerFilenames(ledgerFilenames, dirs = MIGRATION_DIRS
 }
 
 /**
- * Throws with a real, actionable message if the ledger holds any row for a filename that no
- * longer exists in either migrations directory (Git #3140) -- turning what used to be a silent
- * re-run under the new name into a loud, readable stop before anything is applied.
+ * The highest leading migration number present on disk across `dirs`, or null if none of them
+ * holds a numbered *.sql file at all. Used to tell a ledger row that is AHEAD of this checkout
+ * from one that is genuinely MISSING from it -- see classifyOrphanLedgerFilenames.
+ */
+export function highestOnDiskMigrationNumber(dirs = MIGRATION_DIRS) {
+  let highest = null;
+  for (const dir of dirs) {
+    for (const { number } of readNumberedSqlFiles(dir)) {
+      const n = Number(number);
+      if (Number.isNaN(n)) continue;
+      if (highest === null || n > highest) highest = n;
+    }
+  }
+  return highest;
+}
+
+/**
+ * Splits the orphan rows (see findOrphanLedgerFilenames) into the two genuinely different
+ * situations they conflate today (Git #3175).
+ *
+ * `ahead` -- the row's leading number is strictly HIGHER than every number on disk here. It
+ * cannot be a rename of anything this checkout has, because this checkout has no file at that
+ * number at all. It is a concurrent sibling build's brand-new migration: applied against this
+ * shared local Postgres, not yet merged to origin/main, so not yet in this worktree. Nothing on
+ * disk will re-run because of it and nothing is unsafe -- there is simply a migration in the
+ * database that is newer than this checkout. Reported, not fatal.
+ *
+ * `missing` -- everything else: the row's number IS occupied on disk (by a file under a
+ * different name), or the row has no numeric prefix at all. That is the shape #3140 exists to
+ * catch -- an already-applied migration renamed, whose identical SQL then re-executes under the
+ * new name on every environment that already ran the old one. Still fatal.
+ *
+ * Why this split is the correct one, and what it deliberately does not cover:
+ *
+ *   Shane's Life builds all share ONE local `finances` database and its ONE schema_migrations
+ *   ledger, but each runs in its own worktree off origin/main (CLAUDE.md's worktree-isolation
+ *   section). So for the whole window between "sibling applied its migration" and "sibling's
+ *   commit reached origin/main and I merged it", EVERY concurrent build's ledger is ahead of its
+ *   own migrations/ directory -- through no fault of its own. #3175 measured that window moving
+ *   four times in ~20 minutes with 5-10 builds live, each one a separate failed boot, which is
+ *   why the practical outcome was Shane's Life work shipping module-verified instead of
+ *   end-to-end. Treating "ahead" as fatal made the guard's precondition ("the ledger and my
+ *   directory agree") false most of the time.
+ *
+ *   A rename always leaves its orphan row at the number the file used to have, and the renamed
+ *   file itself sits on disk at its new number -- so the orphan is never above everything on
+ *   disk, and stays fatal. The one shape this rule would let through is renaming an
+ *   already-applied migration DOWNWARD into a lower free gap, from what was the highest number
+ *   on disk. That requires a free lower number (assertNoDuplicateMigrationNumbers already
+ *   refuses a taken one) and inverts apply order against the ledger, so it is not a rename
+ *   anyone performs here; noted honestly rather than papered over.
+ */
+export function classifyOrphanLedgerFilenames(ledgerFilenames, dirs = MIGRATION_DIRS) {
+  const orphans = findOrphanLedgerFilenames(ledgerFilenames, dirs);
+  const highest = highestOnDiskMigrationNumber(dirs);
+
+  const ahead = [];
+  const missing = [];
+  for (const filename of orphans) {
+    const match = NUMBER_PREFIX.exec(filename);
+    const number = match ? Number(match[1]) : NaN;
+    if (!Number.isNaN(number) && highest !== null && number > highest) ahead.push(filename);
+    else missing.push(filename);
+  }
+  return { ahead, missing, highestOnDisk: highest };
+}
+
+/**
+ * Throws with a real, actionable message if the ledger holds a row for a filename that no longer
+ * exists in either migrations directory AND is not simply ahead of this checkout (Git #3140,
+ * narrowed by Git #3175) -- turning what used to be a silent re-run under the new name into a
+ * loud, readable stop before anything is applied, without also stopping every build whose only
+ * problem is that a sibling landed a migration first.
+ *
+ * Returns { ahead, missing: [], highestOnDisk } so the caller can report the ahead rows in its
+ * own voice. `ahead` being non-empty is normal on this machine and is not a failure.
  */
 export function assertNoOrphanLedgerRows(ledgerFilenames, dirs = MIGRATION_DIRS) {
-  const orphans = findOrphanLedgerFilenames(ledgerFilenames, dirs);
-  if (orphans.length === 0) return;
+  const { ahead, missing, highestOnDisk } = classifyOrphanLedgerFilenames(ledgerFilenames, dirs);
+  if (missing.length === 0) return { ahead, missing, highestOnDisk };
   throw new Error(
-    `schema_migrations holds ${orphans.length === 1 ? "a row" : "rows"} for ` +
-      `${orphans.length === 1 ? "a file" : "files"} that no longer exist in either migrations ` +
-      `directory (Git #3140):\n` +
-      orphans.map((f) => `  ${f}`).join("\n") +
-      `\nThis almost always means an already-applied migration was renamed. Renaming re-runs ` +
-      `the identical SQL under the new name on every environment that already ran it -- safe ` +
-      `only if the migration is purely idempotent. It can also be another, unrelated session's ` +
-      `own in-flight rename on this shared local database -- migrate.mjs retries a few times ` +
-      `before surfacing this (Git #3166), so if you are seeing this, that retry already gave up. ` +
-      `Either rename the file back, or if the rename/duplicate is genuinely yours and safe:\n` +
+    `schema_migrations holds ${missing.length === 1 ? "a row" : "rows"} for ` +
+      `${missing.length === 1 ? "a file" : "files"} that no longer exist in either migrations ` +
+      `directory, at ${missing.length === 1 ? "a number" : "numbers"} this checkout DOES have ` +
+      `on disk under another name (Git #3140):\n` +
+      missing.map((f) => `  ${f}`).join("\n") +
+      (ahead.length > 0
+        ? `\n(Separately, and harmlessly: ${ahead.join(", ")} ${ahead.length === 1 ? "is" : "are"} ` +
+          `ahead of this checkout -- a concurrent build's migration, not a problem, not the ` +
+          `reason for this failure.)`
+        : "") +
+      `\nTwo things produce this, and they have different fixes:\n` +
+      `  1. An already-applied migration was RENAMED. Renaming re-runs the identical SQL under ` +
+      `the new name on every environment that already ran it -- safe only if the migration is ` +
+      `purely idempotent. Rename the file back, or reconcile the ledger (below).\n` +
+      `  2. A concurrent sibling build TOOK THIS NUMBER FIRST and applied its own file at it, ` +
+      `while your unlanded file sits at the same number on disk. That is the #3139 collision ` +
+      `arriving early: rename YOUR file to the next number free across BOTH migrations ` +
+      `directories, and this clears itself.\n` +
+      `If the rename/duplicate is genuinely yours and safe:\n` +
       `  node bin/reconcile-ledger.mjs rename <old filename> <new filename>   (web/shanes-life only)\n` +
       `  node bin/reconcile-ledger.mjs delete <filename>                     (web/shanes-life only)\n` +
       `or fix up the ledger by hand:\n` +

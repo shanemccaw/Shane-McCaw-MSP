@@ -114,6 +114,26 @@ migration file.** That's no longer just a comment (Git #3118) — `scripts/check
 enforces it for real. Both runners call `assertNoDuplicateMigrationNumbers()` before applying
 anything, and refuse to run if the same leading number was used in both directories.
 
+**A ledger row you don't have a file for is not always a problem (Git #3175).** That one
+`schema_migrations` table is shared by every concurrent build on this machine, but each build
+runs in its own git worktree off `origin/main` — so for the whole window between "a sibling
+build applied its migration" and "that sibling's commit reached `origin/main` and I merged it",
+your ledger is legitimately *ahead* of your own `migrations/` directory. `src/migrate.mjs` now
+tells the two apart:
+
+- **Ahead** — the row's number is higher than anything you have on disk. Nothing here can re-run
+  under it, because this checkout has no file at that number at all. Logged as a one-line notice;
+  the migration runs, the server boots, `npm run check` runs.
+- **Missing** — the row's number *is* occupied on disk under a different name. That is the real
+  #3140 hazard (an applied migration renamed, so its identical SQL re-executes under the new
+  name), or a sibling that took your number first and needs you to renumber. Still fails closed,
+  loudly, before anything is applied, and the message names which of the two it is.
+
+Before #3175 both were fatal, which meant `npm start` — and therefore `npm run check`, the whole
+end-to-end suite — was blocked most of the time whenever several builds were live.
+`node scripts/check-migration-numbers.selftest.mjs` covers the classification with real files on
+disk.
+
 `src/migrate.mjs` refuses to run at all if `DATABASE_URL` points somewhere without
 ShanesSurvival's own tables, and names the database it actually found. That guard exists
 precisely so #3087's mistake cannot repeat silently — a half-applied Shane's Life on a bare
