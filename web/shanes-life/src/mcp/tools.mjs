@@ -17,6 +17,7 @@ import * as dates from "../core/dates.mjs";
 import * as entities from "../core/entities.mjs";
 import * as federalHolidays from "../core/federal-holidays.mjs";
 import * as foodPreferences from "../core/food-preferences.mjs";
+import * as incomeRules from "../core/income-rules.mjs";
 import * as lists from "../core/lists.mjs";
 import * as mealPlan from "../core/meal-plan.mjs";
 import * as medications from "../core/medications.mjs";
@@ -1342,6 +1343,161 @@ export const TOOLS = [
     },
   },
 
+  // -- Money -> Income Rules + transaction auto-scan (Git #3169) ---------------
+  //
+  // Real port of Finance-Tracker's IncomeRule + scanTransactions() -- see
+  // src/core/income-rules.mjs's own header. Rule CRUD lives here, not as a web form: Section 8
+  // ("no forms, anywhere, ever") is scoped to what the capture-parsing layer can act on, and a
+  // rule (name, account, income source, match type/text, optional amount range) is exactly the
+  // kind of several-typed-fields record that belongs in a real conversation with Claude, the
+  // same as set_habit/set_food_preferences.
+
+  {
+    name: "list_income_rules",
+    title: "Real income-matching rules",
+    description:
+      "Every real income rule (active and inactive), plus every real income source with which one is currently marked primary. Call this before add/update/delete so Claude has the real account/source names and current rule ids to work with.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler() {
+      return { rules: await incomeRules.listRules({ includeInactive: true }), sources: await incomeRules.listIncomeSources() };
+    },
+  },
+
+  {
+    name: "add_income_rule",
+    title: "Add a real income-matching rule",
+    description:
+      "Creates a real rule: when a real credit (deposit) transaction on `account` matches `matchText` (and, if given, falls within minAmount/maxAmount), a real income entry gets credited to `incomeSource` the next time scan_income_transactions runs. Same real, transparent, debuggable model as Finance-Tracker's IncomeRule -- contains/starts-with/exact text match, never an opaque classifier. `account`/`incomeSource` are matched against Shane's real accounts/income sources by name (case-insensitive, prefix or substring, same resolution simulate_transfer already uses) -- call list_income_rules first if unsure of the exact real name, and an ambiguous or unknown name comes back asking which one rather than guessing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "What this rule is called, e.g. 'NASA Salary direct deposit'." },
+        account: { type: "string", description: "The real linked account to watch, in Shane's own words, e.g. 'DirectDeposit'." },
+        incomeSource: { type: "string", description: "The real income source a match gets credited to, e.g. 'NASA Salary'." },
+        matchType: { type: "string", enum: ["contains", "starts_with", "exact"], description: "How matchText is compared against the transaction's real description. Defaults to 'contains'." },
+        matchText: { type: "string", description: "Text to look for in the transaction's real merchant/description, e.g. 'COM2 TREAS 310'. Case-insensitive." },
+        minAmount: { type: "number", description: "Optional real dollar floor -- a matching deposit smaller than this is ignored." },
+        maxAmount: { type: "number", description: "Optional real dollar ceiling -- a matching deposit larger than this is ignored." },
+      },
+      required: ["name", "account", "incomeSource", "matchText"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const rule = await incomeRules.createRule(args);
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "money.income_rule.created",
+        entityId: rule.id,
+        detail: { name: rule.name, accountName: rule.accountName, sourceName: rule.sourceName },
+      });
+      return rule;
+    },
+  },
+
+  {
+    name: "update_income_rule",
+    title: "Edit a real income-matching rule",
+    description:
+      "Updates one or more fields of a real rule (from list_income_rules). Additive, like set_habit: an omitted field keeps its current value. `isActive: false` pauses a rule without deleting its history.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The real rule's id, from list_income_rules." },
+        name: { type: "string" },
+        account: { type: "string", description: "A new real account to watch, by name." },
+        incomeSource: { type: "string", description: "A new real income source to credit, by name." },
+        matchType: { type: "string", enum: ["contains", "starts_with", "exact"] },
+        matchText: { type: "string" },
+        minAmount: { type: "number" },
+        maxAmount: { type: "number" },
+        isActive: { type: "boolean" },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const { id, ...patch } = args;
+      const rule = await incomeRules.updateRule(id, patch);
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "money.income_rule.updated",
+        entityId: rule.id,
+        detail: { name: rule.name, isActive: rule.isActive },
+      });
+      return rule;
+    },
+  },
+
+  {
+    name: "delete_income_rule",
+    title: "Delete a real income-matching rule",
+    description: "Deletes one real rule (from list_income_rules) permanently. Real income entries it already created are never touched or removed.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "The real rule's id, from list_income_rules." } },
+      required: ["id"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const result = await incomeRules.deleteRule(args.id);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "money.income_rule.deleted", entityId: args.id, detail: {} });
+      return result;
+    },
+  },
+
+  {
+    name: "set_primary_income_source",
+    title: "Mark a real income source as primary",
+    description:
+      "Sets exactly one real income source as primary, clearing any previous one -- the real, editable setting Finance-Tracker never had ('no way to change which income source is primary once set, despite it driving all cycle math'). This app's own Budget Day already treats every active source equally by real next-pay-date, so this is a real label Shane can set and see, not a control that changes get_gate_status's own math.",
+    inputSchema: {
+      type: "object",
+      properties: { incomeSource: { type: "string", description: "The real income source to mark primary, by name, e.g. 'NASA Salary'." } },
+      required: ["incomeSource"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await incomeRules.setPrimarySource(args.incomeSource);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "money.income_source.primary_set", entityId: row.id, detail: { name: row.name } });
+      return row;
+    },
+  },
+
+  {
+    name: "scan_income_transactions",
+    title: "Scan for real income matching active rules",
+    description:
+      "For every real account referenced by an active income rule, reads real already-synced transactions (no live Plaid call -- #3107's unified database means they're already there), matches real credit (deposit) transactions against each active rule, and bulk-creates real income entries for new matches. De-dupes by the real transaction id, so running this again after a fresh Plaid sync only ever adds genuinely new real deposits -- never a duplicate. Call list_income_rules first if nothing seems to be matching; a rule with no matches usually means its matchText or account is wrong, not that scanning failed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        lookbackDays: { type: "number", description: "How many real days back to scan. Defaults to 90, same as Finance-Tracker's own scan window." },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const result = await incomeRules.scanTransactions({ lookbackDays: args.lookbackDays });
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "money.income_rules.scanned",
+        detail: {
+          scannedAccounts: result.scannedAccounts,
+          transactionsScanned: result.transactionsScanned,
+          created: result.created,
+          linked: result.linked,
+          alreadyLogged: result.alreadyLogged,
+        },
+      });
+      return result;
+    },
+  },
+
   // -- Money -> Catches (Git #3153) -------------------------------------------
   //
   // Section 4's real expense-cutting mechanisms: renewal watch, forgotten-money sweep,
@@ -1440,6 +1596,76 @@ export const TOOLS = [
         detail: { description: args.description, amount: args.amount },
       });
       return row;
+    },
+  },
+
+  {
+    name: "set_vehicle",
+    title: "Create or update a real vehicle",
+    description:
+      "The capture-grammar entry point for 'add my Kia Forte' (create) or 'the Tesla's insurance is $180 a month now' (update) -- Git #3182 replaces the Cars tab's own dedicated add-vehicle form with this. Create a new real vehicle, or update an existing one by passing its id (call get_cars first to find it -- same pattern as set_pet/set_debt). loanBillId links a real bill account so its own payment/due-day math feeds the all-in total get_cars returns; pass null to unlink.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Omit to create a new vehicle; pass an existing id to update it." },
+        name: { type: "string", description: "e.g. 'Tesla Model 3'. Required on create." },
+        loanBillId: { type: "string", description: "A real account id from the linked loan bill, if this vehicle is financed. Pass null to unlink." },
+        insuranceAmount: { type: "number", description: "Real dollars per month." },
+        registrationDue: { type: "string", description: "ISO date registration is next due." },
+        registrationAmount: { type: "number", description: "Real dollars per year." },
+        maintenanceIntervalMiles: { type: "integer", description: "Real recurring maintenance interval, in miles, if there is one." },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const { id, ...fields } = args;
+      const row = id ? await vehicles.updateVehicle(ctx.user.id, id, fields) : await vehicles.createVehicle(ctx.user.id, fields);
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: id ? "vehicle.update" : "vehicle.create",
+        entityId: row.id,
+        detail: { name: row.name },
+      });
+      return row;
+    },
+  },
+
+  {
+    name: "delete_vehicle",
+    title: "Delete a real vehicle",
+    description:
+      "The capture-grammar entry point for 'remove the Tesla' / 'sold the Kia, take it off' -- Git #3182 replaces the Cars tab's own dedicated delete button with this. Removes the real vehicle row and its maintenance history entirely. `vehicle` matches by name (case-insensitive, prefix or substring -- same resolution as log_car_maintenance's own matching); call get_cars first if unsure of the exact name.",
+    inputSchema: {
+      type: "object",
+      properties: { vehicle: { type: "string", description: "The vehicle's name, e.g. 'Kia' or 'Tesla Model 3'." } },
+      required: ["vehicle"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const all = await vehicles.listVehicles(ctx.user.id);
+      const needle = String(args.vehicle ?? "").trim().toLowerCase();
+      const tiers = [
+        all.filter((v) => v.name.toLowerCase() === needle),
+        all.filter((v) => v.name.toLowerCase().startsWith(needle)),
+        all.filter((v) => v.name.toLowerCase().includes(needle)),
+      ];
+      let match = null;
+      for (const tier of tiers) {
+        if (tier.length === 1) {
+          match = tier[0];
+          break;
+        }
+        if (tier.length > 1) {
+          throw new Error(`"${args.vehicle}" matches ${tier.map((v) => v.name).join(", ")} -- say which one.`);
+        }
+      }
+      if (!match) throw new Error(`There is no vehicle called "${args.vehicle}". Call get_cars to see real vehicle names.`);
+
+      await vehicles.deleteVehicle(ctx.user.id, match.id);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "vehicle.delete", entityId: match.id, detail: { name: match.name } });
+      return { id: match.id, name: match.name, deleted: true };
     },
   },
 

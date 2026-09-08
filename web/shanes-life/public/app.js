@@ -1810,7 +1810,7 @@ async function viewThings(view) {
   // "Just logged" -- newest-said-first, what recordThing's upsert-by-name keeps current.
   const recentSection = el("section", { class: "section" }, [el("h2", { text: "Just logged" })]);
   if (things.length === 0) {
-    recentSection.append(empty("Nothing logged yet.", "Say where something is below, or ask Claude to save it.", "notfound"));
+    recentSection.append(empty("Nothing logged yet.", "Say \"the drill is in the garage\" in the capture box and Claude files it here.", "notfound"));
   } else {
     for (const t of things.slice(0, 8)) recentSection.append(thingRow(t));
   }
@@ -1834,72 +1834,21 @@ async function viewThings(view) {
     view.append(grouped);
   }
 
-  // Real capture: "X is in the garage" filed directly, no confirmation step.
-  const thingName = el("input", { placeholder: "What", "aria-label": "Thing name" });
-  const thingPlace = el("input", { placeholder: "Where, e.g. under the sink", "aria-label": "Place" });
-  const thingHouse = el("input", { placeholder: "House (optional), e.g. Home", "aria-label": "House" });
-  const thingForm = el("form", { class: "section" }, [
-    el("div", { class: "row" }, [thingName, thingPlace]),
-    el("div", { class: "row" }, [thingHouse, el("button", { class: "primary small", type: "submit", text: "Save location" })]),
-  ]);
-  thingForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = thingName.value.trim();
-    const place = thingPlace.value.trim();
-    if (!name || !place) return;
-    thingForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
-    try {
-      await api("/api/things", {
-        method: "POST",
-        body: JSON.stringify({ name, place, house: thingHouse.value.trim() || null }),
-      });
-      render();
-    } finally {
-      thingForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
-    }
-  });
-  view.append(el("div", { class: "card" }, [thingForm]));
+  // Git #3181: no dedicated "Add thing" form -- a location is a capture, same as everywhere
+  // else in the app. Say "the drill is in the garage" in the universal capture box and Claude
+  // routes it to set_thing over MCP. The upsert-by-name logic (recordThing) is unchanged.
 
   // "Who fixed what" -- real service-provider log.
   const contactsSection = el("section", { class: "section" }, [el("h2", { text: "Who fixed what" })]);
   if (contacts.length === 0) {
-    contactsSection.append(empty("Nothing on file yet.", "Say who did what below, or ask Claude to save it.", "notfound"));
+    contactsSection.append(empty("Nothing on file yet.", "Say \"Ray the plumber fixed the sink, 321-555-0142\" in the capture box and Claude files it here.", "notfound"));
   } else {
     for (const c of contacts) contactsSection.append(contactRow(c));
   }
   view.append(contactsSection);
 
-  const contactName = el("input", { placeholder: "Name, e.g. Ray", "aria-label": "Contact name" });
-  const contactTrade = el("input", { placeholder: "Trade, e.g. plumber", "aria-label": "Trade" });
-  const contactDid = el("input", { placeholder: "What they did", "aria-label": "What they did" });
-  const contactPhone = el("input", { placeholder: "Phone", "aria-label": "Phone" });
-  const contactForm = el("form", { class: "section" }, [
-    el("div", { class: "row" }, [contactName, contactTrade]),
-    el("div", { class: "row" }, [contactDid, contactPhone]),
-    el("div", { class: "row" }, [el("button", { class: "primary small", type: "submit", text: "Save contact" })]),
-  ]);
-  contactForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = contactName.value.trim();
-    if (!name) return;
-    contactForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
-    try {
-      await api("/api/contacts", {
-        method: "POST",
-        body: JSON.stringify({
-          name,
-          trade: contactTrade.value.trim() || null,
-          did: contactDid.value.trim() || null,
-          phone: contactPhone.value.trim() || null,
-          fixedOn: new Date().toISOString().slice(0, 10),
-        }),
-      });
-      render();
-    } finally {
-      contactForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
-    }
-  });
-  view.append(el("div", { class: "card" }, [contactForm]));
+  // Git #3181: no dedicated "Add contact" form -- a service-provider record is a capture too.
+  // Say "the plumber is Ray, 321-555-0142" and Claude routes it to set_contact over MCP.
 
   const used = categories.filter((c) => c.entity_count > 0);
   if (used.length > 0) {
@@ -3998,6 +3947,187 @@ async function viewMoneyBanks(view) {
   );
 }
 
+/** Transfer Instructions' own card -- pulled into a function because both the initial Now-tab
+ *  render and Distribute Paycheck's own "Apply" step need to redraw it (a fresh plan changes what
+ *  it shows) without reloading the whole tab. */
+async function renderTransferInstructions(container) {
+  container.replaceChildren();
+  const data = await api("/api/money/transfer-instructions");
+  if (data.groups.length === 0) {
+    container.append(
+      el("div", { class: "card money-bucket" }, [
+        el("div", { class: "money-bucket-label", text: "Transfer instructions" }),
+        el("p", { class: "muted small", style: "padding:0 1rem .7rem", text: "No real pending plan right now -- run Distribute Paycheck below to create one." }),
+      ]),
+    );
+    return;
+  }
+
+  const rows = data.groups.map((g) =>
+    el("div", { class: "money-bucket-row" }, [
+      el("div", { class: "money-bucket-name" }, [
+        el("span", { text: g.accountName }),
+      ]),
+      el("div", { class: "row", style: "gap:.5rem;align-items:center" }, [
+        el("span", { class: "money-bucket-status", text: g.amountFormatted }),
+        el("button", {
+          type: "button",
+          class: "ghost small",
+          text: "Mark as Transferred",
+          onClick: async (event) => {
+            event.currentTarget.disabled = true;
+            await api(`/api/money/transfer-instructions/${encodeURIComponent(g.accountId)}/mark-transferred`, { method: "POST" });
+            await renderTransferInstructions(container);
+          },
+        }),
+      ]),
+    ]),
+  );
+
+  const copyBtn = el("button", {
+    type: "button",
+    class: "small",
+    text: "Copy transfer instructions",
+    onClick: () => {
+      const lines = ["Transfer Instructions", ""];
+      for (const g of data.groups) lines.push(`Transfer ${g.amountFormatted} → ${g.accountName}`);
+      navigator.clipboard?.writeText(lines.join("\n"));
+    },
+  });
+
+  container.append(
+    el("div", { class: "card money-bucket" }, [
+      el("div", { class: "row", style: "justify-content:space-between;align-items:baseline;padding:0 1rem" }, [
+        el("div", { class: "money-bucket-label", text: `Transfer instructions · ${data.totalFormatted} total` }),
+      ]),
+      ...rows,
+      el("div", { class: "row", style: "padding:.6rem 1rem" }, [copyBtn]),
+      el("p", { class: "small muted", style: "padding:0 1rem .7rem", text: data.footer }),
+    ]),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Money -- Home-tab decision tools (Git #3171)
+// ---------------------------------------------------------------------------
+//
+// Real port of Finance-Tracker's Home/Overview screen (FINANCE_TRACKER_AUDIT.md section 1/5,
+// contract pack Section 12), adapted to the real architecture already established in money.mjs's
+// own header for this app: a Shane's Life "bill" is its own real, separate bank account, not a
+// virtual split of one pooled checking account -- see money.mjs's own section header for the full
+// translation. Four tools, rendered on the Now tab right after the Available-to-spend card, the
+// same real position Finance-Tracker's own Home tab puts them (right after its Safe-to-Spend
+// hero, before its Attention Needed alerts).
+
+async function renderMoneyDecisionTools(view) {
+  // -- Period Review --------------------------------------------------------
+  const review = await api("/api/money/period-review");
+  view.append(
+    el("div", { class: "card section" }, [
+      el("div", { class: "small muted", text: "Period Review · this pay cycle" }),
+      el("div", { class: "row", style: "justify-content:space-between;margin-top:.5rem" }, [
+        el("div", {}, [el("div", { class: "small muted", text: "Available" }), el("div", { style: "font-weight:700", text: review.availableFormatted ?? "unknown" })]),
+        el("div", {}, [el("div", { class: "small muted", text: "Spent" }), el("div", { style: "font-weight:700", text: review.spentFormatted })]),
+        el("div", {}, [
+          el("div", { class: "small muted", text: "Still Due" }),
+          el("div", { style: `font-weight:700;color:${review.stillDue > 0 ? "#f87171" : ""}`, text: review.stillDueFormatted }),
+        ]),
+      ]),
+      el("p", { class: "small muted", style: "margin-top:.5rem", text: review.identity }),
+    ]),
+  );
+
+  // -- Skip Suggestions -------------------------------------------------------
+  const skip = await api("/api/money/skip-suggestions");
+  if (skip.shown && skip.suggestions.length > 0) {
+    view.append(
+      el("div", { class: "card money-bucket" }, [
+        el("div", { class: "money-bucket-label urgent", text: `Skip suggestions · short ${skip.deficitFormatted}` }),
+        ...skip.suggestions.map((b) => moneyBillRow(b)),
+        el("p", { class: "small muted", style: "padding:0 1rem .7rem", text: skip.text }),
+      ]),
+    );
+  }
+
+  // -- Distribute Paycheck ----------------------------------------------------
+  // Git #3183 no-forms audit: a real-time calculation tool (preview, then an editable plan),
+  // same reasoning as the what-if/transfer-simulator forms above -- not a form for adding or
+  // editing a fact about the world.
+  const distributeResultEl = el("div");
+  const distributeAmountInput = el("input", { type: "number", step: "0.01", inputmode: "decimal", placeholder: "3000", "aria-label": "Paycheck amount" });
+  const distributeForm = el("form", { class: "row" }, [
+    distributeAmountInput,
+    el("button", { type: "submit", class: "ghost small", text: "Distribute this paycheck" }),
+  ]);
+  distributeForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const amount = distributeAmountInput.value;
+    if (!amount) return;
+    const preview = await api(`/api/money/distribute-preview?amount=${encodeURIComponent(amount)}`);
+    renderDistributePreview(distributeResultEl, amount, preview);
+  });
+
+  view.append(
+    el("div", { class: "card section" }, [
+      el("div", { class: "small muted", text: "Distribute Paycheck" }),
+      distributeForm,
+      distributeResultEl,
+    ]),
+  );
+
+  // -- Transfer Instructions ----------------------------------------------------
+  const transferInstructionsEl = el("div");
+  await renderTransferInstructions(transferInstructionsEl);
+  view.append(transferInstructionsEl);
+
+  /** Step 2 of Distribute Paycheck: the preview's own allocations, each editable, with Apply
+   *  persisting them as the real pending plan and redrawing Transfer Instructions above. */
+  function renderDistributePreview(container, sourceAmount, preview) {
+    container.replaceChildren();
+    if (preview.allocations.length === 0) {
+      container.append(el("p", { class: "small muted", text: preview.text }));
+      return;
+    }
+
+    const rows = preview.allocations.map((a) => {
+      const input = el("input", { type: "number", step: "0.01", inputmode: "decimal", value: a.amount, style: "width:5.5rem", "aria-label": `Amount for ${a.name}` });
+      return { accountId: a.accountId, input, row: el("div", { class: "money-bucket-row" }, [
+        el("div", { class: "money-bucket-name" }, [
+          el("span", { text: a.name }),
+          el("div", { class: "money-bucket-meta", text: `shortfall ${dollars(a.shortfall)}` }),
+        ]),
+        input,
+      ]) };
+    });
+
+    const applyBtn = el("button", { type: "button", class: "small", text: "Apply this plan" });
+    applyBtn.addEventListener("click", async () => {
+      applyBtn.disabled = true;
+      try {
+        await api("/api/money/distribute", {
+          method: "POST",
+          body: JSON.stringify({
+            sourceAmount,
+            allocations: rows.map((r) => ({ accountId: r.accountId, amount: r.input.value })),
+          }),
+        });
+        container.replaceChildren(el("p", { class: "small ok", text: "Plan saved. See Transfer Instructions below." }));
+        await renderTransferInstructions(transferInstructionsEl);
+      } finally {
+        applyBtn.disabled = false;
+      }
+    });
+
+    container.append(
+      el("div", { class: "money-bucket", style: "margin-top:.5rem" }, [
+        el("p", { class: "small muted", style: "padding:.6rem 1rem 0", text: preview.text }),
+        ...rows.map((r) => r.row),
+        el("div", { class: "row", style: "padding:.6rem 1rem" }, [applyBtn]),
+      ]),
+    );
+  }
+}
+
 async function viewMoney(view) {
   view.append(
     el("section", { class: "section" }, [
@@ -4195,6 +4325,8 @@ async function viewMoney(view) {
 
   view.append(availableCard);
 
+  await renderMoneyDecisionTools(view);
+
   // Protected -- money already spoken for: the Income Gate's own gate bills, plus critical debts.
   const protectedRows = [...gate.gateBills.map(moneyBillRow), ...gate.protectedDebts.map(moneyDebtRow)];
   if (protectedRows.length) {
@@ -4229,6 +4361,122 @@ async function viewMoney(view) {
       ]),
     );
   }
+
+  await appendIncomeRulesCard(view);
+}
+
+// ---------------------------------------------------------------------------
+// Money -> Income Rules + transaction auto-scan (Git #3169)
+// ---------------------------------------------------------------------------
+//
+// Real port of Finance-Tracker's IncomeRule + scanTransactions() -- see
+// src/core/income-rules.mjs's own header for the full real reasoning. Contract pack Section 8
+// ("no forms, anywhere, ever") is why this card is READ-ONLY plus single-click actions (Set
+// primary, Remove, Scan) -- the same class of interaction as Catches' "Got it" or Vault's
+// Reveal, which Section 8's own rule doesn't reach. Adding or editing a rule's several typed
+// fields is a real conversation with Claude (add_income_rule/update_income_rule), not a form
+// here; the hint text below says so, matching the app's own established "ask Claude" wording
+// used everywhere else a record needs several fields (e.g. recipes, vehicles).
+
+function incomeRuleMatchDescription(rule) {
+  const verb = rule.matchType === "starts_with" ? "starts with" : rule.matchType === "exact" ? "is exactly" : "contains";
+  const range =
+    rule.minAmount != null && rule.maxAmount != null
+      ? ` (${dollars(rule.minAmount)}–${dollars(rule.maxAmount)})`
+      : rule.minAmount != null
+        ? ` (≥ ${dollars(rule.minAmount)})`
+        : rule.maxAmount != null
+          ? ` (≤ ${dollars(rule.maxAmount)})`
+          : "";
+  return `${rule.accountName} → ${rule.sourceName} · ${verb} "${rule.matchText}"${range}`;
+}
+
+async function appendIncomeRulesCard(view) {
+  const { rules, sources } = await api("/api/money/income-rules");
+
+  const sourceRow = (source) =>
+    el("div", { class: "money-bucket-row" }, [
+      el("div", { class: "money-bucket-name" }, [
+        el("span", { text: source.name }),
+        source.isPrimary ? el("span", { class: "money-bucket-status", style: "color:hsl(var(--success))", text: "PRIMARY" }) : null,
+      ]),
+      source.isPrimary
+        ? null
+        : el("button", {
+            type: "button",
+            class: "ghost small",
+            text: "Set primary",
+            onClick: async (event) => {
+              event.target.disabled = true;
+              await api(`/api/money/income-sources/${source.id}/primary`, { method: "POST", body: "{}" });
+              render();
+            },
+          }),
+    ]);
+
+  const ruleRow = (rule) =>
+    el("div", { class: "money-bucket-row" }, [
+      el("div", { class: "money-bucket-name" }, [
+        el("span", { text: rule.name }),
+        el("div", { class: "money-bucket-meta", text: incomeRuleMatchDescription(rule) }),
+      ]),
+      el("span", { class: "row", style: "gap:.5rem;align-items:center" }, [
+        rule.isActive ? null : el("span", { class: "small muted", text: "paused" }),
+        el("button", {
+          type: "button",
+          class: "ghost small",
+          text: "Remove",
+          onClick: async (event) => {
+            event.target.disabled = true;
+            await api(`/api/money/income-rules/${rule.id}`, { method: "DELETE" });
+            render();
+          },
+        }),
+      ]),
+    ]);
+
+  const card = el("div", { class: "card section" }, [
+    el("div", { class: "row", style: "justify-content:space-between" }, [
+      el("span", { class: "small muted", style: "font-weight:600;letter-spacing:.05em;text-transform:uppercase", text: "Income sources" }),
+    ]),
+    ...(sources.length ? sources.map(sourceRow) : [el("p", { class: "small muted", text: "No income sources yet." })]),
+  ]);
+  view.append(card);
+
+  const scanResultEl = el("div");
+  const scanButton = el("button", { type: "button", class: "ghost small", text: "Scan transactions" });
+  scanButton.addEventListener("click", async () => {
+    scanButton.disabled = true;
+    scanButton.textContent = "Scanning…";
+    try {
+      const result = await api("/api/money/income-rules/scan", { method: "POST", body: "{}" });
+      const summary =
+        result.matched === 0
+          ? result.warnings[0] ?? "Nothing new -- no matching deposits found in the scanned window."
+          : `${result.created + result.linked} income entr${result.created + result.linked === 1 ? "y" : "ies"} recorded ` +
+            `(${result.transactionsScanned} transaction${result.transactionsScanned === 1 ? "" : "s"} scanned, ` +
+            `${result.alreadyLogged} already logged).`;
+      scanResultEl.replaceChildren(el("p", { class: "small", text: summary }));
+    } catch (err) {
+      scanResultEl.replaceChildren(el("p", { class: "small", text: err.message || "Scan failed." }));
+    } finally {
+      scanButton.disabled = false;
+      scanButton.textContent = "Scan transactions";
+    }
+  });
+
+  const rulesCard = el("div", { class: "card section" }, [
+    el("div", { class: "row", style: "justify-content:space-between" }, [
+      el("span", { class: "small muted", style: "font-weight:600;letter-spacing:.05em;text-transform:uppercase", text: "Income rules" }),
+      scanButton,
+    ]),
+    ...(rules.length
+      ? rules.map(ruleRow)
+      : [el("p", { class: "small muted", text: "No income rules yet." })]),
+    scanResultEl,
+    el("p", { class: "small muted", text: 'Add or edit rules by asking Claude, e.g. "add an income rule for COM2 TREAS 310 deposits into DirectDeposit, credit NASA Salary."' }),
+  ]);
+  view.append(rulesCard);
 }
 
 // ---------------------------------------------------------------------------
@@ -4293,28 +4541,13 @@ async function viewMoneyCars(view) {
   const { vehicles } = await api("/api/cars");
 
   if (vehicles.length === 0) {
-    view.append(empty("No vehicles on file yet.", "Add one below, or ask Claude to add one for you.", "idle"));
+    view.append(empty("No vehicles on file yet.", "Say the name below, e.g. \"add my Kia Forte\", and Claude adds it.", "idle"));
   } else {
     view.append(el("section", { class: "section" }, vehicles.map(carCard)));
   }
 
-  const nameInput = el("input", { placeholder: "Vehicle name, e.g. Tesla Model 3", "aria-label": "Vehicle name" });
-  const addForm = el("form", { class: "section" }, [
-    el("div", { class: "row" }, [nameInput, el("button", { class: "primary small", type: "submit", text: "Add vehicle" })]),
-  ]);
-  addForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = nameInput.value.trim();
-    if (!name) return;
-    addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
-    try {
-      await api("/api/cars", { method: "POST", body: JSON.stringify({ name }) });
-      render();
-    } finally {
-      addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
-    }
-  });
-  view.append(el("div", { class: "card" }, [addForm]));
+  // Git #3182: no dedicated add-vehicle form -- "add my Kia Forte" typed into the universal
+  // capture box below routes through set_vehicle, same as every other real action in this app.
 
   // "Money Bills and Cars -> bear" per the critter spec's room-watermark map (moneyhdr slot).
   attachRoomWatermark(view, "moneyhdr");
@@ -4331,17 +4564,11 @@ async function viewCarDetail(view, vehicleId) {
         el("div", { class: "small muted", text: `${vehicle.allInPerYearFormatted}/yr all-in` }),
         el("div", { class: "row", style: "margin-top:.75rem" }, [
           el("a", { class: "ghost small", href: "#/money", text: "← Money" }),
-          el("button", {
-            class: "small ghost danger",
-            text: "Delete vehicle",
-            onClick: async (event) => {
-              if (!confirm(`Delete ${vehicle.name}? This removes its maintenance history too.`)) return;
-              event.currentTarget.disabled = true;
-              await api(`/api/cars/${vehicleId}`, { method: "DELETE" });
-              location.hash = "#/money";
-            },
-          }),
         ]),
+        // Git #3182: no dedicated delete button -- "remove the {vehicle.name}" typed into the
+        // universal capture box below routes through delete_vehicle, and removes its maintenance
+        // history along with it, same as the form used to.
+        el("p", { class: "muted small", style: "margin:.5rem 0 0", text: `Say "remove the ${vehicle.name}" below to delete it.` }),
       ]),
     ]),
   );
@@ -4395,30 +4622,11 @@ async function viewCarDetail(view, vehicleId) {
     );
   }
 
-  const descInput = el("input", { placeholder: "What was done, e.g. Oil change", "aria-label": "Maintenance description" });
-  const amountInput = el("input", { type: "number", step: "0.01", inputmode: "decimal", placeholder: "Amount", "aria-label": "Maintenance amount" });
-  const mileageInput = el("input", { type: "number", inputmode: "numeric", placeholder: "Mileage (optional)", "aria-label": "Mileage" });
+  // Git #3182: no dedicated maintenance-logging form -- "oil change on the {vehicle.name}, $60"
+  // typed into the universal capture box below routes through log_car_maintenance, same as the
+  // form used to.
   mCard.append(
-    el("div", { class: "row", style: "margin-top:.6rem" }, [
-      descInput,
-      amountInput,
-      mileageInput,
-      el("button", {
-        class: "small",
-        text: "Log",
-        onClick: async (event) => {
-          const description = descInput.value.trim();
-          const amount = amountInput.value;
-          if (!description || !amount) return;
-          event.currentTarget.disabled = true;
-          await api(`/api/cars/${vehicleId}/maintenance`, {
-            method: "POST",
-            body: JSON.stringify({ description, amount, mileage: mileageInput.value || null }),
-          });
-          await render();
-        },
-      }),
-    ]),
+    el("p", { class: "muted small", style: "margin-top:.6rem", text: `Say what was done below, e.g. "oil change on the ${vehicle.name}, $60".` }),
   );
   maint.append(mCard);
   view.append(maint);

@@ -18,6 +18,7 @@ import * as federalHolidays from "../core/federal-holidays.mjs";
 import * as lists from "../core/lists.mjs";
 import * as mealPlan from "../core/meal-plan.mjs";
 import * as media from "../core/media.mjs";
+import * as incomeRules from "../core/income-rules.mjs";
 import * as money from "../core/money.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as widgetTokens from "../core/widget-tokens.mjs";
@@ -1228,6 +1229,98 @@ export function buildApiRouter() {
     return sendJson(res, 200, row);
   });
 
+  // -- Money -> Income Rules + transaction auto-scan (Git #3169) -----------------------
+  //
+  // Real port of Finance-Tracker's IncomeRule/scanTransactions -- see
+  // src/core/income-rules.mjs's own header for the full real reasoning. Contract pack
+  // Section 8 ("no forms, anywhere, ever") is why this app's own UI only ever reads rules and
+  // fires single-click actions here (scan, delete, set primary) -- creating/editing a rule's
+  // several typed fields is a real MCP tool (mcp/tools.mjs), the same architecture already used
+  // for set_habit.
+
+  router.get("/api/money/income-rules", async (_req, res, _params, ctx) => {
+    requireUser(ctx);
+    return sendJson(res, 200, {
+      rules: await incomeRules.listRules({ includeInactive: true }),
+      sources: await incomeRules.listIncomeSources(),
+    });
+  });
+
+  router.post("/api/money/income-rules", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const rule = await incomeRules.createRule(body);
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "money.income_rule.created",
+      entityId: rule.id,
+      detail: { name: rule.name, accountName: rule.accountName, sourceName: rule.sourceName },
+    });
+    return sendJson(res, 201, rule);
+  });
+
+  router.patch("/api/money/income-rules/:id", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const rule = await incomeRules.updateRule(params.id, body);
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "money.income_rule.updated",
+      entityId: rule.id,
+      detail: { name: rule.name, isActive: rule.isActive },
+    });
+    return sendJson(res, 200, rule);
+  });
+
+  router.delete("/api/money/income-rules/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const result = await incomeRules.deleteRule(params.id);
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "money.income_rule.deleted",
+      entityId: params.id,
+      detail: {},
+    });
+    return sendJson(res, 200, result);
+  });
+
+  // The one real write that also touches ShanesSurvival's own income_entries -- always through
+  // scanTransactions()'s own claim-before-insert dedupe, never a direct insert here.
+  router.post("/api/money/income-rules/scan", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const result = await incomeRules.scanTransactions({ lookbackDays: body.lookbackDays });
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "money.income_rules.scanned",
+      detail: {
+        scannedAccounts: result.scannedAccounts,
+        transactionsScanned: result.transactionsScanned,
+        created: result.created,
+        linked: result.linked,
+        alreadyLogged: result.alreadyLogged,
+      },
+    });
+    return sendJson(res, 200, result);
+  });
+
+  router.post("/api/money/income-sources/:id/primary", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const row = await incomeRules.setPrimarySource(params.id);
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "money.income_source.primary_set",
+      entityId: row.id,
+      detail: { name: row.name },
+    });
+    return sendJson(res, 200, row);
+  });
+
   // -- Money -> Banks: item health + reconnect (Git #3168) -------------------------------
   //
   // Deliberately NOT a second Plaid Link. ShanesSurvival's WPF app owns the initial link and the
@@ -1359,6 +1452,74 @@ export function buildApiRouter() {
       detail: { institutionName: row.institution_name, healthy, health: item?.health ?? null },
     });
     return sendJson(res, 200, { healthy, item, webhook });
+  });
+
+  // -- Money -> Home-tab decision tools (Git #3171) -------------------------------------
+  //
+  // Period Review, Skip Suggestions, Distribute Paycheck, Transfer Instructions -- see
+  // src/core/money.mjs's own header on this section for the real architecture translation from
+  // Finance-Tracker's envelope model. Distribute Paycheck's "apply" is the one real write; it
+  // writes only to this app's own paycheck_distributions table (migration 044), and structurally
+  // cannot move a real dollar, same discipline as simulate-transfer above.
+
+  router.get("/api/money/period-review", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await money.getPeriodReview(user.id));
+  });
+
+  router.get("/api/money/skip-suggestions", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await money.getSkipSuggestions(user.id));
+  });
+
+  // GET, not POST: a preview changes nothing -- same reasoning as what-if above.
+  router.get("/api/money/distribute-preview", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const url = new URL(req.url, "http://internal");
+    return sendJson(res, 200, await money.previewDistribution(user.id, url.searchParams.get("amount")));
+  });
+
+  router.post("/api/money/distribute", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const result = await money.applyDistribution(user.id, {
+      sourceAmount: body.sourceAmount,
+      allocations: body.allocations,
+    });
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.distribution.planned",
+      detail: { sourceAmount: body.sourceAmount, accountCount: Array.isArray(body.allocations) ? body.allocations.length : 0 },
+    });
+    return sendJson(res, 200, result);
+  });
+
+  router.get("/api/money/transfer-instructions", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await money.getTransferInstructions(user.id));
+  });
+
+  router.post("/api/money/transfer-instructions/:accountId/mark-transferred", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const result = await money.markDistributionTransferred(user.id, params.accountId);
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.distribution.transferred",
+      entityId: params.accountId,
+      detail: {},
+    });
+    return sendJson(res, 200, result);
+  });
+
+  // A real field Shane's Life itself owns on the shared accounts table (migration 044) -- see
+  // money.mjs's own setBillCategory header for why this doesn't collide with ShanesSurvival's
+  // own bill-account mutations.
+  router.patch("/api/money/bills/:id/category", async (req, res, params, ctx) => {
+    requireUser(ctx);
+    const body = await readJson(req);
+    return sendJson(res, 200, await money.setBillCategory(params.id, body.category));
   });
 
   // -- Money -> Bankruptcy/debt tracker (Git #3163) -------------------------------------

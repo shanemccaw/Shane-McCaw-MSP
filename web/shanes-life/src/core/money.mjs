@@ -89,7 +89,7 @@
 // verification, item-health classification, reconnect-flow wiring), so per this issue's own
 // text it was filed as its own follow-up Feature rather than squeezed in here: #3185.
 
-import { many, one } from "../db.mjs";
+import { many, one, transaction } from "../db.mjs";
 import { badRequest, notFound } from "../http.mjs";
 import * as lists from "./lists.mjs";
 import * as prices from "./prices.mjs";
@@ -151,7 +151,7 @@ export function parseAmountCents(value, label = "amount", { allowNegative = fals
  */
 export async function loadRoleAccounts(role) {
   return many(
-    `SELECT id, name, current_balance, target_amount, is_gate, due_day, last_paid_date
+    `SELECT id, name, current_balance, target_amount, is_gate, due_day, last_paid_date, bill_category
        FROM accounts
       WHERE role = $1
       ORDER BY name`,
@@ -248,6 +248,36 @@ export async function setHabit(
 // the math -- a literal port of DashboardService.ComputeAsync
 // ---------------------------------------------------------------------------
 
+/** One real bill account row -> the internal bill shape computeGateMath/setBillCategory both
+ *  build, so the shortfall/warning logic exists in exactly one place. */
+function billFromAccount(account) {
+  const target = toCents(account.target_amount);
+  const balance = toCents(account.current_balance);
+  let warning = null;
+  let shortfall = null;
+  if (target === null) warning = "target not set";
+  else if (balance === null) warning = "balance unknown — Sync Now";
+  else shortfall = Math.max(0, target - balance);
+
+  return {
+    id: account.id,
+    name: account.name,
+    targetCents: target,
+    balanceCents: balance,
+    isGate: Boolean(account.is_gate),
+    dueDay: account.due_day ?? null,
+    lastPaidDate: account.last_paid_date ?? null,
+    // Skip Suggestions' own priority grouping (migration 044) -- 'general' is the honest default
+    // for a bill nobody has categorized yet, same tier the priority sort itself falls back to for
+    // an unrecognized value, so a NULL from before the backfill and an explicit 'general' rank
+    // identically.
+    category: account.bill_category ?? "general",
+    shortfallCents: shortfall,
+    funded: shortfall === null ? null : shortfall === 0,
+    warning,
+  };
+}
+
 /**
  * Pure. Takes already-loaded real rows and returns the gate arithmetic in cents. Split out from
  * the loading so whatIf and simulateTransfer can re-run it over MUTATED COPIES of the same real
@@ -278,28 +308,7 @@ export function computeGateMath({ gateAccounts, billAccounts, reserveAccounts })
   }
 
   // -- bills --------------------------------------------------------------
-  const bills = billAccounts.map((account) => {
-    const target = toCents(account.target_amount);
-    const balance = toCents(account.current_balance);
-    let warning = null;
-    let shortfall = null;
-    if (target === null) warning = "target not set";
-    else if (balance === null) warning = "balance unknown — Sync Now";
-    else shortfall = Math.max(0, target - balance);
-
-    return {
-      id: account.id,
-      name: account.name,
-      targetCents: target,
-      balanceCents: balance,
-      isGate: Boolean(account.is_gate),
-      dueDay: account.due_day ?? null,
-      lastPaidDate: account.last_paid_date ?? null,
-      shortfallCents: shortfall,
-      funded: shortfall === null ? null : shortfall === 0,
-      warning,
-    };
-  });
+  const bills = billAccounts.map(billFromAccount);
 
   for (const bill of bills) {
     if (bill.warning) warnings.push(`"${bill.name}": ${bill.warning} — excluded from total shortfall.`);
@@ -872,8 +881,30 @@ function billOut(bill) {
     isGate: bill.isGate,
     dueDay: bill.dueDay,
     lastPaidDate: bill.lastPaidDate ? isoDate(bill.lastPaidDate) : null,
+    category: bill.category,
     warning: bill.warning,
   };
+}
+
+const BILL_CATEGORIES = ["shared", "general", "cars", "h2", "h1"];
+
+/**
+ * Set a real bill account's Skip Suggestions priority category (migration 044). A field Shane's
+ * Life itself owns on the shared `accounts` table -- same pattern as `updateDebt`'s
+ * `included_in_bankruptcy`/`due_day` -- not one of the core bill fields (target_amount, balance,
+ * role, due_day) money.mjs's own header reserves for ShanesSurvival's MCP tools.
+ */
+export async function setBillCategory(billAccountId, category) {
+  if (!BILL_CATEGORIES.includes(category)) {
+    throw badRequest(`category must be one of: ${BILL_CATEGORIES.join(", ")}`);
+  }
+  const row = await one(
+    `UPDATE accounts SET bill_category = $1 WHERE id = $2 AND role = 'bill'
+     RETURNING id, name, current_balance, target_amount, is_gate, due_day, last_paid_date, bill_category`,
+    [category, billAccountId],
+  );
+  if (!row) throw notFound("Bill account not found");
+  return billOut(billFromAccount(row));
 }
 
 function habitTotalCents(habits) {
@@ -1576,4 +1607,303 @@ export async function deleteDebt(id) {
   const row = await one(`DELETE FROM debts WHERE id = $1 RETURNING id`, [id]);
   if (!row) throw notFound("Debt not found");
   return { id: row.id };
+}
+
+// ---------------------------------------------------------------------------
+// Home-tab decision tools (Git #3171) -- real port of Finance-Tracker's Home/Overview screen
+// (`app/(tabs)/index.tsx`, `FINANCE_TRACKER_AUDIT.md` §1/§5, contract pack Section 12), adapted
+// to the real architecture difference money.mjs's own #3162 header already established: a
+// Finance-Tracker "bill" is a virtual split of ONE pooled checking account tracked in a client
+// JSONB blob (`bill.assigned` / `bill.envelopeBalance`); a Shane's Life "bill" is its own real,
+// separate, Plaid-linked bank account (`accounts.role = 'bill'`). Four tools, same real
+// questions, honest math for THIS architecture rather than a literal port of envelope state that
+// has nothing to shadow here:
+//
+//   * Period Review    -- Available / Spent / Still Due, over the real current pay cycle.
+//   * Skip Suggestions -- which bills to skip this cycle to close a real shortfall, ranked by
+//                          category priority then amount.
+//   * Distribute Paycheck -- splits an entered real dollar amount proportionally across every
+//                          short bill's real shortfall, as an editable, persisted PLAN (never an
+//                          actual transfer -- Plaid is read-only, same discipline as
+//                          simulateTransfer).
+//   * Transfer Instructions -- reads that plan back as groupable, copyable transfer text, and
+//                          clears it once Shane says the real transfer happened at NFCU.
+
+/** True when a bill's own real `last_paid_date` falls inside the given real pay-cycle window --
+ *  "already handled this cycle," the same real signal Period Review and Skip Suggestions both
+ *  need to not re-flag a bill that was just paid (matches Finance-Tracker's own
+ *  `isBillPaidForCurrentCycle` gate on both its Period Review preview and its Skip Suggestions). */
+function isPaidThisCycle(bill, window) {
+  if (!bill.lastPaidDate) return false;
+  const paidOn = asUtcDate(bill.lastPaidDate);
+  return paidOn >= window.cycleStart && paidOn < window.cycleEnd;
+}
+
+/**
+ * Real Available / Spent / Still Due breakdown over the current real pay cycle, with the real
+ * cash-flow identity the design's own README states: `opening + deposits = current_balance +
+ * spent`, i.e. `available (this cycle) = current Income Gate balance + spent this cycle`.
+ *
+ * `spent` is every non-pending, positive-amount (debit, Plaid's own sign convention) real
+ * transaction across ALL real accounts within the cycle window -- not just the Gate account --
+ * because a transfer OUT of the Gate into a bill account is the real dollar leaving the pooled
+ * system, exactly once, from the sending side; summing debits everywhere counts every real
+ * dollar movement once, the same principle Finance-Tracker's own `cyclePlaidSpent` applies across
+ * "all linked Plaid accounts" (`index.tsx:229-254`).
+ *
+ * `stillDue` is real bill shortfalls (target − balance, computeGateMath's own math) for bills NOT
+ * already paid this cycle -- "paid this cycle" read off the real `last_paid_date` ShanesSurvival
+ * itself maintains (migration 011), the same field Bills-tab funding status already surfaces,
+ * rather than inventing a second paid flag.
+ */
+export async function getPeriodReview(userId, { asOf = new Date() } = {}) {
+  const [accounts, incomeSources] = await Promise.all([
+    loadMoneyAccounts(),
+    many(
+      `SELECT id, name, person, pay_frequency_days, expected_per_cycle, next_pay_date, is_active
+         FROM income_sources WHERE is_active`,
+    ),
+  ]);
+  const math = computeGateMath(accounts);
+  const window = resolvePayCycleWindow(incomeSources, asOf);
+
+  const spentRows = await many(
+    `SELECT COALESCE(SUM(amount), 0) AS spent
+       FROM transactions
+      WHERE amount > 0 AND NOT pending AND date >= $1 AND date < $2`,
+    [utcIso(window.cycleStart), utcIso(window.cycleEnd)],
+  );
+  const spentCents = toCents(spentRows[0]?.spent) ?? 0;
+
+  const gateBalanceCents = math.gateBalanceCents;
+  const availableCents = gateBalanceCents === null ? null : gateBalanceCents + spentCents;
+
+  const stillDueBills = math.bills.filter((b) => b.shortfallCents !== null && b.shortfallCents > 0 && !isPaidThisCycle(b, window));
+  const stillDueCents = stillDueBills.reduce((sum, b) => sum + b.shortfallCents, 0);
+  const remainingCents = availableCents === null ? null : availableCents - spentCents - stillDueCents;
+
+  return {
+    cycleStart: utcIso(window.cycleStart),
+    cycleEnd: utcIso(window.cycleEnd),
+    approximateCycle: window.approximate,
+    available: toDollars(availableCents),
+    availableFormatted: formatMoney(availableCents),
+    spent: toDollars(spentCents),
+    spentFormatted: formatMoney(spentCents),
+    stillDue: toDollars(stillDueCents),
+    stillDueFormatted: formatMoney(stillDueCents),
+    stillDueBills: stillDueBills.map(billOut),
+    remaining: toDollars(remainingCents),
+    remainingFormatted: formatMoney(remainingCents),
+    identity: "opening + deposits = current_balance + spent, so available this cycle = current Gate balance + spent this cycle.",
+    warnings: math.warnings,
+  };
+}
+
+/** Same real priority table the design's own Skip Suggestions spec names: shared > general >
+ *  cars > h2 > h1. An unrecognized/legacy category ranks at the same tier as 'general' -- the
+ *  backfill migration's own default, so nothing silently sorts last just for predating it. */
+const SKIP_CATEGORY_PRIORITY = { shared: 0, general: 1, cars: 2, h2: 3, h1: 4 };
+
+/**
+ * Real bills to skip this cycle to close a real shortfall -- shown only while one exists
+ * (`gate.isCovered === false`, mirroring Finance-Tracker's own `surplus < 0` gate). Ranks
+ * unfunded, unpaid-this-cycle bills by category priority then amount (desc), accumulating just
+ * enough of them to cover the real deficit -- the same greedy accumulation
+ * `index.tsx:499-518` uses, not a full sort-and-return-everything.
+ */
+export async function getSkipSuggestions(userId, { asOf = new Date() } = {}) {
+  const [accounts, incomeSources] = await Promise.all([
+    loadMoneyAccounts(),
+    many(
+      `SELECT id, name, person, pay_frequency_days, expected_per_cycle, next_pay_date, is_active
+         FROM income_sources WHERE is_active`,
+    ),
+  ]);
+  const math = computeGateMath(accounts);
+
+  if (math.isCovered !== false) {
+    return { shown: false, deficit: 0, suggestions: [], text: null, warnings: math.warnings };
+  }
+
+  const window = resolvePayCycleWindow(incomeSources, asOf);
+  const skippable = math.bills.filter(
+    (b) => b.shortfallCents !== null && b.shortfallCents > 0 && !isPaidThisCycle(b, window),
+  );
+  const sorted = [...skippable].sort((a, b) => {
+    const pa = SKIP_CATEGORY_PRIORITY[a.category] ?? SKIP_CATEGORY_PRIORITY.general;
+    const pb = SKIP_CATEGORY_PRIORITY[b.category] ?? SKIP_CATEGORY_PRIORITY.general;
+    if (pa !== pb) return pa - pb;
+    return b.shortfallCents - a.shortfallCents;
+  });
+
+  const deficitCents = -math.topLineCents;
+  let accumulated = 0;
+  const suggestions = [];
+  for (const bill of sorted) {
+    if (accumulated >= deficitCents) break;
+    suggestions.push(bill);
+    accumulated += bill.shortfallCents;
+  }
+
+  return {
+    shown: true,
+    deficit: toDollars(deficitCents),
+    deficitFormatted: formatMoney(deficitCents),
+    suggestions: suggestions.map(billOut),
+    coveredIfSkipped: accumulated >= deficitCents,
+    text:
+      suggestions.length === 0
+        ? "Short, but nothing real is left to suggest skipping."
+        : `Skipping ${suggestions.map((b) => b.name).join(", ")} covers the ${formatMoney(deficitCents)} short.`,
+    warnings: math.warnings,
+  };
+}
+
+/**
+ * Distribute Paycheck, step 1: given a real total dollar amount, split it proportionally across
+ * every real short bill's real shortfall (`index.tsx`'s own framing) -- fully funds every short
+ * bill if the amount covers the total shortfall, otherwise each bill gets its proportional share.
+ * Pure preview: nothing is persisted here, so the amount and the resulting allocations can be
+ * edited client-side (the real 2-step flow) before `applyDistribution` below commits anything.
+ */
+export async function previewDistribution(userId, amountDollars) {
+  const amountCents = parseAmountCents(amountDollars, "amount");
+  const accounts = await loadMoneyAccounts();
+  const math = computeGateMath(accounts);
+
+  const eligible = math.bills.filter((b) => b.shortfallCents !== null && b.shortfallCents > 0);
+  const totalShortfallCents = eligible.reduce((sum, b) => sum + b.shortfallCents, 0);
+
+  if (totalShortfallCents === 0) {
+    return {
+      amount: toDollars(amountCents),
+      totalShortfall: 0,
+      allocations: [],
+      leftover: toDollars(amountCents),
+      fullyFunds: true,
+      text: "Nothing is short right now — there's nowhere real to distribute this.",
+    };
+  }
+
+  const capped = Math.min(amountCents, totalShortfallCents);
+  let allocated = 0;
+  const allocations = eligible
+    .map((bill, i) => {
+      // The last bill takes the remainder so the allocated cents always sum exactly to `capped`
+      // regardless of rounding on the earlier proportional shares.
+      const shareCents =
+        i === eligible.length - 1
+          ? capped - allocated
+          : Math.round((bill.shortfallCents / totalShortfallCents) * capped);
+      allocated += i === eligible.length - 1 ? 0 : shareCents;
+      return { accountId: bill.id, name: bill.name, shortfall: toDollars(bill.shortfallCents), amountCents: shareCents };
+    })
+    .filter((a) => a.amountCents > 0)
+    .map((a) => ({ ...a, amount: toDollars(a.amountCents) }));
+
+  const leftoverCents = amountCents - capped;
+  return {
+    amount: toDollars(amountCents),
+    totalShortfall: toDollars(totalShortfallCents),
+    allocations: allocations.map(({ amountCents: _omit, ...rest }) => rest),
+    leftover: toDollars(leftoverCents),
+    leftoverFormatted: leftoverCents > 0 ? formatMoney(leftoverCents) : null,
+    fullyFunds: amountCents >= totalShortfallCents,
+    text:
+      amountCents >= totalShortfallCents
+        ? `Fully funds every short bill${leftoverCents > 0 ? `, ${formatMoney(leftoverCents)} left over` : ""}.`
+        : `Split proportionally by how short each bill is; ${formatMoney(totalShortfallCents - capped)} still short after this.`,
+    warnings: math.warnings,
+  };
+}
+
+/**
+ * Distribute Paycheck, step 2: persist the (possibly hand-edited) allocations from step 1 as a
+ * real pending plan (migration 044's `paycheck_distributions`) -- this is the thing that
+ * structurally CANNOT move a real dollar (same discipline as simulateTransfer: Plaid is
+ * read-only, NFCU has no Transfer product), only record what should be moved, for Transfer
+ * Instructions to read back and for Shane to actually carry out at NFCU. Replaces any earlier
+ * still-pending plan for this user rather than layering plans on top of each other -- re-running
+ * Distribute Paycheck means "here is the current real plan," not "add another one."
+ */
+export async function applyDistribution(userId, { sourceAmount, allocations } = {}) {
+  const sourceAmountCents = parseAmountCents(sourceAmount, "sourceAmount");
+  if (!Array.isArray(allocations) || allocations.length === 0) {
+    throw badRequest("allocations must be a non-empty array of { accountId, amount }");
+  }
+
+  const accounts = await loadMoneyAccounts();
+  const billIds = new Set(accounts.billAccounts.map((a) => a.id));
+
+  const clean = allocations.map((a) => {
+    if (!billIds.has(a.accountId)) throw badRequest(`"${a.accountId}" is not a real bill account`);
+    return { accountId: a.accountId, amountCents: parseAmountCents(a.amount, "allocation amount") };
+  });
+
+  await transaction(async (client) => {
+    await client.query(
+      `UPDATE paycheck_distributions SET transferred_at = now()
+        WHERE user_id = $1 AND transferred_at IS NULL`,
+      [userId],
+    );
+    for (const a of clean) {
+      await client.query(
+        `INSERT INTO paycheck_distributions (user_id, account_id, amount, source_amount)
+         VALUES ($1, $2, $3, $4)`,
+        [userId, a.accountId, toDollars(a.amountCents), toDollars(sourceAmountCents)],
+      );
+    }
+  });
+
+  return getTransferInstructions(userId);
+}
+
+/**
+ * Transfer Instructions: the real, AFTER-the-fact counterpart to the transfer *simulator*
+ * (#3147) -- given bills that already have a real pending distribution plan sitting against
+ * them (Distribute Paycheck's own `applyDistribution`, above), generate groupable, copyable
+ * transfer instructions. Each real bill account IS its own group here (unlike Finance-Tracker,
+ * where several virtual bills could share one linked account) -- still shaped as groups for a
+ * consistent render, sorted by amount desc, same as `index.tsx`'s own `transferGroups`.
+ */
+export async function getTransferInstructions(userId) {
+  const rows = await many(
+    `SELECT pd.id, pd.account_id, pd.amount, pd.source_amount, pd.created_at, a.name AS account_name
+       FROM paycheck_distributions pd
+       JOIN accounts a ON a.id = pd.account_id
+      WHERE pd.user_id = $1 AND pd.transferred_at IS NULL
+      ORDER BY pd.amount DESC`,
+    [userId],
+  );
+
+  const groups = rows.map((r) => ({
+    accountId: r.account_id,
+    accountName: r.account_name,
+    amount: toDollars(toCents(r.amount)),
+    amountFormatted: formatMoney(toCents(r.amount)),
+    sourceAmount: toDollars(toCents(r.source_amount)),
+    createdAt: r.created_at,
+  }));
+  const totalCents = groups.reduce((sum, g) => sum + (toCents(g.amount) ?? 0), 0);
+
+  return {
+    groups,
+    total: toDollars(totalCents),
+    totalFormatted: formatMoney(totalCents),
+    footer: "Never moves money. Do it at NFCU, then mark each one transferred.",
+  };
+}
+
+/** "Mark as Transferred": the real transfer happened at NFCU (outside this app, which cannot
+ *  initiate one) -- clears the pending plan for that one real bill account. */
+export async function markDistributionTransferred(userId, accountId) {
+  const result = await one(
+    `UPDATE paycheck_distributions SET transferred_at = now()
+      WHERE user_id = $1 AND account_id = $2 AND transferred_at IS NULL
+      RETURNING id`,
+    [userId, accountId],
+  );
+  if (!result) throw notFound("No pending distribution for that account");
+  return getTransferInstructions(userId);
 }
