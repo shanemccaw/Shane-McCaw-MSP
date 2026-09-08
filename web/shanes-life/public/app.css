@@ -1650,6 +1650,15 @@ pre.token {
   padding: 4px 2px;
 }
 
+/* Edit and delete (Git #3248) -- the reveal button already had a whole row to itself; edit and
+   delete sit beside it as the same quiet ghost-pill idiom the username's "Copy" already uses,
+   not a second visual language for the row. */
+.vault-row-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.vault-copy-btn.danger { color: #f87171; }
+.vault-edit-form { margin-top: 4px; }
+.vault-edit-fields .row { display: flex; gap: 8px; margin: 0 0 8px; }
+.vault-edit-fields .row input { flex: 1; min-width: 0; }
+.vault-edit-actions { display: flex; gap: 8px; }
 .vault-row-error { font-size: 12px; color: hsl(var(--destructive)); }
 .vault-foot-note {
   font-size: 12px;
