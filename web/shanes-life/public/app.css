@@ -1684,6 +1684,16 @@ pre.token {
   box-shadow: 0 0 0 14px rgba(96, 165, 250, 0.12);
 }
 .vault-face-label { font-size: 16px; font-weight: 600; }
+
+/* Money -- Vault + Wins Round 2 visual rebuild (Git #3195, README "Screens" line 179: "Cards
+   22px; all buttons in 999px pill wrappers"). Vault's own list card already carried the 22px
+   radius (#3242/#3150) and its filter/reveal buttons were already pills -- this pass closes
+   the two real gaps that audit found: the vault's kept add-entry card (Section 8's documented
+   exception, not a miss) still sat at the plain 16px `.card` radius right below its 22px list
+   card in the same room, and Wins' one content card hadn't had the pass at all yet. */
+.vault-add-submit { width: 100%; padding: 0 18px; margin-top: 0.2rem; }
+.wins-card { border-radius: 22px; }
+
 /* Bills tab pending events (Git #3148): "not counted until real" -- inflow/outflow, not
    funded/short, so a distinct pair rather than reusing funded/short's color meaning. */
 .money-bucket-status.inflow { color: hsl(var(--success)); }
