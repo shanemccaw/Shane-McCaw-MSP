@@ -506,6 +506,24 @@ call triggered by the hosted app itself at runtime. The hosted app stores, displ
 shares, and checks off what Claude already generated — it doesn't do its own live AI
 inference. Keep this boundary clean in the architecture.
 
+**Real, concrete application, confirmed 2026-09-08 — AI Insights & Summaries.** Finance-
+Tracker (the app being fully decommissioned in favor of Shane's Life — see Section 12) had
+a real, live server-side `gpt-5.1` insights/chat feature, calling out to a real AI model on
+every request. That's exactly the runtime-cost pattern this app is built to avoid. **Real
+replacement, not a port**: Shane just asks Claude conversationally for real financial
+insights/summaries, the same way every other real feature tonight works — no separate
+in-app AI feature, no live model call from the hosted app itself.
+
+**Real, worth-preserving piece from Finance-Tracker's own real discipline**: its
+`buildSnapshot()` logic explicitly, deliberately keeps real cash position (actual account
+balances) separate from income projections, with an inline warning against conflating the
+two — the same real rule baked into its AI system prompt. This is real, correct financial
+reasoning worth Claude itself following when asked for insights conversationally, not code
+logic to port. A real, lightweight MCP tool exposing the underlying real snapshot data
+(current-cycle bills due/paid/unpaid, real overdue list, real salary-vs-gig income split,
+real cash position kept distinct from projections) gives Claude what it needs to reason
+about this accurately on demand, without the app doing any of the reasoning itself.
+
 **Real platform decision, confirmed 2026-09-05: standalone site added to Home Screen, not
 Expo Go.** Real, direct precedent already exists — Shane built Aria (a personal AI
 assistant iPhone web app) this exact way, and already uses this same pattern for Shane's
@@ -558,8 +576,30 @@ while adding real App Store/Developer Program overhead the web-app path avoids.
 - No inventory/expiration tracking or recipe generation in Food — deliberately cut.
 - No time-of-day-scheduled notifications as the primary trigger — context/location first.
 
-## 12. Real open question for Shane, not yet decided
+## 12. Finance-Tracker decommissioning — full feature migration, confirmed 2026-09-08
 
-Given the size of the full blueprint versus tonight's real immediate need (hosted
-checklists + login + shareable links), what's the real first slice to actually build? The
-full blueprint is locked in intent, not in build order.
+**Real, resolved — this replaces an earlier, now-moot open question** (whether to build
+the full blueprint or a first slice; tonight's own real events answered it: build
+everything, in dependency order, as real need reveals it).
+
+**Real decision, confirmed by Shane directly: `shanemccaw/Finance-Tracker` (a separate,
+real React Native/Expo financial app) is being fully decommissioned in favor of Shane's
+Life.** This is not a "port a few good ideas" exercise — every real capability Finance-
+Tracker currently provides needs a real home here, since the source app is going away
+entirely. A full real audit exists at `FINANCE_TRACKER_AUDIT.md` in that repo.
+
+**Real decisions already made on specific pieces:**
+- Bill envelope model (delta-based contribution/rollover) — real port, not a rebuild.
+- Bankruptcy/debt tracker — real port, overlaid onto ShanesSurvival's existing real debt
+  data where it makes sense, not a disconnected second list.
+- Paycheck countdown — real, simple addition to Budget Day (Section 3).
+- AI Insights & Summaries — explicitly NOT ported; replaced by conversational Claude +
+  MCP, per Section 10's own real cost/architecture constraint.
+
+**Real, still-open pieces, not yet assigned real scope**: real Plaid reconnect/update-mode
+flow + webhooks (neither app has webhooks today — this app should be the one that finally
+adds them), Income Rules + transaction-based auto-matching, the real Accounts-tab
+experience (sectioned list, % funded badges, Connected Banks management), Home-tab
+decision-support tools (Distribute Paycheck, Period Review, Skip Suggestions, Transfer
+Instructions), and the portable `GigSparkline` UI component. Real prioritization of these
+is Shane's call, not assumed.
