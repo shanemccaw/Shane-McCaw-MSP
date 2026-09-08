@@ -7,7 +7,8 @@ public sealed record PlaidAccountInfo(
     string? Type,
     string? Subtype,
     decimal? CurrentBalance,
-    decimal? AvailableBalance);
+    decimal? AvailableBalance,
+    string? Mask);
 
 /// <summary>Real transaction data as returned by Plaid's /transactions/sync (added or modified).</summary>
 public sealed record PlaidTransactionInfo(

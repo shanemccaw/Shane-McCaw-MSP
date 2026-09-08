@@ -671,8 +671,9 @@ pre.token {
    Design/design_handoff_shanes_life/README.md "Today v3 -- Seasons and holidays": one real
    themeKey(date) + one real flag table (public/theme.js), applied on top of the #3144 header --
    holiday sky, fox/peeker hats, and a full-phone weather-particle layer. Roof/yard decorations
-   and the "Later" balloons' theme colors stay unbuilt here on purpose: neither the Rooms house
-   grid (#3165) nor the Later balloons row (#3144) exists yet for them to decorate. */
+   stay unbuilt here on purpose: the Rooms house grid (#3165) has no holiday dressing spec of its
+   own beyond the base geometry it already got. The Later balloons row (#3164) picks up its own
+   theme colors (sky wash, pennant) below, in its own section. */
 
 @keyframes czFlap { from { transform: scaleY(1); } to { transform: scaleY(.45); } }
 @keyframes czGallop { from { transform: rotate(-14deg); } to { transform: rotate(14deg); } }
@@ -804,6 +805,40 @@ pre.token {
 .rooms-cell-name { font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
 .rooms-cell-line { font-size: 12px; color: hsl(var(--muted-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rooms-yard { margin: 30px 22px 0; height: 14px; border-radius: 50%; background: rgba(30,58,138,.6); }
+
+/* ---------- Later, by moment -- balloons (Git #3164, README "Later, by moment -- balloons
+   (0...n)") ----------
+   The panel is a patch of sky, not a list with icons: a seasonal wash, three drifting clouds,
+   a bird (or bat, in October) crossing every 18-22s, and the balloon rows themselves floating
+   over it. See laterSection()/laterRow()/laterBalloonSvg() in app.js for the real per-moment
+   signal wiring this decorates. */
+.later-sky { position: relative; margin: 0 -6px; padding: 8px 6px 4px; border-radius: 24px; overflow: hidden; min-height: 110px; }
+.later-cloud { position: absolute; opacity: .16; pointer-events: none; animation: czCloudDrift 48s ease-in-out infinite; }
+.later-cloud-1 { left: 52%; top: 2px; }
+.later-cloud-2 { left: 4%; top: 40px; opacity: .11; animation-duration: 40s; animation-delay: 7s; animation-direction: reverse; }
+.later-cloud-3 { left: 68%; top: 66px; opacity: .1; animation-duration: 52s; }
+.later-flyer { position: absolute; top: 64px; left: -15%; pointer-events: none; animation: czFly 22s linear infinite; }
+.later-rows { position: relative; display: flex; flex-direction: column; gap: 2px; }
+.later-row { display: flex; align-items: center; gap: 10px; height: 88px; text-decoration: none; color: inherit; }
+.later-tag {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  border-radius: 16px;
+  padding: 9px 14px;
+}
+.later-tag-title { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.later-tag-line { font-size: 12.5px; color: hsl(var(--muted-foreground)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.later-empty { display: flex; align-items: center; gap: 10px; height: 84px; padding: 0 6px; position: relative; }
+.later-empty-critter { position: relative; width: 76px; height: 76px; flex-shrink: 0; line-height: 0; }
+.later-z { position: absolute; font-size: 10px; font-weight: 700; color: rgba(255,255,255,.6); left: 46px; top: 18px; animation: czZ 3.6s ease-out infinite; }
+.later-z2 { left: 57px; top: 10px; font-size: 8px; color: rgba(255,255,255,.5); animation-delay: 1.2s; }
+
+@keyframes czFloat { 0% { transform: translateY(0) rotate(-2deg); } 100% { transform: translateY(-6px) rotate(2deg); } }
+@keyframes czFloat2 { 0% { transform: translateY(0); } 100% { transform: translateY(-3px); } }
+@keyframes czFly { from { left: -15%; } to { left: 115%; } }
 
 @keyframes czGlow { 0%, 100% { opacity: .75; } 50% { opacity: 1; } }
 @keyframes czZ { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: .8; } 100% { transform: translateY(-14px); opacity: 0; } }

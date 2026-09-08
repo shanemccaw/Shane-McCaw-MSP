@@ -97,14 +97,15 @@ public sealed class PlaidSyncService(IPlaidClient? plaidClient = null)
             {
                 await using var upsert = new NpgsqlCommand(
                     """
-                    INSERT INTO accounts (plaid_item_id, plaid_account_id, name, type, subtype, current_balance, available_balance, updated_at)
-                    VALUES (@plaidItemId, @plaidAccountId, @name, @type, @subtype, @currentBalance, @availableBalance, now())
+                    INSERT INTO accounts (plaid_item_id, plaid_account_id, name, type, subtype, current_balance, available_balance, mask, updated_at)
+                    VALUES (@plaidItemId, @plaidAccountId, @name, @type, @subtype, @currentBalance, @availableBalance, @mask, now())
                     ON CONFLICT (plaid_item_id, plaid_account_id) DO UPDATE SET
                         name = excluded.name,
                         type = excluded.type,
                         subtype = excluded.subtype,
                         current_balance = excluded.current_balance,
                         available_balance = excluded.available_balance,
+                        mask = excluded.mask,
                         updated_at = now()
                     RETURNING id
                     """, connection);
@@ -115,6 +116,7 @@ public sealed class PlaidSyncService(IPlaidClient? plaidClient = null)
                 upsert.Parameters.AddWithValue("subtype", (object?)account.Subtype ?? DBNull.Value);
                 upsert.Parameters.AddWithValue("currentBalance", (object?)account.CurrentBalance ?? DBNull.Value);
                 upsert.Parameters.AddWithValue("availableBalance", (object?)account.AvailableBalance ?? DBNull.Value);
+                upsert.Parameters.AddWithValue("mask", (object?)account.Mask ?? DBNull.Value);
 
                 var internalId = (Guid)(await upsert.ExecuteScalarAsync())!;
                 accountIdMap[account.AccountId] = internalId;
