@@ -1081,7 +1081,7 @@ function showQuickToast(message) {
 
 /** One pill-shaped Badge-style sticker, rotated -5deg per the cute-skin spec. `tone` picks the
  *  tint from the same accent palette the rest of the app already uses (README "Design tokens"). */
-const STICKER_TONE = { blue: "96,165,250", indigo: "165,180,252", amber: "251,191,36", red: "248,113,113" };
+const STICKER_TONE = { blue: "96,165,250", indigo: "165,180,252", amber: "251,191,36", red: "248,113,113", green: "52,211,153" };
 function sticker(tone, text) {
   return el("span", { class: "sticker", style: `background:rgba(${STICKER_TONE[tone]},.16);color:rgb(${STICKER_TONE[tone]})`, text });
 }
@@ -2224,45 +2224,59 @@ async function viewLists(view) {
 // ritual are each separate, real sibling Features; this screen only lists, matches against the
 // real Shopping run, and lets Shane add what's missing or archive a recipe he doesn't want kept.
 function recipeCard(recipe) {
+  // Git #3190: the status badge is this card's sticker (README "Today v3 -- the cute skin"),
+  // same rotated-pill treatment as the Next card's own sticker -- green for a real go, amber for
+  // a real gap, not the plain uppercase `.chip` every other room's summary counts still use.
   const badge = recipe.canMake
-    ? el("span", { class: "chip ok", text: "You'll have everything" })
-    : el("span", { class: "chip", text: `Missing ${recipe.missing.join(", ")}` });
-
-  const addMissingBtn = recipe.canMake
-    ? null
-    : el("button", {
-        class: "primary small",
-        text: "Add missing to Shopping",
-        onClick: async (event) => {
-          event.currentTarget.disabled = true;
-          try {
-            await api(`/api/recipes/${recipe.id}/add-missing`, { method: "POST" });
-            render();
-          } finally {
-            event.currentTarget.disabled = false;
-          }
-        },
-      });
-
-  const removeBtn = el("button", {
-    class: "ghost small danger",
-    text: "Remove",
-    onClick: async (event) => {
-      event.currentTarget.disabled = true;
-      await api(`/api/recipes/${recipe.id}`, { method: "DELETE" });
-      render();
-    },
-  });
+    ? sticker("green", "You'll have everything")
+    : sticker("amber", `Missing ${recipe.missing.join(", ")}`);
 
   // Cook mode (Git #3125): a recipe with no real steps saved has nothing to walk through, so
   // there's no live entry point for it -- Claude just hasn't pushed steps for this one yet.
   const cookBtn =
     recipe.steps.length > 0
-      ? el("button", { class: "primary small", text: "Cook", onClick: () => { location.hash = `#/cook/${recipe.id}`; } })
+      ? pillButton("button", { type: "button", onClick: () => { location.hash = `#/cook/${recipe.id}`; } }, "Cook", "primary")
       : null;
 
-  return el("div", { class: "card" }, [
-    el("div", { class: "spread" }, [
+  const addMissingBtn = recipe.canMake
+    ? null
+    : pillButton(
+        "button",
+        {
+          type: "button",
+          onClick: async (event) => {
+            event.currentTarget.disabled = true;
+            try {
+              await api(`/api/recipes/${recipe.id}/add-missing`, { method: "POST" });
+              render();
+            } finally {
+              event.currentTarget.disabled = false;
+            }
+          },
+        },
+        "Add missing to Shopping",
+        "ghost",
+      );
+
+  // README "Screens": "all buttons in 999px pill wrappers (outline -> ghost)" -- Remove keeps
+  // its real destructive meaning (red text, README's own #f87171 red accent) but moves into the
+  // same pill family as Cook/Add missing instead of the old plain rectangular button.
+  const removeBtn = pillButton(
+    "button",
+    {
+      type: "button",
+      onClick: async (event) => {
+        event.currentTarget.disabled = true;
+        await api(`/api/recipes/${recipe.id}`, { method: "DELETE" });
+        render();
+      },
+    },
+    "Remove",
+    "ghost danger",
+  );
+
+  return el("div", { class: "card recipe-card" }, [
+    el("div", { class: "recipe-card-head" }, [
       el("div", {}, [
         el("div", { class: "title", text: recipe.name }),
         el("div", { class: "meta", text: [recipe.timeText, recipe.heartHealthy ? "heart-healthy" : null].filter(Boolean).join(" · ") }),
@@ -2272,13 +2286,33 @@ function recipeCard(recipe) {
     recipe.needs.length > 0
       ? el("p", { class: "small muted", style: "margin:.5rem 0 0", text: recipe.needs.join(", ") })
       : null,
-    el("div", { class: "row", style: "margin-top:.6rem" }, [cookBtn, addMissingBtn, removeBtn].filter(Boolean)),
+    el("div", { class: "recipe-pill-row" }, [cookBtn, addMissingBtn, removeBtn].filter(Boolean)),
   ]);
 }
 
 async function viewRecipes(view) {
   const { recipes } = await api("/api/recipes");
   const { entries: planEntries } = await api("/api/meal-plan");
+  const canMakeCount = recipes.filter((r) => r.canMake).length;
+
+  // Native room chrome (Git #3190, design README "Screens": "Recipes, Cook, Tonight, Review
+  // and Shopping keep their solid card-colored header band") -- same real shape Shopping
+  // already shipped (#3178): back-to-Today link, title + a live count subtitle, spacer right
+  // (no per-room icon action here the way Shopping's scan button is).
+  view.append(
+    el("div", { class: "recipe-header" }, [
+      el("a", { href: "#/today", class: "recipe-header-back" }, [el("span", { html: SHOP_HOUSE_ICON }), el("span", { text: "Today" })]),
+      el("div", { class: "recipe-header-center" }, [
+        el("div", { class: "recipe-header-title", text: "Recipes" }),
+        el("div", {
+          class: "recipe-header-sub",
+          text: recipes.length === 0 ? "Nothing saved yet" : `${canMakeCount} of ${recipes.length} you can make`,
+        }),
+      ]),
+      el("div", { class: "recipe-header-spacer" }),
+    ]),
+  );
+  view.append(el("div", { class: "recipe-header-bar" }));
 
   // #3127's real Sunday ritual: the week Claude planned, hosted and displayed here -- no
   // manual meal-planning calendar to author it in, only the one archive action to correct a
@@ -2287,21 +2321,25 @@ async function viewRecipes(view) {
     const plan = el("section", { class: "section" }, [el("h2", { text: "This week's plan" })]);
     for (const entry of planEntries) {
       plan.append(
-        el("div", { class: "card" }, [
+        el("div", { class: "card recipe-card" }, [
           el("div", { class: "spread" }, [
             el("div", {}, [
               el("div", { class: "meta small", text: `${entry.date} · ${entry.mealType}` }),
               el("div", { class: "title", text: entry.dishText }),
             ]),
-            el("button", {
-              class: "ghost small danger",
-              text: "Remove",
-              onClick: async (event) => {
-                event.currentTarget.disabled = true;
-                await api(`/api/meal-plan/${entry.id}`, { method: "DELETE" });
-                render();
+            pillButton(
+              "button",
+              {
+                type: "button",
+                onClick: async (event) => {
+                  event.currentTarget.disabled = true;
+                  await api(`/api/meal-plan/${entry.id}`, { method: "DELETE" });
+                  render();
+                },
               },
-            }),
+              "Remove",
+              "ghost danger",
+            ),
           ]),
         ]),
       );
@@ -2309,11 +2347,14 @@ async function viewRecipes(view) {
     view.append(plan);
   }
 
+  // Section label reuses the design's own real desktop-browser vocabulary ("Saved", the group
+  // of Claude-pushed recipes distinct from what's actively on the Aldi run) rather than
+  // repeating the room's own "Recipes" title the native header above already carries.
   view.append(
     el("section", { class: "section" }, [
       el("div", { class: "spread" }, [
-        el("h2", { text: "Recipes" }),
-        el("span", { class: "chip", text: `${recipes.filter((r) => r.canMake).length} you can make from the list` }),
+        el("h2", { text: "Saved" }),
+        el("span", { class: "chip", text: `${canMakeCount} you can make from the list` }),
       ]),
       el("p", { class: "muted small", text: "Generated by Claude in a conversation, then pushed in — ask Claude for a recipe to add one." }),
     ]),
@@ -7828,11 +7869,14 @@ async function render() {
   // Git #3174: Today's own fox/weather scene (renderTodayHeader) IS the header per the real
   // design -- the generic title-bar chrome is leftover Foundation-era shell (#3087) that the
   // Today tray's Round 2 redesign never used. Git #3178: Shopping is the second room to get its
-  // own native chrome (viewShopping's own .shop-header). Every other room still shows the
-  // generic bar until it gets its own redesign pass. #app-view.no-header lets .view collapse its
-  // top padding to just the native status-bar safe area instead of assuming a header row sits
-  // above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping";
+  // own native chrome (viewShopping's own .shop-header). Git #3190: Recipes is the third --
+  // README "Screens" names it explicitly alongside Shopping ("Recipes... keep their solid
+  // card-colored header band"), and its own content (title + live "you can make" count) now
+  // supplies enough context on its own, same as #3190's own real question asked. Every other
+  // room still shows the generic bar until it gets its own redesign pass. #app-view.no-header
+  // lets .view collapse its top padding to just the native status-bar safe area instead of
+  // assuming a header row sits above it (see app.css).
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 

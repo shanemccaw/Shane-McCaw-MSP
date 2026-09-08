@@ -1572,3 +1572,50 @@ pre.token {
 .pattern-line { padding: 10px 0; border-top: 1px solid hsl(var(--card-border) / 0.6); font-size: 14px; line-height: 1.5; }
 .pattern-line:first-child { border-top: none; padding-top: 0; }
 .pattern-footnote { font-size: 12px; color: hsl(var(--muted-foreground)); padding-top: 10px; border-top: 1px solid hsl(var(--card-border) / 0.6); }
+
+/* Recipes -- Round 2 visual rebuild (Git #3190, design "Shanes Life 05 - Recipes.dc.html" +
+   README "Screens": "Cards 22px; all buttons in 999px pill wrappers... Recipes, Cook, Tonight,
+   Review and Shopping keep their solid card-colored header band"): the recipe list is this
+   room's own primary content card, the same real role Today's Next card plays there -- so it
+   gets the same real 22px blob radius and sticker/pill-button treatment #3144 already proved
+   out, reusing that exact `sticker()` / `pillButton()` machinery rather than inventing a second
+   one. Plain link-out rows (the Tonight teaser, meal nudges) stay `.tile` unchanged -- Today's
+   own already-shipped room keeps those plain too, so that's not a Round 2 gap here either. */
+.recipe-card { border-radius: 22px; }
+.recipe-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.recipe-pill-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 0.75rem; }
+.recipe-pill-row .btn-pill { padding: 0 18px; }
+/* README "Screens" line: "all buttons in 999px pill wrappers (outline -> ghost)" -- Remove keeps
+   its existing red-text destructive meaning (README's own red #f87171 accent), just moved into
+   the same pill wrapper family instead of the plain rectangular button. */
+.btn-pill.ghost.danger { color: #f87171; padding: 0 18px; }
+
+/* Recipes' own native room chrome (Git #3190, README "Screens" line 179: "Recipes, Cook,
+   Tonight, Review and Shopping keep their solid card-colored header band" -- same real shape
+   Shopping already shipped in #3178, see .shop-header above; duplicated with its own recipe-
+   prefixed classes rather than sharing Shopping's, matching this file's existing per-room
+   convention (meds-pill-*, money-*, shop-*) instead of introducing a shared abstraction only
+   two rooms would use so far. */
+.recipe-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: max(0.9rem, env(safe-area-inset-top));
+}
+.recipe-header-back {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 76px;
+  height: 40px;
+  color: #60a5fa;
+  font-size: 15px;
+  text-decoration: none;
+}
+.recipe-header-back svg { flex-shrink: 0; }
+.recipe-header-center { flex: 1; min-width: 0; text-align: center; }
+.recipe-header-title { font-size: 17px; font-weight: var(--weight-bold); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recipe-header-sub { font-size: 12px; color: hsl(var(--muted-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recipe-header-spacer { min-width: 76px; height: 40px; }
+.recipe-header-bar { height: 3px; border-radius: var(--radius-full); background: linear-gradient(90deg, #0078d4, #00b4d8); margin: 2px 0 4px; }
