@@ -1886,6 +1886,69 @@ pre.token {
 .vault-trust-dot.lapsed { background: rgba(255, 255, 255, 0.24); }
 .vault-row-dim { opacity: 0.55; }
 
+/* Vault Autofill add-on's own reveal screen (Git #3276, design 1c) -- the popup window the
+   extension opens onto this app's own real origin, replacing the room's normal list while its
+   one real WebAuthn ceremony (and, when offered, the trust mint riding the same request) plays
+   out. Reuses `.vault-face-overlay`/`.vault-face-ring`'s own full-screen dark treatment rather
+   than inventing a second one. */
+@keyframes vaultExtPulse {
+  0%, 100% { box-shadow: 0 0 0 10px rgba(96, 165, 250, 0.12); }
+  50% { box-shadow: 0 0 0 18px rgba(96, 165, 250, 0.06); }
+}
+.vault-ext-reveal { padding: 28px; text-align: center; z-index: 40; }
+.vault-ext-ring { animation: vaultExtPulse 2.4s ease-in-out infinite; }
+.vault-ext-heading { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+.vault-ext-sub {
+  max-width: 320px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+}
+.vault-ext-trust-card {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  text-align: left;
+  color: hsl(var(--foreground));
+}
+.vault-ext-trust-text { flex: 1; min-width: 0; }
+.vault-ext-trust-title { font-size: 14px; font-weight: 600; }
+.vault-ext-trust-sub { font-size: 12px; line-height: 1.4; color: hsl(var(--muted-foreground)); }
+.vault-ext-footer { font-size: 12px; color: hsl(var(--muted-foreground)); }
+
+/* A plain on/off pill switch -- the design's own 40x24 toggle (1c, 1b), used nowhere else in
+   the app yet, so it's scoped to the extension reveal screen rather than promoted to a shared
+   component sight unseen. */
+.vault-toggle-switch {
+  flex-shrink: 0;
+  width: 40px;
+  height: 24px;
+  padding: 2px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.vault-toggle-switch::after {
+  content: "";
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #fff;
+  transform: translateX(0);
+  transition: transform 0.15s ease;
+}
+.vault-toggle-switch.on { background: #34d399; }
+.vault-toggle-switch.on::after { transform: translateX(16px); }
+
 /* Bills tab pending events (Git #3148): "not counted until real" -- inflow/outflow, not
    funded/short, so a distinct pair rather than reusing funded/short's color meaning. */
 .money-bucket-status.inflow { color: hsl(var(--success)); }

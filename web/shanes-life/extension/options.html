@@ -4,25 +4,86 @@
 <meta charset="utf-8" />
 <title>Shane's Life — Vault Autofill settings</title>
 <style>
-  body { font: 14px system-ui, sans-serif; padding: 20px; max-width: 420px; color: #1a1a1a; }
-  label { display: block; font-weight: 600; margin-bottom: 6px; }
-  input { width: 100%; box-sizing: border-box; padding: 8px; font: inherit; border: 1px solid #ccc; border-radius: 6px; }
-  button { margin-top: 12px; padding: 8px 16px; font: inherit; border: none; border-radius: 6px; background: #1a1a1a; color: #fff; cursor: pointer; }
-  p.status { margin-top: 12px; font-size: 13px; }
-  p.hint { color: #666; font-size: 12px; }
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    font: 14px/1.4 -apple-system, system-ui, sans-serif;
+    padding: 28px; max-width: 480px; margin: 0 auto;
+    background: #0B1B2E; color: #EEF2F8;
+  }
+  h3 { margin: 0 0 4px; }
+  .app-sub { color: #8597AD; font-size: 12.5px; margin: 0 0 18px; }
+  .card { background: #14263C; border: 1px solid rgba(255,255,255,.1); border-radius: 16px; margin: 0 0 16px; overflow: hidden; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 12px 16px 4px; }
+  .card-head span:first-child { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #8597AD; }
+  .card-head span:last-child { font-size: 12px; color: #8597AD; }
+  .card-body { padding: 6px 16px 14px; }
+  .card-hint { padding: 2px 16px 8px; font-size: 12px; line-height: 1.5; color: #8597AD; }
+
+  label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; }
+  input[type="url"] {
+    width: 100%; padding: 8px 10px; font: inherit; color: #EEF2F8;
+    border: 1px solid rgba(255,255,255,.15); border-radius: 8px; background: #0B1B2E;
+  }
+  button {
+    padding: 8px 16px; font: inherit; font-weight: 600; border: 0; border-radius: 999px;
+    background: #1A8CFF; color: #fff; cursor: pointer;
+  }
+  button.ghost { background: transparent; border: 1px solid rgba(255,255,255,.2); color: #EEF2F8; }
+  button.link { background: none; border: 0; color: #60a5fa; padding: 0; cursor: pointer; font-weight: 600; }
+  button:disabled { opacity: .6; cursor: default; }
+  p.status { margin-top: 10px; font-size: 13px; color: #8597AD; }
+
+  .days-picker { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; background: rgba(255,255,255,.08); border-radius: 10px; font-size: 12px; font-weight: 600; text-align: center; margin: 8px 0; }
+  .days-picker button { padding: 8px 0; border-radius: 8px; background: none; color: #8597AD; }
+  .days-picker button.active { background: #14263C; color: #EEF2F8; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+
+  .trust-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.08); margin-top: 8px; font-size: 13px; }
+
+  .ask-row { display: flex; align-items: center; gap: 12px; padding: 9px 16px; font-size: 14px; border-top: 1px solid rgba(255,255,255,.08); }
+  .ask-row .lock { color: #fbbf24; flex-shrink: 0; }
+  .ask-row .site { color: #8597AD; font-size: 12px; }
+  .ask-empty { padding: 2px 16px 12px; font-size: 12px; color: #8597AD; }
 </style>
 </head>
 <body>
-  <h3>Shane's Life — Vault Autofill</h3>
-  <label for="appUrl">App URL</label>
-  <input id="appUrl" type="url" placeholder="http://localhost:5000" />
-  <p class="hint">
-    Where the real Shane's Life app runs. Local dev today; the real hosted URL once #3107's
-    deployment happens (that's Shane's own step, not this extension's). Saving asks the browser
-    to let this extension talk to that one origin only.
-  </p>
-  <button id="save">Save</button>
+  <h3>Vault Autofill</h3>
+  <p class="app-sub">Chrome · Manifest V3 · fills come from the Shane's Life vault, nothing is stored here except a trust token.</p>
+
+  <div class="card">
+    <div class="card-head"><span>App URL</span><span id="app-url-status"></span></div>
+    <div class="card-body" style="display:flex;gap:10px;align-items:center">
+      <input id="appUrl" type="url" placeholder="http://localhost:5000" style="flex:1" />
+      <button id="save">Save</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span>This Chrome</span><span id="trust-status"></span></div>
+    <div class="card-body">
+      <p style="margin:0 0 4px" class="app-sub">After one Face ID, fills are one click for</p>
+      <div class="days-picker" id="days-picker">
+        <button type="button" data-days="7">7 days</button>
+        <button type="button" data-days="30">30 days</button>
+        <button type="button" data-days="90">90 days</button>
+      </div>
+      <div class="trust-row">
+        <span class="app-sub">Signing out everywhere in the app ends it too.</span>
+        <button type="button" class="link" id="forget-device">Forget this Chrome</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span>Always ask, even when trusted</span><span id="ask-count"></span></div>
+    <p class="card-hint">Money moves from these. Face ID every fill, no matter what.</p>
+    <div id="ask-list"></div>
+    <p class="card-hint">Add more from the Vault room: "Amazon always asks".</p>
+  </div>
+
+  <p class="app-sub">Chrome only for this phase. Firefox needs its own cookie and MV3 verification, per extension/README.md.</p>
   <p class="status" id="status"></p>
+
   <script src="options.js" type="module"></script>
 </body>
 </html>

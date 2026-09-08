@@ -1566,6 +1566,83 @@ async function main() {
   );
   check("the audit row names the passkey that actually authorised it", Boolean(revealsAfter.at(-1)?.credential_id));
 
+  // Git #3276: the 30-day trust model. One real reveal (a second real assertion on this same
+  // login) mints a real vault_device_trust token when asked; a later fill spends that token
+  // with no assertion at all; an always-ask entry refuses the trusted path outright; Forget
+  // revokes it for real. logout-everywhere's own revoke is NOT exercised here -- it would kill
+  // the session every later section of this file depends on -- see the trust functions'
+  // own real DB-level coverage in bin/verify-vault-trust.mjs instead.
+  const trustOptions = await http(`/api/vault/${vaultLogin.json.id}/reveal/options`, { method: "POST", body: {} });
+  const trustReveal = await http(`/api/vault/${vaultLogin.json.id}/reveal`, {
+    method: "POST",
+    body: {
+      challenge: trustOptions.json.challenge,
+      ...authenticator.assert(trustOptions.json.challenge),
+      trustDevice: true,
+      deviceLabel: "Check Chrome",
+      trustDays: 7,
+    },
+  });
+  check("asking to trust the device on a real reveal mints a real token", Boolean(trustReveal.json?.trust?.token), JSON.stringify(trustReveal.json?.trust));
+  const trustToken = trustReveal.json?.trust?.token;
+  const trustId = trustReveal.json?.trust?.id;
+
+  const dbTrust = await one("SELECT label, expires_at, token_hash FROM vault_device_trust WHERE id = $1", [trustId]);
+  check(
+    "the minted trust is a real row, 7 real days out, SHA-256 stored (not the raw token)",
+    dbTrust?.label === "Check Chrome" && dbTrust?.token_hash !== trustToken,
+    JSON.stringify(dbTrust && { label: dbTrust.label, token_hash: dbTrust.token_hash?.slice(0, 12) }),
+  );
+
+  const savedTrustCookie = cookie;
+  cookie = null; // the fill route authenticates by the bearer token, never the session cookie
+  const filled = await http(`/api/vault/${vaultLogin.json.id}/fill`, {
+    method: "POST",
+    body: { token: trustToken, site: "navyfederal.org" },
+    auth: false,
+  });
+  check("the trusted fill returns the real password with no WebAuthn assertion at all", filled.status === 200 && filled.json?.value === loginPassword, JSON.stringify(filled.json));
+
+  const dbFillReveal = await one(
+    "SELECT via, credential_id, device_trust_id FROM vault_reveals WHERE vault_id = $1 ORDER BY at DESC LIMIT 1",
+    [vaultLogin.json.id],
+  );
+  check(
+    "the trusted fill's own audit row says via='extension-trusted' with no credential_id",
+    dbFillReveal?.via === "extension-trusted" && dbFillReveal?.credential_id === null && dbFillReveal?.device_trust_id === trustId,
+    JSON.stringify(dbFillReveal),
+  );
+  const dbTrustAfterFill = await one("SELECT last_used_at, last_used_site FROM vault_device_trust WHERE id = $1", [trustId]);
+  check(
+    "the fill stamps the real device row's last_used_at/last_used_site",
+    Boolean(dbTrustAfterFill?.last_used_at) && dbTrustAfterFill?.last_used_site === "navyfederal.org",
+    JSON.stringify(dbTrustAfterFill),
+  );
+
+  const badTrustToken = await http(`/api/vault/${vaultLogin.json.id}/fill`, {
+    method: "POST",
+    body: { token: "slvault_not-a-real-token" },
+    auth: false,
+  });
+  check("a fake trust token is refused", badTrustToken.status === 401, `status ${badTrustToken.status}`);
+
+  cookie = savedTrustCookie; // back to the owner's real session to flip always_ask
+  await http(`/api/vault/${vaultLogin.json.id}`, { method: "PATCH", body: { alwaysAsk: true } });
+  cookie = null;
+  const refusedAlwaysAsk = await http(`/api/vault/${vaultLogin.json.id}/fill`, { method: "POST", body: { token: trustToken }, auth: false });
+  check("a trusted fill against an always-ask entry is refused, not silently allowed", refusedAlwaysAsk.status === 409, `status ${refusedAlwaysAsk.status}`);
+  cookie = savedTrustCookie;
+  await http(`/api/vault/${vaultLogin.json.id}`, { method: "PATCH", body: { alwaysAsk: false } });
+
+  const deviceList = await http("/api/vault/device-trust");
+  check("the device shows up in the room's own trusted-device list", deviceList.json?.devices?.some((d) => d.id === trustId));
+  const forgotten = await http(`/api/vault/device-trust/${trustId}`, { method: "DELETE" });
+  check("Forget really revokes it", forgotten.status === 200);
+  cookie = null;
+  const filledAfterForget = await http(`/api/vault/${vaultLogin.json.id}/fill`, { method: "POST", body: { token: trustToken }, auth: false });
+  check("a forgotten device's token stops working immediately", filledAfterForget.status === 401, `status ${filledAfterForget.status}`);
+  cookie = savedTrustCookie;
+
   // Password age is a real column, and it means the password -- not the row.
   const ageBeforeRename = await one("SELECT secret_updated_at FROM vault WHERE id = $1", [vaultLogin.json.id]);
   await http(`/api/vault/${vaultLogin.json.id}`, { method: "PATCH", body: { label: "Navy Federal · main" } });

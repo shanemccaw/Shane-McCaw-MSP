@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Shane's Life — Vault Autofill",
-  "version": "0.1.0",
-  "description": "Real autofill from Shane's Life's password vault, using the same fresh passkey reveal the web app itself requires. Phase 2 of #3234's LastPass replacement (Git #3243).",
+  "version": "0.2.0",
+  "description": "Real autofill from Shane's Life's password vault. One Face ID trusts this Chrome for 30 days of one-click fills; entries marked Always ask still ask every time. Phase 2 of #3234's LastPass replacement (Git #3243), the 30-day trusted-device model (Git #3276).",
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

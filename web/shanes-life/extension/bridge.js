@@ -9,6 +9,11 @@
 // `sl:extension-reveal-error`. This script's only job is relaying that event across the
 // isolated-world boundary into the extension's own message bus, since a content script and
 // the page it runs on cannot call each other's functions directly.
+//
+// Git #3276: `event.detail.trust` rides along on a success event when the reveal also asked
+// to trust this browser (extensionReveal's own "Trust this Chrome for N days" toggle,
+// default on) -- background.js is what actually writes it to chrome.storage.session; this is
+// just the same one relay carrying one more real field, never a second event/round trip.
 window.addEventListener("sl:extension-reveal", (event) => {
   chrome.runtime.sendMessage({
     type: "SL_REVEAL_RESULT",
@@ -16,6 +21,7 @@ window.addEventListener("sl:extension-reveal", (event) => {
     ok: true,
     value: event.detail.value,
     username: event.detail.username,
+    trust: event.detail.trust || null,
   });
 });
 

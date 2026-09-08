@@ -4216,17 +4216,49 @@ let vaultClipboardTimer = null;
 //
 // Read once, off the real query string (not the hash -- the app's hash router already owns
 // that, see parseRoute) at module load, before anything else touches the URL.
+//
+// Git #3276 adds three more params, all set by extension/background.js when it opens this
+// popup: `extOfferTrust=1` (there is no currently-valid trust token for this browser, so the
+// "Trust this Chrome for N days" toggle is worth showing at all -- see 1c: "First time on this
+// Chrome, or the 30 days are up"), `extDeviceLabel` (the extension's own best guess at naming
+// this browser, e.g. "Chrome on Windows"), and `extTrustDays` (the days preference saved on the
+// extension's options page). `trustDevice` is mutable, read at submit time by
+// completeExtensionReveal below -- the toggle it backs renders ON by default (the design's own
+// "on by default") and can be flipped while the real WebAuthn prompt is up.
 const extensionReveal = (() => {
   const params = new URLSearchParams(location.search);
   const id = params.get("extReveal");
   const nonce = params.get("extNonce");
-  return id && nonce ? { id, nonce, handled: false } : null;
+  if (!id || !nonce) return null;
+  return {
+    id,
+    nonce,
+    handled: false,
+    offerTrust: params.get("extOfferTrust") === "1",
+    deviceLabel: params.get("extDeviceLabel") || "This Chrome",
+    trustDays: Number(params.get("extTrustDays")) || vault_module_default_trust_days(),
+    trustDevice: true,
+  };
 })();
+
+// Mirrors src/core/vault.mjs's own DEFAULT_TRUST_DAYS -- a tiny, deliberate duplication rather
+// than a fetch-before-first-paint just to learn a constant that is 30 on both sides today.
+function vault_module_default_trust_days() {
+  return 30;
+}
 
 /** Runs the real reveal ceremony for the one entry the extension asked for, then reports the
  *  outcome back across the page/extension boundary and closes the popup. Called once, from
  *  viewVault (the standalone Vault room, Git #3272/#3273), after its own entries list is
- *  loaded -- so this never invents a lookup path the room doesn't already have. */
+ *  loaded -- so this never invents a lookup path the room doesn't already have.
+ *
+ * Git #3276: when `extensionReveal.offerTrust` is set, this is also "the end of a real WebAuthn
+ * reveal ceremony" the design's own words say mints the trust token -- `trustDevice` (read at
+ * this exact moment, not when the popup first rendered, so a toggle flipped while the real OS
+ * Face ID prompt was up still counts) rides the SAME reveal request, no second assertion. On
+ * success the minted token (if any) is handed back through bridge.js right alongside the
+ * plaintext -- the extension keeps only the token, never the password, in chrome.storage.session.
+ */
 async function completeExtensionReveal(entries) {
   if (!extensionReveal || extensionReveal.handled) return;
   extensionReveal.handled = true;
@@ -4243,13 +4275,29 @@ async function completeExtensionReveal(entries) {
 
   try {
     const options = await api(`/api/vault/${entry.id}/reveal/options`, { method: "POST", body: "{}" });
+    const assertion = await passkeyAssertion(options);
+    const shouldTrust = extensionReveal.offerTrust && extensionReveal.trustDevice;
     const revealed = await api(`/api/vault/${entry.id}/reveal`, {
       method: "POST",
-      body: JSON.stringify(await passkeyAssertion(options)),
+      body: JSON.stringify({
+        ...assertion,
+        ...(shouldTrust
+          ? {
+              trustDevice: true,
+              deviceLabel: extensionReveal.deviceLabel,
+              trustDays: extensionReveal.trustDays,
+            }
+          : {}),
+      }),
     });
     window.dispatchEvent(
       new CustomEvent("sl:extension-reveal", {
-        detail: { nonce: extensionReveal.nonce, value: revealed.value, username: entry.username || null },
+        detail: {
+          nonce: extensionReveal.nonce,
+          value: revealed.value,
+          username: entry.username || null,
+          trust: revealed.trust || null,
+        },
       }),
     );
   } catch (err) {
@@ -4258,6 +4306,66 @@ async function completeExtensionReveal(entries) {
     // A window this app didn't open itself can't close; one the extension opened, can.
     setTimeout(() => window.close(), 400);
   }
+}
+
+/**
+ * The extension's own reveal screen (design 1c): the pulsing ring, "Face ID to fill {label}",
+ * and -- when there's no currently-valid trust token -- the "Trust this Chrome for N days"
+ * toggle, on by default. Rendered in place of the normal Vault list while a reveal the
+ * extension asked for is in flight, so the toggle is the one real thing to look at instead of
+ * a room full of other people's rows.
+ */
+function extensionRevealCard(entry) {
+  const days = extensionReveal.trustDays;
+  const untilLabel = whenDate(new Date(Date.now() + days * 86_400_000).toISOString());
+
+  const ring = el("div", { class: "vault-face-overlay vault-ext-reveal" }, [
+    el("div", { class: "vault-face-ring vault-ext-ring" }, [
+      lineIcon(
+        '<path d="M2 8V6a2 2 0 0 1 2-2h2"></path><path d="M22 8V6a2 2 0 0 0-2-2h-2"></path><path d="M2 16v2a2 2 0 0 0 2 2h2"></path><path d="M22 16v2a2 2 0 0 1-2 2h-2"></path><path d="M9 10h.01"></path><path d="M15 10h.01"></path><path d="M12 9v4h-1"></path><path d="M8.5 15.5a4.5 4.5 0 0 0 7 0"></path>',
+        { size: 46, strokeWidth: 1.8 },
+      ),
+    ]),
+    el("div", { class: "vault-ext-heading", text: `Face ID to fill ${entry ? entry.label : "this login"}` }),
+    el("div", {
+      class: "vault-ext-sub",
+      text: "This window is the app itself, on its own origin, so the passkey is real. It closes on its own.",
+    }),
+  ]);
+
+  if (extensionReveal.offerTrust) {
+    const subcopy = el("div", {
+      class: "vault-ext-trust-sub",
+      text: `${extensionReveal.deviceLabel} · fills are one click till ${untilLabel}. Banks marked Always ask keep asking.`,
+    });
+    const toggle = el("button", {
+      type: "button",
+      class: "vault-toggle-switch on",
+      "aria-pressed": "true",
+      onClick: (e) => {
+        extensionReveal.trustDevice = !extensionReveal.trustDevice;
+        e.currentTarget.classList.toggle("on", extensionReveal.trustDevice);
+        e.currentTarget.setAttribute("aria-pressed", String(extensionReveal.trustDevice));
+      },
+    });
+    ring.append(
+      el("div", { class: "vault-ext-trust-card" }, [
+        el("div", { class: "vault-ext-trust-text" }, [
+          el("div", { class: "vault-ext-trust-title", text: `Trust this Chrome for ${days} days` }),
+          subcopy,
+        ]),
+        toggle,
+      ]),
+    );
+  }
+
+  ring.append(
+    el("div", {
+      class: "vault-ext-footer",
+      text: `Signed in as ${state.user?.name || "you"} · Face ID cancels if you switch tabs`,
+    }),
+  );
+  return ring;
 }
 
 function hideVaultReveal() {
@@ -5029,9 +5137,16 @@ function deviceTrustStatus(device) {
 
 function deviceTrustRow(device, { onForgotten }) {
   const status = deviceTrustStatus(device);
+  // Design (1e): "trusted till Oct 8 · 22 days · last fill yesterday, navyfederal.org" -- three
+  // real clauses, each conditional on there being something real to say: a lapsed device has no
+  // days-left to report, and a device that has never actually filled anything has no site either.
+  const daysLeft = Math.max(0, Math.ceil((new Date(device.expiresAt).getTime() - Date.now()) / 86_400_000));
+  const lastFill = device.lastUsedAt
+    ? ` · last fill ${agoShort(device.lastUsedAt)}${device.lastUsedSite ? `, ${device.lastUsedSite}` : ""}`
+    : "";
   const meta = device.lapsed
-    ? `Trust ended ${agoShort(device.expiresAt)}`
-    : `Trusted until ${whenDate(device.expiresAt)}${device.lastUsedAt ? ` · last fill ${agoShort(device.lastUsedAt)}` : ""}`;
+    ? `Trust ended ${agoShort(device.expiresAt)}${lastFill}`
+    : `Trusted till ${whenDate(device.expiresAt)} · ${daysLeft} day${daysLeft === 1 ? "" : "s"}${lastFill}`;
   const forgetBtn = el("button", { type: "button", class: "vault-copy-btn ghostish danger", text: "Forget" });
   forgetBtn.addEventListener("click", async () => {
     if (!confirm(`Forget "${device.label}"? It will need Face ID again next time.`)) return;
@@ -5163,14 +5278,9 @@ async function viewVault(view) {
 
   // Git #3273: the extension's own reveal popup (see the extensionReveal bridge above) now
   // opens straight to #/vault (extension/background.js), since this room replaced Money's own
-  // Vault tab as the real place completeExtensionReveal() runs its ceremony against.
-  if (extensionReveal && !extensionReveal.handled) {
-    view.append(
-      el("div", { class: "vault-lock-note" }, [
-        el("span", { text: "Confirm with Face ID to autofill this password in the browser extension…" }),
-      ]),
-    );
-  }
+  // Vault tab as the real place completeExtensionReveal() runs its ceremony against. Git #3276:
+  // the actual ceremony gets its own dedicated overlay screen (extensionRevealCard, design 1c)
+  // once entries are loaded in refresh() below, not this plain note.
 
   view.append(
     el("div", { class: "vault-lock-note" }, [
@@ -5251,9 +5361,16 @@ async function viewVault(view) {
 
     // A real fresh WebAuthn assertion for the one entry the extension's popup asked for -- the
     // same ceremony a normal "Reveal" tap below runs, just kicked off automatically since
-    // there's nothing else to click in a bare popup window. Fires at most once per page load
-    // (extensionReveal.handled), so the debounced search re-running refresh() doesn't re-prompt.
-    if (extensionReveal && !extensionReveal.handled) completeExtensionReveal(entries);
+    // there's nothing else to click in a bare popup window (design 1c). Fires at most once per
+    // page load (extensionReveal.handled), so the debounced search re-running refresh() doesn't
+    // re-prompt; the overlay card (with the trust toggle, when offered) covers the screen while
+    // it runs and is torn down the moment the ceremony settles either way (Git #3276).
+    if (extensionReveal && !extensionReveal.handled) {
+      const entry = entries.find((e) => e.id === extensionReveal.id);
+      const card = extensionRevealCard(entry);
+      document.body.append(card);
+      completeExtensionReveal(entries).finally(() => card.remove());
+    }
 
     filterRow.replaceChildren(
       ...VAULT_ROOM_FILTERS.map((f) =>

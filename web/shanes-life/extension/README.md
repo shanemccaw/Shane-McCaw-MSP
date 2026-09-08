@@ -103,24 +103,65 @@ authorization to cross origins there, which is why every real network call in th
 extension (`SL_FIND_MATCHES`, opening the reveal popup) happens in `background.js`, and
 a content script only ever talks to it over `chrome.runtime.sendMessage`.
 
+## The 30-day trust model (Git #3276)
+
+**Superseded by this section:** every earlier revision of this file said every fill costs a
+Face ID. Shane's own explicit request (recorded in the design handoff, `Shanes Life 19 -
+Vault Autofill.dc.html`) was the opposite of that for day-to-day use: "One Face ID a month,
+not one per password." The crypto, the audit trail and the 20-second reveal window
+(`src/core/vault.mjs`) are completely unchanged — what changed is that a successful reveal
+from this extension can now ALSO mint a real, revocable `vault_device_trust` token (migration
+062/063, shape of `widget_tokens`: a high-entropy value handed out once, only its SHA-256
+ever stored, `expires_at` = 7/30/90 days, `revoked_at`), and a later fill from that same
+browser can spend that token instead of running WebAuthn again.
+
+- **`POST /api/vault/:id/fill`** (new, `src/routes/api.mjs`) takes the trust token in the
+  request body, not the session cookie — it is the one deliberately cross-origin route in
+  this whole app (`server.mjs`'s `checkOrigin` exempts exactly this path), because it is
+  called straight from `background.js`'s privileged context, never through a same-origin
+  popup. It returns the plaintext once and writes a real `vault_reveals` row with
+  `via = 'extension-trusted'`, and refuses outright (409) an entry with `vault.always_ask`
+  set — that one keeps demanding Face ID no matter how trusted the browser is.
+- The token itself lives in `chrome.storage.session`, not `chrome.storage.local` — it
+  survives a service-worker restart within the same real browser session, but is gone the
+  moment the browser itself closes. A deliberately more conservative choice for a bearer
+  credential that fills passwords than a persistent 30-day cookie would have been.
+- **Minting rides the SAME reveal request that already ran WebAuthn**, never a second
+  ceremony: `completeExtensionReveal` in `public/app.js` sends `trustDevice`/`deviceLabel`/
+  `trustDays` alongside the assertion on `POST /api/vault/:id/reveal` whenever this browser
+  doesn't currently hold a live token, and `vault.mintTrustedDevice` mints it server-side in
+  that same handler, after the same real passkey check every other reveal already requires.
+- **Forget** (the chip's popup, the toolbar popup, the options page, and the Vault room's own
+  Browser add-on card all reach it) and **Sign out everywhere** in the app's own Settings
+  both revoke every trust token for real — `vault.forgetDevice` / `vault.revokeAllTrustedDevices`.
+
 ## How a fill actually happens
 
 1. `content-script.js` (runs on every page) looks for a visible `input[type=password]`
    and its likely username/email sibling inside the same `<form>`.
 2. It asks `background.js` (`SL_FIND_MATCHES`) which real vault logins might match this
-   page's hostname. If any do, a small chip appears bottom-right of the page — the
-   toolbar popup (`popup.html`) offers the same list as a fallback for a page whose CSS
-   swallows the chip.
-3. Clicking a match asks `background.js` (`SL_REQUEST_REVEAL`) to open a real popup
-   window onto the app's own origin, carrying `?extReveal=<id>&extNonce=<n>`.
-4. `public/app.js` (see the `extensionReveal` block) opens straight to the Vault tab,
-   runs the real fresh WebAuthn ceremony for that one entry, and on success or failure
-   dispatches a `CustomEvent` and closes the popup.
-5. `bridge.js` relays that event to `background.js`, which relays it to the original
-   tab's content script, which fills the real value into the real fields using a native
-   `<input>` value setter + real `input`/`change` events (the standard way to make a
-   React/Vue-controlled form actually notice the fill) — and never writes the plaintext
-   to `chrome.storage` or anywhere else that outlives that one message.
+   page's hostname, and whether this browser currently holds a live trust token. If any
+   entries match, a dark pill chip appears bottom-right of the page — the toolbar popup
+   (`popup.html`) offers the same list as a fallback for a page whose CSS swallows the chip.
+3. **Trusted, and the entry isn't `always_ask`:** the chip's own **Fill** button asks
+   `background.js` (`SL_TRY_FILL`) to `POST /api/vault/:id/fill` with the stored token —
+   no popup window, no WebAuthn prompt. A 401/409 back from that (token expired/revoked, or
+   the entry really does always ask) falls through to step 4 exactly as if there had never
+   been a token at all.
+4. **Not trusted, or `always_ask`:** the chip's **Unlock** button asks `background.js`
+   (`SL_REQUEST_REVEAL`) to open a real popup window onto the app's own origin, carrying
+   `?extReveal=<id>&extNonce=<n>` and — when no live trust exists yet —
+   `&extOfferTrust=1&extDeviceLabel=…&extTrustDays=…`.
+5. `public/app.js` (see the `extensionReveal` block) opens straight to the Vault tab,
+   runs the real fresh WebAuthn ceremony for that one entry (minting a trust token too, if
+   offered and the toggle was left on), and on success or failure dispatches a
+   `CustomEvent` and closes the popup.
+6. `bridge.js` relays that event (plaintext, and the minted trust token if there is one) to
+   `background.js`, which stores the token in `chrome.storage.session` and relays the fill
+   itself to the original tab's content script, which fills the real value into the real
+   fields using a native `<input>` value setter + real `input`/`change` events (the standard
+   way to make a React/Vue-controlled form actually notice the fill) — the plaintext itself
+   is never written to `chrome.storage` or anywhere else that outlives that one message.
 
 ## Installing (unpacked, for local testing)
 
@@ -129,18 +170,22 @@ a content script only ever talks to it over `chrome.runtime.sendMessage`.
    select this `extension/` directory.
 3. Click the extension's icon → **Settings** → confirm the App URL
    (`http://localhost:5000` for local dev) → **Save** → grant the permission prompt.
-4. Visit any real page with a login form. If a real `login`-kind vault entry matches
-   the site, a chip appears; clicking it opens the real Face ID popup.
+4. Visit any real page with a login form. The first fill for a site shows the amber
+   **Unlock** chip and opens the real Face ID popup, with "Trust this Chrome for N days"
+   on by default; a fill within that window on the same real browser instead shows the
+   blue **Fill** chip and skips straight to a one-click fill.
 
 ## What is NOT verified in this build
 
 This session has no way to drive a real Chrome window, click "Load unpacked," or
 satisfy a real WebAuthn biometric prompt — the same honest boundary #3242's own
 `bin/check.mjs` already states for its browser half ("What it does not cover... is the
-browser half"). Verified here: the pure matching logic (real, automated, 8/8 passing),
-that `public/app.js` still parses and the vault route is untouched (see the shanes-life
-`npm run check` result in the #3243 completion comment). **Not** verified: the real
-extension loading in Chrome, the real popup/WebAuthn/postMessage round trip end to end,
-and the real fill landing in a real third-party login form — that is the real, live
-test #3243's own "Verification" section asks for, and it needs Shane's own hands on a
-real browser to run.
+browser half"). Verified here (Git #3276): `vault.mjs`'s new trust functions and the
+`/api/vault/:id/fill` route exercised directly against the local database and a running
+dev server (mint → fill → refuse an always-ask entry → Forget revokes → a forgotten
+token's next fill 401s), the migration applied for real, and every extension file still
+parses (`node --check`). **Not** verified: the real extension loading in Chrome, the real
+chip/popup/options UI rendering, the real one-click **Fill** button firing from
+`chrome.storage.session`, and the real Face ID → trust-toggle → mint round trip end to
+end in a real third-party login form — that is the real, live test #3276's own
+"Verification" section asks for, and it needs Shane's own hands on a real browser to run.
