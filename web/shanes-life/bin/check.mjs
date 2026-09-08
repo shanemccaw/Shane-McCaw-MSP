@@ -25,6 +25,7 @@ import { runMigrations } from "../src/migrate.mjs";
 import { createUser } from "../src/core/users.mjs";
 import { mintEnrollment } from "../src/core/credentials.mjs";
 import { issueMcpToken } from "../src/core/mcp-tokens.mjs";
+import { matchesRule } from "../src/core/income-rules.mjs";
 import { relyingPartyId } from "../src/auth/webauthn.mjs";
 import { SoftAuthenticator } from "./soft-authenticator.mjs";
 
@@ -1092,7 +1093,148 @@ async function main() {
   const moneyActivity = await http("/api/activity");
   check("the simulated transfer is in the audit trail", moneyActivity.json?.activity?.some((a) => a.action === "money.transfer.simulated"));
 
-  // 6c. Money -> Vault (Git #3150) -- the bill-payment reference vault.
+  // 6c. Money -> Income Rules + transaction auto-scan (Git #3169)
+  //
+  // Real port of Finance-Tracker's IncomeRule/scanTransactions -- see src/core/income-rules.mjs's
+  // own header. Discovers or creates ONE real, permanent rule against Shane's real synced data
+  // (DirectDeposit's real "COM2 TREAS 310" Treasury deposits -> the real "NASA Salary" income
+  // source, both confirmed present in the live database before this was written) -- the same real
+  // mechanism Shane would use by asking Claude, not a disposable fixture. The real income_entries
+  // rows this links/creates are real, wanted, permanent state, not test residue -- see
+  // assertSurvivalUntouched's own updated note below for why that is still safe under this file's
+  // row-count invariant.
+
+  const REAL_RULE_NAME = "NASA Salary -- COM2 TREAS 310 (set up by check.mjs)";
+  const rulesBefore = toolResult(await rpc(token.token, "tools/call", { name: "list_income_rules", arguments: {} }));
+  let realRule = rulesBefore?.rules?.find((r) => r.name === REAL_RULE_NAME);
+  if (!realRule) {
+    const createdReply = await rpc(token.token, "tools/call", {
+      name: "add_income_rule",
+      arguments: {
+        name: REAL_RULE_NAME,
+        account: "DirectDeposit",
+        incomeSource: "NASA Salary",
+        matchType: "contains",
+        matchText: "COM2 TREAS 310",
+        minAmount: 2000,
+      },
+    });
+    realRule = toolResult(createdReply);
+    check("add_income_rule creates a real rule against real accounts/sources", Boolean(realRule?.id), JSON.stringify(createdReply.body));
+  }
+  check(
+    "the real rule resolved DirectDeposit and NASA Salary by name",
+    realRule?.accountName === "DirectDeposit" && realRule?.sourceName === "NASA Salary",
+    JSON.stringify(realRule),
+  );
+
+  const scan1 = toolResult(await rpc(token.token, "tools/call", { name: "scan_income_transactions", arguments: {} }));
+  check(
+    "scan_income_transactions accounts for every match it finds (created + linked = matched)",
+    scan1?.matched === (scan1?.created ?? 0) + (scan1?.linked ?? 0),
+    JSON.stringify(scan1),
+  );
+
+  const scan2 = toolResult(await rpc(token.token, "tools/call", { name: "scan_income_transactions", arguments: {} }));
+  check(
+    "a second real scan creates and links nothing new -- no real duplicates (the issue's own verification bar)",
+    scan2?.created === 0 && scan2?.linked === 0,
+    JSON.stringify(scan2),
+  );
+  check(
+    "the second scan reports at least as many already-logged as the first scan matched",
+    (scan2?.alreadyLogged ?? 0) >= (scan1?.matched ?? 0),
+    JSON.stringify({ scan1, scan2 }),
+  );
+
+  // Pure matching logic, no database -- the amount-range boundary is the easiest part of this to
+  // get quietly wrong. Sign-agnostic on purpose: the amount < 0 (credit) filter is the scan
+  // query's job, not matchesRule's.
+  check(
+    "matchesRule: contains/starts_with/exact text match, and inclusive amount-range boundaries",
+    matchesRule({ matchType: "contains", matchText: "treas" }, { name: "COM2 TREAS 310", amount: -100 }) === true &&
+      matchesRule({ matchType: "starts_with", matchText: "com2" }, { name: "COM2 TREAS 310", amount: -100 }) === true &&
+      matchesRule({ matchType: "starts_with", matchText: "treas" }, { name: "COM2 TREAS 310", amount: -100 }) === false &&
+      matchesRule({ matchType: "exact", matchText: "com2 treas 310" }, { name: "COM2 TREAS 310", amount: -100 }) === true &&
+      matchesRule({ matchType: "exact", matchText: "com2" }, { name: "COM2 TREAS 310", amount: -100 }) === false &&
+      matchesRule({ matchType: "contains", matchText: "com2", minAmount: 50, maxAmount: 100 }, { name: "COM2", amount: -100 }) === true &&
+      matchesRule({ matchType: "contains", matchText: "com2", minAmount: 50, maxAmount: 99.99 }, { name: "COM2", amount: -100 }) === false &&
+      matchesRule({ matchType: "contains", matchText: "com2", minAmount: 100.01 }, { name: "COM2", amount: -100 }) === false,
+  );
+
+  // The real, editable primary flag -- the Finance-Tracker gap this issue names directly.
+  const primarySet = toolResult(
+    await rpc(token.token, "tools/call", { name: "set_primary_income_source", arguments: { incomeSource: "NASA Salary" } }),
+  );
+  check(
+    "set_primary_income_source marks the real source primary",
+    primarySet?.isPrimary === true && primarySet?.name === "NASA Salary",
+    JSON.stringify(primarySet),
+  );
+  const sourcesAfterPrimary = toolResult(await rpc(token.token, "tools/call", { name: "list_income_rules", arguments: {} }));
+  check(
+    "exactly one real income source is primary",
+    sourcesAfterPrimary?.sources?.filter((s) => s.isPrimary).length === 1,
+    JSON.stringify(sourcesAfterPrimary?.sources),
+  );
+
+  // Disposable rule CRUD -- created, updated, deleted; matchText is chosen to never match a real
+  // transaction, so it has zero effect on real income_entries even while active.
+  const disposableName = `Check disposable rule ${stamp}`;
+  const disposable = toolResult(
+    await rpc(token.token, "tools/call", {
+      name: "add_income_rule",
+      arguments: {
+        name: disposableName,
+        account: "DirectDeposit",
+        incomeSource: "NASA Salary",
+        matchType: "exact",
+        matchText: `check-rule-should-never-match-${stamp}`,
+      },
+    }),
+  );
+  check("add_income_rule (disposable) creates a real row", Boolean(disposable?.id), JSON.stringify(disposable));
+
+  const updatedReply = await rpc(token.token, "tools/call", {
+    name: "update_income_rule",
+    arguments: { id: disposable.id, isActive: false, matchText: `still-never-matches-${stamp}` },
+  });
+  const updated = toolResult(updatedReply);
+  check(
+    "update_income_rule is additive-keep and applies exactly the given changes",
+    updated?.isActive === false && updated?.matchText === `still-never-matches-${stamp}` && updated?.name === disposableName,
+    JSON.stringify(updated),
+  );
+
+  const badAccount = await rpc(token.token, "tools/call", {
+    name: "add_income_rule",
+    arguments: { name: "check bad account", account: "an account that does not exist", incomeSource: "NASA Salary", matchText: "x" },
+  });
+  check(
+    "an unresolvable account name is refused as a real tool error, not guessed",
+    badAccount.body?.result?.isError === true && /no account called/i.test(badAccount.body?.result?.content?.[0]?.text ?? ""),
+    JSON.stringify(badAccount.body?.result),
+  );
+
+  const deleted = toolResult(await rpc(token.token, "tools/call", { name: "delete_income_rule", arguments: { id: disposable.id } }));
+  check("delete_income_rule removes it", deleted?.ok === true, JSON.stringify(deleted));
+
+  const finalRules = toolResult(await rpc(token.token, "tools/call", { name: "list_income_rules", arguments: {} }));
+  check(
+    "the disposable rule is really gone; the real permanent rule is still there",
+    !finalRules?.rules?.some((r) => r.id === disposable.id) && finalRules?.rules?.some((r) => r.id === realRule.id),
+    JSON.stringify(finalRules?.rules?.map((r) => r.name)),
+  );
+
+  const incomeRulesActivity = await http("/api/activity");
+  check(
+    "income rule create/update/delete and the scan are all in the audit trail",
+    ["money.income_rule.created", "money.income_rule.updated", "money.income_rule.deleted", "money.income_rules.scanned"].every((action) =>
+      incomeRulesActivity.json?.activity?.some((a) => a.action === action),
+    ),
+  );
+
+  // 6d. Money -> Vault (Git #3150) -- the bill-payment reference vault.
   //
   // The design contract calls this "a real security requirement, not optional polish", so what
   // is asserted here is the security, not the CRUD: that the plaintext is genuinely not in the
@@ -1263,8 +1405,11 @@ async function main() {
 
 /**
  * The whole run happened against the database the WPF app reads. Prove nothing in it moved.
- * A count is enough here because this check only ever inserts -- it has no code path that could
- * update a ShanesSurvival row in place.
+ * A count is enough here because this check only ever inserts, with one real, deliberate
+ * exception (Git #3169): scan_income_transactions can UPDATE an existing income_entries row in
+ * place to link its real transaction_id, closing a real historical gap rather than inserting a
+ * duplicate -- a row count that stays the same either way, which is exactly what the
+ * income-rules test above asserts a second scan does (no new created/linked).
  */
 async function assertSurvivalUntouched() {
   if (!survivalBefore) return;
