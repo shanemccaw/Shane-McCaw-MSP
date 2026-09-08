@@ -87,5 +87,14 @@ export const config = {
   // (TESLA_PRIVATE_KEY) is reserved for the real vehicle-command signing this build
   // deliberately does not implement (see migration 055's header) and is not read here.
   teslaPublicKey: process.env.TESLA_PUBLIC_KEY || null,
+  // Real vehicle-COMMAND capability (Git #3218, sibling to 055/#3158's read-only OAuth). Tesla
+  // vehicles built since ~2021 reject unsigned Fleet API commands outright -- a real command has
+  // to be signed with a key separately enrolled to the vehicle via the Tesla mobile app (Shane's
+  // own physical, one-time action). Tesla ships that signing protocol as its own official local
+  // proxy (github.com/teslamotors/vehicle-command) precisely so third-party apps never have to
+  // reimplement it; this app forwards to that proxy rather than touching TESLA_PRIVATE_KEY
+  // itself, which stays unread here exactly as migration 055's header already documents.
+  // e.g. http://localhost:4443 once the proxy is running with the enrolled key.
+  teslaCommandProxyUrl: (process.env.TESLA_COMMAND_PROXY_URL || "").replace(/\/+$/, "") || null,
   root: ROOT,
 };

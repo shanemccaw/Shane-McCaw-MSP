@@ -1014,7 +1014,20 @@ export function buildApiRouter() {
   // clears what's checked. Folding that into aisle-order pattern memory is a separate Feature.
   router.post("/api/lists/:id/clear-checked", async (_req, res, params, ctx) => {
     const user = requireUser(ctx);
-    return sendJson(res, 200, await lists.clearCheckedItems(user.id, params.id));
+    const result = await lists.clearCheckedItems(user.id, params.id);
+    // Git #3218's real first Tesla-room automation: a real "Done shopping" moment is the one real
+    // trigger for the real 5-minute-then-open-trunk countdown. A no-op for everyone who hasn't
+    // armed it (see scheduleCheckoutTrunkOpen's own header) -- clearing a shopping list must never
+    // fail because an unrelated automation isn't configured.
+    let teslaTrunkScheduledFor = null;
+    try {
+      const scheduled = await teslaCore.scheduleCheckoutTrunkOpen(user.id);
+      if (scheduled) teslaTrunkScheduledFor = scheduled.scheduled_for;
+    } catch (err) {
+      // Real, non-fatal: scheduling the trunk automation never blocks the real "list cleared" result.
+      console.error(`[tesla] checkout-to-trunk schedule failed: ${err.message}`);
+    }
+    return sendJson(res, 200, { ...result, teslaTrunkScheduledFor });
   });
 
   // #3111: a real stated budget for this run. `budget` is dollars (a number, or null to clear)
@@ -1667,6 +1680,31 @@ export function buildApiRouter() {
     await teslaCore.revokeHookToken(user.id, params.id);
     await audit.record({ userId: user.id, actor: "owner", action: "tesla.hook-token-revoked", entityId: params.id });
     return sendJson(res, 200, { revoked: true });
+  });
+
+  // -- Tesla vehicle commands (Git #3218) -- the checkout-to-trunk automation's real toggle and
+  // visibility. Sending a command itself never has its own direct route: the one real trigger is
+  // lists.mjs's clear-checked ("Done shopping"), which schedules it (tesla.mjs's own header on
+  // why -- Tesla is this file's concern, not Lists').
+  router.patch("/api/tesla/auto-trunk-on-checkout", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    if (typeof body.enabled !== "boolean") throw badRequest("enabled must be true or false");
+    const result = await teslaCore.setAutoTrunkOnCheckout(user.id, body.enabled);
+    await audit.record({ userId: user.id, actor: "owner", action: "tesla.auto-trunk-on-checkout", detail: result });
+    return sendJson(res, 200, result);
+  });
+
+  router.get("/api/tesla/scheduled-commands", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { commands: await teslaCore.listScheduledCommands(user.id) });
+  });
+
+  router.delete("/api/tesla/scheduled-commands/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await teslaCore.cancelScheduledCommand(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "owner", action: "tesla.scheduled-command-canceled", entityId: params.id });
+    return sendJson(res, 200, { canceled: true });
   });
 
   // -- Money -> Home-tab decision tools (Git #3171) -------------------------------------

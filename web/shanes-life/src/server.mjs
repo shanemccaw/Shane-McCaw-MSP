@@ -17,6 +17,7 @@ import { buildPublicRouter } from "./routes/public.mjs";
 import { buildWidgetRouter } from "./routes/widget.mjs";
 import { handlePlaidWebhook } from "./routes/plaid-webhook.mjs";
 import { handleTeslaHook, serveTeslaPublicKey } from "./routes/tesla.mjs";
+import { dispatchDueCommands as dispatchDueTeslaCommands } from "./core/tesla.mjs";
 import * as plaid from "./core/plaid.mjs";
 import { describeMcpEndpoint, handleMcpRequest } from "./routes/mcp.mjs";
 import { runDetectors as runCatchDetectors } from "./core/catches.mjs";
@@ -286,6 +287,23 @@ async function main() {
     5 * 60 * 1000,
   );
   snoozeCheck.unref();
+
+  // Git #3218's checkout-to-trunk automation schedules a real command 5 minutes out -- the same
+  // tight-poll reasoning as the snooze check above applies (a setTimeout-only countdown would die
+  // on every redeploy; this is a persisted row, so the sweep just has to run at least as often as
+  // the real countdown itself is meaningful).
+  const teslaCommandCheck = setInterval(
+    async () => {
+      try {
+        const sent = await dispatchDueTeslaCommands();
+        if (sent > 0) log(`[tesla] dispatched ${sent} scheduled command(s)`);
+      } catch (err) {
+        log("[tesla] scheduled command dispatch failed:", err.message);
+      }
+    },
+    5 * 60 * 1000,
+  );
+  teslaCommandCheck.unref();
 
   // Run once at boot too -- a 6-hour interval alone would leave a genuinely due day-before
   // reminder or a stale federal-holiday list waiting up to 6 hours after every redeploy.
