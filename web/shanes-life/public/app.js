@@ -1509,12 +1509,25 @@ function roomsCell({ key, route, title, critterSlot, furniture, tint }, lit, sub
   return cell;
 }
 
+/** ROOM_DEFS, real-ordered per `order` (a real permutation of ROOM_DEFS keys -- /api/today's own
+ *  `roomOrder`, itself the reconciled read of the user's Settings "House · Room order" card, Git
+ *  #3215). Falls back to ROOM_DEFS' own literal order (the grid's original shipped order) for any
+ *  key `order` doesn't cover, so a stale/partial order client-side can never drop a room. */
+function orderedRoomDefs(order) {
+  if (!Array.isArray(order) || order.length === 0) return ROOM_DEFS;
+  const byKey = new Map(ROOM_DEFS.map((def) => [def.key, def]));
+  const ordered = order.map((key) => byKey.get(key)).filter(Boolean);
+  for (const def of ROOM_DEFS) if (!order.includes(def.key)) ordered.push(def);
+  return ordered;
+}
+
 /** The whole "Rooms -- the house" section: roof, the 8-cell floor grid, and the yard. `rooms` is
  *  /api/today's own real per-room state (roomsForToday() in api.mjs); a live Tonight/Cook session
  *  (client-only state, never persisted -- see mealSession's own declaration) can additionally
  *  light the Recipes room even outside its server-computed 16:00-21:00 window, same override
- *  resolveNextKind() already applies to the Next card's own "dinner" case. */
-function roomsHouseSection(rooms) {
+ *  resolveNextKind() already applies to the Next card's own "dinner" case. `order` is the user's
+ *  real saved room order (Git #3215) -- undefined/empty renders the original shipped order. */
+function roomsHouseSection(rooms, order) {
   let recipesLit = Boolean(rooms.recipes && rooms.recipes.lit);
   let recipesSubtitle = rooms.recipes ? rooms.recipes.subtitle : "Nothing planned right now";
   if (mealSession && !mealSession.done) {
@@ -1522,7 +1535,7 @@ function roomsHouseSection(rooms) {
     recipesSubtitle = "Cooking now";
   }
 
-  const cells = ROOM_DEFS.map((def) => {
+  const cells = orderedRoomDefs(order).map((def) => {
     if (def.key === "recipes") return roomsCell(def, recipesLit, recipesSubtitle);
     const room = rooms[def.key];
     const lit = Boolean(room && room.lit);
@@ -1653,7 +1666,7 @@ async function viewToday(view) {
 
   // Rooms -- the house (Git #3165): the real illustrated-house nav replacing the flat tab-bar
   // links to these 8 rooms (see the trimmed <nav class="tabs"> in index.html).
-  view.append(el("section", { class: "section" }, [el("h2", { text: "Rooms" }), roomsHouseSection(data.rooms || {})]));
+  view.append(el("section", { class: "section" }, [el("h2", { text: "Rooms" }), roomsHouseSection(data.rooms || {}, data.roomOrder)]));
 
   if (data.pendingCaptures > 0) {
     view.append(
@@ -6177,8 +6190,99 @@ function arrayBufferToBase64url(buf) {
   return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+// Real "House · Room order" Settings card (Git #3215, `v4-settings-room-order.png`) -- the
+// first card, per github.md's own sync note. Up/down arrows (the real screenshot, not drag),
+// each real room's own current lit/subtitle read (the same roomsForToday() state the house grid
+// itself renders), and a real "Reset to the default order" action. Every reorder saves
+// immediately -- no separate "Save" button, matching the rest of Settings' own instant-save
+// actions (health context aside, which has an explicit Save because it's free text).
+async function renderRoomOrderSettings(view) {
+  const data = await api("/api/today");
+  const rooms = data.rooms || {};
+  let order = orderedRoomDefs(data.roomOrder).map((def) => def.key);
+
+  const section = el("section", { class: "section" }, [
+    el("div", { class: "section-label-row" }, [
+      el("h2", { text: "House · Room order" }),
+      el("span", { class: "meta small", text: "most used at the top" }),
+    ]),
+  ]);
+  const list = el("div", { class: "card" });
+  const resetBtn = el("button", { class: "ghost small", text: "Reset to the default order" });
+  section.append(list, resetBtn);
+  section.append(
+    el("p", {
+      class: "muted small",
+      text: "Top of the list is the top floor, left before right. The house redraws as you go.",
+    }),
+  );
+  view.append(section);
+
+  async function saveOrder() {
+    await api("/api/room-order", { method: "PATCH", body: JSON.stringify({ order }) });
+  }
+
+  function renderRows() {
+    list.replaceChildren();
+    order.forEach((key, i) => {
+      const def = ROOM_DEFS.find((d) => d.key === key);
+      const room = rooms[key];
+      list.append(
+        el("div", { class: "spread room-order-row" }, [
+          el("div", { class: "row", style: "align-items:center;gap:.6rem" }, [
+            critterIcon(def.critterSlot, { size: 32 }),
+            el("div", {}, [
+              el("div", { class: "title small", text: def.title }),
+              el("div", { class: "meta", text: room ? room.subtitle : "" }),
+            ]),
+          ]),
+          el("div", { class: "row" }, [
+            el("button", {
+              class: "ghost small icon-btn",
+              text: "↑",
+              "aria-label": `Move ${def.title} up`,
+              disabled: i === 0,
+              onClick: async () => {
+                [order[i - 1], order[i]] = [order[i], order[i - 1]];
+                renderRows();
+                await saveOrder();
+              },
+            }),
+            el("button", {
+              class: "ghost small icon-btn",
+              text: "↓",
+              "aria-label": `Move ${def.title} down`,
+              disabled: i === order.length - 1,
+              onClick: async () => {
+                [order[i + 1], order[i]] = [order[i], order[i + 1]];
+                renderRows();
+                await saveOrder();
+              },
+            }),
+          ]),
+        ]),
+      );
+    });
+  }
+
+  resetBtn.addEventListener("click", async () => {
+    resetBtn.disabled = true;
+    try {
+      const res = await api("/api/room-order", { method: "DELETE" });
+      order = res.order;
+      renderRows();
+    } finally {
+      resetBtn.disabled = false;
+    }
+  });
+
+  renderRows();
+}
+
 async function viewSettings(view) {
   const { tokens, endpoint } = await api("/api/mcp-tokens");
+
+  await renderRoomOrderSettings(view);
 
   view.append(
     el("section", { class: "section" }, [

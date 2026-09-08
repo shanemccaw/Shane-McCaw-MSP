@@ -31,6 +31,7 @@ import * as plaid from "../core/plaid.mjs";
 import * as pushSubscriptions from "../core/push-subscriptions.mjs";
 import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
+import * as roomOrder from "../core/room-order.mjs";
 import * as scan from "../core/scan.mjs";
 import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
@@ -1005,6 +1006,27 @@ export function buildApiRouter() {
     const healthContext = await recipes.setHealthContext(user.id, body.healthContext ?? null);
     await audit.record({ userId: user.id, actor: "web", action: "health_context.set" });
     return sendJson(res, 200, { healthContext });
+  });
+
+  // -- room order (Git #3215) -- the first Settings card's "House · Room order" ---------
+  router.get("/api/room-order", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { order: await roomOrder.getRoomOrder(user.id) });
+  });
+
+  router.patch("/api/room-order", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const order = await roomOrder.setRoomOrder(user.id, body.order);
+    await audit.record({ userId: user.id, actor: "web", action: "room_order.set", detail: { order } });
+    return sendJson(res, 200, { order });
+  });
+
+  router.delete("/api/room-order", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const order = await roomOrder.resetRoomOrder(user.id);
+    await audit.record({ userId: user.id, actor: "web", action: "room_order.reset" });
+    return sendJson(res, 200, { order });
   });
 
   // -- medications (Git #3135) ----------------------------------------------
@@ -2223,6 +2245,7 @@ export function buildApiRouter() {
       groceries,
       meds: await medications.getMedsToday(user.id),
       rooms: await roomsForToday(user.id, { allDates, tonight, groceries }),
+      roomOrder: await roomOrder.getRoomOrder(user.id),
       later: await computeLaterMoments(user.id, { allDates, tonight, pendingCaptures }),
     });
   });

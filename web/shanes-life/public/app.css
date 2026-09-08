@@ -197,6 +197,12 @@ button:disabled { opacity: 0.5; cursor: default; }
 .row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .spread { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
 
+/* Settings "House · Room order" card (Git #3215) -- one divided row per room, up/down icon
+   buttons per row (reuses .icon-btn above; text glyphs here instead of an svg <use>). */
+.room-order-row { padding: 0.6rem 0; border-bottom: 1px solid hsl(var(--card-border)); }
+.room-order-row:last-child { border-bottom: none; }
+.room-order-row .icon-btn { width: 36px; height: 36px; font-size: 1rem; }
+
 /* ---------- capture box ---------- */
 
 .capture {
