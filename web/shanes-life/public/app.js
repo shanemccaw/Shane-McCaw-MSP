@@ -1472,6 +1472,12 @@ const ROOM_DEFS = [
   { key: "pets", route: "#/pets", title: "Pets", critterSlot: "pets", furniture: "r-pets", tint: "52,211,153" },
   { key: "shopping", route: "#/shopping", title: "Shopping", critterSlot: "shop", furniture: "r-shop", tint: "96,165,250" },
   { key: "money", route: "#/money", title: "Money", critterSlot: "moneyhdr", furniture: "r-money", tint: "251,191,36" },
+  // Git #3241: Wins pulled out of Money's own tab switcher into its own real room -- the genuine
+  // counterweight to Money's heavy content deserves its own glowing cell, not a buried tab. Uses
+  // the "wins" critter slot (1n, c-wins/c-wins2 in critters-sprite.svg) that's been built to full
+  // spec since #3119 waiting for exactly this room to land. tint is a warm rose, deliberately
+  // distinct from Money's amber bear -- quiet, not celebratory neon.
+  { key: "wins", route: "#/wins", title: "Wins", critterSlot: "wins", furniture: "r-wins", tint: "253,164,175" },
 ];
 
 /** The roof: polygon + ridge + chimney, README-exact geometry (viewBox 370x40). The two smoke
@@ -2890,8 +2896,9 @@ async function viewMeds(view) {
 //
 // The math and every real number here come from src/core/money.mjs's own /api/money/* routes
 // (Git #3137, already live) -- this is pure UI wiring, no schema and no new endpoint. Bills,
-// Cars, Vault and Wins are each their own real Feature on top of this one per the issue; the
-// segmented control below still shows all five (matching the design), but only "Now" renders
+// Cars and Vault are each their own real Feature on top of this one per the issue (Wins was too,
+// #3151 -- Git #3241 later pulled it out into its own top-level room, viewWins() below); the
+// segmented control below still shows the rest (matching the design), but only "Now" renders
 // real content -- the rest say plainly that they aren't built yet, which is not fabricated data,
 // just an honest placeholder.
 //
@@ -2911,6 +2918,8 @@ async function viewMeds(view) {
 
 let moneyTab = "now"; // transient client-only state, same idiom as cookSession above
 
+// Git #3241: Wins moved out of this tab switcher into its own top-level house-grid room
+// (viewWins() below) -- no longer one of Money's own tabs.
 const MONEY_TABS = [
   { key: "now", label: "Now" },
   { key: "bills", label: "Bills" },
@@ -2920,7 +2929,6 @@ const MONEY_TABS = [
   { key: "cars", label: "Cars" },
   { key: "vault", label: "Vault" },
   { key: "documents", label: "Documents" },
-  { key: "wins", label: "Wins" },
 ];
 
 // Git #3205: the real, shared two-week cycle card at the top of Now and Bills. `cycleCardOffset`
@@ -4512,20 +4520,27 @@ function moneyWinRow(win) {
   ]);
 }
 
-/** Money's Wins tab (Git #3151): every real win, dated, most recent first -- manual "I did it"
- *  captures (source 'shane', typed right here) and Claude's `log_win` (source 'claude') land the
- *  same as the automatic ones detectMoneyWins() creates server-side (source 'debt_paid_off').
- *  Deliberately no streak, badge or completion percentage anywhere on this tab (Section 3/8). */
-async function viewMoneyWins(view) {
+/** Wins -- its own real house-grid room (Git #3241, pulled out of Money's own tab switcher; the
+ *  underlying data/logic is unchanged -- still GET /api/money/wins, still wins.mjs's own
+ *  createWin/listWins). Every real win, dated, most recent first: manual "I did it" captures
+ *  (source 'shane', typed right here) and Claude's `log_win` (source 'claude') land the same as
+ *  the automatic ones detectMoneyWins() creates server-side (source 'debt_paid_off'). Deliberately
+ *  no streak, badge or completion percentage anywhere on this room (Section 3/8). */
+async function viewWins(view) {
   const { wins } = await api("/api/money/wins");
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("h2", { text: "Wins" }),
+      el("p", { class: "muted small", text: "Real wins · no streaks, no badges" }),
+    ]),
+  );
 
   // Git #3183: no dedicated "Log a win" form -- the design's own words are "Shane should be
   // able to just say 'I did it' and have it land here," which is exactly the universal
   // capture box (log_win over MCP already exists for it), not a second text field here too.
 
-  const winsCard = el("div", { class: "card money-bucket" }, [
-    el("div", { class: "money-bucket-label", text: "Real wins · no streaks, no badges" }),
-  ]);
+  const winsCard = el("div", { class: "card money-bucket" });
   if (wins.length === 0) {
     winsCard.append(empty("Nothing logged yet.", "Say \"I did it\" in the capture box, or a real debt hitting $0 lands here on its own.", "wins"));
   } else {
@@ -4971,11 +4986,6 @@ async function viewMoney(view) {
 
   if (moneyTab === "documents") {
     await viewMoneyDocuments(view);
-    return;
-  }
-
-  if (moneyTab === "wins") {
-    await viewMoneyWins(view);
     return;
   }
 
@@ -7478,7 +7488,7 @@ async function viewPetDetail(view, petId) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", people: "People", person: "", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", wins: "Wins", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", people: "People", person: "", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -7532,6 +7542,7 @@ async function render() {
     else if (state.route === "cook") await viewCook(view, state.cookRecipeId);
     else if (state.route === "meds") await viewMeds(view);
     else if (state.route === "money") await viewMoney(view);
+    else if (state.route === "wins") await viewWins(view);
     else if (state.route === "inbox") await viewInbox(view);
     else if (state.route === "dates") await viewDates(view);
     else if (state.route === "date") await viewDateDetail(view, state.dateId);

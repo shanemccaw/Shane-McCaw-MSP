@@ -3,7 +3,8 @@
 // Settings card -- house order is user state here").
 //
 // The Today "Rooms -- the house" grid (Git #3165, roomsHouseSection() in public/app.js) has one
-// fixed set of 8 real rooms. ROOM_KEYS below is the server's own copy of that same key set --
+// fixed set of real rooms (9 as of Git #3241, Wins pulled out of Money into its own room). ROOM_KEYS
+// below is the server's own copy of that same key set --
 // duplicated rather than shared because this module has no browser/server shared bundle to put
 // it in (same reason fmtUsd() in api.mjs is duplicated rather than imported). If a room is ever
 // added or removed from ROOM_DEFS in public/app.js, this list must be updated to match.
@@ -15,7 +16,7 @@
 import { one, query } from "../db.mjs";
 import { badRequest } from "../http.mjs";
 
-export const ROOM_KEYS = ["things", "lists", "people", "dates", "recipes", "pets", "shopping", "money"];
+export const ROOM_KEYS = ["things", "lists", "people", "dates", "recipes", "pets", "shopping", "money", "wins"];
 export const DEFAULT_ORDER = [...ROOM_KEYS];
 
 /** Repairs a stored order against the real, current room set: drops any key that no longer
