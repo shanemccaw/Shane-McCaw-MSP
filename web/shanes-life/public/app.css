@@ -1297,6 +1297,35 @@ pre.token {
 .money-percent-badge.amber { background: rgba(251, 191, 36, 0.16); color: #fbbf24; }
 .money-percent-badge.emerald { background: rgba(52, 211, 153, 0.16); color: #34d399; }
 
+/* ---------- Bill detail sheet (Git #3212, design "Shanes Life 17 - Money v3.dc.html" 1e) ----------
+   Same dialog.sheet shell every other sheet in this app uses -- this app's own real bottom-sheet
+   idiom (see the "scan sheet" header above), not a second modal mechanism. */
+.bill-sheet-breakdown {
+  margin-top: 12px;
+  border: 1px solid hsl(var(--card-border));
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  font-size: 15px;
+}
+.bill-sheet-breakdown-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+
+.bill-sheet-vault-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px 0 0;
+  border: none;
+  border-top: 1px solid hsl(var(--card-border) / 0.6);
+  background: none;
+  color: #60a5fa;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
 /* ---------- Money -> Vault (Git #3150) ----------
    Handoff README §7: "lock note, rows with site + masked reference + Reveal (passkey overlay ->
    full value shown 20 s -> Copy)". Sizes/colors are the prototype's own inline values, kept

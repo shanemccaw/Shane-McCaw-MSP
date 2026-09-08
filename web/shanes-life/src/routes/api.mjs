@@ -1666,6 +1666,14 @@ export function buildApiRouter() {
     );
   });
 
+  // The real bill detail bottom sheet (Git #3212, design 1e): balance vs. target, the real
+  // rolled-over/this-cycle envelope breakdown, the funding-history sparkline, and the real
+  // Vault link when one exists. `userId` is only needed for the vault lookup.
+  router.get("/api/money/bills/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await money.getBillDetail(user.id, params.id));
+  });
+
   // -- Money -> Vault (Git #3150) -------------------------------------------------------
   //
   // The bill-payment reference vault. Design contract Section 9 flags this as "a real security

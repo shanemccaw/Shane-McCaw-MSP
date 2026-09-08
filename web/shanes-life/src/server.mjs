@@ -25,7 +25,7 @@ import { findDueVaccineReminders } from "./core/pets.mjs";
 import { queueNudge, redeliverSnoozedNudges } from "./core/nudges.mjs";
 import { listUsers } from "./core/users.mjs";
 import { detectMoneyWins } from "./core/wins.mjs";
-import { findDueBillReminders, findDueDebtReminders, formatMoney } from "./core/money.mjs";
+import { captureBillCycleSnapshots, findDueBillReminders, findDueDebtReminders, formatMoney } from "./core/money.mjs";
 
 const PUBLIC_DIR = resolve(config.root, "public");
 const apiRouter = buildApiRouter();
@@ -241,6 +241,7 @@ async function main() {
       await runCatchesSweep();
       await runMoneyDueReminders();
       await runPlaidItemMaintenance();
+      await runBillCycleSnapshotCapture();
     },
     6 * 60 * 60 * 1000,
   );
@@ -321,6 +322,24 @@ async function runVaccineLeadReminders() {
     }
   } catch (err) {
     log("[reminders] failed:", err.message);
+  }
+}
+
+/**
+ * Real cycle-start balance snapshots for every real bill account (Git #3212), the data source
+ * behind the bill detail sheet's rolled-over/this-cycle split and its funding-history sparkline.
+ * Idempotent (migration 049's unique (account_id, cycle_start)) -- running this again before the
+ * next real cycle starts is always a real no-op, so a 6-hour sweep granularity is fine even
+ * though the honest capture moment is "right at the cycle boundary."
+ */
+async function runBillCycleSnapshotCapture() {
+  try {
+    const result = await captureBillCycleSnapshots();
+    if (result.capturedCount > 0) {
+      log(`[money] captured ${result.capturedCount} bill cycle snapshot(s) for cycle starting ${result.cycleStart}`);
+    }
+  } catch (err) {
+    log("[money] bill cycle snapshot capture failed:", err.message);
   }
 }
 

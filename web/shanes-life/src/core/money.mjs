@@ -89,10 +89,11 @@
 // verification, item-health classification, reconnect-flow wiring), so per this issue's own
 // text it was filed as its own follow-up Feature rather than squeezed in here: #3185.
 
-import { many, one, transaction } from "../db.mjs";
+import { many, one, query, transaction } from "../db.mjs";
 import { badRequest, notFound } from "../http.mjs";
 import * as lists from "./lists.mjs";
 import * as prices from "./prices.mjs";
+import * as vault from "./vault.mjs";
 
 /** Roles as ShanesSurvival's own migrations 003/006/008 define them. */
 const ROLE_INCOME_GATE = "income_gate";
@@ -985,6 +986,140 @@ export async function setBillCategory(billAccountId, category) {
   );
   if (!row) throw notFound("Bill account not found");
   return billOut(billFromAccount(row));
+}
+
+// ---------------------------------------------------------------------------
+// Bill detail sheet (Git #3212, design `Shanes Life 17 - Money v3.dc.html` option 1e)
+// ---------------------------------------------------------------------------
+//
+// Resolved on #3209, Shane's own words: "it's not really software tracking, the envelope is the
+// bank account ... it's whatever is actually in the bank account." The "Rolled over from last
+// cycle" / "This cycle's contribution" split shown here is a real, lightweight COMPUTED VIEW over
+// two real Plaid balances -- never a separate assigned/envelopeBalance shadow ledger (#3162's own
+// conclusion, left standing). "Rolled over" is a real snapshot of the account's balance at the
+// start of the CURRENT cycle (captured by captureBillCycleSnapshots below); "this cycle's
+// contribution" is the real current balance minus that snapshot -- what Plaid has shown landing
+// in the account since the cycle began. Same table backs the funding-history sparkline: real
+// per-cycle-start balances, at most the last 8 real cycles captured, never a fabricated point for
+// a cycle that predates this migration.
+
+/** One real cycle-start balance snapshot per real bill account, captured idempotently -- the
+ *  unique (account_id, cycle_start) in migration 049 means a housekeeping sweep that runs again
+ *  before the next cycle starts is a real no-op, not a second, disagreeing snapshot. Deliberately
+ *  never UPDATEs an existing snapshot: it is the real balance at the moment the cycle began, and a
+ *  later balance change within that same cycle must not rewrite what "rolled over" meant. */
+export async function captureBillCycleSnapshots(asOf = new Date()) {
+  const [billAccounts, incomeSources] = await Promise.all([
+    loadRoleAccounts(ROLE_BILL),
+    many(
+      `SELECT id, name, person, pay_frequency_days, expected_per_cycle, next_pay_date, is_active
+         FROM income_sources WHERE is_active`,
+    ),
+  ]);
+  const window = resolvePayCycleWindow(incomeSources, asOf);
+  const cycleStartIso = utcIso(window.cycleStart);
+
+  let captured = 0;
+  for (const account of billAccounts) {
+    const balanceCents = toCents(account.current_balance);
+    if (balanceCents === null) continue; // no real balance from Plaid yet -- nothing honest to snapshot
+    const { rowCount } = await query(
+      `INSERT INTO bill_cycle_snapshots (account_id, cycle_start, balance_cents)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (account_id, cycle_start) DO NOTHING`,
+      [account.id, cycleStartIso, balanceCents],
+    );
+    if (rowCount > 0) captured += 1;
+  }
+  return { cycleStart: cycleStartIso, capturedCount: captured, billAccountCount: billAccounts.length };
+}
+
+/** "Bill account · NFCU •••• 7710 · auto-pays Fri, Sep 26" -- the design's own account-line
+ *  format, from the same real `due_day` -> next real occurrence logic Budget Day already uses
+ *  (`nextDueDate`), never a second date computation. */
+function autoPaysLine({ institutionName, mask, dueDay }, today) {
+  const parts = [];
+  parts.push(institutionName ? `Bill account · ${institutionName}${mask ? ` •••• ${mask}` : ""}` : "Bill account");
+  const due = nextDueDate(dueDay, today);
+  if (due) parts.push(`auto-pays ${formatPayDate(utcIso(due))}`);
+  return parts.join(" · ");
+}
+
+/**
+ * The real bottom-sheet bill detail view (Git #3212): balance vs. target, the real rolled-
+ * over/this-cycle envelope breakdown, the real funding-history sparkline (at most 8 real cycles),
+ * and the real "Payment reference in Vault ->" link when one exists. `userId` is only needed for
+ * the vault lookup -- vault entries are the one piece of this screen scoped per-user.
+ */
+export async function getBillDetail(userId, billAccountId, { asOf = new Date() } = {}) {
+  const account = await one(
+    `SELECT a.id, a.name, a.current_balance, a.target_amount, a.is_gate, a.due_day,
+            a.last_paid_date, a.bill_category, a.mask, a.role,
+            pi.institution_name
+       FROM accounts a
+       LEFT JOIN plaid_items pi ON pi.id = a.plaid_item_id
+      WHERE a.id = $1`,
+    [billAccountId],
+  );
+  if (!account) throw notFound("Bill account not found");
+  if (account.role !== ROLE_BILL) {
+    throw badRequest(`"${account.name}" is not a bill account -- it has no envelope to show.`);
+  }
+
+  const today = asUtcDate(asOf);
+  const bill = billFromAccount(account, today);
+
+  const incomeSources = await many(
+    `SELECT id, name, person, pay_frequency_days, expected_per_cycle, next_pay_date, is_active
+       FROM income_sources WHERE is_active`,
+  );
+  const window = resolvePayCycleWindow(incomeSources, asOf);
+  const cycleStartIso = utcIso(window.cycleStart);
+
+  const snapshots = await many(
+    `SELECT cycle_start, balance_cents FROM bill_cycle_snapshots
+      WHERE account_id = $1 ORDER BY cycle_start`,
+    [billAccountId],
+  );
+
+  const currentCycleSnapshot = snapshots.find((s) => isoDate(s.cycle_start) === cycleStartIso);
+  const rolledOverCents = currentCycleSnapshot ? Number(currentCycleSnapshot.balance_cents) : null;
+  const thisCycleContributionCents =
+    rolledOverCents !== null && bill.balanceCents !== null
+      ? Math.max(0, bill.balanceCents - rolledOverCents)
+      : null;
+
+  // At most the real last 8 cycles captured -- the design's own "8 cycles" -- never padded with
+  // invented earlier points. Target is applied retroactively from the bill's CURRENT target,
+  // since no historical target is recorded anywhere in this schema; stated plainly in the field
+  // name (targetAtRead) rather than implying it was the real target on that historical date.
+  const sparkline = snapshots.slice(-8).map((s) => ({
+    cycleStart: isoDate(s.cycle_start),
+    label: formatShortDate(isoDate(s.cycle_start)),
+    balance: toDollars(Number(s.balance_cents)),
+    targetAtRead: bill.targetCents === null ? null : toDollars(bill.targetCents),
+  }));
+
+  const vaultEntry = await vault.findEntryForBillAccount(userId, billAccountId);
+
+  return {
+    ...billOut(bill),
+    institutionName: account.institution_name,
+    autoPaysLine: autoPaysLine({ institutionName: account.institution_name, mask: account.mask, dueDay: bill.dueDay }, today),
+    envelope: {
+      balance: toDollars(bill.balanceCents),
+      target: toDollars(bill.targetCents),
+      shortfall: toDollars(bill.shortfallCents),
+      rolledOver: rolledOverCents === null ? null : toDollars(rolledOverCents),
+      thisCycleContribution: thisCycleContributionCents === null ? null : toDollars(thisCycleContributionCents),
+      // No real snapshot captured yet for this cycle -- honest, not zeroed, so the sheet can say
+      // "still building history" rather than implying nothing rolled over.
+      hasCycleSnapshot: currentCycleSnapshot !== null && currentCycleSnapshot !== undefined,
+      cycleStart: cycleStartIso,
+    },
+    sparkline,
+    vaultEntry,
+  };
 }
 
 function habitTotalCents(habits) {

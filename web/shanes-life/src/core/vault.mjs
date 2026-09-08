@@ -127,6 +127,12 @@ function toWire(row) {
     updatedAt: row.updated_at,
     lastRevealedAt: row.last_revealed_at ?? null,
     revealCount: Number(row.reveal_count ?? 0),
+    // Git #3212: which real bill account this entry is the payment reference for, if any -- the
+    // bill detail sheet's "Payment reference in Vault ->" link reads this the other direction
+    // (findEntryForBillAccount below), and this is what lets the vault room itself show which
+    // entries are already linked.
+    billAccountId: row.bill_account_id ?? null,
+    billAccountName: row.bill_account_name ?? null,
   };
 }
 
@@ -138,8 +144,10 @@ function toWire(row) {
 export async function listEntries(userId) {
   const rows = await many(
     `SELECT v.id, v.label, v.site, v.masked, v.key_id, v.position, v.created_at, v.updated_at,
+            v.bill_account_id, a.name AS bill_account_name,
             r.last_revealed_at, COALESCE(r.reveal_count, 0) AS reveal_count
        FROM vault v
+       LEFT JOIN accounts a ON a.id = v.bill_account_id
        LEFT JOIN (
          SELECT vault_id, max(at) AS last_revealed_at, count(*) AS reveal_count
            FROM vault_reveals
@@ -152,17 +160,33 @@ export async function listEntries(userId) {
   return rows.map(toWire);
 }
 
+/** The real "Payment reference in Vault ->" lookup the bill detail sheet (Git #3212) jumps
+ *  through: does a vault entry already name this bill account as what it's the reference for.
+ *  Returns null rather than an empty object -- "no entry linked yet" is a real, distinct state
+ *  from "an entry exists" the UI has to render differently (no link at all vs. a real jump). */
+export async function findEntryForBillAccount(userId, billAccountId) {
+  if (!billAccountId) return null;
+  const row = await one(
+    `SELECT id, label FROM vault WHERE user_id = $1 AND bill_account_id = $2 LIMIT 1`,
+    [userId, billAccountId],
+  );
+  return row ? { id: row.id, label: row.label } : null;
+}
+
 async function ownedRow(userId, id) {
   return one(
     `SELECT id, user_id, label, site, masked, ciphertext, iv, auth_tag, key_id, position,
-            created_at, updated_at
+            created_at, updated_at, bill_account_id
        FROM vault
       WHERE id = $1 AND user_id = $2`,
     [id, userId],
   );
 }
 
-export async function createEntry(userId, { label, site = null, secret, masked = null, position = null }) {
+export async function createEntry(
+  userId,
+  { label, site = null, secret, masked = null, position = null, billAccountId = null },
+) {
   const cleanLabel = String(label ?? "").trim();
   const cleanSecret = String(secret ?? "").trim();
   if (!cleanLabel) throw new Error("label is required");
@@ -174,10 +198,10 @@ export async function createEntry(userId, { label, site = null, secret, masked =
   const { ciphertext, iv, authTag } = encrypt(cleanSecret, id, userId);
 
   const row = await one(
-    `INSERT INTO vault (id, user_id, label, site, masked, ciphertext, iv, auth_tag, key_id, position)
+    `INSERT INTO vault (id, user_id, label, site, masked, ciphertext, iv, auth_tag, key_id, position, bill_account_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-             COALESCE($10, (SELECT COALESCE(max(position), -1) + 1 FROM vault WHERE user_id = $2)))
-     RETURNING id, label, site, masked, key_id, position, created_at, updated_at`,
+             COALESCE($10, (SELECT COALESCE(max(position), -1) + 1 FROM vault WHERE user_id = $2)), $11)
+     RETURNING id, label, site, masked, key_id, position, created_at, updated_at, bill_account_id`,
     [
       id,
       userId,
@@ -189,6 +213,7 @@ export async function createEntry(userId, { label, site = null, secret, masked =
       authTag,
       ACTIVE_KEY_ID,
       position === null || position === undefined ? null : Number(position),
+      billAccountId || null,
     ],
   );
   return toWire(row);
@@ -217,6 +242,7 @@ export async function updateEntry(userId, id, patch = {}) {
   }
   if (patch.site !== undefined) set("site", patch.site ? String(patch.site).trim() : null);
   if (patch.position !== undefined) set("position", Number(patch.position));
+  if (patch.billAccountId !== undefined) set("bill_account_id", patch.billAccountId || null);
 
   const newSecret =
     patch.secret === undefined || patch.secret === null ? null : String(patch.secret).trim();
@@ -243,7 +269,7 @@ export async function updateEntry(userId, id, patch = {}) {
   const row = await one(
     `UPDATE vault SET ${fields.join(", ")}, updated_at = now()
       WHERE id = $${values.length - 1} AND user_id = $${values.length}
-      RETURNING id, label, site, masked, key_id, position, created_at, updated_at`,
+      RETURNING id, label, site, masked, key_id, position, created_at, updated_at, bill_account_id`,
     values,
   );
   return row ? toWire(row) : null;

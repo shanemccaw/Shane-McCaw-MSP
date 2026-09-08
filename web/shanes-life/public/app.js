@@ -3292,7 +3292,7 @@ function moneyPercentBadge(bill) {
  *  Git #3207: a bill with real months of unpaid arrears gets the same rotated -5deg red sticker
  *  the rest of the app already uses for critical (`sticker()`, design #2d: "'Months behind' is
  *  the −5° sticker the rest of the app uses for critical"), next to its name. */
-function moneyBillRow(bill, { showGateBadge = false } = {}) {
+function moneyBillRow(bill, { showGateBadge = false, onOpenDetail = null } = {}) {
   const nameChildren = [el("span", { text: bill.name })];
   if (showGateBadge && bill.isGate) nameChildren.push(el("span", { class: "chip gate", text: "gate" }));
   if (bill.monthsBehind) {
@@ -3308,13 +3308,206 @@ function moneyBillRow(bill, { showGateBadge = false } = {}) {
     statusEl = moneyPercentBadge(bill);
   }
 
-  return el("div", { class: "money-bucket-row" }, [
+  const row = el("div", { class: "money-bucket-row" }, [
     el("div", { class: "money-bucket-name" }, [
       el("div", { class: "row", style: "gap:.4rem" }, nameChildren),
       el("div", { class: "money-bucket-meta", text: moneyBillMeta(bill) }),
     ]),
     statusEl,
   ]);
+  // Git #3212: tapping a real bill row opens the real bottom-sheet detail view -- envelope
+  // breakdown, funding-history sparkline, Vault link. Optional (needs a real `bill.id`).
+  if (onOpenDetail && bill.id) {
+    row.style.cursor = "pointer";
+    row.addEventListener("click", () => onOpenDetail(bill.id));
+  }
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// Bill detail sheet (Git #3212, design `Shanes Life 17 - Money v3.dc.html` option 1e)
+// ---------------------------------------------------------------------------
+//
+// Resolved on #3209: the rolled-over/this-cycle envelope split is a real, lightweight COMPUTED
+// VIEW over two real Plaid balances (money.mjs's own header on getBillDetail has the full real
+// arithmetic) -- never a separate assigned/envelopeBalance shadow ledger. One real read,
+// GET /api/money/bills/:id, no client-side math beyond formatting.
+
+/** The funding-history sparkline -- same real visual language as `debtPayoffSparklineHtml`
+ *  (Git #3210): a real polyline over real `bill_cycle_snapshots` points, honestly just a dot
+ *  when only one real cycle has been captured so far. Wider than the debt one (this is the only
+ *  chart on the sheet, not an inline row accessory) and labeled with the real first/last cycle
+ *  dates underneath, same as the design's "Jun 12 ... Sep 18" caption -- no scrub interaction
+ *  (the design's "drag to scrub" is real polish for a later pass, not required to show real data
+ *  honestly today). */
+function billSparklineHtml(sparkline) {
+  const W = 338, H = 64, PAD_Y = 8;
+  if (!sparkline || sparkline.length === 0) return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"></svg>`;
+
+  const balances = sparkline.map((p) => Number(p.balance));
+  const min = Math.min(0, ...balances);
+  const max = Math.max(...balances, 1);
+  const range = max - min || 1;
+  const n = balances.length;
+
+  const coords = balances.map((balance, i) => {
+    const x = n === 1 ? W - 1 : 1 + (i / (n - 1)) * (W - 2);
+    const y = PAD_Y + (1 - (balance - min) / range) * (H - PAD_Y * 2);
+    return [x, y];
+  });
+  const [lastX, lastY] = coords[coords.length - 1];
+  const polyline =
+    n > 1
+      ? `<polyline fill="none" stroke="#60a5fa" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")}"></polyline>`
+      : "";
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;width:100%;height:${H}px">${polyline}<circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="3" fill="#60a5fa"></circle></svg>`;
+}
+
+/**
+ * The real bottom-sheet bill detail view (Git #3212): balance vs. target, the real gate/%-funded
+ * badges already established elsewhere in Money, the real rolled-over/this-cycle envelope
+ * breakdown, the real funding-history sparkline, and the real "Payment reference in Vault ->"
+ * link when one exists. Opened by tapping any bill row in Bills or Accounts.
+ */
+async function openBillDetailSheet(billId) {
+  const dialog = el("dialog", { class: "sheet" });
+  dialog.append(el("p", { class: "small muted", text: "Loading…" }));
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+
+  let d;
+  try {
+    d = await api(`/api/money/bills/${encodeURIComponent(billId)}`);
+  } catch (err) {
+    dialog.replaceChildren(
+      el("div", { class: "spread" }, [
+        el("span", { class: "sheet-title", text: "Bill" }),
+        el("button", { class: "ghost small", text: "Close", onClick: () => dialog.close() }),
+      ]),
+      el("p", { class: "small", style: "margin-top:.75rem", text: err?.message || "Could not load that bill." }),
+    );
+    return;
+  }
+
+  const nameChildren = [el("span", { style: "font-size:20px;font-weight:800;letter-spacing:-.01em", text: d.name })];
+  if (d.isGate) nameChildren.push(el("span", { class: "chip gate", text: "gate" }));
+  if (d.monthsBehind) nameChildren.push(sticker("red", `${d.monthsBehind} month${d.monthsBehind === 1 ? "" : "s"} behind`));
+
+  const head = el("div", { class: "row", style: "justify-content:space-between;align-items:flex-start;gap:12px" }, [
+    el("div", { style: "min-width:0" }, [
+      el("div", { class: "row", style: "gap:.5rem;align-items:center;flex-wrap:wrap" }, nameChildren),
+      el("div", { class: "small muted", style: "margin-top:3px", text: d.autoPaysLine }),
+    ]),
+    d.target !== null && !d.warning ? moneyPercentBadge(d) : null,
+  ]);
+
+  const bigBalance = el("div", { style: "display:flex;align-items:baseline;gap:10px;margin-top:14px;flex-wrap:wrap" }, [
+    el("span", { style: "font-size:32px;font-weight:800;letter-spacing:-.02em", text: dollars(d.balance) }),
+    el("span", {
+      class: "small muted",
+      text: d.target === null ? "no target set yet" : `in the envelope · target ${dollars(d.target)}`,
+    }),
+  ]);
+
+  const breakdownRows = [];
+  if (d.envelope.hasCycleSnapshot) {
+    breakdownRows.push(["Rolled over from last cycle", dollars(d.envelope.rolledOver)]);
+    breakdownRows.push(["This cycle's contribution", dollars(d.envelope.thisCycleContribution)]);
+  }
+  if (d.target !== null) {
+    breakdownRows.push(d.funded ? ["Funded", dollars(0)] : ["Short of target", dollars(d.shortfall)]);
+  }
+  const breakdown =
+    breakdownRows.length > 0
+      ? el(
+          "div",
+          { class: "bill-sheet-breakdown" },
+          breakdownRows.map(([label, value], i) =>
+            el("div", { class: "bill-sheet-breakdown-row", style: i > 0 ? "border-top:1px solid hsl(var(--card-border) / .6)" : "" }, [
+              el("span", { style: "flex:1", text: label }),
+              el("span", { style: "font-weight:600", text: value }),
+            ]),
+          ),
+        )
+      : null;
+
+  const cycleNote = el("p", {
+    class: "small muted",
+    style: "margin-top:10px",
+    text: d.envelope.hasCycleSnapshot
+      ? "Reassigning applies a delta, never an overwrite: a cycle reset leaves the rolled-over amount alone."
+      : "Still building real cycle history for this bill -- the rolled-over/this-cycle split appears once a real cycle boundary has been captured.",
+  });
+
+  const sparklineSection = el("div", { style: "margin-top:14px" }, [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline;gap:8px" }, [
+      el("span", {
+        class: "small muted",
+        style: "text-transform:uppercase;letter-spacing:.1em;font-weight:600;font-size:.68rem",
+        text: `Funded at each payday · ${d.sparkline.length} real cycle${d.sparkline.length === 1 ? "" : "s"}`,
+      }),
+    ]),
+    el("span", { style: "display:block;margin-top:6px", html: billSparklineHtml(d.sparkline) }),
+    d.sparkline.length > 0
+      ? el("div", { class: "row", style: "justify-content:space-between", "aria-hidden": "true" }, [
+          el("span", { class: "small muted", text: d.sparkline[0].label }),
+          el("span", { class: "small muted", text: d.sparkline[d.sparkline.length - 1].label }),
+        ])
+      : el("p", { class: "small muted", text: "No real cycle history captured yet." }),
+  ]);
+
+  const vaultLinkEl = d.vaultEntry
+    ? el(
+        "button",
+        {
+          type: "button",
+          class: "bill-sheet-vault-link",
+          onClick: () => {
+            dialog.close();
+            moneyTab = "vault";
+            render();
+          },
+        },
+        [
+          lineIcon('<rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>', { size: 14, strokeWidth: 2 }),
+          el("span", { text: "Payment reference in Vault" }),
+          el("span", { style: "margin-left:auto", text: "→" }),
+        ],
+      )
+    : el("p", { class: "small muted", style: "margin-top:10px", text: "No Vault entry linked to this bill yet." });
+
+  const previewBtn = el("button", {
+    type: "button",
+    class: "ghost small",
+    style: "margin-top:14px",
+    text: "Preview a hypothetical target →",
+    onClick: () => {
+      dialog.close();
+      openEditBalanceSheet({
+        id: d.id,
+        name: d.name,
+        targetFormatted: d.target === null ? null : dollars(d.target),
+        balanceFormatted: dollars(d.balance),
+      });
+    },
+  });
+
+  dialog.replaceChildren(
+    el("div", { class: "spread" }, [
+      el("span", { class: "sheet-title", text: "Bill" }),
+      el("button", { class: "ghost small", text: "Close", onClick: () => dialog.close() }),
+    ]),
+    el("div", { class: "sheet-body" }, [
+      head,
+      bigBalance,
+      breakdown,
+      cycleNote,
+      sparklineSection,
+      vaultLinkEl,
+      previewBtn,
+    ]),
+  );
 }
 
 /** One real one-time pending event -- +$6,000 roof reimbursement, -$2,500 deductible -- shown
@@ -3520,6 +3713,9 @@ function vaultRow(entry, { onReveal, onCopy }) {
       el("div", { class: "vault-row-name" }, [
         el("div", { class: "vault-row-label", text: entry.label }),
         entry.site ? el("div", { class: "vault-row-site", text: `pay at ${entry.site}` }) : null,
+        // Git #3212: the other half of the bill sheet's "Payment reference in Vault ->" link --
+        // real, so an entry already linked to a bill account says so here too.
+        entry.billAccountName ? el("div", { class: "vault-row-site", text: `for ${entry.billAccountName}` }) : null,
       ]),
       revealBtn,
     ]),
@@ -3603,7 +3799,10 @@ function vaultRow(entry, { onReveal, onCopy }) {
 }
 
 async function viewMoneyVault(view) {
-  const { entries, keyConfigured, clipboardClearSeconds } = await api("/api/vault");
+  const [{ entries, keyConfigured, clipboardClearSeconds }, gate] = await Promise.all([
+    api("/api/vault"),
+    api("/api/money/gate"),
+  ]);
 
   view.append(
     el("div", { class: "vault-lock-note" }, [
@@ -3692,10 +3891,22 @@ async function viewMoneyVault(view) {
   const siteInput = el("input", { placeholder: "mrcooper.com", "aria-label": "Site to pay at" });
   const secretInput = el("input", { type: "password", autocomplete: "off", placeholder: "Account number", "aria-label": "The account number", required: true });
   const maskedInput = el("input", { placeholder: "NFCU checking •••• 4821 (optional)", "aria-label": "Masked reference shown by default" });
+  // Git #3212: the other half of the bill sheet's real "Payment reference in Vault ->" link --
+  // a real bill account this entry is the payment reference for, so the jump has somewhere real
+  // to land. Optional: most vault entries (a login, a PIN) are for nothing bill-specific.
+  const billSelect = el(
+    "select",
+    { "aria-label": "Which bill this is the payment reference for (optional)" },
+    [
+      el("option", { value: "", text: "Not a bill payment reference" }),
+      ...gate.bills.map((b) => el("option", { value: b.id, text: b.name })),
+    ],
+  );
   const addError = el("p", { class: "vault-row-error", hidden: true });
   const addForm = el("form", { class: "section" }, [
     el("div", { class: "row" }, [labelInput, siteInput]),
     el("div", { class: "row" }, [secretInput, maskedInput]),
+    el("div", { class: "row" }, [billSelect]),
     el("button", { type: "submit", class: "ghost small", text: "Add to the vault" }),
     addError,
   ]);
@@ -3703,7 +3914,7 @@ async function viewMoneyVault(view) {
     event.preventDefault();
     if (!labelInput.value.trim() || !secretInput.value.trim()) return;
     addError.hidden = true;
-    addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    addForm.querySelectorAll("input,button,select").forEach((n) => (n.disabled = true));
     try {
       await api("/api/vault", {
         method: "POST",
@@ -3712,6 +3923,7 @@ async function viewMoneyVault(view) {
           site: siteInput.value,
           secret: secretInput.value,
           masked: maskedInput.value,
+          billAccountId: billSelect.value || null,
         }),
       });
       secretInput.value = "";
@@ -3719,7 +3931,7 @@ async function viewMoneyVault(view) {
     } catch (err) {
       addError.textContent = err?.message || "That didn't save.";
       addError.hidden = false;
-      addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+      addForm.querySelectorAll("input,button,select").forEach((n) => (n.disabled = false));
     }
   });
   view.append(el("div", { class: "card" }, [el("h3", { class: "vault-add-title", text: "Add a reference" }), addForm]));
@@ -3773,7 +3985,9 @@ async function viewMoneyBills(view) {
   if (gate.bills.length === 0) {
     billsCard.append(el("p", { class: "muted small", style: "padding:0 1rem .7rem", text: "No bill-role accounts assigned yet in ShanesSurvival." }));
   } else {
-    for (const bill of gate.bills) billsCard.append(moneyBillRow(bill, { showGateBadge: true }));
+    for (const bill of gate.bills) {
+      billsCard.append(moneyBillRow(bill, { showGateBadge: true, onOpenDetail: openBillDetailSheet }));
+    }
   }
   view.append(billsCard);
 
@@ -3972,9 +4186,12 @@ async function viewMoneyAccounts(view) {
     ]);
     for (const account of section.accounts) {
       const row = accountRow(account);
+      // Git #3212: a bill row's real tap target is now the detail sheet (envelope breakdown,
+      // funding history, Vault link) -- openEditBalanceSheet's hypothetical-target preview is
+      // still real and reachable, now as a link inside that sheet, not the row's own tap.
       if (section.role === "bill") {
         row.style.cursor = "pointer";
-        row.addEventListener("click", () => openEditBalanceSheet(account));
+        row.addEventListener("click", () => openBillDetailSheet(account.id));
       }
       sectionCard.append(row);
     }
