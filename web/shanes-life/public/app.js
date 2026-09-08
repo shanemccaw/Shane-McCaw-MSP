@@ -398,6 +398,19 @@ function when(iso) {
   return d.toLocaleDateString([], { month: "short", day: "numeric" }) + ` ${time}`;
 }
 
+// "last 8 minutes ago" -- the real, clever usage signal design screen v4-settings-claude-widget
+// wants for the widget's own render count: minute/hour granularity close in, falling back to
+// when() once it's far enough out that minutes stop being a useful unit.
+function agoShort(iso) {
+  if (!iso) return null;
+  const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? "" : "s"} ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? "" : "s"} ago`;
+  return when(iso);
+}
+
 // ---------------------------------------------------------------------------
 // Today v3 -- the cute skin, sky and real weather (Git #3144, "Round 2 rebuild").
 //
@@ -6002,6 +6015,10 @@ async function viewSettings(view) {
       el("div", { class: "card" }, [
         el("div", { class: "title", text: state.user.name }),
         el("div", { class: "meta", text: state.user.email }),
+        // No password column exists anywhere in this schema (migration 013's own design
+        // choice) -- sign-in is always a real WebAuthn assertion, so this is a real statement
+        // of fact, not marketing copy.
+        el("div", { class: "meta", style: "margin-top:.25rem", text: "Signed in with a passkey. No password exists for this account." }),
         el("div", { class: "row", style: "margin-top:.75rem" }, [
           el("button", {
             class: "small danger",
@@ -6171,7 +6188,14 @@ async function viewSettings(view) {
         el("div", { class: "spread" }, [
           el("div", {}, [
             el("div", { class: "title", text: token.label }),
-            el("div", { class: "meta", text: token.last_used_at ? `last loaded ${when(token.last_used_at)}` : "never loaded" }),
+            el("div", {
+              class: "meta",
+              // Screenshot count IS how often the widget app has actually rendered the page
+              // (Git #3214) -- a real, live usage signal, not just "a link was minted once".
+              text: token.last_used_at
+                ? `${token.screenshot_count} screenshot${token.screenshot_count === 1 ? "" : "s"} · last ${agoShort(token.last_used_at)}`
+                : "never loaded",
+            }),
           ]),
           el("button", {
             class: "ghost small danger",
@@ -6219,23 +6243,47 @@ async function viewSettings(view) {
       widgetIssued,
     ]),
   );
+  widget.append(
+    el("div", { class: "row" }, [
+      el("a", { class: "small", href: "/api/widget-preview", target: "_blank", rel: "noopener", text: "Preview the widget page →" }),
+    ]),
+  );
   view.append(widget);
 
   const { activity } = await api("/api/activity?limit=25");
-  const log = el("section", { class: "section" }, [el("h2", { text: "Recent activity" })]);
+  const log = el("section", { class: "section" }, [
+    el("h2", { text: "Recent activity" }),
+    el("p", { class: "muted small", text: "A real, transparent log of what Claude wrote -- every tool call, under its own client's label." }),
+  ]);
   if (activity.length === 0) {
     log.append(el("p", { class: "muted small", text: "Nothing written yet." }));
   } else {
     for (const row of activity) {
       log.append(
         el("div", { class: "tile" }, [
-          el("div", { class: "title small", text: row.action }),
-          el("div", { class: "meta", text: `${row.actor}${row.actor_label ? ` (${row.actor_label})` : ""} · ${new Date(row.at).toLocaleString()}` }),
+          el("div", { class: "meta small", text: new Date(row.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) }),
+          el("div", { class: "title small", text: activitySummary(row) }),
         ]),
       );
     }
   }
   view.append(log);
+}
+
+// The real, per-client tool-call summary Recent activity shows (Git #3214: "Claude Desktop ·
+// set_medication · Vitamin D3, morning, auto-refill"). detail.tool is the real MCP tool name a
+// Claude conversation invoked -- see core/audit.mjs -- and falls back to the plain `web`/`widget`
+// action string for non-MCP actors, which never carry a tool name. Whatever else is in `detail`
+// (real values a handler actually recorded, never invented) joins in as the trailing summary.
+function activitySummary(row) {
+  const who = row.actor_label || (row.actor === "web" ? "You" : row.actor === "widget" ? "Widget" : row.actor);
+  const tool = row.detail?.tool || row.action;
+  const rest = Object.entries(row.detail || {})
+    .filter(([k, v]) => k !== "tool" && v !== null && v !== undefined && typeof v !== "object")
+    .map(([, v]) => String(v));
+  const bits = [who, tool];
+  if (rest.length > 0) bits.push(rest.join(", "));
+  return bits.join(" · ");
 }
 
 // ---------------------------------------------------------------------------

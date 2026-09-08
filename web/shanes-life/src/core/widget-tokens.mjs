@@ -34,7 +34,11 @@ export async function resolveWidgetToken(token) {
     [fingerprint(token)],
   );
   if (!row || !row.is_active) return null;
-  await query("UPDATE widget_tokens SET last_used_at = now() WHERE id = $1", [row.id]);
+  // Real usage signal (Git #3214): every render of /widget/t/:token IS a real screenshot from
+  // the third-party widget app's own timer/manual-refresh loop -- so counting these calls
+  // answers exactly the question 046_widget_tokens.sql originally said it couldn't: "is this
+  // widget actually alive and rendering, or was the link minted once and never loaded again."
+  await query("UPDATE widget_tokens SET last_used_at = now(), screenshot_count = screenshot_count + 1 WHERE id = $1", [row.id]);
   return {
     tokenId: row.id,
     label: row.label,
@@ -44,7 +48,7 @@ export async function resolveWidgetToken(token) {
 
 export async function listWidgetTokens(userId) {
   return many(
-    `SELECT id, label, created_at, last_used_at, revoked_at
+    `SELECT id, label, created_at, last_used_at, revoked_at, screenshot_count
        FROM widget_tokens WHERE user_id = $1 ORDER BY created_at DESC`,
     [userId],
   );

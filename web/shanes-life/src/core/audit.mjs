@@ -3,12 +3,19 @@
 // "where did this row come from" always has an answer.
 
 import { query } from "../db.mjs";
+import { currentToolName } from "../mcp/tool-context.mjs";
 
 export async function record({ userId, actor, actorLabel = null, action, entityId = null, detail = {} }) {
+  // The real MCP tool name a Claude conversation actually called (e.g. "set_medication"), read
+  // back automatically from protocol.mjs's dispatch context (Git #3214) -- Recent activity's own
+  // "what Claude wrote" transparency reads this, not the internal `action` string, which is a
+  // different, older vocabulary. Never overwrites a `detail.tool` a caller set explicitly.
+  const tool = actor === "mcp" ? currentToolName() : null;
+  const enrichedDetail = tool && detail && detail.tool === undefined ? { tool, ...detail } : detail;
   await query(
     `INSERT INTO activity_log (user_id, actor, actor_label, action, entity_id, detail)
      VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
-    [userId ?? null, actor, actorLabel, action, entityId, JSON.stringify(detail ?? {})],
+    [userId ?? null, actor, actorLabel, action, entityId, JSON.stringify(enrichedDetail ?? {})],
   );
 }
 

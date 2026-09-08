@@ -8,6 +8,7 @@
 // tools stream.
 
 import { TOOLS_BY_NAME, toolManifest } from "./tools.mjs";
+import { runWithToolName } from "./tool-context.mjs";
 
 export const SERVER_INFO = { name: "shanes-life", title: "Shane's Life", version: "0.1.0" };
 
@@ -88,7 +89,7 @@ async function handleMessage(msg, ctx) {
       if (!tool) return fail(id, INVALID_PARAMS, `Unknown tool: ${name}`);
       const args = params?.arguments && typeof params.arguments === "object" ? params.arguments : {};
       try {
-        const result = await tool.handler(args, ctx);
+        const result = await runWithToolName(name, () => tool.handler(args, ctx));
         const text = JSON.stringify(result, null, 2);
         return ok(id, {
           content: [{ type: "text", text }],

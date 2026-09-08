@@ -1,7 +1,7 @@
 // The signed-in JSON API the web app itself talks to.
 
 import { config } from "../config.mjs";
-import { HttpError, Router, badRequest, forbidden, notFound, readJson, readBody, sendJson, tooMany, unauthorized } from "../http.mjs";
+import { HttpError, Router, badRequest, forbidden, notFound, readJson, readBody, sendJson, sendText, tooMany, unauthorized } from "../http.mjs";
 import * as ratelimit from "../auth/ratelimit.mjs";
 import { SESSION_COOKIE, createSession, markSessionVerified, revokeAllSessions, revokeSession } from "../auth/sessions.mjs";
 import { markSignedIn, recordAuthEvent } from "../core/users.mjs";
@@ -22,6 +22,7 @@ import * as incomeRules from "../core/income-rules.mjs";
 import * as money from "../core/money.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as widgetTokens from "../core/widget-tokens.mjs";
+import { computeNextCard, renderWidgetPage } from "../core/widget.mjs";
 import * as medications from "../core/medications.mjs";
 import * as nudges from "../core/nudges.mjs";
 import * as people from "../core/people.mjs";
@@ -2330,6 +2331,16 @@ export function buildApiRouter() {
     await widgetTokens.revokeWidgetToken(user.id, params.id);
     await audit.record({ userId: user.id, actor: "web", action: "widget_token.revoke", detail: { tokenId: params.id } });
     return sendJson(res, 200, { ok: true });
+  });
+
+  // "Preview the widget page ->" (Git #3214) -- the exact same real HTML /widget/t/:token
+  // renders, but reached through the normal signed-in session instead of a widget token, so
+  // Settings can offer a real "see what the widget shows right now" link without minting or
+  // spending a token call on it.
+  router.get("/api/widget-preview", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const data = await computeNextCard(user.id);
+    return sendText(res, 200, renderWidgetPage({ data, justDone: false }), "text/html; charset=utf-8");
   });
 
   // -- push subscriptions + real act-on-notification (Git #3160) ---------
