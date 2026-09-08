@@ -820,14 +820,11 @@ export function buildApiRouter() {
   });
 
   // Saves the real typed price, links the barcode for next time, and checks the item off --
-  // "Saving also checks the item off" per the design copy.
-  //
-  // Note (filed as a finding, Git #3112): this saves only onto list_items.price_cents /
-  // barcode_links.last_price_cents -- a single scalar, not the real per-store/per-date history
-  // #3112 built (`item_prices`, below). The design's own "Why" note on this exact screen says
-  // "Prices are stored per store and per date" for the scan flow too; scan.mjs does not do that
-  // yet. Not fixed here -- rewiring another already-shipped Feature's write path is out of this
-  // issue's own scope.
+  // "Saving also checks the item off" per the design copy. Also feeds the real per-store price
+  // history (Git #3122, fixing the #3109/#3112 gap this route's own prior note described) --
+  // scan.saveScan() itself infers the store from the run's existing `lists.store` (#3108,
+  // "Which store?" above the list) rather than asking again here, per the design's own "Shane
+  // only types the price" copy for this screen.
   router.post("/api/lists/:id/scan/save", async (req, res, params, ctx) => {
     const user = requireUser(ctx);
     const body = await readJson(req);

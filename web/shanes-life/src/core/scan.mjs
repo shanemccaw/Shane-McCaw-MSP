@@ -16,6 +16,7 @@
 import { many, one, query, transaction } from "../db.mjs";
 import { badRequest, notFound } from "../http.mjs";
 import { getOwnedList, getListDetail } from "./lists.mjs";
+import { recordPrice } from "./prices.mjs";
 
 const OFF_TIMEOUT_MS = 6000;
 const STOPWORDS = new Set(["the", "and", "with", "for", "from", "your", "this", "that"]);
@@ -134,6 +135,16 @@ export async function lookupBarcode(userId, listId, rawBarcode) {
  * onto the run item, and check it off -- "Saving also checks the item off" per the design copy.
  * Exactly one of itemId (link to an existing open item) or text (a brand-new item, "Not on the
  * list? Add it") is required.
+ *
+ * Also feeds the real per-store price history (Git #3112's `item_prices`/`stores`) -- filed as
+ * Git #3122 because this write path (#3109) shipped before #3112's tables existed. The design's
+ * own copy for this exact screen ("Shane only types the price") settles the product question the
+ * finding raised: scan does NOT ask for a store of its own. It reuses the run's existing "Which
+ * store?" field (#3108, `lists.store`) the Shopping screen already asks for above the list --
+ * the same real answer Best-path ordering and aisle memory already key off. If that run has no
+ * store set yet, the scalar write below still happens (unchanged, honest degrade) but there is
+ * no store to attribute a history row to, so none is written -- same as #3112's own "Log price"
+ * form, which also requires a store before it will record anything.
  */
 export async function saveScan(userId, listId, { barcode: rawBarcode, itemId, text, priceCents }) {
   const list = await getOwnedList(userId, listId);
@@ -195,6 +206,18 @@ export async function saveScan(userId, listId, { barcode: rawBarcode, itemId, te
 
     return row;
   });
+
+  // The real per-store history write (Git #3122) -- outside the transaction above, same as
+  // #3112's own POST /api/prices route calls recordPrice() standalone: item_prices/stores live
+  // behind prices.mjs's own pool-level queries, not the `client` this transaction holds.
+  if (list.store) {
+    await recordPrice(userId, {
+      storeName: list.store,
+      itemText: resolvedItem.text,
+      priceCents,
+      source: "scan",
+    });
+  }
 
   return { item: resolvedItem, list: await getListDetail(userId, listId) };
 }
