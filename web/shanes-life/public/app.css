@@ -920,16 +920,18 @@ pre.token {
 @keyframes czRain { 0% { transform: translateY(0); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(6px); opacity: 0; } }
 @keyframes czFlash { 0%, 86%, 100% { opacity: 0; } 88% { opacity: 1; } 91% { opacity: .15; } 93% { opacity: .9; } 96% { opacity: 0; } }
 
-/* The framed sky/weather/meta/fox region at the top of Today. The design draws this edge-to-edge
-   behind a phone-frame status bar; this app keeps its existing card-based shell chrome instead of
-   breaking out of it, so the scene is one real rounded card-like region rather than a fixed
-   320px absolute zone. */
+/* The framed sky/weather/meta/fox region at the top of Today. Git #3252: this is real,
+   genuine edge-to-edge chrome per the design (Shanes Life 02 - Today tray.dc.html's own
+   top-of-device gradient layer, full device width, starting at y:0 behind the status bar) --
+   NOT the bounded rounded card #3144 shipped as a compromise. .today-scene breaks out of
+   .view's own 16px side padding and its no-header top padding (both app.css above) with
+   matching negative margins so the sky/weather backdrop reaches the true top and both true
+   side edges of the screen; only .today-scene-content stays inset, reclaiming that same
+   safe-area top allowance for itself since .view no longer supplies it here. */
 .today-scene {
   position: relative;
   overflow: hidden;
-  border-radius: 22px;
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--card-border));
+  margin: calc(-1 * max(0.9rem, env(safe-area-inset-top))) -16px 0;
 }
 .today-sky, .today-night, .today-wx-sky {
   position: absolute;
@@ -939,7 +941,7 @@ pre.token {
 .today-scene-content {
   position: relative;
   z-index: 2;
-  padding: 16px 16px 18px;
+  padding: max(0.9rem, env(safe-area-inset-top)) 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 12px;
