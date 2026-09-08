@@ -529,6 +529,23 @@ export function buildApiRouter() {
     return sendJson(res, 200, await attachOrder(user, detail, ctx.url));
   });
 
+  // The Lists room (#3155): every real list except the Shopping singleton -- Watch, Books, and
+  // anything Claude files on the fly via `push_list`'s generic `category` path (Section 3, "real
+  // simple lists").
+  router.get("/api/lists", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { lists: await lists.listListsForUser(user.id) });
+  });
+
+  // Shane naming a list directly from the Lists room ("New list") -- the same real
+  // find-or-create `push_list` uses, just reached from the UI instead of MCP.
+  router.post("/api/lists", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const list = await lists.getOrCreateListByName(user.id, { name: body.name, category: body.category });
+    return sendJson(res, 201, await lists.getListDetail(user.id, list.id));
+  });
+
   router.get("/api/lists/:id", async (_req, res, params, ctx) => {
     const user = requireUser(ctx);
     const detail = await lists.getListDetail(user.id, params.id);

@@ -958,6 +958,125 @@ async function viewThings(view) {
   attachRoomWatermark(view, "things");
 }
 
+// Lists (Git #3155) -- the real, deliberately light-touch case Section 3 calls out: movies/shows
+// to watch, recommended books, and anything else Claude files on the fly via `push_list`'s
+// generic `category` path. Same real typed shape as Shopping (core/lists.mjs), just every list
+// except the Shopping singleton, which keeps its own dedicated room. No bespoke design needed
+// per the contract pack -- one simple check-circle row per item, same as the design's own
+// "sensible list treatment" line.
+function listItemRow(listId, item) {
+  const box = el("input", { type: "checkbox", ...(item.done ? { checked: true } : {}), "aria-label": item.text });
+  const label = el("span", { class: item.done ? "done" : "", text: item.text });
+  box.addEventListener("change", async () => {
+    box.disabled = true;
+    try {
+      const updated = await api(`/api/lists/${listId}/items/${item.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ checked: box.checked }),
+      });
+      label.className = updated.done ? "done" : "";
+    } finally {
+      box.disabled = false;
+    }
+  });
+  const remove = el("button", {
+    class: "ghost small danger",
+    text: "Remove",
+    onClick: async (event) => {
+      event.currentTarget.disabled = true;
+      await api(`/api/lists/${listId}/items/${item.id}`, { method: "DELETE" });
+      render();
+    },
+  });
+  return el("li", { class: "shopping-row" }, [
+    el("div", { class: "row" }, [
+      box,
+      el("div", { style: "flex:1" }, [label, item.note ? el("span", { class: "who", text: item.note }) : null]),
+      remove,
+    ]),
+  ]);
+}
+
+function listCard(list) {
+  const header = el("div", { class: "row", style: "align-items:baseline" }, [
+    el("h3", { text: list.name }),
+    // Same "New category" signal Dates already surfaces for an on-the-fly kind (line ~2716) --
+    // here it's `created_by`, since a list Claude minted on the fly is the on-the-fly case.
+    list.created_by === "claude" ? el("span", { class: "chip", text: "New category" }) : null,
+    el("span", { class: "meta", text: `${list.category_label || list.category || "List"} · ${list.done_count}/${list.item_count} done` }),
+  ]);
+
+  const ul = el("ul", { class: "checklist" });
+  const addInput = el("input", { placeholder: `Add ${list.category_item_noun || "item"}`, "aria-label": `Add to ${list.name}` });
+  const addForm = el(
+    "form",
+    {
+      class: "row",
+      onSubmit: async (event) => {
+        event.preventDefault();
+        const text = addInput.value.trim();
+        if (!text) return;
+        addInput.value = "";
+        await api(`/api/lists/${list.id}/items`, { method: "POST", body: JSON.stringify({ items: [{ text }] }) });
+        render();
+      },
+    },
+    [addInput, el("button", { class: "primary small", type: "submit", text: "Add" })],
+  );
+
+  const card = el("div", { class: "card" }, [header, ul, addForm]);
+  api(`/api/lists/${list.id}`)
+    .then((detail) => {
+      ul.replaceChildren();
+      if (detail.items.length === 0) ul.append(el("li", { class: "muted small", text: "Nothing on this list yet." }));
+      else for (const item of detail.items) ul.append(listItemRow(list.id, item));
+    })
+    .catch(() => {
+      ul.replaceChildren(el("li", { class: "error small", text: "Couldn't load items." }));
+    });
+  return card;
+}
+
+async function viewLists(view) {
+  const { lists } = await api("/api/lists");
+
+  const newName = el("input", { placeholder: "New list, e.g. Watch or Books", "aria-label": "New list name" });
+  const newForm = el(
+    "form",
+    {
+      class: "row",
+      onSubmit: async (event) => {
+        event.preventDefault();
+        const name = newName.value.trim();
+        if (!name) return;
+        newName.value = "";
+        await api("/api/lists", { method: "POST", body: JSON.stringify({ name }) });
+        render();
+      },
+    },
+    [newName, el("button", { class: "primary small", type: "submit", text: "New list" })],
+  );
+  view.append(el("section", { class: "section" }, [el("h2", { text: "Lists" }), newForm]));
+
+  if (lists.length === 0) {
+    view.append(
+      empty(
+        "No lists yet.",
+        "Say \"watch The Bear\" or \"read Project Hail Mary\" and Claude files it here -- or start one yourself above.",
+        "notfound",
+      ),
+    );
+  } else {
+    const section = el("section", { class: "section" });
+    for (const list of lists) section.append(listCard(list));
+    view.append(section);
+  }
+
+  // Room watermark (Git #3119): "lists" (1j) is the critter slot the spec already carries for
+  // this room.
+  attachRoomWatermark(view, "lists");
+}
+
 // Recipes -- core list + ingredient matching (Git #3124). Cook mode, Tonight, and the Sunday
 // ritual are each separate, real sibling Features; this screen only lists, matches against the
 // real Shopping run, and lets Shane add what's missing or archive a recipe he doesn't want kept.
@@ -3154,7 +3273,7 @@ async function viewPetDetail(view, petId) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", inbox: "Inbox", dates: "Dates", pets: "Pets", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", tonight: "Tonight" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", tonight: "Tonight" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -3194,6 +3313,7 @@ async function render() {
     else if (state.route === "date") await viewDateDetail(view, state.dateId);
     else if (state.route === "pets") await viewPets(view);
     else if (state.route === "pet") await viewPetDetail(view, state.petId);
+    else if (state.route === "lists") await viewLists(view);
     else if (state.route === "things") await viewThings(view);
     else if (state.route === "settings") await viewSettings(view);
     else if (state.route === "entity") await viewEntity(view, state.entity);

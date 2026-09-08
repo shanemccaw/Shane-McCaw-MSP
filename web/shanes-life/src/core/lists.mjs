@@ -109,6 +109,31 @@ export async function getOrCreateShoppingList(userId) {
 }
 
 /**
+ * Every real list except the Shopping singleton -- the Lists room (#3155, Section 3's "real
+ * simple lists": Watch, Books, and anything else Claude files on the fly via `push_list`'s
+ * generic `category` path). Shopping stays off-screen here; it already has its own full room.
+ * Grouped by category so the UI can render one card per real category (icon/label/color come
+ * from the same `categories` row `ensureCategory` wrote when the list was created), with a real
+ * done/total count per list so a room can show progress without a second round-trip.
+ */
+export async function listListsForUser(userId) {
+  return many(
+    `SELECT l.id, l.name, l.category, l.created_by, l.created_at, l.updated_at,
+            c.label AS category_label, c.icon AS category_icon, c.color AS category_color,
+            c.item_noun AS category_item_noun, c.created_by AS category_created_by,
+            COUNT(li.id)::int AS item_count,
+            COUNT(li.id) FILTER (WHERE li.done)::int AS done_count
+       FROM lists l
+       LEFT JOIN categories c ON c.slug = l.category
+       LEFT JOIN list_items li ON li.list_id = l.id
+      WHERE l.user_id = $1 AND l.archived_at IS NULL AND COALESCE(l.category, '') != 'shopping'
+      GROUP BY l.id, c.label, c.icon, c.color, c.item_noun, c.created_by
+      ORDER BY l.created_at ASC`,
+    [userId],
+  );
+}
+
+/**
  * Find-or-create a named, categorised list -- generalises getOrCreateShoppingList to any future
  * room built on this same typed shape. `push_list` (MCP) routes here for anything other than the
  * default 'shopping' category.
