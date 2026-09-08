@@ -90,7 +90,7 @@
 // text it was filed as its own follow-up Feature rather than squeezed in here: #3185.
 
 import { many, one } from "../db.mjs";
-import { badRequest } from "../http.mjs";
+import { badRequest, notFound } from "../http.mjs";
 import * as lists from "./lists.mjs";
 import * as prices from "./prices.mjs";
 
@@ -362,6 +362,208 @@ export async function loadMoneyAccounts() {
     loadRoleAccounts(ROLE_RESERVE),
   ]);
   return { gateAccounts, billAccounts, reserveAccounts };
+}
+
+// ---------------------------------------------------------------------------
+// Accounts view (Git #3170) -- every real account, sectioned by role, with Plaid connection
+// health. Ported from Finance-Tracker's `app/(tabs)/accounts.tsx` (FINANCE_TRACKER_AUDIT.md §1)
+// in shape only: sectioned list + % funded badge + masked last-4 + Plaid-linked badge +
+// "N underfunded" + Total Envelope Balance + Connected Banks. NOT ported: Finance-Tracker's
+// own Plaid Link/exchange flow (this app already has real accounts synced by ShanesSurvival;
+// linking a NEW bank is that app's job, not this UI's) and the bill-envelope ledger (money.mjs's
+// own header above already covers why that model doesn't transfer here).
+//
+// Real, deliberate scope line drawn at "Disconnect"/"Reconnect": this module's own header states
+// plainly that nothing here writes to ShanesSurvival's tables, and #3162 recorded that
+// account/bill mutations are ShanesSurvival's own MCP tools' job, not this module's. A live
+// Plaid item disconnect/reconnect is exactly that kind of mutation (and a real external Plaid
+// API call besides) -- it is #3168's job ("Feature: Plaid webhooks + reconnect/update-mode flow"),
+// the sibling Feature #3170's own issue text says this ties into. So Connected Banks here is a
+// real, honest READ of `plaid_items.health_status`/`last_synced_at` -- same idiom the Cars/Vault/
+// Wins tabs used before they were their own real Features: showing the real reconnect-needed
+// state now, saying plainly that the reconnect action itself isn't wired here yet, rather than
+// faking a button that does nothing.
+
+const ACCOUNT_ROLE_SECTIONS = [
+  { role: ROLE_INCOME_GATE, label: "Income Gate" },
+  { role: ROLE_BILL, label: "Bills" },
+  { role: "reserve", label: "Reserves" },
+  { role: "emergency_fund", label: "Emergency Fund" },
+  { role: "spend", label: "Spending" },
+  { role: null, label: "Uncategorized" },
+];
+
+/** Plaid's own real health values (migration 041) that mean "the real bank connection needs
+ *  Shane's attention" -- everything else (ok, pending_disconnect, revoked, error) either needs
+ *  no action from here or is already past the point a reconnect banner would help. */
+const RECONNECT_NEEDED_HEALTH = new Set(["login_required", "pending_expiration"]);
+
+function accountBalanceStatus({ role, targetCents, balanceCents, shortfallCents }) {
+  if (role !== ROLE_BILL) return null; // % funded / underfunded is a bill concept only.
+  if (targetCents === null || balanceCents === null) return null; // unknown, not short.
+  if (shortfallCents === 0) return "funded";
+  // A gate bill going unfunded is more urgent than a non-gate one -- same red/amber split
+  // already used for Protected vs. Urgent on the Now tab.
+  return "short";
+}
+
+/**
+ * Every real account, sectioned by role, plus Total Envelope Balance and Connected Banks.
+ * One query, one real read -- no separate round trip per section.
+ */
+export async function getAccountsOverview(userId) {
+  const rows = await many(
+    `SELECT a.id, a.name, a.role, a.current_balance, a.target_amount, a.is_gate, a.due_day,
+            a.mask, a.plaid_item_id,
+            pi.institution_name, pi.health_status, pi.last_synced_at
+       FROM accounts a
+       JOIN plaid_items pi ON pi.id = a.plaid_item_id
+      ORDER BY a.name`,
+  );
+
+  const warnings = [];
+  let totalEnvelopeCents = 0;
+  let totalEnvelopeKnown = false;
+
+  const accountsById = new Map();
+  for (const row of rows) {
+    const balanceCents = toCents(row.current_balance);
+    const targetCents = toCents(row.target_amount);
+    const shortfallCents =
+      row.role === ROLE_BILL && targetCents !== null && balanceCents !== null
+        ? Math.max(0, targetCents - balanceCents)
+        : null;
+
+    if (balanceCents === null) {
+      warnings.push(`"${row.name}" has no real balance from Plaid yet -- run a sync.`);
+    } else {
+      totalEnvelopeCents += balanceCents;
+      totalEnvelopeKnown = true;
+    }
+
+    const account = {
+      id: row.id,
+      name: row.name,
+      role: row.role,
+      isGate: Boolean(row.is_gate),
+      dueDay: row.due_day ?? null,
+      balanceCents,
+      balanceFormatted: formatMoney(balanceCents),
+      targetCents,
+      targetFormatted: formatMoney(targetCents),
+      shortfallCents,
+      shortfallFormatted: shortfallCents === null ? null : formatMoney(shortfallCents),
+      funded: shortfallCents === null ? null : shortfallCents === 0,
+      masked: row.mask ? `•••• ${row.mask}` : null,
+      institutionName: row.institution_name,
+      plaidHealthStatus: row.health_status,
+      reconnectRequired: RECONNECT_NEEDED_HEALTH.has(row.health_status),
+      status: null,
+    };
+    account.status = accountBalanceStatus({
+      role: account.role,
+      targetCents: account.targetCents,
+      balanceCents: account.balanceCents,
+      shortfallCents: account.shortfallCents,
+    });
+    accountsById.set(account.id, account);
+  }
+
+  const accounts = [...accountsById.values()];
+
+  const sections = ACCOUNT_ROLE_SECTIONS.map(({ role, label }) => {
+    const sectionAccounts = accounts.filter((a) => a.role === role);
+    if (sectionAccounts.length === 0) return null;
+
+    const funded = sectionAccounts.filter((a) => a.funded === true).length;
+    const underfunded = sectionAccounts.filter((a) => a.funded === false).length;
+    const known = funded + underfunded;
+
+    return {
+      role,
+      label,
+      accounts: sectionAccounts,
+      underfundedCount: underfunded,
+      fundedPercent: known === 0 ? null : Math.round((funded / known) * 100),
+    };
+  }).filter(Boolean);
+
+  // Real per-institution Connected Banks card -- one row per plaid_items row actually in use,
+  // not every plaid_items row ever created (an item with zero remaining accounts is not "connected"
+  // from this screen's point of view).
+  const byInstitution = new Map();
+  for (const row of rows) {
+    if (!byInstitution.has(row.plaid_item_id)) {
+      byInstitution.set(row.plaid_item_id, {
+        id: row.plaid_item_id,
+        institutionName: row.institution_name,
+        healthStatus: row.health_status,
+        lastSyncedAt: row.last_synced_at,
+        reconnectRequired: RECONNECT_NEEDED_HEALTH.has(row.health_status),
+        accountCount: 0,
+      });
+    }
+    byInstitution.get(row.plaid_item_id).accountCount += 1;
+  }
+  const connectedBanks = [...byInstitution.values()].sort((a, b) =>
+    a.institutionName.localeCompare(b.institutionName),
+  );
+
+  return {
+    sections,
+    totalEnvelopeCents: totalEnvelopeKnown ? totalEnvelopeCents : null,
+    totalEnvelopeFormatted: totalEnvelopeKnown ? formatMoney(totalEnvelopeCents) : null,
+    connectedBanks,
+    warnings,
+  };
+}
+
+/**
+ * A pure, real-time preview of what a NEW target amount would mean for one bill account --
+ * "short by $X, needs funds from [the Income Gate]" -- computed the instant Shane types a
+ * number, same idiom as whatIf()/simulateTransfer(). This NEVER writes `target_amount`:
+ * per this module's own header, account/bill mutations are ShanesSurvival's own MCP tools' job
+ * (`FinanceTools.cs`), not this one's. The real save action, when Shane wants one, goes through
+ * that tool, not this endpoint -- this is the live warning the design asks for, not the write.
+ */
+export async function previewAccountTarget(accountId, hypotheticalTargetDollars) {
+  const hypotheticalCents = parseAmountCents(hypotheticalTargetDollars, "target");
+  const account = await one(
+    `SELECT id, name, role, current_balance FROM accounts WHERE id = $1`,
+    [accountId],
+  );
+  if (!account) throw badRequest("No account with that id.");
+  if (account.role !== ROLE_BILL) {
+    throw badRequest(`"${account.name}" is not a bill account -- it has no funding target.`);
+  }
+
+  const balanceCents = toCents(account.current_balance);
+  if (balanceCents === null) {
+    return {
+      accountId,
+      accountName: account.name,
+      answerable: false,
+      text: `"${account.name}" has no real balance from Plaid yet -- run a sync.`,
+    };
+  }
+
+  const shortfallCents = Math.max(0, hypotheticalCents - balanceCents);
+  const gateAccounts = await loadRoleAccounts(ROLE_INCOME_GATE);
+  const gateName = gateAccounts[0]?.name ?? null;
+
+  return {
+    accountId,
+    accountName: account.name,
+    answerable: true,
+    hypotheticalTarget: toDollars(hypotheticalCents),
+    balance: toDollars(balanceCents),
+    shortfall: toDollars(shortfallCents),
+    funded: shortfallCents === 0,
+    text:
+      shortfallCents === 0
+        ? `Fully funded at ${formatMoney(hypotheticalCents)}.`
+        : `Short ${formatMoney(shortfallCents)}${gateName ? ` — needs funds from ${gateName}` : ""}.`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1217,4 +1419,161 @@ export async function getBudgetDay(userId, { asOf = new Date() } = {}) {
   ]);
   const base = computeBudgetDay(sources, asOf);
   return enrichBudgetDay(base, { userId, bills: computeGateMath(accounts).bills });
+}
+
+// ---------------------------------------------------------------------------
+// Bankruptcy/debt tracker (Git #3163) -- a real overlay on ShanesSurvival's own `debts` table
+// ---------------------------------------------------------------------------
+//
+// Ported from Finance-Tracker's `BankruptcyItem` (FinanceContext.tsx:160-169, 1087-1112) --
+// fully modeled and CRUD'd there, but FINANCE_TRACKER_AUDIT.md's own §6 calls it a "dead
+// sub-feature": no screen ever read `finance.bankruptcyItems` or called a mutator. Confirmed by
+// Shane directly: genuinely wanted, just never got surfaced.
+//
+// Real, investigated decision (also independently on record in
+// docs/shanes-life-design-contract-pack.md Section 12): ShanesSurvival's own `debts` table
+// already carries the real bankruptcy-relevant debts (H1 Mortgage arrears, the Treasury
+// Offset/IRS installment), both already `is_critical`. This overlays Finance-Tracker's fields
+// (`debt_type`, `original_balance`/`current_balance` payoff tracking, `last_payment_date`) plus
+// an explicit `included_in_bankruptcy` flag onto that SAME table (migration 041) -- not a second,
+// disconnected list. `creditor`/`currentBalance`/`notes` already existed as `creditor_name`/
+// `balance`/`notes`; only the genuinely new fields were added.
+
+function debtOut(d) {
+  return {
+    id: d.id,
+    creditor: d.creditor_name,
+    balance: toDollars(toCents(d.balance)),
+    minimumPayment: toDollars(toCents(d.minimum_payment)),
+    isDelinquent: d.is_delinquent,
+    daysPastDue: d.days_past_due,
+    isCritical: d.is_critical,
+    dueDay: d.due_day,
+    debtType: d.debt_type,
+    originalBalance: toDollars(toCents(d.original_balance)),
+    lastPaymentDate: d.last_payment_date ? isoDate(d.last_payment_date) : null,
+    includedInBankruptcy: d.included_in_bankruptcy,
+    notes: d.notes,
+    updatedAt: d.updated_at,
+  };
+}
+
+const DEBT_COLUMNS = `id, creditor_name, balance, minimum_payment, is_delinquent, days_past_due, is_critical,
+       due_day, debt_type, original_balance, last_payment_date, included_in_bankruptcy, notes, updated_at`;
+
+/** Every real debt, bankruptcy-filing ones first -- the Bankruptcy tab's own real list. */
+export async function listDebts() {
+  const rows = await many(
+    `SELECT ${DEBT_COLUMNS} FROM debts
+      ORDER BY included_in_bankruptcy DESC, is_critical DESC, balance DESC NULLS LAST`,
+  );
+  return rows.map(debtOut);
+}
+
+export async function getDebt(id) {
+  const row = await one(`SELECT ${DEBT_COLUMNS} FROM debts WHERE id = $1`, [id]);
+  if (!row) throw notFound("Debt not found");
+  return debtOut(row);
+}
+
+/** Add a real debt row. Every field beyond creditor/balance is optional -- most debts in this
+ *  table (Git #3161's due_day work included) started with only a subset known. */
+export async function createDebt({
+  creditor,
+  balance,
+  minimumPayment = null,
+  isDelinquent = false,
+  daysPastDue = 0,
+  isCritical = false,
+  dueDay = null,
+  debtType = null,
+  originalBalance = null,
+  lastPaymentDate = null,
+  includedInBankruptcy = false,
+  notes = null,
+} = {}) {
+  const trimmedCreditor = String(creditor ?? "").trim();
+  if (!trimmedCreditor) throw badRequest("creditor is required");
+  const balanceCents = parseAmountCents(balance, "balance");
+  const minimumPaymentCents = minimumPayment === null || minimumPayment === "" ? null : parseAmountCents(minimumPayment, "minimumPayment");
+  const originalBalanceCents = originalBalance === null || originalBalance === "" ? null : parseAmountCents(originalBalance, "originalBalance");
+  if (dueDay !== null && (!Number.isInteger(Number(dueDay)) || dueDay < 1 || dueDay > 31)) {
+    throw badRequest("dueDay must be an integer between 1 and 31");
+  }
+
+  const row = await one(
+    `INSERT INTO debts (creditor_name, balance, minimum_payment, is_delinquent, days_past_due, is_critical,
+                         due_day, debt_type, original_balance, last_payment_date, included_in_bankruptcy, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     RETURNING ${DEBT_COLUMNS}`,
+    [
+      trimmedCreditor,
+      toDollars(balanceCents),
+      minimumPaymentCents === null ? null : toDollars(minimumPaymentCents),
+      Boolean(isDelinquent),
+      Number(daysPastDue) || 0,
+      Boolean(isCritical),
+      dueDay,
+      debtType ? String(debtType).trim() : null,
+      originalBalanceCents === null ? null : toDollars(originalBalanceCents),
+      lastPaymentDate,
+      Boolean(includedInBankruptcy),
+      notes ? String(notes) : null,
+    ],
+  );
+  return debtOut(row);
+}
+
+/** Partial update -- only the fields present in `updates` are touched, same idiom as
+ *  updateBankruptcyItem's `Partial<BankruptcyItem>` in Finance-Tracker. */
+export async function updateDebt(id, updates = {}) {
+  const existing = await one(`SELECT ${DEBT_COLUMNS} FROM debts WHERE id = $1`, [id]);
+  if (!existing) throw notFound("Debt not found");
+
+  const sets = [];
+  const values = [];
+  let i = 1;
+
+  const put = (column, value) => {
+    sets.push(`${column} = $${i++}`);
+    values.push(value);
+  };
+
+  if ("creditor" in updates) {
+    const trimmed = String(updates.creditor ?? "").trim();
+    if (!trimmed) throw badRequest("creditor must not be empty");
+    put("creditor_name", trimmed);
+  }
+  if ("balance" in updates) put("balance", toDollars(parseAmountCents(updates.balance, "balance")));
+  if ("minimumPayment" in updates) {
+    put("minimum_payment", updates.minimumPayment === null || updates.minimumPayment === "" ? null : toDollars(parseAmountCents(updates.minimumPayment, "minimumPayment")));
+  }
+  if ("isDelinquent" in updates) put("is_delinquent", Boolean(updates.isDelinquent));
+  if ("daysPastDue" in updates) put("days_past_due", Number(updates.daysPastDue) || 0);
+  if ("isCritical" in updates) put("is_critical", Boolean(updates.isCritical));
+  if ("dueDay" in updates) {
+    const d = updates.dueDay;
+    if (d !== null && (!Number.isInteger(Number(d)) || d < 1 || d > 31)) throw badRequest("dueDay must be an integer between 1 and 31");
+    put("due_day", d);
+  }
+  if ("debtType" in updates) put("debt_type", updates.debtType ? String(updates.debtType).trim() : null);
+  if ("originalBalance" in updates) {
+    put("original_balance", updates.originalBalance === null || updates.originalBalance === "" ? null : toDollars(parseAmountCents(updates.originalBalance, "originalBalance")));
+  }
+  if ("lastPaymentDate" in updates) put("last_payment_date", updates.lastPaymentDate);
+  if ("includedInBankruptcy" in updates) put("included_in_bankruptcy", Boolean(updates.includedInBankruptcy));
+  if ("notes" in updates) put("notes", updates.notes ? String(updates.notes) : null);
+
+  if (sets.length === 0) return debtOut(existing);
+
+  sets.push(`updated_at = now()`);
+  values.push(id);
+  const row = await one(`UPDATE debts SET ${sets.join(", ")} WHERE id = $${i} RETURNING ${DEBT_COLUMNS}`, values);
+  return debtOut(row);
+}
+
+export async function deleteDebt(id) {
+  const row = await one(`DELETE FROM debts WHERE id = $1 RETURNING id`, [id]);
+  if (!row) throw notFound("Debt not found");
+  return { id: row.id };
 }

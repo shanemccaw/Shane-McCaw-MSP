@@ -26,6 +26,7 @@ import * as nudges from "../core/nudges.mjs";
 import * as people from "../core/people.mjs";
 import * as pets from "../core/pets.mjs";
 import * as places from "../core/places.mjs";
+import * as plaid from "../core/plaid.mjs";
 import * as pushSubscriptions from "../core/push-subscriptions.mjs";
 import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
@@ -1279,6 +1280,216 @@ export function buildApiRouter() {
       detail: { name: row.name },
     });
     return sendJson(res, 200, row);
+  });
+
+  // -- Money -> Banks: item health + reconnect (Git #3168) -------------------------------
+  //
+  // Deliberately NOT a second Plaid Link. ShanesSurvival's WPF app owns the initial link and the
+  // real cursor-based /transactions/sync into these same tables; duplicating either here would
+  // give one cursor two writers. What lives here is the half a desktop app structurally cannot
+  // do: hold a webhook URL open, and be reachable from a phone when a bank connection breaks.
+  //
+  // Update mode is what makes that safe -- Plaid re-authenticates the EXISTING item, so the
+  // access token and item id both survive and the desktop app's stored cursor keeps working.
+  // Nothing here exchanges a public token, and nothing here writes to accounts or transactions.
+
+  router.get("/api/money/banks", async (_req, res, _params, ctx) => {
+    requireUser(ctx);
+    return sendJson(res, 200, {
+      configured: plaid.plaidConfigured(),
+      plaidEnv: config.plaidEnv,
+      webhookUrl: plaid.webhookUrl(),
+      // False on a localhost origin. The screen says so rather than implying webhooks are live.
+      webhookDeliverable: plaid.webhookUrlIsDeliverable(),
+      items: await plaid.listItems(),
+    });
+  });
+
+  /** The real webhook receipts, so "has Plaid ever actually called us?" has an answer on screen. */
+  router.get("/api/money/banks/events", async (req, res, _params, ctx) => {
+    requireUser(ctx);
+    const url = new URL(req.url, "http://internal");
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 25), 1), 200);
+    return sendJson(res, 200, { events: await plaid.listWebhookEvents({ limit }) });
+  });
+
+  /**
+   * Ask Plaid what every item's state really is. This is the only path that works for the items
+   * already in this database: the WPF app linked them without a webhook, so they would otherwise
+   * sit at the default 'ok' forever no matter what is true at the bank.
+   */
+  router.post("/api/money/banks/refresh", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    if (!plaid.plaidConfigured()) throw badRequest("Plaid is not configured on this server.");
+    const result = await plaid.refreshAllItemHealth();
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.banks.refreshed",
+      detail: { refreshed: result.refreshed.length, failed: result.failed.length },
+    });
+    return sendJson(res, 200, { ...result, items: await plaid.listItems() });
+  });
+
+  /** Point already-linked items at this app's receiver -- they were created without one. */
+  router.post("/api/money/banks/register-webhooks", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    if (!plaid.plaidConfigured()) throw badRequest("Plaid is not configured on this server.");
+    const result = await plaid.registerWebhooks();
+    if (result.skipped === "origin-not-public") {
+      throw badRequest(
+        `Plaid can only deliver to a public HTTPS URL, and this server's origin is ${plaid.webhookUrl()}. ` +
+          "Register the webhook from the deployed app, not from local dev.",
+      );
+    }
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.banks.webhooks-registered",
+      detail: { target: result.target, updated: result.updated.length, failed: result.failed.length },
+    });
+    return sendJson(res, 200, { ...result, items: await plaid.listItems() });
+  });
+
+  /** Real update-mode Link token for one item. Never creates a new item. */
+  router.post("/api/money/banks/:id/reconnect-token", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    if (!plaid.plaidConfigured()) throw badRequest("Plaid is not configured on this server.");
+    const row = await plaid.getItemRow(params.id);
+    if (!row) throw notFound("No such connected bank.");
+    let token;
+    try {
+      token = await plaid.createUpdateLinkToken(row.access_token, { clientUserId: user.id });
+    } catch (err) {
+      throw badRequest(`Plaid would not issue a reconnect token: ${err.message}`);
+    }
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.banks.reconnect-started",
+      entityId: row.id,
+      detail: { institutionName: row.institution_name },
+    });
+    return sendJson(res, 200, {
+      linkToken: token.linkToken,
+      expiration: token.expiration,
+      redirectUri: config.plaidRedirectUri,
+      institutionName: row.institution_name,
+    });
+  });
+
+  /**
+   * Finish a reconnect. Link's onSuccess means "Shane finished the flow", which is NOT the same
+   * claim as "the item is healthy again" -- so this asks Plaid directly with /item/get and only
+   * clears the state if the real answer is clean. A reconnect that did not take stays broken on
+   * screen rather than being quietly marked fixed.
+   */
+  router.post("/api/money/banks/:id/reconnect-complete", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    if (!plaid.plaidConfigured()) throw badRequest("Plaid is not configured on this server.");
+    const row = await plaid.getItemRow(params.id);
+    if (!row) throw notFound("No such connected bank.");
+
+    const refreshed = await plaid.refreshItemHealth(row.id);
+    const healthy = Boolean(refreshed && !refreshed.needsReconnect && refreshed.health === "ok");
+    const item = healthy ? await plaid.markReconnected(row.id) : refreshed;
+
+    // Best-effort: an item that just came back through Link is the natural moment to make sure
+    // it points at this receiver. A failure here must not fail the reconnect itself.
+    let webhook = null;
+    if (healthy && plaid.webhookUrlIsDeliverable()) {
+      try {
+        webhook = await plaid.setItemWebhook(row.access_token);
+      } catch {
+        webhook = null;
+      }
+    }
+
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.banks.reconnect-completed",
+      entityId: row.id,
+      detail: { institutionName: row.institution_name, healthy, health: item?.health ?? null },
+    });
+    return sendJson(res, 200, { healthy, item, webhook });
+  });
+
+  // -- Money -> Bankruptcy/debt tracker (Git #3163) -------------------------------------
+  //
+  // A real overlay on ShanesSurvival's own `debts` table (migration 041) -- see
+  // src/core/money.mjs's own header for the real investigation and decision. Full CRUD,
+  // matching Finance-Tracker's `BankruptcyItem` shape (add/update/delete), because this is the
+  // one real write surface in Money's own routes that writes to a ShanesSurvival table, not a
+  // Shane's Life one -- the design's own "surface and organize existing real debt data" scope,
+  // not read-only.
+
+  router.get("/api/money/debts", async (_req, res, _params, ctx) => {
+    requireUser(ctx);
+    return sendJson(res, 200, { debts: await money.listDebts() });
+  });
+
+  router.post("/api/money/debts", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await money.createDebt(body);
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.debt.create",
+      entityId: row.id,
+      detail: { creditor: row.creditor, balance: row.balance, includedInBankruptcy: row.includedInBankruptcy },
+    });
+    return sendJson(res, 201, row);
+  });
+
+  router.patch("/api/money/debts/:id", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await money.updateDebt(params.id, body);
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.debt.update",
+      entityId: row.id,
+      detail: { creditor: row.creditor, balance: row.balance, includedInBankruptcy: row.includedInBankruptcy },
+    });
+    return sendJson(res, 200, row);
+  });
+
+  router.delete("/api/money/debts/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const result = await money.deleteDebt(params.id);
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.debt.delete",
+      entityId: result.id,
+    });
+    return sendJson(res, 200, result);
+  });
+
+  // -- Money -> Accounts (Git #3170) ----------------------------------------------------
+  //
+  // Real sectioned account list (§1 of FINANCE_TRACKER_AUDIT.md's accounts.tsx audit, ported in
+  // shape only) -- see src/core/money.mjs's own header comment above getAccountsOverview for the
+  // real scope line drawn around Connected Banks disconnect/reconnect (that's #3168's job).
+
+  router.get("/api/money/accounts", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await money.getAccountsOverview(user.id));
+  });
+
+  // GET, same reasoning as /api/money/what-if: a live preview that changes nothing, never a
+  // persisted target_amount write (that stays ShanesSurvival's own MCP tools' job).
+  router.get("/api/money/accounts/:id/preview-target", async (req, res, params, ctx) => {
+    requireUser(ctx);
+    const url = new URL(req.url, "http://internal");
+    return sendJson(
+      res,
+      200,
+      await money.previewAccountTarget(params.id, url.searchParams.get("target")),
+    );
   });
 
   // -- Money -> Vault (Git #3150) -------------------------------------------------------

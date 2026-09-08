@@ -35,6 +35,7 @@ Every decision below traces to a section of it, and the section is cited in the 
 | Recipes: Tonight -- multi-dish synchronized cooking, live status/countdowns, start + done alarms, per-dish snooze (Shanes Life 05) | `recipes.cook_minutes` (migration 028), MCP `push_recipes` `cookMinutes`, `public/app.js` `#/tonight` (`mealSession`, `mealDishState`, `renderMealAlarmOverlay`) -- client-only session, deliberately not persisted; takes priority over #3127's own Today "Tonight" card while a live session is running (#3126) |
 | People & Patterns: private per-person journal, deliberately dumb word/timing/topic patterns, real search/ask, therapist export (§7, Shanes Life 11) | `src/core/people.mjs`, `people`/`person_entries` tables (migration 035), `GET/POST /api/people`, `GET/POST/DELETE /api/people/:id/...`, `public/app.js` `#/people` + `#/person/:id`, MCP `list_people`/`log_person_note`/`get_person_notes` (#3157) |
 | Enhanced alerts: real Web Push sending + act-on-notification (mark done/snooze/dismiss) (§10) | `src/push/webpush.mjs` (hand-rolled RFC 8291/8292, no dependency added), `src/core/push-subscriptions.mjs`, `push_subscriptions` table (migration 036), `POST /api/push/subscribe`\`/unsubscribe\`, `GET /api/push/vapid-public-key`, `POST /api/nudges/:id/action`, `public/sw.js` (`push`/`notificationclick`), `public/app.js` Settings "Notifications" -- real action buttons work on Chrome/Android; Safari/iOS does not honor custom action buttons on either push mechanism (confirmed, not assumed -- see §10), so it degrades to the design's own stated fallback: tap opens the app to the item (#3160) |
+| Bankruptcy/debt tracker, ported from Finance-Tracker's dead `BankruptcyItem` sub-feature -- a real overlay on ShanesSurvival's own `debts` table, not a second list (docs/shanes-life-design-contract-pack.md §12) | `debts.debt_type`/`original_balance`/`last_payment_date`/`included_in_bankruptcy` (migration 041), `src/core/money.mjs` `listDebts`/`createDebt`/`updateDebt`/`deleteDebt`, `GET/POST /api/money/debts`, `PATCH/DELETE /api/money/debts/:id`, `public/app.js` Money "Bankruptcy" tab, MCP `list_debts`/`set_debt`/`delete_debt` (#3163) |
 
 ---
 
@@ -450,6 +451,71 @@ contract's own "no advice framed as certainty" boundary rules that out, and Sect
 this app ever calling a model to produce one; what's exported is exactly what Shane wrote, in
 order, dated — real material to bring to an actual therapist conversation, not a substitute for
 one.
+
+## Money — Banks: Plaid webhooks + reconnect (#3168)
+
+**This app does not link banks and does not sync transactions.** ShanesSurvival's WPF app already
+owns both, into this same real database: the initial Plaid Link, and the real cursor-based
+`/transactions/sync` whose cursor lives in `plaid_items.sync_cursor` (migration 002). Two writers
+on one cursor is exactly the bug this split exists to avoid, so nothing in `src/core/plaid.mjs`
+fetches a transaction or a balance, and `bin/check.mjs` asserts that opening the Banks room moves
+neither `sync_cursor` nor `last_synced_at`.
+
+What lives here is the two real gaps **neither** app had (confirmed against
+`FINANCE_TRACKER_AUDIT.md` §3 in `shanemccaw/Finance-Tracker`, the app being decommissioned):
+
+**1. The webhook receiver** — `POST /api/plaid/webhook`, wired in `server.mjs` above both routers
+because it authenticates by Plaid's own signature, never by the session cookie. Item health
+(`ITEM_LOGIN_REQUIRED`, `PENDING_EXPIRATION`, `PENDING_DISCONNECT`, revocation) used to be
+discovered only when a sync happened to fail, and a desktop app that isn't running discovers
+nothing. This is the always-on hosted half, so it is the half that can hold a URL open.
+
+Every delivery is verified before anything is applied: the `Plaid-Verification` JWS is checked as
+ES256 (the `alg` is pinned, not read from the token), against the key Plaid serves for that `kid`,
+with a SHA-256 comparison against the raw body and Plaid's own 5-minute replay window. A failed
+check is a `403` **and** a real `plaid_webhook_events` row with `verified = false` — the evidence
+is worth more than the silence. Every accepted webhook is stored verbatim too, including ones this
+app has no opinion about, and including ones for an `item_id` this database has never seen (those
+get a `200`, because no retry can fix them).
+
+**2. The reconnect / update-mode Link flow** — ported from Finance-Tracker's real implementation.
+`POST /api/money/banks/:id/reconnect-token` creates a Link token with `access_token` instead of
+`products`, which is what makes Plaid re-authenticate the **existing** item: the item id and the
+access token both survive, so the desktop app's stored cursor keeps working afterwards. Nothing
+here exchanges a public token.
+
+**The real open question in #3168 — where the reconnect UI lives — is decided: here, in the web
+app, not in ShanesSurvival.** Not because this codebase is nicer, but because of where Shane is
+when a bank breaks. The webhook that discovers the break has to land on an always-on hosted URL;
+putting the alert here and the fix on his desktop would split one action across two apps and a
+walk to the PC. Plaid Link in a plain browser also needs none of the WebView2 `"null"`-origin
+workaround the WPF host required. ShanesSurvival keeps the initial-link flow unchanged.
+
+`POST .../reconnect-complete` does **not** trust Link's `onSuccess` — that only means Shane
+finished the flow. It re-reads the item from Plaid with `/item/get` and clears the state only if
+the real answer is clean; a reconnect that didn't take stays broken on screen.
+
+Two honest limits the Banks screen states out loud rather than hiding:
+
+- **Plaid only delivers to a public HTTPS URL.** On a localhost origin `webhookDeliverable` is
+  `false` and the screen says health is poll-only until the app is deployed.
+- **Every item in this database was linked by the WPF app, which never set a webhook**, so they
+  start with `webhook_url` NULL and cannot report their own health. `POST
+  /api/money/banks/register-webhooks` (and the 6-hourly `runPlaidItemMaintenance` sweep) points
+  them at this receiver via `/item/webhook/update`; the same sweep polls `/item/get` so a break
+  is still caught — later than a webhook, but caught.
+
+A real health transition **into** a reconnectable state queues a `bank` nudge through the same
+1–3/day cap everything else respects. A repeat does not: Plaid re-sends `ITEM: ERROR` on every
+failed call, and a nudge per repeat trains you to ignore the one that matters.
+
+`npm run selftest-plaid-webhook` drives the real receiver end to end against the real database
+with real ES256 signatures (25 checks: valid signature, tampered body, `alg` downgrade, stale
+timestamp, missing header, health transitions, unknown `item_id`, cleanup). It works on a
+disposable `zz-selftest-3168` row and deletes it in a `finally`. What it deliberately does not
+claim to cover: that Plaid's own servers can reach a deployed URL, and that a key fetched from
+`/webhook_verification_key/get` verifies a genuinely Plaid-signed body — both need a real public
+HTTPS deployment and live credentials.
 
 ## Not built here, on purpose
 

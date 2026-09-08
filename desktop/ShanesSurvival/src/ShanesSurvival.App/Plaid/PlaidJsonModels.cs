@@ -61,6 +61,9 @@ internal sealed class PlaidAccountJson
     [JsonPropertyName("type")] public string? Type { get; init; }
     [JsonPropertyName("subtype")] public string? Subtype { get; init; }
     [JsonPropertyName("balances")] public PlaidBalancesJson? Balances { get; init; }
+    // Real last-4 digits Plaid returns on every /accounts/balance/get row (Git #3170) --
+    // previously modeled nowhere in this app, so System.Text.Json silently dropped it.
+    [JsonPropertyName("mask")] public string? Mask { get; init; }
 }
 
 internal sealed class PlaidBalancesJson

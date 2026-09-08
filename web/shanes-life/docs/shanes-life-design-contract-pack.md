@@ -610,8 +610,23 @@ while adding real App Store/Developer Program overhead the web-app path avoids.
 ## 11. What NOT to design
 
 - No dashboard-first layout — the notification tray leads.
-- No budget/spending charts or categories anywhere — that's ShanesSurvival's job, not this
-  one's.
+- **Real, relaxed exception, confirmed 2026-09-08 — no longer a blanket rule.** The
+  original "no budget/spending charts anywhere" line was too strict and directly
+  conflicted with the real, wanted `GigSparkline` component (ported from Finance-Tracker,
+  #3172). Shane's own real resolution: GigSparkline is approved specifically for — per-bill
+  funding trend (Bills tab), income history (once an Income view exists), savings/debt-
+  payoff trend, and the Cars tab's per-vehicle cost trend. **Standing principle going
+  forward, Shane's own words: "when the design specifies it, I have approved it"** — a
+  future real design file calling for a chart/sparkline in some other specific spot is
+  pre-approved by this statement, not a reason to stop and ask again. The real, narrower
+  rule that survives: no dashboard-style aggregate charts, no spending-category
+  breakdowns, no pie charts, no monthly-total graphs — small, single-series, per-item
+  trend sparklines in the real approved spots above (or wherever a future design
+  explicitly specifies one) are fine.
+  **Real, separate note for whoever next syncs the design handoff README**: its own
+  "Non-negotiables" line ("No charts anywhere except one bar per pay period in Money")
+  is now stale against this correction — update it to match next time that document gets
+  touched, don't treat it as still-current in the meantime.
 - No streaks, badges, completion percentages, or gamification.
 - No AI persona/companion voice in People & Patterns — it reflects Shane's own words back,
   it doesn't develop opinions of its own about the people in them.

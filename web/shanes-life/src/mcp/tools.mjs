@@ -1218,6 +1218,73 @@ export const TOOLS = [
   },
 
   {
+    name: "list_debts",
+    title: "Read every real debt, bankruptcy-filing ones first",
+    description:
+      "Every real row in ShanesSurvival's own `debts` table -- the same table get_gate_status's protectedDebts reads, but the full list (not just is_critical ones), with the bankruptcy-tracker overlay fields: debtType (free text, e.g. 'mortgage', 'tax', 'credit_card', 'bnpl'), originalBalance vs the existing currentBalance (for payoff progress), lastPaymentDate, and includedInBankruptcy (whether this debt is actually part of the filing). Ported from Finance-Tracker's BankruptcyItem tracker, which was fully built but never surfaced on any screen there.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      return { debts: await money.listDebts() };
+    },
+  },
+
+  {
+    name: "set_debt",
+    title: "Create or update a real debt/bankruptcy-tracker row",
+    description:
+      "Create a new real debt, or update an existing one by passing its id. Same table get_gate_status reads for protectedDebts -- creditor/balance/notes on an existing critical debt update in place here, not a second row. Pass includedInBankruptcy true for a debt that's actually part of the filing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Omit to create a new debt; pass an existing id to update it." },
+        creditor: { type: "string", description: "Required on create." },
+        balance: { type: "number", description: "Current real balance, in dollars. Required on create." },
+        minimumPayment: { type: "number" },
+        isDelinquent: { type: "boolean" },
+        daysPastDue: { type: "number" },
+        isCritical: { type: "boolean", description: "Drives get_gate_status's protectedDebts / the Money 'Protected' bucket." },
+        dueDay: { type: "number", description: "1-31, if this debt has a recurring monthly due date." },
+        debtType: { type: "string", description: "Free text, e.g. 'mortgage', 'tax', 'credit_card', 'bnpl', 'medical'. Deliberately not a fixed enum." },
+        originalBalance: { type: "number", description: "Balance when first recorded, for payoff-progress tracking against the current balance." },
+        lastPaymentDate: { type: "string", description: "ISO date of the last real payment." },
+        includedInBankruptcy: { type: "boolean", description: "Whether this debt is actually part of the bankruptcy filing." },
+        notes: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const { id, ...fields } = args;
+      const row = id ? await money.updateDebt(id, fields) : await money.createDebt(fields);
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: id ? "money.debt.update" : "money.debt.create",
+        entityId: row.id,
+        detail: { creditor: row.creditor, balance: row.balance, includedInBankruptcy: row.includedInBankruptcy },
+      });
+      return row;
+    },
+  },
+
+  {
+    name: "delete_debt",
+    title: "Delete a real debt/bankruptcy-tracker row",
+    description: "Removes a real row from ShanesSurvival's own `debts` table entirely. Use sparingly -- this is the same table Money's shortfall math and protectedDebts read.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const result = await money.deleteDebt(args.id);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "money.debt.delete", entityId: result.id });
+      return result;
+    },
+  },
+
+  {
     name: "set_habit",
     title: "State what a recurring habit really costs",
     description:

@@ -202,13 +202,18 @@ export function assertNoOrphanLedgerRows(ledgerFilenames, dirs = MIGRATION_DIRS)
       orphans.map((f) => `  ${f}`).join("\n") +
       `\nThis almost always means an already-applied migration was renamed. Renaming re-runs ` +
       `the identical SQL under the new name on every environment that already ran it -- safe ` +
-      `only if the migration is purely idempotent. Either rename it back, or if the rename is ` +
-      `intentional, fix up the ledger by hand first:\n` +
+      `only if the migration is purely idempotent. It can also be another, unrelated session's ` +
+      `own in-flight rename on this shared local database -- migrate.mjs retries a few times ` +
+      `before surfacing this (Git #3166), so if you are seeing this, that retry already gave up. ` +
+      `Either rename the file back, or if the rename/duplicate is genuinely yours and safe:\n` +
+      `  node bin/reconcile-ledger.mjs rename <old filename> <new filename>   (web/shanes-life only)\n` +
+      `  node bin/reconcile-ledger.mjs delete <filename>                     (web/shanes-life only)\n` +
+      `or fix up the ledger by hand:\n` +
       `  UPDATE schema_migrations SET filename = '<new filename>' WHERE filename = '<old filename>';`,
   );
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   try {
     assertNoDuplicateMigrationNumbers();
     console.log("[check-migration-numbers] OK -- no cross-directory or same-directory number collisions");

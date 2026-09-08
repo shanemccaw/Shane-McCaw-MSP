@@ -2719,10 +2719,221 @@ let moneyTab = "now"; // transient client-only state, same idiom as cookSession 
 const MONEY_TABS = [
   { key: "now", label: "Now" },
   { key: "bills", label: "Bills" },
+  { key: "banks", label: "Banks" },
+  { key: "bankruptcy", label: "Bankruptcy" },
+  { key: "accounts", label: "Accounts" },
   { key: "cars", label: "Cars" },
   { key: "vault", label: "Vault" },
   { key: "wins", label: "Wins" },
 ];
+
+// ---------------------------------------------------------------------------
+// Money -> Banks (Git #3168): real Plaid item health + reconnect
+//
+// The reconnect flow lives here, in the web app, rather than in ShanesSurvival's WPF app, for a
+// reason that is about where Shane is when a bank breaks, not about which codebase is nicer:
+// the webhook that discovers the break has to land on an always-on hosted URL, and this is the
+// always-on hosted half. Putting the alert here and the fix on his desktop would split one
+// action across two apps and a walk to the PC.
+//
+// Plaid Link is loaded on demand, never in index.html -- a third-party script tag on every page
+// load, for something used a handful of times a year, is not a trade this app makes.
+// ---------------------------------------------------------------------------
+
+const PLAID_LINK_SRC = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
+const PLAID_RESUME_KEY = "sl_plaid_reconnect";
+let plaidLinkLoader = null;
+
+function loadPlaidLink() {
+  if (window.Plaid) return Promise.resolve();
+  if (plaidLinkLoader) return plaidLinkLoader;
+  plaidLinkLoader = new Promise((resolvePromise, reject) => {
+    const script = document.createElement("script");
+    script.src = PLAID_LINK_SRC;
+    script.async = true;
+    script.onload = () => resolvePromise();
+    script.onerror = () => {
+      plaidLinkLoader = null;
+      reject(new Error("Could not load Plaid Link. Check the connection and try again."));
+    };
+    document.head.append(script);
+  });
+  return plaidLinkLoader;
+}
+
+/**
+ * Ask the server whether the reconnect genuinely took. Link's onSuccess only means the flow
+ * finished; the server re-reads the item from Plaid before it will call anything fixed.
+ */
+async function finishPlaidReconnect(itemId) {
+  const result = await api(`/api/money/banks/${itemId}/reconnect-complete`, { method: "POST" });
+  return result;
+}
+
+/** Open real Plaid Link in update mode for one already-linked item. */
+async function openPlaidReconnect(item, { onStatus }) {
+  onStatus("Asking Plaid for a reconnect token…");
+  const token = await api(`/api/money/banks/${item.id}/reconnect-token`, { method: "POST" });
+
+  // Survives the OAuth-institution redirect bounce, which navigates the whole tab away and back.
+  try {
+    sessionStorage.setItem(PLAID_RESUME_KEY, JSON.stringify({ itemId: item.id, linkToken: token.linkToken }));
+  } catch {
+    // A blocked sessionStorage only costs the OAuth resume path; non-OAuth banks still work.
+  }
+
+  await loadPlaidLink();
+  onStatus("Opening your bank…");
+
+  return new Promise((resolvePromise) => {
+    const handler = window.Plaid.create({
+      token: token.linkToken,
+      onSuccess: async () => {
+        try {
+          sessionStorage.removeItem(PLAID_RESUME_KEY);
+        } catch {
+          /* nothing to clean up */
+        }
+        onStatus("Checking with Plaid that it took…");
+        try {
+          resolvePromise(await finishPlaidReconnect(item.id));
+        } catch (err) {
+          resolvePromise({ healthy: false, error: err.message });
+        }
+      },
+      onExit: (err) => {
+        try {
+          sessionStorage.removeItem(PLAID_RESUME_KEY);
+        } catch {
+          /* nothing to clean up */
+        }
+        resolvePromise({ cancelled: true, error: err ? err.display_message || err.error_message || err.error_code : null });
+      },
+    });
+    handler.open();
+  });
+}
+
+/**
+ * The OAuth return leg. Banks that use OAuth send the browser away to their own site and back to
+ * a pre-registered redirect_uri; Link then has to be re-created with `receivedRedirectUri` to
+ * pick the session back up. Without this the flow dead-ends on a blank page after the bank.
+ */
+async function resumePlaidOAuthReturn() {
+  let saved = null;
+  try {
+    saved = JSON.parse(sessionStorage.getItem(PLAID_RESUME_KEY) || "null");
+  } catch {
+    saved = null;
+  }
+  const returnTo = "/#/money";
+  if (!saved?.linkToken || !saved?.itemId) {
+    // Nothing to resume -- an expired session or a direct visit. Say so instead of hanging.
+    location.replace(returnTo);
+    return;
+  }
+
+  await loadPlaidLink();
+  const handler = window.Plaid.create({
+    token: saved.linkToken,
+    receivedRedirectUri: window.location.href,
+    onSuccess: async () => {
+      try {
+        sessionStorage.removeItem(PLAID_RESUME_KEY);
+      } catch {
+        /* nothing to clean up */
+      }
+      try {
+        await finishPlaidReconnect(saved.itemId);
+      } catch {
+        // The Banks screen re-reads real state on load; a failure here is visible there.
+      }
+      moneyTab = "banks";
+      location.replace(returnTo);
+    },
+    onExit: () => {
+      try {
+        sessionStorage.removeItem(PLAID_RESUME_KEY);
+      } catch {
+        /* nothing to clean up */
+      }
+      moneyTab = "banks";
+      location.replace(returnTo);
+    },
+  });
+  handler.open();
+}
+
+const BANK_HEALTH_COPY = {
+  ok: { label: "Connected", tone: "ok" },
+  login_required: { label: "Sign-in needed", tone: "bad" },
+  pending_expiration: { label: "Access expiring", tone: "warn" },
+  pending_disconnect: { label: "Disconnecting soon", tone: "warn" },
+  revoked: { label: "Access revoked", tone: "bad" },
+  error: { label: "Error", tone: "bad" },
+};
+
+function bankWhen(value, prefix) {
+  if (!value) return null;
+  return `${prefix} ${new Date(value).toLocaleString()}`;
+}
+
+function bankRow(item, { onReconnect }) {
+  const copy = BANK_HEALTH_COPY[item.health] ?? { label: item.health, tone: "warn" };
+  const statusColor = copy.tone === "ok" ? "hsl(var(--success))" : copy.tone === "warn" ? "#fbbf24" : "#f87171";
+  const statusEl = el("div", { class: "bank-status" });
+
+  const meta = [
+    `${item.accountCount} account${item.accountCount === 1 ? "" : "s"}`,
+    bankWhen(item.lastSyncedAt, "synced"),
+    item.transactionsPendingSince ? "new transactions waiting for the desktop app" : null,
+    bankWhen(item.consentExpiresAt, "access expires"),
+  ].filter(Boolean);
+
+  const children = [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline;gap:8px" }, [
+      el("div", { class: "bank-name", style: "font-weight:600", text: item.institutionName }),
+      el("span", { class: "small", style: `font-weight:600;white-space:nowrap;color:${statusColor}`, text: copy.label }),
+    ]),
+    el("p", { class: "small muted", text: meta.join(" · ") }),
+  ];
+
+  if (item.healthMessage) {
+    children.push(el("p", { class: "small", style: "color:#f87171", text: item.healthMessage }));
+  }
+
+  // An item Plaid has never been told to call will never report a problem on its own. That is a
+  // real gap in coverage, and it belongs on screen rather than in a log nobody reads.
+  if (!item.webhookUrl) {
+    children.push(
+      el("p", {
+        class: "small muted",
+        text: "No webhook registered with Plaid for this bank yet — its health is only checked when this app polls.",
+      }),
+    );
+  }
+
+  if (item.needsReconnect) {
+    const button = el("button", {
+      type: "button",
+      class: "primary",
+      text: "Reconnect",
+      onClick: async () => {
+        button.disabled = true;
+        try {
+          await onReconnect(item, (msg) => {
+            statusEl.textContent = msg;
+          });
+        } finally {
+          button.disabled = false;
+        }
+      },
+    });
+    children.push(el("div", { class: "row", style: "gap:8px;align-items:center" }, [button, statusEl]));
+  }
+
+  return el("div", { class: "card bank-row" }, children);
+}
 
 function moneyBillMeta(bill) {
   const parts = [];
@@ -3128,6 +3339,313 @@ async function viewMoneyBills(view) {
   attachRoomWatermark(view, "moneyhdr");
 }
 
+// ---------------------------------------------------------------------------
+// Money -> "Bankruptcy" tab (Git #3163)
+// ---------------------------------------------------------------------------
+//
+// Ported from Finance-Tracker's `BankruptcyItem` -- fully modeled and CRUD'd there, never
+// surfaced on any screen (FINANCE_TRACKER_AUDIT.md §6, "dead sub-feature"). This is the real
+// screen that was never built, reading/writing the SAME `debts` table get_gate_status's own
+// Protected bucket reads (src/core/money.mjs), not a second, disconnected list.
+
+let bankruptcyEditId = null; // transient client-only state, same idiom as moneyTab above
+
+function debtBadges(d) {
+  const chips = [];
+  if (d.includedInBankruptcy) chips.push(el("span", { class: "chip", text: "in filing" }));
+  if (d.debtType) chips.push(el("span", { class: "chip", text: d.debtType }));
+  if (d.isCritical) chips.push(el("span", { class: "chip", text: "critical" }));
+  if (d.isDelinquent) chips.push(el("span", { class: "chip", text: `${d.daysPastDue ?? "?"} days past due` }));
+  return chips;
+}
+
+function debtCard(d) {
+  const rows = [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline" }, [
+      el("div", { class: "title", text: d.creditor }),
+      el("div", { class: "money-amount", style: "font-size:20px", text: dollars(d.balance) }),
+    ]),
+    el("div", { class: "row", style: "gap:.4rem;flex-wrap:wrap" }, debtBadges(d)),
+  ];
+  const meta = [
+    d.originalBalance ? `${dollars(d.balance)} of ${dollars(d.originalBalance)} original` : null,
+    d.minimumPayment ? `min ${dollars(d.minimumPayment)}/mo` : null,
+    d.dueDay ? `due day ${d.dueDay}` : null,
+    d.lastPaymentDate ? `last payment ${d.lastPaymentDate}` : null,
+  ].filter(Boolean);
+  if (meta.length) rows.push(el("div", { class: "small muted", text: meta.join(" · ") }));
+  if (d.notes) rows.push(el("div", { class: "small", text: d.notes }));
+
+  rows.push(
+    el("div", { class: "row", style: "margin-top:.5rem;gap:.5rem" }, [
+      el("button", {
+        type: "button",
+        class: "small ghost",
+        text: "Edit",
+        onClick: () => {
+          bankruptcyEditId = bankruptcyEditId === d.id ? null : d.id;
+          render();
+        },
+      }),
+      el("button", {
+        type: "button",
+        class: "small ghost danger",
+        text: "Delete",
+        onClick: async (event) => {
+          if (!confirm(`Delete ${d.creditor}? This removes it from ShanesSurvival's own debts table too.`)) return;
+          event.currentTarget.disabled = true;
+          await api(`/api/money/debts/${d.id}`, { method: "DELETE" });
+          render();
+        },
+      }),
+    ]),
+  );
+
+  const card = el("div", { class: "card" }, rows);
+  if (bankruptcyEditId === d.id) card.append(debtForm(d));
+  return card;
+}
+
+/** Shared add/edit form. `existing` is null for "add a new debt". */
+function debtForm(existing) {
+  const v = (field, fallback = "") => (existing && existing[field] !== null && existing[field] !== undefined ? existing[field] : fallback);
+
+  const creditorInput = el("input", { placeholder: "Creditor", "aria-label": "Creditor", value: v("creditor") });
+  const balanceInput = el("input", { type: "number", step: "0.01", placeholder: "Current balance", "aria-label": "Current balance", value: v("balance") });
+  const originalBalanceInput = el("input", { type: "number", step: "0.01", placeholder: "Original balance (optional)", "aria-label": "Original balance", value: v("originalBalance") });
+  const minimumPaymentInput = el("input", { type: "number", step: "0.01", placeholder: "Minimum payment (optional)", "aria-label": "Minimum payment", value: v("minimumPayment") });
+  const debtTypeInput = el("input", { placeholder: "Type, e.g. mortgage, tax, credit_card, bnpl", "aria-label": "Debt type", value: v("debtType") });
+  const dueDayInput = el("input", { type: "number", min: "1", max: "31", placeholder: "Due day (optional)", "aria-label": "Due day", value: v("dueDay") });
+  const lastPaymentDateInput = el("input", { type: "date", "aria-label": "Last payment date", value: v("lastPaymentDate") });
+  const notesInput = el("textarea", { placeholder: "Notes", "aria-label": "Notes", rows: "2", text: v("notes") });
+  const includedInput = el("input", { type: "checkbox" });
+  includedInput.checked = Boolean(v("includedInBankruptcy", false));
+  const criticalInput = el("input", { type: "checkbox" });
+  criticalInput.checked = Boolean(v("isCritical", false));
+  const delinquentInput = el("input", { type: "checkbox" });
+  delinquentInput.checked = Boolean(v("isDelinquent", false));
+
+  const form = el("form", { class: "section", style: "margin-top:.5rem" }, [
+    el("div", { class: "row", style: "gap:.5rem;flex-wrap:wrap" }, [creditorInput, balanceInput]),
+    el("div", { class: "row", style: "gap:.5rem;flex-wrap:wrap" }, [originalBalanceInput, minimumPaymentInput, dueDayInput]),
+    el("div", { class: "row", style: "gap:.5rem;flex-wrap:wrap" }, [debtTypeInput, lastPaymentDateInput]),
+    notesInput,
+    el("label", { class: "row small", style: "gap:.35rem;align-items:center" }, [includedInput, "Part of the bankruptcy filing"]),
+    el("label", { class: "row small", style: "gap:.35rem;align-items:center" }, [criticalInput, "Critical (shown in Money's Protected bucket)"]),
+    el("label", { class: "row small", style: "gap:.35rem;align-items:center" }, [delinquentInput, "Delinquent"]),
+    el("div", { class: "row", style: "gap:.5rem" }, [
+      el("button", { type: "submit", class: "primary small", text: existing ? "Save" : "Add debt" }),
+      existing ? el("button", { type: "button", class: "small ghost", text: "Cancel", onClick: () => { bankruptcyEditId = null; render(); } }) : null,
+    ]),
+  ]);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const body = {
+      creditor: creditorInput.value.trim(),
+      balance: balanceInput.value === "" ? undefined : Number(balanceInput.value),
+      originalBalance: originalBalanceInput.value === "" ? null : Number(originalBalanceInput.value),
+      minimumPayment: minimumPaymentInput.value === "" ? null : Number(minimumPaymentInput.value),
+      debtType: debtTypeInput.value.trim() || null,
+      dueDay: dueDayInput.value === "" ? null : Number(dueDayInput.value),
+      lastPaymentDate: lastPaymentDateInput.value || null,
+      notes: notesInput.value.trim() || null,
+      includedInBankruptcy: includedInput.checked,
+      isCritical: criticalInput.checked,
+      isDelinquent: delinquentInput.checked,
+    };
+    form.querySelectorAll("input,textarea,button").forEach((n) => (n.disabled = true));
+    try {
+      if (existing) {
+        await api(`/api/money/debts/${existing.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        bankruptcyEditId = null;
+      } else {
+        if (body.balance === undefined) delete body.balance;
+        await api("/api/money/debts", { method: "POST", body: JSON.stringify(body) });
+      }
+      render();
+    } finally {
+      form.querySelectorAll("input,textarea,button").forEach((n) => (n.disabled = false));
+    }
+  });
+
+  return form;
+}
+
+async function viewMoneyBankruptcy(view) {
+  const { debts } = await api("/api/money/debts");
+
+  view.append(
+    el("p", { class: "small muted", text: "Real debts already tracked in ShanesSurvival, organized for bankruptcy-filing context. Ported from Finance-Tracker's own debt tracker, which was built but never surfaced." }),
+  );
+
+  if (debts.length === 0) {
+    view.append(empty("No debts on file yet.", "Add one below, or ask Claude to.", "idle"));
+  } else {
+    view.append(el("section", { class: "section" }, debts.map(debtCard)));
+  }
+
+  view.append(el("div", { class: "card" }, [el("h2", { text: "Add a debt", style: "margin-top:0" }), debtForm(null)]));
+
+  attachRoomWatermark(view, "moneyhdr");
+}
+
+// ---------------------------------------------------------------------------
+// Money -- "Accounts" tab (Git #3170)
+// ---------------------------------------------------------------------------
+//
+// Every real account, sectioned by role, ported in shape from Finance-Tracker's accounts.tsx
+// (FINANCE_TRACKER_AUDIT.md §1): % funded per section, masked last-4, Plaid-linked badge,
+// "N underfunded", Total Envelope Balance, Connected Banks. All real numbers come from
+// GET /api/money/accounts (src/core/money.mjs's getAccountsOverview) -- no fixture, no client
+// math beyond formatting. See that function's own header for why Connected Banks here is a
+// real, honest status READ and not a disconnect/reconnect action -- that's #3168's job.
+
+function accountRow(account) {
+  const statusText =
+    account.status === "funded"
+      ? "funded"
+      : account.status === "short"
+        ? `short ${account.shortfallFormatted}`
+        : account.balanceFormatted === null
+          ? "balance unknown"
+          : null;
+  const statusClass =
+    account.status === "funded" ? "funded" : account.status === "short" ? (account.isGate ? "critical" : "short") : "";
+
+  return el("div", { class: "money-bucket-row" }, [
+    el("div", { class: "money-bucket-name" }, [
+      el("span", { text: account.name }),
+      el("div", { class: "money-bucket-meta" }, [
+        el("span", { text: account.masked ?? "no mask yet -- run a sync" }),
+        el("span", { class: "chip", style: "margin-left:.4rem", text: account.institutionName }),
+        account.reconnectRequired ? el("span", { class: "chip verdict", style: "margin-left:.4rem", text: "Reconnect needed" }) : null,
+      ]),
+    ]),
+    el("span", {
+      class: `money-bucket-status ${statusClass}`,
+      text: statusText ?? account.balanceFormatted ?? "—",
+    }),
+  ]);
+}
+
+/** Live "short by $X -- needs funds from [account]" preview for one bill account's target,
+ *  computed on the server (money.previewAccountTarget) every time the input changes -- never
+ *  persisted. See that function's own header for why this never writes target_amount. */
+function openEditBalanceSheet(account) {
+  const dialog = el("dialog", { class: "sheet" });
+  const resultEl = el("div", { class: "small", style: "min-height:1.2em" });
+  const targetInput = el("input", {
+    type: "number",
+    step: "0.01",
+    inputmode: "decimal",
+    placeholder: account.targetFormatted ?? "0.00",
+    "aria-label": "Hypothetical target amount",
+  });
+  const previewBtn = el("button", { type: "button", class: "primary small", text: "Preview" });
+
+  async function runPreview() {
+    if (!targetInput.value) return;
+    resultEl.textContent = "…";
+    try {
+      const result = await api(
+        `/api/money/accounts/${encodeURIComponent(account.id)}/preview-target?target=${encodeURIComponent(targetInput.value)}`,
+      );
+      resultEl.textContent = result.answerable ? result.text : result.text;
+      resultEl.style.color = result.answerable && result.funded ? "hsl(var(--success))" : "";
+    } catch (err) {
+      resultEl.textContent = err?.message || "Could not preview that.";
+    }
+  }
+  previewBtn.addEventListener("click", runPreview);
+
+  dialog.append(
+    el("div", { class: "spread" }, [
+      el("span", { class: "sheet-title", text: `Edit balance -- ${account.name}` }),
+      el("button", { class: "ghost small", text: "Close", onClick: () => dialog.close() }),
+    ]),
+    el("div", { class: "sheet-body" }, [
+      el("p", { class: "small muted", text: `Current balance: ${account.balanceFormatted ?? "unknown"}. Real Plaid balance -- this app never edits it directly.` }),
+      el("p", { class: "small muted", text: "Type a target funding amount to see the live short-by warning. This is a preview only -- saving a new target is done in ShanesSurvival." }),
+      el("div", { class: "row" }, [targetInput, previewBtn]),
+      resultEl,
+    ]),
+  );
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+}
+
+async function viewMoneyAccounts(view) {
+  const overview = await api("/api/money/accounts");
+
+  const totalCard = el("div", { class: "card section" }, [
+    el("span", { class: "small muted", text: "Total Envelope Balance" }),
+    el("div", { class: "money-amount", text: overview.totalEnvelopeFormatted ?? "unknown" }),
+    el("p", { class: "small muted", text: "Every real account's current balance, added together." }),
+  ]);
+  view.append(totalCard);
+
+  if (overview.sections.length === 0) {
+    view.append(el("div", { class: "card" }, [el("p", { class: "muted", text: "No real accounts synced from ShanesSurvival yet." })]));
+  }
+
+  for (const section of overview.sections) {
+    const labelParts = [section.label];
+    if (section.fundedPercent !== null) labelParts.push(`${section.fundedPercent}% funded`);
+    if (section.underfundedCount > 0) labelParts.push(`${section.underfundedCount} underfunded`);
+
+    const sectionCard = el("div", { class: "card money-bucket" }, [
+      el("div", { class: "money-bucket-label", text: labelParts.join(" · ") }),
+    ]);
+    for (const account of section.accounts) {
+      const row = accountRow(account);
+      if (section.role === "bill") {
+        row.style.cursor = "pointer";
+        row.addEventListener("click", () => openEditBalanceSheet(account));
+      }
+      sectionCard.append(row);
+    }
+    view.append(sectionCard);
+  }
+
+  const banksCard = el("div", { class: "card section" }, [
+    el("span", { class: "small muted", text: "Connected Banks" }),
+  ]);
+  if (overview.connectedBanks.length === 0) {
+    banksCard.append(el("p", { class: "small muted", text: "No real Plaid connections yet." }));
+  } else {
+    for (const bank of overview.connectedBanks) {
+      banksCard.append(
+        el("div", { class: "money-bucket-row" }, [
+          el("div", { class: "money-bucket-name" }, [
+            el("span", { text: bank.institutionName }),
+            el("div", { class: "money-bucket-meta", text: `${bank.accountCount} account${bank.accountCount === 1 ? "" : "s"} · last synced ${bank.lastSyncedAt ? when(bank.lastSyncedAt) : "never"}` }),
+          ]),
+          bank.reconnectRequired
+            ? el("span", { class: "money-bucket-status critical", text: "Reconnect needed" })
+            : el("span", { class: "money-bucket-status funded", text: "Connected" }),
+        ]),
+      );
+    }
+    banksCard.append(
+      el("p", { class: "small muted", text: "Real disconnect/reconnect actions land with the Plaid reconnect Feature -- not wired here yet." }),
+    );
+  }
+  view.append(banksCard);
+
+  if (overview.warnings.length > 0) {
+    view.append(
+      el("div", { class: "card section" }, [
+        el("p", { class: "small muted", text: "Warnings" }),
+        ...overview.warnings.map((w) => el("p", { class: "small", text: w })),
+      ]),
+    );
+  }
+
+  attachRoomWatermark(view, "moneyhdr");
+}
+
 /** One real win row: the date and the real, hard-won text. `debt_paid_off` is styled like the
  *  funded/covered green used everywhere else in Money -- a real automatic milestone, not manual
  *  input, gets the same "this is settled" color as a funded bill. */
@@ -3165,6 +3683,119 @@ async function viewMoneyWins(view) {
   attachRoomWatermark(view, "wins");
 }
 
+async function viewMoneyBanks(view) {
+  const data = await api("/api/money/banks");
+
+  if (!data.configured) {
+    view.append(
+      el("div", { class: "card" }, [
+        el("p", {
+          text: "Plaid is not configured on this server, so nothing here can reach your banks.",
+        }),
+        el("p", {
+          class: "small muted",
+          text: "Set SL_PLAID_CLIENT_ID and SL_PLAID_SECRET, then reload. The connections themselves are unaffected — the desktop app keeps syncing.",
+        }),
+      ]),
+    );
+    return;
+  }
+
+  const broken = data.items.filter((i) => i.needsReconnect);
+
+  const statusLine = el("p", { class: "small muted" });
+  const refreshBtn = el("button", {
+    type: "button",
+    class: "ghost small",
+    text: "Check with Plaid",
+    onClick: async () => {
+      refreshBtn.disabled = true;
+      statusLine.textContent = "Asking Plaid about every bank…";
+      try {
+        await api("/api/money/banks/refresh", { method: "POST" });
+        await render();
+      } catch (err) {
+        statusLine.textContent = err.message;
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    },
+  });
+
+  const headerChildren = [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline" }, [
+      el("h3", { style: "margin:0", text: broken.length ? `${broken.length} bank${broken.length === 1 ? "" : "s"} need attention` : "All banks connected" }),
+      refreshBtn,
+    ]),
+    el("p", {
+      class: "small muted",
+      text: "Syncing is the desktop app's job. This screen exists so a broken connection finds you before the next sync does.",
+    }),
+    statusLine,
+  ];
+
+  // The honest version of "webhooks are on": on a localhost origin Plaid cannot deliver anything,
+  // so the screen says the health shown is poll-only rather than implying live events.
+  if (!data.webhookDeliverable) {
+    headerChildren.push(
+      el("p", {
+        class: "small muted",
+        text: `Plaid can only call a public HTTPS address, and this server answers on ${data.webhookUrl}. Health here comes from polling until the app is deployed.`,
+      }),
+    );
+  }
+
+  view.append(el("div", { class: "card section" }, headerChildren));
+
+  async function reconnect(item, onStatus) {
+    try {
+      const result = await openPlaidReconnect(item, { onStatus });
+      if (result.cancelled) {
+        onStatus(result.error ? `Stopped: ${result.error}` : "Reconnect cancelled.");
+        return;
+      }
+      if (result.healthy) {
+        onStatus("Reconnected.");
+        await render();
+        return;
+      }
+      onStatus(result.error || "Plaid still reports this bank as needing attention.");
+    } catch (err) {
+      onStatus(err.message);
+    }
+  }
+
+  if (data.items.length === 0) {
+    view.append(
+      el("div", { class: "card" }, [
+        el("p", { class: "muted", text: "No banks are linked yet. Linking a new bank is done in the desktop app." }),
+      ]),
+    );
+  } else {
+    for (const item of data.items) view.append(bankRow(item, { onReconnect: reconnect }));
+  }
+
+  // Real webhook receipts. Proof the receiver is genuinely being called, rather than a claim.
+  const { events } = await api("/api/money/banks/events?limit=10");
+  view.append(
+    el("div", { class: "card section" }, [
+      el("h3", { style: "margin:0 0 6px", text: "Recent webhooks from Plaid" }),
+      events.length === 0
+        ? el("p", { class: "small muted", text: "Plaid has not called this app yet." })
+        : el(
+            "div",
+            { class: "bank-events" },
+            events.map((ev) =>
+              el("p", {
+                class: "small muted",
+                text: `${new Date(ev.receivedAt).toLocaleString()} · ${ev.type}: ${ev.code}${ev.errorCode ? ` (${ev.errorCode})` : ""}${ev.verified ? "" : " · REJECTED"}${ev.note ? ` · ${ev.note}` : ""}`,
+              }),
+            ),
+          ),
+    ]),
+  );
+}
+
 async function viewMoney(view) {
   view.append(
     el("section", { class: "section" }, [
@@ -3193,6 +3824,21 @@ async function viewMoney(view) {
 
   if (moneyTab === "bills") {
     await viewMoneyBills(view);
+    return;
+  }
+
+  if (moneyTab === "banks") {
+    await viewMoneyBanks(view);
+    return;
+  }
+
+  if (moneyTab === "bankruptcy") {
+    await viewMoneyBankruptcy(view);
+    return;
+  }
+
+  if (moneyTab === "accounts") {
+    await viewMoneyAccounts(view);
     return;
   }
 
@@ -5342,6 +5988,14 @@ async function start() {
   if (enrollmentTokenFromUrl()) return showEnroll();
   const user = await loadMe();
   if (!user) return showLogin();
+  // A Plaid OAuth bank sends the whole tab to its own site and back here (Git #3168). Resuming
+  // has to happen before the normal render, or the return lands on the app shell with a live
+  // Link session nobody ever picks back up.
+  if (location.pathname === "/plaid-oauth") {
+    $("#login-view").hidden = true;
+    $("#app-view").hidden = false;
+    return resumePlaidOAuthReturn();
+  }
   $("#login-view").hidden = true;
   $("#enroll-view").hidden = true;
   $("#app-view").hidden = false;

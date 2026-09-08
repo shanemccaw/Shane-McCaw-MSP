@@ -64,5 +64,14 @@ export const config = {
   // so a dump on its own decrypts nothing. Read here rather than at the call site so the Vault
   // Feature cannot accidentally ship reading it from somewhere else.
   vaultKey: process.env.SL_VAULT_KEY ? Buffer.from(process.env.SL_VAULT_KEY, "base64") : null,
+  // Plaid (Git #3168). Read here, never at a call site, so no route can build a request that
+  // logs the secret. Absent credentials are a real, reportable state -- the Banks screen says
+  // "not configured" out loud rather than showing a broken button.
+  plaidClientId: process.env.SL_PLAID_CLIENT_ID || null,
+  plaidSecret: process.env.SL_PLAID_SECRET || null,
+  plaidEnv: process.env.SL_PLAID_ENV || "production",
+  // Only set when the URI is genuinely registered in the Plaid dashboard -- Plaid rejects an
+  // unregistered redirect_uri outright, so the variable's presence is the proof of registration.
+  plaidRedirectUri: process.env.SL_PLAID_REDIRECT_URI || null,
   root: ROOT,
 };
