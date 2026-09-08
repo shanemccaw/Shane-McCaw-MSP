@@ -1255,6 +1255,42 @@ export const TOOLS = [
   },
 
   {
+    name: "preview_paycheck_distribution",
+    title: "Preview splitting a paycheck across short bills, with conversational adjustments",
+    description:
+      "Distribute Paycheck's real preview (Git #3208): splits a real dollar amount across every real short bill account, ordered due-soonest-first, and reports the real running totals -- what's left in the Income Gate account and what available-to-spend becomes -- plus a plain statement of whatever real bill still stays short after the split. NEVER MOVES OR PERSISTS ANYTHING -- pure preview, same discipline as simulate_transfer and what_if. This is the real target for 'skip Netflix' and 'give Rent 2000': pass `skip` for a bill to leave out of this round entirely, and `give` to send a bill an exact amount off the top before the remainder splits proportionally across everything else that's still short. Bill names are matched the same way simulate_transfer matches account names -- an unresolved or ambiguous one comes back in `unresolved` rather than being silently dropped, so say that back to Shane and ask. Omit `amount` to use the real current Income Gate balance (the landed paycheck) rather than asking Shane to state it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        amount: { type: "number", description: "Dollars to distribute, e.g. 4343.63. Omit to use the real current Income Gate balance." },
+        skip: { type: "array", items: { type: "string" }, description: "Bill names to leave out of this round entirely, e.g. ['Netflix']." },
+        give: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { name: { type: "string" }, amount: { type: "number" } },
+            required: ["name", "amount"],
+            additionalProperties: false,
+          },
+          description: "Explicit overrides, e.g. [{\"name\":\"Rent\",\"amount\":2000}] for 'give Rent 2000'.",
+        },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      let amount = args.amount;
+      if (amount === undefined || amount === null) {
+        const status = await money.getGateStatus(ctx.user.id);
+        if (status.gate.balance === null) {
+          return { answerable: false, text: "No real Income Gate balance to distribute yet -- run a sync, or state a real amount." };
+        }
+        amount = status.gate.balance;
+      }
+      return money.previewDistribution(ctx.user.id, amount, { skip: args.skip ?? [], give: args.give ?? [] });
+    },
+  },
+
+  {
     name: "list_debts",
     title: "Read every real debt, bankruptcy-filing ones first",
     description:

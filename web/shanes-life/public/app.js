@@ -4063,7 +4063,7 @@ async function renderTransferInstructions(container) {
 // same real position Finance-Tracker's own Home tab puts them (right after its Safe-to-Spend
 // hero, before its Attention Needed alerts).
 
-async function renderMoneyDecisionTools(view) {
+async function renderMoneyDecisionTools(view, gate) {
   // -- Period Review --------------------------------------------------------
   const review = await api("/api/money/period-review");
   view.append(
@@ -4093,12 +4093,22 @@ async function renderMoneyDecisionTools(view) {
     );
   }
 
-  // -- Distribute Paycheck ----------------------------------------------------
+  // -- Distribute Paycheck (Git #3208 refinement of #3171's own build) --------------------------
   // Git #3183 no-forms audit: a real-time calculation tool (preview, then an editable plan),
   // same reasoning as the what-if/transfer-simulator forms above -- not a form for adding or
-  // editing a fact about the world.
+  // editing a fact about the world. The amount field starts prefilled with the real current
+  // Income Gate balance (the design's own Budget Day framing: the split is drawn from what
+  // actually landed, not a number Shane has to go look up and type) but stays editable for a
+  // different real amount.
   const distributeResultEl = el("div");
-  const distributeAmountInput = el("input", { type: "number", step: "0.01", inputmode: "decimal", placeholder: "3000", "aria-label": "Paycheck amount" });
+  const distributeAmountInput = el("input", {
+    type: "number",
+    step: "0.01",
+    inputmode: "decimal",
+    placeholder: "3000",
+    value: gate?.gate?.balance ?? "",
+    "aria-label": "Paycheck amount",
+  });
   const distributeForm = el("form", { class: "row" }, [
     distributeAmountInput,
     el("button", { type: "submit", class: "ghost small", text: "Distribute this paycheck" }),
@@ -4119,13 +4129,25 @@ async function renderMoneyDecisionTools(view) {
     ]),
   );
 
+  // Auto-run the preview once on load whenever there's a real Income Gate balance to split --
+  // same "the split just shows up on payday" idea the design's own Budget Day card has, without
+  // waiting on Shane to press submit first.
+  if (gate?.gate?.balance) {
+    const preview = await api(`/api/money/distribute-preview?amount=${encodeURIComponent(gate.gate.balance)}`);
+    renderDistributePreview(distributeResultEl, gate.gate.balance, preview);
+  }
+
   // -- Transfer Instructions ----------------------------------------------------
   const transferInstructionsEl = el("div");
   await renderTransferInstructions(transferInstructionsEl);
   view.append(transferInstructionsEl);
 
-  /** Step 2 of Distribute Paycheck: the preview's own allocations, each editable, with Apply
-   *  persisting them as the real pending plan and redrawing Transfer Instructions above. */
+  /** Step 2 of Distribute Paycheck: the preview's own allocations, due-soonest-first, each
+   *  editable, with real running totals (Left in the gate account / Available to spend after the
+   *  split -- recomputed live client-side as the amounts change, Git #3208 scope item 2), the
+   *  real "what stays short" statement (item 3), and a real copyable transfer block for the NFCU
+   *  app (item 1). Apply persists the (possibly hand-edited) allocations as the real pending plan
+   *  and redraws Transfer Instructions above. */
   function renderDistributePreview(container, sourceAmount, preview) {
     container.replaceChildren();
     if (preview.allocations.length === 0) {
@@ -4133,16 +4155,66 @@ async function renderMoneyDecisionTools(view) {
       return;
     }
 
+    // Pre-split baselines, across EVERY real bill (not just the ones in this split) -- the same
+    // `gate` status object the Now tab already loaded before calling renderMoneyDecisionTools, so
+    // this needs no second round trip and stays correct even for a bill that isn't part of this
+    // allocation set (skipped, or already fully funded).
+    const gateBalanceCents = preview.gate?.balance != null ? Math.round(preview.gate.balance * 100) : null;
+    const totalAvailableBeforeCents = gate?.totalAvailable != null ? Math.round(gate.totalAvailable * 100) : null;
+    const totalShortfallBeforeCents = gate?.totalShortfall != null ? Math.round(gate.totalShortfall * 100) : null;
+
+    const leftInGateEl = el("span", { style: "font-weight:700", "font-variant-numeric": "tabular-nums", text: preview.leftInGateFormatted ?? "unknown" });
+    const availableAfterEl = el("span", { style: "font-weight:700", "font-variant-numeric": "tabular-nums", text: preview.availableAfterSplitFormatted ?? "unknown" });
+
     const rows = preview.allocations.map((a) => {
-      const input = el("input", { type: "number", step: "0.01", inputmode: "decimal", value: a.amount, style: "width:5.5rem", "aria-label": `Amount for ${a.name}` });
-      return { accountId: a.accountId, input, row: el("div", { class: "money-bucket-row" }, [
-        el("div", { class: "money-bucket-name" }, [
-          el("span", { text: a.name }),
-          el("div", { class: "money-bucket-meta", text: `shortfall ${dollars(a.shortfall)}` }),
-        ]),
+      const input = el("input", {
+        type: "number",
+        step: "0.01",
+        inputmode: "decimal",
+        value: a.amount,
+        style: "width:5.5rem",
+        "aria-label": `Amount for ${a.name}`,
+      });
+      input.addEventListener("input", recomputeRunningTotals);
+      return {
+        accountId: a.accountId,
+        name: a.name,
+        shortfallCents: Math.round((a.shortfall ?? 0) * 100),
         input,
-      ]) };
+        row: el("div", { class: "money-bucket-row" }, [
+          el("div", { class: "money-bucket-name" }, [
+            el("span", { text: a.name }),
+            a.dueLabel ? el("div", { class: "money-bucket-meta", text: a.dueLabel }) : null,
+          ]),
+          input,
+        ]),
+      };
     });
+
+    /** Live-recomputes the two running totals as Shane edits an allocation amount, without a
+     *  round trip -- re-derives computeGateMath's own identity (totalAvailable - totalShortfall)
+     *  from the pre-split baselines above plus whatever is currently typed into each row, so both
+     *  numbers stay correct as amounts move between rows rather than freezing at the server's
+     *  first answer (Git #3208 scope item 2: "both live-computed as the split changes"). A
+     *  bill's own shortfall reduction is capped at that bill's real shortfall -- overfunding one
+     *  on purpose (a real "give Rent 2000" style override) still only closes its own real gap. */
+    function recomputeRunningTotals() {
+      let allocatedCents = 0;
+      let shortfallReducedCents = 0;
+      for (const r of rows) {
+        const cents = Math.round((Number(r.input.value) || 0) * 100);
+        allocatedCents += cents;
+        shortfallReducedCents += Math.min(cents, r.shortfallCents);
+      }
+      if (gateBalanceCents != null) {
+        leftInGateEl.textContent = dollars((gateBalanceCents - allocatedCents) / 100);
+      }
+      if (totalAvailableBeforeCents != null && totalShortfallBeforeCents != null) {
+        const totalAvailableAfterCents = totalAvailableBeforeCents - allocatedCents;
+        const totalShortfallAfterCents = totalShortfallBeforeCents - shortfallReducedCents;
+        availableAfterEl.textContent = dollars((totalAvailableAfterCents - totalShortfallAfterCents) / 100);
+      }
+    }
 
     const applyBtn = el("button", { type: "button", class: "small", text: "Apply this plan" });
     applyBtn.addEventListener("click", async () => {
@@ -4162,11 +4234,38 @@ async function renderMoneyDecisionTools(view) {
       }
     });
 
+    const copyBtn = el("button", {
+      type: "button",
+      class: "ghost small",
+      text: `Copy all ${rows.length} for the NFCU app`,
+      onClick: () => navigator.clipboard?.writeText(preview.copyText ?? ""),
+    });
+
     container.append(
       el("div", { class: "money-bucket", style: "margin-top:.5rem" }, [
-        el("p", { class: "small muted", style: "padding:.6rem 1rem 0", text: preview.text }),
+        el("div", { class: "row", style: "justify-content:space-between;padding:.6rem 1rem 0" }, [
+          el("span", { class: "small muted", text: `From ${preview.gate?.name ?? "the Income Gate"}${preview.gate?.masked ? ` ${preview.gate.masked}` : ""}` }),
+          el("span", { class: "small muted", text: "due soonest first" }),
+        ]),
         ...rows.map((r) => r.row),
-        el("div", { class: "row", style: "padding:.6rem 1rem" }, [applyBtn]),
+        el("div", { class: "money-bucket-row" }, [
+          el("span", { style: "flex:1;font-weight:600", text: `Left in ${preview.gate?.name ?? "the source account"}` }),
+          leftInGateEl,
+        ]),
+        el("div", { class: "money-bucket-row" }, [
+          el("div", { style: "flex:1;min-width:0" }, [
+            el("span", { style: "font-weight:600", text: "Available to spend" }),
+            el("span", { class: "small muted", text: " after the split · deposit + spend accounts" }),
+          ]),
+          availableAfterEl,
+        ]),
+        el("div", { class: "row", style: "padding:.6rem 1rem" }, [copyBtn, applyBtn]),
+        preview.stillShortText ? el("p", { class: "small", style: "padding:0 1rem .3rem;color:#fbbf24", text: preview.stillShortText }) : null,
+        el("p", {
+          class: "small muted",
+          style: "padding:0 1rem .7rem",
+          text: `${preview.text} Nothing has moved; these are the transfers to make. Say "skip Netflix" or "give Rent 2000" and the list recomputes.`,
+        }),
       ]),
     );
   }
@@ -4371,7 +4470,7 @@ async function viewMoney(view) {
 
   view.append(availableCard);
 
-  await renderMoneyDecisionTools(view);
+  await renderMoneyDecisionTools(view, gate);
 
   // Protected -- money already spoken for: the Income Gate's own gate bills, plus critical debts.
   const protectedRows = [...gate.gateBills.map(moneyBillRow), ...gate.protectedDebts.map(moneyDebtRow)];

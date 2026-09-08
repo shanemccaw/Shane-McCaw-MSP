@@ -1895,60 +1895,263 @@ export async function getSkipSuggestions(userId, { asOf = new Date() } = {}) {
   };
 }
 
+/** "5" -> "5th", "12" -> "12th", "23" -> "23rd". Used for the plain-English due-date lines
+ *  Distribute Paycheck's transfer list and "what stays short" statement both need. */
+function ordinal(n) {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return String(n);
+  const rem100 = num % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${num}th`;
+  switch (num % 10) {
+    case 1:
+      return `${num}st`;
+    case 2:
+      return `${num}nd`;
+    case 3:
+      return `${num}rd`;
+    default:
+      return `${num}th`;
+  }
+}
+
+/** Human labels for `accounts.bill_category` (migration 045) -- Distribute Paycheck's own row
+ *  meta line, same values Skip Suggestions' priority table already keys off. */
+const BILL_CATEGORY_LABELS = { shared: "Shared", general: "General", cars: "Cars", h2: "H2", h1: "H1" };
+
 /**
- * Distribute Paycheck, step 1: given a real total dollar amount, split it proportionally across
- * every real short bill's real shortfall (`index.tsx`'s own framing) -- fully funds every short
+ * A bill's real `due_day`, resolved against THIS calendar month (never rolled forward to next
+ * month the way `nextDueDate`/`dueSoon` are for the reminder pipeline) -- Distribute Paycheck's
+ * transfer list wants "was due the 5th" for a bill that's already overdue this cycle, not next
+ * month's occurrence of the 5th. Returns null for a bill with no due_day set (nothing to date).
+ */
+function describeDueDate(dueDay, today) {
+  if (!dueDay) return null;
+  const year = today.getUTCFullYear();
+  const month = today.getUTCMonth();
+  const clamped = Math.min(dueDay, daysInUtcMonth(year, month));
+  const date = new Date(Date.UTC(year, month, clamped));
+  const daysAway = Math.round((date - today) / MS_PER_DAY);
+  let label;
+  if (daysAway < 0) label = `was due the ${ordinal(dueDay)}`;
+  else if (daysAway === 0) label = "due today";
+  else if (daysAway === 1) label = "due tomorrow";
+  else label = `due ${formatPayDate(utcIso(date))}`;
+  return { label, sortDate: date };
+}
+
+/**
+ * Distribute Paycheck, step 1 (Git #3208 refinement of #3171's own build): given a real total
+ * dollar amount, split it across every real short bill's real shortfall -- fully funds every short
  * bill if the amount covers the total shortfall, otherwise each bill gets its proportional share.
  * Pure preview: nothing is persisted here, so the amount and the resulting allocations can be
  * edited client-side (the real 2-step flow) before `applyDistribution` below commits anything.
+ *
+ * `skip`/`give` are the real conversational-adjustment path the design's own capture-box copy
+ * names directly ("say 'skip Netflix' or 'give Rent 2000' and the list recomputes") -- resolved
+ * against real bill account names the same way `simulateTransfer`'s from/to are (`resolveAccount`,
+ * exact/prefix/substring, ambiguous named explicitly rather than guessed). `skip` drops a bill out
+ * of this round's split entirely (its own real shortfall is untouched and can surface in
+ * `stillShortText`); `give` is a hard override -- exactly what Shane said to send it, taken off the
+ * top of `amount` before the remainder splits proportionally across everything else. Both are also
+ * reachable from the `preview_paycheck_distribution` MCP tool, unresolved names come back in
+ * `unresolved` rather than being silently dropped.
  */
-export async function previewDistribution(userId, amountDollars) {
+export async function previewDistribution(userId, amountDollars, { skip = [], give = [], asOf = new Date() } = {}) {
   const amountCents = parseAmountCents(amountDollars, "amount");
-  const accounts = await loadMoneyAccounts();
+  const [accounts, incomeSources] = await Promise.all([
+    loadMoneyAccounts(),
+    many(
+      `SELECT id, name, person, pay_frequency_days, expected_per_cycle, next_pay_date, is_active
+         FROM income_sources WHERE is_active`,
+    ),
+  ]);
   const math = computeGateMath(accounts);
+  const today = new Date(Date.UTC(asOf.getFullYear(), asOf.getMonth(), asOf.getDate()));
 
-  const eligible = math.bills.filter((b) => b.shortfallCents !== null && b.shortfallCents > 0);
+  const billPool = { bill: accounts.billAccounts };
+  const unresolved = [];
+  const resolveBillByName = (name) => {
+    const result = resolveAccount(name, billPool);
+    if (result.status === "ok") return math.bills.find((b) => b.id === result.row.id) ?? null;
+    unresolved.push(
+      result.status === "ambiguous"
+        ? `"${name}" matches ${result.matches.join(", ")} — say which one.`
+        : `There is no bill account called "${String(name ?? "").trim()}".`,
+    );
+    return null;
+  };
+
+  const skipIds = new Set();
+  const skipped = [];
+  for (const name of skip) {
+    const bill = resolveBillByName(name);
+    if (!bill) continue;
+    skipIds.add(bill.id);
+    skipped.push({ accountId: bill.id, name: bill.name });
+  }
+
+  const overrideIds = new Set();
+  const overrides = [];
+  for (const g of give) {
+    const bill = resolveBillByName(g?.name);
+    if (!bill) continue;
+    overrideIds.add(bill.id);
+    overrides.push({
+      accountId: bill.id,
+      name: bill.name,
+      dueDay: bill.dueDay,
+      category: bill.category,
+      shortfallCents: bill.shortfallCents ?? 0,
+      amountCents: parseAmountCents(g.amount, `amount for ${bill.name}`),
+    });
+  }
+
+  const overrideTotalCents = overrides.reduce((sum, o) => sum + o.amountCents, 0);
+  const remainingAmountCents = Math.max(0, amountCents - overrideTotalCents);
+
+  const eligible = math.bills.filter(
+    (b) => b.shortfallCents !== null && b.shortfallCents > 0 && !skipIds.has(b.id) && !overrideIds.has(b.id),
+  );
   const totalShortfallCents = eligible.reduce((sum, b) => sum + b.shortfallCents, 0);
 
-  if (totalShortfallCents === 0) {
+  let proportional = [];
+  if (totalShortfallCents > 0) {
+    const capped = Math.min(remainingAmountCents, totalShortfallCents);
+    let allocated = 0;
+    proportional = eligible
+      .map((bill, i) => {
+        // The last bill takes the remainder so the allocated cents always sum exactly to `capped`
+        // regardless of rounding on the earlier proportional shares.
+        const shareCents =
+          i === eligible.length - 1 ? capped - allocated : Math.round((bill.shortfallCents / totalShortfallCents) * capped);
+        allocated += i === eligible.length - 1 ? 0 : shareCents;
+        return {
+          accountId: bill.id,
+          name: bill.name,
+          dueDay: bill.dueDay,
+          category: bill.category,
+          shortfallCents: bill.shortfallCents,
+          amountCents: shareCents,
+        };
+      })
+      .filter((a) => a.amountCents > 0);
+  }
+
+  const combined = [...overrides, ...proportional];
+  const totalAllocatedCents = combined.reduce((sum, a) => sum + a.amountCents, 0);
+  const totalShortfallAllCents = eligible.reduce((s, b) => s + b.shortfallCents, 0) + overrides.reduce((s, o) => s + o.shortfallCents, 0);
+
+  // Due-soonest-first, matching the design's own transfer list ordering -- an overdue bill (a
+  // negative days-away) sorts ahead of one still due later this month by construction, since both
+  // are compared as real dates.
+  const withDue = combined.map((a) => {
+    const due = describeDueDate(a.dueDay, today);
+    return { ...a, dueLabel: due ? due.label : (BILL_CATEGORY_LABELS[a.category] ?? null), dueSort: due ? due.sortDate.getTime() : Number.POSITIVE_INFINITY };
+  });
+  withDue.sort((a, b) => a.dueSort - b.dueSort || b.amountCents - a.amountCents);
+
+  const allocations = withDue.map((a) => ({
+    accountId: a.accountId,
+    name: a.name,
+    shortfall: toDollars(a.shortfallCents),
+    amount: toDollars(a.amountCents),
+    amountFormatted: formatMoney(a.amountCents),
+    dueLabel: a.dueLabel,
+  }));
+
+  if (allocations.length === 0) {
     return {
       amount: toDollars(amountCents),
-      totalShortfall: 0,
+      totalShortfall: toDollars(totalShortfallAllCents),
       allocations: [],
+      skipped,
+      unresolved,
       leftover: toDollars(amountCents),
-      fullyFunds: true,
-      text: "Nothing is short right now — there's nowhere real to distribute this.",
+      fullyFunds: totalShortfallAllCents === 0,
+      text:
+        totalShortfallAllCents === 0
+          ? "Nothing is short right now — there's nowhere real to distribute this."
+          : "Everything short was skipped — nothing real is left to distribute this to.",
+      warnings: math.warnings,
     };
   }
 
-  const capped = Math.min(amountCents, totalShortfallCents);
-  let allocated = 0;
-  const allocations = eligible
-    .map((bill, i) => {
-      // The last bill takes the remainder so the allocated cents always sum exactly to `capped`
-      // regardless of rounding on the earlier proportional shares.
-      const shareCents =
-        i === eligible.length - 1
-          ? capped - allocated
-          : Math.round((bill.shortfallCents / totalShortfallCents) * capped);
-      allocated += i === eligible.length - 1 ? 0 : shareCents;
-      return { accountId: bill.id, name: bill.name, shortfall: toDollars(bill.shortfallCents), amountCents: shareCents };
-    })
-    .filter((a) => a.amountCents > 0)
-    .map((a) => ({ ...a, amount: toDollars(a.amountCents) }));
+  // -- the two running totals the design's own transfer-list card puts right under the rows --
+  const gateAccount = accounts.gateAccounts[0] ?? null;
+  const gateBalanceCents = math.gateBalanceCents;
+  const leftInGateCents = gateBalanceCents === null ? null : gateBalanceCents - totalAllocatedCents;
 
-  const leftoverCents = amountCents - capped;
+  // Simulate applying every real allocation to COPIES of the real balances -- same discipline as
+  // simulateTransfer: nothing here writes a real dollar, it only recomputes the same gate math
+  // against what the balances would be if this transfer list were carried out at NFCU.
+  const clone = (rows) => rows.map((r) => ({ ...r }));
+  const simulated = {
+    gateAccounts: clone(accounts.gateAccounts),
+    billAccounts: clone(accounts.billAccounts),
+    reserveAccounts: clone(accounts.reserveAccounts),
+  };
+  if (gateAccount && gateBalanceCents !== null) {
+    const gateCopy = simulated.gateAccounts.find((g) => g.id === gateAccount.id);
+    if (gateCopy) gateCopy.current_balance = toDollars(gateBalanceCents - totalAllocatedCents);
+  }
+  for (const a of combined) {
+    const billCopy = simulated.billAccounts.find((b) => b.id === a.accountId);
+    if (!billCopy) continue;
+    const currentCents = toCents(billCopy.current_balance) ?? 0;
+    billCopy.current_balance = toDollars(currentCents + a.amountCents);
+  }
+  const after = computeGateMath(simulated);
+
+  // -- the real, plain "what stays short" statement, stated once (Git #3208 scope item 3) --
+  const budgetDay = computeBudgetDay(incomeSources, asOf);
+  const nextCheckLine = budgetDay ? formatPayDate(budgetDay.nextPayDate) : null;
+  const firstStillShort = after.unfunded[0] ?? null;
+  const stillShortText = firstStillShort
+    ? `${firstStillShort.name}${firstStillShort.dueDay ? ` on the ${ordinal(firstStillShort.dueDay)}` : ""} is still ` +
+      `${formatMoney(firstStillShort.shortfallCents)} short after this${nextCheckLine ? `, and the next check is ${nextCheckLine}` : ""}.`
+    : null;
+
+  // -- the real, copyable transfer text for "Copy all five for the NFCU app" (Git #3208 scope item 1) --
+  const gateMasked = gateAccount?.mask ? `•••• ${gateAccount.mask}` : null;
+  const copyText = [
+    `Transfer instructions${math.gateName ? ` — from ${math.gateName}${gateMasked ? ` ${gateMasked}` : ""}` : ""}`,
+    "",
+    ...allocations.map((a) => `Transfer ${a.amountFormatted} → ${a.name}${a.dueLabel ? ` (${a.dueLabel})` : ""}`),
+    "",
+    leftInGateCents !== null ? `Left in ${math.gateName ?? "the source account"}: ${formatMoney(leftInGateCents)}` : null,
+    "Nothing has moved -- do these at NFCU, then mark each one transferred.",
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+
+  const stillShortCents = Math.max(0, totalShortfallAllCents - totalAllocatedCents);
+
   return {
     amount: toDollars(amountCents),
-    totalShortfall: toDollars(totalShortfallCents),
-    allocations: allocations.map(({ amountCents: _omit, ...rest }) => rest),
-    leftover: toDollars(leftoverCents),
-    leftoverFormatted: leftoverCents > 0 ? formatMoney(leftoverCents) : null,
-    fullyFunds: amountCents >= totalShortfallCents,
+    totalShortfall: toDollars(totalShortfallAllCents),
+    allocations,
+    skipped,
+    unresolved,
+    leftover: toDollars(Math.max(0, amountCents - totalAllocatedCents)),
+    leftoverFormatted: amountCents - totalAllocatedCents > 0 ? formatMoney(amountCents - totalAllocatedCents) : null,
+    fullyFunds: stillShortCents === 0,
     text:
-      amountCents >= totalShortfallCents
-        ? `Fully funds every short bill${leftoverCents > 0 ? `, ${formatMoney(leftoverCents)} left over` : ""}.`
-        : `Split proportionally by how short each bill is; ${formatMoney(totalShortfallCents - capped)} still short after this.`,
+      stillShortCents === 0
+        ? `Fully funds every short bill${amountCents - totalAllocatedCents > 0 ? `, ${formatMoney(amountCents - totalAllocatedCents)} left over` : ""}.`
+        : `Split by due date across what's short; ${formatMoney(stillShortCents)} still short after this.`,
+    gate: {
+      id: gateAccount?.id ?? null,
+      name: math.gateName,
+      masked: gateMasked,
+      balance: toDollars(gateBalanceCents),
+      balanceFormatted: formatMoney(gateBalanceCents),
+    },
+    leftInGate: toDollars(leftInGateCents),
+    leftInGateFormatted: formatMoney(leftInGateCents),
+    availableAfterSplit: toDollars(after.topLineCents),
+    availableAfterSplitFormatted: formatMoney(after.topLineCents),
+    stillShortText,
+    copyText,
     warnings: math.warnings,
   };
 }

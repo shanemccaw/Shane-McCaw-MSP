@@ -1491,11 +1491,30 @@ export function buildApiRouter() {
     return sendJson(res, 200, await money.getSkipSuggestions(user.id));
   });
 
-  // GET, not POST: a preview changes nothing -- same reasoning as what-if above.
+  // GET, not POST: a preview changes nothing -- same reasoning as what-if above. `skip`/`give`
+  // are the real conversational-adjustment path (Git #3208): repeatable `skip=Netflix` params and
+  // a `give` JSON array of `{name, amount}`, the same shape the `preview_paycheck_distribution`
+  // MCP tool exposes to Claude for "skip Netflix" / "give Rent 2000".
   router.get("/api/money/distribute-preview", async (req, res, _params, ctx) => {
     const user = requireUser(ctx);
     const url = new URL(req.url, "http://internal");
-    return sendJson(res, 200, await money.previewDistribution(user.id, url.searchParams.get("amount")));
+    let give = [];
+    const giveRaw = url.searchParams.get("give");
+    if (giveRaw) {
+      try {
+        give = JSON.parse(giveRaw);
+      } catch {
+        throw badRequest("give must be JSON: [{\"name\":\"Rent\",\"amount\":200}]");
+      }
+    }
+    return sendJson(
+      res,
+      200,
+      await money.previewDistribution(user.id, url.searchParams.get("amount"), {
+        skip: url.searchParams.getAll("skip"),
+        give,
+      }),
+    );
   });
 
   router.post("/api/money/distribute", async (req, res, _params, ctx) => {
