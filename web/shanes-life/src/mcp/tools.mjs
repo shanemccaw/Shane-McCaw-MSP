@@ -735,7 +735,24 @@ export const TOOLS = [
               name: { type: "string" },
               time: { type: "string", description: "e.g. '35 min · serves 4, leftovers for the Rental'." },
               needs: { type: "array", items: { type: "string" }, description: "Real ingredient list, matched against the Shopping run's item text." },
-              steps: { type: "array", items: { type: "string" }, description: "Real step text, in order. Stored for the later Cook-mode Feature; not driven by anything here yet." },
+              steps: {
+                type: "array",
+                description:
+                  "Real steps, in order, driving Cook mode (Git #3125): a bare string, or `{text, ings}` where `ings` is that step's own real ingredients (e.g. 'Alfredo sauce, 1 jar') -- Shane checks those off while cooking that step, but an unchecked one never blocks moving to the next step. Prefer the object form when a step genuinely uses specific ingredients.",
+                items: {
+                  oneOf: [
+                    { type: "string" },
+                    {
+                      type: "object",
+                      properties: {
+                        text: { type: "string" },
+                        ings: { type: "array", items: { type: "string" } },
+                      },
+                      required: ["text"],
+                    },
+                  ],
+                },
+              },
               heartHealthy: { type: "boolean", default: false, description: "True if this recipe genuinely fits Shane's real stated health context (get_health_context)." },
             },
             required: ["name"],

@@ -44,14 +44,32 @@ function normaliseNeeds(needs) {
   });
 }
 
+const MAX_STEP_INGS = 30;
+
+/** A step is either a bare string (how #3124 stored them, before anything read `ings`) or a real
+ *  `{ text, ings }` object matching the design's own seed shape (contract pack prototype's
+ *  `RECIPES` data: `{ text: '...', ings: ['Alfredo sauce, 1 jar', ...] }`). Cook mode (#3125) is
+ *  what actually reads `ings` -- the per-step ingredients Shane checks off while cooking that
+ *  step, "unchecked ingredients never block Next" per the design's own locked line -- so this is
+ *  the first real consumer normalising both shapes into one, rather than a schema change: `steps`
+ *  is still the same jsonb column, just carrying its real intended shape now that something reads
+ *  the ings half of it.
+ */
 function normaliseSteps(steps) {
   if (steps === undefined || steps === null) return [];
-  if (!Array.isArray(steps)) throw badRequest("steps must be an array of strings");
+  if (!Array.isArray(steps)) throw badRequest("steps must be an array of strings or {text, ings} objects");
   if (steps.length > MAX_STEPS_PER_RECIPE) throw badRequest(`steps must contain at most ${MAX_STEPS_PER_RECIPE} entries`);
   return steps.map((s, i) => {
-    const text = String(s ?? "").trim();
+    const raw = typeof s === "string" ? { text: s } : s && typeof s === "object" ? s : {};
+    const text = String(raw.text ?? "").trim();
     if (!text) throw badRequest(`steps[${i}] is empty`);
-    return text.slice(0, 2000);
+    const ings = Array.isArray(raw.ings)
+      ? raw.ings
+          .slice(0, MAX_STEP_INGS)
+          .map((g) => String(g ?? "").trim())
+          .filter(Boolean)
+      : [];
+    return { text: text.slice(0, 2000), ings: ings.map((g) => g.slice(0, 200)) };
   });
 }
 

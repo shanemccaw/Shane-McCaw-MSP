@@ -20,7 +20,46 @@ const state = {
   route: "today",
   entity: null,
   attachment: null, // { mediaId, kind, label }
+  cookRecipeId: null,
 };
+
+// Cook mode's own transient client state (Git #3125) -- deliberately not persisted server-side
+// or to localStorage, same as the design's own `this.setState({ cook: { id, step, checks } })`:
+// it's a single real cooking session in front of Shane right now, reset whenever he leaves it or
+// reloads. { recipeId, stepIndex, checks: { "<stepIndex>-<ingIndex>": true } }.
+let cookSession = null;
+
+// Wake Lock API handle (Git #3125's "screen stays awake in cook mode"). Feature-detected --
+// unsupported browsers just don't get the lock, cook mode still works otherwise.
+let wakeLock = null;
+
+async function requestCookWakeLock() {
+  if (wakeLock || !("wakeLock" in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => {
+      wakeLock = null;
+    });
+  } catch {
+    // Denied (not visible, battery saver, etc) -- cook mode still works, the screen just may sleep.
+  }
+}
+
+async function releaseCookWakeLock() {
+  if (!wakeLock) return;
+  try {
+    await wakeLock.release();
+  } catch {
+    // Already released.
+  }
+  wakeLock = null;
+}
+
+// A wake lock is auto-released by the browser whenever the tab loses visibility; re-acquire it
+// if Shane comes back to the tab while still genuinely in cook mode.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && state.route === "cook") requestCookWakeLock();
+});
 
 // ---------------------------------------------------------------------------
 // fetch helpers
@@ -677,6 +716,13 @@ function recipeCard(recipe) {
     },
   });
 
+  // Cook mode (Git #3125): a recipe with no real steps saved has nothing to walk through, so
+  // there's no live entry point for it -- Claude just hasn't pushed steps for this one yet.
+  const cookBtn =
+    recipe.steps.length > 0
+      ? el("button", { class: "primary small", text: "Cook", onClick: () => { location.hash = `#/cook/${recipe.id}`; } })
+      : null;
+
   return el("div", { class: "card" }, [
     el("div", { class: "spread" }, [
       el("div", {}, [
@@ -688,7 +734,7 @@ function recipeCard(recipe) {
     recipe.needs.length > 0
       ? el("p", { class: "small muted", style: "margin:.5rem 0 0", text: recipe.needs.join(", ") })
       : null,
-    el("div", { class: "row", style: "margin-top:.6rem" }, [addMissingBtn, removeBtn].filter(Boolean)),
+    el("div", { class: "row", style: "margin-top:.6rem" }, [cookBtn, addMissingBtn, removeBtn].filter(Boolean)),
   ]);
 }
 
@@ -717,6 +763,125 @@ async function viewRecipes(view) {
     for (const recipe of recipes) list.append(recipeCard(recipe));
     view.append(list);
   }
+}
+
+/** A step is a bare string (#3124-era pushes) or `{text, ings}` (Git #3125 onward) -- see
+ *  recipes.mjs's normaliseSteps for the same real distinction, server-side. */
+function stepText(step) {
+  return typeof step === "string" ? step : step.text;
+}
+function stepIngs(step) {
+  return typeof step === "string" ? [] : step.ings || [];
+}
+
+// Cook mode -- real step-by-step cooking view (Git #3125), the sibling Feature #3124 explicitly
+// left out. "Unchecked ingredients never block Next" and "Screen stays awake in cook mode" are
+// the design's own two locked, verbatim lines (contract pack prototype's real `cookFoot` text) --
+// copied here exactly, not paraphrased.
+async function viewCook(view, recipeId) {
+  const { recipes } = await api("/api/recipes");
+  const recipe = recipes.find((r) => r.id === recipeId);
+
+  if (!recipe) {
+    view.append(empty("Recipe not found.", "It may have been removed."));
+    return;
+  }
+  const steps = recipe.steps || [];
+  if (steps.length === 0) {
+    view.append(empty("No steps saved for this recipe.", "Ask Claude to push real steps for it next time."));
+    return;
+  }
+
+  if (!cookSession || cookSession.recipeId !== recipeId) {
+    cookSession = { recipeId, stepIndex: 0, checks: {} };
+  }
+  cookSession.stepIndex = Math.min(cookSession.stepIndex, steps.length - 1);
+
+  await requestCookWakeLock();
+
+  const stepIndex = cookSession.stepIndex;
+  const step = steps[stepIndex];
+  const isLast = stepIndex + 1 >= steps.length;
+  const ings = stepIngs(step);
+
+  const exitToRecipes = () => {
+    cookSession = null;
+    location.hash = "#/recipes";
+  };
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("div", { class: "spread" }, [
+        el("button", { class: "ghost small", text: "← Recipes", onClick: exitToRecipes }),
+        el("div", { style: "text-align:right" }, [
+          el("div", { class: "title", text: recipe.name }),
+          el("div", { class: "meta", text: `Step ${stepIndex + 1} of ${steps.length}` }),
+        ]),
+      ]),
+    ]),
+  );
+
+  const ingList =
+    ings.length > 0
+      ? el(
+          "ul",
+          { class: "checklist" },
+          ings.map((ing, i) => {
+            const key = `${stepIndex}-${i}`;
+            const done = !!cookSession.checks[key];
+            const box = el("input", { type: "checkbox", ...(done ? { checked: true } : {}) });
+            const label = el("span", { class: done ? "done" : "", text: ing });
+            box.addEventListener("change", () => {
+              cookSession.checks[key] = box.checked;
+              render();
+            });
+            return el("li", {}, [box, label]);
+          }),
+        )
+      : null;
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("div", { class: "card" }, [
+        el("div", { class: "small muted", text: `Step ${stepIndex + 1}`, style: "text-transform:uppercase;letter-spacing:.05em" }),
+        el("p", { style: "font-size:1.3rem;font-weight:700;margin:.35rem 0 0", text: stepText(step) }),
+        ingList,
+      ]),
+    ]),
+  );
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("div", { class: "row", style: "display:grid;grid-template-columns:1fr 2fr;gap:.6rem" }, [
+        el("button", {
+          class: "ghost",
+          text: "Back",
+          onClick: () => {
+            if (stepIndex > 0) cookSession.stepIndex = stepIndex - 1;
+            else exitToRecipes();
+            render();
+          },
+        }),
+        el("button", {
+          class: "primary",
+          text: isLast ? "Done cooking" : "Next step",
+          onClick: () => {
+            if (!isLast) {
+              cookSession.stepIndex = stepIndex + 1;
+              render();
+            } else {
+              exitToRecipes();
+            }
+          },
+        }),
+      ]),
+      el("p", {
+        class: "muted small",
+        style: "text-align:center;margin-top:.5rem",
+        text: "Screen stays awake in cook mode. Unchecked ingredients never block Next.",
+      }),
+    ]),
+  );
 }
 
 async function viewEntity(view, entityId) {
@@ -1735,7 +1900,7 @@ async function viewSettings(view) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", inbox: "Inbox", things: "Things", settings: "Settings", entity: "" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", inbox: "Inbox", things: "Things", settings: "Settings", entity: "", cook: "Cook" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -1743,6 +1908,7 @@ function parseRoute() {
   state.route = head || "today";
   state.categoryFilter = state.route === "things" ? rest[0] || null : null;
   state.entity = state.route === "entity" ? rest[0] : null;
+  state.cookRecipeId = state.route === "cook" ? rest[0] : null;
 }
 
 async function render() {
@@ -1752,6 +1918,10 @@ async function render() {
   resetCritterRender(); // Git #3119: a slot's pair-alt only advances within a single screen.
   $("#view-title").textContent = TITLES[state.route] ?? "";
 
+  // A wake lock (Git #3125) is only ever held for cook mode itself -- release it the moment
+  // navigation moves anywhere else, rather than waiting on the tab losing visibility.
+  if (state.route !== "cook") releaseCookWakeLock();
+
   for (const tab of document.querySelectorAll(".tabs a")) {
     if (tab.dataset.tab === state.route) tab.setAttribute("aria-current", "page");
     else tab.removeAttribute("aria-current");
@@ -1760,6 +1930,7 @@ async function render() {
   try {
     if (state.route === "shopping") await viewShopping(view);
     else if (state.route === "recipes") await viewRecipes(view);
+    else if (state.route === "cook") await viewCook(view, state.cookRecipeId);
     else if (state.route === "inbox") await viewInbox(view);
     else if (state.route === "things") await viewThings(view);
     else if (state.route === "settings") await viewSettings(view);
