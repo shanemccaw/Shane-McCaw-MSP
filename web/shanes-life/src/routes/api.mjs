@@ -88,13 +88,14 @@ function fmtUsd(amount) {
  * a lit flag.
  */
 export async function roomsForToday(userId, { allDates, tonight, groceries }) {
-  const [thingsList, listsForUser, allPeople, allPets, recipeMatches, gate] = await Promise.all([
+  const [thingsList, listsForUser, allPeople, allPets, recipeMatches, gate, recentWins] = await Promise.all([
     things.listThings(userId),
     lists.listListsForUser(userId),
     people.listPeople(userId),
     pets.listPets(userId),
     recipes.listRecipesWithMatch(userId),
     money.getGateStatus(userId),
+    wins.listWins(userId, { limit: 1 }),
   ]);
 
   // Shopping: "while items remain" -- the same openCount the Next card's own "home" case reads.
@@ -161,6 +162,23 @@ export async function roomsForToday(userId, { allDates, tonight, groceries }) {
     subtitle: allPets.length > 0 ? allPets.map((p) => p.name).join(", ") : "No pets yet",
   };
 
+  // Wins (Git #3241 -- pulled out of Money into its own room): "lit" for 3 days after the most
+  // recent real win, the same quiet-glow-then-fade feel a genuine relief moment deserves, not a
+  // permanent trophy case. Subtitle shows that win's own real text while lit; once it fades the
+  // room goes dark like Things/Lists/People/Pets, showing the real total instead -- never a
+  // streak or percentage (Section 3/8 still applies here, this is a house-grid subtitle, not a
+  // gamification mechanic).
+  const mostRecentWin = recentWins[0] || null;
+  let winsRoom;
+  if (mostRecentWin) {
+    const daysSince = Math.floor((Date.now() - new Date(mostRecentWin.happened_on).getTime()) / 86400000);
+    winsRoom = daysSince <= 3
+      ? { lit: true, subtitle: mostRecentWin.text }
+      : { lit: false, subtitle: mostRecentWin.text };
+  } else {
+    winsRoom = { lit: false, subtitle: "Nothing logged yet" };
+  }
+
   return {
     shopping,
     money: money_,
@@ -170,6 +188,7 @@ export async function roomsForToday(userId, { allDates, tonight, groceries }) {
     lists: listsRoom,
     people: peopleRoom,
     pets: petsRoom,
+    wins: winsRoom,
   };
 }
 
