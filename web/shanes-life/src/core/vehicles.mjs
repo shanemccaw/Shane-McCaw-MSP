@@ -32,14 +32,30 @@
 // is exactly the 'renewal' kind dates.mjs already prices at 21 days' lead; maintenance has no
 // named kind of its own, so it gets dates.mjs's own fallback for a genuinely novel kind (7 days),
 // imported as the same constant, not retyped. What is NOT reused is dates.mjs's day-interval
-// rolling (nextOccurrence): maintenance_interval_miles is a MILEAGE interval and this app has no
-// real odometer feed, so there is no honest way to compute a next calendar date from it --
-// next_maintenance_on/note (017) stay a directly-stated date, same as a birthday or a visit.
+// rolling (nextOccurrence): maintenance_interval_miles is a MILEAGE interval, and next_maintenance
+// _on/note (017) stay a directly-stated date, same as a birthday or a visit.
+//
+// Git #3217 (migration 060) closes the "no real odometer feed" half of that gap: a vehicle
+// marked tesla_synced gets a real, periodically-synced current_mileage off Tesla's own
+// vehicle_state.odometer (core/tesla.mjs's getVehicleState). This does NOT replace
+// next_maintenance_on as the calendar reminder -- there is still no honest way to project a
+// future CALENDAR date from an odometer reading without a real trip-history/driving-rate feed
+// this app doesn't have. What it does add is a real, live "how many of the interval's miles are
+// already used up" figure, and a real "overdue by mileage" fact once that figure passes zero --
+// both computed only from numbers that are either directly Tesla-sourced or Shane-stated
+// (maintenance_interval_miles, a logged entry's own mileage), never a guessed rate of travel.
+//
+// Real charging-session sync (also #3217, same migration) is a separate concern from mileage --
+// see syncChargingSessionsFromTesla below and tesla.mjs's getChargingHistory for the real,
+// investigated limitation on cost (Tesla's API exposes no cost field to a personal developer
+// account; cost_estimate_cents is always Shane's own rate x real kWh, never Tesla's own number).
 
 import { many, one, query } from "../db.mjs";
 import { badRequest, notFound } from "../http.mjs";
 import { toCents, toDollars, formatMoney } from "./money.mjs";
 import { LEAD_DAYS_BY_KIND } from "./dates.mjs";
+import * as teslaCore from "./tesla.mjs";
+import { TeslaError } from "./tesla.mjs";
 
 const REGISTRATION_LEAD_DAYS = LEAD_DAYS_BY_KIND.renewal; // 21 -- a car's registration IS a renewal.
 const MAINTENANCE_LEAD_DAYS = 7; // dates.mjs's own fallback for an on-the-fly kind with no table entry.
@@ -104,6 +120,32 @@ async function latestMaintenanceEntry(vehicleId) {
       LIMIT 1`,
     [vehicleId],
   );
+}
+
+/**
+ * The real, live "how much of the interval is used up" figure (Git #3217) -- only computed when
+ * every real number it needs actually exists: a real synced odometer reading, a real interval
+ * Shane set, and a real mileage on the most recent logged maintenance entry to measure from. Any
+ * one of those missing means "unknown," not a guess -- there is deliberately no fallback that
+ * assumes a starting mileage of 0 or invents a driving rate.
+ */
+function mileageStatus(vehicle, lastEntry) {
+  if (!vehicle.tesla_synced || vehicle.current_mileage === null || vehicle.current_mileage === undefined) return null;
+  if (!vehicle.maintenance_interval_miles) return null;
+  const lastMileage = lastEntry?.mileage ?? null;
+  if (lastMileage === null || vehicle.current_mileage < lastMileage) {
+    // A last-logged mileage doesn't exist yet, or the synced reading is somehow behind it (a
+    // stale sync racing a fresher manual log) -- either way there is no honest delta to report.
+    return { currentMileage: vehicle.current_mileage, milesSinceLastService: null, milesUntilNextByMileage: null, overdueByMileage: false };
+  }
+  const milesSinceLastService = vehicle.current_mileage - lastMileage;
+  const milesUntilNextByMileage = vehicle.maintenance_interval_miles - milesSinceLastService;
+  return {
+    currentMileage: vehicle.current_mileage,
+    milesSinceLastService,
+    milesUntilNextByMileage,
+    overdueByMileage: milesUntilNextByMileage <= 0,
+  };
 }
 
 /**
@@ -179,6 +221,9 @@ async function buildCard(vehicle, asOf) {
       next: vehicle.next_maintenance_on
         ? { ...reminder(isoDate(vehicle.next_maintenance_on), MAINTENANCE_LEAD_DAYS, asOf), note: vehicle.next_maintenance_note }
         : null,
+      // Real, live mileage-based status (Git #3217) -- null entirely when this vehicle isn't
+      // Tesla-synced or the numbers it needs aren't all real yet. See mileageStatus's own header.
+      byMileage: mileageStatus(vehicle, lastEntry),
       lastEntry: lastEntry
         ? {
             id: lastEntry.id,
@@ -188,6 +233,10 @@ async function buildCard(vehicle, asOf) {
             mileage: lastEntry.mileage,
           }
         : null,
+    },
+    tesla: {
+      synced: vehicle.tesla_synced,
+      mileageSyncedAt: vehicle.mileage_synced_at,
     },
     allInPerMonth: toDollars(allInMonthlyCents),
     allInPerMonthFormatted: formatMoney(allInMonthlyCents),
@@ -415,6 +464,126 @@ export async function findDueCarReminders(userId, { asOf = new Date() } = {}) {
     if (maint && maint.dueSoon) {
       out.push({ vehicleId: v.id, vehicleName: v.name, kind: "maintenance", note: v.next_maintenance_note, ...maint });
     }
+    // Real, live mileage-overdue fact (Git #3217) -- distinct `kind` from the date-based
+    // "maintenance" reminder above so a vehicle with both a stale next_maintenance_on AND real
+    // odometer evidence of being overdue surfaces both real signals rather than one masking the
+    // other. dueInDays has no real meaning here (this isn't a calendar countdown) -- 0 sorts it
+    // alongside "due today" in the shared dueInDays-ascending order, which is an honest fit since
+    // "overdue by mileage" is exactly as urgent as "due today," not less.
+    const byMileage = mileageStatus(v, await latestMaintenanceEntry(v.id));
+    if (byMileage?.overdueByMileage) {
+      out.push({
+        vehicleId: v.id,
+        vehicleName: v.name,
+        kind: "maintenance_mileage",
+        dueInDays: 0,
+        overdue: true,
+        dueSoon: true,
+        milesSinceLastService: byMileage.milesSinceLastService,
+        intervalMiles: v.maintenance_interval_miles,
+      });
+    }
   }
   return out.sort((a, b) => a.dueInDays - b.dueInDays);
+}
+
+/**
+ * Real, explicit "this Money vehicle IS the connected Tesla" link (Git #3217) -- a dedicated
+ * setter rather than folding tesla_synced into the generic UPDATABLE patch path, because it
+ * carries a real invariant the generic path doesn't enforce: at most one real vehicle per user
+ * is ever marked synced (there is exactly one real Tesla connection per user, tesla_accounts'
+ * own unique index), so turning it on for one vehicle turns it off for every other, atomically.
+ */
+export async function setTeslaSynced(userId, vehicleId, enabled) {
+  const vehicle = await getOwnedVehicle(userId, vehicleId);
+  if (!vehicle) throw notFound("Vehicle not found");
+  if (enabled) {
+    await query("UPDATE vehicles SET tesla_synced = false, updated_at = now() WHERE user_id = $1 AND id != $2", [userId, vehicleId]);
+  }
+  await query("UPDATE vehicles SET tesla_synced = $3, updated_at = now() WHERE id = $1 AND user_id = $2", [vehicleId, userId, Boolean(enabled)]);
+  return getVehicle(userId, vehicleId);
+}
+
+/**
+ * The real 6-hour housekeeping sweep's odometer half (Git #3217) -- reads Tesla's real
+ * vehicle_state.odometer for whichever one vehicle is marked tesla_synced and persists it.
+ * Returns a real, honest status rather than throwing for any of the ordinary "nothing to do"
+ * cases (no synced vehicle, Tesla not connected, no odometer data yet) -- same discipline
+ * tesla.mjs's checkLowBatteryForCommute already uses.
+ */
+export async function syncOdometerFromTesla(userId) {
+  const vehicle = await one("SELECT id, current_mileage FROM vehicles WHERE user_id = $1 AND tesla_synced = true", [userId]);
+  if (!vehicle) return { synced: false, reason: "no_tesla_synced_vehicle" };
+
+  let state;
+  try {
+    state = await teslaCore.getVehicleState(userId);
+  } catch (err) {
+    if (err instanceof TeslaError) return { synced: false, reason: err.code || "tesla_error", message: err.message };
+    throw err;
+  }
+  if (state.odometerMiles === null) return { synced: false, reason: "no_odometer_data" };
+
+  await query("UPDATE vehicles SET current_mileage = $2, mileage_synced_at = now(), updated_at = now() WHERE id = $1", [
+    vehicle.id,
+    state.odometerMiles,
+  ]);
+  return { synced: true, vehicleId: vehicle.id, currentMileage: state.odometerMiles, previousMileage: vehicle.current_mileage };
+}
+
+/** Every real synced charging session for this user, newest first -- the Cars detail page's own
+ *  Charging section. costEstimateCents is always Shane's own rate x real kWh, see tesla.mjs's
+ *  getChargingHistory header for why it is never a Tesla-sourced figure. */
+export async function listChargingSessions(userId, { limit = 20 } = {}) {
+  const rows = await many(
+    `SELECT id, started_at, location, energy_added_kwh, cost_estimate_cents, synced_at
+       FROM tesla_charging_sessions WHERE user_id = $1 ORDER BY started_at DESC NULLS LAST, synced_at DESC LIMIT $2`,
+    [userId, limit],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    startedAt: r.started_at,
+    location: r.location,
+    energyAddedKwh: r.energy_added_kwh === null ? null : Number(r.energy_added_kwh),
+    costEstimate: r.cost_estimate_cents === null ? null : toDollars(r.cost_estimate_cents),
+    syncedAt: r.synced_at,
+  }));
+}
+
+/**
+ * The real 6-hour housekeeping sweep's charging half (Git #3217). Pulls Tesla's real charging
+ * sessions (energy added, timestamp, location -- see tesla.mjs's getChargingHistory for the real,
+ * investigated limitation on cost) and upserts them, computing a cost ESTIMATE off Shane's own
+ * real charge_cost_per_kwh (migration 056) x real kWh when both are known. Idempotent: a repeat
+ * sync of the same real session (migration 060's tesla_session_key unique index) just refreshes
+ * synced_at/the estimate rather than duplicating the row.
+ */
+export async function syncChargingSessionsFromTesla(userId) {
+  let sessions;
+  try {
+    sessions = await teslaCore.getChargingHistory(userId);
+  } catch (err) {
+    if (err instanceof TeslaError) return { synced: false, reason: err.code || "tesla_error", message: err.message };
+    throw err;
+  }
+  if (sessions.length === 0) return { synced: true, count: 0 };
+
+  const settings = await teslaCore.getCommuteSettings(userId);
+  const costPerKwh = settings?.chargeCostPerKwh ?? null;
+
+  let count = 0;
+  for (const s of sessions) {
+    const costEstimateCents = costPerKwh !== null && s.energyAddedKwh !== null ? Math.round(s.energyAddedKwh * costPerKwh * 100) : null;
+    await query(
+      `INSERT INTO tesla_charging_sessions (user_id, tesla_session_key, started_at, location, energy_added_kwh, cost_estimate_cents, raw, synced_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, now())
+       ON CONFLICT (user_id, tesla_session_key) DO UPDATE SET
+         started_at = EXCLUDED.started_at, location = EXCLUDED.location,
+         energy_added_kwh = EXCLUDED.energy_added_kwh, cost_estimate_cents = EXCLUDED.cost_estimate_cents,
+         raw = EXCLUDED.raw, synced_at = now()`,
+      [userId, s.sessionKey, s.startedAt, s.location, s.energyAddedKwh, costEstimateCents, JSON.stringify(s.raw)],
+    );
+    count += 1;
+  }
+  return { synced: true, count };
 }

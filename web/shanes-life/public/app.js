@@ -6311,6 +6311,21 @@ function carCard(vehicle, { justNow } = {}) {
       }),
     );
   }
+  // Real, live mileage status off Tesla's own odometer (Git #3217) -- null whenever this
+  // vehicle isn't Tesla-synced or the real numbers it needs (a synced reading, a logged
+  // maintenance mileage) don't exist yet, so this line simply doesn't appear rather than
+  // showing a half-known number.
+  const byMileage = vehicle.maintenance.byMileage;
+  if (byMileage?.milesUntilNextByMileage !== null && byMileage?.milesUntilNextByMileage !== undefined) {
+    rows.push(
+      el("div", {
+        class: byMileage.overdueByMileage ? "small money-bucket-status critical" : "small muted",
+        text: byMileage.overdueByMileage
+          ? `${byMileage.milesSinceLastService.toLocaleString()} mi since last service -- overdue by mileage (every ${vehicle.maintenance.intervalMiles.toLocaleString()} mi)`
+          : `${byMileage.milesUntilNextByMileage.toLocaleString()} mi until next service (real odometer: ${byMileage.currentMileage.toLocaleString()} mi)`,
+      }),
+    );
+  }
 
   const reminders = [
     carReminderLine("Registration due", vehicle.registration.reminder),
@@ -6417,6 +6432,19 @@ async function viewCarDetail(view, vehicleId) {
   if (vehicle.maintenance.next) {
     mCard.append(el("p", { class: "small", text: `Next: ${vehicle.maintenance.next.note || "due"} -- ${dueLabel(vehicle.maintenance.next.dueInDays, vehicle.maintenance.next.on)} (${whenDate(vehicle.maintenance.next.on)})` }));
   }
+  // Real, live mileage status (Git #3217) -- see carCard's own comment on why this is null
+  // rather than shown half-known.
+  const detailByMileage = vehicle.maintenance.byMileage;
+  if (detailByMileage?.milesUntilNextByMileage !== null && detailByMileage?.milesUntilNextByMileage !== undefined) {
+    mCard.append(
+      el("p", {
+        class: detailByMileage.overdueByMileage ? "small money-bucket-status critical" : "small",
+        text: detailByMileage.overdueByMileage
+          ? `Overdue by mileage: ${detailByMileage.milesSinceLastService.toLocaleString()} real mi since last service (interval is ${vehicle.maintenance.intervalMiles.toLocaleString()} mi)`
+          : `By mileage: ${detailByMileage.milesUntilNextByMileage.toLocaleString()} mi left until next service (real odometer: ${detailByMileage.currentMileage.toLocaleString()} mi)`,
+      }),
+    );
+  }
   if (vehicle.maintenanceLog.length === 0) {
     mCard.append(el("p", { class: "muted small", text: "No maintenance logged yet." }));
   }
@@ -6440,6 +6468,79 @@ async function viewCarDetail(view, vehicleId) {
   );
   maint.append(mCard);
   view.append(maint);
+
+  // Real Tesla<->Cars link + charging sessions (Git #3217). Kept as its own section rather than
+  // folded into Maintenance/Details above -- it's a genuinely separate real concern (a live sync
+  // relationship, not a stated number), and only ever meaningful for whichever one vehicle is
+  // actually the connected Tesla.
+  const tesla = el("section", { class: "section" }, [el("h2", { text: "Tesla" })]);
+  const tCard = el("div", { class: "card" });
+  if (!vehicle.tesla.synced) {
+    tCard.append(
+      el("p", { class: "small muted", text: "Not linked to the connected Tesla -- link it to get a real, live odometer reading and real charging session data instead of typing mileage in by hand." }),
+      el("button", {
+        class: "ghost small",
+        text: "Sync this vehicle with Tesla",
+        onClick: async (event) => {
+          event.target.disabled = true;
+          try {
+            await api(`/api/cars/${vehicle.id}/tesla-sync`, { method: "PATCH", body: JSON.stringify({ enabled: true }) });
+            render();
+          } catch (err) {
+            event.target.disabled = false;
+            tCard.append(el("p", { class: "small error", text: err.message }));
+          }
+        },
+      }),
+    );
+  } else {
+    tCard.append(
+      el("p", { class: "small", text: vehicle.tesla.mileageSyncedAt ? `Real odometer last synced ${whenDate(vehicle.tesla.mileageSyncedAt)}.` : "Linked -- no real odometer sync yet." }),
+      el("div", { class: "row", style: "gap:.5rem" }, [
+        el("button", {
+          class: "ghost small",
+          text: "Sync now",
+          onClick: async (event) => {
+            event.target.disabled = true;
+            await api("/api/tesla/sync", { method: "POST" });
+            render();
+          },
+        }),
+        el("button", {
+          class: "ghost small danger",
+          text: "Stop syncing",
+          onClick: async (event) => {
+            event.target.disabled = true;
+            await api(`/api/cars/${vehicle.id}/tesla-sync`, { method: "PATCH", body: JSON.stringify({ enabled: false }) });
+            render();
+          },
+        }),
+      ]),
+    );
+
+    const chargingHeader = el("p", { class: "small muted", style: "margin-top:.75rem", text: "Loading real charging sessions…" });
+    tCard.append(chargingHeader);
+    const { sessions } = await api("/api/tesla/charging-sessions");
+    chargingHeader.remove();
+    if (sessions.length === 0) {
+      tCard.append(el("p", { class: "small muted", style: "margin-top:.75rem", text: "No real charging sessions synced yet." }));
+    } else {
+      tCard.append(el("p", { class: "small muted", style: "margin-top:.75rem", text: "Real charging sessions from Tesla. Cost is an estimate (your own rate × real kWh added) -- Tesla's API does not expose real per-session cost to a personal account." }));
+      for (const s of sessions) {
+        tCard.append(
+          el("div", { class: "date-row" }, [
+            el("div", { class: "body" }, [
+              el("div", { class: "title small", text: s.location || "Charging session" }),
+              el("div", { class: "meta", text: `${s.startedAt ? whenDate(s.startedAt) : "unknown date"}${s.energyAddedKwh !== null ? ` · ${s.energyAddedKwh} kWh` : ""}` }),
+            ]),
+            el("div", { class: "when", text: s.costEstimate !== null ? `~${dollars(s.costEstimate)}` : "?" }),
+          ]),
+        );
+      }
+    }
+  }
+  tesla.append(tCard);
+  view.append(tesla);
 }
 
 async function viewEntity(view, entityId) {

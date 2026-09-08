@@ -2443,6 +2443,39 @@ export function buildApiRouter() {
     return sendJson(res, 200, row);
   });
 
+  // Real Tesla<->Cars link (Git #3217) -- marks which one real Money vehicle is the connected
+  // Tesla, so the odometer/charging sync below knows where to write. See
+  // vehicles.setTeslaSynced's own header for the at-most-one-vehicle invariant it enforces.
+  router.patch("/api/cars/:id/tesla-sync", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await vehicles.setTeslaSynced(user.id, params.id, Boolean(body.enabled));
+    await audit.record({ userId: user.id, actor: "web", action: "vehicle.tesla-sync", entityId: params.id, detail: { enabled: Boolean(body.enabled) } });
+    return sendJson(res, 200, row);
+  });
+
+  // Real, on-demand "sync now" for both odometer and charging sessions (Git #3217) -- the
+  // Settings -> Tesla "check now" pattern already established for climate/charge state, applied
+  // to the two new real reads. Each half is tried and reported independently: a real charging-
+  // history hiccup must never hide a real, successful odometer sync, and vice versa.
+  router.post("/api/tesla/sync", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const [odometer, charging] = await Promise.all([
+      vehicles.syncOdometerFromTesla(user.id),
+      vehicles.syncChargingSessionsFromTesla(user.id),
+    ]);
+    await audit.record({ userId: user.id, actor: "web", action: "tesla.sync", detail: { odometer, charging } });
+    return sendJson(res, 200, { odometer, charging });
+  });
+
+  // Real, synced charging sessions (Git #3217) -- energy/timestamp/location are real Tesla data;
+  // costEstimate is always Shane's own rate x real kWh, see tesla.mjs's getChargingHistory and
+  // migration 060's own header for why a real Tesla-sourced cost is never available here.
+  router.get("/api/tesla/charging-sessions", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { sessions: await vehicles.listChargingSessions(user.id) });
+  });
+
   // -- Wins (Git #3151) -----------------------------------------------------
   //
   // Manual "I did it" capture straight from the Wins tab (source: 'shane') -- distinct from the

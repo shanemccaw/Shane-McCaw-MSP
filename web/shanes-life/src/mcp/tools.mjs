@@ -1710,7 +1710,7 @@ export const TOOLS = [
     name: "get_cars",
     title: "Real per-vehicle money cards",
     description:
-      "Every real vehicle (Tesla Model 3, Kia Forte) with its all-in $/mo and $/yr: the linked real loan bill account (payment due, what's saved toward it), insurance, registration (amortised from the real annual amount) and real maintenance spend from the last 12 months (also amortised) -- so 'is this car actually worth keeping' has one real aggregated number instead of scattered bills. Registration and next-maintenance reminders carry the same dueSoon/overdue shape Dates uses, with a matching real lead time.",
+      "Every real vehicle (Tesla Model 3, Kia Forte) with its all-in $/mo and $/yr: the linked real loan bill account (payment due, what's saved toward it), insurance, registration (amortised from the real annual amount) and real maintenance spend from the last 12 months (also amortised) -- so 'is this car actually worth keeping' has one real aggregated number instead of scattered bills. Registration and next-maintenance reminders carry the same dueSoon/overdue shape Dates uses, with a matching real lead time. Whichever vehicle is linked to the connected Tesla (Git #3217) also carries `maintenance.byMileage` -- a real, live odometer-based figure (miles since last service, miles left in the real interval, overdue-by-mileage) -- and `tesla.mileageSyncedAt`; both are null for a non-Tesla vehicle or before the first real sync.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     async handler(_args, ctx) {
       return { vehicles: await vehicles.listVehicles(ctx.user.id) };

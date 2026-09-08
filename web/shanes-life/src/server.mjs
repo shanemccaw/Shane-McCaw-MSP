@@ -18,6 +18,7 @@ import { buildWidgetRouter } from "./routes/widget.mjs";
 import { handlePlaidWebhook } from "./routes/plaid-webhook.mjs";
 import { handleTeslaHook, serveTeslaPublicKey } from "./routes/tesla.mjs";
 import { dispatchDueCommands as dispatchDueTeslaCommands, runLowBatteryCheckForUser } from "./core/tesla.mjs";
+import { syncOdometerFromTesla, syncChargingSessionsFromTesla } from "./core/vehicles.mjs";
 import * as plaid from "./core/plaid.mjs";
 import { describeMcpEndpoint, handleMcpRequest } from "./routes/mcp.mjs";
 import { runDetectors as runCatchDetectors } from "./core/catches.mjs";
@@ -268,6 +269,7 @@ async function main() {
       await runPlaidItemMaintenance();
       await runBillCycleSnapshotCapture();
       await runTeslaLowBatteryChecks();
+      await runTeslaOdometerAndChargingSync();
     },
     6 * 60 * 60 * 1000,
   );
@@ -316,6 +318,7 @@ async function main() {
   await runMoneyDueReminders();
   await runPlaidItemMaintenance();
   await runTeslaLowBatteryChecks();
+  await runTeslaOdometerAndChargingSync();
 }
 
 /**
@@ -384,6 +387,30 @@ async function runTeslaLowBatteryChecks() {
       if (result.nudged) log(`[reminders] queued Tesla low-battery commute nudge for ${user.email}`);
     } catch (err) {
       log(`[reminders] Tesla low-battery check failed for ${user.email}:`, err.message);
+    }
+  }
+}
+
+/**
+ * Real Tesla odometer + charging-session sync (Git #3217) -- see core/vehicles.mjs's
+ * syncOdometerFromTesla/syncChargingSessionsFromTesla for the actual reads/writes. Same
+ * per-user, independent-failure discipline as runTeslaLowBatteryChecks above, and each of the
+ * two real halves is tried independently too: a real charging-history hiccup must never stop
+ * that same user's odometer sync, or the next user's sweep.
+ */
+async function runTeslaOdometerAndChargingSync() {
+  for (const user of await listUsers()) {
+    try {
+      const odometer = await syncOdometerFromTesla(user.id);
+      if (odometer.synced) log(`[tesla] synced odometer for ${user.email}: ${odometer.currentMileage} mi`);
+    } catch (err) {
+      log(`[tesla] odometer sync failed for ${user.email}:`, err.message);
+    }
+    try {
+      const charging = await syncChargingSessionsFromTesla(user.id);
+      if (charging.synced && charging.count > 0) log(`[tesla] synced ${charging.count} charging session(s) for ${user.email}`);
+    } catch (err) {
+      log(`[tesla] charging-history sync failed for ${user.email}:`, err.message);
     }
   }
 }

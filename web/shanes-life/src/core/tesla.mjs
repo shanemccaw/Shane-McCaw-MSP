@@ -292,7 +292,12 @@ export async function disconnect(userId) {
 // Fleet API reads (vehicle_device_data scope only)
 // ---------------------------------------------------------------------------------------------
 
-async function fleetGet(userId, path) {
+/** The full, real, unwrapped JSON body -- every vehicle_data endpoint this file already called
+ *  documents a `{ response: {...} }` envelope, which is what fleetGet() below assumes. Charging
+ *  Endpoints' real envelope is NOT documented (migration 060's own header) -- getChargingHistory
+ *  needs the raw body so it can check for `.response`, `.data`, a bare array, or whatever Tesla
+ *  actually sends, rather than this function guessing on its callers' behalf. */
+async function fleetGetRaw(userId, path) {
   const accessToken = await getValidAccessToken(userId);
   if (!accessToken) throw new TeslaError("Tesla is not connected.", { code: "NOT_CONNECTED" });
   const controller = new AbortController();
@@ -318,6 +323,13 @@ async function fleetGet(userId, path) {
   if (!res.ok) {
     throw new TeslaError(json?.error || `Tesla's Fleet API returned HTTP ${res.status}.`, { status: res.status });
   }
+  return json;
+}
+
+/** The real, documented `{ response: {...} }` envelope every vehicle_data/vehicle-list call
+ *  uses -- see fleetGetRaw above for the one real caller that can't assume this shape. */
+async function fleetGet(userId, path) {
+  const json = await fleetGetRaw(userId, path);
   return json?.response;
 }
 
@@ -437,6 +449,68 @@ export async function getChargeState(userId) {
     batteryRangeMiles: charge.battery_range ?? null,
     chargingState: charge.charging_state ?? null,
   };
+}
+
+/** Real, on-demand odometer read (Git #3217) -- `vehicle_state.odometer` is Tesla's own
+ *  long-documented, stable field (miles, reported as a float e.g. 57509.856033); rounded down to
+ *  a whole mile here since that is the unit vehicle_maintenance_log.mileage and
+ *  vehicles.current_mileage both already use. Same on-demand-only discipline as
+ *  getVehicleClimateState/getChargeState above -- only called from the 6-hour housekeeping sweep
+ *  (server.mjs's runTeslaOdometerSync) and the Settings "sync now" action, never polled. */
+export async function getVehicleState(userId) {
+  const account = await ownedAccount(userId);
+  if (!account?.vehicle_id) {
+    throw new TeslaError("No Tesla vehicle is selected yet.", { code: "NO_VEHICLE" });
+  }
+  const data = await fleetGet(
+    userId,
+    `/api/1/vehicles/${encodeURIComponent(account.vehicle_id)}/vehicle_data?endpoints=vehicle_state`,
+  );
+  const state = data?.vehicle_state || {};
+  const odometer = typeof state.odometer === "number" ? Math.floor(state.odometer) : null;
+  return { vehicleDisplayName: account.vehicle_display_name, odometerMiles: odometer };
+}
+
+/**
+ * Real charging-session data off Tesla's own Charging Endpoints (Git #3217) -- confirmed,
+ * investigated real limitation (see migration 060's own header): `charging/history` has no
+ * officially published field schema, so this reads defensively rather than assuming an exact
+ * key name -- it tries every plausible casing a real Tesla Fleet API response has been observed
+ * to use elsewhere (this app's own vehicle_data endpoints are snake_case; third-party
+ * integrations built directly against this endpoint report camelCase) and keeps the untouched
+ * `raw` object on every session regardless of what did or didn't map, so nothing real is ever
+ * silently dropped and nothing unmapped is ever guessed at. Cost/price is deliberately NOT
+ * extracted here even defensively -- confirmed across multiple independent sources (Tesla's own
+ * docs, a real third-party integration, #3238/#3258's own prior investigation) that no such
+ * field exists anywhere in this endpoint for a personal developer account; inventing a lookup
+ * for a field that has never been shown to exist would be exactly the fabrication the HARD RULE
+ * forbids. Energy added is what funds this app's own cost ESTIMATE (Shane's real
+ * charge_cost_per_kwh x real kWh), computed by the caller, not here.
+ */
+export async function getChargingHistory(userId) {
+  const account = await ownedAccount(userId);
+  if (!account?.vehicle_vin) {
+    throw new TeslaError("No Tesla vehicle is selected yet.", { code: "NO_VEHICLE" });
+  }
+  const data = await fleetGetRaw(userId, `/api/1/dx/charging/history?vin=${encodeURIComponent(account.vehicle_vin)}`);
+  // The real envelope shape is unconfirmed (no live account has exercised this yet) -- accept
+  // whatever real array Tesla actually sends back rather than assuming one specific wrapper.
+  const list = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.response)
+      ? data.response
+      : Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.charges)
+          ? data.charges
+          : [];
+  return list.map((raw) => ({
+    sessionKey: String(raw.sessionId ?? raw.session_id ?? raw.id ?? `${raw.chargeStartDateTime ?? raw.charge_start_date_time ?? ""}:${raw.siteLocationName ?? raw.site_location_name ?? ""}`),
+    startedAt: raw.chargeStartDateTime ?? raw.charge_start_date_time ?? raw.started_at ?? null,
+    location: raw.siteLocationName ?? raw.site_location_name ?? raw.location ?? null,
+    energyAddedKwh: typeof raw.energyAdded === "number" ? raw.energyAdded : typeof raw.energy_added === "number" ? raw.energy_added : null,
+    raw,
+  }));
 }
 
 /** Real, Shane-entered commute-nudge settings for the Settings -> Tesla section (Git #3238).
