@@ -2960,9 +2960,49 @@ function attachSlideToTake(track, knob, onComplete) {
 // The pill icon (lucide "Pill") the design puts in a tinted circle on every real item row.
 const PILL_ICON_PATH = '<path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"></path><path d="m8.5 8.5 7 7"></path>';
 
-function medBatchCard(batchState) {
+// Git #3269: which "part of the day" a batch's own free-text name reads as. Claude names
+// batches from natural language ("started X every morning"), so this matches by keyword rather
+// than a fixed enum of exact batch names -- real, confirmed necessary since Shane's own real
+// "night" batch doesn't match the design's literal "evening"/"bed" examples. Rank 3 (no keyword
+// match, e.g. "as needed") is untimed: there's no real "later" for a medication you take
+// whenever you need it, so it never collapses -- see viewMeds().
+function medsDaypartRank(batchName) {
+  const name = String(batchName || "").toLowerCase();
+  if (/morning/.test(name)) return 0;
+  if (/noon|midday|afternoon|lunch/.test(name)) return 1;
+  if (/evening|night|bed|dinner/.test(name)) return 2;
+  return 3;
+}
+
+function medBatchCard(batchState, { collapsed = false } = {}) {
   const { batch, items, takenToday, takenAt } = batchState;
   const label = batch.charAt(0).toUpperCase() + batch.slice(1);
+
+  if (collapsed) {
+    // Git #3269, design's real "later" treatment (Shanes Life 07 - Meds.dc.html's Evening
+    // card): a single summary line instead of a full itemized list, for any timed batch that
+    // isn't the one real "current" batch yet -- no items, no swipe, opacity .7 like the design's
+    // own literal value. Names truncate rather than trying to fit Shane's real up-to-6-item
+    // batches onto the design's own 1-2-item example line.
+    const MAX_NAMES = 3;
+    const names = items.map((item) => item.name);
+    const summary =
+      names.length > MAX_NAMES
+        ? `${names.slice(0, MAX_NAMES).join(" · ")} · +${names.length - MAX_NAMES} more`
+        : names.join(" · ");
+    return el("div", { class: "card med-batch-collapsed" }, [
+      el("div", { class: "spread" }, [
+        el("div", { class: "row" }, [
+          critterIcon(medsCritterSlot(batch), { size: 32 }),
+          el("div", {}, [
+            el("div", { class: "med-batch-title", text: label }),
+            el("div", { class: "med-batch-summary", text: summary }),
+          ]),
+        ]),
+        el("span", { class: "meta", text: "later" }),
+      ]),
+    ]);
+  }
 
   const itemRows = items.map((item) =>
     el("div", { class: "med-item-row" }, [
@@ -3133,8 +3173,23 @@ async function viewMeds(view) {
       ),
     );
   } else {
+    // Git #3269: chronological order (morning -> midday -> evening/night -> untimed), and only
+    // the one real "current" batch -- the earliest untaken timed batch -- gets the design's full
+    // itemized+swipe treatment. Every other untaken timed batch collapses to the design's
+    // one-line "later" summary; untimed batches (e.g. "as needed") have no "later" state to
+    // collapse into, so they always stay itemized. An already-taken batch keeps its existing
+    // itemized + Undo card regardless of rank -- the design shows no "later, but taken" state,
+    // and there's real value in seeing what was actually taken.
+    const ordered = batches
+      .map((batchState, i) => ({ batchState, rank: medsDaypartRank(batchState.batch), i }))
+      .sort((a, b) => a.rank - b.rank || a.i - b.i);
+    const current = ordered.find((b) => b.rank < 3 && !b.batchState.takenToday);
+
     const list = el("section", { class: "section" });
-    for (const batchState of batches) list.append(medBatchCard(batchState));
+    for (const { batchState, rank } of ordered) {
+      const collapsed = rank < 3 && !batchState.takenToday && batchState !== current?.batchState;
+      list.append(medBatchCard(batchState, { collapsed }));
+    }
     view.append(list);
   }
 
