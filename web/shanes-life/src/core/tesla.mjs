@@ -8,11 +8,13 @@
 // already-built, already-generic nudges.mjs / real OS push pipeline (queueNudge, migration 018
 // explicitly named `tesla` as a real nudge kind from the start).
 //
-// Vehicle COMMANDS (start preconditioning, open the trunk) were deliberately left out of the
-// original #3158 build -- that's real, separate work, now added below under "Vehicle commands"
-// for #3218. This app still never signs a command or reads TESLA_PRIVATE_KEY itself: modern
-// Teslas reject unsigned commands, so real commands are forwarded to Tesla's own official local
-// signing proxy (config.teslaCommandProxyUrl) instead of reimplementing that binary protocol.
+// Vehicle COMMANDS (navigation, preconditioning, the trunk) were deliberately left out of the
+// original #3158 build -- that's real, separate work, added below under "Vehicle commands" for
+// #3216/#3218. This app never signs a command or reads TESLA_PRIVATE_KEY itself: modern Teslas
+// reject unsigned commands, so every real command (Heading Home's navigation_gps_request /
+// auto_conditioning_start, #3218's actuate_trunk) is forwarded through sendVehicleCommand() to
+// Tesla's own official local signing proxy (config.teslaCommandProxyUrl) instead of
+// reimplementing that binary protocol from scratch -- see sendVehicleCommand's own header.
 //
 // Same encryption discipline as vault.mjs (migration 017/052): AES-256-GCM, SL_VAULT_KEY lives
 // OUTSIDE the database, an AAD binds each ciphertext to the exact row/owner/field it was written
@@ -319,6 +321,52 @@ async function fleetGet(userId, path) {
   return json?.response;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Heading Home commands (Git #3216): real navigation + climate-preconditioning sends, the piece
+// #3158's own header explicitly deferred to this sibling Feature. Both go through
+// sendVehicleCommand() below (Git #3218's real signing-proxy forwarder) -- see its own header
+// for why this file never signs a command itself.
+// ---------------------------------------------------------------------------------------------
+
+/** Real "drive to this real address" command -- Tesla's own lat/lon nav-request endpoint, so a
+ *  saved place's real coordinates (places.latitude/longitude) go straight in with no geocoding
+ *  step. */
+async function sendNavigationRequest(userId, { latitude, longitude, label }) {
+  return sendVehicleCommand(userId, "navigation_gps_request", { lat: latitude, lon: longitude, value: label || "Home", order: 0 });
+}
+
+/** Real climate-preconditioning start -- the same real vehicle action the "Heading Out"
+ *  checklist's inbound webhook (recordHookEvent, above) reacts to once it's already running;
+ *  this is the other direction, this app STARTING it. */
+async function sendPreconditioningStart(userId) {
+  return sendVehicleCommand(userId, "auto_conditioning_start");
+}
+
+/** The one real entry point the Heading Home action calls: send both real commands to the
+ *  selected vehicle, and report each honestly and independently -- a rejected preconditioning
+ *  command is not a reason to also fail a navigation command that actually went through, and
+ *  vice versa. */
+export async function sendHeadingHomeCommands(userId, { latitude, longitude, label }) {
+  const account = await ownedAccount(userId);
+  if (!account?.vehicle_id) throw new TeslaError("No Tesla vehicle is selected yet.", { code: "NO_VEHICLE" });
+
+  const outcome = async (fn) => {
+    try {
+      await fn();
+      return { ok: true };
+    } catch (err) {
+      if (err instanceof TeslaError) return { ok: false, code: err.code, message: err.message };
+      return { ok: false, code: null, message: err.message };
+    }
+  };
+
+  const [navigation, climate] = await Promise.all([
+    outcome(() => sendNavigationRequest(userId, { latitude, longitude, label })),
+    outcome(() => sendPreconditioningStart(userId)),
+  ]);
+  return { vehicleDisplayName: account.vehicle_display_name, navigation, climate };
+}
+
 /** Every real vehicle on the connected Tesla account, for the Settings picker. */
 export async function listVehicles(userId) {
   const vehicles = await fleetGet(userId, "/api/1/vehicles");
@@ -588,9 +636,11 @@ export function teslaCommandsConfigured() {
  * command itself -- see config.mjs's teslaCommandProxyUrl header for why -- it forwards the same
  * real OAuth bearer token used for reads to Tesla's own official local vehicle-command proxy
  * (github.com/teslamotors/vehicle-command), which holds the real enrolled private key and does
- * the actual signing + relay to the car.
+ * the actual signing + relay to the car. `body`, if given, is the command's own real parameters
+ * (e.g. navigation_gps_request's lat/lon) -- Git #3216 -- most commands (actuate_trunk,
+ * auto_conditioning_start) take none, hence the default.
  */
-async function sendVehicleCommand(userId, command) {
+async function sendVehicleCommand(userId, command, body = {}) {
   if (!teslaCommandsConfigured()) {
     throw new TeslaError(
       "The Tesla vehicle-command proxy is not configured on this server (TESLA_COMMAND_PROXY_URL).",
@@ -613,7 +663,7 @@ async function sendVehicleCommand(userId, command) {
       {
         method: "POST",
         headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-        body: "{}",
+        body: JSON.stringify(body),
         signal: controller.signal,
       },
     );

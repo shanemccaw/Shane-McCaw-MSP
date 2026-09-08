@@ -1133,12 +1133,15 @@ function nextCardV3({ pebbleBg, border, critterSlot, title, stickerEl, line, but
   return card;
 }
 
-/** Real "one card, chosen by rule" pick order, restricted to the signals this app actually has
- *  wired (no location/geofencing feed exists yet -- Walmart/NASA/Rental are out of scope here,
- *  see build-journal/3144.md's filed finding). Mirrors the design's own order: appointment today
- *  > dinner window (16:00-21:00, meal not already finished) > open groceries > nothing. */
+/** Real "one card, chosen by rule" pick order. Mirrors the design's own order: appointment
+ *  today > real, location-observed "heading home" (Git #3216 -- server already withholds
+ *  data.headingHome unless it's really away from a house AND Tesla's ready, and never sets it
+ *  at all when an appointment's already showing, same real precedence the widget's own
+ *  computeNextCard applies) > dinner window (16:00-21:00, meal not already finished) > open
+ *  groceries > nothing. */
 function resolveNextKind(data, hour) {
   if (data.appointmentToday) return "doctor";
+  if (data.headingHome) return "headingHome";
   const mealDone = mealSession ? !!mealSession.done : false;
   if (hour >= 16 && hour < 21 && data.tonight && !mealDone) return "dinner";
   if (data.groceries && data.groceries.openCount > 0) return "home";
@@ -1157,6 +1160,7 @@ function foxMatchLine(nextKind, data) {
     const time = formatTime12(data.appointmentToday.atTime);
     return time ? `${who} at ${time} today. That's the one thing.` : `${who} today. That's the one thing.`;
   }
+  if (nextKind === "headingHome") return `Heading to ${data.headingHome.recommendedLabel}? Send navigation and preconditioning now.`;
   if (nextKind === "dinner") return `Time to make dinner: ${data.tonight.dishText}.`;
   if (nextKind === "home") return "Groceries are ready for whenever you pass a store. Nothing pressing.";
   if (nextKind === "none") return "Nothing needs you. The day's yours.";
@@ -1199,6 +1203,39 @@ function renderNextCardV3(data, nextKind) {
       buttons: [
         pillButton("a", { href: "#/tonight" }, "Start cooking", "primary"),
         pillButton("a", { href: "#/recipes" }, "Something else", "ghost"),
+      ],
+    });
+  }
+  if (nextKind === "headingHome") {
+    const hh = data.headingHome;
+    const alt = hh.alternatives[0]; // one real alternative is enough -- same real limit the widget's own card applies
+    const sendHome = (house) => async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        const result = await api("/api/tesla/heading-home", { method: "POST", body: JSON.stringify({ house }) });
+        const navOk = result.navigation?.ok;
+        const climateOk = result.climate?.ok;
+        if (navOk && climateOk) showQuickToast(`Sent -- navigation + preconditioning to ${result.targetLabel}.`);
+        else if (!navOk && !climateOk) showQuickToast("Tesla rejected both commands -- see Settings -> Tesla.");
+        else showQuickToast(`${navOk ? "Navigation" : "Preconditioning"} sent, ${navOk ? "preconditioning" : "navigation"} was rejected -- see Settings -> Tesla.`);
+        if (state.route === "today") render();
+      } catch (err) {
+        showQuickToast(err.message || "Couldn't reach Tesla.");
+      } finally {
+        btn.disabled = false;
+      }
+    };
+    return nextCardV3({
+      pebbleBg: "rgba(79,124,255,.16)",
+      border: "rgba(79,124,255,.45)",
+      critterSlot: "heading",
+      title: hh.recommendedLabel,
+      stickerEl: sticker("blue", hh.vehicleDisplayName || "Tesla"),
+      line: "Navigation + preconditioning, one tap.",
+      buttons: [
+        pillButton("button", { type: "button", onClick: sendHome(hh.recommendedHouse) }, "Send it", "primary"),
+        ...(alt ? [pillButton("button", { type: "button", onClick: sendHome(alt.house) }, `Not this -- ${alt.label}`, "ghost")] : []),
       ],
     });
   }
@@ -7727,7 +7764,7 @@ async function viewSettings(view) {
           el("div", { class: "spread" }, [
             el("div", {}, [
               el("div", { class: "title", text: place.label }),
-              el("div", { class: "meta", text: place.note || `${place.radius_meters}m radius` }),
+              el("div", { class: "meta", text: [place.house ? `House ${place.house.toUpperCase()}` : null, place.note || `${place.radius_meters}m radius`].filter(Boolean).join(" · ") }),
             ]),
             el("button", {
               class: "ghost small danger",

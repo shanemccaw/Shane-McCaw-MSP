@@ -18,6 +18,7 @@
 import * as dates from "./dates.mjs";
 import * as entities from "./entities.mjs";
 import * as lists from "./lists.mjs";
+import { headingHomeAvailability, triggerHeadingHome } from "./heading-home.mjs";
 
 function escapeHtml(str) {
   return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -45,12 +46,26 @@ export async function computeNextCard(userId) {
 
   const next = await entities.nextUp(userId, 3);
 
+  // Git #3216: real, location-observed "away from home, Tesla ready" outranks groceries/generic
+  // -- it's the one card here that's genuinely time-sensitive (a real drive is either about to
+  // start or already has), but a real appointment today still wins, same as every other kind
+  // here.
+  const headingHome = appointmentToday ? null : await headingHomeAvailability(userId);
+
   let kind = "none";
   if (appointmentToday) kind = "doctor";
+  else if (headingHome) kind = "headingHome";
   else if (groceries.openCount > 0) kind = "home";
   else if (next.length > 0) kind = "generic";
 
-  return { kind, appointmentToday, groceries, next };
+  return { kind, appointmentToday, groceries, next, headingHome };
+}
+
+/** The real tap-through action itself -- fires the real Tesla commands and marks the trigger so
+ *  a widget refresh in the next dedupe window doesn't repeat-fire it. `house`, if given, is the
+ *  widget's own explicit override link (the other real house), not the recommended one. */
+export async function triggerHeadingHomeAction(userId, house) {
+  return triggerHeadingHome(userId, { house });
 }
 
 /**
@@ -71,6 +86,16 @@ function cardHtml(data) {
       <div class="sticker">${time ? `Today · ${escapeHtml(time)}` : "Today"}</div>
       <div class="title">${escapeHtml(appt.provider || appt.title)}</div>
       <div class="line">${escapeHtml(appt.categoryLabel || (appt.kind === "vet" ? "Vet visit" : "Appointment"))}</div>`;
+  }
+  if (data.kind === "headingHome") {
+    const hh = data.headingHome;
+    const alt = hh.alternatives[0]; // one real alternative link is enough for a widget-sized card
+    return `
+      <div class="sticker">Heading home?</div>
+      <div class="title">${escapeHtml(hh.recommendedLabel)}</div>
+      <div class="line">${escapeHtml(hh.vehicleDisplayName || "Tesla")} · navigation + preconditioning</div>
+      <a class="action" href="?headingHome=${encodeURIComponent(hh.recommendedHouse)}">Send it</a>
+      ${alt ? `<a class="action alt" href="?headingHome=${encodeURIComponent(alt.house)}">Not ${escapeHtml(hh.recommendedLabel)}? ${escapeHtml(alt.label)}</a>` : ""}`;
   }
   if (data.kind === "home") {
     const n = data.groceries.openCount;
@@ -96,8 +121,15 @@ function cardHtml(data) {
  * The whole widget page: no external CSS/JS, one inline &lt;style&gt;, real content only. `token`
  * is baked back into the one action link so a tap-through reload still authenticates.
  */
-export function renderWidgetPage({ data, token, justDone }) {
-  const banner = justDone ? `<div class="done">Marked done.</div>` : "";
+export function renderWidgetPage({ data, token, justDone, headingHomeResult }) {
+  let banner = justDone ? `<div class="done">Marked done.</div>` : "";
+  if (headingHomeResult) {
+    const nav = headingHomeResult.navigation?.ok;
+    const climate = headingHomeResult.climate?.ok;
+    if (nav && climate) banner = `<div class="done">Sent -- navigation + preconditioning on the way to ${escapeHtml(headingHomeResult.targetLabel)}.</div>`;
+    else if (!nav && !climate) banner = `<div class="failed">Tesla rejected both commands -- see Settings -> Tesla.</div>`;
+    else banner = `<div class="failed">${nav ? "Navigation" : "Preconditioning"} sent, ${nav ? "preconditioning" : "navigation"} was rejected by Tesla -- see Settings -> Tesla.</div>`;
+  }
   return `<!doctype html>
 <html>
 <head>
@@ -110,8 +142,10 @@ export function renderWidgetPage({ data, token, justDone }) {
   .sticker { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.12); color: #cbd2da; margin-bottom: 8px; }
   .title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
   .line { font-size: 14px; color: #9aa2ad; }
-  .action { display: inline-block; margin-top: 12px; padding: 8px 14px; border-radius: 999px; background: #4f7cff; color: #fff; text-decoration: none; font-size: 14px; font-weight: 600; }
+  .action { display: inline-block; margin-top: 12px; margin-right: 8px; padding: 8px 14px; border-radius: 999px; background: #4f7cff; color: #fff; text-decoration: none; font-size: 14px; font-weight: 600; }
+  .action.alt { background: rgba(255,255,255,.12); color: #cbd2da; }
   .done { font-size: 12px; color: #6ee7b7; margin-bottom: 8px; }
+  .failed { font-size: 12px; color: #fca5a5; margin-bottom: 8px; }
 </style>
 </head>
 <body>

@@ -25,6 +25,7 @@ import * as credentials from "../core/credentials.mjs";
 import * as webauthn from "../auth/webauthn.mjs";
 import * as audit from "../core/audit.mjs";
 import * as teslaCore from "../core/tesla.mjs";
+import { TeslaError } from "../core/tesla.mjs";
 import * as captures from "../core/captures.mjs";
 import * as catches from "../core/catches.mjs";
 import * as categories from "../core/categories.mjs";
@@ -41,6 +42,7 @@ import * as money from "../core/money.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as widgetTokens from "../core/widget-tokens.mjs";
 import { computeNextCard, renderWidgetPage } from "../core/widget.mjs";
+import { headingHomeAvailability, triggerHeadingHome } from "../core/heading-home.mjs";
 import * as medications from "../core/medications.mjs";
 import * as nudges from "../core/nudges.mjs";
 import * as people from "../core/people.mjs";
@@ -913,7 +915,13 @@ export function buildApiRouter() {
     const lat = ctx.url.searchParams.get("lat");
     const lng = ctx.url.searchParams.get("lng");
     if (lat === null || lng === null) throw badRequest("lat and lng are required");
-    return sendJson(res, 200, { items: await places.findNearby(user.id, { latitude: lat, longitude: lng }) });
+    const items = await places.findNearby(user.id, { latitude: lat, longitude: lng });
+    // Real presence side effect (Git #3216): the same live check that already answers "You're
+    // at <place>" for Today is also the ONLY real signal /widget's stateless page ever gets for
+    // "away from home" -- so every real call here also updates presence_state, not just the
+    // response to this one request.
+    await places.recordPresence(user.id, items[0] || null);
+    return sendJson(res, 200, { items });
   });
 
   // ---------------------------------------------------------------------------
@@ -2706,6 +2714,9 @@ export function buildApiRouter() {
 
     const pendingCaptures = await captures.pendingCount(user.id);
     const medsToday = await medications.getMedsToday(user.id);
+    // Git #3216: same real precedence rule computeNextCard (widget.mjs) already applies -- a
+    // real appointment today still wins, so this is only ever computed when it doesn't.
+    const headingHome = appointmentToday ? null : await headingHomeAvailability(user.id);
 
     return sendJson(res, 200, {
       // "Today view shows only what's next" (contract pack Section 3) -- three, not a backlog.
@@ -2723,11 +2734,35 @@ export function buildApiRouter() {
         categoryLabel: appointmentToday.category_label,
       },
       groceries,
+      headingHome,
       meds: medsToday,
       rooms: await roomsForToday(user.id, { allDates, tonight, groceries, meds: medsToday, pendingCaptures }),
       roomOrder: await roomOrder.getRoomOrder(user.id),
       later: await computeLaterMoments(user.id, { allDates, tonight, pendingCaptures }),
     });
+  });
+
+  /** Git #3216: the main app's own real "Heading home?" tap action (the widget's version is the
+   *  idempotent-GET pattern in routes/widget.mjs) -- session-gated POST, `house` optional
+   *  override for the one-tap "not this one" alternative. */
+  router.post("/api/tesla/heading-home", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    let result;
+    try {
+      result = await triggerHeadingHome(user.id, { house: body.house || null });
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      if (err instanceof TeslaError) throw badRequest(err.message);
+      throw err;
+    }
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "tesla.heading-home",
+      detail: { house: result.targetHouse, navigation: result.navigation, climate: result.climate },
+    });
+    return sendJson(res, 200, result);
   });
 
   router.get("/api/categories", async (_req, res, _params, ctx) => {

@@ -2063,6 +2063,7 @@ export const TOOLS = [
         longitude: { type: "number", description: "Real longitude from the geo-tagged capture this came from." },
         radiusMeters: { type: "integer", description: "How close counts as 'there'. Default 150 -- widen for a large real site (e.g. a NASA campus), narrow for a single small building." },
         note: { type: "string", description: "What to surface when Shane is here, in his own words, e.g. 'grab the shopping list'." },
+        house: { type: "string", description: "Only if this place IS one of Shane's own real houses (Git #3216), his own word for which one -- e.g. 'h1' for the owned house, 'h2' for the rental, matching how he already labels house bills/things. Omit for a place that isn't a house (Walmart, NASA) or to leave an existing tag alone." },
       },
       required: ["label", "latitude", "longitude"],
       additionalProperties: false,

@@ -6,7 +6,8 @@
 import { Router, notFound, sendText } from "../http.mjs";
 import * as audit from "../core/audit.mjs";
 import { resolveWidgetToken } from "../core/widget-tokens.mjs";
-import { computeNextCard, markNextEntityDone, renderWidgetPage } from "../core/widget.mjs";
+import { computeNextCard, markNextEntityDone, renderWidgetPage, triggerHeadingHomeAction } from "../core/widget.mjs";
+import { recentlyTriggeredHeadingHome } from "../core/places.mjs";
 
 export function buildWidgetRouter() {
   const router = new Router();
@@ -38,8 +39,38 @@ export function buildWidgetRouter() {
       }
     }
 
+    // Git #3216: the "Heading home?" quick action, same idempotent-GET tap-through shape as
+    // ?done= above. Real dedupe (recentlyTriggeredHeadingHome) so a widget's own periodic
+    // re-screenshot of the SAME already-tapped URL can't repeat-fire a real vehicle command.
+    let headingHomeResult = null;
+    const headingHomeHouse = url.searchParams.get("headingHome");
+    if (headingHomeHouse) {
+      if (await recentlyTriggeredHeadingHome(resolved.user.id)) {
+        headingHomeResult = { navigation: { ok: true }, climate: { ok: true }, targetLabel: "already on the way" };
+      } else {
+        try {
+          headingHomeResult = await triggerHeadingHomeAction(resolved.user.id, headingHomeHouse);
+          await audit.record({
+            userId: resolved.user.id,
+            actor: "widget",
+            actorLabel: resolved.label,
+            action: "tesla.heading-home",
+            detail: { house: headingHomeHouse, navigation: headingHomeResult.navigation, climate: headingHomeResult.climate },
+          });
+        } catch {
+          // Not connected / no vehicle / no place for that house any more -- render current
+          // real state below rather than surfacing a raw error on someone's home screen.
+        }
+      }
+    }
+
     const data = await computeNextCard(resolved.user.id);
-    return sendText(res, 200, renderWidgetPage({ data, token: params.token, justDone }), "text/html; charset=utf-8");
+    return sendText(
+      res,
+      200,
+      renderWidgetPage({ data, token: params.token, justDone, headingHomeResult }),
+      "text/html; charset=utf-8",
+    );
   });
 
   return router;
