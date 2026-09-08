@@ -213,7 +213,7 @@ export function assertNoOrphanLedgerRows(ledgerFilenames, dirs = MIGRATION_DIRS)
   );
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   try {
     assertNoDuplicateMigrationNumbers();
     console.log("[check-migration-numbers] OK -- no cross-directory or same-directory number collisions");
