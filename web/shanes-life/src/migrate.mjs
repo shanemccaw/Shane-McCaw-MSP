@@ -15,7 +15,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { config } from "./config.mjs";
 import { pool } from "./db.mjs";
-import { assertNoDuplicateMigrationNumbers } from "../../../scripts/check-migration-numbers.mjs";
+import {
+  assertNoDuplicateMigrationNumbers,
+  assertNoOrphanLedgerRows,
+} from "../../../scripts/check-migration-numbers.mjs";
 
 const MIGRATIONS_DIR = resolve(config.root, "migrations");
 
@@ -78,6 +81,10 @@ export async function runMigrations({ log = console.log } = {}) {
     await assertSharedDatabase(client);
 
     const { rows } = await client.query("SELECT filename FROM schema_migrations");
+    // Fail closed, loudly, before applying anything if the ledger references a filename that
+    // no longer exists in either directory (Git #3140) -- almost always an applied migration
+    // that got renamed, which would otherwise silently re-run under its new name below.
+    assertNoOrphanLedgerRows(rows.map((r) => r.filename));
     const done = new Set(rows.map((r) => r.filename));
 
     for (const file of files) {

@@ -102,6 +102,16 @@ public sealed class MigrationRunner
                 }
             }
 
+            // Fail closed, loudly, before applying anything if the ledger references a filename
+            // that no longer exists in either directory (Git #3140) -- almost always an
+            // already-applied migration that got renamed, which would otherwise silently
+            // re-run under its new name in the loop below.
+            var orphanError = FindOrphanLedgerFilenamesError(migrationsDir, alreadyApplied, files);
+            if (orphanError is not null)
+            {
+                return new MigrationRunResult(false, steps, null, orphanError);
+            }
+
             foreach (var file in files)
             {
                 var fileName = Path.GetFileName(file);
@@ -164,14 +174,8 @@ public sealed class MigrationRunner
     /// </summary>
     private static string? FindDuplicateMigrationNumberError(string ownMigrationsDir)
     {
-        // web/shanes-life/migrations lives at <repo root>/web/shanes-life/migrations. Repo root
-        // is three levels above desktop/ShanesSurvival/migrations.
-        var repoRoot = new DirectoryInfo(ownMigrationsDir).Parent?.Parent?.Parent;
-        var otherMigrationsDir = repoRoot is null
-            ? null
-            : Path.Combine(repoRoot.FullName, "web", "shanes-life", "migrations");
-
-        if (otherMigrationsDir is null || !Directory.Exists(otherMigrationsDir))
+        var otherMigrationsDir = FindSiblingMigrationsDirectory(ownMigrationsDir);
+        if (otherMigrationsDir is null)
         {
             return null; // sibling directory not present in this checkout -- nothing to compare against
         }
@@ -196,6 +200,59 @@ public sealed class MigrationRunner
             "web/shanes-life/migrations -- the same leading number was used in both directories, " +
             "which makes apply order ambiguous on a fresh database (Git #3118):\n" + detail +
             "\nRename the newer file to the next free number across BOTH directories before proceeding.";
+    }
+
+    /// <summary>
+    /// web/shanes-life/migrations lives at &lt;repo root&gt;/web/shanes-life/migrations. Repo root
+    /// is three levels above desktop/ShanesSurvival/migrations. Returns null if the sibling
+    /// directory isn't present in this checkout (e.g. a partial worktree).
+    /// </summary>
+    private static string? FindSiblingMigrationsDirectory(string ownMigrationsDir)
+    {
+        var repoRoot = new DirectoryInfo(ownMigrationsDir).Parent?.Parent?.Parent;
+        var otherMigrationsDir = repoRoot is null
+            ? null
+            : Path.Combine(repoRoot.FullName, "web", "shanes-life", "migrations");
+
+        return otherMigrationsDir is not null && Directory.Exists(otherMigrationsDir)
+            ? otherMigrationsDir
+            : null;
+    }
+
+    /// <summary>
+    /// Returns a real, actionable error message if schema_migrations holds a row for a filename
+    /// that no longer exists in either migrations directory (Git #3140) -- almost always an
+    /// already-applied migration that was renamed. Without this, the renamed file would silently
+    /// re-execute under its new name, safe only if the migration happens to be idempotent. Null
+    /// when the ledger and the two directories agree.
+    /// </summary>
+    private static string? FindOrphanLedgerFilenamesError(
+        string ownMigrationsDir, IReadOnlySet<string> ledgerFilenames, IReadOnlyCollection<string> ownFiles)
+    {
+        var onDisk = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var file in ownFiles) onDisk.Add(Path.GetFileName(file));
+
+        var siblingDir = FindSiblingMigrationsDirectory(ownMigrationsDir);
+        if (siblingDir is not null)
+        {
+            foreach (var file in Directory.GetFiles(siblingDir, "*.sql")) onDisk.Add(Path.GetFileName(file));
+        }
+
+        var orphans = ledgerFilenames.Where(f => !onDisk.Contains(f)).OrderBy(f => f, StringComparer.Ordinal).ToArray();
+        if (orphans.Length == 0)
+        {
+            return null;
+        }
+
+        var detail = string.Join("\n", orphans.Select(f => $"  {f}"));
+        return $"schema_migrations holds {(orphans.Length == 1 ? "a row" : "rows")} for " +
+            $"{(orphans.Length == 1 ? "a file" : "files")} that no longer exist in either migrations " +
+            $"directory (Git #3140):\n{detail}\n" +
+            "This almost always means an already-applied migration was renamed. Renaming re-runs " +
+            "the identical SQL under the new name on every environment that already ran it -- safe " +
+            "only if the migration is purely idempotent. Either rename it back, or if the rename is " +
+            "intentional, fix up the ledger by hand first:\n" +
+            "  UPDATE schema_migrations SET filename = '<new filename>' WHERE filename = '<old filename>';";
     }
 
     private static Dictionary<string, string> ExtractNumbers(string dir)

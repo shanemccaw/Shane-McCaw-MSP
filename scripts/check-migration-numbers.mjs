@@ -86,6 +86,49 @@ export function assertNoDuplicateMigrationNumbers(dirs = MIGRATION_DIRS) {
   );
 }
 
+/**
+ * Returns every filename the shared schema_migrations ledger holds a row for that no longer
+ * exists in EITHER migrations directory (Git #3140). The ledger is keyed on filename; renaming
+ * an already-applied file (as #3140's own repro did, dodging the #3118 collision guard above)
+ * leaves an orphan row pointing at a name nothing on disk has anymore, and the file re-executes
+ * under its new name on every environment that already ran the old one -- silently, and
+ * potentially unsafely for any migration that isn't purely idempotent.
+ */
+export function findOrphanLedgerFilenames(ledgerFilenames, dirs = MIGRATION_DIRS) {
+  const onDisk = new Set();
+  for (const dir of dirs) {
+    let files;
+    try {
+      files = readdirSync(dir).filter((f) => f.endsWith(".sql"));
+    } catch {
+      continue; // directory absent in this checkout -- not this check's concern
+    }
+    for (const file of files) onDisk.add(file);
+  }
+  return ledgerFilenames.filter((f) => !onDisk.has(f)).sort();
+}
+
+/**
+ * Throws with a real, actionable message if the ledger holds any row for a filename that no
+ * longer exists in either migrations directory (Git #3140) -- turning what used to be a silent
+ * re-run under the new name into a loud, readable stop before anything is applied.
+ */
+export function assertNoOrphanLedgerRows(ledgerFilenames, dirs = MIGRATION_DIRS) {
+  const orphans = findOrphanLedgerFilenames(ledgerFilenames, dirs);
+  if (orphans.length === 0) return;
+  throw new Error(
+    `schema_migrations holds ${orphans.length === 1 ? "a row" : "rows"} for ` +
+      `${orphans.length === 1 ? "a file" : "files"} that no longer exist in either migrations ` +
+      `directory (Git #3140):\n` +
+      orphans.map((f) => `  ${f}`).join("\n") +
+      `\nThis almost always means an already-applied migration was renamed. Renaming re-runs ` +
+      `the identical SQL under the new name on every environment that already ran it -- safe ` +
+      `only if the migration is purely idempotent. Either rename it back, or if the rename is ` +
+      `intentional, fix up the ledger by hand first:\n` +
+      `  UPDATE schema_migrations SET filename = '<new filename>' WHERE filename = '<old filename>';`,
+  );
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     assertNoDuplicateMigrationNumbers();
