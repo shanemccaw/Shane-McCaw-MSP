@@ -32,6 +32,62 @@
 // Nothing here writes to ShanesSurvival's tables, and simulateTransfer structurally cannot:
 // Plaid is read-only and NFCU has no Transfer product, so a "transfer" is arithmetic on copies
 // of real balances and nothing else.
+//
+// -- Git #3162 real architectural check: Finance-Tracker's bill envelope model does NOT
+//    transfer here, and was deliberately not ported. Recorded so a future session doesn't
+//    retry it blindly. ------------------------------------------------------------------
+//
+// `FINANCE_TRACKER_AUDIT.md` (shanemccaw/Finance-Tracker, read 2026-09-08) ranks the
+// envelope model -- `bill.assigned` (this-cycle contribution, resets on "New Cycle") kept
+// separate from `bill.envelopeBalance` (a persistent pocket), reassignment applying a DELTA
+// rather than an overwrite -- as its single most reusable pattern. It solves a real problem
+// there: Finance-Tracker has ONE pooled checking account and every bill is a virtual split of
+// it, tracked entirely in a client-side JSONB blob, so the app itself has to be the ledger of
+// "how much of that one balance is earmarked for what."
+//
+// That problem does not exist here. `accounts.role = 'bill'` rows (migration 003) are each a
+// real, separate, Plaid-linked bank account -- confirmed by `accounts.plaid_item_id NOT NULL`
+// (migration 001: every account row requires a real Plaid item, there is no manual/virtual
+// account) and by the contract pack's own real correction, confirmed the same day this issue
+// was worked (`web/shanes-life/docs/shanes-life-design-contract-pack.md`, commit e6e7a2841):
+// "Moving money from Direct Deposit into separate real bill/category accounts is literally
+// envelope-style budgeting -- that mechanism is the real system, not a side effect of it."
+// The envelope split already happens, for real, at the bank -- Shane moves real dollars
+// between real NFCU sub-accounts, and Plaid sync (not this module) is what keeps
+// `current_balance` current. There is nothing left for a shadow ledger to do except disagree
+// with the real balance it would be shadowing, which is exactly the failure this module's own
+// header above exists to prevent (two surfaces, two different numbers).
+//
+// Two more confirmations this is a real architectural mismatch, not just an unbuilt feature:
+//   * `migrations/011_bill_last_paid_date.sql`'s own comment is explicit that `last_paid_date`
+//     is "informational only... does not touch the existing bill_status/gate_status shortfall
+//     math, which stays keyed off target_amount vs. current_balance" -- i.e. ShanesSurvival
+//     already made this same call for the one place a Finance-Tracker-style ledger write
+//     (`toggleBillPaid` debiting `envelopeBalance`) could have landed, and chose not to.
+//   * There is no "New Cycle" reset anywhere in this app's model, and none is needed: a real
+//     bank balance is never zeroed by the app, so there is nothing analogous to
+//     `bill.assigned` resetting each cycle for a delta to be computed against.
+// Bill/account mutations (target_amount, last_paid_date, role) are ShanesSurvival's own MCP
+// tools' job (`desktop/ShanesSurvival/src/ShanesSurvival.Mcp/Tools/FinanceTools.cs`), not
+// this module's -- another reason a parallel envelope-assignment mutation does not belong here.
+//
+// Scope 2 of #3162 asked the same honest question of the `persist()`/`latestStateRef` stale-
+// closure fix (Finance-Tracker's #2-ranked pattern) and the answer is the same "no, and here is
+// the real evidence": this app's whole frontend (`web/shanes-life/public/*.js`) has no
+// debounced client-side autosave, no `AsyncStorage`-style local cache, and no optimistic
+// update of a client-held blob to go stale in the first place -- confirmed by grepping the
+// entire `public/` tree for `debounce`/`localStorage`/`AsyncStorage` (money.mjs's own routes
+// are the only ones money-related, and every one of them is a plain `fetch` via the shared
+// `api()` helper in `app.js`, request in, JSON response out, nothing cached client-side
+// between calls). Server-authoritative, exactly as this issue suspected. If Shane's Life's
+// client ever grows real local optimistic state for Money, re-read
+// `FINANCE_TRACKER_AUDIT.md` section 5 item 2 before inventing a fix from scratch.
+//
+// Scope 3 (Plaid webhooks) is real and still open -- neither app has one today, and this repo
+// is the one with a real internet-reachable server to receive them (ShanesSurvival is a
+// desktop app with no public endpoint). It is a genuinely large, separate feature (signature
+// verification, item-health classification, reconnect-flow wiring), so per this issue's own
+// text it was filed as its own follow-up Feature rather than squeezed in here: #3185.
 
 import { many, one } from "../db.mjs";
 import { badRequest } from "../http.mjs";
@@ -1050,6 +1106,104 @@ export async function simulateTransfer(userId, { amount, from, to }) {
     footer: "Never moves money. Do it at NFCU, then it syncs.",
     warnings: after.warnings,
   };
+}
+
+// ---------------------------------------------------------------------------
+// bill due-date + Tax Levy notifications (Git #3161)
+// ---------------------------------------------------------------------------
+
+/** Real reuse, not a duplicate tracker (contract Section 3): a bill's due date is already
+ *  `accounts.due_day` -- this surfaces the SAME real data as a due-soon nudge instead of keeping
+ *  a second due-date store. Three days' notice is enough to check `getGateStatus`/`whatIf` and
+ *  move money before the date lands -- shorter than the 21-day `renewal` lead time (dates.mjs)
+ *  because a bill recurs monthly, not annually; a month's worth of advance notice would mean it
+ *  is almost always "due soon." */
+const BILL_LEAD_DAYS = 3;
+
+/** A debt with its own real `due_day` (today, only the $242/month Tax Levy installment --
+ *  migration 037) gets more lead time than a routine bill: Section 3 calls this one out by name
+ *  as "high-stakes enough to warrant its own real, distinct nudge." */
+const DEBT_LEAD_DAYS = 5;
+
+/** `dueDay` (1-31) resolved against `today` -> `{ dueDate, daysAway }` when that real occurrence
+ *  falls within `leadDays`, else null. Reuses the same `nextDueDate` month-end clamping Budget
+ *  Day's own due-before-next-check math already relies on. */
+function dueSoon(dueDay, today, leadDays) {
+  const due = nextDueDate(dueDay, today);
+  if (!due) return null;
+  const daysAway = Math.round((due - today) / MS_PER_DAY);
+  return daysAway >= 0 && daysAway <= leadDays ? { dueDate: utcIso(due), daysAway } : null;
+}
+
+/**
+ * Real bills (`accounts.role='bill'`) whose real due date falls within the lead window and have
+ * not already had a `kind: 'bill'` reminder queued today -- same day-scoped dedup convention as
+ * `dates.findDueDayBeforeReminders` / `pets.findDueVaccineReminders`: re-fires daily while the
+ * window stays open (a bill that's still short deserves the next day's nudge too), and a new
+ * month's occurrence naturally produces a different `dueDate` once the old one passes.
+ */
+export async function findDueBillReminders(userId, { asOf = new Date() } = {}) {
+  const today = new Date(Date.UTC(asOf.getFullYear(), asOf.getMonth(), asOf.getDate()));
+  const bills = await loadRoleAccounts(ROLE_BILL);
+
+  const candidates = [];
+  for (const b of bills) {
+    if (!b.due_day) continue;
+    const soon = dueSoon(b.due_day, today, BILL_LEAD_DAYS);
+    if (!soon) continue;
+    const target = toCents(b.target_amount);
+    const balance = toCents(b.current_balance);
+    // Same warn-and-exclude convention as computeGateMath: an unknown balance still reports the
+    // real target owed (better than no number at all), just not a computed shortfall.
+    const amountCents = target === null ? null : balance === null ? target : Math.max(0, target - balance);
+    candidates.push({ id: b.id, name: b.name, dueDate: soon.dueDate, daysAway: soon.daysAway, amountCents });
+  }
+  if (candidates.length === 0) return [];
+
+  const already = await many(
+    `SELECT payload->>'accountId' AS account_id FROM nudge_events
+      WHERE user_id = $1 AND kind = 'bill' AND day = current_date`,
+    [userId],
+  );
+  const seen = new Set(already.map((r) => r.account_id));
+  return candidates.filter((c) => !seen.has(c.id));
+}
+
+/**
+ * Real debts (`debts.due_day`) whose due date falls within their own, longer lead window --
+ * today, only the real $242/month Tax Levy installment (Treasury Offset Program, migration 037).
+ * A genuinely separate kind (`'debt_due'`) from bill reminders, and a genuinely separate table
+ * (ShanesSurvival's `debts`, not `accounts`) -- Section 3's "own real, distinct nudge... not
+ * lumped anonymously into the general bill list" without this needing to name any creditor
+ * specially: any debt that gets a real due_day is distinct by construction.
+ */
+export async function findDueDebtReminders(userId, { asOf = new Date() } = {}) {
+  const today = new Date(Date.UTC(asOf.getFullYear(), asOf.getMonth(), asOf.getDate()));
+  const debts = await many(
+    `SELECT id, creditor_name, balance, minimum_payment, due_day FROM debts WHERE due_day IS NOT NULL`,
+  );
+
+  const candidates = [];
+  for (const d of debts) {
+    const soon = dueSoon(d.due_day, today, DEBT_LEAD_DAYS);
+    if (!soon) continue;
+    candidates.push({
+      id: d.id,
+      name: d.creditor_name,
+      dueDate: soon.dueDate,
+      daysAway: soon.daysAway,
+      amountCents: toCents(d.minimum_payment),
+    });
+  }
+  if (candidates.length === 0) return [];
+
+  const already = await many(
+    `SELECT payload->>'debtId' AS debt_id FROM nudge_events
+      WHERE user_id = $1 AND kind = 'debt_due' AND day = current_date`,
+    [userId],
+  );
+  const seen = new Set(already.map((r) => r.debt_id));
+  return candidates.filter((c) => !seen.has(c.id));
 }
 
 /** Budget Day on its own, for the tray card that does not need the whole gate. */

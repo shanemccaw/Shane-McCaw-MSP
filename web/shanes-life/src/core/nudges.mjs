@@ -32,13 +32,19 @@ export async function queueNudge({ userId, kind, title, body = null, payload = {
     );
 
     if (countsToCap) {
+      // Git #3161: `cap` was passed as a third bind param here but never referenced in the SQL
+      // text (the row's own `cap` is already set by the upsert above) -- Postgres cannot infer a
+      // type for a wholly unused parameter and rejected every real call with "could not
+      // determine data type of parameter $2", silently swallowed by every caller's own
+      // try/catch (server.mjs's reminder sweeps). No real nudge_events row has ever actually
+      // been written via this path until this fix.
       await client.query(
         `UPDATE nudges SET
-            count = count + CASE WHEN $3 THEN 0 ELSE 1 END,
-            held_count = held_count + CASE WHEN $3 THEN 1 ELSE 0 END,
+            count = count + CASE WHEN $2 THEN 0 ELSE 1 END,
+            held_count = held_count + CASE WHEN $2 THEN 1 ELSE 0 END,
             updated_at = now()
           WHERE user_id = $1 AND day = current_date`,
-        [userId, cap, overCap],
+        [userId, overCap],
       );
     }
 
