@@ -29,6 +29,7 @@ Every decision below traces to a section of it, and the section is cited in the 
 | Shopping: per-store price history, real dated observations (Shanes Life 04) | `src/core/prices.mjs`, `GET/POST /api/stores`, `GET/POST /api/prices`, `public/app.js` "Log price"/"History" on each Shopping row, MCP `get_prices` (#3112) |
 | Shopping: weekly-ad cross-store verdicts, coupons, multi-buy (§3, §5, Shanes Life 04) | `src/core/prices.mjs` (`pushDeals`/`pushCoupons`/`fetchWeeklyAd`/`attachWeeklyAdVerdicts`), `GET /api/shopping` (`weeklyAdVerdict` per item), MCP `push_deals`/`push_coupons`/`fetch_weekly_ad` (#3110) |
 | Recipes: core list, real can-make matching against Shopping, add missing, heart-healthy context (§5, Shanes Life 05) | `src/core/recipes.mjs`, `GET /api/recipes`, `POST /api/recipes/:id/add-missing`, `GET/PATCH /api/health-context`, `public/app.js` `#/recipes`, MCP `push_recipes`/`get_recipes`/`add_missing_ingredients`/`get_health_context`/`set_health_context` (#3124) |
+| Food preferences: dislikes (soft avoid) and allergies (hard exclusion) (§5) | `src/core/food-preferences.mjs`, `food_preferences` table (migration 024), MCP `get_food_preferences`/`set_food_preferences` -- additive, no separate settings form (#3132) |
 
 ---
 

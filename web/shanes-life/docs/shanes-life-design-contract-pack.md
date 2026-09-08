@@ -384,7 +384,8 @@ the list because nothing checked it first. The real, wanted order:
    stated — don't generate a list before knowing the real number to build against.
 2. **Read Shane's real stated food preferences before generating anything** (allergies:
    hard exclusion, no exceptions; dislikes: soft avoid) — Section 5's own real allergy/
-   dislike data (once #3132 lands) exists specifically so this step is never skipped.
+   dislike data (`get_food_preferences`/`set_food_preferences`, #3132, landed) exists
+   specifically so this step is never skipped.
    Real, concrete cost of skipping it: a deathly allergen (shrimp) made it onto a real
    list on 2026-09-07 because this step wasn't run first.
 3. **Propose a real, honest starter list with a real running total against the stated

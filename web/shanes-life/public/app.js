@@ -98,7 +98,12 @@ function money(cents) {
 /** A plain `date` column (YYYY-MM-DD), not a timestamp -- `when()` above is for the latter. */
 function whenDate(isoDate) {
   if (!isoDate) return "";
-  const d = new Date(`${isoDate}T00:00:00`);
+  // observed_on is a plain SQL `date` column, but pg's driver parses it into a JS Date and
+  // the API layer serializes that as a full ISO timestamp (e.g. "2026-09-07T04:00:00.000Z"),
+  // not the bare "YYYY-MM-DD" this used to assume. Strip any time/zone portion before
+  // reconstructing a local-midnight date so both shapes parse correctly (Git #3133).
+  const datePart = String(isoDate).slice(0, 10);
+  const d = new Date(`${datePart}T00:00:00`);
   const diffDays = Math.round((d - new Date(new Date().toDateString())) / 86_400_000);
   if (diffDays === 0) return "today";
   if (diffDays === -1) return "yesterday";

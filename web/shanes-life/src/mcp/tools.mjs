@@ -12,6 +12,7 @@ import { record } from "../core/audit.mjs";
 import * as captures from "../core/captures.mjs";
 import * as categories from "../core/categories.mjs";
 import * as entities from "../core/entities.mjs";
+import * as foodPreferences from "../core/food-preferences.mjs";
 import * as lists from "../core/lists.mjs";
 import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
@@ -780,6 +781,46 @@ export const TOOLS = [
         detail: { added: result.added },
       });
       return result;
+    },
+  },
+
+  {
+    name: "get_food_preferences",
+    title: "Read Shane's real food preferences",
+    description:
+      "Real stated dislikes (soft avoid) and allergies (hard exclusion, no exceptions) -- Git #3132. Call this BEFORE generating any shopping list or recipe/meal plan, every time, the same way you'd read the heart-health context -- skipping this step is what put a real allergen on a real list on 2026-09-07. Returns empty arrays if nothing has been stated yet, which is a real, valid state, not an error.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      return foodPreferences.getFoodPreferences(ctx.user.id);
+    },
+  },
+
+  {
+    name: "set_food_preferences",
+    title: "Save a real dislike or allergy",
+    description:
+      "Save real food dislikes and/or allergies -- the capture-grammar entry point for 'I'm allergic to shellfish' or 'I don't like cilantro' said in passing, no separate settings form. Additive: passing dislikes adds to the existing list rather than replacing it, and leaving allergies unset leaves it completely untouched (and vice versa) -- same 'unset fields keep their current value' pattern as set_income_source. There is no remove/replace mode here on purpose -- this is a hard-safety list for allergies, not something a single ambiguous turn should be able to shrink. Real, deliberate distinction: allergies is a hard exclusion enforced with no exceptions everywhere food gets generated; dislikes is a soft avoid, fine to slip through occasionally with a real stated reason.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dislikes: { type: "array", items: { type: "string" }, description: "Foods to soft-avoid, e.g. ['cilantro']. Adds to the existing list." },
+        allergies: { type: "array", items: { type: "string" }, description: "Foods to hard-exclude, no exceptions, e.g. ['shellfish']. Adds to the existing list." },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const prefs = await foodPreferences.setFoodPreferences(ctx.user.id, {
+        dislikes: args.dislikes,
+        allergies: args.allergies,
+      });
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "food_preferences.set",
+        detail: { dislikesAdded: args.dislikes ?? null, allergiesAdded: args.allergies ?? null },
+      });
+      return prefs;
     },
   },
 
