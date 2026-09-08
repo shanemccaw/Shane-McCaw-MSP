@@ -209,6 +209,32 @@ function main() {
     }
 
     // -------------------------------------------------------------------------------
+    console.log(
+      "11a. Git #3239: my own new unmerged file at a HIGHER number must not hide a sibling's " +
+        "lower ahead row",
+    );
+    {
+      // Real repro: sibling applied 049_bill_cycle_snapshots.sql (ledger row, not yet merged,
+      // so not on disk here). This checkout's own new, unmerged file has no number conflict, so
+      // it landed at 050_room_order.sql -- one number ABOVE the sibling's. The old
+      // `> highestOnDiskMigrationNumber` test made highest=50 (from MY OWN file) and failed the
+      // sibling's 49 as "not ahead", misclassifying it missing/fatal.
+      const dirs = makeDirs(path.join(tmpRoot, "case11a"), survival, [
+        ...life,
+        "050_room_order.sql",
+      ]);
+      const ledger = [...survival, ...life, "049_bill_cycle_snapshots.sql"];
+      const c = classifyOrphanLedgerFilenames(ledger, dirs);
+      ok(
+        c.ahead.length === 1 && c.ahead[0] === "049_bill_cycle_snapshots.sql",
+        "sibling's 049 is classified ahead, not hidden by my own higher 050",
+      );
+      ok(c.missing.length === 0, "nothing classified missing");
+      const r = assertNoOrphanLedgerRows(ledger, dirs);
+      ok(r.ahead.length === 1, "assert does NOT throw -- server boot is not blocked");
+    }
+
+    // -------------------------------------------------------------------------------
     console.log("11. the numeric compare is real, not lexical (099 vs 100)");
     {
       const dirs = makeDirs(path.join(tmpRoot, "case11"), survival, ["099_ninety_nine.sql"]);
