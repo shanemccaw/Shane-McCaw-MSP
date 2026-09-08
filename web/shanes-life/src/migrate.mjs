@@ -19,6 +19,7 @@ import {
   assertNoDuplicateMigrationNumbers,
   assertNoOrphanLedgerRows,
 } from "../../../scripts/check-migration-numbers.mjs";
+import { auditSchemaDrift, formatDriftReport } from "../../../scripts/check-schema-drift.mjs";
 
 const MIGRATIONS_DIR = resolve(config.root, "migrations");
 
@@ -165,5 +166,24 @@ export async function runMigrations({ log = console.log } = {}) {
   }
 
   if (applied.length === 0) log(`[migrate] up to date (${skipped.length} already applied)`);
+
+  // Git #3177: after applying everything this checkout knows about, check whether the live
+  // database already holds a table/column that no migration file (in either directory)
+  // accounts for -- the real shape a manual/ad-hoc mutation from an aborted, never-committed
+  // worktree session leaves behind (#3153's own `catches` table, discovered exactly this way).
+  // Non-fatal and best-effort: this is a visibility fix, not a new boot gate, and a false
+  // positive here must never block a real server start.
+  try {
+    const driftClient = await pool.connect();
+    try {
+      const report = formatDriftReport(await auditSchemaDrift(driftClient));
+      if (report) log(report);
+    } finally {
+      driftClient.release();
+    }
+  } catch (err) {
+    log(`[schema-drift] audit itself failed, not fatal: ${err.message}`);
+  }
+
   return { applied, skipped };
 }
