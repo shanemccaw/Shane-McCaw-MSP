@@ -3014,6 +3014,11 @@ export function buildApiRouter() {
     // Git #3216: same real precedence rule computeNextCard (widget.mjs) already applies -- a
     // real appointment today still wins, so this is only ever computed when it doesn't.
     const headingHome = appointmentToday ? null : await headingHomeAvailability(user.id);
+    // Git #3273 ("Money nav restructure"): "while any bank needs a reconnect the attic vent's
+    // amber arc goes solid" -- the same real `plaid_items.health_status` read Settings ->
+    // Connected shows (renderBankSettings in public/app.js), reduced to a count so the house
+    // grid can light a real signal without Today needing to know Plaid's own shape.
+    const banksNeedReconnect = (await plaid.listItems()).filter((i) => i.needsReconnect).length;
 
     return sendJson(res, 200, {
       // "Today view shows only what's next" (contract pack Section 3) -- three, not a backlog.
@@ -3036,6 +3041,7 @@ export function buildApiRouter() {
       rooms: await roomsForToday(user.id, { allDates, tonight, groceries, meds: medsToday, pendingCaptures }),
       roomOrder: await roomOrder.getRoomOrder(user.id),
       later: await computeLaterMoments(user.id, { allDates, tonight, pendingCaptures }),
+      banksNeedReconnect,
     });
   });
 

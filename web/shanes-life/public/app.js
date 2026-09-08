@@ -1686,8 +1686,9 @@ function orderedRoomDefs(order) {
  *  declaration) can additionally light the Recipes room even outside its server-computed
  *  16:00-21:00 window, same override resolveNextKind() already applies to the Next card's own
  *  "dinner" case. `order` is the user's real saved room order (Git #3215) -- undefined/empty
- *  renders the original shipped order. */
-function roomsHouseSection(rooms, order) {
+ *  renders the original shipped order. `banksNeedReconnect` is /api/today's own real count (Git
+ *  #3273) of Plaid items with `needsReconnect` -- solidifies the vent's amber arc when nonzero. */
+function roomsHouseSection(rooms, order, banksNeedReconnect = 0) {
   let recipesLit = Boolean(rooms.recipes && rooms.recipes.lit);
   let recipesSubtitle = rooms.recipes ? rooms.recipes.subtitle : "Nothing planned right now";
   if (mealSession && !mealSession.done) {
@@ -1703,6 +1704,17 @@ function roomsHouseSection(rooms, order) {
     return roomsCell(def, lit, subtitle);
   });
 
+  // Git #3273 ("Money nav restructure"): "while any bank needs a reconnect the attic vent's
+  // amber arc goes solid #FDE68A at 2px, so the roof itself says something in Settings needs
+  // you" -- faint amber (the baseline README "louvered gable vent... faint amber arc") the rest
+  // of the time.
+  const banksNeedYou = banksNeedReconnect > 0;
+  const ventArcStroke = banksNeedYou ? "#FDE68A" : "rgba(253,224,71,.22)";
+  const ventArcWidth = banksNeedYou ? 2 : 1;
+  const ventTitle = banksNeedYou
+    ? `Settings — ${banksNeedReconnect} bank${banksNeedReconnect === 1 ? " needs" : "s need"} you`
+    : "Settings";
+
   return el("div", { class: "rooms-house" }, [
     el("div", { class: "rooms-roof" }, [
       el("div", { html: roomsRoofHtml(recipesLit) }),
@@ -1710,9 +1722,9 @@ function roomsHouseSection(rooms, order) {
       // is Settings' only real entry point now that the flat `.tabs` bar is gone -- the last of
       // the four links that bar carried (Today: the per-room house-icon back-link, Meds/Inbox:
       // the two rooms just above).
-      el("a", { href: "#/settings", class: "rooms-vent", "aria-label": "Settings", title: "Settings" }, [
+      el("a", { href: "#/settings", class: `rooms-vent${banksNeedYou ? " alert" : ""}`, "aria-label": ventTitle, title: ventTitle }, [
         el("span", {
-          html: `<svg viewBox="0 0 48 34" aria-hidden="true"><path d="M8 34 V22 A16 16 0 0 1 40 22 V34 Z" fill="rgba(7,16,36,.85)" stroke="rgba(226,232,240,.6)" stroke-width="1.5"/><path d="M13 24 H35 M13 28 H35 M13 32 H35" stroke="rgba(148,163,184,.5)" stroke-width="1.2"/></svg>`,
+          html: `<svg viewBox="0 0 48 34" aria-hidden="true"><path d="M8 34 V22 A16 16 0 0 1 40 22 V34 Z" fill="rgba(7,16,36,.85)" stroke="rgba(226,232,240,.6)" stroke-width="1.5"/><path d="M13 24 H35 M13 28 H35 M13 32 H35" stroke="rgba(148,163,184,.5)" stroke-width="1.2"/><path d="M9 22 A15 15 0 0 1 39 22" fill="none" stroke="${ventArcStroke}" stroke-width="${ventArcWidth}"/></svg>`,
         }),
       ]),
     ]),
@@ -1836,7 +1848,7 @@ async function viewToday(view) {
 
   // Rooms -- the house (Git #3165): the real illustrated-house nav replacing the flat tab-bar
   // links to these 8 rooms (see the trimmed <nav class="tabs"> in index.html).
-  view.append(el("section", { class: "section" }, [el("h2", { text: "Rooms" }), roomsHouseSection(data.rooms || {}, data.roomOrder)]));
+  view.append(el("section", { class: "section" }, [el("h2", { text: "Rooms" }), roomsHouseSection(data.rooms || {}, data.roomOrder, data.banksNeedReconnect)]));
 
   if (data.pendingCaptures > 0) {
     view.append(
@@ -3295,15 +3307,17 @@ let moneyTab = "now"; // transient client-only state, same idiom as cookSession 
 
 // Git #3241: Wins moved out of this tab switcher into its own top-level house-grid room
 // (viewWins() below) -- no longer one of Money's own tabs.
+// Git #3273 ("Money nav restructure"): back down to the design's real five cells --
+// Now / Bills / Accounts / Bankruptcy / Cars. Vault + Documents moved out into the
+// standalone Vault room (#3272, viewVault() below); Banks moved into Settings -> Connected
+// (renderBankSettings() below, called from viewSettings) since the attic vent now carries
+// the real "a bank needs you" signal a buried Money tab never could.
 const MONEY_TABS = [
   { key: "now", label: "Now" },
   { key: "bills", label: "Bills" },
-  { key: "banks", label: "Banks" },
-  { key: "bankruptcy", label: "Bankruptcy" },
   { key: "accounts", label: "Accounts" },
+  { key: "bankruptcy", label: "Bankruptcy" },
   { key: "cars", label: "Cars" },
-  { key: "vault", label: "Vault" },
-  { key: "documents", label: "Documents" },
 ];
 
 // Git #3205: the real, shared two-week cycle card at the top of Now and Bills. `cycleCardOffset`
@@ -4187,12 +4201,6 @@ function renderMoneyResult(container, kind, result) {
 let vaultReveal = null; // { id, value, expiresAt, tick, restore }
 let vaultClipboardTimer = null;
 
-/** Transient client-only room state, same idiom as `moneyTab` above. Kept at module scope rather
- *  than inside the view so that a re-render after adding an entry lands back on the same filter
- *  and the same search instead of silently resetting them under Shane. */
-let vaultQuery = "";
-let vaultKindFilter = "all";
-
 // -- Browser extension autofill bridge (Git #3243) -----------------------------------------
 //
 // #3243's own "how does the extension prove it's really Shane" question is answered by NOT
@@ -4217,8 +4225,8 @@ const extensionReveal = (() => {
 
 /** Runs the real reveal ceremony for the one entry the extension asked for, then reports the
  *  outcome back across the page/extension boundary and closes the popup. Called once, from
- *  viewMoneyVault, after its own entries list is loaded -- so this never invents a lookup path
- *  the Vault room doesn't already have. */
+ *  viewVault (the standalone Vault room, Git #3272/#3273), after its own entries list is
+ *  loaded -- so this never invents a lookup path the room doesn't already have. */
 async function completeExtensionReveal(entries) {
   if (!extensionReveal || extensionReveal.handled) return;
   extensionReveal.handled = true;
@@ -4251,12 +4259,6 @@ async function completeExtensionReveal(entries) {
     setTimeout(() => window.close(), 400);
   }
 }
-
-const VAULT_KIND_FILTERS = [
-  { key: "all", label: "All" },
-  { key: "login", label: "Logins" },
-  { key: "bill_reference", label: "Bill refs" },
-];
 
 function hideVaultReveal() {
   if (!vaultReveal) return;
@@ -4626,7 +4628,9 @@ function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds, onChanged })
  * never echoed back by any list or sent to Claude.
  */
 function vaultAddCard(gate, onSaved) {
-  let kind = vaultKindFilter === "bill_reference" ? "bill_reference" : "login";
+  // Git #3273 cleanup: this used to default off the Money Vault tab's own `vaultKindFilter`
+  // chip state; that tab is gone, so this now reads the real Vault room's own chip instead.
+  let kind = vaultRoomFilter === "bill_reference" ? "bill_reference" : "login";
 
   const labelInput = el("input", { "aria-label": "What this is for", required: true });
   const siteInput = el("input", { "aria-label": "Site" });
@@ -4819,162 +4823,15 @@ function vaultImportCard(onImported) {
   ]);
 }
 
-async function viewMoneyVault(view) {
-  const [first, gate] = await Promise.all([api("/api/vault"), api("/api/money/gate")]);
-  const { keyConfigured, clipboardClearSeconds } = first;
-
-  if (extensionReveal && !extensionReveal.handled) {
-    view.append(
-      el("div", { class: "vault-lock-note" }, [
-        el("span", { text: "Confirm with Face ID to autofill this password in the browser extension…" }),
-      ]),
-    );
-  }
-
-  view.append(
-    el("div", { class: "vault-lock-note" }, [
-      lineIcon(
-        '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
-        { size: 14, strokeWidth: 2 },
-      ),
-      el("span", {
-        text: "Encrypted at rest. Face ID every time. Revealed for 20 seconds, then gone. No screenshot round-trip.",
-      }),
-    ]),
-  );
-
-  // A real deployment fact, said out loud here rather than failing at the first Reveal tap: with
-  // no SL_VAULT_KEY in the environment there is no key to decrypt with, and the honest answer is
-  // that the room cannot work, not that the entries are missing.
-  if (!keyConfigured) {
-    view.append(
-      el("div", { class: "card" }, [
-        el("p", { text: "The vault's encryption key isn't set on this server, so nothing here can be added or revealed." }),
-        el("p", { class: "small muted", text: "SL_VAULT_KEY needs 32 bytes of base64 randomness in the environment. It lives outside the database on purpose." }),
-      ]),
-    );
-    attachRoomWatermark(view, "vault");
-    return;
-  }
-
-  const copy = (revealed) =>
-    vaultCopy(
-      revealed.value,
-      "Copied — Clears from the clipboard in 60 seconds. Never a screenshot.",
-      clipboardClearSeconds,
-    );
-
-  const reveal = async (entry) => {
-    const options = await api(`/api/vault/${entry.id}/reveal/options`, { method: "POST", body: "{}" });
-    return api(`/api/vault/${entry.id}/reveal`, {
-      method: "POST",
-      body: JSON.stringify(await passkeyAssertion(options)),
-    });
-  };
-
-  // Real search (Git #3242 scope item 2), run in the database. The list repaints in place rather
-  // than through render(): a full re-render would rebuild the search box mid-keystroke and take
-  // the caret with it.
-  const searchInput = el("input", {
-    type: "search",
-    class: "vault-search",
-    autocomplete: "off",
-    placeholder: "Search a site, service or username…",
-    "aria-label": "Search the vault",
-    value: vaultQuery,
-  });
-  const filterRow = el("div", { class: "vault-filters" });
-  const list = el("div");
-
-  async function refresh() {
-    // Anything revealed belongs to a row that is about to be thrown away — put it back behind its
-    // mask first so the plaintext isn't left alive in a detached node with its own live timer.
-    hideVaultReveal();
-    const params = new URLSearchParams();
-    if (vaultKindFilter !== "all") params.set("kind", vaultKindFilter);
-    if (vaultQuery.trim()) params.set("q", vaultQuery.trim());
-    const query = params.toString();
-    const { entries, counts } = await api(`/api/vault${query ? `?${query}` : ""}`);
-
-    // A real fresh WebAuthn assertion for the one entry the extension's popup asked for --
-    // the same ceremony a normal "Reveal" tap below runs, just kicked off automatically since
-    // there's nothing else to click in a bare popup window. Fires at most once per page load
-    // (extensionReveal.handled), so the debounced search re-running refresh() doesn't re-prompt.
-    if (extensionReveal && !extensionReveal.handled) completeExtensionReveal(entries);
-
-    filterRow.replaceChildren(
-      ...VAULT_KIND_FILTERS.map((f) =>
-        el("button", {
-          type: "button",
-          class: `vault-filter${vaultKindFilter === f.key ? " active" : ""}`,
-          text: `${f.label} ${counts[f.key === "all" ? "all" : f.key] ?? 0}`,
-          onClick: () => {
-            vaultKindFilter = f.key;
-            refresh();
-          },
-        }),
-      ),
-    );
-
-    if (entries.length === 0) {
-      list.replaceChildren(
-        vaultQuery.trim()
-          ? empty(`Nothing in the vault matches "${vaultQuery.trim()}".`, "Search looks at the name, the site and the username — never the password, because there is no readable password to look at.", "notfound")
-          : empty(
-              "Nothing in the vault yet.",
-              "A login and its password, or which site to pay a bill at and the account number that site needs. Add the first one below.",
-              "vault",
-            ),
-      );
-      return;
-    }
-
-    const card = el("div", { class: "vault-card" });
-    for (const entry of entries) {
-      card.append(vaultRow(entry, { onReveal: reveal, onCopy: copy, clipboardClearSeconds, onChanged: refresh }));
-    }
-    list.replaceChildren(card);
-  }
-
-  // Debounced so typing a site name is one settled query rather than one per keystroke.
-  let searchTimer = null;
-  searchInput.addEventListener("input", () => {
-    vaultQuery = searchInput.value;
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(refresh, 180);
-  });
-  // A search box inside a page that has no other form must not reload the page on Enter.
-  searchInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") event.preventDefault();
-  });
-
-  view.append(el("div", { class: "vault-search-row" }, [searchInput]), filterRow, list);
-  await refresh();
-
-  view.append(
-    el("p", {
-      class: "vault-foot-note",
-      text: "Every login, and which account number goes where. Real encryption from version one, flagged as a requirement, not polish.",
-    }),
-  );
-
-  view.append(vaultAddCard(gate, refresh));
-  view.append(vaultImportCard(refresh));
-
-  // Room watermark (Git #3119): the critter spec's own room map says "Money Bills and Cars ->
-  // bear, Vault -> vault".
-  attachRoomWatermark(view, "vault");
-}
-
-// -- Money -> Important documents (Git #3244) ---------------------------------------------
+// -- Documents (Git #3244), now shown inside the Vault room --------------------------------
 //
 // Wills, life insurance, and the like. Real, deliberate reuse of the vault's own visual
 // language (vault-row/vault-value-box/etc. CSS classes, the Face ID overlay, the reveal
 // countdown) rather than a second parallel set of styles for what is the same real security
 // idiom on a different content type -- one encrypted-detail card, gated by a passkey, shown
-// for 20 real seconds. `documentReveal` is this tab's own module-scope "one thing revealed at
-// a time" state, distinct from `vaultReveal` -- the two rooms are different tabs and a document
-// reveal must not silently re-mask whatever is open in Vault, or vice versa.
+// for 20 real seconds. `documentReveal` is this module's own "one thing revealed at a time"
+// state, distinct from `vaultReveal` -- a document reveal must not silently re-mask whatever
+// login is open, or vice versa.
 
 let documentReveal = null; // { id, tick, restore }
 
@@ -5072,105 +4929,16 @@ function documentRow(doc, { onReveal, onCopy }) {
   return row;
 }
 
-async function viewMoneyDocuments(view) {
-  const { documents, keyConfigured } = await api("/api/documents");
-
-  view.append(
-    el("div", { class: "vault-lock-note" }, [
-      lineIcon(
-        '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><path d="M14 2v6h6"></path>',
-        { size: 14, strokeWidth: 2 },
-      ),
-      el("span", {
-        text: "Wills, life insurance, and the like -- real documents, not credentials, but the same real security bar as the Vault: encrypted at rest, Face ID every time, revealed for 20 seconds.",
-      }),
-    ]),
-  );
-
-  if (!keyConfigured) {
-    view.append(
-      el("div", { class: "card" }, [
-        el("p", { text: "The same encryption key the Vault uses isn't set on this server, so nothing here can be added or revealed." }),
-        el("p", { class: "small muted", text: "SL_VAULT_KEY needs 32 bytes of base64 randomness in the environment." }),
-      ]),
-    );
-    attachRoomWatermark(view, "moneyhdr");
-    return;
-  }
-
-  // Real search (item 2 of the issue's scope): "where's my will", "who's my life insurance
-  // beneficiary" -- answered directly from the real doc_type/name/location on file, no reveal
-  // needed just to find the right document.
-  const searchInput = el("input", { placeholder: "where's my will…", "aria-label": "Search documents" });
-  const searchResults = el("div", { class: "vault-card", style: "margin-top:8px" });
-  let searchTimer = null;
-  searchInput.addEventListener("input", () => {
-    if (searchTimer) clearTimeout(searchTimer);
-    const q = searchInput.value.trim();
-    if (!q) {
-      searchResults.replaceChildren();
-      searchResults.hidden = true;
-      return;
-    }
-    searchTimer = setTimeout(async () => {
-      const { documents: hits } = await api(`/api/documents/search?q=${encodeURIComponent(q)}`);
-      searchResults.hidden = false;
-      searchResults.replaceChildren(
-        hits.length === 0
-          ? el("p", { class: "small muted", style: "padding:.6rem 1rem", text: "Nothing on file matches that." })
-          : el("div", {}, hits.map((h) =>
-              el("div", { class: "vault-row-head", style: "padding:.6rem 1rem" }, [
-                el("div", { class: "vault-row-name" }, [
-                  el("div", { class: "vault-row-label", text: h.name }),
-                  el("div", { class: "vault-row-site", text: h.docType }),
-                  h.location ? el("div", { class: "vault-row-site", text: `at ${h.location}` }) : null,
-                ]),
-              ]),
-            )),
-      );
-    }, 200);
-  });
-  searchResults.hidden = true;
-  view.append(el("div", { class: "card" }, [el("h3", { class: "vault-add-title", text: "Find a document" }), searchInput, searchResults]));
-
-  const copy = async (revealed) => {
-    try {
-      await navigator.clipboard.writeText(revealed.details);
-    } catch {
-      showQuickToast("This browser wouldn't let the app write to the clipboard.");
-      return;
-    }
-    showQuickToast("Copied.");
-  };
-
-  const reveal = async (doc) => {
-    const options = await api(`/api/documents/${doc.id}/reveal/options`, { method: "POST", body: "{}" });
-    return api(`/api/documents/${doc.id}/reveal`, {
-      method: "POST",
-      body: JSON.stringify(await passkeyAssertion(options)),
-    });
-  };
-
-  if (documents.length === 0) {
-    view.append(
-      empty(
-        "Nothing on file yet.",
-        "Wills, life insurance, deeds, titles, whatever matters -- what it is, where it lives, and the real details worth surfacing at a glance. Add the first one below.",
-        "vault",
-      ),
-    );
-  } else {
-    const card = el("div", { class: "vault-card" });
-    for (const doc of documents) {
-      card.append(documentRow(doc, { onReveal: reveal, onCopy: copy }));
-    }
-    view.append(card);
-  }
-
-  // Same "real dedicated form" exception the vault takes (Git #3183 no-forms audit), for the
-  // same reason: this is genuinely sensitive content, and routing it through the universal
-  // capture box would mean it passes through Claude/MCP before encryption, defeating the whole
-  // point. No MCP tool for this module either -- same precedent as vault.mjs.
+/**
+ * The real "add a document" form (Git #3244), ported out of Money's own now-removed Documents
+ * tab (Git #3273) into a standalone card the Vault room appends alongside `vaultAddCard`/
+ * `vaultImportCard` -- without it there would be no way left to add a document at all. Same
+ * no-forms exception the vault itself takes (Git #3183 audit): this is genuinely sensitive
+ * content, and routing it through the universal capture box would mean it passes through
+ * Claude/MCP before encryption, defeating the whole point. No MCP tool for this module either --
+ * same precedent as vault.mjs.
+ */
+function documentAddCard(onSaved) {
   const typeInput = el("input", { placeholder: "Will · Life insurance · Deed · …", "aria-label": "What kind of document this is", required: true });
   const nameInput = el("input", { placeholder: "Northwestern Mutual term life", "aria-label": "Name", required: true });
   const locationInput = el("input", { placeholder: "Safe deposit box at NFCU", "aria-label": "Where it lives" });
@@ -5186,7 +4954,7 @@ async function viewMoneyDocuments(view) {
     el("div", { class: "row" }, [typeInput, nameInput]),
     el("div", { class: "row" }, [locationInput, hintInput]),
     detailsInput,
-    el("button", { type: "submit", class: "ghost small", text: "Add a document" }),
+    el("button", { type: "submit", class: "btn-pill primary vault-add-submit", text: "Add a document" }),
     addError,
   ]);
   addForm.addEventListener("submit", async (event) => {
@@ -5210,19 +4978,15 @@ async function viewMoneyDocuments(view) {
       locationInput.value = "";
       hintInput.value = "";
       detailsInput.value = "";
-      render();
+      await onSaved();
     } catch (err) {
       addError.textContent = err?.message || "That didn't save.";
       addError.hidden = false;
+    } finally {
       addForm.querySelectorAll("input,button,textarea").forEach((n) => (n.disabled = false));
     }
   });
-  view.append(el("div", { class: "card" }, [el("h3", { class: "vault-add-title", text: "Add a document" }), addForm]));
-
-  // Same watermark as the rest of Money's own sub-tabs that have no bespoke critter of their
-  // own (Bills/Banks/Accounts/Cars) -- only Vault and Wins got one in the critter spec's room
-  // map.
-  attachRoomWatermark(view, "moneyhdr");
+  return el("div", { class: "card vault-card" }, [el("h3", { class: "vault-add-title", text: "Add a document" }), addForm]);
 }
 
 // -- Vault room (Git #3272) -----------------------------------------------------------------
@@ -5230,20 +4994,20 @@ async function viewMoneyDocuments(view) {
 // The dedicated room the README's "Sep 8 late" pass calls for: "Vault is a room; Documents
 // live inside it." One search pill over all three real kinds (login / bill_reference from
 // vault.mjs, document from documents.mjs), the same four chips, one card per kind, the real
-// Browser add-on card (trusted devices, migration 062), and the real capture grammar. This is
-// additive -- Money's own Vault/Documents sub-tabs (viewMoneyVault/viewMoneyDocuments above)
-// are untouched; #3273 (Money nav restructure) is what removes them from Money's segmented
-// control, not this issue.
+// Browser add-on card (trusted devices, migration 062), and the real capture grammar. Money's
+// own Vault/Documents sub-tabs (viewMoneyVault/viewMoneyDocuments) that this room started out
+// additive to are gone -- #3273 (Money nav restructure) removed them from Money's segmented
+// control once this room was a genuine replacement, per #3272's own commit message.
 //
 // Every row on screen is `vaultRow`/`documentRow` themselves -- the exact same shared functions
-// Money's own tabs use, so a login edited or revealed here is the same real row, same real
-// security ceremony, not a second parallel rendering of the same data.
+// Money's own tabs used to use, so a login edited or revealed here is the same real row, same
+// real security ceremony, not a second parallel rendering of the same data.
 
 const VAULT_TINT = "148,163,184"; // README's own room-tint table, "Vault" -- a quiet slate.
 
-/** Transient client-only room state (same idiom as vaultQuery/vaultKindFilter above), kept
- *  separate from Money's own Vault tab state so navigating between the room and the old tab
- *  never clobbers the other's search or chip. */
+/** Transient client-only room state, same idiom as `moneyTab` above. Kept at module scope
+ *  rather than inside the view so that a re-render after adding an entry lands back on the
+ *  same filter and the same search instead of silently resetting them under Shane. */
 let vaultRoomQuery = "";
 let vaultRoomFilter = "all"; // all | login | bill_reference | document
 
@@ -5397,6 +5161,17 @@ async function viewVault(view) {
 
   roomHeader(view, VAULT_TINT, "Vault");
 
+  // Git #3273: the extension's own reveal popup (see the extensionReveal bridge above) now
+  // opens straight to #/vault (extension/background.js), since this room replaced Money's own
+  // Vault tab as the real place completeExtensionReveal() runs its ceremony against.
+  if (extensionReveal && !extensionReveal.handled) {
+    view.append(
+      el("div", { class: "vault-lock-note" }, [
+        el("span", { text: "Confirm with Face ID to autofill this password in the browser extension…" }),
+      ]),
+    );
+  }
+
   view.append(
     el("div", { class: "vault-lock-note" }, [
       lineIcon(
@@ -5473,6 +5248,12 @@ async function viewVault(view) {
     const documentsShown = q ? docHits.documents : docAll.documents;
     const kindCounts = { ...counts, document: docAll.documents.length };
     kindCounts.all = kindCounts.all + kindCounts.document;
+
+    // A real fresh WebAuthn assertion for the one entry the extension's popup asked for -- the
+    // same ceremony a normal "Reveal" tap below runs, just kicked off automatically since
+    // there's nothing else to click in a bare popup window. Fires at most once per page load
+    // (extensionReveal.handled), so the debounced search re-running refresh() doesn't re-prompt.
+    if (extensionReveal && !extensionReveal.handled) completeExtensionReveal(entries);
 
     filterRow.replaceChildren(
       ...VAULT_ROOM_FILTERS.map((f) =>
@@ -5559,6 +5340,7 @@ async function viewVault(view) {
   // a read-only mirror of them.
   view.append(vaultAddCard(gate, refresh));
   view.append(vaultImportCard(refresh));
+  view.append(documentAddCard(refresh));
 
   attachRoomWatermark(view, "vault");
 }
@@ -5901,103 +5683,6 @@ async function viewWins(view) {
   attachRoomWatermark(view, "wins");
 }
 
-async function viewMoneyBanks(view) {
-  const data = await api("/api/money/banks");
-
-  if (!data.configured) {
-    view.append(
-      el("div", { class: "card" }, [
-        el("p", {
-          text: "Plaid is not configured on this server, so nothing here can reach your banks.",
-        }),
-        el("p", {
-          class: "small muted",
-          text: "Set SL_PLAID_CLIENT_ID and SL_PLAID_SECRET, then reload. The connections themselves are unaffected — the desktop app keeps syncing.",
-        }),
-      ]),
-    );
-    return;
-  }
-
-  const broken = data.items.filter((i) => i.needsReconnect);
-
-  const statusLine = el("p", { class: "small muted" });
-  const refreshBtn = el("button", {
-    type: "button",
-    class: "ghost small",
-    text: "Check with Plaid",
-    onClick: async () => {
-      refreshBtn.disabled = true;
-      statusLine.textContent = "Asking Plaid about every bank…";
-      try {
-        await api("/api/money/banks/refresh", { method: "POST" });
-        await render();
-      } catch (err) {
-        statusLine.textContent = err.message;
-      } finally {
-        refreshBtn.disabled = false;
-      }
-    },
-  });
-
-  const headerChildren = [
-    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline" }, [
-      el("h3", { style: "margin:0", text: broken.length ? `${broken.length} bank${broken.length === 1 ? "" : "s"} need attention` : "All banks connected" }),
-      refreshBtn,
-    ]),
-    el("p", {
-      class: "small muted",
-      text: "Syncing is the desktop app's job. This screen exists so a broken connection finds you before the next sync does.",
-    }),
-    statusLine,
-  ];
-
-  // The honest version of "webhooks are on": on a localhost origin Plaid cannot deliver anything,
-  // so the screen says the health shown is poll-only rather than implying live events.
-  if (!data.webhookDeliverable) {
-    headerChildren.push(
-      el("p", {
-        class: "small muted",
-        text: `Plaid can only call a public HTTPS address, and this server answers on ${data.webhookUrl}. Health here comes from polling until the app is deployed.`,
-      }),
-    );
-  }
-
-  view.append(el("div", { class: "card section" }, headerChildren));
-
-  const reconnect = bankReconnectHandler(render);
-
-  if (data.items.length === 0) {
-    view.append(
-      el("div", { class: "card" }, [
-        el("p", { class: "muted", text: "No banks are linked yet. Linking a new bank is done in the desktop app." }),
-      ]),
-    );
-  } else {
-    for (const item of data.items) view.append(bankRow(item, { onReconnect: reconnect }));
-  }
-
-  // Real webhook receipts. Proof the receiver is genuinely being called, rather than a claim.
-  const { events } = await api("/api/money/banks/events?limit=10");
-  view.append(
-    el("div", { class: "card section" }, [
-      el("h3", { style: "margin:0 0 6px", text: "Recent webhooks from Plaid" }),
-      events.length === 0
-        ? el("p", { class: "small muted", text: "Plaid has not called this app yet." })
-        : el(
-            "div",
-            { class: "bank-events" },
-            events.map((ev) =>
-              el("p", {
-                class: "small muted",
-                text: `${new Date(ev.receivedAt).toLocaleString()} · ${ev.type}: ${ev.code}${ev.errorCode ? ` (${ev.errorCode})` : ""}${ev.verified ? "" : " · REJECTED"}${ev.note ? ` · ${ev.note}` : ""}`,
-              }),
-            ),
-          ),
-    ]),
-  );
-}
-
 /** Transfer Instructions' own card -- pulled into a function because both the initial Now-tab
  *  render and Distribute Paycheck's own "Apply" step need to redraw it (a fresh plan changes what
  *  it shows) without reloading the whole tab. */
@@ -6287,11 +5972,6 @@ async function renderMoneyDecisionTools(view, gate) {
 const MONEY_TINT = "251,191,36";
 
 async function viewMoney(view) {
-  // The extension's own reveal popup (see the extensionReveal bridge above) opens straight to
-  // #/money with no way to also pick the Vault tab through the UI -- it's a popup with nothing
-  // else to click. Force it once so the real reveal ceremony below has something to render into.
-  if (extensionReveal && !extensionReveal.handled) moneyTab = "vault";
-
   roomHeader(view, MONEY_TINT, "Money");
   view.append(
     el("section", { class: "section" }, [
@@ -6322,11 +6002,6 @@ async function viewMoney(view) {
     return;
   }
 
-  if (moneyTab === "banks") {
-    await viewMoneyBanks(view);
-    return;
-  }
-
   if (moneyTab === "bankruptcy") {
     await viewMoneyBankruptcy(view);
     return;
@@ -6342,13 +6017,26 @@ async function viewMoney(view) {
     return;
   }
 
-  if (moneyTab === "vault") {
-    await viewMoneyVault(view);
+  // Git #3273: Banks (Settings -> Connected now), Vault and Documents (the standalone Vault
+  // room, #3272) are no longer real tabs here -- this only still fires for a `moneyTab` left
+  // over from before this build in a page that hasn't reloaded, so it points at the real new
+  // home instead of rendering a view that no longer exists.
+  if (moneyTab === "banks") {
+    view.append(
+      el("div", { class: "card" }, [
+        el("p", { class: "muted", text: "Banks moved to Settings → Connected." }),
+        el("a", { class: "small", href: "#/settings", text: "Open Settings →" }),
+      ]),
+    );
     return;
   }
-
-  if (moneyTab === "documents") {
-    await viewMoneyDocuments(view);
+  if (moneyTab === "vault" || moneyTab === "documents") {
+    view.append(
+      el("div", { class: "card" }, [
+        el("p", { class: "muted", text: "The Vault (and Documents) are now their own room." }),
+        el("a", { class: "small", href: "#/vault", text: "Open the Vault →" }),
+      ]),
+    );
     return;
   }
 
@@ -8368,6 +8056,113 @@ async function renderRoomOrderSettings(view) {
   renderRows();
 }
 
+/**
+ * Connected Banks (Git #3168 / #3211, `plaid_items` health) -- moved into Settings by #3273
+ * ("Money nav restructure... Banks moves to Settings"), off Money's own now-removed Banks tab.
+ * Content and behavior are unchanged from that tab: one row per Plaid item (status dot, name,
+ * account count, health-colored meta), a real update-mode Reconnect flow via `bankRow`/
+ * `bankReconnectHandler`, and the real webhook receipts card underneath -- proof the receiver
+ * is genuinely being called, not a claim.
+ */
+async function renderBankSettings(view) {
+  const data = await api("/api/money/banks");
+  const section = el("section", { class: "section" }, [el("h2", { text: "Banks" })]);
+
+  if (!data.configured) {
+    section.append(
+      el("div", { class: "card" }, [
+        el("p", { text: "Plaid is not configured on this server, so nothing here can reach your banks." }),
+        el("p", {
+          class: "small muted",
+          text: "Set SL_PLAID_CLIENT_ID and SL_PLAID_SECRET, then reload. The connections themselves are unaffected — the desktop app keeps syncing.",
+        }),
+      ]),
+    );
+    view.append(section);
+    return;
+  }
+
+  const broken = data.items.filter((i) => i.needsReconnect);
+
+  const statusLine = el("p", { class: "small muted" });
+  const refreshBtn = el("button", {
+    type: "button",
+    class: "ghost small",
+    text: "Check with Plaid",
+    onClick: async () => {
+      refreshBtn.disabled = true;
+      statusLine.textContent = "Asking Plaid about every bank…";
+      try {
+        await api("/api/money/banks/refresh", { method: "POST" });
+        await render();
+      } catch (err) {
+        statusLine.textContent = err.message;
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    },
+  });
+
+  const headerChildren = [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline" }, [
+      el("h3", { style: "margin:0", text: broken.length ? `${broken.length} bank${broken.length === 1 ? "" : "s"} need attention` : "All banks connected" }),
+      refreshBtn,
+    ]),
+    el("p", {
+      class: "small muted",
+      text: "Syncing is the desktop app's job. This screen exists so a broken connection finds you before the next sync does.",
+    }),
+    statusLine,
+  ];
+
+  // The honest version of "webhooks are on": on a localhost origin Plaid cannot deliver anything,
+  // so the screen says the health shown is poll-only rather than implying live events.
+  if (!data.webhookDeliverable) {
+    headerChildren.push(
+      el("p", {
+        class: "small muted",
+        text: `Plaid can only call a public HTTPS address, and this server answers on ${data.webhookUrl}. Health here comes from polling until the app is deployed.`,
+      }),
+    );
+  }
+
+  section.append(el("div", { class: "card section" }, headerChildren));
+
+  const reconnect = bankReconnectHandler(render);
+
+  if (data.items.length === 0) {
+    section.append(
+      el("div", { class: "card" }, [
+        el("p", { class: "muted", text: "No banks are linked yet. Linking a new bank is done in the desktop app." }),
+      ]),
+    );
+  } else {
+    for (const item of data.items) section.append(bankRow(item, { onReconnect: reconnect }));
+  }
+
+  // Real webhook receipts. Proof the receiver is genuinely being called, rather than a claim.
+  const { events } = await api("/api/money/banks/events?limit=10");
+  section.append(
+    el("div", { class: "card section" }, [
+      el("h3", { style: "margin:0 0 6px", text: "Recent webhooks from Plaid" }),
+      events.length === 0
+        ? el("p", { class: "small muted", text: "Plaid has not called this app yet." })
+        : el(
+            "div",
+            { class: "bank-events" },
+            events.map((ev) =>
+              el("p", {
+                class: "small muted",
+                text: `${new Date(ev.receivedAt).toLocaleString()} · ${ev.type}: ${ev.code}${ev.errorCode ? ` (${ev.errorCode})` : ""}${ev.verified ? "" : " · REJECTED"}${ev.note ? ` · ${ev.note}` : ""}`,
+              }),
+            ),
+          ),
+    ]),
+  );
+
+  view.append(section);
+}
+
 async function viewSettings(view) {
   const { tokens, endpoint } = await api("/api/mcp-tokens");
 
@@ -8433,6 +8228,13 @@ async function viewSettings(view) {
       ]),
     ]),
   );
+
+  // Git #3273 ("Money nav restructure"): Banks moved here from Money's own now-removed Banks
+  // tab. Lands right before Places, matching the design's own "Connected" grouping reading
+  // order (Banks + Plaid webhooks, Places, Tesla, Claude (MCP), Home Screen widget) -- the real
+  // House/You/Connected/Activity tab structure that grouping belongs to is #3274's own scope,
+  // so this is a plain flat section for now, same as every other Settings section here.
+  await renderBankSettings(view);
 
   // Real saved places (Git #3159). No add-place form here (Section 3, "no forms, anywhere,
   // ever") -- a place is only ever created by saying "remember this as Home" into the real

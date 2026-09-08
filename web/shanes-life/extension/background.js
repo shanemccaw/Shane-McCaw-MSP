@@ -146,7 +146,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
       const nonce = crypto.randomUUID();
-      const url = `${appUrl}/?extReveal=${encodeURIComponent(message.entryId)}&extNonce=${encodeURIComponent(nonce)}#/money`;
+      // Git #3273: the Vault is its own room now (#3272), not a Money sub-tab -- point the
+      // popup at #/vault so viewVault's own completeExtensionReveal() wiring has somewhere
+      // real to land.
+      const url = `${appUrl}/?extReveal=${encodeURIComponent(message.entryId)}&extNonce=${encodeURIComponent(nonce)}#/vault`;
       const win = await chrome.windows.create({ url, type: "popup", width: 420, height: 640 });
       const timeoutId = setTimeout(() => {
         settleReveal(nonce, { type: "SL_FILL", ok: false, reason: "timeout" });
