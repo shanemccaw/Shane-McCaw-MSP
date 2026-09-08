@@ -572,6 +572,33 @@ async function enrichBudgetDay(base, { userId, bills }) {
   };
 }
 
+/**
+ * The real pay-cycle window smoke_log entries are bucketed into for the "this cycle" / "last
+ * cycle" split (Git #3154) -- the same real cycle Budget Day above and the habit "really" line
+ * are already denominated in (`income_sources.pay_frequency_days`), not a second, disagreeing
+ * idea of a cycle. Derived from computeBudgetDay's own real earliest-upcoming-source pick rather
+ * than duplicating that resolution.
+ *
+ * No active income source to derive a real cycle from -> falls back to a trailing 14-day window
+ * (the one real pay_frequency_days value in this database today), flagged `approximate: true`
+ * rather than silently presented as the authoritative cycle.
+ */
+function resolvePayCycleWindow(sources, asOf = new Date()) {
+  const budgetDay = computeBudgetDay(sources, asOf);
+  if (budgetDay && budgetDay.payFrequencyDays) {
+    const cycleEnd = asUtcDate(budgetDay.nextPayDate);
+    const cycleStart = new Date(cycleEnd.getTime() - budgetDay.payFrequencyDays * MS_PER_DAY);
+    const previousCycleStart = new Date(cycleStart.getTime() - budgetDay.payFrequencyDays * MS_PER_DAY);
+    return { cycleStart, cycleEnd, previousCycleStart, payFrequencyDays: budgetDay.payFrequencyDays, approximate: false };
+  }
+  const fallbackDays = 14;
+  const today = new Date(Date.UTC(asOf.getFullYear(), asOf.getMonth(), asOf.getDate()));
+  const cycleEnd = new Date(today.getTime() + MS_PER_DAY); // exclusive upper bound; includes today
+  const cycleStart = new Date(cycleEnd.getTime() - fallbackDays * MS_PER_DAY);
+  const previousCycleStart = new Date(cycleStart.getTime() - fallbackDays * MS_PER_DAY);
+  return { cycleStart, cycleEnd, previousCycleStart, payFrequencyDays: fallbackDays, approximate: true };
+}
+
 // ---------------------------------------------------------------------------
 // the public surface
 // ---------------------------------------------------------------------------
@@ -593,6 +620,110 @@ function billOut(bill) {
 
 function habitTotalCents(habits) {
   return habits.reduce((sum, h) => sum + (toCents(h.amount_per_cycle) ?? 0), 0);
+}
+
+// ---------------------------------------------------------------------------
+// the real smoking tracker (Git #3154) -- migration 017's smoke_log, unwired until now
+// ---------------------------------------------------------------------------
+
+/**
+ * `smoked` / `bought a pack` -> +1 pack, in `smoke_log` (017). Priced from whichever active
+ * habit points at this log (`money_habits.log_source = 'smoke_log'`, 027) via its own stated
+ * `unit_cost` -- never a hardcoded dollar figure; the design's "$8.40" is that habit's own real
+ * `unitCost`, stated once via `set_habit`, not a literal here.
+ *
+ * No such habit configured yet -> the pack still logs (a slip logged late is better than one
+ * refused) at amount $0, with a warning -- the same warn-and-exclude convention
+ * computeGateMath already uses for a bill with no target/balance, applied here to price instead.
+ */
+export async function logSmoke(userId, { packs } = {}) {
+  const packCount = packs === undefined || packs === null ? 1 : Number(packs);
+  if (!Number.isFinite(packCount) || packCount <= 0) {
+    throw badRequest("packs must be a positive number");
+  }
+
+  const habit = await one(
+    `SELECT unit_cost FROM money_habits
+      WHERE user_id = $1 AND log_source = 'smoke_log' AND is_active AND unit_cost IS NOT NULL
+      ORDER BY updated_at DESC LIMIT 1`,
+    [userId],
+  );
+  const unitCostCents = habit ? toCents(habit.unit_cost) : null;
+  const amountCents = unitCostCents === null ? 0 : Math.round(unitCostCents * packCount);
+
+  const row = await one(
+    `INSERT INTO smoke_log (user_id, packs, amount)
+     VALUES ($1, $2, $3)
+     RETURNING id, logged_at, packs, amount`,
+    [userId, packCount, toDollars(amountCents)],
+  );
+
+  return {
+    id: row.id,
+    loggedAt: row.logged_at,
+    packs: Number(row.packs),
+    amount: toDollars(toCents(row.amount)),
+    warning:
+      unitCostCents === null
+        ? "No active habit with logSource 'smoke_log' has a unitCost set -- logged at $0. " +
+          "Call set_habit with unitCost (e.g. 8.40) to price this and future entries."
+        : null,
+  };
+}
+
+/**
+ * The design's own real financial-confrontation line (`Shanes Life - First Slice Prototype.dc.html`,
+ * `smokeText`): "Still $X to fund this cycle. Last cycle, $Y went to cigarettes: N packs. This
+ * cycle so far: N packs, $Z." Shown only while a real shortfall exists (Section 8's no-guilt
+ * principle, deliberately overridden here per Shane's own confirmation in the design contract
+ * pack's Section 3). `thisCycle`/`lastCycle` are bucketed by the real pay-cycle window
+ * (`resolvePayCycleWindow`), not a calendar month, matching every other cycle-denominated number
+ * on this screen.
+ */
+export async function getSmokeSummary(userId, { asOf = new Date(), sources = null, shortfallCents = null } = {}) {
+  const incomeSources =
+    sources ??
+    (await many(
+      `SELECT id, name, person, pay_frequency_days, expected_per_cycle, next_pay_date, is_active
+         FROM income_sources WHERE is_active`,
+    ));
+  const window = resolvePayCycleWindow(incomeSources, asOf);
+
+  const rows = await many(
+    `SELECT logged_at, packs, amount FROM smoke_log
+      WHERE user_id = $1 AND logged_at >= $2 AND logged_at < $3
+      ORDER BY logged_at`,
+    [userId, window.previousCycleStart.toISOString(), window.cycleEnd.toISOString()],
+  );
+
+  const bucket = (from, to) =>
+    rows.reduce(
+      (acc, r) => {
+        const at = new Date(r.logged_at);
+        if (at < from || at >= to) return acc;
+        return { packs: acc.packs + Number(r.packs), amountCents: acc.amountCents + (toCents(r.amount) ?? 0) };
+      },
+      { packs: 0, amountCents: 0 },
+    );
+
+  const thisCycle = bucket(window.cycleStart, window.cycleEnd);
+  const lastCycle = bucket(window.previousCycleStart, window.cycleStart);
+  const show = shortfallCents !== null && shortfallCents > 0;
+  const packWord = (n) => (n === 1 ? "pack" : "packs");
+
+  return {
+    cycleStart: utcIso(window.cycleStart),
+    cycleEnd: utcIso(window.cycleEnd),
+    approximateCycle: window.approximate,
+    thisCycle: { packs: thisCycle.packs, spent: toDollars(thisCycle.amountCents) },
+    lastCycle: { packs: lastCycle.packs, spent: toDollars(lastCycle.amountCents) },
+    show,
+    text: show
+      ? `Still ${formatMoney(shortfallCents)} to fund this cycle. Last cycle, ${formatMoney(lastCycle.amountCents)} ` +
+        `went to cigarettes: ${lastCycle.packs} ${packWord(lastCycle.packs)}. This cycle so far: ` +
+        `${thisCycle.packs} ${packWord(thisCycle.packs)}, ${formatMoney(thisCycle.amountCents)}.`
+      : null,
+  };
 }
 
 /**
@@ -624,6 +755,11 @@ export async function getGateStatus(userId, { asOf = new Date() } = {}) {
   const math = computeGateMath(accounts);
   const habitCents = habitTotalCents(habits);
   const reallyCents = math.topLineCents === null ? null : math.topLineCents - habitCents;
+  const smoking = await getSmokeSummary(userId, {
+    asOf,
+    sources: incomeSources,
+    shortfallCents: math.totalShortfallCents,
+  });
 
   // "the one bar": amber fill = shortfall / available, red at 100% when short.
   const spokenForPercent =
@@ -669,6 +805,8 @@ export async function getGateStatus(userId, { asOf = new Date() } = {}) {
         note: h.note,
       })),
     },
+    // Git #3154: "Cigarettes, in plain numbers", shown only while `smoking.show` is true.
+    smoking,
     budgetDay: await enrichBudgetDay(computeBudgetDay(incomeSources, asOf), { userId, bills: math.bills }),
     protectedDebts: criticalDebts.map((d) => ({
       id: d.id,

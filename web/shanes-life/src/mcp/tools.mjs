@@ -1152,7 +1152,7 @@ export const TOOLS = [
     name: "get_gate_status",
     title: "Where the money actually stands",
     description:
-      "Shane's real, current money position, straight off the Plaid-synced balances the ShanesSurvival WPF app reads -- the same numbers, from the same rows, through the same math. Returns: available to spend (Income Gate + reserves, minus every bill account's shortfall), whether that is covered, each bill account with its target/balance/shortfall, the modeled habit and the 'really' line after subtracting it, Budget Day (the next real payday), the critical debts, and any pending one-time events (which are deliberately NOT counted in the math until they are real). Call this before answering anything about affordability, and warnings[] is real -- a bill with no target or no Plaid balance is excluded from the total and named there, never silently treated as funded.",
+      "Shane's real, current money position, straight off the Plaid-synced balances the ShanesSurvival WPF app reads -- the same numbers, from the same rows, through the same math. Returns: available to spend (Income Gate + reserves, minus every bill account's shortfall), whether that is covered, each bill account with its target/balance/shortfall, the modeled habit and the 'really' line after subtracting it, `smoking` (real this-cycle/last-cycle smoke_log totals plus the financial-confrontation line, shown only while a real shortfall exists -- see log_smoke), Budget Day (the next real payday), the critical debts, and any pending one-time events (which are deliberately NOT counted in the math until they are real). Call this before answering anything about affordability, and warnings[] is real -- a bill with no target or no Plaid balance is excluded from the total and named there, never silently treated as funded.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     async handler(_args, ctx) {
       return money.getGateStatus(ctx.user.id);
@@ -1239,6 +1239,32 @@ export const TOOLS = [
         detail: { name: habit.name, amountPerCycle: habit.amount_per_cycle, isActive: habit.is_active },
       });
       return habit;
+    },
+  },
+
+  {
+    name: "log_smoke",
+    title: "Log a real cigarette / pack",
+    description:
+      "The capture-grammar entry point for 'smoked' / 'cigarette(s)' / 'a pack' / 'bought a pack' / 'pack of' (both phrasings log the same +1 pack -- Section 3's capture grammar does not distinguish a single cigarette from a pack purchase). Appends a real row to smoke_log (017), priced from whichever active habit has logSource 'smoke_log' set via set_habit -- never a hardcoded dollar figure. No streak, nothing resets: a slip is just another real data point, per Shane's own real behavioral note that he starts and stops cyclically. get_gate_status's own `smoking` field is where the real running totals and the financial-confrontation line ('Still $X to fund this cycle...') come from -- call that after this to see the updated numbers.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        packs: { type: "number", description: "How many packs this entry represents. Defaults to 1 -- both 'smoked' and 'bought a pack' log a single entry unless Shane states a real count." },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await money.logSmoke(ctx.user.id, { packs: args.packs });
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "money.smoke.logged",
+        entityId: row.id,
+        detail: { packs: row.packs, amount: row.amount },
+      });
+      return row;
     },
   },
 

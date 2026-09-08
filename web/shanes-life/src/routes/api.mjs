@@ -1162,6 +1162,33 @@ export function buildApiRouter() {
     return sendJson(res, 200, { reveals: await vault.revealHistory(user.id, params.id) });
   });
 
+  // -- Money -> the smoking tracker (Git #3154) -------------------------------------------
+  //
+  // Real, deliberate exception to the no-guilt principle (Section 8), confirmed by Shane
+  // directly: the financial-confrontation line in GET /api/money/gate's own `smoking`
+  // field is the real mechanism (see money.getSmokeSummary), not a streak -- there is nothing
+  // to reset here, only a real log to append to.
+
+  router.post("/api/money/smoke", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await money.logSmoke(user.id, { packs: body.packs });
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "money.smoke.logged",
+      entityId: row.id,
+      detail: { packs: row.packs, amount: row.amount },
+    });
+    return sendJson(res, 200, row);
+  });
+
+  router.get("/api/money/smoke", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const status = await money.getGateStatus(user.id);
+    return sendJson(res, 200, status.smoking);
+  });
+
   // -- Money -> Cars (Git #3149) --------------------------------------------------------
   //
   // Real per-vehicle cards: identity + the linked real loan bill account (read through
