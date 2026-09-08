@@ -1902,6 +1902,33 @@ export function buildApiRouter() {
     return sendJson(res, 200, { reveals: await vault.revealHistory(user.id, params.id) });
   });
 
+  // A real LastPass CSV import (Git #3247). Same raw-body pattern as /api/media above -- the
+  // browser can read the chosen file into a string with one `File.text()` call and POST it
+  // whole, no multipart parser needed on either side. Deliberately NOT the capture box and NOT
+  // an MCP tool (see vault.mjs's own header, and vaultAddCard's in app.js): the raw text is
+  // parsed by vault.importLoginsFromCsv and discarded at the end of this handler -- it is never
+  // written to `media`, never to `captures`, and never logged.
+  router.post("/api/vault/import", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const bytes = await readBody(req, config.maxUploadBytes);
+    let outcome;
+    try {
+      outcome = await vault.importLoginsFromCsv(user.id, bytes.toString("utf8"));
+    } catch (err) {
+      throw err instanceof vault.VaultKeyUnavailable ? vaultError(err) : badRequest(err.message);
+    }
+    // Counts only, same discipline as vault.entry.created's audit line above -- an import touches
+    // dozens of rows at once, and none of their labels, sites or usernames belong in a feed that
+    // is otherwise a plainly readable table of "what happened", not "what the vault holds".
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "vault.imported",
+      detail: outcome.summary,
+    });
+    return sendJson(res, 200, outcome);
+  });
+
   // -- Money -> Important documents (Git #3244) ------------------------------------------
   //
   // Wills, life insurance, and the like -- real documents/policies, distinct in content type

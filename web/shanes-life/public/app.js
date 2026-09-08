@@ -4191,6 +4191,69 @@ function vaultAddCard(gate, onSaved) {
   return el("div", { class: "card" }, [title, kindTabs, form]);
 }
 
+/**
+ * A real LastPass CSV import (Git #3247). Same no-forms exception as vaultAddCard above, for the
+ * same reason: this has to be a dedicated form, not the capture box and not an MCP tool, because
+ * a plaintext CSV of every password Shane owns must never pass through `captures.body_text` or a
+ * Claude conversation. The chosen file is read client-side with `File.text()` and POSTed whole to
+ * `/api/vault/import` -- never staged anywhere else first.
+ */
+function vaultImportCard(onImported) {
+  const fileInput = el("input", {
+    type: "file",
+    accept: ".csv,text/csv",
+    "aria-label": "LastPass export (CSV)",
+  });
+  const importBtn = el("button", { type: "button", class: "ghost small", text: "Import" });
+  const status = el("p", { class: "vault-row-error", hidden: true });
+
+  importBtn.addEventListener("click", async () => {
+    const file = fileInput.files?.[0];
+    if (!file) {
+      status.className = "vault-row-error";
+      status.textContent = "Choose a LastPass CSV export first.";
+      status.hidden = false;
+      return;
+    }
+    status.hidden = true;
+    fileInput.disabled = true;
+    importBtn.disabled = true;
+    try {
+      const text = await file.text();
+      const { summary } = await api("/api/vault/import", {
+        method: "POST",
+        headers: { "content-type": "text/csv" },
+        body: text,
+      });
+      const { created, updated, errors, total } = summary;
+      status.className = errors ? "vault-row-error" : "small muted";
+      status.textContent =
+        `Imported ${created + updated} of ${total} (${created} new, ${updated} updated).` +
+        (errors ? ` ${errors} row${errors === 1 ? "" : "s"} failed -- check the export for a missing password.` : "");
+      status.hidden = false;
+      fileInput.value = "";
+      await onImported();
+    } catch (err) {
+      status.className = "vault-row-error";
+      status.textContent = err?.message || "That import didn't work.";
+      status.hidden = false;
+    } finally {
+      fileInput.disabled = false;
+      importBtn.disabled = false;
+    }
+  });
+
+  return el("div", { class: "card" }, [
+    el("h3", { class: "vault-add-title", text: "Import from LastPass" }),
+    el("p", {
+      class: "small muted",
+      text: "Export the LastPass vault as a CSV and bring it in here -- every login becomes a real, encrypted entry. Re-importing the same file updates matching entries by site and username instead of duplicating them.",
+    }),
+    el("div", { class: "row" }, [fileInput, importBtn]),
+    status,
+  ]);
+}
+
 async function viewMoneyVault(view) {
   const [first, gate] = await Promise.all([api("/api/vault"), api("/api/money/gate")]);
   const { keyConfigured, clipboardClearSeconds } = first;
@@ -4331,6 +4394,7 @@ async function viewMoneyVault(view) {
   );
 
   view.append(vaultAddCard(gate, refresh));
+  view.append(vaultImportCard(refresh));
 
   // Room watermark (Git #3119): the critter spec's own room map says "Money Bills and Cars ->
   // bear, Vault -> vault".

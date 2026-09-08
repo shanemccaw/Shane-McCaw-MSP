@@ -492,3 +492,182 @@ export async function revealHistory(userId, id, limit = 20) {
     [id, userId, Math.min(Number(limit) || 20, 100)],
   );
 }
+
+// -- LastPass CSV import (Git #3247) -------------------------------------------------------
+//
+// #3242 shipped storage, search and reveal for real logins but deliberately no way to get an
+// existing LastPass export in other than typing every row by hand -- and deliberately no MCP
+// tool either (see this file's own header). This is the route the issue calls for instead: one
+// authenticated, non-MCP request that parses a LastPass CSV in memory and calls createEntry (or
+// updateEntry, for a re-import) per row. The raw upload is never written anywhere -- not to
+// `media`, not to `captures`, not to a log line -- it exists only for the lifetime of this call.
+
+/** A minimal RFC4180 CSV tokenizer -- LastPass quotes any field containing a comma, a quote or a
+ *  newline (the `extra`/notes column routinely has all three), so a naive `.split(",")` silently
+ *  shreds real rows. Doubled quotes (`""`) are the escape for a literal `"` inside a quoted
+ *  field, same as every other CSV writer. */
+function parseCsvRecords(text) {
+  const clean = String(text ?? "").replace(/^\uFEFF/, ""); // strip a BOM if Excel added one
+  const records = [];
+  let field = "";
+  let record = [];
+  let inQuotes = false;
+
+  const pushField = () => {
+    record.push(field);
+    field = "";
+  };
+  const pushRecord = () => {
+    pushField();
+    records.push(record);
+    record = [];
+  };
+
+  for (let i = 0; i < clean.length; i++) {
+    const c = clean[i];
+    if (inQuotes) {
+      if (c === '"' && clean[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else if (c === '"') {
+        inQuotes = false;
+      } else {
+        field += c;
+      }
+      continue;
+    }
+    if (c === '"') inQuotes = true;
+    else if (c === ",") pushField();
+    else if (c === "\r") continue; // swallow; \n (or end of input) drives the record break
+    else if (c === "\n") pushRecord();
+    else field += c;
+  }
+  if (field.length > 0 || record.length > 0) pushRecord();
+
+  // A trailing newline produces one bogus single-empty-field record; drop it rather than
+  // pretending it's a blank row worth reporting a result for.
+  return records.filter((r) => !(r.length === 1 && r[0] === ""));
+}
+
+/** LastPass's own export header: `url,username,password,extra,name,grouping,fav`. Column order
+ *  is read from the header row rather than assumed, so a re-ordered or partially-trimmed export
+ *  (Google Sheets round-trip, etc.) still parses correctly. */
+function parseLastPassCsv(text) {
+  const records = parseCsvRecords(text);
+  if (records.length === 0) throw new Error("The CSV is empty.");
+  const header = records[0].map((h) => String(h ?? "").trim().toLowerCase());
+  if (!header.includes("password")) {
+    throw new Error('The CSV has no "password" column -- is this really a LastPass export?');
+  }
+  return records.slice(1).map((cols) => {
+    const row = {};
+    header.forEach((name, idx) => (row[name] = cols[idx] ?? ""));
+    return row;
+  });
+}
+
+/** The hostname a login's `site` is really about, so `https://www.navyfederal.org/login` and
+ *  `navyfederal.org` are recognised as the same entry on a re-import. Falls back to the raw
+ *  trimmed lowercase string when it isn't a URL at all, rather than dropping the match entirely. */
+function normaliseSiteForMatch(site) {
+  const s = String(site ?? "").trim().toLowerCase();
+  if (!s) return "";
+  try {
+    return new URL(s.includes("://") ? s : `https://${s}`).hostname.replace(/^www\./, "");
+  } catch {
+    return s;
+  }
+}
+
+function matchKey(site, username) {
+  const s = normaliseSiteForMatch(site);
+  const u = String(username ?? "").trim().toLowerCase();
+  if (!s && !u) return null;
+  return `${s}::${u}`;
+}
+
+/**
+ * Import every `login` row of a LastPass CSV for one user.
+ *
+ * Re-importing the same file updates the matching existing entry (by site + username) rather
+ * than creating a duplicate -- the issue flagged this as worth deciding, and a duplicate-free
+ * re-import is the one that makes "just export again after adding a few passwords" a safe thing
+ * to do. A row with no matching site/username creates a new entry, same as the add form.
+ *
+ * Every row's real outcome comes back (created/updated/error) so a partial import is visible
+ * rather than silently swallowing the rows that failed -- csv row 4 having no password is a
+ * fact worth showing, not a fact worth hiding behind an overall "done".
+ */
+export async function importLoginsFromCsv(userId, csvText) {
+  const rows = parseLastPassCsv(csvText);
+
+  const existing = await many(
+    "SELECT id, site, username FROM vault WHERE user_id = $1 AND kind = 'login'",
+    [userId],
+  );
+  const byKey = new Map();
+  for (const row of existing) {
+    const key = matchKey(row.site, row.username);
+    if (key) byKey.set(key, row.id);
+  }
+
+  const results = [];
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+  let errors = 0;
+
+  rows.forEach((row, index) => {
+    // CSV row numbers as a human would count them: 1 is the header, so the first data row is 2.
+    const rowNumber = index + 2;
+    const label = String(row.name ?? "").trim() || String(row.url ?? "").trim() || "Untitled login";
+    const site = String(row.url ?? "").trim() || null;
+    const username = String(row.username ?? "").trim() || null;
+    const secret = String(row.password ?? "").trim();
+    const notes = String(row.extra ?? "").trim();
+
+    if (!site && !username && !secret && !String(row.name ?? "").trim()) {
+      skipped++; // a genuinely blank line LastPass sometimes leaves at the end of the export
+      return;
+    }
+    if (!secret) {
+      errors++;
+      results.push({ row: rowNumber, label, status: "error", error: "password is required" });
+      return;
+    }
+
+    results.push({ row: rowNumber, label, site, username, secret, notes });
+  });
+
+  // Sequential, not Promise.all: each createEntry/updateEntry is its own INSERT/UPDATE, and a
+  // real vault import running dozens of individual writes concurrently against the same table
+  // for the same user buys nothing but row-lock contention.
+  for (const pending of results) {
+    if (pending.status === "error") continue;
+    const { row, label, site, username, secret, notes } = pending;
+    const key = matchKey(site, username);
+    const existingId = key ? byKey.get(key) : null;
+    try {
+      let entry;
+      if (existingId) {
+        entry = await updateEntry(userId, existingId, { label, site, username, secret, notes });
+        updated++;
+        Object.assign(pending, { status: "updated", id: entry.id });
+      } else {
+        entry = await createEntry(userId, { kind: "login", label, site, username, secret, notes });
+        created++;
+        if (key) byKey.set(key, entry.id); // duplicate rows within the same file collapse to one
+        Object.assign(pending, { status: "created", id: entry.id });
+      }
+    } catch (err) {
+      errors++;
+      Object.assign(pending, { status: "error", error: err.message });
+    }
+    delete pending.secret; // never let the plaintext linger in the result past its one write
+  }
+
+  return {
+    results: results.map(({ secret: _secret, ...rest }) => rest),
+    summary: { total: rows.length, created, updated, skipped, errors },
+  };
+}
