@@ -984,6 +984,159 @@ async function main() {
   const moneyActivity = await http("/api/activity");
   check("the simulated transfer is in the audit trail", moneyActivity.json?.activity?.some((a) => a.action === "money.transfer.simulated"));
 
+  // 6c. Money -> Vault (Git #3150) -- the bill-payment reference vault.
+  //
+  // The design contract calls this "a real security requirement, not optional polish", so what
+  // is asserted here is the security, not the CRUD: that the plaintext is genuinely not in the
+  // column, that a live session is genuinely not enough to reveal, that a real assertion is,
+  // that it cannot be replayed or pointed at a different entry, and that every real reveal
+  // leaves a real audit row. Real P-256 signatures throughout, same software authenticator the
+  // sign-in checks above use.
+  const vaultRoom = await http("/api/vault");
+  check("the vault room loads", vaultRoom.status === 200, `status ${vaultRoom.status}`);
+  check(
+    "the vault reports its real encryption key is configured",
+    vaultRoom.json?.keyConfigured === true,
+    "SL_VAULT_KEY must be set for the vault to work at all",
+  );
+  check("the reveal window is the design's real 20 seconds", vaultRoom.json?.windowSeconds === 20, String(vaultRoom.json?.windowSeconds));
+  check("the clipboard clears at the design's real 60 seconds", vaultRoom.json?.clipboardClearSeconds === 60, String(vaultRoom.json?.clipboardClearSeconds));
+
+  const vaultSecret = "Acct 0041 2339 1482 1";
+  const vaultA = await http("/api/vault", {
+    method: "POST",
+    body: { label: "Mortgage · servicer", site: "mrcooper.com", secret: vaultSecret },
+  });
+  const vaultB = await http("/api/vault", {
+    method: "POST",
+    body: { label: "Chrysler Capital", site: "chryslercapital.com", secret: "Card 4400 1200 5581 0231" },
+  });
+  check("an entry can be added to the vault", vaultA.status === 201, `status ${vaultA.status} ${JSON.stringify(vaultA.json)}`);
+  check("the create response never echoes the secret back", !JSON.stringify(vaultA.json).includes("1482"), JSON.stringify(vaultA.json));
+  check(
+    "the masked hint is derived from the real last four, like a bank statement",
+    vaultA.json?.masked === "•••• 4821",
+    String(vaultA.json?.masked),
+  );
+
+  // The claim the whole feature rests on: the account number is not in the database.
+  const stored = await one("SELECT ciphertext, iv, auth_tag, key_id FROM vault WHERE id = $1", [vaultA.json.id]);
+  check(
+    "the account number is genuinely not readable in the column",
+    !stored.ciphertext.toString("utf8").includes("1482") && !stored.ciphertext.toString("utf8").includes("0041"),
+    `ciphertext ${stored.ciphertext.toString("hex").slice(0, 32)}...`,
+  );
+  check(
+    "it is stored as real AES-256-GCM -- a 12-byte nonce and a 16-byte auth tag",
+    stored.iv.length === 12 && stored.auth_tag.length === 16 && stored.key_id === "v1",
+    `iv ${stored.iv.length}b, tag ${stored.auth_tag.length}b, key ${stored.key_id}`,
+  );
+  const listAfter = await http("/api/vault");
+  check(
+    "listing the vault carries no plaintext and no ciphertext at all",
+    !JSON.stringify(listAfter.json).includes("0041") && !JSON.stringify(listAfter.json).includes("ciphertext"),
+  );
+
+  // A valid, live session is NOT enough -- the whole point of the requirement.
+  const revealNoAssertion = await http(`/api/vault/${vaultA.json.id}/reveal`, { method: "POST", body: {} });
+  check(
+    "a live session alone does not reveal a vault entry",
+    revealNoAssertion.status === 401,
+    `status ${revealNoAssertion.status}`,
+  );
+
+  // ...and neither does a session that just passed the generic re-verify a moment ago. This is
+  // the check that proves the reveal is gated on its OWN assertion rather than on
+  // sessions.last_verified_at, which one assertion would otherwise unlock for every entry.
+  const reverifyOptions = await http("/api/auth/reverify/options", { method: "POST", body: {} });
+  const reverified = await http("/api/auth/reverify", {
+    method: "POST",
+    body: { challenge: reverifyOptions.json.challenge, ...authenticator.assert(reverifyOptions.json.challenge) },
+  });
+  check("the session really did just pass a fresh assertion", reverified.status === 200, `status ${reverified.status}`);
+  const revealAfterReverify = await http(`/api/vault/${vaultA.json.id}/reveal`, { method: "POST", body: {} });
+  check(
+    "a session verified one second ago still does not reveal -- not just session presence",
+    revealAfterReverify.status === 401,
+    `status ${revealAfterReverify.status}`,
+  );
+
+  const revealOptions = await http(`/api/vault/${vaultA.json.id}/reveal/options`, { method: "POST", body: {} });
+  check("a reveal issues its own challenge", revealOptions.status === 200 && Boolean(revealOptions.json?.challenge), `status ${revealOptions.status}`);
+  check("the reveal challenge demands user verification, not just presence", revealOptions.json?.userVerification === "required");
+
+  const revealed = await http(`/api/vault/${vaultA.json.id}/reveal`, {
+    method: "POST",
+    body: { challenge: revealOptions.json.challenge, ...authenticator.assert(revealOptions.json.challenge) },
+  });
+  check("a real passkey assertion reveals the entry", revealed.status === 200, `status ${revealed.status} ${JSON.stringify(revealed.json)}`);
+  check("the revealed value is the real one, round-tripped through AES-256-GCM", revealed.json?.value === vaultSecret, String(revealed.json?.value));
+  check(
+    "the server sets the real 20-second deadline itself, so the client cannot extend it",
+    new Date(revealed.json?.expiresAt) - new Date(revealed.json?.revealedAt) === 20_000,
+    `${revealed.json?.revealedAt} -> ${revealed.json?.expiresAt}`,
+  );
+
+  const revealReplay = await http(`/api/vault/${vaultA.json.id}/reveal`, {
+    method: "POST",
+    body: { challenge: revealOptions.json.challenge, ...authenticator.assert(revealOptions.json.challenge) },
+  });
+  check("that assertion cannot be replayed to reveal the same entry twice", revealReplay.status === 401, `status ${revealReplay.status}`);
+
+  // A challenge is bound to one entry, so an assertion earned for one row cannot open another.
+  const optionsForA = await http(`/api/vault/${vaultA.json.id}/reveal/options`, { method: "POST", body: {} });
+  const crossReveal = await http(`/api/vault/${vaultB.json.id}/reveal`, {
+    method: "POST",
+    body: { challenge: optionsForA.json.challenge, ...authenticator.assert(optionsForA.json.challenge) },
+  });
+  check("an assertion earned for one entry cannot reveal a different one", crossReveal.status === 401, `status ${crossReveal.status}`);
+
+  const forgedReveal = await http(`/api/vault/${vaultB.json.id}/reveal`, {
+    method: "POST",
+    body: (() => {
+      const o = revealOptions.json;
+      return { challenge: o.challenge, ...authenticator.assert(o.challenge, { tamperSignature: true }) };
+    })(),
+  });
+  check("a tampered assertion signature does not reveal anything", forgedReveal.status === 401, `status ${forgedReveal.status}`);
+
+  const revealAudit = await http(`/api/vault/${vaultA.json.id}/reveals`);
+  check(
+    "exactly one audit row for exactly one real reveal -- the refused attempts wrote none",
+    revealAudit.json?.reveals?.length === 1,
+    String(revealAudit.json?.reveals?.length),
+  );
+  check(
+    "the audit row names the real passkey that authorised it",
+    revealAudit.json?.reveals?.[0]?.credential_id === authenticator.id,
+    String(revealAudit.json?.reveals?.[0]?.credential_id),
+  );
+  const vaultActivity = await http("/api/activity");
+  check("the reveal is in the audit trail too", vaultActivity.json?.activity?.some((a) => a.action === "vault.revealed"));
+  check(
+    "and that trail entry carries no plaintext either",
+    !JSON.stringify(vaultActivity.json?.activity?.filter((a) => a.action === "vault.revealed") ?? []).includes("1482"),
+  );
+
+  // Editing must not silently re-encrypt, and must not leave a stale value behind either.
+  const beforeRename = await one("SELECT ciphertext FROM vault WHERE id = $1", [vaultB.json.id]);
+  await http(`/api/vault/${vaultB.json.id}`, { method: "PATCH", body: { label: "Chrysler Capital · auto" } });
+  const afterRename = await one("SELECT ciphertext FROM vault WHERE id = $1", [vaultB.json.id]);
+  check("renaming an entry does not re-encrypt its value", beforeRename.ciphertext.equals(afterRename.ciphertext));
+
+  await http(`/api/vault/${vaultB.json.id}`, { method: "PATCH", body: { secret: "Card 4400 1200 5581 7777" } });
+  const optionsB = await http(`/api/vault/${vaultB.json.id}/reveal/options`, { method: "POST", body: {} });
+  const revealedB = await http(`/api/vault/${vaultB.json.id}/reveal`, {
+    method: "POST",
+    body: { challenge: optionsB.json.challenge, ...authenticator.assert(optionsB.json.challenge) },
+  });
+  check("changing the secret really replaces it", revealedB.json?.value === "Card 4400 1200 5581 7777", String(revealedB.json?.value));
+
+  await http(`/api/vault/${vaultA.json.id}`, { method: "DELETE" });
+  await http(`/api/vault/${vaultB.json.id}`, { method: "DELETE" });
+  const orphanReveals = await many("SELECT id FROM vault_reveals WHERE user_id = $1", [userId]);
+  check("deleting an entry takes its reveal history with it", orphanReveals.length === 0, `${orphanReveals.length} left`);
+
   cookie = null;
 
   // 7. revocation really revokes
