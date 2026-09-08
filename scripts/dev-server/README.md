@@ -467,6 +467,66 @@ cleanly elsewhere); touches nothing real. Because it asserts the marker the
 consumer actually executes, the OLD wholesale-junction bug (consumer resolves
 main's `lib/db`) makes it go red — it is a real guard, not a rubber stamp.
 
+## Database is NOT worktree-isolated (Git #3177)
+
+Everything above isolates **file state** — a worktree's own checkout, its own
+`node_modules`/`lib/*/dist` links, its own `@workspace` resolution. None of it
+isolates **database state**. Every concurrent Shane's Life build shares one real
+local Postgres database (the `finances` DB — see CLAUDE.md's Database section),
+and a session running inside a worktree talks to that one shared database
+directly, same as any other local dev work.
+
+That gap is real, not hypothetical: a #3153 build session found a live `catches`
+table and a live `list_items.requested_by` column in that shared database with
+**no matching migration file anywhere in git history and no `schema_migrations`
+ledger row** — evidence that an earlier attempt at that same work ran a manual
+mutation against the shared database from inside a worktree, then that worktree
+was cleaned up (or the session was interrupted) before the migration file or the
+code referencing it was ever committed. `cleanup-worktree.mjs` removes the git
+checkout; it cannot undo — and does not know about — a real database mutation a
+session already made from inside it.
+
+**Mitigation shipped (not a full fix): a live schema-drift audit**, not a
+worktree-DB binding. `scripts/check-schema-drift.mjs` parses every `CREATE
+TABLE` / `ADD COLUMN` (and `DROP`/`RENAME`) out of both real migrations
+directories (`desktop/ShanesSurvival/migrations/`, `web/shanes-life/migrations/`)
+and diffs the result against `information_schema` on the real shared database.
+Any live table/column neither directory's SQL declares is reported — exactly the
+shape the `catches` incident left behind. It runs two ways:
+
+- **Non-fatal, automatic, on every real server boot** — wired into
+  `web/shanes-life/src/migrate.mjs`'s `runMigrations()`, right after migrations
+  apply. A finding is logged, never a failed boot; the audit itself is
+  best-effort by design (see below).
+- **On demand**: `node bin/check-schema-drift.mjs` from `web/shanes-life`, which
+  exits non-zero on drift for a manual check or a CI/pre-deploy step.
+
+It cross-references the same shared `schema_migrations` ledger this whole
+worktree-per-build setup already produces "ahead" rows for (see
+`check-migration-numbers.mjs`'s `classifyOrphanLedgerFilenames`): a table/column
+explained only by a ledger row that's ahead of this checkout — i.e. a concurrent
+sibling build's real, tracked, not-yet-merged migration — is reported as a
+separate, non-alarming caveat rather than conflated with the genuinely-untracked
+case (no ledger row at all) the `catches` table actually was. This is a
+heuristic regex/paren-scan parser, not a real SQL parser — good enough to catch
+the concrete shape #3153 hit, not a guarantee against every possible DDL form.
+
+**What this does NOT do**, honestly: it does not tie a worktree's DB mutations
+to that worktree's lifecycle (no per-worktree schema/prefix, no
+rollback-on-cleanup) — that would be a materially larger change (transaction
+wrapping every session's DB access, or a schema-per-worktree scheme with its own
+cross-worktree-read implications) than this build was scoped to make. This audit
+is the "at minimum" floor #3177 asked for: visibility, so a future orphaned
+mutation gets caught on the next boot instead of sitting silent until someone
+happens to compare `\d` output against git history by hand.
+
+Self-test (pure, no database touched — builds real temp migration files and
+runs the real extractor):
+
+```
+node scripts/check-schema-drift.selftest.mjs
+```
+
 ## Files
 
 | File | Role |
@@ -493,6 +553,8 @@ main's `lib/db`) makes it go red — it is a real guard, not a rubber stamp.
 | `worktree-reprovision.selftest.mjs` | **Git #1958** — pause/resume guards: `detectWorktreeWork` (shared dirty/unpushed truth, markers filtered), `findOrphanedRescueBranches` + `writeReprovisionMarker` (tell a resumed session its prior work was rescued to `rescued/<name>-*` instead of silently handing it a clean tree). |
 | `verify-branch-merged.mjs` | **Git #1447 Part 1** — `git merge-base --is-ancestor` check a session runs before writing a DONE bookend, to confirm its own branch actually landed on main (not just that the local worktree looks clean). |
 | `check-stranded-branches.mjs` | **Git #1447 Part 2** — sweeps every `agent/*` branch against main and reports which have commits main doesn't have ("stranded"). Deliberately separate from the worktree-lifecycle orphan sweep above — different question, different terminology. |
+| `check-schema-drift.mjs` | **Git #3177** — live schema-drift audit for the shared Shane's Life/ShanesSurvival database: diffs `information_schema` against both migrations directories' real `CREATE TABLE`/`ADD COLUMN` statements, flags anything live with no matching migration file. See "Database is NOT worktree-isolated" above. |
+| `check-schema-drift.selftest.mjs` | **Git #3177** — pure self-test for the extraction parser above (comma-in-comment trap, `numeric(10,2)` type-modifier trap, multi-clause `ALTER TABLE`, rename/drop). No database touched. |
 
 ## Config knobs (env)
 

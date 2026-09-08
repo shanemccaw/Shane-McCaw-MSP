@@ -1278,6 +1278,54 @@ async function main() {
     ),
   );
 
+  // 6c-bis. Money -> Catches (Git #3153; UI + coverage Git #3201)
+  //
+  // Real coverage for the five real detectors in src/core/catches.mjs (see that module's own
+  // header). Only "forgotten money" is asserted deterministically -- it is the one detector with
+  // no dependency on real synced dates/lists/transactions existing: a brand-new check user has
+  // never had a sweep raised for it before, so the very first GET is guaranteed to raise one
+  // ("Worth a first sweep..."). The other four are heuristics over real, already-synced data this
+  // check account has none of by construction, so this does not assert on their presence/absence
+  // -- only that the endpoint and the MCP tool return the same real, live shape.
+
+  const catchesGet1 = await http("/api/money/catches");
+  check("GET /api/money/catches runs the detectors and returns a real array", catchesGet1.status === 200 && Array.isArray(catchesGet1.json?.catches));
+  const forgottenMoneyCatch = catchesGet1.json?.catches?.find((c) => c.kind === "forgotten_money");
+  check(
+    "a brand-new user's first sweep raises a real, honest forgotten-money catch (no fabricated dollar figure)",
+    Boolean(forgottenMoneyCatch) && /first sweep/i.test(forgottenMoneyCatch.text) && !/\$\d/.test(forgottenMoneyCatch.text),
+    JSON.stringify(forgottenMoneyCatch),
+  );
+
+  const catchesViaMcp = toolResult(await rpc(token.token, "tools/call", { name: "get_catches", arguments: {} }));
+  check(
+    "get_catches (MCP) sees the same real, undismissed catch the REST endpoint does",
+    Boolean(catchesViaMcp?.catches?.some((c) => c.id === forgottenMoneyCatch.id)),
+    JSON.stringify(catchesViaMcp?.catches?.map((c) => c.id)),
+  );
+
+  const dismissed = await http(`/api/money/catches/${forgottenMoneyCatch.id}/dismiss`, { method: "POST", body: {} });
+  check("POST .../dismiss ('Got it') marks the real row dismissed", dismissed.status === 200 && Boolean(dismissed.json?.dismissed_at));
+
+  const catchesGet2 = await http("/api/money/catches");
+  check(
+    "a dismissed catch drops out of the undismissed list the Catches card renders",
+    !catchesGet2.json?.catches?.some((c) => c.id === forgottenMoneyCatch.id),
+    JSON.stringify(catchesGet2.json?.catches?.map((c) => c.id)),
+  );
+
+  const redismissed = await http(`/api/money/catches/${forgottenMoneyCatch.id}/dismiss`, { method: "POST", body: {} });
+  check("dismissing an already-dismissed catch is idempotent, not an error", redismissed.status === 200 && Boolean(redismissed.json?.dismissed_at));
+
+  const dismissUnknown = await http("/api/money/catches/00000000-0000-0000-0000-000000000000/dismiss", { method: "POST", body: {} });
+  check("dismissing a catch that isn't real/isn't this user's is refused", dismissUnknown.status === 404, `status ${dismissUnknown.status}`);
+
+  const catchesActivity = await http("/api/activity");
+  check(
+    "catch.dismiss lands in the audit trail",
+    catchesActivity.json?.activity?.some((a) => a.action === "catch.dismiss" && a.entity_id === forgottenMoneyCatch.id),
+  );
+
   // 6d. Money -> Vault (Git #3150) -- the bill-payment reference vault.
   //
   // The design contract calls this "a real security requirement, not optional polish", so what

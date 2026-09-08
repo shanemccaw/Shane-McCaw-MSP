@@ -359,11 +359,78 @@ namespace BuildConsole.Controls
             // both `gh`-calling blocks — so the queue display stays live while GitHub-calling work
             // stays exactly where #2900 left it: manual-refresh-only.
             _localQueuePollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-            _localQueuePollTimer.Tick += async (_, _) => await RefreshAsync(includeGitHubWork: false);
+            _localQueuePollTimer.Tick += async (_, _) =>
+            {
+                await RefreshAsync(includeGitHubWork: false);
+                await UpdateIssueMirrorSyncStatusAsync();
+            };
             _localQueuePollTimer.Start();
+
+            _ = UpdateIssueMirrorSyncStatusAsync();
         }
 
         private DispatcherTimer? _localQueuePollTimer;
+
+        /// <summary>
+        /// Git #3254 — Shane: a real, visible display of when the local issue-mirror's (#3113) next
+        /// automatic sync will fire, in the Build Queue panel. Rides the existing 5s local-refresh
+        /// tick above (no new timer/poll) and reads GitHubIssueMirror's cheap in-memory
+        /// IsSyncing/LastAttemptUtc plus one trivial local Postgres read of the persisted
+        /// bt_issue_mirror_sync_state row. Honest about the real in-progress/backoff states rather
+        /// than showing a misleading countdown during them.
+        /// </summary>
+        private async Task UpdateIssueMirrorSyncStatusAsync()
+        {
+            try
+            {
+                if (GitHubIssueMirror.IsSyncing)
+                {
+                    IssueMirrorSyncText.Text = "Issue mirror: syncing…";
+                    IssueMirrorSyncText.Visibility = Visibility.Visible;
+                    return;
+                }
+
+                var backoffRemaining = GitHubIssueMirror.LastAttemptUtc == DateTime.MinValue
+                    ? TimeSpan.Zero
+                    : GitHubIssueMirror.FailedAttemptBackoff - (DateTime.UtcNow - GitHubIssueMirror.LastAttemptUtc);
+
+                var (lastFullSyncAt, ok, note) = await GitHubIssueMirror.GetSyncStateAsync();
+
+                if (!ok && backoffRemaining > TimeSpan.Zero)
+                {
+                    IssueMirrorSyncText.Text = $"Issue mirror: retrying in {Math.Ceiling(backoffRemaining.TotalSeconds):0}s (last attempt failed)";
+                    IssueMirrorSyncText.Visibility = Visibility.Visible;
+                    return;
+                }
+
+                if (lastFullSyncAt == null)
+                {
+                    IssueMirrorSyncText.Text = "Issue mirror: never synced yet";
+                    IssueMirrorSyncText.Visibility = Visibility.Visible;
+                    return;
+                }
+
+                var next = lastFullSyncAt.Value.ToUniversalTime() + GitHubIssueMirror.SyncInterval;
+                var remaining = next - DateTime.UtcNow;
+                IssueMirrorSyncText.Text = remaining > TimeSpan.Zero
+                    ? $"Issue mirror: next sync in {FormatCountdown(remaining)}"
+                    : "Issue mirror: sync due";
+                IssueMirrorSyncText.Visibility = Visibility.Visible;
+            }
+            catch
+            {
+                // Best-effort display only — never let this affect the rest of the panel.
+                IssueMirrorSyncText.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private static string FormatCountdown(TimeSpan remaining)
+        {
+            var totalSeconds = (int)Math.Ceiling(remaining.TotalSeconds);
+            var minutes = totalSeconds / 60;
+            var seconds = totalSeconds % 60;
+            return minutes > 0 ? $"{minutes}m {seconds}s" : $"{seconds}s";
+        }
 
         private string? _lastSessionsSignature;
         private bool _sessionsRefreshInFlight;

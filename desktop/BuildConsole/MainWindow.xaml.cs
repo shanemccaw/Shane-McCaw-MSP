@@ -8177,7 +8177,12 @@ namespace BuildConsole
                         }
                         else if (selected.Tag is string tagUrl)
                         {
-                            var match = System.Text.RegularExpressions.Regex.Match(tagUrl, @"/chat/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
+                            // Git #3167 — real 5-group UUID (8-4-4-4-12). This site previously had a
+                            // malformed 8-4-4-12 pattern (one {4} group missing), so it matched NO real
+                            // /chat/<uuid> and silently dropped the originating-chat id off a build queued
+                            // from a string-tagged tab. Same defect class as the meter's regex fixed in
+                            // ChatContextMeterScript this pass.
+                            var match = System.Text.RegularExpressions.Regex.Match(tagUrl, @"/chat/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
                             if (match.Success)
                             {
                                 originatingChatId = match.Groups[1].Value;

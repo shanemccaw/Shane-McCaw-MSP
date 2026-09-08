@@ -412,6 +412,90 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
   margin: 2px 0 4px;
 }
 
+/* ---------- Generic "Rooms (sub pages)" chrome (Git #3192) ----------
+   Design README, "Rooms (sub pages) -- the same skin" (line 179): every non-Today/Shopping
+   room glows in its own house color at the top and uses the same house-back-link Shopping
+   (#3178, above) already proved out, instead of a solid header band. Dates is the first real
+   caller (roomHeader() in app.js); each future room's own Round 2 pass reuses these same two
+   classes with its own tint from the README's room-tint table. */
+.room-scene { position: relative; }
+/* z-index:0 (not negative): a negative stack level paints BEHIND body's own non-positioned
+   background fill (CSS2.1 Appendix E step 2 runs before step 3, and an unpositioned <body>'s
+   own background is step 3), which makes the glow invisible -- confirmed by an actual headless
+   render, not assumed. Kept at stack level 0/auto instead, and .dates-room below is promoted to
+   `position:relative` so IT (a later stacking-context sibling at the same level 0) wins the
+   document-order tiebreak in step 6 and paints its own opaque cards over the glow's tail --
+   unlike Today's sky, which never needs this because it's contained entirely inside one
+   positioned card (see .today-scene above) rather than bleeding onto a later sibling. */
+.room-glow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 260px;
+  pointer-events: none;
+  z-index: 0;
+}
+.room-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: max(0.9rem, env(safe-area-inset-top));
+}
+.room-header-back {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 40px;
+  flex-shrink: 0;
+  color: #60a5fa;
+  font-size: 15px;
+  text-decoration: none;
+}
+.room-header-back svg { flex-shrink: 0; }
+.room-header-title { flex: 1; min-width: 0; font-size: 17px; font-weight: var(--weight-bold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Dates Round 2 (Git #3192): no dedicated "Shanes Life NN - Dates.dc.html" export exists yet
+   (#3183's own audit confirmed it), so this scopes the established Round 2 card/pill system
+   (22px cards, 999px pill buttons, blob pebbles) -- already proven on Today (#3144) -- to this
+   room alone, rather than reflowing the rest of the app's still-unconverted rooms
+   (#3190/#3191/#3193-3195 each get their own pass). */
+.dates-room { position: relative; display: grid; gap: 14px; }
+.dates-room .tile,
+.dates-room .card { border-radius: 22px; }
+.dates-room button.small { border-radius: 999px; }
+.dates-room .date-tile { border-radius: 58% 42% 55% 45% / 48% 56% 44% 52%; }
+
+/* Pets Round 2 (Git #3193): same real scoped-conversion shape as .dates-room above -- no
+   dedicated "Shanes Life NN - Pets.dc.html" export exists (#3183's own audit confirmed it),
+   so this scopes the established Round 2 card system to this room alone via roomHeader()'s
+   second real caller. */
+.pets-room { position: relative; display: grid; gap: 14px; }
+.pets-room .tile,
+.pets-room .card { border-radius: 22px; }
+
+/* Pets (design contract Section 6 + README "Screens" #10): 44px initial-letter avatar, same
+   real convention as .person-avatar (Section 7) -- one fixed room tint, not a per-pet hash. */
+.pet-avatar {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: rgba(52, 211, 153, 0.16);
+  color: #34d399;
+  display: grid;
+  place-items: center;
+  font-weight: var(--weight-bold);
+  font-size: 16px;
+}
+
+/* A due line inside its vaccine's lead window goes amber, same real "needs you" signal as
+   Meds' own .refill-days-left.due (Git #3141 listPets already computes surfacesInDays for
+   exactly this). */
+.when.due { color: #fbbf24; font-weight: var(--weight-semibold); }
+
 /* Flat / Category / Best path (Git #3108) -- the design's own real segmented control. */
 .shop-segment {
   display: grid;
@@ -1629,3 +1713,50 @@ pre.token {
 .pattern-line { padding: 10px 0; border-top: 1px solid hsl(var(--card-border) / 0.6); font-size: 14px; line-height: 1.5; }
 .pattern-line:first-child { border-top: none; padding-top: 0; }
 .pattern-footnote { font-size: 12px; color: hsl(var(--muted-foreground)); padding-top: 10px; border-top: 1px solid hsl(var(--card-border) / 0.6); }
+
+/* Recipes -- Round 2 visual rebuild (Git #3190, design "Shanes Life 05 - Recipes.dc.html" +
+   README "Screens": "Cards 22px; all buttons in 999px pill wrappers... Recipes, Cook, Tonight,
+   Review and Shopping keep their solid card-colored header band"): the recipe list is this
+   room's own primary content card, the same real role Today's Next card plays there -- so it
+   gets the same real 22px blob radius and sticker/pill-button treatment #3144 already proved
+   out, reusing that exact `sticker()` / `pillButton()` machinery rather than inventing a second
+   one. Plain link-out rows (the Tonight teaser, meal nudges) stay `.tile` unchanged -- Today's
+   own already-shipped room keeps those plain too, so that's not a Round 2 gap here either. */
+.recipe-card { border-radius: 22px; }
+.recipe-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.recipe-pill-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 0.75rem; }
+.recipe-pill-row .btn-pill { padding: 0 18px; }
+/* README "Screens" line: "all buttons in 999px pill wrappers (outline -> ghost)" -- Remove keeps
+   its existing red-text destructive meaning (README's own red #f87171 accent), just moved into
+   the same pill wrapper family instead of the plain rectangular button. */
+.btn-pill.ghost.danger { color: #f87171; padding: 0 18px; }
+
+/* Recipes' own native room chrome (Git #3190, README "Screens" line 179: "Recipes, Cook,
+   Tonight, Review and Shopping keep their solid card-colored header band" -- same real shape
+   Shopping already shipped in #3178, see .shop-header above; duplicated with its own recipe-
+   prefixed classes rather than sharing Shopping's, matching this file's existing per-room
+   convention (meds-pill-*, money-*, shop-*) instead of introducing a shared abstraction only
+   two rooms would use so far. */
+.recipe-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: max(0.9rem, env(safe-area-inset-top));
+}
+.recipe-header-back {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 76px;
+  height: 40px;
+  color: #60a5fa;
+  font-size: 15px;
+  text-decoration: none;
+}
+.recipe-header-back svg { flex-shrink: 0; }
+.recipe-header-center { flex: 1; min-width: 0; text-align: center; }
+.recipe-header-title { font-size: 17px; font-weight: var(--weight-bold); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recipe-header-sub { font-size: 12px; color: hsl(var(--muted-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recipe-header-spacer { min-width: 76px; height: 40px; }
+.recipe-header-bar { height: 3px; border-radius: var(--radius-full); background: linear-gradient(90deg, #0078d4, #00b4d8); margin: 2px 0 4px; }

@@ -664,6 +664,27 @@ function whenDate(isoDate) {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+/** "Mar 2020" -- month + year, no day (Git #3193: a pet's "born" line, distinct from whenDate's
+ *  day-level format since a birthdate that old is never "3 days ago"). */
+function monthYear(isoDate) {
+  if (!isoDate) return null;
+  const d = new Date(`${String(isoDate).slice(0, 10)}T00:00:00`);
+  return d.toLocaleDateString([], { month: "short", year: "numeric" });
+}
+
+/** Real full years since a birthdate (Git #3193, design contract Section 6 / README "Screens"
+ *  #10: a pet card's "species · breed · age"). Same has-the-birthday-happened-yet math as any
+ *  real age calculation -- a bare year subtraction over-counts until the birthday passes. */
+function ageYears(bornISO) {
+  if (!bornISO) return null;
+  const born = new Date(`${String(bornISO).slice(0, 10)}T00:00:00`);
+  const now = new Date();
+  let age = now.getFullYear() - born.getFullYear();
+  const hadBirthdayThisYear = now.getMonth() > born.getMonth() || (now.getMonth() === born.getMonth() && now.getDate() >= born.getDate());
+  if (!hadBirthdayThisYear) age -= 1;
+  return age;
+}
+
 // ---------------------------------------------------------------------------
 // auth
 // ---------------------------------------------------------------------------
@@ -1080,8 +1101,10 @@ function showQuickToast(message) {
 }
 
 /** One pill-shaped Badge-style sticker, rotated -5deg per the cute-skin spec. `tone` picks the
- *  tint from the same accent palette the rest of the app already uses (README "Design tokens"). */
-const STICKER_TONE = { blue: "96,165,250", indigo: "165,180,252", amber: "251,191,36", red: "248,113,113" };
+ *  tint from the same accent palette the rest of the app already uses (README "Design tokens").
+ *  `slate` (Git #3192) is Dates' own on-the-fly-kind fallback color (kindTint's `#94a3b8`),
+ *  reused here rather than inventing a fifth tone. */
+const STICKER_TONE = { blue: "96,165,250", indigo: "165,180,252", amber: "251,191,36", red: "248,113,113", green: "52,211,153", slate: "148,163,184" };
 function sticker(tone, text) {
   return el("span", { class: "sticker", style: `background:rgba(${STICKER_TONE[tone]},.16);color:rgb(${STICKER_TONE[tone]})`, text });
 }
@@ -2224,45 +2247,59 @@ async function viewLists(view) {
 // ritual are each separate, real sibling Features; this screen only lists, matches against the
 // real Shopping run, and lets Shane add what's missing or archive a recipe he doesn't want kept.
 function recipeCard(recipe) {
+  // Git #3190: the status badge is this card's sticker (README "Today v3 -- the cute skin"),
+  // same rotated-pill treatment as the Next card's own sticker -- green for a real go, amber for
+  // a real gap, not the plain uppercase `.chip` every other room's summary counts still use.
   const badge = recipe.canMake
-    ? el("span", { class: "chip ok", text: "You'll have everything" })
-    : el("span", { class: "chip", text: `Missing ${recipe.missing.join(", ")}` });
-
-  const addMissingBtn = recipe.canMake
-    ? null
-    : el("button", {
-        class: "primary small",
-        text: "Add missing to Shopping",
-        onClick: async (event) => {
-          event.currentTarget.disabled = true;
-          try {
-            await api(`/api/recipes/${recipe.id}/add-missing`, { method: "POST" });
-            render();
-          } finally {
-            event.currentTarget.disabled = false;
-          }
-        },
-      });
-
-  const removeBtn = el("button", {
-    class: "ghost small danger",
-    text: "Remove",
-    onClick: async (event) => {
-      event.currentTarget.disabled = true;
-      await api(`/api/recipes/${recipe.id}`, { method: "DELETE" });
-      render();
-    },
-  });
+    ? sticker("green", "You'll have everything")
+    : sticker("amber", `Missing ${recipe.missing.join(", ")}`);
 
   // Cook mode (Git #3125): a recipe with no real steps saved has nothing to walk through, so
   // there's no live entry point for it -- Claude just hasn't pushed steps for this one yet.
   const cookBtn =
     recipe.steps.length > 0
-      ? el("button", { class: "primary small", text: "Cook", onClick: () => { location.hash = `#/cook/${recipe.id}`; } })
+      ? pillButton("button", { type: "button", onClick: () => { location.hash = `#/cook/${recipe.id}`; } }, "Cook", "primary")
       : null;
 
-  return el("div", { class: "card" }, [
-    el("div", { class: "spread" }, [
+  const addMissingBtn = recipe.canMake
+    ? null
+    : pillButton(
+        "button",
+        {
+          type: "button",
+          onClick: async (event) => {
+            event.currentTarget.disabled = true;
+            try {
+              await api(`/api/recipes/${recipe.id}/add-missing`, { method: "POST" });
+              render();
+            } finally {
+              event.currentTarget.disabled = false;
+            }
+          },
+        },
+        "Add missing to Shopping",
+        "ghost",
+      );
+
+  // README "Screens": "all buttons in 999px pill wrappers (outline -> ghost)" -- Remove keeps
+  // its real destructive meaning (red text, README's own #f87171 red accent) but moves into the
+  // same pill family as Cook/Add missing instead of the old plain rectangular button.
+  const removeBtn = pillButton(
+    "button",
+    {
+      type: "button",
+      onClick: async (event) => {
+        event.currentTarget.disabled = true;
+        await api(`/api/recipes/${recipe.id}`, { method: "DELETE" });
+        render();
+      },
+    },
+    "Remove",
+    "ghost danger",
+  );
+
+  return el("div", { class: "card recipe-card" }, [
+    el("div", { class: "recipe-card-head" }, [
       el("div", {}, [
         el("div", { class: "title", text: recipe.name }),
         el("div", { class: "meta", text: [recipe.timeText, recipe.heartHealthy ? "heart-healthy" : null].filter(Boolean).join(" · ") }),
@@ -2272,13 +2309,33 @@ function recipeCard(recipe) {
     recipe.needs.length > 0
       ? el("p", { class: "small muted", style: "margin:.5rem 0 0", text: recipe.needs.join(", ") })
       : null,
-    el("div", { class: "row", style: "margin-top:.6rem" }, [cookBtn, addMissingBtn, removeBtn].filter(Boolean)),
+    el("div", { class: "recipe-pill-row" }, [cookBtn, addMissingBtn, removeBtn].filter(Boolean)),
   ]);
 }
 
 async function viewRecipes(view) {
   const { recipes } = await api("/api/recipes");
   const { entries: planEntries } = await api("/api/meal-plan");
+  const canMakeCount = recipes.filter((r) => r.canMake).length;
+
+  // Native room chrome (Git #3190, design README "Screens": "Recipes, Cook, Tonight, Review
+  // and Shopping keep their solid card-colored header band") -- same real shape Shopping
+  // already shipped (#3178): back-to-Today link, title + a live count subtitle, spacer right
+  // (no per-room icon action here the way Shopping's scan button is).
+  view.append(
+    el("div", { class: "recipe-header" }, [
+      el("a", { href: "#/today", class: "recipe-header-back" }, [el("span", { html: ROOM_HOUSE_ICON }), el("span", { text: "Today" })]),
+      el("div", { class: "recipe-header-center" }, [
+        el("div", { class: "recipe-header-title", text: "Recipes" }),
+        el("div", {
+          class: "recipe-header-sub",
+          text: recipes.length === 0 ? "Nothing saved yet" : `${canMakeCount} of ${recipes.length} you can make`,
+        }),
+      ]),
+      el("div", { class: "recipe-header-spacer" }),
+    ]),
+  );
+  view.append(el("div", { class: "recipe-header-bar" }));
 
   // #3127's real Sunday ritual: the week Claude planned, hosted and displayed here -- no
   // manual meal-planning calendar to author it in, only the one archive action to correct a
@@ -2287,21 +2344,25 @@ async function viewRecipes(view) {
     const plan = el("section", { class: "section" }, [el("h2", { text: "This week's plan" })]);
     for (const entry of planEntries) {
       plan.append(
-        el("div", { class: "card" }, [
+        el("div", { class: "card recipe-card" }, [
           el("div", { class: "spread" }, [
             el("div", {}, [
               el("div", { class: "meta small", text: `${entry.date} · ${entry.mealType}` }),
               el("div", { class: "title", text: entry.dishText }),
             ]),
-            el("button", {
-              class: "ghost small danger",
-              text: "Remove",
-              onClick: async (event) => {
-                event.currentTarget.disabled = true;
-                await api(`/api/meal-plan/${entry.id}`, { method: "DELETE" });
-                render();
+            pillButton(
+              "button",
+              {
+                type: "button",
+                onClick: async (event) => {
+                  event.currentTarget.disabled = true;
+                  await api(`/api/meal-plan/${entry.id}`, { method: "DELETE" });
+                  render();
+                },
               },
-            }),
+              "Remove",
+              "ghost danger",
+            ),
           ]),
         ]),
       );
@@ -2309,11 +2370,14 @@ async function viewRecipes(view) {
     view.append(plan);
   }
 
+  // Section label reuses the design's own real desktop-browser vocabulary ("Saved", the group
+  // of Claude-pushed recipes distinct from what's actively on the Aldi run) rather than
+  // repeating the room's own "Recipes" title the native header above already carries.
   view.append(
     el("section", { class: "section" }, [
       el("div", { class: "spread" }, [
-        el("h2", { text: "Recipes" }),
-        el("span", { class: "chip", text: `${recipes.filter((r) => r.canMake).length} you can make from the list` }),
+        el("h2", { text: "Saved" }),
+        el("span", { class: "chip", text: `${canMakeCount} you can make from the list` }),
       ]),
       el("p", { class: "muted small", text: "Generated by Claude in a conversation, then pushed in — ask Claude for a recipe to add one." }),
     ]),
@@ -5522,7 +5586,59 @@ async function viewMoney(view) {
     );
   }
 
+  await appendCatchesCard(view);
   await appendIncomeRulesCard(view);
+}
+
+// ---------------------------------------------------------------------------
+// Money -> Catches (Git #3153, wired to the Now tab Git #3201)
+// ---------------------------------------------------------------------------
+//
+// The design's own Catches card (README, Money screen section: "Catches (Renewal watch,
+// Forgotten money, Duplicate request, Borrowed from a bill, Bulk buy; 'Got it' dismisses)"),
+// backed by src/core/catches.mjs's five real detectors -- see that module's own header for
+// exactly what each one looks for. GET /api/money/catches runs the detectors fresh on every
+// screen open (cheap upserts against already-synced data) so this is never stale. "Got it" is
+// the one real action here, same single-click-dismiss shape as the Inbox's Dismiss button and
+// Income Rules' Remove -- Section 8's "no forms" rule doesn't reach it.
+
+const CATCH_KIND_LABELS = Object.freeze({
+  renewal: "Renewal watch",
+  forgotten_money: "Forgotten money",
+  duplicate_request: "Duplicate request",
+  borrowed_from_bill: "Borrowed from a bill",
+  bulk_buy: "Bulk buy",
+});
+
+function catchRow(c) {
+  return el("div", { class: "money-bucket-row" }, [
+    el("div", { class: "money-bucket-name" }, [
+      el("div", { class: "money-bucket-meta", text: CATCH_KIND_LABELS[c.kind] ?? c.kind }),
+      el("span", { text: c.text }),
+    ]),
+    el("button", {
+      type: "button",
+      class: "ghost small",
+      text: "Got it",
+      onClick: async (event) => {
+        event.target.disabled = true;
+        await api(`/api/money/catches/${c.id}/dismiss`, { method: "POST", body: "{}" });
+        render();
+      },
+    }),
+  ]);
+}
+
+async function appendCatchesCard(view) {
+  const { catches } = await api("/api/money/catches");
+
+  const card = el("div", { class: "card section" }, [
+    el("div", { class: "row", style: "justify-content:space-between" }, [
+      el("span", { class: "small muted", style: "font-weight:600;letter-spacing:.05em;text-transform:uppercase", text: "Catches" }),
+    ]),
+    ...(catches.length ? catches.map(catchRow) : [el("p", { class: "small muted", text: "Nothing caught right now." })]),
+  ]);
+  view.append(card);
 }
 
 // ---------------------------------------------------------------------------
@@ -6048,10 +6164,12 @@ function shareSection({ shares: shareList, onCreate, onRevoke, supportsAdd = fal
 // #3109's own scope, built below.
 // ---------------------------------------------------------------------------
 
-// Icons for Shopping's native room chrome (Git #3178) -- extracted verbatim from the real
-// design markup ("Shanes Life - First Slice Prototype.dc.html"'s own "Today" back-link and
-// scan-viewfinder icons), not invented fresh.
-const SHOP_HOUSE_ICON =
+// Icons for a room's native chrome (Git #3178 built this for Shopping first) -- extracted
+// verbatim from the real design markup ("Shanes Life - First Slice Prototype.dc.html"'s own
+// "Today" back-link and scan-viewfinder icons), not invented fresh. The house icon is the
+// generic README "Rooms (sub pages)" back-link (line 179: "the little house... + 'Today'"),
+// not Shopping-specific -- Dates (#3192) is the second real caller, via roomHeader() below.
+const ROOM_HOUSE_ICON =
   '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2.5 11.5 12 3.5l9.5 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M5.5 10v10.5h13V10" fill="rgba(96,165,250,.16)" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path><rect x="10" y="13" width="4" height="4" rx="1" fill="#FDE68A"></rect></svg>';
 const SHOP_SCAN_ICON =
   '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path><path d="M8 7v10"></path><path d="M12 7v10"></path><path d="M17 7v10"></path></svg>';
@@ -6715,7 +6833,7 @@ async function viewShopping(view) {
   const subtitle = list.items.length === 0 ? "Nothing on the list" : remaining === 0 ? "all done" : `${remaining} left`;
   view.append(
     el("div", { class: "shop-header" }, [
-      el("a", { href: "#/today", class: "shop-header-back" }, [el("span", { html: SHOP_HOUSE_ICON }), el("span", { text: "Today" })]),
+      el("a", { href: "#/today", class: "shop-header-back" }, [el("span", { html: ROOM_HOUSE_ICON }), el("span", { text: "Today" })]),
       el("div", { class: "shop-header-center" }, [
         el("div", { class: "shop-header-title", text: list.store || "Shopping" }),
         el("div", { class: "shop-header-sub", text: subtitle }),
@@ -7426,7 +7544,32 @@ function activitySummary(row) {
 
 // ---------------------------------------------------------------------------
 // Dates (Git #3136) -- design handoff screens 8/9.
+// Git #3192 -- Round 2 visual rebuild. No dedicated "Shanes Life NN - Dates.dc.html" export
+// exists (#3183's own audit confirmed it), so this reuses the README's own generic "Rooms
+// (sub pages) -- the same skin" spec (top tint glow + house back-link, Dates' real tint
+// 244,114,182) plus the Round 2 building blocks already proven on Today (#3144): 22px
+// cards/tiles, 999px pill buttons, and rotated -5deg stickers -- scoped to a `.dates-room`
+// wrapper so it doesn't reflow the other rooms still waiting on their own pass
+// (#3190/#3191/#3193-3195).
 // ---------------------------------------------------------------------------
+
+const DATES_TINT = "244,114,182"; // README's own room-tint table, "Dates".
+
+/** Generic "Rooms (sub pages)" chrome (design README line 179): a translucent top glow
+ *  tinted per room, plus the house back-link to Today. Shopping (#3178) built the back-link
+ *  piece first, scoped to its own solid header band; this is the plain glow+back-link shape
+ *  every *other* room's own Round 2 pass reuses verbatim. Dates is the first real caller. */
+function roomHeader(view, tintRgb, title) {
+  view.append(
+    el("div", { class: "room-scene" }, [
+      el("div", { class: "room-glow", style: `background: radial-gradient(120% 70% at 50% -20%, rgba(${tintRgb},.22), transparent 70%)` }),
+      el("div", { class: "room-header" }, [
+        el("a", { href: "#/today", class: "room-header-back" }, [el("span", { html: ROOM_HOUSE_ICON }), el("span", { text: "Today" })]),
+        el("div", { class: "room-header-title", text: title }),
+      ]),
+    ]),
+  );
+}
 
 // Tile colors, exactly screen 8's own table.
 const KIND_TINT = {
@@ -7495,7 +7638,9 @@ function dateRow(item) {
   const body = el("div", { class: "body" }, [
     el("div", { class: "row" }, [
       el("span", { class: "title", text: item.title }),
-      isOnTheFly ? el("span", { class: "chip", text: "New category" }) : null,
+      // Git #3192: the rotated -5deg sticker (already proven on Today's Next card), not the
+      // plain uppercase .chip badge -- tinted slate to match kindTint's own on-the-fly fallback.
+      isOnTheFly ? sticker("slate", "New category") : null,
     ]),
     el("div", { class: "meta", text: dateSummaryLine(item) }),
     el("div", { class: "meta", text: `${item.lead_days}-day lead` }),
@@ -7508,6 +7653,9 @@ function dateRow(item) {
 async function viewDates(view) {
   const { dates: items } = await api("/api/dates");
 
+  roomHeader(view, DATES_TINT, "Dates");
+  const room = el("div", { class: "dates-room" });
+
   const groups = [
     { label: "This week", items: items.filter((i) => i.due_in_days <= 6) },
     { label: "This month", items: items.filter((i) => i.due_in_days > 6 && i.due_in_days <= 31) },
@@ -7515,7 +7663,7 @@ async function viewDates(view) {
   ];
 
   if (items.length === 0) {
-    view.append(
+    room.append(
       empty(
         "Nothing on the calendar yet.",
         "Tell Claude something like \"dr appointment oct 3rd 2pm dr fonji every 6 weeks\" and it'll show up here.",
@@ -7526,16 +7674,17 @@ async function viewDates(view) {
       if (group.items.length === 0) continue;
       const section = el("section", { class: "section" }, [el("h2", { text: group.label })]);
       for (const item of group.items) section.append(dateRow(item));
-      view.append(section);
+      room.append(section);
     }
   }
 
-  view.append(
+  room.append(
     el("section", { class: "section" }, [
       el("p", { class: "muted small", text: "Federal holidays come from a real, live OPM source, refreshed monthly." }),
     ]),
   );
 
+  view.append(room);
   attachRoomWatermark(view, "comingup");
 }
 
@@ -7577,7 +7726,10 @@ async function viewDateDetail(view, dateId) {
   const d = new Date(`${String(item.at_date).slice(0, 10)}T00:00:00`);
   const dateLine = d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }) + (item.at_time ? ` · ${new Date(`1970-01-01T${item.at_time}`).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "");
 
-  view.append(
+  roomHeader(view, DATES_TINT, item.title);
+  const room = el("div", { class: "dates-room" });
+
+  room.append(
     el("section", { class: "section" }, [
       el("div", { class: "card" }, [
         el("div", { class: "date-row" }, [
@@ -7624,35 +7776,21 @@ async function viewDateDetail(view, dateId) {
     // exists for it. Say "ask Dr. Fonji about the knee brace next time" and Claude matches
     // it onto this appointment by provider.
     asks.append(card);
-    view.append(asks);
+    room.append(asks);
 
     // "Notes and photos, by visit."
     const visits = el("section", { class: "section" }, [el("h2", { text: "Notes and photos, by visit" })]);
     const visitCard = el("div", { class: "card" });
     if (item.visits.length === 0) visitCard.append(el("p", { class: "muted small", text: "No visits logged yet." }));
     for (const visit of item.visits) visitCard.append(visitRow(dateId, visit));
-    const notesInput = el("textarea", { placeholder: "How did it go?", "aria-label": "Visit notes", rows: 2 });
-    visitCard.append(
-      el("div", { style: "margin-top:.6rem" }, [
-        notesInput,
-        el("div", { class: "row", style: "margin-top:.4rem" }, [
-          el("button", {
-            class: "small",
-            text: "Log this visit",
-            onClick: async (event) => {
-              event.currentTarget.disabled = true;
-              await api(`/api/dates/${dateId}/visits`, {
-                method: "POST",
-                body: JSON.stringify({ notes: notesInput.value.trim() || null }),
-              });
-              await render();
-            },
-          }),
-        ]),
-      ]),
-    );
+    // Git #3192 (contract pack Section 8, "no forms, anywhere, ever"): the "How did it go?"
+    // notes textarea + "Log this visit" button was a real, dedicated form the #3183 no-forms
+    // pass missed -- attach_visit already exists over MCP for exactly this ("This is 'Notes and
+    // photos, by visit' on the date-detail screen", tools.mjs). Say "the vet visit went fine,
+    // pepper's ear infection is clearing up" and it lands here, same as attach_ask above.
+    visitCard.append(el("p", { class: "muted small", style: "margin-top:.6rem", text: "Tell Claude how it went and it shows up here." }));
     visits.append(visitCard);
-    view.append(visits);
+    room.append(visits);
   } else {
     // Every other kind gets one explanatory note instead (design's own screen 9 spec).
     const explain = {
@@ -7663,27 +7801,44 @@ async function viewDateDetail(view, dateId) {
       renewal: "A renewal, with a 21-day lead -- worth pairing with Money's renewal watch.",
       vaccine: "A vaccine due date, with a 30-day lead.",
     };
-    view.append(
+    room.append(
       el("section", { class: "section" }, [
         el("p", { class: "muted small", text: explain[item.kind] || "A real, on-the-fly kind Claude created for this capture." }),
       ]),
     );
   }
 
+  view.append(room);
   attachRoomWatermark(view, "comingup");
 }
 
 // ---------------------------------------------------------------------------
 // pets (Git #3141 -- design contract pack Section 6)
+// Git #3193 -- Round 2 visual rebuild. No dedicated "Shanes Life NN - Pets.dc.html" export
+// exists (#3183's own audit confirmed it), so this follows the real design prose that does
+// exist: README "Screens" #10 (44px initial avatar, species/breed/age, amber-when-in-lead-
+// window due line) plus the rendered screenshots/06-pets.png reference -- and reuses the
+// generic roomHeader() chrome Dates (#3192) built for exactly this ("every *other* room's own
+// Round 2 pass reuses verbatim"), rather than a third bespoke header.
 // ---------------------------------------------------------------------------
 
+const PETS_TINT = "52,211,153"; // README's own room-tint table, "Pets".
+
 function petCardEl(pet) {
-  const meta = [pet.species, pet.breed].filter(Boolean).join(" · ") || null;
+  const age = ageYears(pet.born);
+  const born = monthYear(pet.born);
+  const ageBit = age === null ? null : born ? `${age}, born ${born}` : `${age}`;
+  const meta = [pet.species, pet.breed, ageBit].filter(Boolean).join(" · ") || null;
+  // A vaccine goes amber the moment it enters its lead window -- listPets already computes
+  // surfacesInDays (dueInDays - leadDays) for exactly this, same "needs you" signal as Meds'
+  // own .refill-days-left.due.
+  const dueSoon = pet.nextVaccine !== null && pet.nextVaccine.surfacesInDays <= 0;
   const right = pet.nextVaccine
-    ? el("div", { class: "when", text: `${pet.nextVaccine.name}: ${dueLabel(pet.nextVaccine.dueInDays, pet.nextVaccine.dueOn)}` })
-    : null;
+    ? el("div", { class: `when${dueSoon ? " due" : ""}`, text: `${pet.nextVaccine.name}: ${dueLabel(pet.nextVaccine.dueInDays, pet.nextVaccine.dueOn)}` })
+    : el("div", { class: "when", text: "Nothing due" });
   return el("a", { class: "tile", href: `#/pet/${pet.id}` }, [
     el("div", { class: "date-row" }, [
+      el("div", { class: "pet-avatar", text: personInitial(pet.name) }),
       el("div", { class: "body" }, [
         el("div", { class: "title", text: pet.name }),
         meta ? el("div", { class: "meta", text: meta }) : null,
@@ -7696,15 +7851,11 @@ function petCardEl(pet) {
 async function viewPets(view) {
   const items = await api("/api/pets");
 
-  view.append(
-    el("section", { class: "section" }, [
-      el("h2", { text: "Pets" }),
-      el("p", { class: "muted small", text: "Vet visits show up on Dates; vaccines, feeding and meds live here." }),
-    ]),
-  );
+  roomHeader(view, PETS_TINT, "Pets");
+  const room = el("div", { class: "pets-room" });
 
   if (items.pets.length === 0) {
-    view.append(
+    room.append(
       empty(
         "No pets on file yet.",
         "Tell Claude something like \"we have a dog named Pepper, a lab\" and it'll show up here.",
@@ -7713,12 +7864,25 @@ async function viewPets(view) {
     );
   } else {
     const list = el("section", { class: "section" }, items.pets.map(petCardEl));
-    view.append(list);
+    room.append(list);
   }
+
+  // Real, verbatim explanatory copy from the design's own rendered reference (screenshots/
+  // 06-pets.png, First Slice Prototype) -- same "vet visit is an appointment, feeding/meds ride
+  // Meds, vaccines get a month's notice" prose as contract pack Section 6, not paraphrased.
+  room.append(
+    el("section", { class: "section" }, [
+      el("p", {
+        class: "muted small",
+        text: "A vet visit is an appointment with the pet as the subject, same day-before reminder, same ask next time note. Feeding and pet meds ride the two Meds batches. Vaccines get a month's notice.",
+      }),
+    ]),
+  );
 
   // Git #3183: no dedicated "Add pet" form -- a new pet is a capture (set_pet over MCP
   // already exists for it), same as everything else (contract pack Section 8).
 
+  view.append(room);
   attachRoomWatermark(view, "pets");
 }
 
@@ -7770,7 +7934,10 @@ async function viewPetDetail(view, petId) {
     el("section", { class: "section" }, [
       el("div", { class: "card" }, [
         el("h1", { text: pet.name, style: "margin:0 0 .25rem" }),
-        el("div", { class: "meta", text: [pet.species, pet.breed, pet.born ? `born ${whenDate(pet.born)}` : null].filter(Boolean).join(" · ") || "No details on file." }),
+        // Git #3193: same age/born convention as the list card (petCardEl) -- whenDate's
+        // day-level "Mon D" format drops the year, which is meaningless for a birthdate years
+        // back (a pet "born Mar 15" reads like three days ago, not six years ago).
+        el("div", { class: "meta", text: [pet.species, pet.breed, pet.born ? `${ageYears(pet.born)}, born ${monthYear(pet.born)}` : null].filter(Boolean).join(" · ") || "No details on file." }),
         pet.notes ? el("p", { class: "muted", text: pet.notes }) : null,
         el("div", { class: "row", style: "margin-top:.75rem" }, [
           el("button", {
@@ -7871,11 +8038,19 @@ async function render() {
   // Git #3174: Today's own fox/weather scene (renderTodayHeader) IS the header per the real
   // design -- the generic title-bar chrome is leftover Foundation-era shell (#3087) that the
   // Today tray's Round 2 redesign never used. Git #3178: Shopping is the second room to get its
-  // own native chrome (viewShopping's own .shop-header). Git #3191: Meds is the third
-  // (viewMeds' own medsHeader). Every other room still shows the generic bar until it gets its
-  // own redesign pass. #app-view.no-header lets .view collapse its top padding to just the
-  // native status-bar safe area instead of assuming a header row sits above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "meds";
+  // own native chrome (viewShopping's own .shop-header). Git #3190: Recipes is the third --
+  // README "Screens" names it explicitly alongside Shopping ("Recipes... keep their solid
+  // card-colored header band"), and its own content (title + live "you can make" count) now
+  // supplies enough context on its own, same as #3190's own real question asked. Git #3191: Meds
+  // is the fourth (viewMeds' own medsHeader). Git #3192: Dates and its detail screen are the
+  // fifth and sixth, via the generic roomHeader() (README "Rooms (sub pages)"). Git #3193: Pets
+  // is the seventh, the second real roomHeader() caller -- the generic bar's only other real
+  // function was "Sign out", which Settings' own "Sign out everywhere" (viewSettings) already
+  // covers, the same real check that cleared Shopping/Dates. Every other room still shows the
+  // generic bar until it gets its own redesign pass. #app-view.no-header lets .view collapse its
+  // top padding to just the native status-bar safe area instead of assuming a header row sits
+  // above it (see app.css).
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 

@@ -346,6 +346,24 @@
                                 </DockPanel>
                             </Border>
 
+                            <!-- Git #3254 — real, small, live-updating display of when the local
+                                 issue-mirror's next automatic sync (#3113, bt_issue_mirror_sync_state,
+                                 GitHubIssueMirror.SyncInterval = 5 min) will fire. Ticks on the same
+                                 existing 5s local-refresh cadence used elsewhere in this panel
+                                 (_localQueuePollTimer, Git #3074) rather than a new timer/poll —
+                                 UpdateIssueMirrorSyncStatusAsync reads GitHubIssueMirror's cheap
+                                 in-memory IsSyncing/LastAttemptUtc plus one trivial local Postgres
+                                 read of the persisted sync-state row (already the kind of local query
+                                 that tick does). Shows "Syncing…" / "Retrying in Xs" honestly during
+                                 those real states instead of a misleading countdown. -->
+                            <TextBlock x:Name="IssueMirrorSyncText"
+                                       Text=""
+                                       FontSize="9.5"
+                                       Foreground="{StaticResource Subtext0Brush}"
+                                       Margin="2,-4,0,8"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed"/>
+
                             <Popup x:Name="QueueNextPopup"
                                    PlacementTarget="{Binding ElementName=QueueStatusBorder}"
                                    Placement="Bottom"

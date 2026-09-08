@@ -227,17 +227,30 @@ export function highestOnDiskMigrationNumber(dirs = MIGRATION_DIRS) {
  * Splits the orphan rows (see findOrphanLedgerFilenames) into the two genuinely different
  * situations they conflate today (Git #3175).
  *
- * `ahead` -- the row's leading number is strictly HIGHER than every number on disk here. It
- * cannot be a rename of anything this checkout has, because this checkout has no file at that
- * number at all. It is a concurrent sibling build's brand-new migration: applied against this
- * shared local Postgres, not yet merged to origin/main, so not yet in this worktree. Nothing on
- * disk will re-run because of it and nothing is unsafe -- there is simply a migration in the
- * database that is newer than this checkout. Reported, not fatal.
+ * `ahead` -- no file ANYWHERE on disk currently occupies the row's leading number. It cannot be
+ * a rename of anything this checkout has, because this checkout has no file at that number at
+ * all under any name. It is a concurrent sibling build's brand-new migration: applied against
+ * this shared local Postgres, not yet merged to origin/main, so not yet in this worktree.
+ * Nothing on disk will re-run because of it and nothing is unsafe -- there is simply a migration
+ * in the database this checkout doesn't have yet. Reported, not fatal.
  *
  * `missing` -- everything else: the row's number IS occupied on disk (by a file under a
  * different name), or the row has no numeric prefix at all. That is the shape #3140 exists to
  * catch -- an already-applied migration renamed, whose identical SQL then re-executes under the
- * new name on every environment that already ran the old one. Still fatal.
+ * new name on every environment that already ran the old one. Still fatal. It also correctly
+ * catches the #3139 same-number-collision case, where a sibling took the same number my own
+ * unlanded file is sitting on: that number IS occupied on disk (by my own file), so the row
+ * classifies as missing/fatal exactly as it should.
+ *
+ * Git #3239: this used to compare each orphan's number against `highestOnDiskMigrationNumber`
+ * (the single highest number across BOTH directories) and only call it `ahead` when strictly
+ * greater. That broke the moment THIS checkout's own new, unmerged migration happened to land at
+ * a number above an unrelated sibling's unmerged number -- e.g. this checkout's own new
+ * `050_room_order.sql` pushed "highest on disk" to 50, so a sibling's real, harmless `049_...`
+ * orphan failed the `> highest` test and was misclassified `missing` (fatal), blocking `npm run
+ * migrate` and the app's own server boot over nothing. The fix: classify by whether the row's
+ * NUMBER IS OCCUPIED on disk, not by comparison to a single global "highest" -- a checkout's own
+ * unrelated new file at a higher number is irrelevant to whether a DIFFERENT number is safe.
  *
  * Why this split is the correct one, and what it deliberately does not cover:
  *
@@ -252,23 +265,34 @@ export function highestOnDiskMigrationNumber(dirs = MIGRATION_DIRS) {
  *   directory agree") false most of the time.
  *
  *   A rename always leaves its orphan row at the number the file used to have, and the renamed
- *   file itself sits on disk at its new number -- so the orphan is never above everything on
- *   disk, and stays fatal. The one shape this rule would let through is renaming an
- *   already-applied migration DOWNWARD into a lower free gap, from what was the highest number
- *   on disk. That requires a free lower number (assertNoDuplicateMigrationNumbers already
- *   refuses a taken one) and inverts apply order against the ledger, so it is not a rename
- *   anyone performs here; noted honestly rather than papered over.
+ *   file itself sits on disk at its new number -- so the orphan's number is always occupied on
+ *   disk by the renamed file, and stays fatal, regardless of what any OTHER checkout's file is
+ *   doing elsewhere in the number space.
+ *
+ *   An empty checkout (no numbered files on disk at all -- `highestOnDisk === null`) never
+ *   classifies anything as `ahead`, even though technically no number is "occupied": a checkout
+ *   with nothing on disk is a broken/partial state, not a legitimate baseline to compare against.
  */
 export function classifyOrphanLedgerFilenames(ledgerFilenames, dirs = MIGRATION_DIRS) {
   const orphans = findOrphanLedgerFilenames(ledgerFilenames, dirs);
-  const highest = highestOnDiskMigrationNumber(dirs);
+
+  const onDiskNumbers = new Set();
+  let highest = null;
+  for (const dir of dirs) {
+    for (const { number } of readNumberedSqlFiles(dir)) {
+      const n = Number(number);
+      if (Number.isNaN(n)) continue;
+      onDiskNumbers.add(n);
+      if (highest === null || n > highest) highest = n;
+    }
+  }
 
   const ahead = [];
   const missing = [];
   for (const filename of orphans) {
     const match = NUMBER_PREFIX.exec(filename);
     const number = match ? Number(match[1]) : NaN;
-    if (!Number.isNaN(number) && highest !== null && number > highest) ahead.push(filename);
+    if (!Number.isNaN(number) && highest !== null && !onDiskNumbers.has(number)) ahead.push(filename);
     else missing.push(filename);
   }
   return { ahead, missing, highestOnDisk: highest };
