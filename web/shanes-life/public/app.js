@@ -3093,9 +3093,40 @@ function bankRow(item, { onReconnect }) {
       },
     });
     children.push(el("div", { class: "row", style: "gap:8px;align-items:center" }, [button, statusEl]));
+    // Design 1d's own words, verbatim -- Reconnect is the one tap Plaid requires, and Shane
+    // should never wonder whether tapping it can move money.
+    children.push(
+      el("p", {
+        class: "small muted",
+        text: `Reconnect opens Plaid Link for ${item.institutionName} and comes straight back here. Balances only; nothing moves from this app.`,
+      }),
+    );
   }
 
   return el("div", { class: "card bank-row" }, children);
+}
+
+/** Shared by the Banks tab and the Accounts tab's Connected Banks card (Git #3211) -- one real
+ *  reconnect flow, not two copies of the same Plaid Link + verify dance. `onDone` re-renders
+ *  whichever screen is currently showing the row so a successful reconnect clears on screen. */
+function bankReconnectHandler(onDone) {
+  return async function reconnect(item, onStatus) {
+    try {
+      const result = await openPlaidReconnect(item, { onStatus });
+      if (result.cancelled) {
+        onStatus(result.error ? `Stopped: ${result.error}` : "Reconnect cancelled.");
+        return;
+      }
+      if (result.healthy) {
+        onStatus("Reconnected.");
+        await onDone();
+        return;
+      }
+      onStatus(result.error || "Plaid still reports this bank as needing attention.");
+    } catch (err) {
+      onStatus(err.message);
+    }
+  };
 }
 
 function moneyBillMeta(bill) {
@@ -3654,7 +3685,7 @@ function openEditBalanceSheet(account) {
 }
 
 async function viewMoneyAccounts(view) {
-  const overview = await api("/api/money/accounts");
+  const [overview, banks] = await Promise.all([api("/api/money/accounts"), api("/api/money/banks")]);
 
   const totalCard = el("div", { class: "card section" }, [
     el("span", { class: "small muted", text: "Total Envelope Balance" }),
@@ -3686,28 +3717,19 @@ async function viewMoneyAccounts(view) {
     view.append(sectionCard);
   }
 
+  // Real reconnect UI (Git #3211/design 1d) -- the same bankRow + Plaid Link update-mode flow
+  // #3168 built for the Banks tab, not a second, read-only copy of it. A bank that has gone
+  // amber here can be fixed here, without a trip to the dedicated Banks tab.
   const banksCard = el("div", { class: "card section" }, [
     el("span", { class: "small muted", text: "Connected Banks" }),
   ]);
-  if (overview.connectedBanks.length === 0) {
+  if (!banks.configured) {
+    banksCard.append(el("p", { class: "small muted", text: "Plaid is not configured on this server." }));
+  } else if (banks.items.length === 0) {
     banksCard.append(el("p", { class: "small muted", text: "No real Plaid connections yet." }));
   } else {
-    for (const bank of overview.connectedBanks) {
-      banksCard.append(
-        el("div", { class: "money-bucket-row" }, [
-          el("div", { class: "money-bucket-name" }, [
-            el("span", { text: bank.institutionName }),
-            el("div", { class: "money-bucket-meta", text: `${bank.accountCount} account${bank.accountCount === 1 ? "" : "s"} · last synced ${bank.lastSyncedAt ? when(bank.lastSyncedAt) : "never"}` }),
-          ]),
-          bank.reconnectRequired
-            ? el("span", { class: "money-bucket-status critical", text: "Reconnect needed" })
-            : el("span", { class: "money-bucket-status funded", text: "Connected" }),
-        ]),
-      );
-    }
-    banksCard.append(
-      el("p", { class: "small muted", text: "Real disconnect/reconnect actions land with the Plaid reconnect Feature -- not wired here yet." }),
-    );
+    const reconnect = bankReconnectHandler(render);
+    for (const item of banks.items) banksCard.append(bankRow(item, { onReconnect: reconnect }));
   }
   view.append(banksCard);
 
@@ -3824,23 +3846,7 @@ async function viewMoneyBanks(view) {
 
   view.append(el("div", { class: "card section" }, headerChildren));
 
-  async function reconnect(item, onStatus) {
-    try {
-      const result = await openPlaidReconnect(item, { onStatus });
-      if (result.cancelled) {
-        onStatus(result.error ? `Stopped: ${result.error}` : "Reconnect cancelled.");
-        return;
-      }
-      if (result.healthy) {
-        onStatus("Reconnected.");
-        await render();
-        return;
-      }
-      onStatus(result.error || "Plaid still reports this bank as needing attention.");
-    } catch (err) {
-      onStatus(err.message);
-    }
-  }
+  const reconnect = bankReconnectHandler(render);
 
   if (data.items.length === 0) {
     view.append(
