@@ -3,11 +3,12 @@
 -- pack Section 12: "Home-tab decision-support tools (Distribute Paycheck, Period Review, Skip
 -- Suggestions, Transfer Instructions)").
 --
--- Numbered 044: live `finances` already has real, unrelated files applied beyond what this
--- checkout had at branch time (041_plaid_item_health.sql, 043_account_mask.sql are real ledger
--- rows with no matching file in EITHER migrations directory on this checkout -- a pre-existing,
--- unrelated orphan-ledger condition filed separately, not caused by this migration). 040 and 042
--- are real, present files. 044 is the first number clear of all of that.
+-- Numbered 045: extremely active concurrent local sessions on this shared database made 040-044
+-- all real or momentarily-real numbers before this file was written -- 041/042/043 landed on
+-- origin/main mid-session (see #3200's own real timeline, filed for the transient orphan-ledger
+-- condition those two caused before their files were pushed), and a separate concurrent session's
+-- own real, still-unpushed `044_income_rules.sql` claimed 044 in the live ledger while this file
+-- was mid-write. 045 is the first number clear of everything actually seen live.
 --
 -- Two real, additive pieces:
 --
