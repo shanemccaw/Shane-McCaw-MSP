@@ -3663,13 +3663,20 @@ function renderMoneyResult(container, kind, result) {
   container.append(box);
 }
 
-// Money -> Vault (Git #3150)
+// Money -> Vault (Git #3150, widened into a real full password vault by Git #3242)
 // ---------------------------------------------------------------------------
 //
 // The bill-payment reference vault. Design contract Section 9 flags it as "a real security
 // requirement, not optional polish", and handoff README §7 is the layout spec: "lock note, rows
 // with site + masked reference + Reveal (passkey overlay -> full value shown 20 s -> Copy).
 // Copy clears the clipboard in 60 s."
+//
+// #3242 made it hold every real login rather than a handful of bill-payment references -- a real
+// LastPass replacement, minus autofill, which is its own Feature (#3243) and not something this
+// room can fake. Nothing about the security model got lighter for holding more: same key, same
+// per-entry passkey assertion, same 20-second window, same audit row. The two visible additions
+// are a real server-side search and a kind filter, and neither of them can reach a password --
+// see listEntries: there is no plaintext password in the database to search.
 //
 // The real security lives on the server (src/core/vault.mjs + the /api/vault* routes): the
 // plaintext is AES-256-GCM ciphertext in the column, the key is outside the database, and every
@@ -3686,6 +3693,18 @@ function renderMoneyResult(container, kind, result) {
  *  behind its mask, not leave two plaintexts sitting there with only one live countdown. */
 let vaultReveal = null; // { id, value, expiresAt, tick, restore }
 let vaultClipboardTimer = null;
+
+/** Transient client-only room state, same idiom as `moneyTab` above. Kept at module scope rather
+ *  than inside the view so that a re-render after adding an entry lands back on the same filter
+ *  and the same search instead of silently resetting them under Shane. */
+let vaultQuery = "";
+let vaultKindFilter = "all";
+
+const VAULT_KIND_FILTERS = [
+  { key: "all", label: "All" },
+  { key: "login", label: "Logins" },
+  { key: "bill_reference", label: "Bill refs" },
+];
 
 function hideVaultReveal() {
   if (!vaultReveal) return;
@@ -3712,26 +3731,112 @@ function vaultFaceOverlay() {
 }
 
 /**
+ * A real password generator (Git #3242). Replacing LastPass means replacing the thing that made
+ * strong passwords possible in the first place — a lookup tool that still leaves Shane inventing
+ * his own passwords has replaced the filing cabinet and not the reason for it.
+ *
+ * `crypto.getRandomValues`, never `Math.random`, and rejection sampling rather than `% alphabet`
+ * — a modulo over a 256-value byte biases the first few characters of the alphabet, which is a
+ * real (if small) weakness in the one thing here that exists to be unguessable. The generated
+ * value is a plain client-side string until it is POSTed exactly like a typed one; it is never
+ * derived server-side, so the server never sees a password it could have predicted.
+ */
+function generatePassword(length = 20) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*-_=+?";
+  const limit = 256 - (256 % alphabet.length); // the biased tail, discarded rather than folded in
+  let out = "";
+  const buf = new Uint8Array(length * 2);
+  while (out.length < length) {
+    crypto.getRandomValues(buf);
+    for (const byte of buf) {
+      if (byte >= limit) continue;
+      out += alphabet[byte % alphabet.length];
+      if (out.length === length) break;
+    }
+  }
+  return out;
+}
+
+/** Copy, then start the real 60-second clipboard wipe. Shared by the username copy (no assertion
+ *  needed — a username is not the secret) and the revealed-password copy. */
+async function vaultCopy(text, message, clearSeconds) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    showQuickToast("This browser wouldn't let the app write to the clipboard.");
+    return;
+  }
+  showQuickToast(message);
+  // The real wipe. Best-effort by nature: a browser can refuse a clipboard write with no user
+  // gesture behind it, and nothing can clear a clipboard the user has already pasted from --
+  // so this narrows the window rather than pretending to close it.
+  if (vaultClipboardTimer) clearTimeout(vaultClipboardTimer);
+  vaultClipboardTimer = setTimeout(async () => {
+    try {
+      await navigator.clipboard.writeText("");
+    } catch {
+      /* refused without a gesture; the 20-second display window is the real guarantee */
+    }
+  }, (clearSeconds ?? 60) * 1000);
+}
+
+/**
  * One vault row. Masked by default, always — the full value only ever replaces the mask after
  * `onReveal` has come back from a real, server-verified assertion.
+ *
+ * A login row (Git #3242) shows one more thing than a bill reference does, and deliberately only
+ * one: the username, with its own Copy, unmasked and free. That is not a softening of the
+ * security model — the username is the half of a credential that is printed on the sign-in page
+ * anyway, and making it cost a passkey assertion would spend the assertion on the wrong half
+ * while training the habit that assertions are cheap. The password stays behind the mask.
  */
-function vaultRow(entry, { onReveal, onCopy }) {
+function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds }) {
+  const isLogin = entry.kind === "login";
   const secretBox = el("div", { class: "vault-secret" });
   const maskEl = el("div", { class: "vault-masked", text: entry.masked });
   const revealBtn = el("button", { type: "button", class: "vault-reveal-btn", text: "Reveal" });
   const errorEl = el("div", { class: "vault-row-error", hidden: true });
 
+  // The real username line, with its own copy — the whole daily point of a password manager
+  // without autofill is that neither half has to be retyped from a screenshot.
+  const usernameRow = entry.username
+    ? el("div", { class: "vault-username-row" }, [
+        el("span", { class: "vault-username", text: entry.username }),
+        el("button", {
+          type: "button",
+          class: "vault-copy-btn ghostish",
+          text: "Copy user",
+          onClick: () =>
+            vaultCopy(entry.username, "Username copied — clears in 60 seconds.", clipboardClearSeconds),
+        }),
+      ])
+    : null;
+
+  // Real password age, off `secret_updated_at` (migration 052) — the one number that answers "how
+  // old is this password", which `updated_at` cannot because renaming a row moves it too.
+  const ageEl =
+    isLogin && entry.secretUpdatedAt
+      ? el("div", { class: "vault-row-site", text: `password set ${agoShort(entry.secretUpdatedAt)}` })
+      : null;
+
   const row = el("div", { class: "vault-row" }, [
     el("div", { class: "vault-row-head" }, [
       el("div", { class: "vault-row-name" }, [
-        el("div", { class: "vault-row-label", text: entry.label }),
-        entry.site ? el("div", { class: "vault-row-site", text: `pay at ${entry.site}` }) : null,
+        el("div", { class: "vault-row-label" }, [
+          el("span", { text: entry.label }),
+          entry.hasNotes ? el("span", { class: "vault-notes-chip", text: "notes" }) : null,
+        ]),
+        entry.site
+          ? el("div", { class: "vault-row-site", text: isLogin ? entry.site : `pay at ${entry.site}` })
+          : null,
         // Git #3212: the other half of the bill sheet's "Payment reference in Vault ->" link --
         // real, so an entry already linked to a bill account says so here too.
         entry.billAccountName ? el("div", { class: "vault-row-site", text: `for ${entry.billAccountName}` }) : null,
+        ageEl,
       ]),
       revealBtn,
     ]),
+    usernameRow,
     maskEl,
     secretBox,
     errorEl,
@@ -3760,6 +3865,9 @@ function vaultRow(entry, { onReveal, onCopy }) {
         countdown,
         copyBtn,
       ]),
+      // Notes ride the same window and the same assertion (see vault.reveal's own note): a
+      // recovery code sitting beside a password is worth no less than the password.
+      revealed.notes ? el("pre", { class: "vault-notes", text: revealed.notes }) : null,
     );
 
     // The real window, measured against the server's own deadline rather than a local 20s
@@ -3811,11 +3919,149 @@ function vaultRow(entry, { onReveal, onCopy }) {
   return row;
 }
 
-async function viewMoneyVault(view) {
-  const [{ entries, keyConfigured, clipboardClearSeconds }, gate] = await Promise.all([
-    api("/api/vault"),
-    api("/api/money/gate"),
+/**
+ * The real add card (Git #3242 widened it from "add a reference" to the two real kinds).
+ *
+ * Git #3183 no-forms audit: deliberately kept, not missed. Contract pack Section 8's "no forms,
+ * anywhere, ever" is itself scoped to what the capture-parsing layer can act on -- and the vault
+ * has no MCP tool on purpose (Section 9: "genuinely sensitive, needs real security engineering,
+ * not a casual text field"). Routing a real account number through the universal capture box
+ * would mean it passes through Claude/MCP before encryption, which defeats the vault's entire
+ * real security purpose. #3242 makes that exception stronger rather than weaker: `captures`
+ * stores `body_text` in the clear and `list_captures` hands it to a Claude conversation over a
+ * bearer token, so a password typed into the one box would be a plaintext password in a
+ * plaintext column, readable from any chat, before the vault ever saw it. This stays a real
+ * dedicated form; the value goes straight into an AES-256-GCM ciphertext server-side and is
+ * never echoed back by any list or sent to Claude.
+ */
+function vaultAddCard(gate, onSaved) {
+  let kind = vaultKindFilter === "bill_reference" ? "bill_reference" : "login";
+
+  const labelInput = el("input", { "aria-label": "What this is for", required: true });
+  const siteInput = el("input", { "aria-label": "Site" });
+  const usernameInput = el("input", { autocomplete: "off", "aria-label": "Username", placeholder: "shane@example.com" });
+  const secretInput = el("input", { type: "password", autocomplete: "new-password", "aria-label": "The secret", required: true });
+  const generateBtn = el("button", { type: "button", class: "ghost small", text: "Generate" });
+  const notesInput = el("textarea", { rows: 2, "aria-label": "Notes (encrypted)", placeholder: "Recovery codes, security answers — encrypted, same as the password" });
+  const maskedInput = el("input", { "aria-label": "Masked hint shown by default" });
+  // Git #3212: the other half of the bill sheet's real "Payment reference in Vault ->" link --
+  // a real bill account this entry is the payment reference for, so the jump has somewhere real
+  // to land. Only ever offered on a bill reference; a login is for nothing bill-specific.
+  const billSelect = el(
+    "select",
+    { "aria-label": "Which bill this is the payment reference for (optional)" },
+    [
+      el("option", { value: "", text: "Not a bill payment reference" }),
+      ...gate.bills.map((b) => el("option", { value: b.id, text: b.name })),
+    ],
+  );
+
+  const usernameRow = el("div", { class: "row" }, [usernameInput]);
+  const notesRow = el("div", { class: "row" }, [notesInput]);
+  const billRow = el("div", { class: "row" }, [billSelect]);
+  const maskedRow = el("div", { class: "row" }, [maskedInput]);
+  const addError = el("p", { class: "vault-row-error", hidden: true });
+  const title = el("h3", { class: "vault-add-title" });
+
+  const kindTabs = el(
+    "div",
+    { class: "vault-add-kinds", role: "tablist" },
+    [
+      { key: "login", label: "Login" },
+      { key: "bill_reference", label: "Bill reference" },
+    ].map((k) =>
+      el("button", {
+        type: "button",
+        class: "vault-add-kind",
+        text: k.label,
+        "data-kind": k.key,
+        onClick: () => {
+          kind = k.key;
+          applyKind();
+        },
+      }),
+    ),
+  );
+
+  function applyKind() {
+    const login = kind === "login";
+    for (const btn of kindTabs.children) {
+      btn.classList.toggle("active", btn.dataset.kind === kind);
+      btn.setAttribute("aria-selected", String(btn.dataset.kind === kind));
+    }
+    title.textContent = login ? "Add a login" : "Add a reference";
+    labelInput.placeholder = login ? "Navy Federal" : "Mortgage · servicer";
+    siteInput.placeholder = login ? "navyfederal.org" : "mrcooper.com";
+    secretInput.placeholder = login ? "Password" : "Account number";
+    secretInput.setAttribute("aria-label", login ? "The password" : "The account number");
+    maskedInput.placeholder = "NFCU checking •••• 4821 (optional)";
+    // A login's mask is a fixed dot run and nothing else -- letting a hint be written for one
+    // would just be somewhere to accidentally write part of the password down in the clear.
+    maskedRow.hidden = login;
+    usernameRow.hidden = !login;
+    notesRow.hidden = !login;
+    billRow.hidden = login;
+    generateBtn.hidden = !login;
+  }
+
+  generateBtn.addEventListener("click", () => {
+    secretInput.type = "text"; // it has to be readable to be worth generating
+    secretInput.value = generatePassword();
+    secretInput.focus();
+  });
+
+  const form = el("form", { class: "section" }, [
+    el("div", { class: "row" }, [labelInput, siteInput]),
+    usernameRow,
+    el("div", { class: "row" }, [secretInput, generateBtn]),
+    notesRow,
+    maskedRow,
+    billRow,
+    el("button", { type: "submit", class: "ghost small", text: "Add to the vault" }),
+    addError,
   ]);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!labelInput.value.trim() || !secretInput.value.trim()) return;
+    addError.hidden = true;
+    const controls = form.querySelectorAll("input,button,select,textarea");
+    controls.forEach((n) => (n.disabled = true));
+    try {
+      await api("/api/vault", {
+        method: "POST",
+        body: JSON.stringify({
+          kind,
+          label: labelInput.value,
+          site: siteInput.value,
+          username: kind === "login" ? usernameInput.value : null,
+          secret: secretInput.value,
+          notes: kind === "login" ? notesInput.value : null,
+          masked: kind === "login" ? "" : maskedInput.value,
+          billAccountId: kind === "login" ? null : billSelect.value || null,
+        }),
+      });
+      // The password is out of this page's memory the moment it is stored, and the field goes
+      // back to being a password field so a generated value can't sit there readable.
+      secretInput.value = "";
+      secretInput.type = "password";
+      notesInput.value = "";
+      await onSaved();
+    } catch (err) {
+      addError.textContent = err?.message || "That didn't save.";
+      addError.hidden = false;
+    } finally {
+      controls.forEach((n) => (n.disabled = false));
+    }
+  });
+
+  applyKind();
+  return el("div", { class: "card" }, [title, kindTabs, form]);
+}
+
+async function viewMoneyVault(view) {
+  const [first, gate] = await Promise.all([api("/api/vault"), api("/api/money/gate")]);
+  const { keyConfigured, clipboardClearSeconds } = first;
 
   view.append(
     el("div", { class: "vault-lock-note" }, [
@@ -3843,26 +4089,12 @@ async function viewMoneyVault(view) {
     return;
   }
 
-  const copy = async (revealed) => {
-    try {
-      await navigator.clipboard.writeText(revealed.value);
-    } catch {
-      showQuickToast("This browser wouldn't let the app write to the clipboard.");
-      return;
-    }
-    showQuickToast("Copied — Clears from the clipboard in 60 seconds. Never a screenshot.");
-    // The real wipe. Best-effort by nature: a browser can refuse a clipboard write with no user
-    // gesture behind it, and nothing can clear a clipboard the user has already pasted from --
-    // so this narrows the window rather than pretending to close it.
-    if (vaultClipboardTimer) clearTimeout(vaultClipboardTimer);
-    vaultClipboardTimer = setTimeout(async () => {
-      try {
-        await navigator.clipboard.writeText("");
-      } catch {
-        /* refused without a gesture; the 20-second display window is the real guarantee */
-      }
-    }, (clipboardClearSeconds ?? 60) * 1000);
-  };
+  const copy = (revealed) =>
+    vaultCopy(
+      revealed.value,
+      "Copied — Clears from the clipboard in 60 seconds. Never a screenshot.",
+      clipboardClearSeconds,
+    );
 
   const reveal = async (entry) => {
     const options = await api(`/api/vault/${entry.id}/reveal/options`, { method: "POST", body: "{}" });
@@ -3872,82 +4104,87 @@ async function viewMoneyVault(view) {
     });
   };
 
-  if (entries.length === 0) {
-    view.append(
-      empty(
-        "Nothing in the vault yet.",
-        "Which site to pay a bill at, and the account number that site needs. Add the first one below.",
-        "vault",
+  // Real search (Git #3242 scope item 2), run in the database. The list repaints in place rather
+  // than through render(): a full re-render would rebuild the search box mid-keystroke and take
+  // the caret with it.
+  const searchInput = el("input", {
+    type: "search",
+    class: "vault-search",
+    autocomplete: "off",
+    placeholder: "Search a site, service or username…",
+    "aria-label": "Search the vault",
+    value: vaultQuery,
+  });
+  const filterRow = el("div", { class: "vault-filters" });
+  const list = el("div");
+
+  async function refresh() {
+    // Anything revealed belongs to a row that is about to be thrown away — put it back behind its
+    // mask first so the plaintext isn't left alive in a detached node with its own live timer.
+    hideVaultReveal();
+    const params = new URLSearchParams();
+    if (vaultKindFilter !== "all") params.set("kind", vaultKindFilter);
+    if (vaultQuery.trim()) params.set("q", vaultQuery.trim());
+    const query = params.toString();
+    const { entries, counts } = await api(`/api/vault${query ? `?${query}` : ""}`);
+
+    filterRow.replaceChildren(
+      ...VAULT_KIND_FILTERS.map((f) =>
+        el("button", {
+          type: "button",
+          class: `vault-filter${vaultKindFilter === f.key ? " active" : ""}`,
+          text: `${f.label} ${counts[f.key === "all" ? "all" : f.key] ?? 0}`,
+          onClick: () => {
+            vaultKindFilter = f.key;
+            refresh();
+          },
+        }),
       ),
     );
-  } else {
+
+    if (entries.length === 0) {
+      list.replaceChildren(
+        vaultQuery.trim()
+          ? empty(`Nothing in the vault matches "${vaultQuery.trim()}".`, "Search looks at the name, the site and the username — never the password, because there is no readable password to look at.", "notfound")
+          : empty(
+              "Nothing in the vault yet.",
+              "A login and its password, or which site to pay a bill at and the account number that site needs. Add the first one below.",
+              "vault",
+            ),
+      );
+      return;
+    }
+
     const card = el("div", { class: "vault-card" });
     for (const entry of entries) {
-      card.append(vaultRow(entry, { onReveal: reveal, onCopy: copy }));
+      card.append(vaultRow(entry, { onReveal: reveal, onCopy: copy, clipboardClearSeconds }));
     }
-    view.append(card);
+    list.replaceChildren(card);
   }
 
+  // Debounced so typing a site name is one settled query rather than one per keystroke.
+  let searchTimer = null;
+  searchInput.addEventListener("input", () => {
+    vaultQuery = searchInput.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(refresh, 180);
+  });
+  // A search box inside a page that has no other form must not reload the page on Enter.
+  searchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") event.preventDefault();
+  });
+
+  view.append(el("div", { class: "vault-search-row" }, [searchInput]), filterRow, list);
+  await refresh();
+
   view.append(
-    el("p", { class: "vault-foot-note", text: "Which site, which account, nothing else. Real encryption from version one, flagged as a requirement, not polish." }),
+    el("p", {
+      class: "vault-foot-note",
+      text: "Every login, and which account number goes where. Real encryption from version one, flagged as a requirement, not polish.",
+    }),
   );
 
-  // Git #3183 no-forms audit: deliberately kept, not missed. Contract pack Section 8's "no
-  // forms, anywhere, ever" is itself scoped to what the capture-parsing layer can act on --
-  // and the vault has no MCP tool on purpose (Section 9: "genuinely sensitive, needs real
-  // security engineering, not a casual text field"). Routing a real account number through
-  // the universal capture box would mean it passes through Claude/MCP before encryption,
-  // which defeats the vault's entire real security purpose. This stays a real dedicated
-  // form; the value goes straight into an AES-256-GCM ciphertext server-side and is never
-  // echoed back by any list or sent to Claude.
-  const labelInput = el("input", { placeholder: "Mortgage · servicer", "aria-label": "What this is for", required: true });
-  const siteInput = el("input", { placeholder: "mrcooper.com", "aria-label": "Site to pay at" });
-  const secretInput = el("input", { type: "password", autocomplete: "off", placeholder: "Account number", "aria-label": "The account number", required: true });
-  const maskedInput = el("input", { placeholder: "NFCU checking •••• 4821 (optional)", "aria-label": "Masked reference shown by default" });
-  // Git #3212: the other half of the bill sheet's real "Payment reference in Vault ->" link --
-  // a real bill account this entry is the payment reference for, so the jump has somewhere real
-  // to land. Optional: most vault entries (a login, a PIN) are for nothing bill-specific.
-  const billSelect = el(
-    "select",
-    { "aria-label": "Which bill this is the payment reference for (optional)" },
-    [
-      el("option", { value: "", text: "Not a bill payment reference" }),
-      ...gate.bills.map((b) => el("option", { value: b.id, text: b.name })),
-    ],
-  );
-  const addError = el("p", { class: "vault-row-error", hidden: true });
-  const addForm = el("form", { class: "section" }, [
-    el("div", { class: "row" }, [labelInput, siteInput]),
-    el("div", { class: "row" }, [secretInput, maskedInput]),
-    el("div", { class: "row" }, [billSelect]),
-    el("button", { type: "submit", class: "ghost small", text: "Add to the vault" }),
-    addError,
-  ]);
-  addForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (!labelInput.value.trim() || !secretInput.value.trim()) return;
-    addError.hidden = true;
-    addForm.querySelectorAll("input,button,select").forEach((n) => (n.disabled = true));
-    try {
-      await api("/api/vault", {
-        method: "POST",
-        body: JSON.stringify({
-          label: labelInput.value,
-          site: siteInput.value,
-          secret: secretInput.value,
-          masked: maskedInput.value,
-          billAccountId: billSelect.value || null,
-        }),
-      });
-      secretInput.value = "";
-      render();
-    } catch (err) {
-      addError.textContent = err?.message || "That didn't save.";
-      addError.hidden = false;
-      addForm.querySelectorAll("input,button,select").forEach((n) => (n.disabled = false));
-    }
-  });
-  view.append(el("div", { class: "card" }, [el("h3", { class: "vault-add-title", text: "Add a reference" }), addForm]));
+  view.append(vaultAddCard(gate, refresh));
 
   // Room watermark (Git #3119): the critter spec's own room map says "Money Bills and Cars ->
   // bear, Vault -> vault".

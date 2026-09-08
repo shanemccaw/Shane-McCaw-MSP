@@ -1675,7 +1675,7 @@ export function buildApiRouter() {
     return sendJson(res, 200, await money.getBillDetail(user.id, params.id));
   });
 
-  // -- Money -> Vault (Git #3150) -------------------------------------------------------
+  // -- Money -> Vault (Git #3150, widened to a full password vault by Git #3242) ---------
   //
   // The bill-payment reference vault. Design contract Section 9 flags this as "a real security
   // requirement, not optional polish", and the handoff README's own §7 line is the spec these
@@ -1700,11 +1700,24 @@ export function buildApiRouter() {
     return err;
   }
 
+  // `kind` and `q` are real server-side filters (Git #3242), not a convenience over a list the
+  // client already has. A full password vault is the one room where "just send everything and
+  // filter in JS" stops being harmless: the masked list is small, but the row COUNT and the set
+  // of sites it holds are themselves worth keeping off the wire when they aren't being asked for.
+  // Searching here also keeps the honest boundary visible -- see listEntries: a search can only
+  // ever match label/site/username, because no plaintext password exists to match against.
   router.get("/api/vault", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
+    const kind = ctx.url.searchParams.get("kind");
+    if (kind && !vault.KINDS.includes(kind)) {
+      throw badRequest(`kind must be one of: ${vault.KINDS.join(", ")}`);
+    }
     return sendJson(res, 200, {
       // Masked rows only -- listEntries has no plaintext path at all, by design.
-      entries: await vault.listEntries(user.id),
+      entries: await vault.listEntries(user.id, { kind, q: ctx.url.searchParams.get("q") }),
+      // Counted over the whole vault, so the filter row's numbers don't move as a search narrows.
+      counts: await vault.countsByKind(user.id),
+      kinds: vault.KINDS,
       // The room says so out loud rather than failing at the first Reveal tap.
       keyConfigured: vault.keyIsConfigured(),
       windowSeconds: vault.REVEAL_WINDOW_SECONDS,
@@ -1724,13 +1737,15 @@ export function buildApiRouter() {
       throw vaultError(err);
     }
     // The detail column is a real audit trail, so it carries what the row IS, never what it
-    // holds -- no secret, and not even the masked hint's digits.
+    // holds -- no secret, no notes, not even the masked hint's digits. The username is left out
+    // too (Git #3242): it is half of a real credential, and the audit feed is a plainly readable
+    // table that answers "what happened" without needing to know who the login belongs to.
     await audit.record({
       userId: user.id,
       actor: "owner",
       action: "vault.entry.created",
       entityId: entry.id,
-      detail: { label: entry.label, site: entry.site },
+      detail: { kind: entry.kind, label: entry.label, site: entry.site },
     });
     return sendJson(res, 201, entry);
   });
@@ -1750,7 +1765,15 @@ export function buildApiRouter() {
       actor: "owner",
       action: "vault.entry.updated",
       entityId: entry.id,
-      detail: { label: entry.label, site: entry.site, secretChanged: Boolean(body.secret) },
+      detail: {
+        kind: entry.kind,
+        label: entry.label,
+        site: entry.site,
+        secretChanged: Boolean(body.secret),
+        // Same reasoning as the create above: that the notes changed is a real, auditable fact;
+        // what they now say is not something an audit feed gets to hold.
+        notesChanged: body.notes !== undefined,
+      },
     });
     return sendJson(res, 200, entry);
   });
@@ -1844,7 +1867,12 @@ export function buildApiRouter() {
       actor: "owner",
       action: "vault.revealed",
       entityId: revealed.id,
-      detail: { label: revealed.label, site: revealed.site, credentialId: credential.credential_id },
+      detail: {
+        kind: revealed.kind,
+        label: revealed.label,
+        site: revealed.site,
+        credentialId: credential.credential_id,
+      },
     });
     return sendJson(res, 200, revealed);
   });

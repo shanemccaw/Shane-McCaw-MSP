@@ -1362,8 +1362,96 @@ pre.token {
 
 .vault-row-head { display: flex; align-items: center; gap: 12px; }
 .vault-row-name { flex: 1; min-width: 0; }
-.vault-row-label { font-size: 15px; font-weight: 600; }
+.vault-row-label { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .vault-row-site { font-size: 12px; color: hsl(var(--muted-foreground)); }
+
+/* Full password vault (Git #3242) ------------------------------------------------------ */
+
+/* Real search over the columns that genuinely aren't secret -- name, site, username. */
+.vault-search-row { padding: 0 0 8px; }
+.vault-search {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.vault-filters {
+  display: flex;
+  gap: 6px;
+  padding: 0 0 12px;
+  overflow-x: auto;
+}
+.vault-filter {
+  flex-shrink: 0;
+  border: 1px solid hsl(var(--card-border));
+  background: hsl(var(--card));
+  color: hsl(var(--muted-foreground));
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vault-filter.active {
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+  color: #fff;
+}
+
+/* The username half of a login: readable and copyable without spending a passkey assertion,
+   because it is the half printed on the sign-in page anyway. */
+.vault-username-row { display: flex; align-items: center; gap: 10px; }
+.vault-username {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.vault-copy-btn.ghostish { color: hsl(var(--muted-foreground)); font-weight: 500; }
+
+/* "notes" only ever says that notes EXIST -- their text is encrypted beside the password and
+   arrives only with a real reveal. */
+.vault-notes-chip {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+/* Revealed notes share the password's own 20-second window -- same box treatment, so it reads
+   as one thing that is on screen temporarily rather than two with different rules. */
+.vault-notes {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(96, 165, 250, 0.08);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.vault-add-kinds { display: flex; gap: 6px; margin: 0 0 0.6rem; }
+.vault-add-kind {
+  border: 1px solid hsl(var(--card-border));
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vault-add-kind.active {
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+  color: #fff;
+}
 
 .vault-masked {
   font-size: 14px;

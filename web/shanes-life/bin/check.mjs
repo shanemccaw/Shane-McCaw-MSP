@@ -1426,6 +1426,122 @@ async function main() {
   });
   check("changing the secret really replaces it", revealedB.json?.value === "Card 4400 1200 5581 7777", String(revealedB.json?.value));
 
+  // 6e. The full password vault (Git #3242) -- the same vault, holding real logins.
+  //
+  // The bar this block holds the widening to is the issue's own: a real credential can be stored,
+  // searched and revealed only after a fresh real passkey assertion, with a real audit row per
+  // reveal. It also pins down the two things that are genuinely easier to get wrong once there
+  // are passwords in here rather than account numbers: that a login's mask leaks neither the
+  // last four characters nor the length, and that search -- the one new read path -- cannot
+  // reach a secret, because there is no plaintext secret in the database for it to match.
+  const loginPassword = "Tr0ub4dor-Zx9!vault3242";
+  const loginNotes = "Recovery codes: 4821-9930, 1177-6654";
+  const vaultLogin = await http("/api/vault", {
+    method: "POST",
+    body: {
+      kind: "login",
+      label: "Navy Federal",
+      site: "navyfederal.org",
+      username: "shane.mccaw",
+      secret: loginPassword,
+      notes: loginNotes,
+    },
+  });
+  check("a real login can be stored in the vault", vaultLogin.status === 201, `status ${vaultLogin.status} ${JSON.stringify(vaultLogin.json)}`);
+  check("the stored entry really is a login", vaultLogin.json?.kind === "login", String(vaultLogin.json?.kind));
+  check("the create response never echoes the password or the notes back", !JSON.stringify(vaultLogin.json).includes("Tr0ub4dor") && !JSON.stringify(vaultLogin.json).includes("4821-9930"), JSON.stringify(vaultLogin.json));
+  check(
+    "a login's mask leaks neither the last four characters nor the password's length",
+    /^•+$/.test(String(vaultLogin.json?.masked ?? "")) && vaultLogin.json.masked.length !== loginPassword.length,
+    String(vaultLogin.json?.masked),
+  );
+  check("the list says notes EXIST without carrying them", vaultLogin.json?.hasNotes === true, String(vaultLogin.json?.hasNotes));
+
+  const storedLogin = await one(
+    "SELECT username, ciphertext, notes_ciphertext, notes_iv, notes_auth_tag FROM vault WHERE id = $1",
+    [vaultLogin.json.id],
+  );
+  check(
+    "the notes are AES-256-GCM ciphertext in their own columns, never a readable one",
+    Buffer.isBuffer(storedLogin?.notes_ciphertext) &&
+      Buffer.isBuffer(storedLogin?.notes_iv) &&
+      Buffer.isBuffer(storedLogin?.notes_auth_tag) &&
+      !storedLogin.notes_ciphertext.toString("utf8").includes("4821-9930"),
+  );
+  check(
+    "the username IS stored readable -- it is the half of a credential a sign-in page prints anyway",
+    storedLogin?.username === "shane.mccaw",
+    String(storedLogin?.username),
+  );
+
+  // Real search (issue scope item 2), over the columns that genuinely are not secret.
+  const bySite = await http("/api/vault?q=navyfed");
+  check("searching a site name finds the real login", bySite.json?.entries?.some((e) => e.id === vaultLogin.json.id));
+  const byUsername = await http("/api/vault?q=mccaw");
+  check("searching a username finds it too", byUsername.json?.entries?.some((e) => e.id === vaultLogin.json.id));
+  const byNothing = await http("/api/vault?q=zzz-no-such-site");
+  check("a search that matches nothing really returns nothing", byNothing.json?.entries?.length === 0, `${byNothing.json?.entries?.length} rows`);
+  const bySecret = await http("/api/vault?q=Tr0ub4dor");
+  check(
+    "no search can reach a password -- there is no plaintext one in the database to match",
+    bySecret.json?.entries?.length === 0,
+    `${bySecret.json?.entries?.length} rows`,
+  );
+  const wildcard = await http("/api/vault?q=%25");
+  check("a bare % is searched for literally, not as a wildcard", wildcard.json?.entries?.length === 0, `${wildcard.json?.entries?.length} rows`);
+
+  const logins = await http("/api/vault?kind=login");
+  check("the kind filter returns only logins", logins.json?.entries?.every((e) => e.kind === "login") && logins.json.entries.length > 0);
+  check("bill references are a real, separate kind", (await http("/api/vault?kind=bill_reference")).json?.entries?.every((e) => e.kind === "bill_reference"));
+  check(
+    "the counts are of the WHOLE vault, not of what the current search matched",
+    byNothing.json?.counts?.login >= 1 && byNothing.json?.counts?.all === byNothing.json.counts.login + byNothing.json.counts.bill_reference,
+    JSON.stringify(byNothing.json?.counts),
+  );
+  check("a nonsense kind is refused rather than silently ignored", (await http("/api/vault?kind=made_up")).status === 400);
+
+  // One fresh assertion, one row, everything that row holds.
+  const revealsBefore = (await many("SELECT id FROM vault_reveals WHERE vault_id = $1", [vaultLogin.json.id])).length;
+  const loginOptions = await http(`/api/vault/${vaultLogin.json.id}/reveal/options`, { method: "POST", body: {} });
+  const loginRevealed = await http(`/api/vault/${vaultLogin.json.id}/reveal`, {
+    method: "POST",
+    body: { challenge: loginOptions.json.challenge, ...authenticator.assert(loginOptions.json.challenge) },
+  });
+  check("a real passkey assertion reveals the real password", loginRevealed.json?.value === loginPassword, String(loginRevealed.json?.value));
+  check("the same assertion returns the encrypted notes beside it", loginRevealed.json?.notes === loginNotes, String(loginRevealed.json?.notes));
+  check("the username comes back with the reveal", loginRevealed.json?.username === "shane.mccaw", String(loginRevealed.json?.username));
+  const revealsAfter = await many("SELECT credential_id FROM vault_reveals WHERE vault_id = $1", [vaultLogin.json.id]);
+  check(
+    "exactly one real audit row was written for that one reveal",
+    revealsAfter.length === revealsBefore + 1,
+    `${revealsBefore} -> ${revealsAfter.length}`,
+  );
+  check("the audit row names the passkey that actually authorised it", Boolean(revealsAfter.at(-1)?.credential_id));
+
+  // Password age is a real column, and it means the password -- not the row.
+  const ageBeforeRename = await one("SELECT secret_updated_at FROM vault WHERE id = $1", [vaultLogin.json.id]);
+  await http(`/api/vault/${vaultLogin.json.id}`, { method: "PATCH", body: { label: "Navy Federal · main" } });
+  const ageAfterRename = await one("SELECT secret_updated_at FROM vault WHERE id = $1", [vaultLogin.json.id]);
+  check(
+    "renaming a login does not pretend the password changed",
+    ageBeforeRename.secret_updated_at.getTime() === ageAfterRename.secret_updated_at.getTime(),
+  );
+  await http(`/api/vault/${vaultLogin.json.id}`, { method: "PATCH", body: { secret: "a-genuinely-different-password-99" } });
+  const ageAfterChange = await one("SELECT secret_updated_at FROM vault WHERE id = $1", [vaultLogin.json.id]);
+  check(
+    "changing the password really moves the password's own age",
+    ageAfterChange.secret_updated_at.getTime() > ageBeforeRename.secret_updated_at.getTime(),
+  );
+
+  // Clearing notes is a real instruction, distinct from not mentioning them.
+  await http(`/api/vault/${vaultLogin.json.id}`, { method: "PATCH", body: { notes: "" } });
+  const clearedNotes = await one("SELECT notes_ciphertext, notes_iv, notes_auth_tag FROM vault WHERE id = $1", [vaultLogin.json.id]);
+  check(
+    "clearing the notes clears all three columns together",
+    clearedNotes.notes_ciphertext === null && clearedNotes.notes_iv === null && clearedNotes.notes_auth_tag === null,
+  );
+
+  await http(`/api/vault/${vaultLogin.json.id}`, { method: "DELETE" });
   await http(`/api/vault/${vaultA.json.id}`, { method: "DELETE" });
   await http(`/api/vault/${vaultB.json.id}`, { method: "DELETE" });
   const orphanReveals = await many("SELECT id FROM vault_reveals WHERE user_id = $1", [userId]);

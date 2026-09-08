@@ -1,11 +1,16 @@
-// The bill-payment reference vault (Git #3150, design contract Section 9 / handoff README §7).
+// The vault (Git #3150, generalised into a real full password vault by Git #3242).
 //
-// The design calls this out in its own words as "a stated security requirement, not polish", so
-// all four halves of it are real here and none of them is deferred:
+// It started as the bill-payment reference vault the design contract calls out in Section 9 in
+// its own words as "a stated security requirement, not polish". #3242 widened what it holds --
+// every real login, not just "which website + which account number" -- and deliberately widened
+// nothing else: the security model below is the same one, applied to a larger surface, because a
+// password manager holding a bank login has strictly more to lose than one holding a bill
+// reference, not less.
 //
-//   1. AES-256-GCM at rest. The plaintext account number never exists in a column -- only
-//      ciphertext + iv + auth_tag (migration 017). GCM, not CBC, because the auth tag is what
-//      makes tampering with a stored row detectable rather than silently decrypting to garbage.
+//   1. AES-256-GCM at rest. The plaintext never exists in a column -- only ciphertext + iv +
+//      auth_tag (migration 017; migration 052 adds the same triple for notes). GCM, not CBC,
+//      because the auth tag is what makes tampering with a stored row detectable rather than
+//      silently decrypting to garbage.
 //   2. The key lives OUTSIDE the database (`SL_VAULT_KEY`, base64, read once in config.mjs), so
 //      a database dump on its own -- the realistic loss scenario for a one-person app on a
 //      hosted Postgres -- decrypts nothing.
@@ -20,7 +25,13 @@
 // so Claude can read and write it from any conversation; this one does not, and that is a
 // decision rather than an omission -- a bearer-token plane reachable from a chat is exactly the
 // wrong place to be able to read Shane's bank account number, and requirement 3 above (a real
-// passkey assertion, from a real browser, per reveal) cannot be satisfied by one anyway.
+// passkey assertion, from a real browser, per reveal) cannot be satisfied by one anyway. #3242
+// makes that call harder to regret rather than easier: the same plane would now reach every
+// password he has.
+//
+// Two kinds of row, one table (migration 052). One vault means one key, one audit trail, one
+// reveal path; a second table would have meant a second copy of each of those, and the second
+// copy of a security control is the one that rots.
 
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { config } from "../config.mjs";
@@ -36,6 +47,10 @@ export const CLIPBOARD_CLEAR_SECONDS = 60;
 /** Which key encrypted a row. Stored per row (migration 017's `key_id`) so a future rotation can
  *  re-wrap old rows instead of orphaning them. One active key today. */
 export const ACTIVE_KEY_ID = "v1";
+
+/** Migration 052's `vault_kind_check`, mirrored here so a bad `kind` is a real error message
+ *  rather than a constraint-violation stack trace. */
+export const KINDS = ["bill_reference", "login"];
 
 const IV_BYTES = 12; // GCM's own recommended nonce length
 const KEY_BYTES = 32; // AES-256
@@ -75,56 +90,99 @@ function requireKey() {
  * Additional authenticated data. Not secret -- its job is to bind a ciphertext to the exact row
  * and owner it was written for, so lifting `ciphertext`/`iv`/`auth_tag` out of one row and into
  * another (or another user's) fails the tag check instead of decrypting cleanly.
+ *
+ * `field` extends that binding to WHICH column the ciphertext belongs in (Git #3242): the notes
+ * blob and the password blob live in the same row under the same key, so without a discriminator
+ * one could be moved into the other's columns and would still decrypt cleanly. "secret"
+ * deliberately produces the original, un-suffixed string -- every row written before #3242 was
+ * sealed with that exact AAD, and changing it would make each of them undecryptable.
  */
-function aad(id, userId) {
-  return Buffer.from(`shanes-life:vault:${ACTIVE_KEY_ID}:${id}:${userId}`, "utf8");
+function aad(id, userId, field = "secret") {
+  const base = `shanes-life:vault:${ACTIVE_KEY_ID}:${id}:${userId}`;
+  return Buffer.from(field === "secret" ? base : `${base}:${field}`, "utf8");
 }
 
-function encrypt(plaintext, id, userId) {
+function encrypt(plaintext, id, userId, field = "secret") {
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv("aes-256-gcm", requireKey(), iv);
-  cipher.setAAD(aad(id, userId));
+  cipher.setAAD(aad(id, userId, field));
   const ciphertext = Buffer.concat([cipher.update(String(plaintext), "utf8"), cipher.final()]);
   return { ciphertext, iv, authTag: cipher.getAuthTag() };
 }
 
-function decrypt(row) {
+function assertKeyMatches(row) {
   if (row.key_id !== ACTIVE_KEY_ID) {
     throw new VaultKeyUnavailable(
       `This entry was encrypted with key "${row.key_id}", and the only key configured is ` +
         `"${ACTIVE_KEY_ID}". Restore that key before revealing it.`,
     );
   }
+}
+
+function decrypt(row) {
+  assertKeyMatches(row);
   const decipher = createDecipheriv("aes-256-gcm", requireKey(), row.iv);
   decipher.setAAD(aad(row.id, row.user_id));
   decipher.setAuthTag(row.auth_tag);
   return Buffer.concat([decipher.update(row.ciphertext), decipher.final()]).toString("utf8");
 }
 
+/** The notes blob, or null when the row has none. Migration 052's `vault_notes_triple_check`
+ *  guarantees the three columns are all present or all absent, so one null test covers it. */
+function decryptNotes(row) {
+  if (!row.notes_ciphertext) return null;
+  assertKeyMatches(row);
+  const decipher = createDecipheriv("aes-256-gcm", requireKey(), row.notes_iv);
+  decipher.setAAD(aad(row.id, row.user_id, "notes"));
+  decipher.setAuthTag(row.notes_auth_tag);
+  return Buffer.concat([decipher.update(row.notes_ciphertext), decipher.final()]).toString("utf8");
+}
+
 /**
  * The fallback masked hint, when the caller does not write their own.
  *
- * The design's own rows carry a human-written one ("NFCU checking •••• 4821") that names WHICH
- * account rather than mechanically masking the value, which is why `masked` is an input and not
- * a derived column. This only fills the gap when nothing was supplied, using the same last-four
- * convention every bank statement already prints.
+ * The design's own bill-reference rows carry a human-written one that names WHICH account rather
+ * than mechanically masking the value, which is why `masked` is an input and not a derived
+ * column. This only fills the gap when nothing was supplied, using the same last-four convention
+ * every bank statement already prints.
+ *
+ * A LOGIN never gets last-four treatment, and never a dot run the length of the password (Git
+ * #3242). Both leak: the last four characters of a password are four of its characters, and its
+ * length is the single most useful thing an attacker can learn about it for free. A password's
+ * mask is a fixed-width row of dots that says nothing at all about what is behind it.
  */
-export function defaultMask(secret) {
+export function defaultMask(secret, kind = "bill_reference") {
+  if (kind === "login") return "•".repeat(12);
   const digits = String(secret ?? "").replace(/\D/g, "");
   if (digits.length >= 4) return `•••• ${digits.slice(-4)}`;
   return "••••";
 }
 
+function normaliseKind(kind, fallback = "bill_reference") {
+  if (kind === undefined || kind === null || kind === "") return fallback;
+  const clean = String(kind).trim();
+  if (!KINDS.includes(clean)) throw new Error(`kind must be one of: ${KINDS.join(", ")}`);
+  return clean;
+}
+
 function toWire(row) {
   return {
     id: row.id,
+    kind: row.kind ?? "bill_reference",
     label: row.label,
     site: row.site,
+    username: row.username ?? null,
     masked: row.masked,
     keyId: row.key_id,
     position: row.position,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    // Real password age (migration 052). Distinct from updatedAt, which also moves when a row is
+    // merely renamed -- "when did I last change this password" is a question only this answers.
+    secretUpdatedAt: row.secret_updated_at ?? null,
+    // Whether there ARE notes, never the notes themselves: they are encrypted alongside the
+    // password and come back only from a real reveal, exactly as it does.
+    hasNotes: Boolean(row.has_notes ?? row.notes_ciphertext ?? false),
     lastRevealedAt: row.last_revealed_at ?? null,
     revealCount: Number(row.reveal_count ?? 0),
     // Git #3212: which real bill account this entry is the payment reference for, if any -- the
@@ -137,13 +195,40 @@ function toWire(row) {
 }
 
 /**
- * Every entry, masked. There is deliberately no option to include plaintext here: a list is a
- * read the UI performs on every visit to the room, and requirement 3 (a real assertion per
- * reveal) would be meaningless if the values arrived with the list anyway.
+ * Every entry, masked, optionally filtered by kind and by a real search term.
+ *
+ * There is deliberately no option to include plaintext here: a list is a read the UI performs on
+ * every visit to the room, and requirement 3 (a real assertion per reveal) would be meaningless
+ * if the values arrived with the list anyway.
+ *
+ * Search (Git #3242) runs in the database over the columns that are genuinely not secret --
+ * label, site, username. It can never match on a password, because there is no plaintext password
+ * to match against; that is a real property of the encryption rather than a restraint this query
+ * chose. Searching ciphertext would mean decrypting every row on every keystroke, which is
+ * precisely the "one check, everything readable" model this vault refuses.
  */
-export async function listEntries(userId) {
+export async function listEntries(userId, { kind = null, q = null } = {}) {
+  const params = [userId];
+  let filter = "";
+
+  if (kind) {
+    params.push(normaliseKind(kind));
+    filter += ` AND v.kind = $${params.length}`;
+  }
+
+  const term = String(q ?? "").trim();
+  if (term) {
+    // Escaped so a literal % or _ in the term searches for those characters rather than acting as
+    // a wildcard, and wrapped here rather than in SQL so the parameter stays a single value.
+    params.push(`%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+    const p = `$${params.length}`;
+    filter += ` AND (v.label ILIKE ${p} OR v.site ILIKE ${p} OR v.username ILIKE ${p})`;
+  }
+
   const rows = await many(
-    `SELECT v.id, v.label, v.site, v.masked, v.key_id, v.position, v.created_at, v.updated_at,
+    `SELECT v.id, v.kind, v.label, v.site, v.username, v.masked, v.key_id, v.position,
+            v.created_at, v.updated_at, v.secret_updated_at,
+            (v.notes_ciphertext IS NOT NULL) AS has_notes,
             v.bill_account_id, a.name AS bill_account_name,
             r.last_revealed_at, COALESCE(r.reveal_count, 0) AS reveal_count
        FROM vault v
@@ -153,11 +238,25 @@ export async function listEntries(userId) {
            FROM vault_reveals
           GROUP BY vault_id
        ) r ON r.vault_id = v.id
-      WHERE v.user_id = $1
+      WHERE v.user_id = $1${filter}
       ORDER BY v.position, v.created_at`,
-    [userId],
+    params,
   );
   return rows.map(toWire);
+}
+
+/** Real per-kind totals for the room's filter row, counted over the WHOLE vault rather than over
+ *  whatever the current search happens to match -- a count that shrank as you typed would be
+ *  answering a different question than the one the filter asks. */
+export async function countsByKind(userId) {
+  const rows = await many(
+    "SELECT kind, count(*)::int AS n FROM vault WHERE user_id = $1 GROUP BY kind",
+    [userId],
+  );
+  const counts = Object.fromEntries(KINDS.map((k) => [k, 0]));
+  for (const row of rows) counts[row.kind] = row.n;
+  counts.all = KINDS.reduce((sum, k) => sum + counts[k], 0);
+  return counts;
 }
 
 /** The real "Payment reference in Vault ->" lookup the bill detail sheet (Git #3212) jumps
@@ -175,8 +274,9 @@ export async function findEntryForBillAccount(userId, billAccountId) {
 
 async function ownedRow(userId, id) {
   return one(
-    `SELECT id, user_id, label, site, masked, ciphertext, iv, auth_tag, key_id, position,
-            created_at, updated_at, bill_account_id
+    `SELECT id, user_id, kind, label, site, username, masked, ciphertext, iv, auth_tag,
+            notes_ciphertext, notes_iv, notes_auth_tag, key_id, position,
+            created_at, updated_at, secret_updated_at, bill_account_id
        FROM vault
       WHERE id = $1 AND user_id = $2`,
     [id, userId],
@@ -185,10 +285,24 @@ async function ownedRow(userId, id) {
 
 export async function createEntry(
   userId,
-  { label, site = null, secret, masked = null, position = null, billAccountId = null },
+  {
+    kind = "bill_reference",
+    label,
+    site = null,
+    username = null,
+    secret,
+    notes = null,
+    masked = null,
+    position = null,
+    billAccountId = null,
+  },
 ) {
+  const cleanKind = normaliseKind(kind);
   const cleanLabel = String(label ?? "").trim();
+  // Trimmed at the ends but never otherwise touched: leading/trailing whitespace on a pasted
+  // password is nearly always the paste's fault, and an interior space is the owner's.
   const cleanSecret = String(secret ?? "").trim();
+  const cleanNotes = String(notes ?? "").trim();
   if (!cleanLabel) throw new Error("label is required");
   if (!cleanSecret) throw new Error("secret is required");
 
@@ -196,21 +310,29 @@ export async function createEntry(
   // ciphertext is bound to -- it has to exist before the encrypt, not after the insert.
   const id = randomUUID();
   const { ciphertext, iv, authTag } = encrypt(cleanSecret, id, userId);
+  const noteBlob = cleanNotes ? encrypt(cleanNotes, id, userId, "notes") : null;
 
   const row = await one(
-    `INSERT INTO vault (id, user_id, label, site, masked, ciphertext, iv, auth_tag, key_id, position, bill_account_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-             COALESCE($10, (SELECT COALESCE(max(position), -1) + 1 FROM vault WHERE user_id = $2)), $11)
-     RETURNING id, label, site, masked, key_id, position, created_at, updated_at, bill_account_id`,
+    `INSERT INTO vault (id, user_id, kind, label, site, username, masked, ciphertext, iv, auth_tag,
+                        notes_ciphertext, notes_iv, notes_auth_tag, key_id, position, bill_account_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+             COALESCE($15, (SELECT COALESCE(max(position), -1) + 1 FROM vault WHERE user_id = $2)), $16)
+     RETURNING id, kind, label, site, username, masked, key_id, position, created_at, updated_at,
+               secret_updated_at, (notes_ciphertext IS NOT NULL) AS has_notes, bill_account_id`,
     [
       id,
       userId,
+      cleanKind,
       cleanLabel,
       site ? String(site).trim() : null,
-      String(masked ?? "").trim() || defaultMask(cleanSecret),
+      username ? String(username).trim() : null,
+      String(masked ?? "").trim() || defaultMask(cleanSecret, cleanKind),
       ciphertext,
       iv,
       authTag,
+      noteBlob?.ciphertext ?? null,
+      noteBlob?.iv ?? null,
+      noteBlob?.authTag ?? null,
       ACTIVE_KEY_ID,
       position === null || position === undefined ? null : Number(position),
       billAccountId || null,
@@ -221,8 +343,8 @@ export async function createEntry(
 
 /**
  * Edit an entry. Omitting `secret` leaves the stored ciphertext untouched -- renaming a row or
- * fixing its site must not require re-typing the account number, and re-encrypting an unchanged
- * value would churn the iv for nothing.
+ * fixing its site must not require re-typing the password, and re-encrypting an unchanged value
+ * would churn the iv and falsify `secret_updated_at` for nothing.
  */
 export async function updateEntry(userId, id, patch = {}) {
   const existing = await ownedRow(userId, id);
@@ -235,12 +357,18 @@ export async function updateEntry(userId, id, patch = {}) {
     fields.push(`${column} = $${values.length}`);
   };
 
+  const kind = patch.kind === undefined ? existing.kind : normaliseKind(patch.kind, existing.kind);
+  if (patch.kind !== undefined) set("kind", kind);
+
   if (patch.label !== undefined) {
     const cleanLabel = String(patch.label ?? "").trim();
     if (!cleanLabel) throw new Error("label cannot be blank");
     set("label", cleanLabel);
   }
   if (patch.site !== undefined) set("site", patch.site ? String(patch.site).trim() : null);
+  if (patch.username !== undefined) {
+    set("username", patch.username ? String(patch.username).trim() : null);
+  }
   if (patch.position !== undefined) set("position", Number(patch.position));
   if (patch.billAccountId !== undefined) set("bill_account_id", patch.billAccountId || null);
 
@@ -252,15 +380,34 @@ export async function updateEntry(userId, id, patch = {}) {
     set("iv", iv);
     set("auth_tag", authTag);
     set("key_id", ACTIVE_KEY_ID);
+    // The real answer to "when did I last change this password", and the only place it is
+    // written -- so it can never drift into meaning "when did I last rename this row".
+    set("secret_updated_at", new Date());
   }
 
+  // `notes: ""` is a real instruction to clear them, distinct from omitting the field entirely,
+  // which leaves whatever is stored alone. All three columns move together either way, so
+  // migration 052's triple constraint holds.
+  if (patch.notes !== undefined) {
+    const cleanNotes = String(patch.notes ?? "").trim();
+    const noteBlob = cleanNotes ? encrypt(cleanNotes, existing.id, userId, "notes") : null;
+    set("notes_ciphertext", noteBlob?.ciphertext ?? null);
+    set("notes_iv", noteBlob?.iv ?? null);
+    set("notes_auth_tag", noteBlob?.authTag ?? null);
+  }
+
+  const derivedMask = /^•/.test(String(existing.masked ?? ""));
   if (patch.masked !== undefined) {
     const cleanMask = String(patch.masked ?? "").trim();
-    set("masked", cleanMask || defaultMask(newSecret ?? ""));
-  } else if (newSecret && /^•+\s/.test(existing.masked)) {
-    // The stored hint described the OLD value. Only re-derive it if it was a derived one to
-    // begin with; a hand-written "NFCU checking •••• 4821" is the owner's own words and stays.
-    set("masked", defaultMask(newSecret));
+    set("masked", cleanMask || defaultMask(newSecret ?? "", kind));
+  } else if (newSecret && derivedMask) {
+    // The stored hint described the OLD value. Only re-derive it if it was a derived one to begin
+    // with; a hand-written "NFCU checking ... 4821" is the owner's own words and stays.
+    set("masked", defaultMask(newSecret, kind));
+  } else if (patch.kind !== undefined && kind === "login" && derivedMask) {
+    // Converting a bill reference into a login: a last-four mask carried over would still be
+    // showing four real characters of what is now being treated as a password.
+    set("masked", defaultMask("", "login"));
   }
 
   if (fields.length === 0) return toWire(existing);
@@ -269,7 +416,8 @@ export async function updateEntry(userId, id, patch = {}) {
   const row = await one(
     `UPDATE vault SET ${fields.join(", ")}, updated_at = now()
       WHERE id = $${values.length - 1} AND user_id = $${values.length}
-      RETURNING id, label, site, masked, key_id, position, created_at, updated_at, bill_account_id`,
+      RETURNING id, kind, label, site, username, masked, key_id, position, created_at, updated_at,
+                secret_updated_at, (notes_ciphertext IS NOT NULL) AS has_notes, bill_account_id`,
     values,
   );
   return row ? toWire(row) : null;
@@ -288,6 +436,11 @@ export async function deleteEntry(userId, id) {
  * plaintext from a code path that skipped that step. The audit insert and the decrypt share one
  * transaction, so a reveal that is handed back to the caller is always a reveal that was written
  * down -- the audit row cannot be the thing that fails after the secret is already out.
+ *
+ * Notes come back with the password rather than costing a second assertion (Git #3242): they are
+ * encrypted with the same key, in the same row, for the same reason, and the recovery codes that
+ * end up in them are worth no less than the password they sit beside. One assertion, one row,
+ * everything that row holds, one audit line saying so.
  */
 export async function reveal(userId, id, { credentialId, ip = null, userAgent = null }) {
   if (!credentialId) throw new Error("reveal requires the credential that authorised it");
@@ -306,13 +459,17 @@ export async function reveal(userId, id, { credentialId, ip = null, userAgent = 
     // the transaction rolls back and no reveal is claimed -- and if the INSERT throws, we never
     // decrypt at all. Either way "a plaintext was returned" and "a row says so" stay in step.
     const value = decrypt(row);
+    const notes = decryptNotes(row);
     const at = new Date(audited.at);
     return {
       id: row.id,
+      kind: row.kind ?? "bill_reference",
       label: row.label,
       site: row.site,
+      username: row.username ?? null,
       masked: row.masked,
       value,
+      notes,
       revealId: audited.id,
       revealedAt: at.toISOString(),
       expiresAt: new Date(at.getTime() + REVEAL_WINDOW_SECONDS * 1000).toISOString(),
