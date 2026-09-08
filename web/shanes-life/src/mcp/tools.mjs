@@ -17,7 +17,7 @@ import * as dates from "../core/dates.mjs";
 import * as entities from "../core/entities.mjs";
 import * as federalHolidays from "../core/federal-holidays.mjs";
 import * as foodPreferences from "../core/food-preferences.mjs";
-import { downscaleJpegToFit } from "../core/image-resize.mjs";
+import { downscaleImageToFit } from "../core/image-resize.mjs";
 import * as incomeRules from "../core/income-rules.mjs";
 import * as lists from "../core/lists.mjs";
 import * as mealPlan from "../core/meal-plan.mjs";
@@ -39,11 +39,10 @@ import * as wins from "../core/wins.mjs";
 import { badRequest, notFound } from "../http.mjs";
 
 // The real image-content limit this tool self-enforces (Git #3261). Anthropic's own vision
-// limits top out around 5MB per image. A JPEG over this line is downscaled server-side
-// (src/core/image-resize.mjs, Git #3262) until it actually fits; a non-JPEG (or a JPEG that
-// still won't fit at the size/quality floor) gets a real, honest error naming its real size
-// rather than a silent truncation or a fabricated "resized" image that was never actually
-// resized.
+// limits top out around 5MB per image. A photo over this line is downscaled server-side via
+// `sharp` (src/core/image-resize.mjs, Git #3262) until it actually fits; a photo that still
+// won't fit at the size/quality floor gets a real, honest error naming its real size rather
+// than a silent truncation or a fabricated "resized" image that was never actually resized.
 const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
 
 const CATEGORY_META_PROPS = {
@@ -202,7 +201,7 @@ export const TOOLS = [
       let downscaled = null;
 
       if (row.byte_size > MAX_INLINE_IMAGE_BYTES) {
-        const resized = downscaleJpegToFit(row.bytes, row.mime_type, MAX_INLINE_IMAGE_BYTES);
+        const resized = await downscaleImageToFit(row.bytes, MAX_INLINE_IMAGE_BYTES);
         if (!resized) {
           throw badRequest(
             `Photo is ${(row.byte_size / (1024 * 1024)).toFixed(1)}MB, over the ${MAX_INLINE_IMAGE_BYTES / (1024 * 1024)}MB limit this tool can send inline, and server-side downscaling couldn't get it under that limit (see Git #3262).`,

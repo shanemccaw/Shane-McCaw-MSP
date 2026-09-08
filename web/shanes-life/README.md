@@ -177,27 +177,31 @@ together, because by then they are one schema.
 
 ### There is no framework and no build step
 
-Plain ES modules served as-is, and two runtime dependencies: `pg`, and `jpeg-js` (added for
+Plain ES modules served as-is, and two runtime dependencies: `pg`, and `sharp` (added for
 Git #3262's server-side photo downscale below). Three real reasons this stays deliberately thin:
 
 1. **Instant redeploy-and-refresh** is a stated reason the Home Screen web app won over Expo
    (§10). A build step reintroduces the wait it was chosen to avoid.
 2. **Bandwidth is a hard constraint on this project** (`CLAUDE.md`, Git #1987). A React + Vite +
-   Tailwind toolchain is roughly a thousand packages to install and reinstall; `pg` is eight and
-   `jpeg-js` is one, zero transitive deps, pure JS (no native binary to fetch per platform).
+   Tailwind toolchain is roughly a thousand packages to install and reinstall; `pg` is eight.
+   `sharp` is a real, heavier exception to that -- see below.
 3. **`pg` was already resolvable**, so this app was built and verified without a single package
    download.
 
 This is a foundation-scale decision, not a permanent vow: if the UI outgrows it, adding a bundler
 later is ordinary work. Nothing here is structured to prevent that.
 
-`jpeg-js` is the one deliberate exception to "hand-roll instead of adding a dependency"
-(`bin/make-icons.mjs`'s hand-written PNG encoder, `src/push/webpush.mjs`'s hand-rolled RFC 8291
-crypto): a correct JPEG codec is real DCT/Huffman/chroma-subsampling work, and a subtly wrong
-hand-rolled decoder risks silently corrupting exactly the photos `get_capture_photo` (#3261)
-exists to let Claude actually see. The resize math itself (`src/core/image-resize.mjs`'s
-nearest-neighbor downsample) is still hand-written, same as everywhere else in this app --
-`jpeg-js` only does the decode/encode.
+`sharp` is a real, explicit, Shane-approved exception to "hand-roll instead of adding a
+dependency" (`bin/make-icons.mjs`'s hand-written PNG encoder, `src/push/webpush.mjs`'s
+hand-rolled RFC 8291 crypto) -- his own call on #3262: "a real, proper image-resize library
+beats hand-rolling pure-JS JPEG re-encoding." A correct image codec (JPEG's DCT/Huffman/chroma
+subsampling, plus PNG/WEBP/HEIC on top) is real work with a real correctness bar, and a subtly
+wrong hand-rolled decoder risks silently corrupting exactly the photos `get_capture_photo`
+(#3261) exists to let Claude actually see -- unlike the PNG *encoder* above (drawing flat-shaded
+pixels forward, no decode needed) or the webpush crypto (well-specified primitives already in
+`node:crypto`), there was no comparably safe hand-rolled path here. `sharp` (libvips) does carry
+a real native binary per platform, unlike everything else in this dependency list -- that's the
+actual cost being accepted, not paid silently. `src/core/image-resize.mjs` is where it's used.
 
 ### Passkeys, not passwords — and no password screen anywhere
 
