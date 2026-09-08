@@ -62,6 +62,112 @@ function serverDateKey() {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
 
+/** "$1,234.56" from a real DOLLAR amount (money.mjs's own `toDollars()` shape, already used
+ *  throughout getGateStatus's response) -- matches the client's own `dollars()` formatter in
+ *  public/app.js, duplicated here rather than shared because this module has no browser/server
+ *  shared bundle to put it in. */
+function fmtUsd(amount) {
+  if (amount === null || amount === undefined) return "$0.00";
+  return `$${Math.abs(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * Real per-room lit/dark state + subtitle for the Today "Rooms -- the house" grid (Git #3165,
+ * README "Rooms -- the house" + "Lamp rules"). Every number here is a real read off the same
+ * tables the room's own page already renders -- no fixture, no guessed state. `allDates`,
+ * `tonight` and `groceries` are passed in from the /api/today handler that already computed them
+ * (dates.listDates and the shopping-list read are real work; no reason to run either twice).
+ *
+ * Four rooms in the design's own grid -- Things, Lists, People, Pets -- are spec'd to "stay dark"
+ * always (README: "the critter is asleep"), so those four only ever carry a real subtitle, never
+ * a lit flag.
+ */
+export async function roomsForToday(userId, { allDates, tonight, groceries }) {
+  const [thingsList, listsForUser, allPeople, allPets, recipeMatches, gate] = await Promise.all([
+    things.listThings(userId),
+    lists.listListsForUser(userId),
+    people.listPeople(userId),
+    pets.listPets(userId),
+    recipes.listRecipesWithMatch(userId),
+    money.getGateStatus(userId),
+  ]);
+
+  // Shopping: "while items remain" -- the same openCount the Next card's own "home" case reads.
+  const shopping = {
+    lit: groceries.openCount > 0,
+    subtitle: groceries.openCount > 0 ? `${groceries.openCount} on the run` : "Nothing on the run",
+  };
+
+  // Money: "while there is a decision, a shortfall or an urgent bill" -- checked in that order,
+  // same priority the design's own three example lines imply (a real shortfall is more urgent
+  // than an uncounted one-time event, which is more urgent than "money to spend").
+  let money_;
+  if (gate.isCovered === false) {
+    money_ = { lit: true, subtitle: `short ${fmtUsd(gate.totalShortfall)}` };
+  } else if ((gate.pendingEvents || []).length > 0) {
+    const n = gate.pendingEvents.length;
+    money_ = { lit: true, subtitle: `${n} thing${n === 1 ? "" : "s"} to decide` };
+  } else if (gate.availableToSpend > 0) {
+    money_ = { lit: true, subtitle: `${fmtUsd(gate.availableToSpend)} to spend` };
+  } else {
+    money_ = { lit: false, subtitle: "Nothing to decide right now" };
+  }
+
+  // Dates: "when something is today or tomorrow" -- due_in_days is dates.listDates' own real
+  // field, already excluding done entries; federal holidays carry the same field so a holiday
+  // due tomorrow lights the room too, same as any other date kind.
+  const soon = allDates
+    .filter((d) => d.due_in_days === 0 || d.due_in_days === 1)
+    .sort((a, b) => a.due_in_days - b.due_in_days);
+  const datesRoom = soon.length > 0
+    ? { lit: true, subtitle: `${soon[0].title} ${soon[0].due_in_days === 0 ? "today" : "tomorrow"}` }
+    : { lit: false, subtitle: "Nothing on the calendar soon" };
+
+  // Recipes: "from 16:00 until dinner is done" -- server can only know the plan exists and the
+  // hour, not whether Shane has actually finished cooking (that's Tonight/Cook mode's own
+  // client-only state, never persisted -- see meal-plan.mjs's header comment); the client ORs
+  // this with a live cook session before rendering, same as resolveNextKind() already does for
+  // the Next card's own "dinner" case.
+  const hour = new Date().getHours();
+  const canMakeCount = recipeMatches.filter((r) => r.canMake).length;
+  const recipesLit = hour >= 16 && hour < 21 && Boolean(tonight);
+  const recipesRoom = recipesLit
+    ? { lit: true, subtitle: `Dinner tonight · ${canMakeCount} you can make` }
+    : { lit: false, subtitle: "Nothing planned right now" };
+
+  // Things, Lists, People, Pets: spec'd to stay dark always -- real counts/names only, never a
+  // lamp. People's subtitle is the README's own literal example wording ("{n} people · your
+  // journal"), now real: people.listPeople() is #3157's own real read (person_entries count per
+  // person already summed there; this just needs the roster size).
+  const thingsRoom = {
+    subtitle: thingsList.length > 0
+      ? `${thingsList.length} spot${thingsList.length === 1 ? "" : "s"} remembered`
+      : "Nothing remembered yet",
+  };
+  const listsRoom = {
+    subtitle: listsForUser.length > 0
+      ? listsForUser.slice(0, 3).map((l) => `${l.name} ${l.item_count}`).join(" · ")
+      : "Nothing on the lists yet",
+  };
+  const peopleRoom = {
+    subtitle: allPeople.length > 0 ? `${allPeople.length} people · your journal` : "No one on file yet",
+  };
+  const petsRoom = {
+    subtitle: allPets.length > 0 ? allPets.map((p) => p.name).join(", ") : "No pets yet",
+  };
+
+  return {
+    shopping,
+    money: money_,
+    dates: datesRoom,
+    recipes: recipesRoom,
+    things: thingsRoom,
+    lists: listsRoom,
+    people: peopleRoom,
+    pets: petsRoom,
+  };
+}
+
 export function buildApiRouter() {
   const router = new Router();
 
@@ -1649,6 +1755,7 @@ export function buildApiRouter() {
       },
       groceries,
       meds: await medications.getMedsToday(user.id),
+      rooms: await roomsForToday(user.id, { allDates, tonight, groceries }),
     });
   });
 

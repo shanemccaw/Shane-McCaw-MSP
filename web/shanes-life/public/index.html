@@ -142,18 +142,15 @@
         <input type="file" id="capture-file" accept="image/*" capture="environment" hidden />
       </form>
 
+      <!-- Git #3165: Shopping/Recipes/Money/Dates/Pets/Lists/Things (and People) are no longer
+           tab-bar links -- they're reached through the real illustrated "Rooms -- the house"
+           grid on Today (see roomsHouseSection() in app.js), matching the design handoff's own
+           README ("Rooms -- the house"). This bar keeps only what the house grid doesn't cover:
+           Today itself, Meds (its own tray pill, not a house room), Inbox and Settings. -->
       <nav class="tabs">
         <a href="#/today" data-tab="today">Today</a>
-        <a href="#/shopping" data-tab="shopping">Shopping</a>
-        <a href="#/recipes" data-tab="recipes">Recipes</a>
         <a href="#/meds" data-tab="meds">Meds</a>
-        <a href="#/money" data-tab="money">Money</a>
         <a href="#/inbox" data-tab="inbox">Inbox <span id="inbox-badge" class="badge" hidden></span></a>
-        <a href="#/dates" data-tab="dates">Dates</a>
-        <a href="#/pets" data-tab="pets">Pets</a>
-        <a href="#/lists" data-tab="lists">Lists</a>
-        <a href="#/things" data-tab="things">Things</a>
-        <a href="#/people" data-tab="people">People</a>
         <a href="#/settings" data-tab="settings">Settings</a>
       </nav>
     </div>
