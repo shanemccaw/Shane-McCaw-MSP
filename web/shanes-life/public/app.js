@@ -3304,6 +3304,78 @@ function moneyDebtRow(debt) {
   ]);
 }
 
+// ---------------------------------------------------------------------------
+// Accounts -> "Debts · critical first" overlay (Git #3210)
+// ---------------------------------------------------------------------------
+//
+// Design `Shanes Life 17 - Money v3.dc.html` option 1d: real critical debts, each with a real
+// payoff-progress sparkline, "same rows as ShanesSurvival". Real data from
+// GET /api/money/debts/critical-overlay (money.mjs's getCriticalDebtOverlay) -- the sparkline
+// points are real `debt_balance_history` snapshots, not fixture data; right after this ships
+// there's only ever one real point per debt (today's), and the line fills in honestly as real
+// payments land.
+
+/** Small inline SVG line -- same visual language as the design's own polyline+dot, computed from
+ *  real `{ date, balance }` points (dollars). A single real point draws just the dot; this is
+ *  correct, not a bug -- there is no fabricated second point to connect it to. */
+function debtPayoffSparklineHtml(sparkline) {
+  const W = 64, H = 20, PAD_Y = 3;
+  if (!sparkline || sparkline.length === 0) return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"></svg>`;
+
+  const balances = sparkline.map((p) => Number(p.balance));
+  const min = Math.min(...balances);
+  const max = Math.max(...balances);
+  const range = max - min || 1;
+  const n = balances.length;
+
+  const coords = balances.map((balance, i) => {
+    const x = n === 1 ? W - 1 : 1 + (i / (n - 1)) * (W - 2);
+    const y = n === 1 ? H / 2 : PAD_Y + (1 - (balance - min) / range) * (H - PAD_Y * 2);
+    return [x, y];
+  });
+  const [lastX, lastY] = coords[coords.length - 1];
+  const polyline =
+    n > 1
+      ? `<polyline fill="none" stroke="#60a5fa" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" points="${coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")}"></polyline>`
+      : "";
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${polyline}<circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="2.2" fill="#60a5fa"></circle></svg>`;
+}
+
+function criticalDebtOverlayRow(debt) {
+  const meta = [
+    debt.minimumPayment ? `${dollars(debt.minimumPayment)}/mo` : null,
+    debt.dueDay ? `due day ${debt.dueDay}` : null,
+    debt.isDelinquent ? `${debt.daysPastDue ?? "?"} days past due` : null,
+    debt.lastPaymentDate ? `last payment ${debt.lastPaymentDate}` : null,
+  ].filter(Boolean);
+
+  return el("div", { class: "money-bucket-row" }, [
+    el("div", { class: "money-bucket-name" }, [
+      el("div", { class: "row", style: "gap:.4rem;align-items:center" }, [
+        el("span", { text: debt.creditor }),
+        el("span", { class: "chip", text: "critical" }),
+      ]),
+      meta.length ? el("div", { class: "money-bucket-meta", text: meta.join(" · ") }) : null,
+    ]),
+    el("span", { style: "flex-shrink:0", html: debtPayoffSparklineHtml(debt.sparkline) }),
+    el("span", { class: "money-bucket-status critical", text: dollars(debt.balance) }),
+  ]);
+}
+
+async function appendCriticalDebtOverlayCard(view) {
+  const overlay = await api("/api/money/debts/critical-overlay");
+  if (overlay.debts.length === 0) return;
+
+  const card = el("div", { class: "card money-bucket" }, [
+    el("div", { class: "money-bucket-label", text: "Debts · critical first · same rows as ShanesSurvival" }),
+    ...overlay.debts.map(criticalDebtOverlayRow),
+  ]);
+  if (overlay.summaryText) {
+    card.append(el("p", { class: "small muted", style: "padding:0 1rem .7rem", text: overlay.summaryText }));
+  }
+  view.append(card);
+}
+
 /** Renders the what-if / transfer-simulator result inside an already-appended container, or
  *  empties it when there is nothing to show -- so "Clear" and re-asking both just re-call this. */
 function renderMoneyResult(container, kind, result) {
@@ -3805,6 +3877,8 @@ async function viewMoneyAccounts(view) {
     el("p", { class: "small muted", text: "Every real account's current balance, added together." }),
   ]);
   view.append(totalCard);
+
+  await appendCriticalDebtOverlayCard(view);
 
   if (overview.sections.length === 0) {
     view.append(el("div", { class: "card" }, [el("p", { class: "muted", text: "No real accounts synced from ShanesSurvival yet." })]));

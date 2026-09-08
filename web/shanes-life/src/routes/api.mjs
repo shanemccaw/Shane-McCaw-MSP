@@ -1614,6 +1614,13 @@ export function buildApiRouter() {
     return sendJson(res, 200, result);
   });
 
+  // Accounts' "Debts · critical first" overlay (Git #3210): real critical debts with a real
+  // payoff-progress sparkline each, plus the real combined "paid down since" summary.
+  router.get("/api/money/debts/critical-overlay", async (_req, res, _params, ctx) => {
+    requireUser(ctx);
+    return sendJson(res, 200, await money.getCriticalDebtOverlay());
+  });
+
   // -- Money -> Accounts (Git #3170) ----------------------------------------------------
   //
   // Real sectioned account list (§1 of FINANCE_TRACKER_AUDIT.md's accounts.tsx audit, ported in

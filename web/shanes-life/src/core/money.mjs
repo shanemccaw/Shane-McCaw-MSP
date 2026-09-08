@@ -1569,6 +1569,7 @@ export async function createDebt({
       notes ? String(notes) : null,
     ],
   );
+  await recordDebtBalanceSnapshot(row.id, row.balance);
   return debtOut(row);
 }
 
@@ -1617,6 +1618,7 @@ export async function updateDebt(id, updates = {}) {
   sets.push(`updated_at = now()`);
   values.push(id);
   const row = await one(`UPDATE debts SET ${sets.join(", ")} WHERE id = $${i} RETURNING ${DEBT_COLUMNS}`, values);
+  if ("balance" in updates) await recordDebtBalanceSnapshot(row.id, row.balance);
   return debtOut(row);
 }
 
@@ -1624,6 +1626,100 @@ export async function deleteDebt(id) {
   const row = await one(`DELETE FROM debts WHERE id = $1 RETURNING id`, [id]);
   if (!row) throw notFound("Debt not found");
   return { id: row.id };
+}
+
+// ---------------------------------------------------------------------------
+// Debts · critical first -- real payoff-progress sparklines (Git #3210)
+// ---------------------------------------------------------------------------
+//
+// Real gap: nothing before this recorded what a debt's balance WAS on any past date -- `debts`
+// (migration 042) only ever carried the current one. Migration 048 adds `debt_balance_history`,
+// one real row per debt per real day, and this is the write side: every `createDebt`/`updateDebt`
+// that sets a balance snapshots it (same day overwrites, so an edit doesn't fork a second point
+// for a day already recorded). The sparkline and the "paid down since" line below are both real
+// reads of that growing history -- honest and near-empty right after this ships, real and useful
+// once real payments land.
+
+/** One real balance snapshot for today (UTC), upserted -- see the migration's own header for why
+ *  same-day overwrite, not append. `balanceDollars` is whatever `debts.balance` already is
+ *  (a numeric string or number), matching every other real-money write in this module. */
+async function recordDebtBalanceSnapshot(debtId, balanceDollars) {
+  await one(
+    `INSERT INTO debt_balance_history (debt_id, recorded_on, balance)
+     VALUES ($1, CURRENT_DATE, $2)
+     ON CONFLICT (debt_id, recorded_on) DO UPDATE SET balance = EXCLUDED.balance
+     RETURNING id`,
+    [debtId, balanceDollars],
+  );
+}
+
+/** "Sep 8" -- no weekday, no year (matches how short a date needs to be next to a dollar figure
+ *  in the "Since ... paid down" line; `formatPayDate` above always carries a weekday it doesn't
+ *  need here). */
+function formatShortDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][
+    date.getUTCMonth()
+  ];
+  return `${month} ${date.getUTCDate()}`;
+}
+
+/**
+ * The Accounts screen's "Debts · critical first" overlay (design `Shanes Life 17 - Money v3`,
+ * option 1d): every real critical debt, each with its real recent balance history for a
+ * sparkline, plus the real combined paid-down-so-far summary. `sparkline` is at most the last 12
+ * real recorded points -- as many real days of history as exist, capped so the SVG stays legible;
+ * with only today's snapshot recorded so far, that's one point, honestly.
+ */
+export async function getCriticalDebtOverlay() {
+  const debts = await many(`SELECT ${DEBT_COLUMNS} FROM debts WHERE is_critical ORDER BY balance DESC NULLS LAST`);
+  if (debts.length === 0) {
+    return { debts: [], paidDown: null, paidDownFormatted: null, sinceDate: null, summaryText: null };
+  }
+
+  const historyRows = await many(
+    `SELECT debt_id, recorded_on, balance FROM debt_balance_history
+      WHERE debt_id = ANY($1::uuid[]) ORDER BY debt_id, recorded_on`,
+    [debts.map((d) => d.id)],
+  );
+  const historyByDebt = new Map();
+  for (const row of historyRows) {
+    const point = { date: isoDate(row.recorded_on), balanceCents: toCents(row.balance) };
+    if (!historyByDebt.has(row.debt_id)) historyByDebt.set(row.debt_id, []);
+    historyByDebt.get(row.debt_id).push(point);
+  }
+
+  let paidDownCents = 0;
+  let sinceDate = null;
+
+  const debtsOut = debts.map((d) => {
+    const history = historyByDebt.get(d.id) ?? [];
+    if (history.length > 0) {
+      const paid = Math.max(0, history[0].balanceCents - history[history.length - 1].balanceCents);
+      paidDownCents += paid;
+      if (sinceDate === null || history[0].date < sinceDate) sinceDate = history[0].date;
+    }
+    return {
+      ...debtOut(d),
+      sparkline: history.slice(-12).map((p) => ({ date: p.date, balance: toDollars(p.balanceCents) })),
+    };
+  });
+
+  const paidDownFormatted = formatMoney(paidDownCents);
+  const acrossPhrase =
+    debtsOut.length === 1 ? "" : debtsOut.length === 2 ? " across both" : ` across all ${debtsOut.length}`;
+
+  return {
+    debts: debtsOut,
+    paidDown: toDollars(paidDownCents),
+    paidDownFormatted,
+    sinceDate,
+    summaryText:
+      sinceDate === null
+        ? null
+        : `Since ${formatShortDate(sinceDate)}: ${paidDownFormatted} paid down${acrossPhrase}. A balance landing at $0 posts to Wins on its own.`,
+  };
 }
 
 // ---------------------------------------------------------------------------
