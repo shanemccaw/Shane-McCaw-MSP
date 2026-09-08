@@ -3462,16 +3462,35 @@ function moneyBillRow(bill, { showGateBadge = false, onOpenDetail = null } = {})
 // arithmetic) -- never a separate assigned/envelopeBalance shadow ledger. One real read,
 // GET /api/money/bills/:id, no client-side math beyond formatting.
 
+/** Same tiny helper as `el()` (line 364) but for the SVG namespace -- `document.createElement`
+ *  produces an HTMLUnknownElement for svg/polyline/etc, so real SVG nodes need `createElementNS`. */
+function svgEl(tag, attrs = {}) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v !== null && v !== undefined && v !== false) node.setAttribute(k, v === true ? "" : v);
+  }
+  return node;
+}
+
 /** The funding-history sparkline -- same real visual language as `debtPayoffSparklineHtml`
  *  (Git #3210): a real polyline over real `bill_cycle_snapshots` points, honestly just a dot
  *  when only one real cycle has been captured so far. Wider than the debt one (this is the only
  *  chart on the sheet, not an inline row accessory) and labeled with the real first/last cycle
- *  dates underneath, same as the design's "Jun 12 ... Sep 18" caption -- no scrub interaction
- *  (the design's "drag to scrub" is real polish for a later pass, not required to show real data
- *  honestly today). */
-function billSparklineHtml(sparkline) {
+ *  dates underneath, same as the design's "Jun 12 ... Sep 18" caption.
+ *
+ *  Git #3240: real pointer/touch drag-to-scrub, deferred from #3212. `onScrub(point | null)` is
+ *  called with the nearest real data point while a drag/tap is active over the chart, and with
+ *  `null` on release -- the caller (openBillDetailSheet) owns the "Aug 21 · $520 of $612" callout
+ *  label above the chart; this function only owns the SVG and its own dashed marker + dot. */
+function billSparklineNode(sparkline, onScrub) {
   const W = 338, H = 64, PAD_Y = 8;
-  if (!sparkline || sparkline.length === 0) return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"></svg>`;
+  const svg = svgEl("svg", {
+    width: W,
+    height: H,
+    viewBox: `0 0 ${W} ${H}`,
+    style: `display:block;width:100%;height:${H}px`,
+  });
+  if (!sparkline || sparkline.length === 0) return svg;
 
   const balances = sparkline.map((p) => Number(p.balance));
   const min = Math.min(0, ...balances);
@@ -3485,11 +3504,84 @@ function billSparklineHtml(sparkline) {
     return [x, y];
   });
   const [lastX, lastY] = coords[coords.length - 1];
-  const polyline =
-    n > 1
-      ? `<polyline fill="none" stroke="#60a5fa" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")}"></polyline>`
-      : "";
-  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;width:100%;height:${H}px">${polyline}<circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="3" fill="#60a5fa"></circle></svg>`;
+
+  if (n > 1) {
+    svg.append(
+      svgEl("polyline", {
+        fill: "none",
+        stroke: "#60a5fa",
+        "stroke-width": 2,
+        "stroke-linejoin": "round",
+        "stroke-linecap": "round",
+        points: coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" "),
+      }),
+    );
+  }
+  svg.append(svgEl("circle", { cx: lastX.toFixed(1), cy: lastY.toFixed(1), r: 3, fill: "#60a5fa" }));
+
+  // Real "drag to scrub" marker (design 1e: a dashed vertical line + a ringed dot at the nearest
+  // real point), hidden until a pointer/touch is actually down on the chart -- no interaction, no
+  // marker, same honesty rule as the rest of this sheet.
+  if (n > 1 && typeof onScrub === "function") {
+    const scrubLine = svgEl("line", {
+      x1: 0, y1: 0, x2: 0, y2: H,
+      stroke: "rgba(238,242,248,.4)",
+      "stroke-dasharray": "2 3",
+      visibility: "hidden",
+    });
+    const scrubDot = svgEl("circle", {
+      cx: 0, cy: 0, r: 5.5,
+      fill: "var(--card, #1c1c1e)",
+      stroke: "#60a5fa",
+      "stroke-width": 2,
+      visibility: "hidden",
+    });
+    svg.append(scrubLine, scrubDot);
+
+    const nearestIndex = (clientX) => {
+      const rect = svg.getBoundingClientRect();
+      if (rect.width === 0) return 0;
+      const frac = (clientX - rect.left) / rect.width;
+      return Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1))));
+    };
+    const showAt = (index) => {
+      const [x, y] = coords[index];
+      scrubLine.setAttribute("x1", x.toFixed(1));
+      scrubLine.setAttribute("x2", x.toFixed(1));
+      scrubLine.setAttribute("visibility", "visible");
+      scrubDot.setAttribute("cx", x.toFixed(1));
+      scrubDot.setAttribute("cy", y.toFixed(1));
+      scrubDot.setAttribute("visibility", "visible");
+      onScrub(sparkline[index]);
+    };
+    const hide = () => {
+      scrubLine.setAttribute("visibility", "hidden");
+      scrubDot.setAttribute("visibility", "hidden");
+      onScrub(null);
+    };
+
+    let dragging = false;
+    svg.style.touchAction = "pan-y";
+    svg.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      svg.setPointerCapture(e.pointerId);
+      showAt(nearestIndex(e.clientX));
+    });
+    svg.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      showAt(nearestIndex(e.clientX));
+    });
+    const release = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      if (svg.hasPointerCapture?.(e.pointerId)) svg.releasePointerCapture(e.pointerId);
+      hide();
+    };
+    svg.addEventListener("pointerup", release);
+    svg.addEventListener("pointercancel", release);
+  }
+
+  return svg;
 }
 
 /**
@@ -3569,6 +3661,21 @@ async function openBillDetailSheet(billId) {
       : "Still building real cycle history for this bill -- the rolled-over/this-cycle split appears once a real cycle boundary has been captured.",
   });
 
+  // Git #3240: the callout label lives above the chart, same slot as the design's own
+  // "Aug 21 · $520 of $612" -- blank until a real drag/tap actually names a real point.
+  const scrubCallout = el("span", {
+    class: "small",
+    style: "font-weight:600;color:#60a5fa;white-space:nowrap",
+  });
+  const scrubHint = el("span", { class: "small muted", text: "drag to scrub" });
+  const onScrub = (point) => {
+    scrubCallout.textContent = point
+      ? point.targetAtRead !== null && point.targetAtRead !== undefined
+        ? `${point.label} · ${dollars(point.balance)} of ${dollars(point.targetAtRead)}`
+        : `${point.label} · ${dollars(point.balance)}`
+      : "";
+  };
+
   const sparklineSection = el("div", { style: "margin-top:14px" }, [
     el("div", { class: "row", style: "justify-content:space-between;align-items:baseline;gap:8px" }, [
       el("span", {
@@ -3576,11 +3683,13 @@ async function openBillDetailSheet(billId) {
         style: "text-transform:uppercase;letter-spacing:.1em;font-weight:600;font-size:.68rem",
         text: `Funded at each payday · ${d.sparkline.length} real cycle${d.sparkline.length === 1 ? "" : "s"}`,
       }),
+      scrubCallout,
     ]),
-    el("span", { style: "display:block;margin-top:6px", html: billSparklineHtml(d.sparkline) }),
+    el("span", { style: "display:block;margin-top:6px" }, [billSparklineNode(d.sparkline, onScrub)]),
     d.sparkline.length > 0
       ? el("div", { class: "row", style: "justify-content:space-between", "aria-hidden": "true" }, [
           el("span", { class: "small muted", text: d.sparkline[0].label }),
+          d.sparkline.length > 1 ? scrubHint : null,
           el("span", { class: "small muted", text: d.sparkline[d.sparkline.length - 1].label }),
         ])
       : el("p", { class: "small muted", text: "No real cycle history captured yet." }),
