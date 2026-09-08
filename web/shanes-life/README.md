@@ -177,17 +177,27 @@ together, because by then they are one schema.
 
 ### There is no framework and no build step
 
-Plain ES modules served as-is, and one runtime dependency (`pg`). Three real reasons:
+Plain ES modules served as-is, and two runtime dependencies: `pg`, and `jpeg-js` (added for
+Git #3262's server-side photo downscale below). Three real reasons this stays deliberately thin:
 
 1. **Instant redeploy-and-refresh** is a stated reason the Home Screen web app won over Expo
    (§10). A build step reintroduces the wait it was chosen to avoid.
 2. **Bandwidth is a hard constraint on this project** (`CLAUDE.md`, Git #1987). A React + Vite +
-   Tailwind toolchain is roughly a thousand packages to install and reinstall; `pg` is eight.
+   Tailwind toolchain is roughly a thousand packages to install and reinstall; `pg` is eight and
+   `jpeg-js` is one, zero transitive deps, pure JS (no native binary to fetch per platform).
 3. **`pg` was already resolvable**, so this app was built and verified without a single package
    download.
 
 This is a foundation-scale decision, not a permanent vow: if the UI outgrows it, adding a bundler
 later is ordinary work. Nothing here is structured to prevent that.
+
+`jpeg-js` is the one deliberate exception to "hand-roll instead of adding a dependency"
+(`bin/make-icons.mjs`'s hand-written PNG encoder, `src/push/webpush.mjs`'s hand-rolled RFC 8291
+crypto): a correct JPEG codec is real DCT/Huffman/chroma-subsampling work, and a subtly wrong
+hand-rolled decoder risks silently corrupting exactly the photos `get_capture_photo` (#3261)
+exists to let Claude actually see. The resize math itself (`src/core/image-resize.mjs`'s
+nearest-neighbor downsample) is still hand-written, same as everywhere else in this app --
+`jpeg-js` only does the decode/encode.
 
 ### Passkeys, not passwords — and no password screen anywhere
 

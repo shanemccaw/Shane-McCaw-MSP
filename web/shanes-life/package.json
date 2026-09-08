@@ -22,9 +22,11 @@
     "check": "node bin/check.mjs",
     "generate-vapid-keys": "node bin/generate-vapid-keys.mjs",
     "selftest-webpush": "node bin/selftest-webpush.mjs",
-    "selftest-plaid-webhook": "node bin/selftest-plaid-webhook.mjs"
+    "selftest-plaid-webhook": "node bin/selftest-plaid-webhook.mjs",
+    "selftest-image-resize": "node bin/selftest-image-resize.mjs"
   },
   "dependencies": {
+    "jpeg-js": "^0.4.4",
     "pg": "^8.20.0"
   }
 }

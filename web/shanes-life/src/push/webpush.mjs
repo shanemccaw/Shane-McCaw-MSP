@@ -1,8 +1,9 @@
 // Real Web Push (RFC 8291 payload encryption + RFC 8292 VAPID), hand-rolled on Node's built-in
-// `crypto` -- this app deliberately carries one runtime dependency (`pg`, see config.mjs) and
-// webauthn/cbor were hand-implemented rather than reaching for a library for exactly the same
-// reason. There is nothing exotic below; it is the same well-documented algorithm the `web-push`
-// npm package implements, just without adding it.
+// `crypto` -- this app deliberately keeps its runtime dependency list minimal (`pg`, and
+// `jpeg-js` for Git #3262's photo downscale -- see README "There is no framework and no build
+// step") and webauthn/cbor were hand-implemented rather than reaching for a library for exactly
+// the same reason. There is nothing exotic below; it is the same well-documented algorithm the
+// `web-push` npm package implements, just without adding it.
 //
 // Nothing calls this until push-subscriptions.mjs / nudges.mjs wire a real send path to it --
 // see those files for the "when does a push actually go out" answer.
