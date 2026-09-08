@@ -173,7 +173,13 @@ export function assertNoDuplicateMigrationNumbers(dirs = MIGRATION_DIRS) {
         `ambiguous on a fresh database (readdirSync(...).sort() alphabetical tiebreak is not ` +
         `necessarily write/test order) (Git #3139):\n` +
         formatSameDirDuplicates(sameDirDuplicates) +
-        `\nRename the newer file(s) to the next free number in that directory before proceeding.`,
+        `\nRename the newer file(s) to the next free number in that directory before proceeding ` +
+        `(node bin/next-migration-number.mjs from web/shanes-life -- Git #3197 -- picks the real ` +
+        `next-free number off the shared ledger, not just this worktree's own directories). ` +
+        `TRAP (Git #3197): if BOTH colliding files are already applied and already have rows in ` +
+        `schema_migrations, renaming one on disk turns it into an orphan ledger row and trips ` +
+        `assertNoOrphanLedgerRows (#3140) instead -- rename the file AND update its row with ` +
+        `\`node bin/reconcile-ledger.mjs rename <old> <new>\` in the same step, not just the file.`,
     );
   }
 }

@@ -134,6 +134,19 @@ end-to-end suite — was blocked most of the time whenever several builds were l
 `node scripts/check-migration-numbers.selftest.mjs` covers the classification with real files on
 disk.
 
+**Reading only those two local directories is not enough to PICK a number, and two concurrent
+builds proved it
+(Git #3197)** — `044_income_rules.sql` and `044_money_home_tab_decision_tools.sql` both landed on
+044 the same night because neither session's worktree had the other's file on disk, and
+`origin/main` didn't either until one of them merged. **Run `node bin/next-migration-number.mjs`
+before naming a new migration file.** It reads the shared `schema_migrations` ledger — which both
+migrations directories combined cannot see, but which every session that has already run its
+migration locally (already required, real work, before merging) has already written a row into —
+unioned with both on-disk directories, and prints the real next-free number, warning loudly if the
+ledger holds a number no local file has yet (a peer's in-flight, not-yet-merged claim). This is
+advisory on top of, not a replacement for, `assertNoDuplicateMigrationNumbers()` /
+`assertNoOrphanLedgerRows()`, which remain the real enforcement.
+
 `src/migrate.mjs` refuses to run at all if `DATABASE_URL` points somewhere without
 ShanesSurvival's own tables, and names the database it actually found. That guard exists
 precisely so #3087's mistake cannot repeat silently — a half-applied Shane's Life on a bare
