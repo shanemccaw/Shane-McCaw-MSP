@@ -4178,6 +4178,122 @@ async function viewMoney(view) {
       ]),
     );
   }
+
+  await appendIncomeRulesCard(view);
+}
+
+// ---------------------------------------------------------------------------
+// Money -> Income Rules + transaction auto-scan (Git #3169)
+// ---------------------------------------------------------------------------
+//
+// Real port of Finance-Tracker's IncomeRule + scanTransactions() -- see
+// src/core/income-rules.mjs's own header for the full real reasoning. Contract pack Section 8
+// ("no forms, anywhere, ever") is why this card is READ-ONLY plus single-click actions (Set
+// primary, Remove, Scan) -- the same class of interaction as Catches' "Got it" or Vault's
+// Reveal, which Section 8's own rule doesn't reach. Adding or editing a rule's several typed
+// fields is a real conversation with Claude (add_income_rule/update_income_rule), not a form
+// here; the hint text below says so, matching the app's own established "ask Claude" wording
+// used everywhere else a record needs several fields (e.g. recipes, vehicles).
+
+function incomeRuleMatchDescription(rule) {
+  const verb = rule.matchType === "starts_with" ? "starts with" : rule.matchType === "exact" ? "is exactly" : "contains";
+  const range =
+    rule.minAmount != null && rule.maxAmount != null
+      ? ` (${dollars(rule.minAmount)}–${dollars(rule.maxAmount)})`
+      : rule.minAmount != null
+        ? ` (≥ ${dollars(rule.minAmount)})`
+        : rule.maxAmount != null
+          ? ` (≤ ${dollars(rule.maxAmount)})`
+          : "";
+  return `${rule.accountName} → ${rule.sourceName} · ${verb} "${rule.matchText}"${range}`;
+}
+
+async function appendIncomeRulesCard(view) {
+  const { rules, sources } = await api("/api/money/income-rules");
+
+  const sourceRow = (source) =>
+    el("div", { class: "money-bucket-row" }, [
+      el("div", { class: "money-bucket-name" }, [
+        el("span", { text: source.name }),
+        source.isPrimary ? el("span", { class: "money-bucket-status", style: "color:hsl(var(--success))", text: "PRIMARY" }) : null,
+      ]),
+      source.isPrimary
+        ? null
+        : el("button", {
+            type: "button",
+            class: "ghost small",
+            text: "Set primary",
+            onClick: async (event) => {
+              event.target.disabled = true;
+              await api(`/api/money/income-sources/${source.id}/primary`, { method: "POST", body: "{}" });
+              render();
+            },
+          }),
+    ]);
+
+  const ruleRow = (rule) =>
+    el("div", { class: "money-bucket-row" }, [
+      el("div", { class: "money-bucket-name" }, [
+        el("span", { text: rule.name }),
+        el("div", { class: "money-bucket-meta", text: incomeRuleMatchDescription(rule) }),
+      ]),
+      el("span", { class: "row", style: "gap:.5rem;align-items:center" }, [
+        rule.isActive ? null : el("span", { class: "small muted", text: "paused" }),
+        el("button", {
+          type: "button",
+          class: "ghost small",
+          text: "Remove",
+          onClick: async (event) => {
+            event.target.disabled = true;
+            await api(`/api/money/income-rules/${rule.id}`, { method: "DELETE" });
+            render();
+          },
+        }),
+      ]),
+    ]);
+
+  const card = el("div", { class: "card section" }, [
+    el("div", { class: "row", style: "justify-content:space-between" }, [
+      el("span", { class: "small muted", style: "font-weight:600;letter-spacing:.05em;text-transform:uppercase", text: "Income sources" }),
+    ]),
+    ...(sources.length ? sources.map(sourceRow) : [el("p", { class: "small muted", text: "No income sources yet." })]),
+  ]);
+  view.append(card);
+
+  const scanResultEl = el("div");
+  const scanButton = el("button", { type: "button", class: "ghost small", text: "Scan transactions" });
+  scanButton.addEventListener("click", async () => {
+    scanButton.disabled = true;
+    scanButton.textContent = "Scanning…";
+    try {
+      const result = await api("/api/money/income-rules/scan", { method: "POST", body: "{}" });
+      const summary =
+        result.matched === 0
+          ? result.warnings[0] ?? "Nothing new -- no matching deposits found in the scanned window."
+          : `${result.created + result.linked} income entr${result.created + result.linked === 1 ? "y" : "ies"} recorded ` +
+            `(${result.transactionsScanned} transaction${result.transactionsScanned === 1 ? "" : "s"} scanned, ` +
+            `${result.alreadyLogged} already logged).`;
+      scanResultEl.replaceChildren(el("p", { class: "small", text: summary }));
+    } catch (err) {
+      scanResultEl.replaceChildren(el("p", { class: "small", text: err.message || "Scan failed." }));
+    } finally {
+      scanButton.disabled = false;
+      scanButton.textContent = "Scan transactions";
+    }
+  });
+
+  const rulesCard = el("div", { class: "card section" }, [
+    el("div", { class: "row", style: "justify-content:space-between" }, [
+      el("span", { class: "small muted", style: "font-weight:600;letter-spacing:.05em;text-transform:uppercase", text: "Income rules" }),
+      scanButton,
+    ]),
+    ...(rules.length
+      ? rules.map(ruleRow)
+      : [el("p", { class: "small muted", text: "No income rules yet." })]),
+    scanResultEl,
+    el("p", { class: "small muted", text: 'Add or edit rules by asking Claude, e.g. "add an income rule for COM2 TREAS 310 deposits into DirectDeposit, credit NASA Salary."' }),
+  ]);
+  view.append(rulesCard);
 }
 
 // ---------------------------------------------------------------------------

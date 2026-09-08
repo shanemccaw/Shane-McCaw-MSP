@@ -18,6 +18,7 @@ import * as federalHolidays from "../core/federal-holidays.mjs";
 import * as lists from "../core/lists.mjs";
 import * as mealPlan from "../core/meal-plan.mjs";
 import * as media from "../core/media.mjs";
+import * as incomeRules from "../core/income-rules.mjs";
 import * as money from "../core/money.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as medications from "../core/medications.mjs";
@@ -1223,6 +1224,98 @@ export function buildApiRouter() {
       action: "money.habit.set",
       entityId: row.id,
       detail: { name: row.name, amountPerCycle: row.amount_per_cycle, isActive: row.is_active },
+    });
+    return sendJson(res, 200, row);
+  });
+
+  // -- Money -> Income Rules + transaction auto-scan (Git #3169) -----------------------
+  //
+  // Real port of Finance-Tracker's IncomeRule/scanTransactions -- see
+  // src/core/income-rules.mjs's own header for the full real reasoning. Contract pack
+  // Section 8 ("no forms, anywhere, ever") is why this app's own UI only ever reads rules and
+  // fires single-click actions here (scan, delete, set primary) -- creating/editing a rule's
+  // several typed fields is a real MCP tool (mcp/tools.mjs), the same architecture already used
+  // for set_habit.
+
+  router.get("/api/money/income-rules", async (_req, res, _params, ctx) => {
+    requireUser(ctx);
+    return sendJson(res, 200, {
+      rules: await incomeRules.listRules({ includeInactive: true }),
+      sources: await incomeRules.listIncomeSources(),
+    });
+  });
+
+  router.post("/api/money/income-rules", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const rule = await incomeRules.createRule(body);
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "money.income_rule.created",
+      entityId: rule.id,
+      detail: { name: rule.name, accountName: rule.accountName, sourceName: rule.sourceName },
+    });
+    return sendJson(res, 201, rule);
+  });
+
+  router.patch("/api/money/income-rules/:id", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const rule = await incomeRules.updateRule(params.id, body);
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "money.income_rule.updated",
+      entityId: rule.id,
+      detail: { name: rule.name, isActive: rule.isActive },
+    });
+    return sendJson(res, 200, rule);
+  });
+
+  router.delete("/api/money/income-rules/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const result = await incomeRules.deleteRule(params.id);
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "money.income_rule.deleted",
+      entityId: params.id,
+      detail: {},
+    });
+    return sendJson(res, 200, result);
+  });
+
+  // The one real write that also touches ShanesSurvival's own income_entries -- always through
+  // scanTransactions()'s own claim-before-insert dedupe, never a direct insert here.
+  router.post("/api/money/income-rules/scan", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const result = await incomeRules.scanTransactions({ lookbackDays: body.lookbackDays });
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "money.income_rules.scanned",
+      detail: {
+        scannedAccounts: result.scannedAccounts,
+        transactionsScanned: result.transactionsScanned,
+        created: result.created,
+        linked: result.linked,
+        alreadyLogged: result.alreadyLogged,
+      },
+    });
+    return sendJson(res, 200, result);
+  });
+
+  router.post("/api/money/income-sources/:id/primary", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const row = await incomeRules.setPrimarySource(params.id);
+    await audit.record({
+      userId: user.id,
+      actor: "web",
+      action: "money.income_source.primary_set",
+      entityId: row.id,
+      detail: { name: row.name },
     });
     return sendJson(res, 200, row);
   });
