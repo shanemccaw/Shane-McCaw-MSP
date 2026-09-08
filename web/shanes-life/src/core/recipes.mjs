@@ -131,7 +131,8 @@ export async function createRecipe(userId, { name, timeText, needs, steps, heart
  *  Claude-generated set replacing the old one), same "fresh run" semantics as
  *  lists.replaceListItems; leave false to add onto what's already saved. */
 export async function pushRecipes(userId, recipes, { replace = false } = {}) {
-  if (!Array.isArray(recipes) || recipes.length === 0) throw badRequest("recipes must be a non-empty array");
+  if (!Array.isArray(recipes)) throw badRequest("recipes must be a non-empty array");
+  if (recipes.length === 0 && !replace) throw badRequest("recipes must be a non-empty array");
   if (recipes.length > MAX_RECIPES_PER_CALL) throw badRequest(`recipes must contain at most ${MAX_RECIPES_PER_CALL} entries`);
 
   if (replace) {
