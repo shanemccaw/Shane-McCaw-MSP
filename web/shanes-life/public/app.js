@@ -2446,6 +2446,58 @@ async function viewMoneyBills(view) {
   attachRoomWatermark(view, "moneyhdr");
 }
 
+/** One real win row: the date and the real, hard-won text. `debt_paid_off` is styled like the
+ *  funded/covered green used everywhere else in Money -- a real automatic milestone, not manual
+ *  input, gets the same "this is settled" color as a funded bill. */
+function moneyWinRow(win) {
+  return el("div", { class: "money-bucket-row" }, [
+    el("div", { class: "money-bucket-name" }, [
+      el("div", { text: win.text }),
+      el("div", { class: "money-bucket-meta", text: win.happened_on }),
+    ]),
+    win.source === "debt_paid_off" ? el("span", { class: "money-bucket-status funded", text: "automatic" }) : null,
+  ]);
+}
+
+/** Money's Wins tab (Git #3151): every real win, dated, most recent first -- manual "I did it"
+ *  captures (source 'shane', typed right here) and Claude's `log_win` (source 'claude') land the
+ *  same as the automatic ones detectMoneyWins() creates server-side (source 'debt_paid_off').
+ *  Deliberately no streak, badge or completion percentage anywhere on this tab (Section 3/8). */
+async function viewMoneyWins(view) {
+  const { wins } = await api("/api/money/wins");
+
+  const winInput = el("input", { placeholder: "I did it, …", "aria-label": "Log a win" });
+  const winForm = el("form", { class: "section" }, [
+    el("div", { class: "row" }, [winInput, el("button", { class: "primary small", type: "submit", text: "Log it" })]),
+  ]);
+  winForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const text = winInput.value.trim();
+    if (!text) return;
+    winForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    try {
+      await api("/api/money/wins", { method: "POST", body: JSON.stringify({ text }) });
+      winInput.value = "";
+      render();
+    } finally {
+      winForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [winForm]));
+
+  const winsCard = el("div", { class: "card money-bucket" }, [
+    el("div", { class: "money-bucket-label", text: "Real wins · no streaks, no badges" }),
+  ]);
+  if (wins.length === 0) {
+    winsCard.append(empty("Nothing logged yet.", "Log one above, say it in the capture box, or a real debt hitting $0 lands here on its own.", "wins"));
+  } else {
+    for (const win of wins) winsCard.append(moneyWinRow(win));
+  }
+  view.append(winsCard);
+
+  attachRoomWatermark(view, "wins");
+}
+
 async function viewMoney(view) {
   view.append(
     el("section", { class: "section" }, [
@@ -2479,6 +2531,11 @@ async function viewMoney(view) {
 
   if (moneyTab === "cars") {
     await viewMoneyCars(view);
+    return;
+  }
+
+  if (moneyTab === "wins") {
+    await viewMoneyWins(view);
     return;
   }
 

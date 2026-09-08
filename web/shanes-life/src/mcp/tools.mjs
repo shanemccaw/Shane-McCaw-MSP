@@ -27,6 +27,7 @@ import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
 import * as things from "../core/things.mjs";
 import * as vehicles from "../core/vehicles.mjs";
+import * as wins from "../core/wins.mjs";
 
 const CATEGORY_META_PROPS = {
   categoryLabel: { type: "string", description: "Human label for the category, e.g. 'Vet visit'. Only used the first time this category slug is seen." },
@@ -1304,6 +1305,43 @@ export const TOOLS = [
         detail: { description: args.description, amount: args.amount },
       });
       return row;
+    },
+  },
+
+  // -- Wins (Git #3151) -------------------------------------------------------
+  //
+  // The design README's own tool list names this `log_win(text)`. It is the Claude-conversation
+  // side of the Wins log: Shane says "I did it, ..." or "paid off ..." into the universal capture
+  // box (Section 3's own capture grammar), Claude classifies it, and calls this rather than
+  // create_entity because Wins is a fixed real category (its own table, migration 017), not an
+  // open one. Automatic wins (a debt hitting $0, a critical debt resolved, a deferred bill caught
+  // up) are detected server-side and never go through this tool.
+
+  {
+    name: "log_win",
+    title: "Log a real win",
+    description:
+      "Record a real, hard-won milestone in the Wins log -- 'I did it, the mortgage is caught up', 'paid off the Chrysler Capital collection'. Deliberately NOT gamification: no streak, no badge, no percentage, just a real, dated line. Use this for anything Shane states as already having happened; do not invent or infer one.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "The win, in Shane's own words, e.g. 'Tesla payment caught up after being 2 months behind.'" },
+        happenedOn: { type: "string", description: "ISO date (YYYY-MM-DD) if Shane says this happened earlier, e.g. 'last Tuesday'. Defaults to today." },
+      },
+      required: ["text"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const win = await wins.createWin(ctx.user.id, { text: args.text, happenedOn: args.happenedOn ?? null, source: "claude" });
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "win.create",
+        entityId: win.id,
+        detail: { text: win.text },
+      });
+      return win;
     },
   },
 

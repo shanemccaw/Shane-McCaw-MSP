@@ -20,6 +20,7 @@ import { needsMonthlyRefresh, refreshFederalHolidays } from "./core/federal-holi
 import { findDueVaccineReminders } from "./core/pets.mjs";
 import { queueNudge } from "./core/nudges.mjs";
 import { listUsers } from "./core/users.mjs";
+import { detectMoneyWins } from "./core/wins.mjs";
 
 const PUBLIC_DIR = resolve(config.root, "public");
 const apiRouter = buildApiRouter();
@@ -210,6 +211,7 @@ async function main() {
       await runDayBeforeReminders();
       await runVaccineLeadReminders();
       await runMonthlyFederalHolidaysRefresh();
+      await runMoneyWinDetection();
     },
     6 * 60 * 60 * 1000,
   );
@@ -220,6 +222,7 @@ async function main() {
   await runDayBeforeReminders();
   await runVaccineLeadReminders();
   await runMonthlyFederalHolidaysRefresh();
+  await runMoneyWinDetection();
 }
 
 /**
@@ -270,6 +273,25 @@ async function runVaccineLeadReminders() {
     }
   } catch (err) {
     log("[reminders] failed:", err.message);
+  }
+}
+
+/**
+ * Wins' real automatic triggers (Git #3151, design contract Section 3): a real debt balance
+ * hitting $0, a critical debt getting resolved, a deferred bill finally caught up. See
+ * src/core/wins.mjs detectMoneyWins for why this has to be a state-transition check, not a live
+ * read, and why a first-sighted debt/bill is seeded silently rather than firing retroactively.
+ */
+async function runMoneyWinDetection() {
+  try {
+    for (const user of await listUsers()) {
+      const created = await detectMoneyWins(user.id);
+      if (created.length > 0) {
+        log(`[wins] detected ${created.length} automatic win(s) for ${user.email}: ${created.map((w) => w.text).join(" · ")}`);
+      }
+    }
+  } catch (err) {
+    log("[wins] detection failed:", err.message);
   }
 }
 
