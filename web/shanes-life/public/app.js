@@ -2721,6 +2721,7 @@ const MONEY_TABS = [
   { key: "bills", label: "Bills" },
   { key: "banks", label: "Banks" },
   { key: "bankruptcy", label: "Bankruptcy" },
+  { key: "accounts", label: "Accounts" },
   { key: "cars", label: "Cars" },
   { key: "vault", label: "Vault" },
   { key: "wins", label: "Wins" },
@@ -3489,6 +3490,162 @@ async function viewMoneyBankruptcy(view) {
   attachRoomWatermark(view, "moneyhdr");
 }
 
+// ---------------------------------------------------------------------------
+// Money -- "Accounts" tab (Git #3170)
+// ---------------------------------------------------------------------------
+//
+// Every real account, sectioned by role, ported in shape from Finance-Tracker's accounts.tsx
+// (FINANCE_TRACKER_AUDIT.md §1): % funded per section, masked last-4, Plaid-linked badge,
+// "N underfunded", Total Envelope Balance, Connected Banks. All real numbers come from
+// GET /api/money/accounts (src/core/money.mjs's getAccountsOverview) -- no fixture, no client
+// math beyond formatting. See that function's own header for why Connected Banks here is a
+// real, honest status READ and not a disconnect/reconnect action -- that's #3168's job.
+
+function accountRow(account) {
+  const statusText =
+    account.status === "funded"
+      ? "funded"
+      : account.status === "short"
+        ? `short ${account.shortfallFormatted}`
+        : account.balanceFormatted === null
+          ? "balance unknown"
+          : null;
+  const statusClass =
+    account.status === "funded" ? "funded" : account.status === "short" ? (account.isGate ? "critical" : "short") : "";
+
+  return el("div", { class: "money-bucket-row" }, [
+    el("div", { class: "money-bucket-name" }, [
+      el("span", { text: account.name }),
+      el("div", { class: "money-bucket-meta" }, [
+        el("span", { text: account.masked ?? "no mask yet -- run a sync" }),
+        el("span", { class: "chip", style: "margin-left:.4rem", text: account.institutionName }),
+        account.reconnectRequired ? el("span", { class: "chip verdict", style: "margin-left:.4rem", text: "Reconnect needed" }) : null,
+      ]),
+    ]),
+    el("span", {
+      class: `money-bucket-status ${statusClass}`,
+      text: statusText ?? account.balanceFormatted ?? "—",
+    }),
+  ]);
+}
+
+/** Live "short by $X -- needs funds from [account]" preview for one bill account's target,
+ *  computed on the server (money.previewAccountTarget) every time the input changes -- never
+ *  persisted. See that function's own header for why this never writes target_amount. */
+function openEditBalanceSheet(account) {
+  const dialog = el("dialog", { class: "sheet" });
+  const resultEl = el("div", { class: "small", style: "min-height:1.2em" });
+  const targetInput = el("input", {
+    type: "number",
+    step: "0.01",
+    inputmode: "decimal",
+    placeholder: account.targetFormatted ?? "0.00",
+    "aria-label": "Hypothetical target amount",
+  });
+  const previewBtn = el("button", { type: "button", class: "primary small", text: "Preview" });
+
+  async function runPreview() {
+    if (!targetInput.value) return;
+    resultEl.textContent = "…";
+    try {
+      const result = await api(
+        `/api/money/accounts/${encodeURIComponent(account.id)}/preview-target?target=${encodeURIComponent(targetInput.value)}`,
+      );
+      resultEl.textContent = result.answerable ? result.text : result.text;
+      resultEl.style.color = result.answerable && result.funded ? "hsl(var(--success))" : "";
+    } catch (err) {
+      resultEl.textContent = err?.message || "Could not preview that.";
+    }
+  }
+  previewBtn.addEventListener("click", runPreview);
+
+  dialog.append(
+    el("div", { class: "spread" }, [
+      el("span", { class: "sheet-title", text: `Edit balance -- ${account.name}` }),
+      el("button", { class: "ghost small", text: "Close", onClick: () => dialog.close() }),
+    ]),
+    el("div", { class: "sheet-body" }, [
+      el("p", { class: "small muted", text: `Current balance: ${account.balanceFormatted ?? "unknown"}. Real Plaid balance -- this app never edits it directly.` }),
+      el("p", { class: "small muted", text: "Type a target funding amount to see the live short-by warning. This is a preview only -- saving a new target is done in ShanesSurvival." }),
+      el("div", { class: "row" }, [targetInput, previewBtn]),
+      resultEl,
+    ]),
+  );
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+}
+
+async function viewMoneyAccounts(view) {
+  const overview = await api("/api/money/accounts");
+
+  const totalCard = el("div", { class: "card section" }, [
+    el("span", { class: "small muted", text: "Total Envelope Balance" }),
+    el("div", { class: "money-amount", text: overview.totalEnvelopeFormatted ?? "unknown" }),
+    el("p", { class: "small muted", text: "Every real account's current balance, added together." }),
+  ]);
+  view.append(totalCard);
+
+  if (overview.sections.length === 0) {
+    view.append(el("div", { class: "card" }, [el("p", { class: "muted", text: "No real accounts synced from ShanesSurvival yet." })]));
+  }
+
+  for (const section of overview.sections) {
+    const labelParts = [section.label];
+    if (section.fundedPercent !== null) labelParts.push(`${section.fundedPercent}% funded`);
+    if (section.underfundedCount > 0) labelParts.push(`${section.underfundedCount} underfunded`);
+
+    const sectionCard = el("div", { class: "card money-bucket" }, [
+      el("div", { class: "money-bucket-label", text: labelParts.join(" · ") }),
+    ]);
+    for (const account of section.accounts) {
+      const row = accountRow(account);
+      if (section.role === "bill") {
+        row.style.cursor = "pointer";
+        row.addEventListener("click", () => openEditBalanceSheet(account));
+      }
+      sectionCard.append(row);
+    }
+    view.append(sectionCard);
+  }
+
+  const banksCard = el("div", { class: "card section" }, [
+    el("span", { class: "small muted", text: "Connected Banks" }),
+  ]);
+  if (overview.connectedBanks.length === 0) {
+    banksCard.append(el("p", { class: "small muted", text: "No real Plaid connections yet." }));
+  } else {
+    for (const bank of overview.connectedBanks) {
+      banksCard.append(
+        el("div", { class: "money-bucket-row" }, [
+          el("div", { class: "money-bucket-name" }, [
+            el("span", { text: bank.institutionName }),
+            el("div", { class: "money-bucket-meta", text: `${bank.accountCount} account${bank.accountCount === 1 ? "" : "s"} · last synced ${bank.lastSyncedAt ? when(bank.lastSyncedAt) : "never"}` }),
+          ]),
+          bank.reconnectRequired
+            ? el("span", { class: "money-bucket-status critical", text: "Reconnect needed" })
+            : el("span", { class: "money-bucket-status funded", text: "Connected" }),
+        ]),
+      );
+    }
+    banksCard.append(
+      el("p", { class: "small muted", text: "Real disconnect/reconnect actions land with the Plaid reconnect Feature -- not wired here yet." }),
+    );
+  }
+  view.append(banksCard);
+
+  if (overview.warnings.length > 0) {
+    view.append(
+      el("div", { class: "card section" }, [
+        el("p", { class: "small muted", text: "Warnings" }),
+        ...overview.warnings.map((w) => el("p", { class: "small", text: w })),
+      ]),
+    );
+  }
+
+  attachRoomWatermark(view, "moneyhdr");
+}
+
 /** One real win row: the date and the real, hard-won text. `debt_paid_off` is styled like the
  *  funded/covered green used everywhere else in Money -- a real automatic milestone, not manual
  *  input, gets the same "this is settled" color as a funded bill. */
@@ -3677,6 +3834,11 @@ async function viewMoney(view) {
 
   if (moneyTab === "bankruptcy") {
     await viewMoneyBankruptcy(view);
+    return;
+  }
+
+  if (moneyTab === "accounts") {
+    await viewMoneyAccounts(view);
     return;
   }
 
