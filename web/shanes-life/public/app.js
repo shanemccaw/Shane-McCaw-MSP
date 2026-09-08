@@ -2896,6 +2896,107 @@ const MONEY_TABS = [
   { key: "wins", label: "Wins" },
 ];
 
+// Git #3205: the real, shared two-week cycle card at the top of Now and Bills. `cycleCardOffset`
+// is deliberately ONE piece of transient state shared by both tabs (not per-tab) -- paging back
+// through cycles is a property of the real pay period itself, not of which tab happens to be
+// showing it, so switching Now <-> Bills mid-page keeps the same cycle on screen.
+let cycleCardOffset = 0;
+
+/** `kind` is "now" or "bills" -- same card, different three real numbers per the design's own
+ *  2a/2c options. Reads GET /api/money/cycle-card (money.mjs's getCycleCard) -- no client math
+ *  beyond formatting. */
+async function renderCycleCard(view, kind) {
+  const card = await api(`/api/money/cycle-card?cyclesBack=${cycleCardOffset}`);
+
+  const numbers =
+    kind === "bills"
+      ? [
+          { label: "In DirectDeposit", value: card.bills.inDirectDepositFormatted },
+          { label: "In bill accounts", value: card.bills.inBillAccountsFormatted },
+          { label: "Still to fund", value: card.bills.stillToFundFormatted, amber: true },
+        ]
+      : [
+          { label: "Came in", value: card.now.cameInFormatted },
+          { label: "Spent", value: card.now.spentFormatted },
+          { label: "Still to fund", value: card.now.stillToFundFormatted, amber: true },
+        ];
+
+  const subtitle = card.isCurrentCycle
+    ? `this cycle · day ${card.dayIndex} of ${card.totalDays} · payday ${card.nextCheck.label}`
+    : `${card.cyclesBack} cycle${card.cyclesBack === 1 ? "" : "s"} back`;
+
+  view.append(
+    el("div", { class: "card money-cycle-card" }, [
+      el("div", { class: "money-cycle-head" }, [
+        el("button", {
+          type: "button",
+          class: "money-cycle-page",
+          "aria-label": "Previous cycle",
+          onClick: () => {
+            cycleCardOffset += 1;
+            render();
+          },
+        }, [chevron("left")]),
+        el("div", { class: "money-cycle-title" }, [
+          el("div", { class: "money-cycle-dates", text: card.title }),
+          el("div", { class: "small muted", text: subtitle }),
+        ]),
+        el("button", {
+          type: "button",
+          class: "money-cycle-page",
+          "aria-label": "Next cycle",
+          disabled: card.cyclesBack === 0,
+          onClick: () => {
+            if (card.cyclesBack === 0) return;
+            cycleCardOffset -= 1;
+            render();
+          },
+        }, [chevron("right")]),
+      ]),
+      el(
+        "div",
+        { class: "money-cycle-grid" },
+        card.cells.map((c) =>
+          el("div", { class: `money-cycle-cell${c.isToday ? " today" : c.isFuture ? " future" : ""}` }),
+        ),
+      ),
+      el("div", { class: "money-cycle-paydays" }, [
+        el("span", { text: `${card.lastCheck.label} · last check` }),
+        card.isCurrentCycle ? el("span", { class: "money-cycle-today", text: "today" }) : null,
+        el("span", { text: `${card.nextCheck.label} · next check` }),
+      ]),
+      el(
+        "div",
+        { class: "money-cycle-numbers" },
+        numbers.map((n) =>
+          el("div", {}, [
+            el("div", { class: "small muted", text: n.label }),
+            el("div", { class: "money-cycle-number", style: n.amber ? "color:#fbbf24" : "", text: n.value ?? "—" }),
+          ]),
+        ),
+      ),
+    ]),
+  );
+}
+
+/** A minimal inline chevron -- same idea as the design's own `‹ ›` SVGs, no icon-font dependency. */
+function chevron(direction) {
+  const d = direction === "left" ? "m15 18-6-6 6-6" : "m9 18 6-6-6-6";
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "18");
+  svg.setAttribute("height", "18");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", d);
+  svg.append(path);
+  return svg;
+}
+
 // ---------------------------------------------------------------------------
 // Money -> Banks (Git #3168): real Plaid item health + reconnect
 //
@@ -3512,6 +3613,8 @@ async function viewMoneyVault(view) {
  *  "not counted until real" -- design README screen 7. Reads the same GET /api/money/gate
  *  #3137 already built (getGateStatus() in src/core/money.mjs); no new backend, no fixture. */
 async function viewMoneyBills(view) {
+  await renderCycleCard(view, "bills");
+
   const gate = await api("/api/money/gate");
 
   const billsCard = el("div", { class: "card money-bucket" }, [
@@ -4139,6 +4242,8 @@ async function viewMoney(view) {
     );
     return;
   }
+
+  await renderCycleCard(view, "now");
 
   const gate = await api("/api/money/gate");
 

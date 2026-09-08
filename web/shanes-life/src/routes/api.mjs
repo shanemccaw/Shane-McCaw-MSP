@@ -1477,6 +1477,15 @@ export function buildApiRouter() {
     return sendJson(res, 200, await money.getPeriodReview(user.id));
   });
 
+  // Git #3205: the real, shared two-week cycle card at the top of Now and Bills --
+  // ?cyclesBack=N pages back through real earlier cycles (N=0 is the current one).
+  router.get("/api/money/cycle-card", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const url = new URL(req.url, "http://internal");
+    const cyclesBack = Number(url.searchParams.get("cyclesBack") ?? 0);
+    return sendJson(res, 200, await money.getCycleCard(user.id, { cyclesBack }));
+  });
+
   router.get("/api/money/skip-suggestions", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
     return sendJson(res, 200, await money.getSkipSuggestions(user.id));

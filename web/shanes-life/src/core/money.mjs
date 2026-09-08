@@ -1717,6 +1717,124 @@ export async function getPeriodReview(userId, { asOf = new Date() } = {}) {
   };
 }
 
+/** "Aug 28" -- the cycle card's own title format (no weekday, unlike `formatPayDate`'s "Fri, Aug
+ *  28"), computed from a real date. */
+function formatMonthDay(iso) {
+  const [, m, d] = iso.split("-").map(Number);
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1];
+  return `${month} ${d}`;
+}
+
+/**
+ * Git #3205: the real, shared two-week cycle card at the top of both Now and Bills -- design
+ * `Shanes Life 17 - Money v3.dc.html` options 2a/2c. A richer visual/navigational wrapper around
+ * the SAME real cycle boundaries `resolvePayCycleWindow` already computes for Period Review/Budget
+ * Day (#3152) -- no new backend math, just walking that same window back `cyclesBack` real cycles
+ * and adding the day-grid/payday framing the design asks for.
+ *
+ * Real vs. re-derived-per-cycle, deliberately:
+ *   * Came in / Spent (Now) are real `transactions` sums over the VIEWED cycle's own date window
+ *     -- genuinely different for each cycle paged back to, same Plaid sign convention
+ *     (amount < 0 = credit/"came in", amount > 0 = debit/"spent") income-rules.mjs's own header
+ *     already documents.
+ *   * Still to fund (both tabs) and In DirectDeposit / In bill accounts (Bills) are the real
+ *     CURRENT account-balance snapshot (`computeGateMath`'s own numbers) -- there is no historical
+ *     balance table (`accounts.current_balance` is Plaid's live figure, not a ledger), so these
+ *     three stay the live "as of today" answer regardless of which cycle's dates are on screen,
+ *     rather than inventing a fake historical balance. Paging back genuinely changes the dates,
+ *     the day grid, the paydays, and Came in/Spent -- it does not pretend to replay history that
+ *     was never recorded.
+ */
+export async function getCycleCard(userId, { asOf = new Date(), cyclesBack = 0 } = {}) {
+  const cyclesBackNum = Math.max(0, Math.trunc(Number(cyclesBack) || 0));
+
+  const [accounts, incomeSources] = await Promise.all([
+    loadMoneyAccounts(),
+    many(
+      `SELECT id, name, person, pay_frequency_days, expected_per_cycle, next_pay_date, is_active
+         FROM income_sources WHERE is_active`,
+    ),
+  ]);
+  const math = computeGateMath(accounts);
+  const baseWindow = resolvePayCycleWindow(incomeSources, asOf);
+  const totalDays = baseWindow.payFrequencyDays;
+
+  let cycleStart = baseWindow.cycleStart;
+  let cycleEnd = baseWindow.cycleEnd;
+  for (let i = 0; i < cyclesBackNum; i++) {
+    cycleEnd = cycleStart;
+    cycleStart = new Date(cycleStart.getTime() - totalDays * MS_PER_DAY);
+  }
+
+  const today = new Date(Date.UTC(asOf.getFullYear(), asOf.getMonth(), asOf.getDate()));
+  const isCurrentCycle = cyclesBackNum === 0;
+
+  const cells = [];
+  for (let i = 0; i < totalDays; i++) {
+    const cellDate = new Date(cycleStart.getTime() + i * MS_PER_DAY);
+    cells.push({
+      date: utcIso(cellDate),
+      isToday: isCurrentCycle && cellDate.getTime() === today.getTime(),
+      isFuture: isCurrentCycle && cellDate.getTime() > today.getTime(),
+    });
+  }
+  const dayIndex = isCurrentCycle
+    ? Math.min(totalDays, Math.max(1, Math.round((today - cycleStart) / MS_PER_DAY) + 1))
+    : null;
+
+  const [creditRows, debitRows] = await Promise.all([
+    many(
+      `SELECT COALESCE(SUM(-amount), 0) AS credit FROM transactions
+        WHERE amount < 0 AND NOT pending AND date >= $1 AND date < $2`,
+      [utcIso(cycleStart), utcIso(cycleEnd)],
+    ),
+    many(
+      `SELECT COALESCE(SUM(amount), 0) AS debit FROM transactions
+        WHERE amount > 0 AND NOT pending AND date >= $1 AND date < $2`,
+      [utcIso(cycleStart), utcIso(cycleEnd)],
+    ),
+  ]);
+  const cameInCents = toCents(creditRows[0]?.credit) ?? 0;
+  const spentCents = toCents(debitRows[0]?.debit) ?? 0;
+
+  const inBillAccountsCents = accounts.billAccounts.reduce((sum, a) => {
+    const c = toCents(a.current_balance);
+    return c === null ? sum : sum + c;
+  }, 0);
+
+  return {
+    cyclesBack: cyclesBackNum,
+    isCurrentCycle,
+    approximateCycle: baseWindow.approximate,
+    payFrequencyDays: totalDays,
+    cycleStart: utcIso(cycleStart),
+    cycleEnd: utcIso(cycleEnd),
+    title: `${formatMonthDay(utcIso(cycleStart))} – ${formatMonthDay(utcIso(cycleEnd))}`,
+    dayIndex,
+    totalDays,
+    cells,
+    lastCheck: { date: utcIso(cycleStart), label: formatPayDate(utcIso(cycleStart)) },
+    nextCheck: { date: utcIso(cycleEnd), label: formatPayDate(utcIso(cycleEnd)) },
+    now: {
+      cameIn: toDollars(cameInCents),
+      cameInFormatted: formatMoney(cameInCents),
+      spent: toDollars(spentCents),
+      spentFormatted: formatMoney(spentCents),
+      stillToFund: toDollars(math.totalShortfallCents),
+      stillToFundFormatted: formatMoney(math.totalShortfallCents),
+    },
+    bills: {
+      inDirectDeposit: toDollars(math.gateBalanceCents),
+      inDirectDepositFormatted: formatMoney(math.gateBalanceCents),
+      inBillAccounts: toDollars(inBillAccountsCents),
+      inBillAccountsFormatted: formatMoney(inBillAccountsCents),
+      stillToFund: toDollars(math.totalShortfallCents),
+      stillToFundFormatted: formatMoney(math.totalShortfallCents),
+    },
+    warnings: math.warnings,
+  };
+}
+
 /** Same real priority table the design's own Skip Suggestions spec names: shared > general >
  *  cars > h2 > h1. An unrecognized/legacy category ranks at the same tier as 'general' -- the
  *  backfill migration's own default, so nothing silently sorts last just for predating it. */

@@ -1150,6 +1150,47 @@ pre.token {
 
 .money-budgetday-card { border-color: rgba(96, 165, 250, 0.45) !important; }
 
+/* Git #3205: the real, shared two-week cycle card -- design 17 - Money v3.dc.html, options
+   2a/2c. Same border/blue accent as .money-budgetday-card (both are "the current real pay
+   period", same visual weight). */
+.money-cycle-card { border-color: rgba(96, 165, 250, 0.45) !important; display: grid; gap: 0.6rem; }
+.money-cycle-head { display: flex; align-items: center; gap: 8px; }
+.money-cycle-title { flex: 1; min-width: 0; text-align: center; }
+.money-cycle-dates { font-size: 17px; font-weight: var(--weight-bold); letter-spacing: -0.01em; }
+.money-cycle-page {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.money-cycle-page:not(:disabled) { color: #60a5fa; cursor: pointer; }
+.money-cycle-page:disabled { opacity: 0.3; cursor: default; }
+.money-cycle-grid { display: grid; grid-template-columns: repeat(14, 1fr); gap: 3px; }
+.money-cycle-cell { height: 8px; border-radius: 3px; background: #60a5fa; }
+.money-cycle-cell.today { background: #fbbf24; }
+.money-cycle-cell.future { background: rgba(96, 165, 250, 0.18); }
+.money-cycle-paydays {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+.money-cycle-today { color: #fbbf24; font-weight: 600; }
+.money-cycle-numbers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  border-top: 1px solid hsl(var(--card-border) / 0.6);
+  padding-top: 10px;
+}
+.money-cycle-number { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: 2px; }
+
 .money-amount {
   font-size: 40px;
   font-weight: 800;
