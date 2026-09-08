@@ -14,6 +14,8 @@ import { purgeDeadChallenges } from "./auth/webauthn.mjs";
 import * as ratelimit from "./auth/ratelimit.mjs";
 import { buildApiRouter } from "./routes/api.mjs";
 import { buildPublicRouter } from "./routes/public.mjs";
+import { handlePlaidWebhook } from "./routes/plaid-webhook.mjs";
+import * as plaid from "./core/plaid.mjs";
 import { describeMcpEndpoint, handleMcpRequest } from "./routes/mcp.mjs";
 import { runDetectors as runCatchDetectors } from "./core/catches.mjs";
 import { findDueDayBeforeReminders } from "./core/dates.mjs";
@@ -72,6 +74,18 @@ async function handle(req, res) {
       ? decodeURIComponent(pathname.slice("/mcp/t/".length))
       : null;
     return handleMcpRequest(req, res, { pathToken, log: (m) => log(m) });
+  }
+
+  // ---- Plaid webhooks: authenticated by Plaid's own ES256 signature over the body hash, never
+  // by the session cookie, and deliberately exempt from checkOrigin (Plaid is not a browser and
+  // sends no Origin header). Sits above the routers for the same reason /mcp does -- a different
+  // auth model entirely. See src/routes/plaid-webhook.mjs.
+  if (pathname === "/api/plaid/webhook") {
+    if (method !== "POST") {
+      res.writeHead(405, { allow: "POST" });
+      return res.end();
+    }
+    return handlePlaidWebhook(req, res, { ip: clientIp(req) || "unknown", log: (m) => log(m) });
   }
 
   // ---- health --------------------------------------------------------------------------
@@ -216,6 +230,7 @@ async function main() {
       await runMoneyWinDetection();
       await runCatchesSweep();
       await runMoneyDueReminders();
+      await runPlaidItemMaintenance();
     },
     6 * 60 * 60 * 1000,
   );
@@ -245,6 +260,7 @@ async function main() {
   await runMoneyWinDetection();
   await runCatchesSweep();
   await runMoneyDueReminders();
+  await runPlaidItemMaintenance();
 }
 
 /**
@@ -370,6 +386,56 @@ async function runMoneyDueReminders() {
     }
   } catch (err) {
     log("[reminders] money due-date sweep failed:", err.message);
+  }
+}
+
+/**
+ * Plaid item maintenance (Git #3168), belt-and-braces to the webhook receiver rather than a
+ * replacement for it.
+ *
+ * Two real jobs. First, point items at this app's receiver: every item in this database was
+ * linked by the WPF app, which never set a webhook, so without this they can never report their
+ * own health. Second, poll /item/get so a bank that broke while the webhook was misconfigured --
+ * or before this feature existed at all -- is still noticed, just later than a webhook would.
+ *
+ * Skips itself entirely when Plaid is not configured, or when PUBLIC_ORIGIN is not a public
+ * HTTPS origin Plaid could ever deliver to. That is the normal local-dev case, and it is a real
+ * skip with a real reason, not a silent no-op.
+ */
+async function runPlaidItemMaintenance() {
+  if (!plaid.plaidConfigured()) return;
+  try {
+    if (plaid.webhookUrlIsDeliverable()) {
+      const registered = await plaid.registerWebhooks();
+      if (registered.updated.length > 0) {
+        log(`[plaid] registered webhook on ${registered.updated.length} item(s) -> ${registered.target}`);
+      }
+      for (const f of registered.failed) log(`[plaid] webhook registration failed for ${f.institutionName}: ${f.error}`);
+    }
+
+    const before = new Map((await plaid.listItems()).map((i) => [i.id, i.health]));
+    const { refreshed, failed } = await plaid.refreshAllItemHealth();
+    for (const f of failed) log(`[plaid] health refresh failed for item ${f.id}: ${f.error}`);
+
+    for (const item of refreshed) {
+      if (!item) continue;
+      const wasHealth = before.get(item.id);
+      // Only a real transition INTO a reconnectable state is news -- the same rule the webhook
+      // receiver applies, so polling and webhooks cannot double-notify for one break.
+      if (wasHealth === item.health || !item.needsReconnect) continue;
+      log(`[plaid] ${item.institutionName} health ${wasHealth} -> ${item.health}`);
+      for (const user of await listUsers()) {
+        await queueNudge({
+          userId: user.id,
+          kind: "bank",
+          title: `${item.institutionName} needs reconnecting`,
+          body: item.healthMessage,
+          payload: { plaidItemId: item.id, health: item.health, code: item.healthCode },
+        });
+      }
+    }
+  } catch (err) {
+    log("[plaid] item maintenance failed:", err.message);
   }
 }
 

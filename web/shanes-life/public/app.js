@@ -2719,10 +2719,219 @@ let moneyTab = "now"; // transient client-only state, same idiom as cookSession 
 const MONEY_TABS = [
   { key: "now", label: "Now" },
   { key: "bills", label: "Bills" },
+  { key: "banks", label: "Banks" },
   { key: "cars", label: "Cars" },
   { key: "vault", label: "Vault" },
   { key: "wins", label: "Wins" },
 ];
+
+// ---------------------------------------------------------------------------
+// Money -> Banks (Git #3168): real Plaid item health + reconnect
+//
+// The reconnect flow lives here, in the web app, rather than in ShanesSurvival's WPF app, for a
+// reason that is about where Shane is when a bank breaks, not about which codebase is nicer:
+// the webhook that discovers the break has to land on an always-on hosted URL, and this is the
+// always-on hosted half. Putting the alert here and the fix on his desktop would split one
+// action across two apps and a walk to the PC.
+//
+// Plaid Link is loaded on demand, never in index.html -- a third-party script tag on every page
+// load, for something used a handful of times a year, is not a trade this app makes.
+// ---------------------------------------------------------------------------
+
+const PLAID_LINK_SRC = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
+const PLAID_RESUME_KEY = "sl_plaid_reconnect";
+let plaidLinkLoader = null;
+
+function loadPlaidLink() {
+  if (window.Plaid) return Promise.resolve();
+  if (plaidLinkLoader) return plaidLinkLoader;
+  plaidLinkLoader = new Promise((resolvePromise, reject) => {
+    const script = document.createElement("script");
+    script.src = PLAID_LINK_SRC;
+    script.async = true;
+    script.onload = () => resolvePromise();
+    script.onerror = () => {
+      plaidLinkLoader = null;
+      reject(new Error("Could not load Plaid Link. Check the connection and try again."));
+    };
+    document.head.append(script);
+  });
+  return plaidLinkLoader;
+}
+
+/**
+ * Ask the server whether the reconnect genuinely took. Link's onSuccess only means the flow
+ * finished; the server re-reads the item from Plaid before it will call anything fixed.
+ */
+async function finishPlaidReconnect(itemId) {
+  const result = await api(`/api/money/banks/${itemId}/reconnect-complete`, { method: "POST" });
+  return result;
+}
+
+/** Open real Plaid Link in update mode for one already-linked item. */
+async function openPlaidReconnect(item, { onStatus }) {
+  onStatus("Asking Plaid for a reconnect token…");
+  const token = await api(`/api/money/banks/${item.id}/reconnect-token`, { method: "POST" });
+
+  // Survives the OAuth-institution redirect bounce, which navigates the whole tab away and back.
+  try {
+    sessionStorage.setItem(PLAID_RESUME_KEY, JSON.stringify({ itemId: item.id, linkToken: token.linkToken }));
+  } catch {
+    // A blocked sessionStorage only costs the OAuth resume path; non-OAuth banks still work.
+  }
+
+  await loadPlaidLink();
+  onStatus("Opening your bank…");
+
+  return new Promise((resolvePromise) => {
+    const handler = window.Plaid.create({
+      token: token.linkToken,
+      onSuccess: async () => {
+        try {
+          sessionStorage.removeItem(PLAID_RESUME_KEY);
+        } catch {
+          /* nothing to clean up */
+        }
+        onStatus("Checking with Plaid that it took…");
+        try {
+          resolvePromise(await finishPlaidReconnect(item.id));
+        } catch (err) {
+          resolvePromise({ healthy: false, error: err.message });
+        }
+      },
+      onExit: (err) => {
+        try {
+          sessionStorage.removeItem(PLAID_RESUME_KEY);
+        } catch {
+          /* nothing to clean up */
+        }
+        resolvePromise({ cancelled: true, error: err ? err.display_message || err.error_message || err.error_code : null });
+      },
+    });
+    handler.open();
+  });
+}
+
+/**
+ * The OAuth return leg. Banks that use OAuth send the browser away to their own site and back to
+ * a pre-registered redirect_uri; Link then has to be re-created with `receivedRedirectUri` to
+ * pick the session back up. Without this the flow dead-ends on a blank page after the bank.
+ */
+async function resumePlaidOAuthReturn() {
+  let saved = null;
+  try {
+    saved = JSON.parse(sessionStorage.getItem(PLAID_RESUME_KEY) || "null");
+  } catch {
+    saved = null;
+  }
+  const returnTo = "/#/money";
+  if (!saved?.linkToken || !saved?.itemId) {
+    // Nothing to resume -- an expired session or a direct visit. Say so instead of hanging.
+    location.replace(returnTo);
+    return;
+  }
+
+  await loadPlaidLink();
+  const handler = window.Plaid.create({
+    token: saved.linkToken,
+    receivedRedirectUri: window.location.href,
+    onSuccess: async () => {
+      try {
+        sessionStorage.removeItem(PLAID_RESUME_KEY);
+      } catch {
+        /* nothing to clean up */
+      }
+      try {
+        await finishPlaidReconnect(saved.itemId);
+      } catch {
+        // The Banks screen re-reads real state on load; a failure here is visible there.
+      }
+      moneyTab = "banks";
+      location.replace(returnTo);
+    },
+    onExit: () => {
+      try {
+        sessionStorage.removeItem(PLAID_RESUME_KEY);
+      } catch {
+        /* nothing to clean up */
+      }
+      moneyTab = "banks";
+      location.replace(returnTo);
+    },
+  });
+  handler.open();
+}
+
+const BANK_HEALTH_COPY = {
+  ok: { label: "Connected", tone: "ok" },
+  login_required: { label: "Sign-in needed", tone: "bad" },
+  pending_expiration: { label: "Access expiring", tone: "warn" },
+  pending_disconnect: { label: "Disconnecting soon", tone: "warn" },
+  revoked: { label: "Access revoked", tone: "bad" },
+  error: { label: "Error", tone: "bad" },
+};
+
+function bankWhen(value, prefix) {
+  if (!value) return null;
+  return `${prefix} ${new Date(value).toLocaleString()}`;
+}
+
+function bankRow(item, { onReconnect }) {
+  const copy = BANK_HEALTH_COPY[item.health] ?? { label: item.health, tone: "warn" };
+  const statusColor = copy.tone === "ok" ? "hsl(var(--success))" : copy.tone === "warn" ? "#fbbf24" : "#f87171";
+  const statusEl = el("div", { class: "bank-status" });
+
+  const meta = [
+    `${item.accountCount} account${item.accountCount === 1 ? "" : "s"}`,
+    bankWhen(item.lastSyncedAt, "synced"),
+    item.transactionsPendingSince ? "new transactions waiting for the desktop app" : null,
+    bankWhen(item.consentExpiresAt, "access expires"),
+  ].filter(Boolean);
+
+  const children = [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline;gap:8px" }, [
+      el("div", { class: "bank-name", style: "font-weight:600", text: item.institutionName }),
+      el("span", { class: "small", style: `font-weight:600;white-space:nowrap;color:${statusColor}`, text: copy.label }),
+    ]),
+    el("p", { class: "small muted", text: meta.join(" · ") }),
+  ];
+
+  if (item.healthMessage) {
+    children.push(el("p", { class: "small", style: "color:#f87171", text: item.healthMessage }));
+  }
+
+  // An item Plaid has never been told to call will never report a problem on its own. That is a
+  // real gap in coverage, and it belongs on screen rather than in a log nobody reads.
+  if (!item.webhookUrl) {
+    children.push(
+      el("p", {
+        class: "small muted",
+        text: "No webhook registered with Plaid for this bank yet — its health is only checked when this app polls.",
+      }),
+    );
+  }
+
+  if (item.needsReconnect) {
+    const button = el("button", {
+      type: "button",
+      class: "primary",
+      text: "Reconnect",
+      onClick: async () => {
+        button.disabled = true;
+        try {
+          await onReconnect(item, (msg) => {
+            statusEl.textContent = msg;
+          });
+        } finally {
+          button.disabled = false;
+        }
+      },
+    });
+    children.push(el("div", { class: "row", style: "gap:8px;align-items:center" }, [button, statusEl]));
+  }
+
+  return el("div", { class: "card bank-row" }, children);
+}
 
 function moneyBillMeta(bill) {
   const parts = [];
@@ -3165,6 +3374,119 @@ async function viewMoneyWins(view) {
   attachRoomWatermark(view, "wins");
 }
 
+async function viewMoneyBanks(view) {
+  const data = await api("/api/money/banks");
+
+  if (!data.configured) {
+    view.append(
+      el("div", { class: "card" }, [
+        el("p", {
+          text: "Plaid is not configured on this server, so nothing here can reach your banks.",
+        }),
+        el("p", {
+          class: "small muted",
+          text: "Set SL_PLAID_CLIENT_ID and SL_PLAID_SECRET, then reload. The connections themselves are unaffected — the desktop app keeps syncing.",
+        }),
+      ]),
+    );
+    return;
+  }
+
+  const broken = data.items.filter((i) => i.needsReconnect);
+
+  const statusLine = el("p", { class: "small muted" });
+  const refreshBtn = el("button", {
+    type: "button",
+    class: "ghost small",
+    text: "Check with Plaid",
+    onClick: async () => {
+      refreshBtn.disabled = true;
+      statusLine.textContent = "Asking Plaid about every bank…";
+      try {
+        await api("/api/money/banks/refresh", { method: "POST" });
+        await render();
+      } catch (err) {
+        statusLine.textContent = err.message;
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    },
+  });
+
+  const headerChildren = [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline" }, [
+      el("h3", { style: "margin:0", text: broken.length ? `${broken.length} bank${broken.length === 1 ? "" : "s"} need attention` : "All banks connected" }),
+      refreshBtn,
+    ]),
+    el("p", {
+      class: "small muted",
+      text: "Syncing is the desktop app's job. This screen exists so a broken connection finds you before the next sync does.",
+    }),
+    statusLine,
+  ];
+
+  // The honest version of "webhooks are on": on a localhost origin Plaid cannot deliver anything,
+  // so the screen says the health shown is poll-only rather than implying live events.
+  if (!data.webhookDeliverable) {
+    headerChildren.push(
+      el("p", {
+        class: "small muted",
+        text: `Plaid can only call a public HTTPS address, and this server answers on ${data.webhookUrl}. Health here comes from polling until the app is deployed.`,
+      }),
+    );
+  }
+
+  view.append(el("div", { class: "card section" }, headerChildren));
+
+  async function reconnect(item, onStatus) {
+    try {
+      const result = await openPlaidReconnect(item, { onStatus });
+      if (result.cancelled) {
+        onStatus(result.error ? `Stopped: ${result.error}` : "Reconnect cancelled.");
+        return;
+      }
+      if (result.healthy) {
+        onStatus("Reconnected.");
+        await render();
+        return;
+      }
+      onStatus(result.error || "Plaid still reports this bank as needing attention.");
+    } catch (err) {
+      onStatus(err.message);
+    }
+  }
+
+  if (data.items.length === 0) {
+    view.append(
+      el("div", { class: "card" }, [
+        el("p", { class: "muted", text: "No banks are linked yet. Linking a new bank is done in the desktop app." }),
+      ]),
+    );
+  } else {
+    for (const item of data.items) view.append(bankRow(item, { onReconnect: reconnect }));
+  }
+
+  // Real webhook receipts. Proof the receiver is genuinely being called, rather than a claim.
+  const { events } = await api("/api/money/banks/events?limit=10");
+  view.append(
+    el("div", { class: "card section" }, [
+      el("h3", { style: "margin:0 0 6px", text: "Recent webhooks from Plaid" }),
+      events.length === 0
+        ? el("p", { class: "small muted", text: "Plaid has not called this app yet." })
+        : el(
+            "div",
+            { class: "bank-events" },
+            events.map((ev) =>
+              el("p", {
+                class: "small muted",
+                text: `${new Date(ev.receivedAt).toLocaleString()} · ${ev.type}: ${ev.code}${ev.errorCode ? ` (${ev.errorCode})` : ""}${ev.verified ? "" : " · REJECTED"}${ev.note ? ` · ${ev.note}` : ""}`,
+              }),
+            ),
+          ),
+    ]),
+  );
+}
+
 async function viewMoney(view) {
   view.append(
     el("section", { class: "section" }, [
@@ -3193,6 +3515,11 @@ async function viewMoney(view) {
 
   if (moneyTab === "bills") {
     await viewMoneyBills(view);
+    return;
+  }
+
+  if (moneyTab === "banks") {
+    await viewMoneyBanks(view);
     return;
   }
 
@@ -5226,6 +5553,14 @@ async function start() {
   if (enrollmentTokenFromUrl()) return showEnroll();
   const user = await loadMe();
   if (!user) return showLogin();
+  // A Plaid OAuth bank sends the whole tab to its own site and back here (Git #3168). Resuming
+  // has to happen before the normal render, or the return lands on the app shell with a live
+  // Link session nobody ever picks back up.
+  if (location.pathname === "/plaid-oauth") {
+    $("#login-view").hidden = true;
+    $("#app-view").hidden = false;
+    return resumePlaidOAuthReturn();
+  }
   $("#login-view").hidden = true;
   $("#enroll-view").hidden = true;
   $("#app-view").hidden = false;
