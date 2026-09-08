@@ -1376,6 +1376,29 @@ export function buildApiRouter() {
     return sendJson(res, 200, result);
   });
 
+  // -- Money -> Accounts (Git #3170) ----------------------------------------------------
+  //
+  // Real sectioned account list (§1 of FINANCE_TRACKER_AUDIT.md's accounts.tsx audit, ported in
+  // shape only) -- see src/core/money.mjs's own header comment above getAccountsOverview for the
+  // real scope line drawn around Connected Banks disconnect/reconnect (that's #3168's job).
+
+  router.get("/api/money/accounts", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await money.getAccountsOverview(user.id));
+  });
+
+  // GET, same reasoning as /api/money/what-if: a live preview that changes nothing, never a
+  // persisted target_amount write (that stays ShanesSurvival's own MCP tools' job).
+  router.get("/api/money/accounts/:id/preview-target", async (req, res, params, ctx) => {
+    requireUser(ctx);
+    const url = new URL(req.url, "http://internal");
+    return sendJson(
+      res,
+      200,
+      await money.previewAccountTarget(params.id, url.searchParams.get("target")),
+    );
+  });
+
   // -- Money -> Vault (Git #3150) -------------------------------------------------------
   //
   // The bill-payment reference vault. Design contract Section 9 flags this as "a real security

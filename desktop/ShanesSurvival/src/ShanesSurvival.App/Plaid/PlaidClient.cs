@@ -64,7 +64,7 @@ public sealed class PlaidClient : IPlaidClient
             credentials, "/accounts/balance/get", request);
 
         return response.Accounts
-            .Select(a => new PlaidAccountInfo(a.AccountId, a.Name, a.Type, a.Subtype, a.Balances?.Current, a.Balances?.Available))
+            .Select(a => new PlaidAccountInfo(a.AccountId, a.Name, a.Type, a.Subtype, a.Balances?.Current, a.Balances?.Available, a.Mask))
             .ToList();
     }
 
