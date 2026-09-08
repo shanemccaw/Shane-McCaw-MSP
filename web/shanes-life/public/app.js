@@ -1626,6 +1626,207 @@ async function viewThings(view) {
   attachRoomWatermark(view, "things");
 }
 
+// People & Patterns (Git #3157, design contract Section 7) -- a private per-person reflection
+// journal. NOT a companion or chatbot persona: a thread per person in Shane's own words, plus a
+// deliberately dumb patterns readout (word counts and timing, quoted verbatim -- see
+// people.computePatterns on the server). "Threaded automatically based on who's mentioned"
+// happens in a Claude conversation (Section 10); this room's own capture bar is the direct,
+// no-classification-needed path for filing a note straight against a person you're already
+// looking at.
+
+function personInitial(name) {
+  return (name || "?").trim().charAt(0).toUpperCase() || "?";
+}
+
+function personRow(p) {
+  return el("a", { class: "date-row", href: `#/person/${p.id}`, style: "text-decoration:none;color:inherit" }, [
+    el("div", { class: "person-avatar", text: personInitial(p.name) }),
+    el("div", { class: "body" }, [
+      el("div", { class: "title small", text: p.name }),
+      el("div", { class: "meta", text: [p.relationship, `${p.note_count} note${p.note_count === 1 ? "" : "s"}`, p.last_entry_at ? when(p.last_entry_at) : null].filter(Boolean).join(" · ") }),
+    ]),
+  ]);
+}
+
+async function viewPeople(view) {
+  view.append(
+    el("section", { class: "section" }, [
+      el("h2", { text: "People" }),
+      el("p", { class: "muted small", text: "A private thread per person, in your own words. Only you can see this." }),
+    ]),
+  );
+
+  // The real search/ask interface for pattern recall (Section 7) -- a name jumps straight to
+  // that person's thread ("how have things with Dana been"); a word or phrase surfaces every
+  // real note that used it, across everyone. Real, deterministic search, no AI call.
+  const searchInput = el("input", { placeholder: "Search a name or a word…", "aria-label": "Search people and notes", autocomplete: "off" });
+  const searchResults = el("div", { style: "margin-top:.5rem" });
+  const searchForm = el("form", { class: "row" }, [searchInput, el("button", { class: "small", type: "submit", text: "Search" })]);
+  searchForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const q = searchInput.value.trim();
+    searchResults.replaceChildren();
+    if (!q) return;
+    const { people: matchedPeople, entries: matchedEntries } = await api(`/api/people?q=${encodeURIComponent(q)}`);
+    if (matchedPeople.length === 0 && matchedEntries.length === 0) {
+      searchResults.append(el("p", { class: "meta", text: `Nothing on file for "${q}" yet.` }));
+      return;
+    }
+    for (const p of matchedPeople) searchResults.append(personRow({ ...p, note_count: 0, last_entry_at: null }));
+    for (const e of matchedEntries) {
+      searchResults.append(
+        el("a", { class: "date-row", href: `#/person/${e.person_id}`, style: "text-decoration:none;color:inherit" }, [
+          el("div", { class: "person-avatar", text: personInitial(e.person_name) }),
+          el("div", { class: "body" }, [
+            el("div", { class: "title small", text: e.person_name }),
+            el("div", { class: "meta", text: `${when(e.happened_at)} · ${e.body_text}` }),
+          ]),
+        ]),
+      );
+    }
+  });
+  view.append(el("section", { class: "section" }, [searchForm, searchResults]));
+
+  const { items } = await api("/api/people");
+  const list = el("section", { class: "section" });
+  if (items.length === 0) {
+    list.append(empty("No one on file yet.", "Add someone below, or just write a note about them in the capture box.", "people"));
+  } else {
+    for (const p of items) list.append(personRow(p));
+  }
+  view.append(list);
+
+  const nameInput = el("input", { placeholder: "Name, e.g. Dana", "aria-label": "Person's name" });
+  const relInput = el("input", { placeholder: "Relationship (optional), e.g. property manager", "aria-label": "Relationship" });
+  const addForm = el("form", { class: "section" }, [
+    el("div", { class: "row" }, [nameInput, relInput, el("button", { class: "primary small", type: "submit", text: "Add person" })]),
+  ]);
+  addForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = nameInput.value.trim();
+    if (!name) return;
+    addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    try {
+      const person = await api("/api/people", { method: "POST", body: JSON.stringify({ name, relationship: relInput.value.trim() || null }) });
+      location.hash = `#/person/${person.id}`;
+    } finally {
+      addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [addForm]));
+
+  attachRoomWatermark(view, "people");
+}
+
+function personEntryRow(personId, e) {
+  return el("div", { class: "date-row" }, [
+    el("div", { class: "body" }, [
+      el("div", { class: "meta", text: `${when(e.happened_at)}${e.kind !== "text" ? ` · ${e.kind}` : ""}` }),
+      el("div", { text: e.body_text }),
+    ]),
+    el("button", {
+      class: "ghost small danger",
+      text: "Delete",
+      onClick: async (event) => {
+        if (!confirm("Delete this note?")) return;
+        event.currentTarget.disabled = true;
+        await api(`/api/people/${personId}/entries/${e.id}`, { method: "DELETE" });
+        render();
+      },
+    }),
+  ]);
+}
+
+async function viewPersonDetail(view, personId) {
+  const { person, entries, patterns } = await api(`/api/people/${personId}`);
+
+  const sinceLabel = person.first_entry_at
+    ? `${person.note_count} note${person.note_count === 1 ? "" : "s"} since ${new Date(person.first_entry_at).toLocaleDateString([], { month: "long" })}`
+    : "No notes yet";
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("a", { class: "ghost small", href: "#/people", text: "← People" }),
+      el("div", { class: "card", style: "margin-top:.5rem" }, [
+        el("div", { class: "row", style: "align-items:center" }, [
+          el("div", { class: "person-avatar lg", text: personInitial(person.name) }),
+          el("div", {}, [
+            el("h1", { text: person.name, style: "margin:0 0 .15rem" }),
+            el("div", { class: "meta", text: [person.relationship, sinceLabel].filter(Boolean).join(" · ") }),
+          ]),
+        ]),
+      ]),
+    ]),
+  );
+
+  // "From your own words" -- the patterns panel. Deliberately dumb (Section 7/8): word counts and
+  // timing, quoted back verbatim. No summary sentence, no tone, no advice -- if computePatterns
+  // found nothing real yet, this section just doesn't render, which is the honest answer.
+  if (patterns.length > 0) {
+    const patternsCard = el("div", { class: "card" }, [
+      el("div", { class: "small muted", style: "text-transform:uppercase;letter-spacing:.08em;font-size:11px;margin-bottom:.4rem", text: "From your own words" }),
+      ...patterns.map((p) => el("div", { class: "pattern-line", text: p.text })),
+      el("div", { class: "pattern-footnote", text: "Counts and quotes only. Nothing here is an opinion." }),
+    ]);
+    view.append(el("section", { class: "section" }, [patternsCard]));
+  }
+
+  // Note about {person} -- the room's own direct capture bar, same one-box spirit as everywhere
+  // else in the app but pre-threaded, since Shane is already looking at exactly who it's about.
+  const noteInput = el("textarea", { placeholder: `Note about ${person.name}`, "aria-label": `Note about ${person.name}`, rows: "2" });
+  const noteForm = el("form", { class: "section" }, [
+    noteInput,
+    el("div", { class: "row" }, [el("button", { class: "primary small", type: "submit", text: "Save note" })]),
+  ]);
+  noteForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const bodyText = noteInput.value.trim();
+    if (!bodyText) return;
+    noteForm.querySelectorAll("textarea,button").forEach((n) => (n.disabled = true));
+    try {
+      await api(`/api/people/${personId}/entries`, { method: "POST", body: JSON.stringify({ bodyText }) });
+      render();
+    } finally {
+      noteForm.querySelectorAll("textarea,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [noteForm]));
+
+  const notesSection = el("section", { class: "section" }, [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:center" }, [
+      el("h2", { text: "Notes", style: "margin:0" }),
+      el("button", {
+        class: "ghost small",
+        type: "button",
+        text: "Export for therapist",
+        onClick: async (event) => {
+          event.currentTarget.disabled = true;
+          try {
+            const { text } = await api(`/api/people/${personId}/export`);
+            const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = el("a", { href: url, download: `${person.name.replace(/[^a-z0-9]+/gi, "-")}-notes.txt` });
+            document.body.append(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+          } finally {
+            event.currentTarget.disabled = false;
+          }
+        },
+      }),
+    ]),
+  ]);
+  if (entries.length === 0) {
+    notesSection.append(empty("Nothing written yet.", "Say something about them above, or ask Claude to file one for you.", "people"));
+  } else {
+    for (const e of entries) notesSection.append(personEntryRow(personId, e));
+  }
+  view.append(notesSection);
+
+  attachRoomWatermark(view, "people");
+}
+
 // Lists (Git #3155) -- the real, deliberately light-touch case Section 3 calls out: movies/shows
 // to watch, recommended books, and anything else Claude files on the fly via `push_list`'s
 // generic `category` path. Same real typed shape as Shopping (core/lists.mjs), just every list
@@ -1674,25 +1875,11 @@ function listCard(list) {
     el("span", { class: "meta", text: `${list.category_label || list.category || "List"} · ${list.done_count}/${list.item_count} done` }),
   ]);
 
+  // Git #3183: no dedicated "Add {noun}" form -- adding to a list is a capture, same as
+  // starting one (see viewLists below). Say "watch The Bear" or "add The Bear to Watch"
+  // in the universal capture box and Claude files it onto the right list.
   const ul = el("ul", { class: "checklist" });
-  const addInput = el("input", { placeholder: `Add ${list.category_item_noun || "item"}`, "aria-label": `Add to ${list.name}` });
-  const addForm = el(
-    "form",
-    {
-      class: "row",
-      onSubmit: async (event) => {
-        event.preventDefault();
-        const text = addInput.value.trim();
-        if (!text) return;
-        addInput.value = "";
-        await api(`/api/lists/${list.id}/items`, { method: "POST", body: JSON.stringify({ items: [{ text }] }) });
-        render();
-      },
-    },
-    [addInput, el("button", { class: "primary small", type: "submit", text: "Add" })],
-  );
-
-  const card = el("div", { class: "card" }, [header, ul, addForm]);
+  const card = el("div", { class: "card" }, [header, ul]);
   api(`/api/lists/${list.id}`)
     .then((detail) => {
       ul.replaceChildren();
@@ -1708,23 +1895,9 @@ function listCard(list) {
 async function viewLists(view) {
   const { lists } = await api("/api/lists");
 
-  const newName = el("input", { placeholder: "New list, e.g. Watch or Books", "aria-label": "New list name" });
-  const newForm = el(
-    "form",
-    {
-      class: "row",
-      onSubmit: async (event) => {
-        event.preventDefault();
-        const name = newName.value.trim();
-        if (!name) return;
-        newName.value = "";
-        await api("/api/lists", { method: "POST", body: JSON.stringify({ name }) });
-        render();
-      },
-    },
-    [newName, el("button", { class: "primary small", type: "submit", text: "New list" })],
-  );
-  view.append(el("section", { class: "section" }, [el("h2", { text: "Lists" }), newForm]));
+  // Git #3183: no "New list" form -- starting a list is a capture too. Say "watch The
+  // Bear" or "read Project Hail Mary" and Claude opens (or reuses) the right list.
+  view.append(el("section", { class: "section" }, [el("h2", { text: "Lists" })]));
 
   if (lists.length === 0) {
     view.append(
@@ -2393,7 +2566,13 @@ async function viewMeds(view) {
   );
 
   if (batches.length === 0) {
-    view.append(empty("No medications on file yet.", "Add one below, or ask Claude to add one for you.", "meds"));
+    view.append(
+      empty(
+        "No medications on file yet.",
+        "Tell Claude something like \"started lisinopril 10mg every morning\" in the capture box and it'll show up here.",
+        "meds",
+      ),
+    );
   } else {
     const list = el("section", { class: "section" });
     for (const batchState of batches) list.append(medBatchCard(batchState));
@@ -2402,43 +2581,9 @@ async function viewMeds(view) {
 
   view.append(refillsSection(refills));
 
-  // Direct entry (same "reachable without going through Claude" idiom as createRecipe/
-  // createEntity) -- most real medications will still be added by Claude over MCP
-  // (set_medication), but there is no reason the web UI can't add one too.
-  const nameInput = el("input", { placeholder: "Medication name", "aria-label": "Medication name" });
-  const doseInput = el("input", { placeholder: "Dose, e.g. 1 tablet", "aria-label": "Dose" });
-  const batchInput = el("input", { placeholder: "Batch, e.g. morning", "aria-label": "Batch", list: "med-batches" });
-  const batchOptions = el(
-    "datalist",
-    { id: "med-batches" },
-    batches.map((b) => el("option", { value: b.batch })),
-  );
-  const tierSelect = el("select", { "aria-label": "Refill tier" }, [
-    el("option", { value: "manual", text: "Manual-watch (needs you)" }),
-    el("option", { value: "auto", text: "Auto-refill (handled)" }),
-  ]);
-  const addForm = el("form", { class: "section" }, [
-    nameInput,
-    el("div", { class: "row" }, [doseInput, batchInput, batchOptions]),
-    el("div", { class: "row" }, [tierSelect, el("button", { class: "primary small", type: "submit", text: "Add medication" })]),
-  ]);
-  addForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = nameInput.value.trim();
-    const batch = batchInput.value.trim();
-    if (!name || !batch) return;
-    addForm.querySelectorAll("input,select,button").forEach((n) => (n.disabled = true));
-    try {
-      await api("/api/medications", {
-        method: "POST",
-        body: JSON.stringify({ name, doseNote: doseInput.value.trim() || null, batch, refillTier: tierSelect.value }),
-      });
-      render();
-    } finally {
-      addForm.querySelectorAll("input,select,button").forEach((n) => (n.disabled = false));
-    }
-  });
-  view.append(el("div", { class: "card" }, [addForm]));
+  // Git #3183: no dedicated "Add medication" form -- a new medication is a capture, same
+  // as everything else (contract pack Section 8). Say "started lisinopril 10mg every
+  // morning, auto-refill" in the universal capture box and Claude calls set_medication.
 
   attachRoomWatermark(view, "meds");
 }
@@ -2793,8 +2938,14 @@ async function viewMoneyVault(view) {
     el("p", { class: "vault-foot-note", text: "Which site, which account, nothing else. Real encryption from version one, flagged as a requirement, not polish." }),
   );
 
-  // Adding an entry is a real write, so it is a real form -- not a placeholder. The value goes
-  // straight into an AES-256-GCM ciphertext server-side and is never echoed back by any list.
+  // Git #3183 no-forms audit: deliberately kept, not missed. Contract pack Section 8's "no
+  // forms, anywhere, ever" is itself scoped to what the capture-parsing layer can act on --
+  // and the vault has no MCP tool on purpose (Section 9: "genuinely sensitive, needs real
+  // security engineering, not a casual text field"). Routing a real account number through
+  // the universal capture box would mean it passes through Claude/MCP before encryption,
+  // which defeats the vault's entire real security purpose. This stays a real dedicated
+  // form; the value goes straight into an AES-256-GCM ciphertext server-side and is never
+  // echoed back by any list or sent to Claude.
   const labelInput = el("input", { placeholder: "Mortgage · servicer", "aria-label": "What this is for", required: true });
   const siteInput = el("input", { placeholder: "mrcooper.com", "aria-label": "Site to pay at" });
   const secretInput = el("input", { type: "password", autocomplete: "off", placeholder: "Account number", "aria-label": "The account number", required: true });
@@ -2890,30 +3041,15 @@ function moneyWinRow(win) {
 async function viewMoneyWins(view) {
   const { wins } = await api("/api/money/wins");
 
-  const winInput = el("input", { placeholder: "I did it, …", "aria-label": "Log a win" });
-  const winForm = el("form", { class: "section" }, [
-    el("div", { class: "row" }, [winInput, el("button", { class: "primary small", type: "submit", text: "Log it" })]),
-  ]);
-  winForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const text = winInput.value.trim();
-    if (!text) return;
-    winForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
-    try {
-      await api("/api/money/wins", { method: "POST", body: JSON.stringify({ text }) });
-      winInput.value = "";
-      render();
-    } finally {
-      winForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
-    }
-  });
-  view.append(el("div", { class: "card" }, [winForm]));
+  // Git #3183: no dedicated "Log a win" form -- the design's own words are "Shane should be
+  // able to just say 'I did it' and have it land here," which is exactly the universal
+  // capture box (log_win over MCP already exists for it), not a second text field here too.
 
   const winsCard = el("div", { class: "card money-bucket" }, [
     el("div", { class: "money-bucket-label", text: "Real wins · no streaks, no badges" }),
   ]);
   if (wins.length === 0) {
-    winsCard.append(empty("Nothing logged yet.", "Log one above, say it in the capture box, or a real debt hitting $0 lands here on its own.", "wins"));
+    winsCard.append(empty("Nothing logged yet.", "Say \"I did it\" in the capture box, or a real debt hitting $0 lands here on its own.", "wins"));
   } else {
     for (const win of wins) winsCard.append(moneyWinRow(win));
   }
@@ -3055,6 +3191,10 @@ async function viewMoney(view) {
     availableCard.append(el("p", { class: "money-habit-line", text: gate.habit.line }));
   }
 
+  // Git #3183 no-forms audit: kept, same reasoning as Things' "Where's the..." search
+  // (#3181) -- these two are real-time simulations (a read, never a write), not a form for
+  // creating or editing data, so Section 8's rule doesn't reach them. Both are also reachable
+  // by asking Claude the same question in plain language (footer note below).
   const whatIfResultEl = el("div");
   const whatIfInput = el("input", { type: "number", step: "0.01", inputmode: "decimal", placeholder: "60", "aria-label": "What-if amount" });
   const whatIfForm = el("form", { class: "row" }, [
@@ -4574,23 +4714,9 @@ async function viewDateDetail(view, dateId) {
     const card = el("div", { class: "card" });
     if (item.asks.length === 0) card.append(el("p", { class: "muted small", text: "Nothing queued to ask yet." }));
     for (const ask of item.asks) card.append(askRow(dateId, ask));
-    const input = el("input", { placeholder: "Something to ask next time", "aria-label": "New question" });
-    card.append(
-      el("div", { class: "row", style: "margin-top:.6rem" }, [
-        input,
-        el("button", {
-          class: "small",
-          text: "Add",
-          onClick: async (event) => {
-            const text = input.value.trim();
-            if (!text) return;
-            event.currentTarget.disabled = true;
-            await api(`/api/dates/${dateId}/asks`, { method: "POST", body: JSON.stringify({ text }) });
-            await render();
-          },
-        }),
-      ]),
-    );
+    // Git #3183: no dedicated "Add" input for a new question -- attach_ask over MCP already
+    // exists for it. Say "ask Dr. Fonji about the knee brace next time" and Claude matches
+    // it onto this appointment by provider.
     asks.append(card);
     view.append(asks);
 
@@ -4672,35 +4798,20 @@ async function viewPets(view) {
   );
 
   if (items.pets.length === 0) {
-    view.append(empty("No pets on file yet.", "Add one below, or ask Claude to add one for you.", "pets"));
+    view.append(
+      empty(
+        "No pets on file yet.",
+        "Tell Claude something like \"we have a dog named Pepper, a lab\" and it'll show up here.",
+        "pets",
+      ),
+    );
   } else {
     const list = el("section", { class: "section" }, items.pets.map(petCardEl));
     view.append(list);
   }
 
-  const nameInput = el("input", { placeholder: "Pet's name", "aria-label": "Pet name" });
-  const speciesInput = el("input", { placeholder: "Species, e.g. dog", "aria-label": "Species" });
-  const breedInput = el("input", { placeholder: "Breed", "aria-label": "Breed" });
-  const addForm = el("form", { class: "section" }, [
-    nameInput,
-    el("div", { class: "row" }, [speciesInput, breedInput, el("button", { class: "primary small", type: "submit", text: "Add pet" })]),
-  ]);
-  addForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = nameInput.value.trim();
-    if (!name) return;
-    addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
-    try {
-      await api("/api/pets", {
-        method: "POST",
-        body: JSON.stringify({ name, species: speciesInput.value.trim() || null, breed: breedInput.value.trim() || null }),
-      });
-      render();
-    } finally {
-      addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
-    }
-  });
-  view.append(el("div", { class: "card" }, [addForm]));
+  // Git #3183: no dedicated "Add pet" form -- a new pet is a capture (set_pet over MCP
+  // already exists for it), same as everything else (contract pack Section 8).
 
   attachRoomWatermark(view, "pets");
 }
@@ -4776,25 +4887,8 @@ async function viewPetDetail(view, petId) {
   const vCard = el("div", { class: "card" });
   if (pet.vaccines.length === 0) vCard.append(el("p", { class: "muted small", text: "No vaccines on file yet." }));
   for (const v of pet.vaccines) vCard.append(vaccineRow(petId, v));
-  const vName = el("input", { placeholder: "Vaccine name, e.g. Rabies", "aria-label": "Vaccine name" });
-  const vDue = el("input", { type: "date", "aria-label": "Due date" });
-  vCard.append(
-    el("div", { class: "row", style: "margin-top:.6rem" }, [
-      vName,
-      vDue,
-      el("button", {
-        class: "small",
-        text: "Add",
-        onClick: async (event) => {
-          const name = vName.value.trim();
-          if (!name) return;
-          event.currentTarget.disabled = true;
-          await api(`/api/pets/${petId}/vaccines`, { method: "POST", body: JSON.stringify({ name, dueOn: vDue.value || null }) });
-          await render();
-        },
-      }),
-    ]),
-  );
+  // Git #3183: no dedicated "Add" vaccine form -- set_pet_vaccine over MCP already exists
+  // for it. Say "pepper's rabies is due february 2027" and it lands here.
   vaccines.append(vCard);
   view.append(vaccines);
 
@@ -4806,26 +4900,8 @@ async function viewPetDetail(view, petId) {
   const cCard = el("div", { class: "card" });
   if (pet.care.length === 0) cCard.append(el("p", { class: "muted small", text: "Nothing on file yet." }));
   for (const c of pet.care) cCard.append(careRow(petId, c));
-  const cName = el("input", { placeholder: "e.g. Joint chew", "aria-label": "Care item name" });
-  const cBatch = el("input", { placeholder: "Batch, e.g. morning", "aria-label": "Batch" });
-  cCard.append(
-    el("div", { class: "row", style: "margin-top:.6rem" }, [
-      cName,
-      cBatch,
-      el("button", {
-        class: "small",
-        text: "Add",
-        onClick: async (event) => {
-          const name = cName.value.trim();
-          const batch = cBatch.value.trim();
-          if (!name || !batch) return;
-          event.currentTarget.disabled = true;
-          await api(`/api/pets/${petId}/care`, { method: "POST", body: JSON.stringify({ name, batch }) });
-          await render();
-        },
-      }),
-    ]),
-  );
+  // Git #3183: no dedicated "Add" care-item form -- set_pet_care over MCP already exists
+  // for it. Say "pepper gets a joint chew every morning" and it lands here.
   care.append(cCard);
   view.append(care);
 
@@ -4864,7 +4940,7 @@ async function viewPetDetail(view, petId) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", people: "People", person: "", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -4876,6 +4952,7 @@ function parseRoute() {
   state.dateId = state.route === "date" ? rest[0] : null;
   state.petId = state.route === "pet" ? rest[0] : null;
   state.carId = state.route === "car" ? rest[0] : null;
+  state.personId = state.route === "person" ? rest[0] : null;
 }
 
 async function render() {
@@ -4918,6 +4995,8 @@ async function render() {
     else if (state.route === "car") await viewCarDetail(view, state.carId);
     else if (state.route === "lists") await viewLists(view);
     else if (state.route === "things") await viewThings(view);
+    else if (state.route === "people") await viewPeople(view);
+    else if (state.route === "person") await viewPersonDetail(view, state.personId);
     else if (state.route === "settings") await viewSettings(view);
     else if (state.route === "entity") await viewEntity(view, state.entity);
     else await viewToday(view);

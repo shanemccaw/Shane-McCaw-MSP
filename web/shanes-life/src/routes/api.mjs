@@ -21,6 +21,7 @@ import * as media from "../core/media.mjs";
 import * as money from "../core/money.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as medications from "../core/medications.mjs";
+import * as people from "../core/people.mjs";
 import * as pets from "../core/pets.mjs";
 import * as places from "../core/places.mjs";
 import * as prices from "../core/prices.mjs";
@@ -686,6 +687,64 @@ export function buildApiRouter() {
     const lng = ctx.url.searchParams.get("lng");
     if (lat === null || lng === null) throw badRequest("lat and lng are required");
     return sendJson(res, 200, { items: await places.findNearby(user.id, { latitude: lat, longitude: lng }) });
+  });
+
+  // ---------------------------------------------------------------------------
+  // People & Patterns -- private reflection journal (Git #3157, design contract Section 7)
+  // ---------------------------------------------------------------------------
+
+  // ?q= runs the real search/ask interface (Section 7) across both people and their notes;
+  // omit it for the plain sidebar list.
+  router.get("/api/people", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const q = ctx.url.searchParams.get("q");
+    if (q) return sendJson(res, 200, await people.search(user.id, q));
+    return sendJson(res, 200, { items: await people.listPeople(user.id) });
+  });
+
+  router.post("/api/people", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await people.createPerson(user.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "person.create", entityId: row.id, detail: { name: row.name } });
+    return sendJson(res, 201, row);
+  });
+
+  router.get("/api/people/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const person = await people.getPerson(user.id, params.id);
+    if (!person) throw notFound("Person not found");
+    const entries = await people.listPersonEntries(user.id, params.id);
+    const patterns = people.computePatterns(entries, person.name);
+    return sendJson(res, 200, { person, entries, patterns });
+  });
+
+  router.patch("/api/people/:id", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    return sendJson(res, 200, await people.updatePerson(user.id, params.id, body));
+  });
+
+  // Plain, literal, chronological export -- real material for an actual therapist conversation
+  // (Section 7), never an AI-generated summary (Section 10). The client turns `text` into a
+  // downloadable file; nothing here needs a Content-Disposition header of its own.
+  router.get("/api/people/:id/export", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { text: await people.exportPersonText(user.id, params.id) });
+  });
+
+  router.post("/api/people/:id/entries", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const { entry } = await people.addPersonEntry(user.id, { ...body, personId: params.id, source: "shane" });
+    await audit.record({ userId: user.id, actor: "web", action: "person.entry.create", entityId: entry.id, detail: { personId: params.id } });
+    return sendJson(res, 201, entry);
+  });
+
+  router.delete("/api/people/:id/entries/:entryId", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await people.deletePersonEntry(user.id, params.entryId);
+    return sendJson(res, 200, { ok: true });
   });
 
   router.post("/api/lists/:id/items", async (req, res, params, ctx) => {
