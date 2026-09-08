@@ -33,6 +33,7 @@ Every decision below traces to a section of it, and the section is cited in the 
 | Recipes: Cook mode -- step-by-step view, next/back, unchecked never blocks, screen stays awake (Shanes Life 05) | `public/app.js` `#/cook/<id>` (`viewCook`, `cookSession`, Wake Lock API), `recipes.mjs`'s `normaliseSteps` now carries real per-step `{text, ings}` (#3125) |
 | Recipes: Sunday meal-planning ritual + Today surfacing (§5) | `src/core/meal-plan.mjs`, `meal_plan_entries` table (migration 026), `GET/DELETE /api/meal-plan`, `GET /api/today` (`mealNudges`/`tonight`), `public/app.js` Today "Tonight" card + `#/recipes` "This week's plan", MCP `push_meal_plan`/`get_meal_plan` (#3127) |
 | Recipes: Tonight -- multi-dish synchronized cooking, live status/countdowns, start + done alarms, per-dish snooze (Shanes Life 05) | `recipes.cook_minutes` (migration 028), MCP `push_recipes` `cookMinutes`, `public/app.js` `#/tonight` (`mealSession`, `mealDishState`, `renderMealAlarmOverlay`) -- client-only session, deliberately not persisted; takes priority over #3127's own Today "Tonight" card while a live session is running (#3126) |
+| People & Patterns: private per-person journal, deliberately dumb word/timing/topic patterns, real search/ask, therapist export (§7, Shanes Life 11) | `src/core/people.mjs`, `people`/`person_entries` tables (migration 035), `GET/POST /api/people`, `GET/POST/DELETE /api/people/:id/...`, `public/app.js` `#/people` + `#/person/:id`, MCP `list_people`/`log_person_note`/`get_person_notes` (#3157) |
 
 ---
 
@@ -404,6 +405,46 @@ support just doesn't get the lock; cook mode itself still works.
 
 Explicitly not built here, per the issue's own scope: the in-step timer, Tonight (multi-dish
 timing), and the Sunday meal-planning ritual — each a separate, real sibling Feature under #3086.
+
+## People & Patterns (#3157)
+
+Section 7's own real, explicit boundary, stated directly and worth repeating here: **NOT a
+companion or chatbot persona.** A private journal capturing Shane's own words about people in his
+life, threaded under the right person through the same one-box capture used everywhere else —
+`people` (find-or-create by `lower(name)`, same upsert pattern `things.recordThing` and
+`contacts` already use) and `person_entries` (migration 035), both typed tables per #3116's own
+recorded decision, not the generic `entities`/`entity_items` pair.
+
+**"Threaded automatically based on who's mentioned" is a Claude-conversation step, not something
+this app infers itself** (Section 10): Claude reads a pending capture (`list_captures`),
+recognises who it's genuinely about, and calls the real `log_person_note` MCP tool with that
+person's name — creating them on first mention, matching an existing one case-insensitively
+otherwise (`list_people` is there to check first, so "Mom" and "Mother" don't split into two
+people). The room's own capture bar ("Note about Dana") is the direct path when Shane is already
+looking at exactly who a note is about.
+
+**The patterns panel is deliberately dumb** (`people.computePatterns`) — word counts and timing
+over Shane's own words, quoted back verbatim, never a generated summary or an opinion about the
+person. Three real, independent, plain-arithmetic signals, each only surfaced when there's a real
+majority in the data (never padded to look meaningful): a word repeated in at least 3 of the last
+5 notes, a proper-noun phrase (e.g. "The Rental") mentioned in at least 2 notes overall, and a
+time-of-day majority (at least 60% of all notes, minimum 3) written in the same part of the day.
+Fewer than 3 notes on file returns an empty pattern list — the honest answer, not a padded one.
+
+**The real "search/ask interface for pattern recall"** (`GET /api/people?q=`) is genuinely
+deterministic substring search, not a natural-language query: typing a name jumps straight to
+that person's thread ("how have things with Dana been"), typing a word or phrase surfaces every
+real note that used it, across everyone. `get_person_notes` (MCP) is the same real data read from
+inside a live Claude conversation, for when Shane asks the question there instead of in the app —
+the tool's own description tells Claude to answer from the real notes directly, never add a
+diagnosis or advice framed as certainty.
+
+**Export is a real, literal, chronological (oldest-first) transcript** (`GET
+/api/people/:id/export`, "Export for therapist" in the UI) — never an AI-generated summary. The
+contract's own "no advice framed as certainty" boundary rules that out, and Section 10 rules out
+this app ever calling a model to produce one; what's exported is exactly what Shane wrote, in
+order, dated — real material to bring to an actual therapist conversation, not a substitute for
+one.
 
 ## Not built here, on purpose
 

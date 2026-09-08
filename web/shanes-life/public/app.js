@@ -1546,6 +1546,207 @@ async function viewThings(view) {
   attachRoomWatermark(view, "things");
 }
 
+// People & Patterns (Git #3157, design contract Section 7) -- a private per-person reflection
+// journal. NOT a companion or chatbot persona: a thread per person in Shane's own words, plus a
+// deliberately dumb patterns readout (word counts and timing, quoted verbatim -- see
+// people.computePatterns on the server). "Threaded automatically based on who's mentioned"
+// happens in a Claude conversation (Section 10); this room's own capture bar is the direct,
+// no-classification-needed path for filing a note straight against a person you're already
+// looking at.
+
+function personInitial(name) {
+  return (name || "?").trim().charAt(0).toUpperCase() || "?";
+}
+
+function personRow(p) {
+  return el("a", { class: "date-row", href: `#/person/${p.id}`, style: "text-decoration:none;color:inherit" }, [
+    el("div", { class: "person-avatar", text: personInitial(p.name) }),
+    el("div", { class: "body" }, [
+      el("div", { class: "title small", text: p.name }),
+      el("div", { class: "meta", text: [p.relationship, `${p.note_count} note${p.note_count === 1 ? "" : "s"}`, p.last_entry_at ? when(p.last_entry_at) : null].filter(Boolean).join(" · ") }),
+    ]),
+  ]);
+}
+
+async function viewPeople(view) {
+  view.append(
+    el("section", { class: "section" }, [
+      el("h2", { text: "People" }),
+      el("p", { class: "muted small", text: "A private thread per person, in your own words. Only you can see this." }),
+    ]),
+  );
+
+  // The real search/ask interface for pattern recall (Section 7) -- a name jumps straight to
+  // that person's thread ("how have things with Dana been"); a word or phrase surfaces every
+  // real note that used it, across everyone. Real, deterministic search, no AI call.
+  const searchInput = el("input", { placeholder: "Search a name or a word…", "aria-label": "Search people and notes", autocomplete: "off" });
+  const searchResults = el("div", { style: "margin-top:.5rem" });
+  const searchForm = el("form", { class: "row" }, [searchInput, el("button", { class: "small", type: "submit", text: "Search" })]);
+  searchForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const q = searchInput.value.trim();
+    searchResults.replaceChildren();
+    if (!q) return;
+    const { people: matchedPeople, entries: matchedEntries } = await api(`/api/people?q=${encodeURIComponent(q)}`);
+    if (matchedPeople.length === 0 && matchedEntries.length === 0) {
+      searchResults.append(el("p", { class: "meta", text: `Nothing on file for "${q}" yet.` }));
+      return;
+    }
+    for (const p of matchedPeople) searchResults.append(personRow({ ...p, note_count: 0, last_entry_at: null }));
+    for (const e of matchedEntries) {
+      searchResults.append(
+        el("a", { class: "date-row", href: `#/person/${e.person_id}`, style: "text-decoration:none;color:inherit" }, [
+          el("div", { class: "person-avatar", text: personInitial(e.person_name) }),
+          el("div", { class: "body" }, [
+            el("div", { class: "title small", text: e.person_name }),
+            el("div", { class: "meta", text: `${when(e.happened_at)} · ${e.body_text}` }),
+          ]),
+        ]),
+      );
+    }
+  });
+  view.append(el("section", { class: "section" }, [searchForm, searchResults]));
+
+  const { items } = await api("/api/people");
+  const list = el("section", { class: "section" });
+  if (items.length === 0) {
+    list.append(empty("No one on file yet.", "Add someone below, or just write a note about them in the capture box.", "people"));
+  } else {
+    for (const p of items) list.append(personRow(p));
+  }
+  view.append(list);
+
+  const nameInput = el("input", { placeholder: "Name, e.g. Dana", "aria-label": "Person's name" });
+  const relInput = el("input", { placeholder: "Relationship (optional), e.g. property manager", "aria-label": "Relationship" });
+  const addForm = el("form", { class: "section" }, [
+    el("div", { class: "row" }, [nameInput, relInput, el("button", { class: "primary small", type: "submit", text: "Add person" })]),
+  ]);
+  addForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = nameInput.value.trim();
+    if (!name) return;
+    addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    try {
+      const person = await api("/api/people", { method: "POST", body: JSON.stringify({ name, relationship: relInput.value.trim() || null }) });
+      location.hash = `#/person/${person.id}`;
+    } finally {
+      addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [addForm]));
+
+  attachRoomWatermark(view, "people");
+}
+
+function personEntryRow(personId, e) {
+  return el("div", { class: "date-row" }, [
+    el("div", { class: "body" }, [
+      el("div", { class: "meta", text: `${when(e.happened_at)}${e.kind !== "text" ? ` · ${e.kind}` : ""}` }),
+      el("div", { text: e.body_text }),
+    ]),
+    el("button", {
+      class: "ghost small danger",
+      text: "Delete",
+      onClick: async (event) => {
+        if (!confirm("Delete this note?")) return;
+        event.currentTarget.disabled = true;
+        await api(`/api/people/${personId}/entries/${e.id}`, { method: "DELETE" });
+        render();
+      },
+    }),
+  ]);
+}
+
+async function viewPersonDetail(view, personId) {
+  const { person, entries, patterns } = await api(`/api/people/${personId}`);
+
+  const sinceLabel = person.first_entry_at
+    ? `${person.note_count} note${person.note_count === 1 ? "" : "s"} since ${new Date(person.first_entry_at).toLocaleDateString([], { month: "long" })}`
+    : "No notes yet";
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("a", { class: "ghost small", href: "#/people", text: "← People" }),
+      el("div", { class: "card", style: "margin-top:.5rem" }, [
+        el("div", { class: "row", style: "align-items:center" }, [
+          el("div", { class: "person-avatar lg", text: personInitial(person.name) }),
+          el("div", {}, [
+            el("h1", { text: person.name, style: "margin:0 0 .15rem" }),
+            el("div", { class: "meta", text: [person.relationship, sinceLabel].filter(Boolean).join(" · ") }),
+          ]),
+        ]),
+      ]),
+    ]),
+  );
+
+  // "From your own words" -- the patterns panel. Deliberately dumb (Section 7/8): word counts and
+  // timing, quoted back verbatim. No summary sentence, no tone, no advice -- if computePatterns
+  // found nothing real yet, this section just doesn't render, which is the honest answer.
+  if (patterns.length > 0) {
+    const patternsCard = el("div", { class: "card" }, [
+      el("div", { class: "small muted", style: "text-transform:uppercase;letter-spacing:.08em;font-size:11px;margin-bottom:.4rem", text: "From your own words" }),
+      ...patterns.map((p) => el("div", { class: "pattern-line", text: p.text })),
+      el("div", { class: "pattern-footnote", text: "Counts and quotes only. Nothing here is an opinion." }),
+    ]);
+    view.append(el("section", { class: "section" }, [patternsCard]));
+  }
+
+  // Note about {person} -- the room's own direct capture bar, same one-box spirit as everywhere
+  // else in the app but pre-threaded, since Shane is already looking at exactly who it's about.
+  const noteInput = el("textarea", { placeholder: `Note about ${person.name}`, "aria-label": `Note about ${person.name}`, rows: "2" });
+  const noteForm = el("form", { class: "section" }, [
+    noteInput,
+    el("div", { class: "row" }, [el("button", { class: "primary small", type: "submit", text: "Save note" })]),
+  ]);
+  noteForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const bodyText = noteInput.value.trim();
+    if (!bodyText) return;
+    noteForm.querySelectorAll("textarea,button").forEach((n) => (n.disabled = true));
+    try {
+      await api(`/api/people/${personId}/entries`, { method: "POST", body: JSON.stringify({ bodyText }) });
+      render();
+    } finally {
+      noteForm.querySelectorAll("textarea,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [noteForm]));
+
+  const notesSection = el("section", { class: "section" }, [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:center" }, [
+      el("h2", { text: "Notes", style: "margin:0" }),
+      el("button", {
+        class: "ghost small",
+        type: "button",
+        text: "Export for therapist",
+        onClick: async (event) => {
+          event.currentTarget.disabled = true;
+          try {
+            const { text } = await api(`/api/people/${personId}/export`);
+            const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = el("a", { href: url, download: `${person.name.replace(/[^a-z0-9]+/gi, "-")}-notes.txt` });
+            document.body.append(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+          } finally {
+            event.currentTarget.disabled = false;
+          }
+        },
+      }),
+    ]),
+  ]);
+  if (entries.length === 0) {
+    notesSection.append(empty("Nothing written yet.", "Say something about them above, or ask Claude to file one for you.", "people"));
+  } else {
+    for (const e of entries) notesSection.append(personEntryRow(personId, e));
+  }
+  view.append(notesSection);
+
+  attachRoomWatermark(view, "people");
+}
+
 // Lists (Git #3155) -- the real, deliberately light-touch case Section 3 calls out: movies/shows
 // to watch, recommended books, and anything else Claude files on the fly via `push_list`'s
 // generic `category` path. Same real typed shape as Shopping (core/lists.mjs), just every list
@@ -4747,7 +4948,7 @@ async function viewPetDetail(view, petId) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", people: "People", person: "", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -4759,6 +4960,7 @@ function parseRoute() {
   state.dateId = state.route === "date" ? rest[0] : null;
   state.petId = state.route === "pet" ? rest[0] : null;
   state.carId = state.route === "car" ? rest[0] : null;
+  state.personId = state.route === "person" ? rest[0] : null;
 }
 
 async function render() {
@@ -4801,6 +5003,8 @@ async function render() {
     else if (state.route === "car") await viewCarDetail(view, state.carId);
     else if (state.route === "lists") await viewLists(view);
     else if (state.route === "things") await viewThings(view);
+    else if (state.route === "people") await viewPeople(view);
+    else if (state.route === "person") await viewPersonDetail(view, state.personId);
     else if (state.route === "settings") await viewSettings(view);
     else if (state.route === "entity") await viewEntity(view, state.entity);
     else await viewToday(view);

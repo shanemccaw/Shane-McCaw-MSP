@@ -823,6 +823,75 @@ async function main() {
     thingsActivity.json?.activity?.some((a) => a.action === "thing.record") && thingsActivity.json?.activity?.some((a) => a.action === "contact.record"),
   );
 
+  // 6f. People & Patterns -- private reflection journal (Git #3157, design contract Section 7).
+  const personName = `ZzCheckDana ${stamp}`;
+  const savedPerson = await http("/api/people", { method: "POST", body: { name: personName, relationship: "friend" } });
+  check("POST /api/people creates a real person", savedPerson.status === 201 && savedPerson.json?.name === personName && savedPerson.json?.relationship === "friend", JSON.stringify(savedPerson.json));
+
+  const resavedPerson = await http("/api/people", { method: "POST", body: { name: personName.toLowerCase() } });
+  check("posting the same name again (any case) threads onto the same person, not a duplicate", resavedPerson.json?.id === savedPerson.json?.id, JSON.stringify(resavedPerson.json));
+
+  const personNotes = [
+    "Seemed tired after the call. Rushed and didn't push.",
+    "Rushed again. Said she'd call back Thursday, didn't.",
+    "Good talk about the Rental. She offered to help move the linens over.",
+    "Felt rushed on the phone. She had people over.",
+    "The Rental needs a new faucet, someone mentioned it again.",
+  ];
+  let lastNoteId = null;
+  for (const bodyText of personNotes) {
+    const saved = await http(`/api/people/${savedPerson.json.id}/entries`, { method: "POST", body: { bodyText } });
+    lastNoteId = saved.json?.id;
+  }
+  check("every real note landed (POST /api/people/:id/entries)", lastNoteId, lastNoteId);
+
+  const personDetail = await http(`/api/people/${savedPerson.json.id}`);
+  check("GET /api/people/:id returns every real note, newest first", personDetail.json?.entries?.length === personNotes.length && personDetail.json.entries[0].body_text === personNotes[personNotes.length - 1], JSON.stringify(personDetail.json?.entries?.map((e) => e.body_text)));
+  check(
+    "the patterns panel finds the real repeated word, quoted verbatim -- deliberately dumb, no AI call",
+    personDetail.json?.patterns?.some((p) => p.type === "word" && p.word === "rushed" && p.inCount === 3),
+    JSON.stringify(personDetail.json?.patterns),
+  );
+  check(
+    "the patterns panel finds the real recurring topic phrase",
+    personDetail.json?.patterns?.some((p) => p.type === "topic" && p.phrase === "Rental"),
+    JSON.stringify(personDetail.json?.patterns),
+  );
+
+  const peopleSearch = await http(`/api/people?q=${encodeURIComponent("rushed")}`);
+  check("the real search/ask interface finds notes by word, across people", peopleSearch.json?.entries?.some((e) => e.person_id === savedPerson.json.id), JSON.stringify(peopleSearch.json?.entries?.map((e) => e.person_id)));
+
+  const peopleSearchByName = await http(`/api/people?q=${encodeURIComponent(personName)}`);
+  check("the real search/ask interface finds the person by name", peopleSearchByName.json?.people?.some((p) => p.id === savedPerson.json.id), JSON.stringify(peopleSearchByName.json?.people));
+
+  const exportRes = await http(`/api/people/${savedPerson.json.id}/export`);
+  check(
+    "export is a real, literal, chronological (oldest-first) transcript -- never an AI summary",
+    exportRes.json?.text?.startsWith(personName) && exportRes.json.text.indexOf(personNotes[0]) < exportRes.json.text.indexOf(personNotes[personNotes.length - 1]),
+    exportRes.json?.text,
+  );
+
+  const deletedNote = await http(`/api/people/${savedPerson.json.id}/entries/${lastNoteId}`, { method: "DELETE" });
+  check("a note can be deleted", deletedNote.status === 200 && deletedNote.json?.ok === true, JSON.stringify(deletedNote.json));
+
+  // log_person_note / list_people / get_person_notes (MCP) -- the real Claude-conversation
+  // threading path (Section 7's "threaded automatically based on who's mentioned").
+  const mcpPersonName = `ZzCheckMarcus ${stamp}`;
+  const mcpLoggedNote = await rpc(token.token, "tools/call", { name: "log_person_note", arguments: { personName: mcpPersonName, relationship: "property manager", text: "Fixed the leak fast, no complaints." } });
+  const mcpLoggedNotePayload = toolResult(mcpLoggedNote);
+  check("log_person_note (MCP) creates the person on first mention and files the real note", mcpLoggedNotePayload?.person?.name === mcpPersonName && mcpLoggedNotePayload?.entry?.body_text === "Fixed the leak fast, no complaints.", JSON.stringify(mcpLoggedNotePayload));
+
+  const mcpListPeople = await rpc(token.token, "tools/call", { name: "list_people", arguments: {} });
+  const mcpListPeoplePayload = toolResult(mcpListPeople);
+  check("list_people (MCP) reads the real roster back", mcpListPeoplePayload?.items?.some((p) => p.name === mcpPersonName), JSON.stringify(mcpListPeoplePayload));
+
+  const mcpGetNotes = await rpc(token.token, "tools/call", { name: "get_person_notes", arguments: { personName: mcpPersonName.toUpperCase() } });
+  const mcpGetNotesPayload = toolResult(mcpGetNotes);
+  check("get_person_notes (MCP) matches case-insensitively and returns the real note", mcpGetNotesPayload?.entries?.[0]?.body_text === "Fixed the leak fast, no complaints.", JSON.stringify(mcpGetNotesPayload));
+
+  const peopleActivity = await http("/api/activity");
+  check("the People writes are in the audit trail", peopleActivity.json?.activity?.some((a) => a.action === "person.entry.create"), JSON.stringify(peopleActivity.json?.activity?.map((a) => a.action)));
+
   cookie = null;
 
   // 6b. money: the same numbers ShanesSurvival's own Dashboard shows (Git #3137)

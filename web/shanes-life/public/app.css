@@ -1025,3 +1025,24 @@ pre.token {
 /* Bills tab's inline "gate" badge (Git #3148) -- Now's own buckets already segregate gate
    bills into Protected, so only Bills (which lists every account together) needs this. */
 .chip.gate { color: #60a5fa; border-color: rgba(96, 165, 250, 0.4); background: rgba(96, 165, 250, 0.12); }
+
+/* People & Patterns (Git #3157, design contract Section 7) -- the person tint throughout the
+   design handoff (rgba 167,139,250, "violet") for the initial-letter avatar and the room's own
+   accents; the "from your own words" panel intentionally reuses .card + .date-row rather than
+   inventing new chrome, since it is deliberately plain -- a private journal, not a feature. */
+.person-avatar {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: rgba(167, 139, 250, 0.16);
+  color: #a78bfa;
+  display: grid;
+  place-items: center;
+  font-weight: var(--weight-bold);
+  font-size: 15px;
+}
+.person-avatar.lg { width: 56px; height: 56px; font-size: 22px; }
+.pattern-line { padding: 10px 0; border-top: 1px solid hsl(var(--card-border) / 0.6); font-size: 14px; line-height: 1.5; }
+.pattern-line:first-child { border-top: none; padding-top: 0; }
+.pattern-footnote { font-size: 12px; color: hsl(var(--muted-foreground)); padding-top: 10px; border-top: 1px solid hsl(var(--card-border) / 0.6); }
