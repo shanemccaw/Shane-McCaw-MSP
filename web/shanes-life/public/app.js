@@ -1784,15 +1784,11 @@ async function viewToday(view) {
     );
   }
 
-  const recent = el("section", { class: "section" }, [el("h2", { text: "Recent" })]);
-  if (data.recent.length === 0) {
-    recent.append(
-      empty("Nothing here yet.", "Type into the box below, or ask Claude to push something in over MCP."),
-    );
-  } else {
+  if (data.recent.length > 0) {
+    const recent = el("section", { class: "section" }, [el("h2", { text: "Recent" })]);
     for (const item of data.recent) recent.append(entityTile(item));
+    view.append(recent);
   }
-  view.append(recent);
 }
 
 /** Git #3159 -- fills `slot` with a real "You're at <place>" card if (and only if) the app
