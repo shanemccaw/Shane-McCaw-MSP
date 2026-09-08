@@ -985,7 +985,7 @@ export const TOOLS = [
     name: "set_medication",
     title: "Create or update a real medication",
     description:
-      "Create a new real medication record, or update an existing one by passing its id. batch is free text ('morning', 'evening', ...) -- the same batch groups a single swipe completes together, so a new medication in an existing batch just joins that batch's next swipe, no migration needed. refillTier is a real, locked dichotomy: 'auto' (no action ever needed from Shane) or 'manual' (surfaces under Refills > Needs you). supplyDays + nextRefillOn drive the real 'days left' countdown on a manual-watch item.",
+      "Create a new real medication record, or update an existing one by passing its id. batch is free text ('morning', 'evening', ...) -- the same batch groups a single swipe completes together, so a new medication in an existing batch just joins that batch's next swipe, no migration needed. refillTier is a real, locked dichotomy: 'auto' (no action ever needed from Shane) or 'manual' (surfaces under Refills > Needs you). supplyDays + nextRefillOn drive the real 'days left' countdown on a manual-watch item. pharmacyPhone drives the real 'Call pharmacy' button on a manual-watch item -- the button only shows once this is set.",
     inputSchema: {
       type: "object",
       properties: {
@@ -997,6 +997,7 @@ export const TOOLS = [
         supplyDays: { type: "number", description: "How many days one fill covers." },
         nextRefillOn: { type: "string", description: "ISO date -- manual: pharmacy due date; auto: next delivery date." },
         refillNote: { type: "string", description: "e.g. 'Pharmacy needs a call before Thursday.'" },
+        pharmacyPhone: { type: "string", description: "e.g. '555-123-4567' -- the manual-watch tier's real 'Call pharmacy' number." },
       },
       additionalProperties: false,
     },

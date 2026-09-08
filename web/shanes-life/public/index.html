@@ -105,9 +105,9 @@
            (#3087), predating the Round 2 phone-native design language. The real Today tray
            design (Shanes Life 02 - Today tray.dc.html) has no such bar at all -- its own
            fox/weather scene (renderTodayHeader) IS the header, immediately below the native
-           status bar. render() hides #app-header for the Today route only; every other room
-           still uses it until it gets its own Round 2 redesign pass (open question raised on
-           #3174 rather than stripping it everywhere at once). -->
+           status bar. render() hides #app-header for Today, Shopping (#3178, its own
+           .shop-header) and Meds (#3191, its own .meds-header); every other room still uses it
+           until it gets its own Round 2 redesign pass. -->
       <header id="app-header" class="app-header">
         <h1 id="view-title">Today</h1>
         <button id="sign-out" class="ghost small">Sign out</button>

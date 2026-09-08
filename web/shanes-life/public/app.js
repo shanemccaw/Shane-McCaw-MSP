@@ -2807,20 +2807,24 @@ function attachSlideToTake(track, knob, onComplete) {
   knob.addEventListener("pointercancel", release);
 }
 
+// The pill icon (lucide "Pill") the design puts in a tinted circle on every real item row.
+const PILL_ICON_PATH = '<path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"></path><path d="m8.5 8.5 7 7"></path>';
+
 function medBatchCard(batchState) {
   const { batch, items, takenToday, takenAt } = batchState;
   const label = batch.charAt(0).toUpperCase() + batch.slice(1);
 
   const itemRows = items.map((item) =>
     el("div", { class: "med-item-row" }, [
-      el("span", { text: item.name }),
+      el("div", { class: "med-item-icon" }, [lineIcon(PILL_ICON_PATH, { size: 16 })]),
+      el("span", { style: "flex:1", text: item.name }),
       item.doseNote ? el("span", { class: "med-dose", text: item.doseNote }) : null,
     ]),
   );
 
   const card = el("div", { class: "card" }, [
     el("div", { class: "spread" }, [
-      el("div", { class: "row" }, [critterIcon(medsCritterSlot(batch), { size: 32 }), el("span", { class: "title", text: label })]),
+      el("div", { class: "row" }, [critterIcon(medsCritterSlot(batch), { size: 32 }), el("span", { class: "med-batch-title", text: label })]),
       el("span", { class: "meta", text: `${items.length} ${items.length === 1 ? "item" : "items"}` }),
     ]),
     ...itemRows,
@@ -2869,18 +2873,22 @@ function medBatchCard(batchState) {
   return card;
 }
 
+// Same two icons the design puts in the two refill tiers' own tinted circles (lucide "Phone"
+// for the manual-watch tier, the same check lineIcon already uses for a taken batch for the
+// auto-refill tier).
+const REFILL_PHONE_ICON_PATH =
+  '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path>';
+const REFILL_CHECK_ICON_PATH = '<path d="M20 6 9 17l-5-5"></path>';
+
 function refillNeedsYouCard(item) {
   const daysLeft = item.daysLeft;
-  const dueSoon = daysLeft !== null && daysLeft <= 3;
-  return el("div", { class: "card refill-row" }, [
-    el("div", { style: "flex:1;min-width:0" }, [
-      el("div", { class: "refill-tier-label needs-you", text: "Needs you" }),
-      el("div", { class: "title", style: "margin-top:3px", text: daysLeft === null ? item.name : `${item.name} · ${daysLeft <= 0 ? "due now" : `${daysLeft} ${daysLeft === 1 ? "day" : "days"} left`}` }),
-      item.refillNote ? el("div", { class: `refill-days-left ${dueSoon ? "due" : ""}`, text: item.refillNote }) : null,
-    ]),
-    el("button", {
-      class: "small",
-      text: "Ordered it",
+  const titleLine =
+    daysLeft === null ? item.name : `${item.name} · ${daysLeft <= 0 ? "due now" : `${daysLeft} ${daysLeft === 1 ? "day" : "days"} left`}`;
+
+  const orderedButton = pillButton(
+    "button",
+    {
+      type: "button",
       onClick: async (event) => {
         event.currentTarget.disabled = true;
         try {
@@ -2890,7 +2898,26 @@ function refillNeedsYouCard(item) {
           event.currentTarget.disabled = false;
         }
       },
-    }),
+    },
+    "Ordered it",
+    "ghost",
+  );
+  // "Call pharmacy" (the design's own real second action) only ever appears once a real number
+  // exists to call -- never a button pointed at nothing.
+  const actions = item.pharmacyPhone
+    ? [pillButton("a", { href: `tel:${item.pharmacyPhone}` }, "Call pharmacy", "primary"), orderedButton]
+    : [orderedButton];
+
+  return el("div", { class: "card refill-card" }, [
+    el("div", { class: "refill-row" }, [
+      el("div", { class: "refill-icon needs-you" }, [lineIcon(REFILL_PHONE_ICON_PATH, { size: 18 })]),
+      el("div", { style: "flex:1;min-width:0" }, [
+        el("div", { class: "refill-tier-label needs-you", text: "Needs you" }),
+        el("div", { class: "title", style: "margin-top:3px", text: titleLine }),
+        item.refillNote ? el("div", { class: "refill-days-left", text: item.refillNote }) : null,
+      ]),
+    ]),
+    el("div", { class: "pill-row" }, actions),
   ]);
 }
 
@@ -2907,12 +2934,22 @@ function refillsSection(refills) {
   for (const item of refills.needsYou) section.append(refillNeedsYouCard(item));
 
   if (refills.handled.length > 0) {
+    // Only ever names one real shared "next delivery" date -- when the handled meds' own real
+    // nextRefillOn dates actually agree. Different real dates per item say "nothing to do"
+    // instead of picking one and implying it covers all of them.
+    const dates = refills.handled.map((h) => h.nextRefillOn).filter(Boolean);
+    const sameDate = dates.length === refills.handled.length && dates.every((d) => d === dates[0]);
+    const noteText = sameDate
+      ? `Auto-refill · next delivery ${new Date(dates[0]).toLocaleDateString([], { month: "short", day: "numeric" })} · nothing to do`
+      : "Auto-refill · nothing to do";
+
     section.append(
       el("div", { class: "card refill-row" }, [
+        el("div", { class: "refill-icon handled" }, [lineIcon(REFILL_CHECK_ICON_PATH, { size: 18 })]),
         el("div", { style: "flex:1;min-width:0" }, [
           el("div", { class: "refill-tier-label handled", text: "Handled automatically" }),
           el("div", { style: "margin-top:3px;line-height:1.45", text: refills.handled.map((h) => h.name).join(", ") }),
-          el("div", { class: "refill-days-left", text: "Auto-refill · nothing to do" }),
+          el("div", { class: "refill-days-left", text: noteText }),
         ]),
       ]),
     );
@@ -2921,15 +2958,21 @@ function refillsSection(refills) {
   return section;
 }
 
+// Git #3191: Meds' own native header -- back "Today" / centered title / spacer, same real
+// shape Today (#3174) and Shopping (#3178) already use, replacing the generic app-header this
+// room used to fall back on (see render()'s hasOwnHeader).
+function medsHeader() {
+  return el("div", { class: "meds-header" }, [
+    el("a", { href: "#/today", class: "meds-header-back" }, [chevron("left"), el("span", { text: "Today" })]),
+    el("div", { class: "meds-header-title", text: "Meds" }),
+    el("div", { class: "meds-header-spacer" }),
+  ]);
+}
+
 async function viewMeds(view) {
   const { batches, refills } = await api("/api/medications");
 
-  view.append(
-    el("section", { class: "section" }, [
-      el("h2", { text: "Meds" }),
-      el("p", { class: "muted small", text: "One slide per batch, not one tap per pill." }),
-    ]),
-  );
+  view.append(medsHeader());
 
   if (batches.length === 0) {
     view.append(
@@ -3419,16 +3462,35 @@ function moneyBillRow(bill, { showGateBadge = false, onOpenDetail = null } = {})
 // arithmetic) -- never a separate assigned/envelopeBalance shadow ledger. One real read,
 // GET /api/money/bills/:id, no client-side math beyond formatting.
 
+/** Same tiny helper as `el()` (line 364) but for the SVG namespace -- `document.createElement`
+ *  produces an HTMLUnknownElement for svg/polyline/etc, so real SVG nodes need `createElementNS`. */
+function svgEl(tag, attrs = {}) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v !== null && v !== undefined && v !== false) node.setAttribute(k, v === true ? "" : v);
+  }
+  return node;
+}
+
 /** The funding-history sparkline -- same real visual language as `debtPayoffSparklineHtml`
  *  (Git #3210): a real polyline over real `bill_cycle_snapshots` points, honestly just a dot
  *  when only one real cycle has been captured so far. Wider than the debt one (this is the only
  *  chart on the sheet, not an inline row accessory) and labeled with the real first/last cycle
- *  dates underneath, same as the design's "Jun 12 ... Sep 18" caption -- no scrub interaction
- *  (the design's "drag to scrub" is real polish for a later pass, not required to show real data
- *  honestly today). */
-function billSparklineHtml(sparkline) {
+ *  dates underneath, same as the design's "Jun 12 ... Sep 18" caption.
+ *
+ *  Git #3240: real pointer/touch drag-to-scrub, deferred from #3212. `onScrub(point | null)` is
+ *  called with the nearest real data point while a drag/tap is active over the chart, and with
+ *  `null` on release -- the caller (openBillDetailSheet) owns the "Aug 21 · $520 of $612" callout
+ *  label above the chart; this function only owns the SVG and its own dashed marker + dot. */
+function billSparklineNode(sparkline, onScrub) {
   const W = 338, H = 64, PAD_Y = 8;
-  if (!sparkline || sparkline.length === 0) return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"></svg>`;
+  const svg = svgEl("svg", {
+    width: W,
+    height: H,
+    viewBox: `0 0 ${W} ${H}`,
+    style: `display:block;width:100%;height:${H}px`,
+  });
+  if (!sparkline || sparkline.length === 0) return svg;
 
   const balances = sparkline.map((p) => Number(p.balance));
   const min = Math.min(0, ...balances);
@@ -3442,11 +3504,84 @@ function billSparklineHtml(sparkline) {
     return [x, y];
   });
   const [lastX, lastY] = coords[coords.length - 1];
-  const polyline =
-    n > 1
-      ? `<polyline fill="none" stroke="#60a5fa" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")}"></polyline>`
-      : "";
-  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;width:100%;height:${H}px">${polyline}<circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="3" fill="#60a5fa"></circle></svg>`;
+
+  if (n > 1) {
+    svg.append(
+      svgEl("polyline", {
+        fill: "none",
+        stroke: "#60a5fa",
+        "stroke-width": 2,
+        "stroke-linejoin": "round",
+        "stroke-linecap": "round",
+        points: coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" "),
+      }),
+    );
+  }
+  svg.append(svgEl("circle", { cx: lastX.toFixed(1), cy: lastY.toFixed(1), r: 3, fill: "#60a5fa" }));
+
+  // Real "drag to scrub" marker (design 1e: a dashed vertical line + a ringed dot at the nearest
+  // real point), hidden until a pointer/touch is actually down on the chart -- no interaction, no
+  // marker, same honesty rule as the rest of this sheet.
+  if (n > 1 && typeof onScrub === "function") {
+    const scrubLine = svgEl("line", {
+      x1: 0, y1: 0, x2: 0, y2: H,
+      stroke: "rgba(238,242,248,.4)",
+      "stroke-dasharray": "2 3",
+      visibility: "hidden",
+    });
+    const scrubDot = svgEl("circle", {
+      cx: 0, cy: 0, r: 5.5,
+      fill: "var(--card, #1c1c1e)",
+      stroke: "#60a5fa",
+      "stroke-width": 2,
+      visibility: "hidden",
+    });
+    svg.append(scrubLine, scrubDot);
+
+    const nearestIndex = (clientX) => {
+      const rect = svg.getBoundingClientRect();
+      if (rect.width === 0) return 0;
+      const frac = (clientX - rect.left) / rect.width;
+      return Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1))));
+    };
+    const showAt = (index) => {
+      const [x, y] = coords[index];
+      scrubLine.setAttribute("x1", x.toFixed(1));
+      scrubLine.setAttribute("x2", x.toFixed(1));
+      scrubLine.setAttribute("visibility", "visible");
+      scrubDot.setAttribute("cx", x.toFixed(1));
+      scrubDot.setAttribute("cy", y.toFixed(1));
+      scrubDot.setAttribute("visibility", "visible");
+      onScrub(sparkline[index]);
+    };
+    const hide = () => {
+      scrubLine.setAttribute("visibility", "hidden");
+      scrubDot.setAttribute("visibility", "hidden");
+      onScrub(null);
+    };
+
+    let dragging = false;
+    svg.style.touchAction = "pan-y";
+    svg.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      svg.setPointerCapture(e.pointerId);
+      showAt(nearestIndex(e.clientX));
+    });
+    svg.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      showAt(nearestIndex(e.clientX));
+    });
+    const release = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      if (svg.hasPointerCapture?.(e.pointerId)) svg.releasePointerCapture(e.pointerId);
+      hide();
+    };
+    svg.addEventListener("pointerup", release);
+    svg.addEventListener("pointercancel", release);
+  }
+
+  return svg;
 }
 
 /**
@@ -3526,6 +3661,21 @@ async function openBillDetailSheet(billId) {
       : "Still building real cycle history for this bill -- the rolled-over/this-cycle split appears once a real cycle boundary has been captured.",
   });
 
+  // Git #3240: the callout label lives above the chart, same slot as the design's own
+  // "Aug 21 · $520 of $612" -- blank until a real drag/tap actually names a real point.
+  const scrubCallout = el("span", {
+    class: "small",
+    style: "font-weight:600;color:#60a5fa;white-space:nowrap",
+  });
+  const scrubHint = el("span", { class: "small muted", text: "drag to scrub" });
+  const onScrub = (point) => {
+    scrubCallout.textContent = point
+      ? point.targetAtRead !== null && point.targetAtRead !== undefined
+        ? `${point.label} · ${dollars(point.balance)} of ${dollars(point.targetAtRead)}`
+        : `${point.label} · ${dollars(point.balance)}`
+      : "";
+  };
+
   const sparklineSection = el("div", { style: "margin-top:14px" }, [
     el("div", { class: "row", style: "justify-content:space-between;align-items:baseline;gap:8px" }, [
       el("span", {
@@ -3533,11 +3683,13 @@ async function openBillDetailSheet(billId) {
         style: "text-transform:uppercase;letter-spacing:.1em;font-weight:600;font-size:.68rem",
         text: `Funded at each payday · ${d.sparkline.length} real cycle${d.sparkline.length === 1 ? "" : "s"}`,
       }),
+      scrubCallout,
     ]),
-    el("span", { style: "display:block;margin-top:6px", html: billSparklineHtml(d.sparkline) }),
+    el("span", { style: "display:block;margin-top:6px" }, [billSparklineNode(d.sparkline, onScrub)]),
     d.sparkline.length > 0
       ? el("div", { class: "row", style: "justify-content:space-between", "aria-hidden": "true" }, [
           el("span", { class: "small muted", text: d.sparkline[0].label }),
+          d.sparkline.length > 1 ? scrubHint : null,
           el("span", { class: "small muted", text: d.sparkline[d.sparkline.length - 1].label }),
         ])
       : el("p", { class: "small muted", text: "No real cycle history captured yet." }),
@@ -3922,12 +4074,19 @@ async function vaultCopy(text, message, clearSeconds) {
  * anyway, and making it cost a passkey assertion would spend the assertion on the wrong half
  * while training the habit that assertions are cheap. The password stays behind the mask.
  */
-function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds }) {
+function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds, onChanged }) {
   const isLogin = entry.kind === "login";
   const secretBox = el("div", { class: "vault-secret" });
   const maskEl = el("div", { class: "vault-masked", text: entry.masked });
   const revealBtn = el("button", { type: "button", class: "vault-reveal-btn", text: "Reveal" });
   const errorEl = el("div", { class: "vault-row-error", hidden: true });
+
+  // Git #3248: edit and delete onto the same PATCH/DELETE /api/vault/:id that #3150 already
+  // shipped and tested -- the room could create and reveal an entry but never fix or remove one,
+  // so a wrong entry (rotated password, moved username, closed account) stayed wrong forever.
+  const editBtn = el("button", { type: "button", class: "vault-copy-btn ghostish", text: "Edit" });
+  const deleteBtn = el("button", { type: "button", class: "vault-copy-btn ghostish danger", text: "Delete" });
+  const editForm = el("div", { class: "vault-edit-form", hidden: true });
 
   // The real username line, with its own copy — the whole daily point of a password manager
   // without autofill is that neither half has to be retyped from a screenshot.
@@ -3966,12 +4125,13 @@ function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds }) {
         entry.billAccountName ? el("div", { class: "vault-row-site", text: `for ${entry.billAccountName}` }) : null,
         ageEl,
       ]),
-      revealBtn,
+      el("div", { class: "vault-row-actions" }, [editBtn, deleteBtn, revealBtn]),
     ]),
     usernameRow,
     maskEl,
     secretBox,
     errorEl,
+    editForm,
   ]);
 
   function showMasked() {
@@ -4044,6 +4204,112 @@ function vaultRow(entry, { onReveal, onCopy, clipboardClearSeconds }) {
     } finally {
       overlay.remove();
       revealBtn.disabled = false;
+    }
+  });
+
+  // Real edit -- prefilled from the masked entry the room already has, never a re-reveal. The
+  // whole point (see this function's own header) is that fixing a label or rotating a password
+  // must not cost re-typing the password just to change what's around it: `secret` is only sent
+  // if the "New password" field is actually filled in, and `updateEntry` leaves the ciphertext
+  // (and secret_updated_at) alone when it's omitted.
+  function openEdit() {
+    errorEl.hidden = true;
+    const labelInput = el("input", { "aria-label": "What this is for", value: entry.label, required: true });
+    const siteInput = el("input", { "aria-label": "Site", value: entry.site || "" });
+    const usernameInput = isLogin
+      ? el("input", { autocomplete: "off", "aria-label": "Username", value: entry.username || "" })
+      : null;
+    const maskedInput = !isLogin
+      ? el("input", { "aria-label": "Masked hint shown by default", value: entry.masked || "" })
+      : null;
+    const secretInput = el("input", {
+      type: "password",
+      autocomplete: "new-password",
+      "aria-label": isLogin ? "New password (leave blank to keep the current one)" : "New account number (leave blank to keep the current one)",
+      placeholder: isLogin ? "New password — leave blank to keep the current one" : "New account number — leave blank to keep the current one",
+    });
+    const generateBtn = isLogin ? el("button", { type: "button", class: "ghost small", text: "Generate" }) : null;
+    generateBtn?.addEventListener("click", () => {
+      secretInput.type = "text";
+      secretInput.value = generatePassword();
+      secretInput.focus();
+    });
+    const editError = el("p", { class: "vault-row-error", hidden: true });
+    const saveBtn = el("button", { type: "submit", class: "primary small", text: "Save" });
+    const cancelBtn = el("button", { type: "button", class: "ghost small", text: "Cancel" });
+
+    const form = el("form", { class: "vault-edit-fields" }, [
+      el("div", { class: "row" }, [labelInput, siteInput]),
+      usernameInput ? el("div", { class: "row" }, [usernameInput]) : null,
+      maskedInput ? el("div", { class: "row" }, [maskedInput]) : null,
+      el("div", { class: "row" }, [secretInput, generateBtn]),
+      editError,
+      el("div", { class: "vault-edit-actions" }, [saveBtn, cancelBtn]),
+    ]);
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const cleanLabel = labelInput.value.trim();
+      if (!cleanLabel) return;
+      editError.hidden = true;
+      const controls = form.querySelectorAll("input,button,textarea");
+      controls.forEach((n) => (n.disabled = true));
+      const patch = {};
+      if (cleanLabel !== entry.label) patch.label = cleanLabel;
+      if (siteInput.value.trim() !== (entry.site || "")) patch.site = siteInput.value.trim();
+      if (usernameInput && usernameInput.value.trim() !== (entry.username || "")) {
+        patch.username = usernameInput.value.trim();
+      }
+      if (maskedInput && maskedInput.value.trim() !== (entry.masked || "")) patch.masked = maskedInput.value.trim();
+      if (secretInput.value.trim()) patch.secret = secretInput.value.trim();
+      try {
+        await api(`/api/vault/${entry.id}`, { method: "PATCH", body: JSON.stringify(patch) });
+        await onChanged();
+      } catch (err) {
+        editError.textContent = err?.message || "That did not save.";
+        editError.hidden = false;
+        controls.forEach((n) => (n.disabled = false));
+      }
+    });
+
+    cancelBtn.addEventListener("click", () => closeEdit());
+
+    editForm.replaceChildren(form);
+    editForm.hidden = false;
+    maskEl.hidden = true;
+    secretBox.replaceChildren();
+    revealBtn.hidden = true;
+    editBtn.hidden = true;
+    deleteBtn.hidden = true;
+    labelInput.focus();
+  }
+
+  function closeEdit() {
+    editForm.hidden = true;
+    editForm.replaceChildren();
+    editBtn.hidden = false;
+    deleteBtn.hidden = false;
+    showMasked();
+  }
+
+  editBtn.addEventListener("click", openEdit);
+
+  // Delete is irreversible and takes the reveal history with it (ON DELETE CASCADE) -- a real
+  // confirm step, same idiom this app already uses for other irreversible deletes (e.g. removing
+  // a pet's care record), not a bare button one misclick away.
+  deleteBtn.addEventListener("click", async () => {
+    if (!confirm(`Delete "${entry.label}"? This can't be undone.`)) return;
+    errorEl.hidden = true;
+    deleteBtn.disabled = true;
+    editBtn.disabled = true;
+    try {
+      await api(`/api/vault/${entry.id}`, { method: "DELETE" });
+      await onChanged();
+    } catch (err) {
+      errorEl.textContent = err?.message || "That did not delete.";
+      errorEl.hidden = false;
+      deleteBtn.disabled = false;
+      editBtn.disabled = false;
     }
   });
 
@@ -4149,7 +4415,9 @@ function vaultAddCard(gate, onSaved) {
     notesRow,
     maskedRow,
     billRow,
-    el("button", { type: "submit", class: "ghost small", text: "Add to the vault" }),
+    // Git #3195: primary CTA of this room's own kept form gets the same 999px pill treatment
+    // Recipes (#3190) already proved out for a room's own primary action button.
+    el("button", { type: "submit", class: "btn-pill primary vault-add-submit", text: "Add to the vault" }),
     addError,
   ]);
 
@@ -4188,7 +4456,11 @@ function vaultAddCard(gate, onSaved) {
   });
 
   applyKind();
-  return el("div", { class: "card" }, [title, kindTabs, form]);
+  // Git #3195: the vault's own list card above already got the 22px blob radius (#3242/#3150);
+  // this kept add-entry card sat at the plain 16px `.card` radius right below it in the same
+  // room -- a real, visible inconsistency, not a design choice. `.vault-card` is reused rather
+  // than a new class since it's the same real card, same room, same radius.
+  return el("div", { class: "card vault-card" }, [title, kindTabs, form]);
 }
 
 /**
@@ -4366,7 +4638,7 @@ async function viewMoneyVault(view) {
 
     const card = el("div", { class: "vault-card" });
     for (const entry of entries) {
-      card.append(vaultRow(entry, { onReveal: reveal, onCopy: copy, clipboardClearSeconds }));
+      card.append(vaultRow(entry, { onReveal: reveal, onCopy: copy, clipboardClearSeconds, onChanged: refresh }));
     }
     list.replaceChildren(card);
   }
@@ -4947,14 +5219,16 @@ async function viewMoneyAccounts(view) {
 
 /** One real win row: the date and the real, hard-won text. `debt_paid_off` is styled like the
  *  funded/covered green used everywhere else in Money -- a real automatic milestone, not manual
- *  input, gets the same "this is settled" color as a funded bill. */
+ *  input, gets the same "this is settled" color as a funded bill. Git #3195: that status is now
+ *  a rotated `sticker()`, the same real badge treatment Recipes (#3190) and the Next card (#3144)
+ *  already proved out, replacing the plain uppercase chip every other still-unbuilt room uses. */
 function moneyWinRow(win) {
   return el("div", { class: "money-bucket-row" }, [
     el("div", { class: "money-bucket-name" }, [
       el("div", { text: win.text }),
       el("div", { class: "money-bucket-meta", text: win.happened_on }),
     ]),
-    win.source === "debt_paid_off" ? el("span", { class: "money-bucket-status funded", text: "automatic" }) : null,
+    win.source === "debt_paid_off" ? sticker("green", "automatic") : null,
   ]);
 }
 
@@ -4978,7 +5252,9 @@ async function viewWins(view) {
   // able to just say 'I did it' and have it land here," which is exactly the universal
   // capture box (log_win over MCP already exists for it), not a second text field here too.
 
-  const winsCard = el("div", { class: "card money-bucket" });
+  // Git #3195: Round 2 visual rebuild -- the room's one real content card gets the same 22px
+  // blob radius Vault's own list card (#3242/#3150) and Recipes' (#3190) already carry.
+  const winsCard = el("div", { class: "card money-bucket wins-card" });
   if (wins.length === 0) {
     winsCard.append(empty("Nothing logged yet.", "Say \"I did it\" in the capture box, or a real debt hitting $0 lands here on its own.", "wins"));
   } else {
@@ -8062,15 +8338,16 @@ async function render() {
   // own native chrome (viewShopping's own .shop-header). Git #3190: Recipes is the third --
   // README "Screens" names it explicitly alongside Shopping ("Recipes... keep their solid
   // card-colored header band"), and its own content (title + live "you can make" count) now
-  // supplies enough context on its own, same as #3190's own real question asked. Git #3192:
-  // Dates and its detail screen are the fourth and fifth, via the generic roomHeader() (README
-  // "Rooms (sub pages)"). Git #3193: Pets is the sixth, the second real roomHeader() caller --
-  // the generic bar's only other real function was "Sign out", which Settings' own "Sign out
-  // everywhere" (viewSettings) already covers, the same real check that cleared Shopping/Dates.
-  // Every other room still shows the generic bar until it gets its own redesign pass.
-  // #app-view.no-header lets .view collapse its top padding to just the native status-bar safe
-  // area instead of assuming a header row sits above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "dates" || state.route === "date" || state.route === "pets";
+  // supplies enough context on its own, same as #3190's own real question asked. Git #3191: Meds
+  // is the fourth (viewMeds' own medsHeader). Git #3192: Dates and its detail screen are the
+  // fifth and sixth, via the generic roomHeader() (README "Rooms (sub pages)"). Git #3193: Pets
+  // is the seventh, the second real roomHeader() caller -- the generic bar's only other real
+  // function was "Sign out", which Settings' own "Sign out everywhere" (viewSettings) already
+  // covers, the same real check that cleared Shopping/Dates. Every other room still shows the
+  // generic bar until it gets its own redesign pass. #app-view.no-header lets .view collapse its
+  // top padding to just the native status-bar safe area instead of assuming a header row sits
+  // above it (see app.css).
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 

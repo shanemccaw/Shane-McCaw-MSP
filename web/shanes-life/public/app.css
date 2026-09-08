@@ -197,6 +197,14 @@ button:disabled { opacity: 0.5; cursor: default; }
 .row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .spread { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
 
+/* Git #3191: `.title`/`.meta` are used across many rooms' cards (28 and 45 call sites in
+   app.js) but, outside `.tile .title`/`.tile .meta`'s own narrower scope, had no base rule at
+   all -- real, confirmed via grep, not a deliberate unstyled state. This is the design
+   README's own general "Screens" type scale ("15/600 row titles, 13 muted sublines"), applied
+   as the base every room's row titles/metadata already assumed it had. */
+.title { font-size: 15px; font-weight: var(--weight-semibold); }
+.meta { font-size: 13px; color: hsl(var(--muted-foreground)); }
+
 /* Settings "House · Room order" card (Git #3215) -- one divided row per room, up/down icon
    buttons per row (reuses .icon-btn above; text glyphs here instead of an svg <use>). */
 .room-order-row { padding: 0.6rem 0; border-bottom: 1px solid hsl(var(--card-border)); }
@@ -790,13 +798,51 @@ pre.token {
   word-break: break-all;
 }
 
-/* ---------- meds (Git #3135) ----------
+/* ---------- meds (Git #3135, native chrome + refills Git #3191) ----------
    "Single swipe per batch, not per-pill" -- one real drag track per batch, not a button per
    medication. Design/design_handoff_shanes_life/Shanes Life 07 - Meds.dc.html draws the pill
    track + a knob that slides to the end; this is that control in plain pointer events. */
 
+/* Native room chrome (Git #3191): same "back Today / title center / spacer" shape Shopping's
+   own header already uses (#3178) -- the design's own real header row (back "Today" 15px
+   #60a5fa left, title 17/700 center, 88px spacer right, no action button here). */
+.meds-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: max(0.9rem, env(safe-area-inset-top));
+}
+.meds-header-back {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 88px;
+  height: 40px;
+  color: #60a5fa;
+  font-size: 15px;
+  text-decoration: none;
+}
+.meds-header-title { flex: 1; min-width: 0; text-align: center; font-size: 17px; font-weight: var(--weight-bold); }
+.meds-header-spacer { min-width: 88px; height: 40px; }
+
+/* The batch card's own header ("Morning" · "3 items") is a bigger role than a plain row title
+   -- the design's own literal 17/700, distinct from the general `.title` 15/600 base above. */
+.med-batch-title { font-size: 17px; font-weight: var(--weight-bold); }
+
 .med-item-row { display: flex; align-items: center; gap: 0.6rem; font-size: 15px; }
 .med-item-row .med-dose { font-size: 0.8rem; color: hsl(var(--muted-foreground)); margin-left: auto; }
+.med-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: rgba(96, 165, 250, 0.14);
+  color: #60a5fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 
 .slide-track {
   position: relative;
@@ -834,12 +880,23 @@ pre.token {
 .slide-knob svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .slide-track.done .slide-knob { background: hsl(var(--success)); }
 
+.refill-card { display: flex; flex-direction: column; gap: 0.75rem; }
 .refill-row { display: flex; align-items: flex-start; gap: 0.7rem; }
+.refill-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.refill-icon.needs-you { background: rgba(251, 191, 36, 0.14); color: #fbbf24; }
+.refill-icon.handled { background: rgba(52, 211, 153, 0.14); color: hsl(var(--success)); }
 .refill-tier-label { font-size: 11px; font-weight: var(--weight-semibold); letter-spacing: 0.1em; text-transform: uppercase; }
 .refill-tier-label.needs-you { color: #fbbf24; }
 .refill-tier-label.handled { color: hsl(var(--success)); }
-.refill-days-left { font-size: 13px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
-.refill-days-left.due { color: #fbbf24; font-weight: var(--weight-semibold); }
+.refill-days-left { font-size: 13px; color: hsl(var(--muted-foreground)); margin-top: 2px; line-height: 1.4; }
 
 /* ---------- Today v3 -- the cute skin, sky and real weather (Git #3144) ----------
    Design/design_handoff_shanes_life/README.md "Today v3 -- the cute skin": blob-shaped
@@ -1593,6 +1650,15 @@ pre.token {
   padding: 4px 2px;
 }
 
+/* Edit and delete (Git #3248) -- the reveal button already had a whole row to itself; edit and
+   delete sit beside it as the same quiet ghost-pill idiom the username's "Copy" already uses,
+   not a second visual language for the row. */
+.vault-row-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.vault-copy-btn.danger { color: #f87171; }
+.vault-edit-form { margin-top: 4px; }
+.vault-edit-fields .row { display: flex; gap: 8px; margin: 0 0 8px; }
+.vault-edit-fields .row input { flex: 1; min-width: 0; }
+.vault-edit-actions { display: flex; gap: 8px; }
 .vault-row-error { font-size: 12px; color: hsl(var(--destructive)); }
 .vault-foot-note {
   font-size: 12px;
@@ -1627,6 +1693,16 @@ pre.token {
   box-shadow: 0 0 0 14px rgba(96, 165, 250, 0.12);
 }
 .vault-face-label { font-size: 16px; font-weight: 600; }
+
+/* Money -- Vault + Wins Round 2 visual rebuild (Git #3195, README "Screens" line 179: "Cards
+   22px; all buttons in 999px pill wrappers"). Vault's own list card already carried the 22px
+   radius (#3242/#3150) and its filter/reveal buttons were already pills -- this pass closes
+   the two real gaps that audit found: the vault's kept add-entry card (Section 8's documented
+   exception, not a miss) still sat at the plain 16px `.card` radius right below its 22px list
+   card in the same room, and Wins' one content card hadn't had the pass at all yet. */
+.vault-add-submit { width: 100%; padding: 0 18px; margin-top: 0.2rem; }
+.wins-card { border-radius: 22px; }
+
 /* Bills tab pending events (Git #3148): "not counted until real" -- inflow/outflow, not
    funded/short, so a distinct pair rather than reusing funded/short's color meaning. */
 .money-bucket-status.inflow { color: hsl(var(--success)); }
