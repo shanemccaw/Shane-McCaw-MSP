@@ -35,6 +35,8 @@
 
 import { many, one } from "../db.mjs";
 import { badRequest } from "../http.mjs";
+import * as lists from "./lists.mjs";
+import * as prices from "./prices.mjs";
 
 /** Roles as ShanesSurvival's own migrations 003/006/008 define them. */
 const ROLE_INCOME_GATE = "income_gate";
@@ -413,6 +415,163 @@ export function computeBudgetDay(sources, asOf = new Date()) {
   };
 }
 
+/** Days in a given UTC year/month (0-indexed month), for rolling a day-of-month `due_day`
+ *  forward across a short month without landing on a date that does not exist (Feb 30). */
+function daysInUtcMonth(year, monthIndex) {
+  return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+}
+
+/** The next real occurrence of a `due_day` (1-31) on or after `today`, clamped to the length of
+ *  whatever month it lands in -- a due_day of 31 falls on the 28th/29th/30th in a shorter month,
+ *  same convention ShanesSurvival's own due-day accounts already use. Returns null for accounts
+ *  with no due_day set (nothing to roll). */
+function nextDueDate(dueDay, today) {
+  if (!dueDay) return null;
+  const year = today.getUTCFullYear();
+  const month = today.getUTCMonth();
+  let candidate = new Date(Date.UTC(year, month, Math.min(dueDay, daysInUtcMonth(year, month))));
+  if (candidate < today) {
+    const nextMonth = month + 1;
+    candidate = new Date(
+      Date.UTC(
+        year + Math.floor(nextMonth / 12),
+        nextMonth % 12,
+        Math.min(dueDay, daysInUtcMonth(year + Math.floor(nextMonth / 12), nextMonth % 12)),
+      ),
+    );
+  }
+  return candidate;
+}
+
+/**
+ * Real due-versus-available math for Budget Day: which real bills come due BEFORE the next real
+ * paycheck lands, and how much of each is still unfunded. Distinct from `totalShortfallCents`
+ * (every bill, whenever it's due) -- this is specifically "what has to be covered before more
+ * income arrives," the real question Budget Day exists to answer. A bill with no `due_day` set
+ * cannot be dated, so it is left out of this list (still counted in the overall total shortfall
+ * elsewhere) rather than guessed into a bucket it was never assigned to.
+ */
+export function computeDueBeforeNextCheck(bills, nextPayDateIso, asOf = new Date()) {
+  if (!nextPayDateIso) return { bills: [], totalCents: 0, coveredByLanding: null };
+  const today = new Date(Date.UTC(asOf.getFullYear(), asOf.getMonth(), asOf.getDate()));
+  const nextPayDate = asUtcDate(nextPayDateIso);
+
+  const due = bills
+    .filter((b) => b.dueDay != null)
+    .map((b) => ({ ...b, dueDate: nextDueDate(b.dueDay, today) }))
+    .filter((b) => b.dueDate && b.dueDate < nextPayDate)
+    .sort((a, b) => a.dueDate - b.dueDate || (b.shortfallCents ?? 0) - (a.shortfallCents ?? 0));
+
+  const totalCents = due.reduce((sum, b) => sum + (b.shortfallCents ?? 0), 0);
+
+  return {
+    bills: due.map((b) => ({
+      id: b.id,
+      name: b.name,
+      dueDate: utcIso(b.dueDate),
+      amount: toDollars(b.shortfallCents),
+      amountFormatted: formatMoney(b.shortfallCents),
+      warning: b.warning,
+    })),
+    totalCents,
+    total: toDollars(totalCents),
+    totalFormatted: formatMoney(totalCents),
+  };
+}
+
+/**
+ * The real "extreme couponing" surfacing (contract pack Section 3): given the real running
+ * Shopping list, what does this week's real weekly-ad cross-store data (#3110, core/prices.mjs)
+ * say about where those items are cheapest right now, plus any matching coupons -- pointed at
+ * Budget Day's specific paycheck rather than a generic "some deals exist" notice. Reuses the
+ * SAME weekly-ad verdict Shopping's own list view decorates onto items
+ * (`prices.attachWeeklyAdVerdicts`) -- no separate couponing engine, no AI inference of its own.
+ * An empty or all-done list, or a week with nothing pushed yet, is a real "nothing to report"
+ * state, not an error.
+ */
+export async function getBudgetDayCouponing(userId) {
+  const list = await lists.getOrCreateShoppingList(userId);
+  const detail = await lists.getListDetail(userId, list.id);
+  const openItems = detail.items.filter((i) => !i.done).map((i) => ({ text: i.text }));
+
+  if (openItems.length === 0) {
+    return { listId: list.id, itemCount: 0, matchedCount: 0, storeWins: [], couponMatches: 0, estimatedSavings: 0, estimatedSavingsFormatted: null, text: null };
+  }
+
+  await prices.attachLatestPrices(userId, openItems);
+  await prices.attachWeeklyAdVerdicts(userId, openItems);
+
+  const storeWinCounts = new Map();
+  let couponMatches = 0;
+  let savingsCents = 0;
+  let matchedCount = 0;
+
+  for (const item of openItems) {
+    const verdict = item.weeklyAdVerdict;
+    if (!verdict) continue;
+    matchedCount += 1;
+    if (verdict.store) storeWinCounts.set(verdict.store, (storeWinCounts.get(verdict.store) ?? 0) + 1);
+    if (verdict.coupon) {
+      couponMatches += 1;
+      if (verdict.coupon.discountCents) savingsCents += verdict.coupon.discountCents;
+    }
+    if (verdict.priceCents != null && item.lastPrice?.priceCents != null && item.lastPrice.priceCents > verdict.priceCents) {
+      savingsCents += item.lastPrice.priceCents - verdict.priceCents;
+    }
+  }
+
+  const storeWins = [...storeWinCounts.entries()]
+    .map(([store, count]) => ({ store, count }))
+    .sort((a, b) => b.count - a.count || a.store.localeCompare(b.store));
+
+  const text =
+    matchedCount === 0
+      ? null
+      : [
+          `Claude read this week's ads: ${storeWins.map((w) => `${w.store} wins ${w.count}`).join(", ")}.`,
+          couponMatches > 0 ? `${couponMatches} coupon${couponMatches === 1 ? "" : "s"} match${couponMatches === 1 ? "es" : ""}.` : null,
+          savingsCents > 0 ? `About ${formatMoney(savingsCents)} off the usual run.` : null,
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+  return {
+    listId: list.id,
+    itemCount: openItems.length,
+    matchedCount,
+    storeWins,
+    couponMatches,
+    estimatedSavings: toDollars(savingsCents),
+    estimatedSavingsFormatted: savingsCents > 0 ? formatMoney(savingsCents) : null,
+    text,
+  };
+}
+
+/**
+ * Enriches a `computeBudgetDay` result with the real landed amount, the real due-versus-available
+ * math (bills due before the next check lands), and the real extreme-couponing surfacing -- the
+ * three things that turn "next check Fri, Sep 18" into an actual real Budget Day ritual (Git
+ * #3152). `bills` is `computeGateMath`'s own bill rows so shortfall/dueDay agree with everything
+ * else on the Money screen. Returns `null` unchanged when there is no real Budget Day yet (no
+ * active income source) -- nothing to enrich.
+ */
+async function enrichBudgetDay(base, { userId, bills }) {
+  if (!base) return null;
+  const landedAmountCents = toCents(base.expectedPerCycle);
+  const dueBeforeNextCheck = computeDueBeforeNextCheck(bills, base.nextPayDate);
+  const couponing = await getBudgetDayCouponing(userId);
+
+  return {
+    ...base,
+    landedAmount: base.expectedPerCycle,
+    landedAmountFormatted: formatMoney(landedAmountCents),
+    dueBeforeNextCheck,
+    coveredByLanding:
+      landedAmountCents === null ? null : landedAmountCents >= dueBeforeNextCheck.totalCents,
+    couponing,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // the public surface
 // ---------------------------------------------------------------------------
@@ -510,7 +669,7 @@ export async function getGateStatus(userId, { asOf = new Date() } = {}) {
         note: h.note,
       })),
     },
-    budgetDay: computeBudgetDay(incomeSources, asOf),
+    budgetDay: await enrichBudgetDay(computeBudgetDay(incomeSources, asOf), { userId, bills: math.bills }),
     protectedDebts: criticalDebts.map((d) => ({
       id: d.id,
       creditor: d.creditor_name,
@@ -756,10 +915,14 @@ export async function simulateTransfer(userId, { amount, from, to }) {
 }
 
 /** Budget Day on its own, for the tray card that does not need the whole gate. */
-export async function getBudgetDay(asOf = new Date()) {
-  const sources = await many(
-    `SELECT id, name, person, pay_frequency_days, expected_per_cycle, next_pay_date, is_active
-       FROM income_sources WHERE is_active ORDER BY next_pay_date NULLS LAST, name`,
-  );
-  return computeBudgetDay(sources, asOf);
+export async function getBudgetDay(userId, { asOf = new Date() } = {}) {
+  const [sources, accounts] = await Promise.all([
+    many(
+      `SELECT id, name, person, pay_frequency_days, expected_per_cycle, next_pay_date, is_active
+         FROM income_sources WHERE is_active ORDER BY next_pay_date NULLS LAST, name`,
+    ),
+    loadMoneyAccounts(),
+  ]);
+  const base = computeBudgetDay(sources, asOf);
+  return enrichBudgetDay(base, { userId, bills: computeGateMath(accounts).bills });
 }

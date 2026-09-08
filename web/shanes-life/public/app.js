@@ -2620,13 +2620,38 @@ async function viewMoney(view) {
   const gate = await api("/api/money/gate");
 
   if (gate.budgetDay) {
-    view.append(
-      el("div", { class: "card money-budgetday-card" }, [
-        el("div", { class: "row", style: "justify-content:space-between" }, [
-          el("span", { class: "small muted", style: "font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#60a5fa", text: "Budget Day · payday" }),
-        ]),
-        el("p", { text: gate.budgetDay.line }),
+    const bd = gate.budgetDay;
+    const cardChildren = [
+      el("div", { class: "row", style: "justify-content:space-between" }, [
+        el("span", { class: "small muted", style: "font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#60a5fa", text: "Budget Day · payday" }),
       ]),
+      el("p", { text: bd.line }),
+    ];
+
+    if (bd.landedAmountFormatted) {
+      cardChildren.push(el("p", { style: "font-weight:700", text: `${bd.landedAmountFormatted} lands in ${bd.name}.` }));
+    }
+
+    if (bd.dueBeforeNextCheck && bd.dueBeforeNextCheck.bills.length > 0) {
+      cardChildren.push(
+        el("p", {
+          class: "small muted",
+          text: `Before the next check: ${bd.dueBeforeNextCheck.bills.map((b) => `${b.name} ${b.amountFormatted ?? "unknown"}`).join(", ")}.` +
+            (bd.coveredByLanding === false
+              ? ` This landing doesn't cover it -- short ${dollars((bd.dueBeforeNextCheck.total ?? 0) - (bd.landedAmount ?? 0))}.`
+              : bd.coveredByLanding === true
+                ? " This landing covers it."
+                : ""),
+        }),
+      );
+    }
+
+    if (bd.couponing && bd.couponing.text) {
+      cardChildren.push(el("p", { class: "small muted", text: bd.couponing.text }));
+    }
+
+    view.append(
+      el("div", { class: "card money-budgetday-card" }, cardChildren),
     );
   }
 

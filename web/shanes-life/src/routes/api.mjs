@@ -929,8 +929,8 @@ export function buildApiRouter() {
   });
 
   router.get("/api/money/budget-day", async (_req, res, _params, ctx) => {
-    requireUser(ctx);
-    return sendJson(res, 200, { budgetDay: await money.getBudgetDay() });
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { budgetDay: await money.getBudgetDay(user.id) });
   });
 
   // GET, not POST: a what-if changes nothing, and a shareable/refreshable URL is the right shape
