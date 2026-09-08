@@ -5454,6 +5454,40 @@ async function viewShopping(view) {
   const banner = putBackBanner(list);
   if (banner) view.append(banner);
 
+  // "Everything's in the cart." completion card (Git #3202, design First Slice Prototype
+  // line ~1137's `d.allDone` block + README Screens section 3): once every real item on the
+  // run is checked, offer the real fox completion state and a "Done shopping" action instead
+  // of leaving the generic "Clear checked items" ghost button as the only way to close the
+  // run out. Wired to the SAME real clear-checked endpoint the ghost button already uses --
+  // #3112/#3108's price and aisle memory (item_prices / store_aisles) are keyed on item text
+  // and store, not on the list_items rows this deletes, so "remembers it as your usual list"
+  // is already true of that data; this card is the missing UI surface for it.
+  const allDone = list.items.length > 0 && remaining === 0;
+  if (allDone) {
+    view.append(
+      el("div", { class: "card shop-done-card" }, [
+        el("div", { class: "shop-done-head" }, [
+          el("span", { class: "shop-done-fox", html: '<svg width="52" height="52" viewBox="0 0 120 120" fill="none"><use href="#c-fox"></use></svg>' }),
+          el("div", { class: "shop-done-title", text: "Everything's in the cart." }),
+        ]),
+        el("div", {
+          class: "shop-done-sub",
+          text: `Done clears the run and remembers it as your usual${list.store ? ` ${list.store}` : ""} list, prices and aisles included.`,
+        }),
+        el("button", {
+          type: "button",
+          class: "primary shop-done-btn",
+          text: "Done shopping",
+          onClick: async (event) => {
+            event.currentTarget.disabled = true;
+            await api(`/api/lists/${list.id}/clear-checked`, { method: "POST" });
+            render();
+          },
+        }),
+      ]),
+    );
+  }
+
   if (list.items.length === 0) {
     view.append(
       empty("Nothing on your list yet.", "Type into the box below, or ask Claude to push a list in over MCP.", "shop"),
@@ -5507,7 +5541,7 @@ async function viewShopping(view) {
   // room has exactly one bottom bar (the universal capture box, its placeholder swapped to "Add,
   // or say where you found it" -- see render()) and the scan icon moved into the header above.
 
-  if (remaining < list.items.length) {
+  if (remaining < list.items.length && !allDone) {
     view.append(
       el("div", { class: "row" }, [
         el("button", {

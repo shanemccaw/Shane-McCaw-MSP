@@ -541,6 +541,16 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
 .shop-item-detail { padding: 0 16px 10px 56px; }
 .shop-item-detail-inner { display: grid; gap: 0.5rem; }
 
+/* "Everything's in the cart." completion card (Git #3202, design First Slice Prototype
+   `d.allDone`: card radius ~22, 18px padding, fox + title row, muted subtext, full-width
+   pill "Done shopping" button). */
+.shop-done-card { border-radius: 22px; padding: 18px; display: grid; gap: 12px; }
+.shop-done-head { display: flex; align-items: center; gap: 12px; }
+.shop-done-fox svg { display: block; flex-shrink: 0; }
+.shop-done-title { font-size: 18px; font-weight: var(--weight-bold); letter-spacing: -0.01em; }
+.shop-done-sub { font-size: 14px; color: hsl(var(--muted-foreground)); line-height: 1.5; }
+.shop-done-btn { width: 100%; height: 48px; border-radius: 999px; }
+
 /* ---------- empty states ----------
    An empty state here says only that nothing has been captured yet. It never invents a row to
    fill the space, and it never scolds. */
