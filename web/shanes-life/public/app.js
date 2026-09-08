@@ -4192,7 +4192,9 @@ function vaultAddCard(gate, onSaved) {
     notesRow,
     maskedRow,
     billRow,
-    el("button", { type: "submit", class: "ghost small", text: "Add to the vault" }),
+    // Git #3195: primary CTA of this room's own kept form gets the same 999px pill treatment
+    // Recipes (#3190) already proved out for a room's own primary action button.
+    el("button", { type: "submit", class: "btn-pill primary vault-add-submit", text: "Add to the vault" }),
     addError,
   ]);
 
@@ -4231,7 +4233,11 @@ function vaultAddCard(gate, onSaved) {
   });
 
   applyKind();
-  return el("div", { class: "card" }, [title, kindTabs, form]);
+  // Git #3195: the vault's own list card above already got the 22px blob radius (#3242/#3150);
+  // this kept add-entry card sat at the plain 16px `.card` radius right below it in the same
+  // room -- a real, visible inconsistency, not a design choice. `.vault-card` is reused rather
+  // than a new class since it's the same real card, same room, same radius.
+  return el("div", { class: "card vault-card" }, [title, kindTabs, form]);
 }
 
 async function viewMoneyVault(view) {
@@ -4926,14 +4932,16 @@ async function viewMoneyAccounts(view) {
 
 /** One real win row: the date and the real, hard-won text. `debt_paid_off` is styled like the
  *  funded/covered green used everywhere else in Money -- a real automatic milestone, not manual
- *  input, gets the same "this is settled" color as a funded bill. */
+ *  input, gets the same "this is settled" color as a funded bill. Git #3195: that status is now
+ *  a rotated `sticker()`, the same real badge treatment Recipes (#3190) and the Next card (#3144)
+ *  already proved out, replacing the plain uppercase chip every other still-unbuilt room uses. */
 function moneyWinRow(win) {
   return el("div", { class: "money-bucket-row" }, [
     el("div", { class: "money-bucket-name" }, [
       el("div", { text: win.text }),
       el("div", { class: "money-bucket-meta", text: win.happened_on }),
     ]),
-    win.source === "debt_paid_off" ? el("span", { class: "money-bucket-status funded", text: "automatic" }) : null,
+    win.source === "debt_paid_off" ? sticker("green", "automatic") : null,
   ]);
 }
 
@@ -4957,7 +4965,9 @@ async function viewWins(view) {
   // able to just say 'I did it' and have it land here," which is exactly the universal
   // capture box (log_win over MCP already exists for it), not a second text field here too.
 
-  const winsCard = el("div", { class: "card money-bucket" });
+  // Git #3195: Round 2 visual rebuild -- the room's one real content card gets the same 22px
+  // blob radius Vault's own list card (#3242/#3150) and Recipes' (#3190) already carry.
+  const winsCard = el("div", { class: "card money-bucket wins-card" });
   if (wins.length === 0) {
     winsCard.append(empty("Nothing logged yet.", "Say \"I did it\" in the capture box, or a real debt hitting $0 lands here on its own.", "wins"));
   } else {
