@@ -119,6 +119,10 @@ function pushUrlForNudge(row) {
   // route the tray's own "Heading out" later-moment balloon already uses (lists.mjs's
   // getHeadingOutSignal, api.mjs's computeLaterMoments).
   if (row.kind === "tesla") return "/#/lists";
+  // Tesla low-battery commute nudge (Git #3238): the shortfall and cost estimate this nudge
+  // carries are Money's own (Cars) data -- send the tap there, same as appointment/vaccine above
+  // land on the real screen the nudge is about.
+  if (row.kind === "tesla_battery") return "/#/money";
   return "/";
 }
 

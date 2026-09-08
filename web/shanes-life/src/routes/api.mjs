@@ -1669,6 +1669,32 @@ export function buildApiRouter() {
     return sendJson(res, 200, { revoked: true });
   });
 
+  // -- Tesla battery/charging-aware Money nudges (Git #3238) -- real, Shane-entered commute
+  // settings + an on-demand real charge read. See core/tesla.mjs's own header and migration 056
+  // for why the cost estimate is computed from Shane's own real settings rather than a value
+  // Tesla's API doesn't actually publish.
+  router.get("/api/tesla/commute-settings", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const settings = await teslaCore.getCommuteSettings(user.id);
+    if (!settings) throw notFound("Connect Tesla before configuring commute nudges.");
+    return sendJson(res, 200, settings);
+  });
+
+  router.patch("/api/tesla/commute-settings", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const settings = await teslaCore.updateCommuteSettings(user.id, body);
+    await audit.record({ userId: user.id, actor: "owner", action: "tesla.commute-settings-updated" });
+    return sendJson(res, 200, settings);
+  });
+
+  /** On-demand real "will tonight's charge cover tomorrow" check -- the same real logic the
+   *  6-hour housekeeping sweep runs, exposed for a Settings "check now" action. */
+  router.get("/api/tesla/commute-check", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await teslaCore.checkLowBatteryForCommute(user.id));
+  });
+
   // -- Money -> Home-tab decision tools (Git #3171) -------------------------------------
   //
   // Period Review, Skip Suggestions, Distribute Paycheck, Transfer Instructions -- see

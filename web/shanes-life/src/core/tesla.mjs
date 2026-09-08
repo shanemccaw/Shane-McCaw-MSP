@@ -358,6 +358,149 @@ export async function getVehicleClimateState(userId) {
   };
 }
 
+/** On-demand real charge read (Git #3238) -- battery_range is Tesla's own documented, rated
+ *  range in miles (`charge_state.battery_range`), the same figure the Tesla app shows by
+ *  default. Deliberately not `est_battery_range` (a driving-history-based estimate that swings
+ *  with recent conditions) -- `battery_range` is the stable, rated figure, and consistency day
+ *  to day matters more here than marginal accuracy for a "will tonight's charge cover tomorrow"
+ *  check. Same on-demand-only discipline as getVehicleClimateState above: no poll loop, only
+ *  called from the real 6-hour housekeeping sweep (server.mjs's runTeslaLowBatteryChecks) and
+ *  the Settings "check now" action. */
+export async function getChargeState(userId) {
+  const account = await ownedAccount(userId);
+  if (!account?.vehicle_id) {
+    throw new TeslaError("No Tesla vehicle is selected yet.", { code: "NO_VEHICLE" });
+  }
+  const data = await fleetGet(
+    userId,
+    `/api/1/vehicles/${encodeURIComponent(account.vehicle_id)}/vehicle_data?endpoints=charge_state`,
+  );
+  const charge = data?.charge_state || {};
+  return {
+    vehicleDisplayName: account.vehicle_display_name,
+    batteryLevel: charge.battery_level ?? null,
+    batteryRangeMiles: charge.battery_range ?? null,
+    chargingState: charge.charging_state ?? null,
+  };
+}
+
+/** Real, Shane-entered commute-nudge settings for the Settings -> Tesla section (Git #3238).
+ *  Every field here is something only Shane can state -- see migration 056's own header for why
+ *  none of it can come from Tesla directly. */
+export async function getCommuteSettings(userId) {
+  const account = await one(
+    `SELECT low_battery_nudge_enabled, commute_miles_needed, efficiency_miles_per_kwh, charge_cost_per_kwh
+       FROM tesla_accounts WHERE user_id = $1`,
+    [userId],
+  );
+  if (!account) return null;
+  return {
+    lowBatteryNudgeEnabled: account.low_battery_nudge_enabled,
+    commuteMilesNeeded: account.commute_miles_needed !== null ? Number(account.commute_miles_needed) : null,
+    efficiencyMilesPerKwh: account.efficiency_miles_per_kwh !== null ? Number(account.efficiency_miles_per_kwh) : null,
+    chargeCostPerKwh: account.charge_cost_per_kwh !== null ? Number(account.charge_cost_per_kwh) : null,
+  };
+}
+
+export async function updateCommuteSettings(
+  userId,
+  { lowBatteryNudgeEnabled, commuteMilesNeeded, efficiencyMilesPerKwh, chargeCostPerKwh } = {},
+) {
+  const row = await query(
+    `UPDATE tesla_accounts SET
+        low_battery_nudge_enabled = $2,
+        commute_miles_needed = $3,
+        efficiency_miles_per_kwh = $4,
+        charge_cost_per_kwh = $5,
+        updated_at = now()
+      WHERE user_id = $1`,
+    [
+      userId,
+      Boolean(lowBatteryNudgeEnabled),
+      commuteMilesNeeded === null || commuteMilesNeeded === undefined ? null : Number(commuteMilesNeeded),
+      efficiencyMilesPerKwh === null || efficiencyMilesPerKwh === undefined ? null : Number(efficiencyMilesPerKwh),
+      chargeCostPerKwh === null || chargeCostPerKwh === undefined ? null : Number(chargeCostPerKwh),
+    ],
+  );
+  if (row.rowCount === 0) throw notFound("Connect Tesla before configuring commute nudges.");
+  return getCommuteSettings(userId);
+}
+
+/**
+ * The real "will tonight's charge cover tomorrow's drive" check (Git #3238) -- called from
+ * server.mjs's housekeeping sweep for every user with the nudge enabled. Returns a real,
+ * honest status object rather than throwing for any of the ordinary "nothing to do" cases
+ * (not connected, not enabled, no vehicle, missing settings) -- those are real states, not
+ * errors, same discipline connectionStatus() above already uses.
+ *
+ * Cost is only included when Shane has entered both `efficiencyMilesPerKwh` and
+ * `chargeCostPerKwh` -- if either is missing, the nudge still fires (the real battery
+ * shortfall is real and worth surfacing on its own) but with no cost line, rather than
+ * fabricating a number to fill the gap.
+ */
+export async function checkLowBatteryForCommute(userId) {
+  const settings = await getCommuteSettings(userId);
+  if (!settings) return { checked: false, reason: "not_connected" };
+  if (!settings.lowBatteryNudgeEnabled) return { checked: false, reason: "not_enabled" };
+  if (!settings.commuteMilesNeeded) return { checked: false, reason: "no_commute_distance_set" };
+
+  const charge = await getChargeState(userId);
+  if (charge.batteryRangeMiles === null) return { checked: false, reason: "no_range_data" };
+
+  const shortfallMiles = settings.commuteMilesNeeded - charge.batteryRangeMiles;
+  if (shortfallMiles <= 0) return { checked: true, needsCharge: false };
+
+  let costEstimate = null;
+  if (settings.efficiencyMilesPerKwh && settings.chargeCostPerKwh) {
+    const kwhNeeded = shortfallMiles / settings.efficiencyMilesPerKwh;
+    costEstimate = Math.round(kwhNeeded * settings.chargeCostPerKwh * 100) / 100;
+  }
+
+  return {
+    checked: true,
+    needsCharge: true,
+    batteryRangeMiles: charge.batteryRangeMiles,
+    commuteMilesNeeded: settings.commuteMilesNeeded,
+    shortfallMiles: Math.round(shortfallMiles * 10) / 10,
+    costEstimate,
+  };
+}
+
+/**
+ * The real housekeeping-sweep entry point (server.mjs's runTeslaLowBatteryChecks, same shape
+ * as Dates' day-before reminder / Pets' vaccine lead reminder): runs checkLowBatteryForCommute
+ * for one user and queues a real nudge if a shortfall is found -- deduped against the same
+ * `kind` + `day` already queued today, same real pattern pets.mjs's findDueVaccineReminders
+ * uses (NOT EXISTS against nudge_events), so a 6-hour sweep never double-nudges the same real
+ * shortfall on the same day.
+ */
+export async function runLowBatteryCheckForUser(userId) {
+  const result = await checkLowBatteryForCommute(userId);
+  if (!result.checked || !result.needsCharge) return result;
+
+  const alreadyNudgedToday = await one(
+    `SELECT id FROM nudge_events
+      WHERE user_id = $1 AND kind = 'tesla_battery' AND day = current_date`,
+    [userId],
+  );
+  if (alreadyNudgedToday) return { ...result, nudged: false, reason: "already_nudged_today" };
+
+  const costLine = result.costEstimate !== null ? ` That'll run about $${result.costEstimate.toFixed(2)}.` : "";
+  await queueNudge({
+    userId,
+    kind: "tesla_battery",
+    title: "You need to charge tonight for tomorrow's commute",
+    body: `${result.batteryRangeMiles} mi of range won't cover the ${result.commuteMilesNeeded} mi you need tomorrow.${costLine}`,
+    payload: {
+      batteryRangeMiles: result.batteryRangeMiles,
+      commuteMilesNeeded: result.commuteMilesNeeded,
+      shortfallMiles: result.shortfallMiles,
+      costEstimate: result.costEstimate,
+    },
+  });
+  return { ...result, nudged: true };
+}
+
 // ---------------------------------------------------------------------------------------------
 // Hook tokens (the real bearer credential for the external climate-preconditioning trigger)
 // ---------------------------------------------------------------------------------------------

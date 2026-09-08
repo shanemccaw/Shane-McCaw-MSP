@@ -8003,6 +8003,10 @@ async function renderTeslaSettings(view) {
   }
   section.append(vehicleCard);
 
+  if (status.vehicleId) {
+    section.append(await renderTeslaCommuteSettings());
+  }
+
   // The real webhook tokens -- same shape/discipline as MCP and widget tokens above: a
   // high-entropy value shown exactly once, only its SHA-256 kept.
   const { tokens: hookTokens } = await api("/api/tesla/hook-tokens");
@@ -8064,6 +8068,93 @@ async function renderTeslaSettings(view) {
     ]),
   );
   view.append(section);
+}
+
+// Tesla battery/charging-aware Money nudge settings (Git #3238). Every input here is real,
+// Shane-entered data -- see core/tesla.mjs's own header and migration 056 for why the cost
+// estimate can't come from Tesla directly (its Fleet API has no documented per-kWh pricing
+// field). Rendered as its own card inside the Tesla section, only once a real vehicle is
+// selected (the check needs a real battery-range read).
+async function renderTeslaCommuteSettings() {
+  const settings = await api("/api/tesla/commute-settings");
+  const card = el("div", { class: "card" }, [
+    el("div", { class: "title", text: "Charge for tomorrow's commute" }),
+    el("p", { class: "muted small", text: "A real nudge if tonight's charge won't cover the commute distance below -- checked every few hours." }),
+  ]);
+
+  const enabledToggle = el("input", { type: "checkbox", checked: settings.lowBatteryNudgeEnabled || undefined });
+  const commuteInput = el("input", {
+    type: "number", step: "0.1", inputmode: "decimal", placeholder: "e.g. 42",
+    value: settings.commuteMilesNeeded ?? "", "aria-label": "Commute miles needed",
+  });
+  const efficiencyInput = el("input", {
+    type: "number", step: "0.01", inputmode: "decimal", placeholder: "e.g. 3.5",
+    value: settings.efficiencyMilesPerKwh ?? "", "aria-label": "Vehicle efficiency, miles per kWh",
+  });
+  const costInput = el("input", {
+    type: "number", step: "0.001", inputmode: "decimal", placeholder: "e.g. 0.36",
+    value: settings.chargeCostPerKwh ?? "", "aria-label": "Cost per kWh",
+  });
+  const saveOut = el("div", { class: "small", style: "margin-top:.4rem" });
+  const checkOut = el("div", { class: "small", style: "margin-top:.4rem" });
+
+  card.append(
+    el("label", { class: "row", style: "margin-top:.6rem" }, [enabledToggle, el("span", { text: " Enable this nudge" })]),
+    el("label", { class: "small muted", text: "Commute miles needed tomorrow" }),
+    commuteInput,
+    el("label", { class: "small muted", style: "margin-top:.4rem", text: "Your vehicle's real efficiency (miles per kWh) -- optional, needed for a cost estimate" }),
+    efficiencyInput,
+    el("label", { class: "small muted", style: "margin-top:.4rem", text: "Your real cost per kWh (home electricity or Supercharger rate) -- optional, needed for a cost estimate" }),
+    costInput,
+    el("div", { class: "row", style: "margin-top:.6rem" }, [
+      el("button", {
+        class: "primary small",
+        text: "Save",
+        onClick: async (event) => {
+          event.target.disabled = true;
+          try {
+            await api("/api/tesla/commute-settings", {
+              method: "PATCH",
+              body: JSON.stringify({
+                lowBatteryNudgeEnabled: enabledToggle.checked,
+                commuteMilesNeeded: commuteInput.value === "" ? null : Number(commuteInput.value),
+                efficiencyMilesPerKwh: efficiencyInput.value === "" ? null : Number(efficiencyInput.value),
+                chargeCostPerKwh: costInput.value === "" ? null : Number(costInput.value),
+              }),
+            });
+            saveOut.textContent = "Saved.";
+          } catch (err) {
+            saveOut.textContent = err.message;
+          } finally {
+            event.target.disabled = false;
+          }
+        },
+      }),
+      el("button", {
+        class: "ghost small",
+        text: "Check now",
+        onClick: async (event) => {
+          event.target.disabled = true;
+          try {
+            const result = await api("/api/tesla/commute-check");
+            if (!result.checked) checkOut.textContent = `Not checked (${result.reason}).`;
+            else if (!result.needsCharge) checkOut.textContent = "Real range covers tomorrow's commute -- no charge needed.";
+            else {
+              const cost = result.costEstimate !== null ? ` About $${result.costEstimate.toFixed(2)} to cover it.` : "";
+              checkOut.textContent = `${result.batteryRangeMiles} mi range vs ${result.commuteMilesNeeded} mi needed -- short ${result.shortfallMiles} mi.${cost}`;
+            }
+          } catch (err) {
+            checkOut.textContent = err.message;
+          } finally {
+            event.target.disabled = false;
+          }
+        },
+      }),
+    ]),
+    saveOut,
+    checkOut,
+  );
+  return card;
 }
 
 // The real, per-client tool-call summary Recent activity shows (Git #3214: "Claude Desktop ·

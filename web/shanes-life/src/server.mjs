@@ -17,6 +17,7 @@ import { buildPublicRouter } from "./routes/public.mjs";
 import { buildWidgetRouter } from "./routes/widget.mjs";
 import { handlePlaidWebhook } from "./routes/plaid-webhook.mjs";
 import { handleTeslaHook, serveTeslaPublicKey } from "./routes/tesla.mjs";
+import { runLowBatteryCheckForUser } from "./core/tesla.mjs";
 import * as plaid from "./core/plaid.mjs";
 import { describeMcpEndpoint, handleMcpRequest } from "./routes/mcp.mjs";
 import { runDetectors as runCatchDetectors } from "./core/catches.mjs";
@@ -266,6 +267,7 @@ async function main() {
       await runMoneyDueReminders();
       await runPlaidItemMaintenance();
       await runBillCycleSnapshotCapture();
+      await runTeslaLowBatteryChecks();
     },
     6 * 60 * 60 * 1000,
   );
@@ -296,6 +298,7 @@ async function main() {
   await runCatchesSweep();
   await runMoneyDueReminders();
   await runPlaidItemMaintenance();
+  await runTeslaLowBatteryChecks();
 }
 
 /**
@@ -346,6 +349,25 @@ async function runVaccineLeadReminders() {
     }
   } catch (err) {
     log("[reminders] failed:", err.message);
+  }
+}
+
+/**
+ * The real "charge tonight for tomorrow's commute" check (Git #3238) -- see
+ * core/tesla.mjs's runLowBatteryCheckForUser for the actual logic and migration 056 for why
+ * the cost line is Shane's own real, entered rate rather than anything scraped from Tesla.
+ * Each user is tried independently: a real Tesla API hiccup (network error, expired refresh
+ * token) for one user must never stop the vaccine/appointment/bill reminders that follow it in
+ * the same sweep, unlike the other reminder functions above which are pure local-DB reads.
+ */
+async function runTeslaLowBatteryChecks() {
+  for (const user of await listUsers()) {
+    try {
+      const result = await runLowBatteryCheckForUser(user.id);
+      if (result.nudged) log(`[reminders] queued Tesla low-battery commute nudge for ${user.email}`);
+    } catch (err) {
+      log(`[reminders] Tesla low-battery check failed for ${user.email}:`, err.message);
+    }
   }
 }
 
