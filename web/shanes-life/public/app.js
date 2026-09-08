@@ -1080,8 +1080,10 @@ function showQuickToast(message) {
 }
 
 /** One pill-shaped Badge-style sticker, rotated -5deg per the cute-skin spec. `tone` picks the
- *  tint from the same accent palette the rest of the app already uses (README "Design tokens"). */
-const STICKER_TONE = { blue: "96,165,250", indigo: "165,180,252", amber: "251,191,36", red: "248,113,113", green: "52,211,153" };
+ *  tint from the same accent palette the rest of the app already uses (README "Design tokens").
+ *  `slate` (Git #3192) is Dates' own on-the-fly-kind fallback color (kindTint's `#94a3b8`),
+ *  reused here rather than inventing a fifth tone. */
+const STICKER_TONE = { blue: "96,165,250", indigo: "165,180,252", amber: "251,191,36", red: "248,113,113", green: "52,211,153", slate: "148,163,184" };
 function sticker(tone, text) {
   return el("span", { class: "sticker", style: `background:rgba(${STICKER_TONE[tone]},.16);color:rgb(${STICKER_TONE[tone]})`, text });
 }
@@ -2301,7 +2303,7 @@ async function viewRecipes(view) {
   // (no per-room icon action here the way Shopping's scan button is).
   view.append(
     el("div", { class: "recipe-header" }, [
-      el("a", { href: "#/today", class: "recipe-header-back" }, [el("span", { html: SHOP_HOUSE_ICON }), el("span", { text: "Today" })]),
+      el("a", { href: "#/today", class: "recipe-header-back" }, [el("span", { html: ROOM_HOUSE_ICON }), el("span", { text: "Today" })]),
       el("div", { class: "recipe-header-center" }, [
         el("div", { class: "recipe-header-title", text: "Recipes" }),
         el("div", {
@@ -6046,10 +6048,12 @@ function shareSection({ shares: shareList, onCreate, onRevoke, supportsAdd = fal
 // #3109's own scope, built below.
 // ---------------------------------------------------------------------------
 
-// Icons for Shopping's native room chrome (Git #3178) -- extracted verbatim from the real
-// design markup ("Shanes Life - First Slice Prototype.dc.html"'s own "Today" back-link and
-// scan-viewfinder icons), not invented fresh.
-const SHOP_HOUSE_ICON =
+// Icons for a room's native chrome (Git #3178 built this for Shopping first) -- extracted
+// verbatim from the real design markup ("Shanes Life - First Slice Prototype.dc.html"'s own
+// "Today" back-link and scan-viewfinder icons), not invented fresh. The house icon is the
+// generic README "Rooms (sub pages)" back-link (line 179: "the little house... + 'Today'"),
+// not Shopping-specific -- Dates (#3192) is the second real caller, via roomHeader() below.
+const ROOM_HOUSE_ICON =
   '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2.5 11.5 12 3.5l9.5 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M5.5 10v10.5h13V10" fill="rgba(96,165,250,.16)" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path><rect x="10" y="13" width="4" height="4" rx="1" fill="#FDE68A"></rect></svg>';
 const SHOP_SCAN_ICON =
   '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path><path d="M8 7v10"></path><path d="M12 7v10"></path><path d="M17 7v10"></path></svg>';
@@ -6713,7 +6717,7 @@ async function viewShopping(view) {
   const subtitle = list.items.length === 0 ? "Nothing on the list" : remaining === 0 ? "all done" : `${remaining} left`;
   view.append(
     el("div", { class: "shop-header" }, [
-      el("a", { href: "#/today", class: "shop-header-back" }, [el("span", { html: SHOP_HOUSE_ICON }), el("span", { text: "Today" })]),
+      el("a", { href: "#/today", class: "shop-header-back" }, [el("span", { html: ROOM_HOUSE_ICON }), el("span", { text: "Today" })]),
       el("div", { class: "shop-header-center" }, [
         el("div", { class: "shop-header-title", text: list.store || "Shopping" }),
         el("div", { class: "shop-header-sub", text: subtitle }),
@@ -7424,7 +7428,32 @@ function activitySummary(row) {
 
 // ---------------------------------------------------------------------------
 // Dates (Git #3136) -- design handoff screens 8/9.
+// Git #3192 -- Round 2 visual rebuild. No dedicated "Shanes Life NN - Dates.dc.html" export
+// exists (#3183's own audit confirmed it), so this reuses the README's own generic "Rooms
+// (sub pages) -- the same skin" spec (top tint glow + house back-link, Dates' real tint
+// 244,114,182) plus the Round 2 building blocks already proven on Today (#3144): 22px
+// cards/tiles, 999px pill buttons, and rotated -5deg stickers -- scoped to a `.dates-room`
+// wrapper so it doesn't reflow the other rooms still waiting on their own pass
+// (#3190/#3191/#3193-3195).
 // ---------------------------------------------------------------------------
+
+const DATES_TINT = "244,114,182"; // README's own room-tint table, "Dates".
+
+/** Generic "Rooms (sub pages)" chrome (design README line 179): a translucent top glow
+ *  tinted per room, plus the house back-link to Today. Shopping (#3178) built the back-link
+ *  piece first, scoped to its own solid header band; this is the plain glow+back-link shape
+ *  every *other* room's own Round 2 pass reuses verbatim. Dates is the first real caller. */
+function roomHeader(view, tintRgb, title) {
+  view.append(
+    el("div", { class: "room-scene" }, [
+      el("div", { class: "room-glow", style: `background: radial-gradient(120% 70% at 50% -20%, rgba(${tintRgb},.22), transparent 70%)` }),
+      el("div", { class: "room-header" }, [
+        el("a", { href: "#/today", class: "room-header-back" }, [el("span", { html: ROOM_HOUSE_ICON }), el("span", { text: "Today" })]),
+        el("div", { class: "room-header-title", text: title }),
+      ]),
+    ]),
+  );
+}
 
 // Tile colors, exactly screen 8's own table.
 const KIND_TINT = {
@@ -7493,7 +7522,9 @@ function dateRow(item) {
   const body = el("div", { class: "body" }, [
     el("div", { class: "row" }, [
       el("span", { class: "title", text: item.title }),
-      isOnTheFly ? el("span", { class: "chip", text: "New category" }) : null,
+      // Git #3192: the rotated -5deg sticker (already proven on Today's Next card), not the
+      // plain uppercase .chip badge -- tinted slate to match kindTint's own on-the-fly fallback.
+      isOnTheFly ? sticker("slate", "New category") : null,
     ]),
     el("div", { class: "meta", text: dateSummaryLine(item) }),
     el("div", { class: "meta", text: `${item.lead_days}-day lead` }),
@@ -7506,6 +7537,9 @@ function dateRow(item) {
 async function viewDates(view) {
   const { dates: items } = await api("/api/dates");
 
+  roomHeader(view, DATES_TINT, "Dates");
+  const room = el("div", { class: "dates-room" });
+
   const groups = [
     { label: "This week", items: items.filter((i) => i.due_in_days <= 6) },
     { label: "This month", items: items.filter((i) => i.due_in_days > 6 && i.due_in_days <= 31) },
@@ -7513,7 +7547,7 @@ async function viewDates(view) {
   ];
 
   if (items.length === 0) {
-    view.append(
+    room.append(
       empty(
         "Nothing on the calendar yet.",
         "Tell Claude something like \"dr appointment oct 3rd 2pm dr fonji every 6 weeks\" and it'll show up here.",
@@ -7524,16 +7558,17 @@ async function viewDates(view) {
       if (group.items.length === 0) continue;
       const section = el("section", { class: "section" }, [el("h2", { text: group.label })]);
       for (const item of group.items) section.append(dateRow(item));
-      view.append(section);
+      room.append(section);
     }
   }
 
-  view.append(
+  room.append(
     el("section", { class: "section" }, [
       el("p", { class: "muted small", text: "Federal holidays come from a real, live OPM source, refreshed monthly." }),
     ]),
   );
 
+  view.append(room);
   attachRoomWatermark(view, "comingup");
 }
 
@@ -7575,7 +7610,10 @@ async function viewDateDetail(view, dateId) {
   const d = new Date(`${String(item.at_date).slice(0, 10)}T00:00:00`);
   const dateLine = d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }) + (item.at_time ? ` · ${new Date(`1970-01-01T${item.at_time}`).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "");
 
-  view.append(
+  roomHeader(view, DATES_TINT, item.title);
+  const room = el("div", { class: "dates-room" });
+
+  room.append(
     el("section", { class: "section" }, [
       el("div", { class: "card" }, [
         el("div", { class: "date-row" }, [
@@ -7622,35 +7660,21 @@ async function viewDateDetail(view, dateId) {
     // exists for it. Say "ask Dr. Fonji about the knee brace next time" and Claude matches
     // it onto this appointment by provider.
     asks.append(card);
-    view.append(asks);
+    room.append(asks);
 
     // "Notes and photos, by visit."
     const visits = el("section", { class: "section" }, [el("h2", { text: "Notes and photos, by visit" })]);
     const visitCard = el("div", { class: "card" });
     if (item.visits.length === 0) visitCard.append(el("p", { class: "muted small", text: "No visits logged yet." }));
     for (const visit of item.visits) visitCard.append(visitRow(dateId, visit));
-    const notesInput = el("textarea", { placeholder: "How did it go?", "aria-label": "Visit notes", rows: 2 });
-    visitCard.append(
-      el("div", { style: "margin-top:.6rem" }, [
-        notesInput,
-        el("div", { class: "row", style: "margin-top:.4rem" }, [
-          el("button", {
-            class: "small",
-            text: "Log this visit",
-            onClick: async (event) => {
-              event.currentTarget.disabled = true;
-              await api(`/api/dates/${dateId}/visits`, {
-                method: "POST",
-                body: JSON.stringify({ notes: notesInput.value.trim() || null }),
-              });
-              await render();
-            },
-          }),
-        ]),
-      ]),
-    );
+    // Git #3192 (contract pack Section 8, "no forms, anywhere, ever"): the "How did it go?"
+    // notes textarea + "Log this visit" button was a real, dedicated form the #3183 no-forms
+    // pass missed -- attach_visit already exists over MCP for exactly this ("This is 'Notes and
+    // photos, by visit' on the date-detail screen", tools.mjs). Say "the vet visit went fine,
+    // pepper's ear infection is clearing up" and it lands here, same as attach_ask above.
+    visitCard.append(el("p", { class: "muted small", style: "margin-top:.6rem", text: "Tell Claude how it went and it shows up here." }));
     visits.append(visitCard);
-    view.append(visits);
+    room.append(visits);
   } else {
     // Every other kind gets one explanatory note instead (design's own screen 9 spec).
     const explain = {
@@ -7661,13 +7685,14 @@ async function viewDateDetail(view, dateId) {
       renewal: "A renewal, with a 21-day lead -- worth pairing with Money's renewal watch.",
       vaccine: "A vaccine due date, with a 30-day lead.",
     };
-    view.append(
+    room.append(
       el("section", { class: "section" }, [
         el("p", { class: "muted small", text: explain[item.kind] || "A real, on-the-fly kind Claude created for this capture." }),
       ]),
     );
   }
 
+  view.append(room);
   attachRoomWatermark(view, "comingup");
 }
 
@@ -7872,11 +7897,12 @@ async function render() {
   // own native chrome (viewShopping's own .shop-header). Git #3190: Recipes is the third --
   // README "Screens" names it explicitly alongside Shopping ("Recipes... keep their solid
   // card-colored header band"), and its own content (title + live "you can make" count) now
-  // supplies enough context on its own, same as #3190's own real question asked. Every other
-  // room still shows the generic bar until it gets its own redesign pass. #app-view.no-header
-  // lets .view collapse its top padding to just the native status-bar safe area instead of
-  // assuming a header row sits above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes";
+  // supplies enough context on its own, same as #3190's own real question asked. Git #3192:
+  // Dates and its detail screen are the fourth and fifth, via the generic roomHeader() (README
+  // "Rooms (sub pages)"). Every other room still shows the generic bar until it gets its own
+  // redesign pass. #app-view.no-header lets .view collapse its top padding to just the native
+  // status-bar safe area instead of assuming a header row sits above it (see app.css).
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "dates" || state.route === "date";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 
