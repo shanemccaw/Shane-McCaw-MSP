@@ -204,7 +204,11 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 
 .capture-row { display: flex; gap: 0.5rem; align-items: flex-end; max-width: 720px; margin: 0 auto; }
-.capture textarea { resize: none; max-height: 8rem; min-height: 44px; }
+/* Pill-shaped capture (Git #3144, "the cute skin": pill-shaped capture/buttons, 999px) -- the
+   design's own 50px pill input + circular action buttons, everywhere the capture bar shows. */
+.capture textarea { resize: none; max-height: 8rem; min-height: 50px; border-radius: 999px; padding: 0.75rem 1.1rem; box-shadow: 0 10px 28px rgba(0,0,0,.32); }
+.capture .icon-btn { border-radius: 999px; width: 50px; height: 50px; }
+.capture button.primary.small { border-radius: 999px; }
 .capture-status { margin: 0.35rem auto 0; max-width: 720px; font-size: 0.8rem; color: hsl(var(--muted-foreground)); min-height: 1.1em; }
 .attachment { max-width: 720px; margin: 0 auto 0.5rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.85rem; color: hsl(var(--muted-foreground)); }
 
@@ -504,6 +508,165 @@ pre.token {
 .refill-tier-label.handled { color: hsl(var(--success)); }
 .refill-days-left { font-size: 13px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
 .refill-days-left.due { color: #fbbf24; font-weight: var(--weight-semibold); }
+
+/* ---------- Today v3 -- the cute skin, sky and real weather (Git #3144) ----------
+   Design/design_handoff_shanes_life/README.md "Today v3 -- the cute skin": blob-shaped
+   critter pebbles, 22px rounder cards, 999px pill buttons, sticker badges rotated -5deg, and
+   a header sky that follows the clock and the real weather (Open-Meteo, see public/weather.js).
+   Holiday/season theming is a separate, out-of-scope sibling Feature -- only time-of-day runs
+   here, so `.today-scene` never carries a holiday sky or roof/yard decoration. */
+
+@keyframes czBreathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-1.5px) scale(1.025); } }
+@keyframes czSpin { to { transform: rotate(360deg); } }
+@keyframes czTwinkle { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@keyframes czShoot {
+  0%, 80% { transform: translate(392px, 150px); opacity: 0; }
+  82% { opacity: 1; }
+  92% { transform: translate(150px, 176px); opacity: .9; }
+  94%, 100% { transform: translate(120px, 180px); opacity: 0; }
+}
+@keyframes czCloudDrift { 0%, 100% { transform: translateX(-26px); } 50% { transform: translateX(26px); } }
+@keyframes czRainFall { 0% { transform: translateY(-40px); } 100% { transform: translateY(340px); } }
+@keyframes czRain { 0% { transform: translateY(0); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(6px); opacity: 0; } }
+@keyframes czFlash { 0%, 86%, 100% { opacity: 0; } 88% { opacity: 1; } 91% { opacity: .15; } 93% { opacity: .9; } 96% { opacity: 0; } }
+
+/* The framed sky/weather/meta/fox region at the top of Today. The design draws this edge-to-edge
+   behind a phone-frame status bar; this app keeps its existing card-based shell chrome instead of
+   breaking out of it, so the scene is one real rounded card-like region rather than a fixed
+   320px absolute zone. */
+.today-scene {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+}
+.today-sky, .today-night, .today-wx-sky {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.today-scene-content {
+  position: relative;
+  z-index: 2;
+  padding: 16px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.today-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+.today-meta-date { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.today-date-text { font-weight: var(--weight-semibold); color: hsl(var(--foreground)); white-space: nowrap; }
+.today-where { display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.today-where svg { flex-shrink: 0; }
+
+.today-wx-light { position: relative; display: flex; align-items: center; gap: 7px; flex-shrink: 0; font-weight: var(--weight-semibold); color: hsl(var(--foreground)); }
+.today-wx-glow { position: absolute; left: -22px; right: -18px; top: -24px; bottom: -24px; border-radius: 50%; pointer-events: none; }
+.today-wx-glow-flash { left: -30px; right: -26px; top: -30px; bottom: -30px; background: radial-gradient(ellipse at center, rgba(237,233,254,.7), rgba(237,233,254,0) 70%); animation: czFlash 5s linear infinite; }
+.today-wx-text { position: relative; }
+.today-wx-icon { position: relative; display: flex; }
+
+.today-fox-row { display: flex; align-items: flex-end; gap: 12px; }
+.today-fox-pebble { position: relative; width: 64px; height: 64px; flex-shrink: 0; }
+.today-fox-bubble {
+  position: relative;
+  flex: 1;
+  margin-bottom: 2px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  border-radius: 18px 18px 18px 6px;
+  padding: 10px 14px;
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 500;
+}
+.today-fox-bubble::after {
+  content: "";
+  position: absolute;
+  left: -7px;
+  bottom: 9px;
+  width: 12px;
+  height: 12px;
+  background: hsl(var(--card));
+  border-left: 1px solid hsl(var(--card-border));
+  border-bottom: 1px solid hsl(var(--card-border));
+  transform: rotate(45deg);
+  border-radius: 0 0 0 3px;
+}
+
+/* Next card v3: blob pebble, rotated sticker, pill buttons -- README's exact blob radius. */
+.next-card-v3 { border-radius: 22px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.next-head { display: flex; align-items: center; gap: 14px; }
+.next-pebble {
+  width: 64px;
+  height: 64px;
+  border-radius: 58% 42% 55% 45% / 48% 56% 44% 52%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.next-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.next-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.next-title { font-size: 19px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.next-line { font-size: 14px; color: hsl(var(--muted-foreground)); }
+
+.sticker { flex-shrink: 0; display: inline-block; transform: rotate(-5deg); font-size: 11px; font-weight: 700; letter-spacing: .02em; border-radius: 999px; padding: 3px 10px; }
+
+.pill-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.btn-pill {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  border-radius: 999px;
+  border: none;
+  font-weight: var(--weight-semibold);
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.btn-pill.primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+.btn-pill.ghost { background: rgba(255,255,255,.06); color: hsl(var(--foreground)); }
+
+/* Meds pill (design handoff "Meds pill"): fully rounded row, blob pebble, status right. */
+.meds-pill { display: flex; align-items: center; gap: 12px; border-radius: 999px; padding: 8px 18px 8px 8px; min-height: 64px; }
+.meds-pill-pebble {
+  width: 48px;
+  height: 48px;
+  border-radius: 45% 55% 48% 52% / 55% 45% 55% 45%;
+  background: rgba(251,191,36,.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.meds-pill-body { flex: 1; min-width: 0; }
+.meds-pill-title { font-size: 15px; font-weight: var(--weight-semibold); }
+.meds-pill-sub { font-size: 13px; color: hsl(var(--muted-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meds-pill-status { flex-shrink: 0; font-size: 12px; font-weight: var(--weight-semibold); }
+.meds-pill-status.pending { color: #fbbf24; }
+.meds-pill-status.done { color: hsl(var(--success)); }
+
+/* A brief, self-dismissing note (see showQuickToast) -- not the design's full Toast+Undo
+   overlay (that stays unbuilt, README's own "Overlays" section), just enough to answer a real
+   tap without inventing one. */
+.quick-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(120px + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: min(320px, 86vw);
+  background: rgba(30,45,70,.92);
+  backdrop-filter: blur(8px);
+  color: hsl(var(--foreground));
+  border-radius: 14px;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.85rem;
+  text-align: center;
+  box-shadow: var(--shadow-dark-lg, 0 12px 28px rgba(0,0,0,.4));
+}
 
 /* ---------- Tonight -- multi-dish synchronized cooking (Git #3126) ----------
    Per-dish card: a thin progress bar along the top (fills as that dish cooks), the dish's own

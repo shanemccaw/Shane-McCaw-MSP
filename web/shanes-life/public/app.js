@@ -12,6 +12,7 @@ import {
   attachRoomWatermark,
   rollPeekers,
 } from "./critters.js";
+import { fetchWeather, sampleWeather, cachedWeather, WX_GLOW } from "./weather.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -355,6 +356,172 @@ function when(iso) {
   if (diffDays === 1) return `tomorrow ${time}`;
   if (diffDays === -1) return `yesterday ${time}`;
   return d.toLocaleDateString([], { month: "short", day: "numeric" }) + ` ${time}`;
+}
+
+// ---------------------------------------------------------------------------
+// Today v3 -- the cute skin, sky and real weather (Git #3144, "Round 2 rebuild").
+//
+// Design source: Design/design_handoff_shanes_life/README.md ("Today v3 -- the cute skin")
+// and the First Slice Prototype's own `door()` logic, ported byte-for-byte for the sky
+// gradients, WMO-driven weather layers, and the fox's greeting buckets. Holiday/season
+// theming (flags, particles, roof/yard decorations) is explicitly out of this issue's scope
+// (its own sibling Feature) -- only time-of-day sky runs here, never a holiday overlay.
+// ---------------------------------------------------------------------------
+
+const WDN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const SKY_GRADIENT = {
+  dawn: "radial-gradient(120% 70% at 50% -20%,rgba(253,186,116,.26),rgba(253,186,116,0) 70%)",
+  day: "radial-gradient(120% 70% at 50% -20%,rgba(147,197,253,.16),rgba(147,197,253,0) 70%)",
+  dusk: "radial-gradient(120% 70% at 50% -20%,rgba(196,181,253,.26),rgba(196,181,253,0) 70%)",
+  night: "radial-gradient(120% 70% at 50% -20%,rgba(99,102,241,.3),rgba(99,102,241,0) 70%)",
+};
+
+/** dawn/day/dusk/night, exactly the design's own hour buckets -- device-local time, since
+ *  "the phone's actual" clock is what the spec calls for once this leaves the prototype. */
+function skyPhase(hour) {
+  if (hour < 6 || hour >= 21) return "night";
+  if (hour < 10) return "dawn";
+  if (hour < 17) return "day";
+  return "dusk";
+}
+
+/** "Morning, Shane." / "Afternoon, Shane." / "Evening, Shane." -- the fox's real opener,
+ *  contract pack Section 1: always the first of the bubble's two real parts. */
+function foxOpener(hour) {
+  const word = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
+  return `${word}, Shane.`;
+}
+
+/** "HH:MM" (24h, as dates.mjs stores at_time) -> "2:00 PM". */
+function formatTime12(hhmm) {
+  if (!hhmm) return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return "";
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+/** The night layer (21:00-06:00): 26 twinkling stars, two four-point sparkles, Saturn, Mars and
+ *  one shooting star, ported verbatim (coordinates/timings) from the First Slice Prototype. */
+const NIGHT_LAYER_HTML = `<div style="position:absolute;left:0;right:0;top:0;bottom:0;background:linear-gradient(180deg,rgba(2,6,23,.78),rgba(2,6,23,.35) 55%,rgba(2,6,23,0));pointer-events:none"></div><svg viewBox="0 0 402 300" preserveAspectRatio="xMidYMin slice" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;overflow:hidden"><circle cx="24" cy="30" r="1" fill="#F8FAFC" style="animation:czTwinkle 2.2s 0.00s ease-in-out infinite"></circle><circle cx="70" cy="18" r="1.4" fill="#F8FAFC" style="animation:czTwinkle 2.7s 0.37s ease-in-out infinite"></circle><circle cx="118" cy="46" r="0.9" fill="#F8FAFC" style="animation:czTwinkle 3.2s 0.74s ease-in-out infinite"></circle><circle cx="160" cy="22" r="1.6" fill="#F8FAFC" style="animation:czTwinkle 3.7s 1.11s ease-in-out infinite"></circle><circle cx="205" cy="60" r="1.1" fill="#F8FAFC" style="animation:czTwinkle 4.2s 1.48s ease-in-out infinite"></circle><circle cx="250" cy="30" r="1" fill="#F8FAFC" style="animation:czTwinkle 2.2s 1.85s ease-in-out infinite"></circle><circle cx="300" cy="14" r="1.4" fill="#F8FAFC" style="animation:czTwinkle 2.7s 2.22s ease-in-out infinite"></circle><circle cx="345" cy="44" r="0.9" fill="#F8FAFC" style="animation:czTwinkle 3.2s 2.59s ease-in-out infinite"></circle><circle cx="380" cy="24" r="1.2" fill="#F8FAFC" style="animation:czTwinkle 3.7s 2.96s ease-in-out infinite"></circle><circle cx="40" cy="150" r="1" fill="#F8FAFC" style="animation:czTwinkle 4.2s 0.33s ease-in-out infinite"></circle><circle cx="96" cy="172" r="1.4" fill="#F8FAFC" style="animation:czTwinkle 2.2s 0.70s ease-in-out infinite"></circle><circle cx="140" cy="158" r="0.9" fill="#F8FAFC" style="animation:czTwinkle 2.7s 1.07s ease-in-out infinite"></circle><circle cx="190" cy="152" r="1.2" fill="#F8FAFC" style="animation:czTwinkle 3.2s 1.44s ease-in-out infinite"></circle><circle cx="236" cy="166" r="1" fill="#F8FAFC" style="animation:czTwinkle 3.7s 1.81s ease-in-out infinite"></circle><circle cx="278" cy="172" r="1.4" fill="#F8FAFC" style="animation:czTwinkle 4.2s 2.18s ease-in-out infinite"></circle><circle cx="300" cy="150" r="0.9" fill="#F8FAFC" style="animation:czTwinkle 2.2s 2.55s ease-in-out infinite"></circle><circle cx="365" cy="140" r="1.2" fill="#F8FAFC" style="animation:czTwinkle 2.7s 2.92s ease-in-out infinite"></circle><circle cx="150" cy="200" r="1" fill="#F8FAFC" style="animation:czTwinkle 3.2s 0.29s ease-in-out infinite"></circle><circle cx="60" cy="220" r="1.4" fill="#F8FAFC" style="animation:czTwinkle 3.7s 0.66s ease-in-out infinite"></circle><circle cx="260" cy="230" r="0.9" fill="#F8FAFC" style="animation:czTwinkle 4.2s 1.03s ease-in-out infinite"></circle><circle cx="350" cy="210" r="1.2" fill="#F8FAFC" style="animation:czTwinkle 2.2s 1.40s ease-in-out infinite"></circle><circle cx="110" cy="262" r="1" fill="#F8FAFC" style="animation:czTwinkle 2.7s 1.77s ease-in-out infinite"></circle><circle cx="300" cy="272" r="1.4" fill="#F8FAFC" style="animation:czTwinkle 3.2s 2.14s ease-in-out infinite"></circle><circle cx="200" cy="290" r="0.9" fill="#F8FAFC" style="animation:czTwinkle 3.7s 2.51s ease-in-out infinite"></circle><circle cx="20" cy="100" r="1.1" fill="#F8FAFC" style="animation:czTwinkle 4.2s 2.88s ease-in-out infinite"></circle><circle cx="380" cy="100" r="1.3" fill="#F8FAFC" style="animation:czTwinkle 2.2s 0.25s ease-in-out infinite"></circle><g stroke="#F8FAFC" stroke-width="1.2" stroke-linecap="round" style="animation:czTwinkle 3.6s .8s ease-in-out infinite"><path d="M330 22v-7M330 22v7M330 22h-7M330 22h7"></path></g><g stroke="#F8FAFC" stroke-width="1.2" stroke-linecap="round" style="animation:czTwinkle 4.2s 2s ease-in-out infinite"><path d="M84 244v-6M84 244v6M84 244h-6M84 244h6"></path></g><g transform="translate(332 164) rotate(-18)"><ellipse cx="0" cy="0" rx="19" ry="5" fill="none" stroke="rgba(253,224,71,.45)" stroke-width="2.4"></ellipse><circle r="9" fill="#E9C46A"></circle><path d="M-8.5 -2.5h17M-8 2.5h16" stroke="rgba(146,64,14,.45)" stroke-width="1.4"></path><path d="M-19 0 A19 5 0 0 0 19 0" fill="none" stroke="rgba(253,224,71,.8)" stroke-width="2.4"></path></g><circle cx="110" cy="162" r="7" fill="rgba(248,113,113,.18)"></circle><circle cx="110" cy="162" r="3.6" fill="#F87171"></circle><circle cx="109" cy="161" r="1.2" fill="rgba(255,255,255,.35)"></circle><g style="animation:czShoot 11s linear infinite"><line x1="0" y1="0" x2="30" y2="-4" stroke="rgba(255,255,255,.75)" stroke-width="1.4" stroke-linecap="round"></line><circle cx="0" cy="0" r="1.8" fill="#FFFFFF"></circle></g></svg>`;
+
+const CLOUD_SVG =
+  '<path d="M8 20 C 3 20 2 14 7 13 C 7 7 15 5 18 10 C 23 7 28 12 25 16 C 28 17 26 20 22 20 Z"';
+const cloudTrio = (fill) => `
+<svg viewBox="0 0 28 22" width="96" height="76" style="position:absolute;left:6%;top:30px;opacity:.55;animation:czCloudDrift 46s ease-in-out infinite">${CLOUD_SVG} fill="${fill}"></path></svg>
+<svg viewBox="0 0 28 22" width="66" height="52" style="position:absolute;left:58%;top:64px;opacity:.45;animation:czCloudDrift 38s 9s ease-in-out infinite reverse">${CLOUD_SVG} fill="${fill}"></path></svg>
+<svg viewBox="0 0 28 22" width="54" height="42" style="position:absolute;left:34%;top:118px;opacity:.35;animation:czCloudDrift 52s 4s ease-in-out infinite">${CLOUD_SVG} fill="${fill}"></path></svg>`;
+
+// 14 streaks for rain, 18 (tighter-spaced) for storm -- the design's own two distinct counts.
+const RAIN_STREAK_OFFSETS = [
+  [3.0, 0.9, 0], [10.2, 1.02, 0.23], [17.5, 1.14, 0.46], [24.7, 1.26, 0.69],
+  [31.9, 0.9, 0.92], [39.2, 1.02, 0.05], [46.4, 1.14, 0.28], [53.6, 1.26, 0.51],
+  [60.8, 0.9, 0.74], [68.1, 1.02, 0.97], [75.3, 1.14, 0.1], [82.5, 1.26, 0.33],
+  [89.8, 0.9, 0.56], [97.0, 1.02, 0.79],
+];
+const STORM_STREAK_OFFSETS = [
+  [3.0, 0.9, 0], [8.5, 1.02, 0.23], [14.1, 1.14, 0.46], [19.6, 1.26, 0.69],
+  [25.1, 0.9, 0.92], [30.6, 1.02, 0.05], [36.2, 1.14, 0.28], [41.7, 1.26, 0.51],
+  [47.2, 0.9, 0.74], [52.8, 1.02, 0.97], [58.3, 1.14, 0.1], [63.8, 1.26, 0.33],
+  [69.4, 0.9, 0.56], [74.9, 1.02, 0.79], [80.4, 1.14, 1.02], [85.9, 1.26, 0.15],
+  [91.5, 0.9, 0.38], [97.0, 1.02, 0.61],
+];
+const rainStreaks = (color, offsets = RAIN_STREAK_OFFSETS) =>
+  `<div style="position:absolute;inset:0;transform:skewX(-12deg)">${offsets.map(
+    ([left, dur, delay]) =>
+      `<div style="position:absolute;left:${left}%;top:0;width:1.5px;height:26px;border-radius:1px;background:linear-gradient(180deg,rgba(${color},0),rgba(${color},.7));animation:czRainFall ${dur}s ${delay}s linear infinite"></div>`,
+  ).join("")}</div>`;
+
+/** The weather-sky visual per current condition -- the design's own per-kind gradients,
+ *  clouds, rain/storm streaks and snow dots (fog draws with the `cloud` kind, per spec). */
+function weatherSkyHtml(kind) {
+  if (kind === "sun") {
+    return `<div style="position:absolute;inset:0;background:radial-gradient(70% 60% at 82% 0%,rgba(253,224,71,.2),rgba(253,224,71,0) 70%),linear-gradient(180deg,rgba(147,197,253,.12),rgba(147,197,253,0) 60%)"></div><svg viewBox="0 0 400 400" width="560" height="560" style="position:absolute;right:-230px;top:-300px;opacity:.16;animation:czSpin 140s linear infinite"><g fill="#FDE68A"><path d="M200 200 L60 20 L110 10 Z"></path><path d="M200 200 L320 30 L360 60 Z"></path><path d="M200 200 L20 180 L30 130 Z"></path><path d="M200 200 L390 220 L380 270 Z"></path><path d="M200 200 L150 390 L100 370 Z"></path><path d="M200 200 L300 380 L340 350 Z"></path></g></svg>`;
+  }
+  if (kind === "cloud") {
+    return `<div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(148,163,184,.24),rgba(148,163,184,0) 85%)"></div>${cloudTrio("rgba(226,232,240,.8)")}`;
+  }
+  if (kind === "rain") {
+    return `<div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(100,116,139,.34),rgba(100,116,139,0) 90%)"></div>${cloudTrio("rgba(203,213,225,.75)")}${rainStreaks("147,197,253")}`;
+  }
+  if (kind === "storm") {
+    return `<div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(30,27,75,.55),rgba(30,27,75,.15) 70%,rgba(30,27,75,0))"></div>${cloudTrio("rgba(148,163,184,.8)")}${rainStreaks(
+      "165,180,252",
+      STORM_STREAK_OFFSETS,
+    )}<div style="position:absolute;inset:0;background:radial-gradient(80% 60% at 40% 0%,rgba(237,233,254,.6),rgba(237,233,254,0) 70%);animation:czFlash 6s linear infinite"></div><div style="position:absolute;inset:0;background:radial-gradient(70% 60% at 75% 10%,rgba(237,233,254,.5),rgba(237,233,254,0) 70%);animation:czFlash 6s 3.1s linear infinite"></div><svg viewBox="0 0 22 44" width="22" height="44" style="position:absolute;left:30%;top:40px;animation:czFlash 6s linear infinite"><path d="M13 0 L2 24 L10 24 L6 44 L21 16 L13 16 Z" fill="#FDE68A"></path></svg><svg viewBox="0 0 22 44" width="16" height="32" style="position:absolute;left:70%;top:70px;animation:czFlash 6s 3.1s linear infinite"><path d="M13 0 L2 24 L10 24 L6 44 L21 16 L13 16 Z" fill="#FDE68A"></path></svg>`;
+  }
+  if (kind === "snow") {
+    return `<div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(226,232,240,.2),rgba(226,232,240,0) 85%)"></div>${cloudTrio("rgba(241,245,249,.85)")}`;
+  }
+  return ""; // moon: no extra weather-sky wash, the night layer already carries it.
+}
+
+/** The meta row's weather-light icon, one per kind -- exact SVGs from the header spec. */
+function weatherIconHtml(kind, moonColor) {
+  if (kind === "sun") {
+    return `<svg width="22" height="22" viewBox="0 0 24 22" style="position:relative;overflow:visible"><g stroke="#FDE68A" stroke-width="1.6" stroke-linecap="round" style="animation:czSpin 24s linear infinite;transform-box:fill-box;transform-origin:50% 50%"><path d="M12 1v3M12 18v3M2 11h3M19 11h3M4.9 3.9l2.1 2.1M17 16l2.1 2.1M4.9 18.1l2.1-2.1M17 6l2.1-2.1"></path></g><circle cx="12" cy="11" r="5.5" fill="#FDE68A"></circle></svg>`;
+  }
+  if (kind === "moon") {
+    return `<svg width="22" height="22" viewBox="0 0 24 22" style="position:relative"><path d="M15 2 A9 9 0 1 0 21 16 A7.5 7.5 0 1 1 15 2 Z" fill="${moonColor}"></path><circle cx="9" cy="9" r="1.4" fill="rgba(0,0,0,.1)"></circle><circle cx="12" cy="15" r="1" fill="rgba(0,0,0,.1)"></circle></svg>`;
+  }
+  if (kind === "cloud") {
+    return `<svg width="26" height="22" viewBox="0 0 28 22" style="position:relative"><path d="M8 20 C 3 20 2 14 7 13 C 7 7 15 5 18 10 C 23 7 28 12 25 16 C 28 17 26 20 22 20 Z" fill="rgba(226,232,240,.85)"></path></svg>`;
+  }
+  if (kind === "rain") {
+    return `<svg width="26" height="26" viewBox="0 0 28 28" style="position:relative;overflow:visible"><path d="M8 20 C 3 20 2 14 7 13 C 7 7 15 5 18 10 C 23 7 28 12 25 16 C 28 17 26 20 22 20 Z" fill="rgba(203,213,225,.85)"></path><path d="M9 21v3M14 22v3M19 21v3" stroke="#93C5FD" stroke-width="1.6" stroke-linecap="round" style="animation:czRain .9s linear infinite"></path></svg>`;
+  }
+  if (kind === "storm") {
+    return `<svg width="26" height="28" viewBox="0 0 28 30" style="position:relative;overflow:visible"><path d="M8 20 C 3 20 2 14 7 13 C 7 7 15 5 18 10 C 23 7 28 12 25 16 C 28 17 26 20 22 20 Z" fill="rgba(148,163,184,.9)"></path><path d="M8 21v3M20 22v3" stroke="#93C5FD" stroke-width="1.6" stroke-linecap="round" style="animation:czRain .9s linear infinite"></path><path d="M15 14 L11 22 L14 22 L13 29 L18 19 L15 19 Z" fill="#FDE68A" style="animation:czFlash 5s linear infinite"></path></svg>`;
+  }
+  return `<svg width="26" height="26" viewBox="0 0 28 28" style="position:relative;overflow:visible"><path d="M8 20 C 3 20 2 14 7 13 C 7 7 15 5 18 10 C 23 7 28 12 25 16 C 28 17 26 20 22 20 Z" fill="rgba(241,245,249,.9)"></path><g fill="#F8FAFC" style="animation:czRain 1.8s linear infinite"><circle cx="9" cy="22" r="1.3"></circle><circle cx="14" cy="23" r="1.3"></circle><circle cx="19" cy="22" r="1.3"></circle></g></svg>`; // snow
+}
+
+/** Builds the whole sky+night+weather+meta+fox header for the Today tray, one framed region
+ *  at the top of the room ("Today v3 -- Header"). `hour` is the device-local hour; `wx` is a
+ *  real `{kind, tempF, text}` from weather.js (live or the spec's own until-it-answers sample).
+ *  `whereText`/`whereColor` stay real, not fabricated: no location feed exists yet (see
+ *  build-journal/3144.md), so this only ever shows the one state that's actually true, "Home",
+ *  never the design's "· from location" qualifier that would claim a signal we don't have. */
+function renderTodayHeader(now, wx, foxLine) {
+  const hour = now.getHours();
+  const phase = skyPhase(hour);
+  const isNight = phase === "night";
+  const scene = el("div", { class: "today-scene" }, [
+    el("div", { class: "today-sky", style: `background:${SKY_GRADIENT[phase]}` }),
+    isNight ? el("div", { class: "today-night", html: NIGHT_LAYER_HTML }) : null,
+    el("div", { class: "today-wx-sky", html: weatherSkyHtml(wx.kind) }),
+  ]);
+
+  const meta = el("div", { class: "today-meta" }, [
+    el("span", { class: "today-meta-date" }, [
+      el("span", { class: "today-date-text", text: `${WDN[now.getDay()]}, ${MONN[now.getMonth()]} ${now.getDate()}` }),
+      el("span", { text: "·" }),
+      el("span", { class: "today-where" }, [
+        el("span", {
+          html:
+            '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>',
+        }),
+        el("span", { text: "Home" }),
+      ]),
+    ]),
+    el("span", { class: "today-wx-light" }, [
+      el("span", { class: "today-wx-glow", style: `background:radial-gradient(ellipse at center,${WX_GLOW[wx.kind] || WX_GLOW.cloud},rgba(0,0,0,0) 72%)` }),
+      wx.kind === "storm" ? el("span", { class: "today-wx-glow today-wx-glow-flash" }) : null,
+      el("span", { class: "today-wx-text", text: wx.text }),
+      el("span", { class: "today-wx-icon", html: weatherIconHtml(wx.kind, "#F8FAFC") }),
+    ]),
+  ]);
+
+  const fox = el("div", { class: "today-fox-row" }, [
+    el("div", { class: "today-fox-pebble" }, [el("span", { html: '<svg width="64" height="64" viewBox="0 0 120 120" style="display:block;animation:czBreathe 4s ease-in-out infinite;transform-origin:50% 100%"><use href="#c-fox"></use></svg>' })]),
+    el("div", { class: "today-fox-bubble", text: foxLine }),
+  ]);
+
+  scene.append(el("div", { class: "today-scene-content" }, [meta, fox]));
+  return scene;
 }
 
 /** $1.79, from integer cents -- the whole schema stores money as price_cents (Git #3112). */
@@ -766,9 +933,209 @@ $("#capture").addEventListener("submit", async (event) => {
 // views
 // ---------------------------------------------------------------------------
 
+/** A brief, self-dismissing note -- design handoff's own "Directions" tap target ("Hands off
+ *  to Maps when this is real... leave by about 40 minutes before"). No real toast/Undo overlay
+ *  exists yet (README's own "Toast with Undo" is a separate, unbuilt overlay), so this is a
+ *  small, real, self-contained stand-in rather than wiring a fake Maps handoff. */
+function showQuickToast(message) {
+  const node = el("div", { class: "quick-toast", text: message });
+  document.body.append(node);
+  setTimeout(() => node.remove(), 3500);
+}
+
+/** One pill-shaped Badge-style sticker, rotated -5deg per the cute-skin spec. `tone` picks the
+ *  tint from the same accent palette the rest of the app already uses (README "Design tokens"). */
+const STICKER_TONE = { blue: "96,165,250", indigo: "165,180,252", amber: "251,191,36" };
+function sticker(tone, text) {
+  return el("span", { class: "sticker", style: `background:rgba(${STICKER_TONE[tone]},.16);color:rgb(${STICKER_TONE[tone]})`, text });
+}
+
+function pillButton(tag, props, text, variant = "primary") {
+  return el(tag, { ...props, class: `btn-pill ${variant}` }, [document.createTextNode(text)]);
+}
+
+/** The Next card: blob pebble (56px critter in a 64px tinted pebble), title + rotated sticker,
+ *  a muted line, then two pill buttons -- design handoff "Next (one card, chosen by rule)".
+ *  `variant` carries the pebble tint, critter slot, optional location-style border, title,
+ *  sticker (tone+text or null), line text and its two buttons (or none, for "nothing next"). */
+function nextCardV3({ pebbleBg, border, critterSlot, title, stickerEl, line, buttons }) {
+  const head = el("div", { class: "next-head" }, [
+    el("div", { class: "next-pebble", style: `background:${pebbleBg}` }, [critterIcon(critterSlot, { size: 56 })]),
+    el("div", { class: "next-body" }, [
+      el("div", { class: "next-title-row" }, [el("span", { class: "next-title", text: title }), stickerEl]),
+      el("div", { class: "next-line", text: line }),
+    ]),
+  ]);
+  const card = el("div", { class: "card next-card-v3", style: border ? `border-color:${border}` : "" }, [head]);
+  if (buttons && buttons.length) card.append(el("div", { class: "pill-row" }, buttons));
+  return card;
+}
+
+/** Real "one card, chosen by rule" pick order, restricted to the signals this app actually has
+ *  wired (no location/geofencing feed exists yet -- Walmart/NASA/Rental are out of scope here,
+ *  see build-journal/3144.md's filed finding). Mirrors the design's own order: appointment today
+ *  > dinner window (16:00-21:00, meal not already finished) > open groceries > nothing. */
+function resolveNextKind(data, hour) {
+  if (data.appointmentToday) return "doctor";
+  const mealDone = mealSession ? !!mealSession.done : false;
+  if (hour >= 16 && hour < 21 && data.tonight && !mealDone) return "dinner";
+  if (data.groceries && data.groceries.openCount > 0) return "home";
+  if (data.next && data.next.length > 0) return "generic";
+  return "none";
+}
+
+/** The fox's real matching line for whatever's actually in the Next card -- contract pack
+ *  Section 1, Shane's own lines verbatim. "generic" (some other real due entity -- a bill
+ *  reminder, a pet vaccine, etc.) isn't one of the five real cases that section spells out, so
+ *  the fox stays at its opener alone rather than inventing unspec'd copy for it; the Next card
+ *  itself still shows the real entity. */
+function foxMatchLine(nextKind, data) {
+  if (nextKind === "doctor") {
+    const who = data.appointmentToday.provider || data.appointmentToday.title;
+    const time = formatTime12(data.appointmentToday.atTime);
+    return time ? `${who} at ${time} today. That's the one thing.` : `${who} today. That's the one thing.`;
+  }
+  if (nextKind === "dinner") return `Time to make dinner: ${data.tonight.dishText}.`;
+  if (nextKind === "home") return "Groceries are ready for whenever you pass a store. Nothing pressing.";
+  if (nextKind === "none") return "Nothing needs you. The day's yours.";
+  return null;
+}
+
+function renderNextCardV3(data, nextKind) {
+  if (nextKind === "doctor") {
+    const appt = data.appointmentToday;
+    const time = formatTime12(appt.atTime);
+    return nextCardV3({
+      pebbleBg: "rgba(96,165,250,.16)",
+      border: "rgba(96,165,250,.45)",
+      critterSlot: "comingup",
+      title: appt.provider || appt.title,
+      stickerEl: sticker("blue", time ? `Today · ${time}` : "Today"),
+      line: appt.categoryLabel || (appt.kind === "vet" ? "Vet visit" : "Appointment"),
+      buttons: [
+        pillButton("a", { href: `#/date/${appt.id}` }, "Open the appointment", "primary"),
+        pillButton(
+          "button",
+          {
+            type: "button",
+            onClick: () =>
+              showQuickToast(`Directions -- leave by about 40 minutes before${time ? ` ${time}` : ""}.`),
+          },
+          "Directions",
+          "ghost",
+        ),
+      ],
+    });
+  }
+  if (nextKind === "dinner") {
+    return nextCardV3({
+      pebbleBg: "rgba(212,163,115,.18)",
+      critterSlot: "dinner",
+      title: "Dinner",
+      stickerEl: sticker("amber", "Tonight"),
+      line: `Tonight: ${data.tonight.dishText}`,
+      buttons: [
+        pillButton("a", { href: "#/tonight" }, "Start cooking", "primary"),
+        pillButton("a", { href: "#/recipes" }, "Something else", "ghost"),
+      ],
+    });
+  }
+  if (nextKind === "home") {
+    return nextCardV3({
+      pebbleBg: "rgba(253,230,138,.16)",
+      critterSlot: "shop",
+      title: "Groceries",
+      stickerEl: sticker("indigo", "From Claude"),
+      line: `${data.groceries.openCount} item${data.groceries.openCount === 1 ? "" : "s"} · when you're near a store`,
+      buttons: [
+        pillButton("a", { href: "#/shopping" }, "Open Shopping", "primary"),
+        pillButton(
+          "button",
+          {
+            type: "button",
+            onClick: async (e) => {
+              const btn = e.currentTarget;
+              btn.disabled = true;
+              try {
+                const share = await api("/api/shares", { method: "POST", body: JSON.stringify({ listId: data.groceries.listId }) });
+                await navigator.clipboard?.writeText?.(share.url || `${location.origin}/l/${share.token}`);
+                showQuickToast("Link copied.");
+              } catch (err) {
+                showQuickToast(err.message || "Couldn't create a link.");
+              } finally {
+                btn.disabled = false;
+              }
+            },
+          },
+          "Share link",
+          "ghost",
+        ),
+      ],
+    });
+  }
+  if (nextKind === "none") {
+    return nextCardV3({
+      pebbleBg: "rgba(209,213,219,.14)",
+      critterSlot: "idle",
+      title: "Nothing next",
+      stickerEl: null,
+      line: "The day's yours. New things land here as they come.",
+      buttons: [],
+    });
+  }
+  // "generic" -- the pre-existing due-entity list this room already had (a bill reminder, a pet
+  // vaccine, etc.), kept working exactly as before rather than dropped for the new five cases.
+  const wrap = el("div", { class: "section" });
+  for (const item of data.next) wrap.append(entityTile(item));
+  return wrap;
+}
+
+/** The Meds pill (design handoff "Meds pill"): one compact tap-through summary of today's next
+ *  not-yet-taken batch, real counts split "for you" vs "for the pets" via each item's real
+ *  `isPetCare` flag. Skipped entirely when nothing is tracked yet -- no invented batches. */
+function medsPillSection(meds) {
+  if (!meds || !meds.batches || meds.batches.length === 0) return null;
+  const current = meds.batches.find((b) => !b.takenToday) || meds.batches[meds.batches.length - 1];
+  const takenToday = current.takenToday;
+  const yours = current.items.filter((i) => !i.isPetCare).length;
+  const pets = current.items.filter((i) => i.isPetCare).length;
+  const batchName = current.batch ? current.batch[0].toUpperCase() + current.batch.slice(1) : "Meds";
+  const countLine = pets > 0 ? `${yours} for you, ${pets} for the pets` : `${yours} for you`;
+  return el("section", { class: "section" }, [
+    el(
+      "a",
+      { class: "card meds-pill", href: "#/meds" },
+      [
+        el("div", { class: "meds-pill-pebble" }, [critterIcon("meds", { size: 42 })]),
+        el("div", { class: "meds-pill-body" }, [
+          el("div", { class: "meds-pill-title", text: takenToday ? `${batchName} taken` : `${batchName} · ${countLine}` }),
+          el("div", { class: "meds-pill-sub", text: current.items.map((i) => i.name).join(", ") }),
+        ]),
+        el("div", { class: `meds-pill-status ${takenToday ? "done" : "pending"}`, text: takenToday ? "done" : "not yet" }),
+      ],
+    ),
+  ]);
+}
+
 async function viewToday(view) {
   const data = await api("/api/today");
   setInboxBadge(data.pendingCaptures);
+
+  const now = new Date();
+  const hour = now.getHours();
+  const nextKind = resolveNextKind(data, hour);
+  const matchLine = foxMatchLine(nextKind, data);
+  const foxLine = matchLine ? `${foxOpener(hour)} ${matchLine}` : foxOpener(hour);
+  const wx = cachedWeather() || sampleWeather(hour >= 7 && hour < 19);
+  view.append(renderTodayHeader(now, wx, foxLine));
+  // The design's own stated fallback: render instantly with the sample/cached weather, then
+  // swap in the real Open-Meteo read the moment it answers (decorative only -- a failed fetch
+  // just leaves the sample in place, see weather.js).
+  if (!cachedWeather()) {
+    fetchWeather().then((real) => {
+      if (real && state.route === "today") render();
+    });
+  }
 
   // Tonight teaser (Git #3126) -- purely real client state (mealSession is never persisted
   // server-side, see its own declaration), so this only ever shows while a live synchronized
@@ -823,26 +1190,18 @@ async function viewToday(view) {
   // align-items:flex-end" label row; the cards stay in normal block flow beneath it.
   const nextLabel = el("h2", { text: "Next" });
   const nextLabelRow = el("div", { class: "section-label-row" }, [nextLabel]);
-  const next = el("section", { class: "section" }, [nextLabelRow]);
-  if (data.next.length === 0) {
-    next.append(
-      el("div", { class: "card" }, [
-        el("p", { class: "muted", text: "Nothing is due. That is the whole message." }),
-      ]),
-    );
-  } else {
-    for (const item of data.next) {
-      next.append(entityTile(item));
-    }
-  }
+  const next = el("section", { class: "section" }, [nextLabelRow, renderNextCardV3(data, nextKind)]);
   view.append(next);
 
   // Peeker (Git #3119): "Next" is the one tray section label this app actually has today, so it
-  // gets the day's first peek roll (`b`). Later/Meds/Rooms are the spec's other three tray
-  // labels and get the next three (`b+1..b+3` via rollPeekers()), but none of those sections
-  // exist in this app yet -- there's no tray Later row, Meds card or Rooms list to attach them
-  // to. Wire those the moment those screens land.
+  // gets the day's first peek roll (`b`). Later/Rooms are the spec's other two tray labels
+  // beyond Meds (now wired below) and get the next two (`b+1..b+2` via rollPeekers()), but
+  // neither of those sections exists in this app yet -- there's no tray Later row or Rooms list
+  // to attach them to. Wire those the moment those screens land.
   attachPeeker(nextLabel, rollPeekers()[0]);
+
+  const medsPill = medsPillSection(data.meds);
+  if (medsPill) view.append(medsPill);
 
   if (data.pendingCaptures > 0) {
     view.append(

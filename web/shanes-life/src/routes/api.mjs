@@ -1160,6 +1160,22 @@ export function buildApiRouter() {
     // #3127's real moment-based meal nudges + "Tonight" teaser -- read off whatever Claude
     // pushed via push_meal_plan for today/tomorrow, never a calendar to browse.
     const { nudges: mealNudges, tonight } = await mealPlan.getTodayNudges(user.id);
+
+    // Today tray Round 2 (Git #3144) -- the real "one card, chosen by rule" Next resolution and
+    // the fox's contextual line both need to know: is there a real appointment/vet visit today,
+    // and are there real open items on the running grocery list. Both are real, already-built
+    // data (dates.mjs's own due_in_days, lists.mjs's own shopping list) -- no new tables.
+    const allDates = await dates.listDates(user.id);
+    const appointmentToday = allDates.find(
+      (d) => (d.kind === "appointment" || d.kind === "vet") && d.due_in_days === 0,
+    ) || null;
+    const shoppingList = await lists.getOrCreateShoppingList(user.id);
+    const shoppingDetail = await lists.getListDetail(user.id, shoppingList.id);
+    const groceries = {
+      listId: shoppingList.id,
+      openCount: shoppingDetail.items.filter((i) => !i.done).length,
+    };
+
     return sendJson(res, 200, {
       // "Today view shows only what's next" (contract pack Section 3) -- three, not a backlog.
       next: await entities.nextUp(user.id, 3),
@@ -1167,6 +1183,16 @@ export function buildApiRouter() {
       recent: await entities.listEntities(user.id, { limit: 8 }),
       mealNudges,
       tonight,
+      appointmentToday: appointmentToday && {
+        id: appointmentToday.id,
+        kind: appointmentToday.kind,
+        title: appointmentToday.title,
+        provider: appointmentToday.provider,
+        atTime: appointmentToday.at_time,
+        categoryLabel: appointmentToday.category_label,
+      },
+      groceries,
+      meds: await medications.getMedsToday(user.id),
     });
   });
 
