@@ -411,6 +411,16 @@ function agoShort(iso) {
   return when(iso);
 }
 
+// Git #3218's real countdown display -- agoShort above is past-only ("X minutes ago"); a
+// scheduled command is always in the future, so it needs its own short "in X minutes" form.
+function inShort(iso) {
+  if (!iso) return null;
+  const diffMin = Math.round((new Date(iso).getTime() - Date.now()) / 60_000);
+  if (diffMin <= 0) return "any moment now";
+  if (diffMin === 1) return "in 1 minute";
+  return `in ${diffMin} minutes`;
+}
+
 // ---------------------------------------------------------------------------
 // Today v3 -- the cute skin, sky and real weather (Git #3144, "Round 2 rebuild").
 //
@@ -8005,6 +8015,60 @@ async function renderTeslaSettings(view) {
 
   if (status.vehicleId) {
     section.append(await renderTeslaCommuteSettings());
+
+    // Git #3218's real first Tesla-room automation: "Done shopping" -> a real 5-minute countdown
+    // -> the real trunk opens.
+    const commandsCard = el("div", { class: "card" }, [
+      el("div", { class: "title", text: "Checkout-to-trunk" }),
+      el("div", { class: "meta", text: "5 minutes after \"Done shopping\" clears the cart, the trunk opens automatically." }),
+    ]);
+    if (!status.commandsConfigured) {
+      commandsCard.append(el("p", { class: "muted small", style: "margin-top:.5rem", text: "The vehicle-command proxy is not configured on this server -- this automation is armed but inert until it is." }));
+    }
+    const toggleRow = el("label", { class: "row", style: "margin-top:.6rem;align-items:center;gap:.5rem" }, [
+      el("input", { type: "checkbox", ...(status.autoTrunkOnCheckout ? { checked: true } : {}) }),
+      el("span", { text: "Auto-open trunk after checkout" }),
+    ]);
+    toggleRow.querySelector("input").addEventListener("change", async (event) => {
+      event.target.disabled = true;
+      try {
+        await api("/api/tesla/auto-trunk-on-checkout", {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: event.target.checked }),
+        });
+      } catch (err) {
+        event.target.checked = !event.target.checked;
+        alert(err.message);
+      } finally {
+        event.target.disabled = false;
+      }
+    });
+    commandsCard.append(toggleRow);
+
+    const pendingOut = el("div", { style: "margin-top:.5rem" });
+    commandsCard.append(pendingOut);
+    api("/api/tesla/scheduled-commands")
+      .then(({ commands }) => {
+        if (commands.length === 0) return;
+        pendingOut.replaceChildren(
+          ...commands.map((c) =>
+            el("div", { class: "row spread", style: "align-items:center" }, [
+              el("span", { class: "small", text: `Trunk opens ${inShort(c.scheduled_for)}` }),
+              el("button", {
+                class: "ghost small",
+                text: "Cancel",
+                onClick: async (event) => {
+                  event.target.disabled = true;
+                  await api(`/api/tesla/scheduled-commands/${c.id}`, { method: "DELETE" });
+                  render();
+                },
+              }),
+            ]),
+          ),
+        );
+      })
+      .catch(() => {});
+    section.append(commandsCard);
   }
 
   // The real webhook tokens -- same shape/discipline as MCP and widget tokens above: a

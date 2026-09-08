@@ -8,11 +8,11 @@
 // already-built, already-generic nudges.mjs / real OS push pipeline (queueNudge, migration 018
 // explicitly named `tesla` as a real nudge kind from the start).
 //
-// What this module is NOT: a vehicle-command client. Sending a real command (start
-// preconditioning, unlock, honk) needs Tesla's separate command-signing keypair/protocol
-// (the "vehicle-command" proxy), which is real, separate work for sibling Features #3216/#3218
-// under the same Feature-tier parent #3237 -- not this checklist-trigger issue. TESLA_PRIVATE_KEY
-// is deliberately never read here.
+// Vehicle COMMANDS (start preconditioning, open the trunk) were deliberately left out of the
+// original #3158 build -- that's real, separate work, now added below under "Vehicle commands"
+// for #3218. This app still never signs a command or reads TESLA_PRIVATE_KEY itself: modern
+// Teslas reject unsigned commands, so real commands are forwarded to Tesla's own official local
+// signing proxy (config.teslaCommandProxyUrl) instead of reimplementing that binary protocol.
 //
 // Same encryption discipline as vault.mjs (migration 017/052): AES-256-GCM, SL_VAULT_KEY lives
 // OUTSIDE the database, an AAD binds each ciphertext to the exact row/owner/field it was written
@@ -42,7 +42,11 @@ import { getHeadingOutSignal } from "./lists.mjs";
 // something this app can detect without a real API call first.
 const TESLA_AUTH_BASE = "https://auth.tesla.com";
 const TESLA_FLEET_API_BASE = "https://fleet-api.prd.na.vn.cloud.tesla.com";
-const TESLA_SCOPES = "openid offline_access vehicle_device_data";
+// vehicle_cmds added for Git #3218 -- commands (actuate_trunk) genuinely need it; 055/#3158's
+// original read-only scope did not carry it. Anyone who connected under the old scope needs to
+// reconnect (Settings -> Tesla -> Disconnect, then Connect again) before a command will work --
+// Tesla does not silently upgrade an already-granted scope.
+const TESLA_SCOPES = "openid offline_access vehicle_device_data vehicle_cmds";
 
 const IV_BYTES = 12;
 const KEY_BYTES = 32;
@@ -222,7 +226,8 @@ async function ownedAccount(userId) {
   return one(
     `SELECT id, user_id, tesla_user_id, access_ciphertext, access_iv, access_auth_tag,
             refresh_ciphertext, refresh_iv, refresh_auth_tag, key_id, scope, token_expires_at,
-            vehicle_id, vehicle_vin, vehicle_display_name, connected_at, last_refreshed_at
+            vehicle_id, vehicle_vin, vehicle_display_name, connected_at, last_refreshed_at,
+            auto_trunk_on_checkout
        FROM tesla_accounts WHERE user_id = $1`,
     [userId],
   );
@@ -271,6 +276,8 @@ export async function connectionStatus(userId) {
     vehicleDisplayName: row.vehicle_display_name,
     connectedAt: row.connected_at,
     lastRefreshedAt: row.last_refreshed_at,
+    commandsConfigured: teslaCommandsConfigured(),
+    autoTrunkOnCheckout: row.auto_trunk_on_checkout,
   };
 }
 
@@ -565,6 +572,155 @@ async function resolveHookToken(token) {
  * the only way to tell why is the payload that produced it (migration 018's own header). The
  * nudge itself is what's deduped, not the record.
  */
+// ---------------------------------------------------------------------------------------------
+// Vehicle commands (Git #3218, sibling to this file's read-only OAuth work): the checkout-to-
+// trunk automation, and the real send/schedule machinery it needs.
+// ---------------------------------------------------------------------------------------------
+
+/** Real, honest configured-state check for the command path specifically -- distinct from
+ *  teslaConfigured() above, since OAuth can be fully set up while the command proxy is not. */
+export function teslaCommandsConfigured() {
+  return Boolean(config.teslaCommandProxyUrl);
+}
+
+/**
+ * Sends one real, already-signed-by-the-proxy command to the vehicle. This app never signs a
+ * command itself -- see config.mjs's teslaCommandProxyUrl header for why -- it forwards the same
+ * real OAuth bearer token used for reads to Tesla's own official local vehicle-command proxy
+ * (github.com/teslamotors/vehicle-command), which holds the real enrolled private key and does
+ * the actual signing + relay to the car.
+ */
+async function sendVehicleCommand(userId, command) {
+  if (!teslaCommandsConfigured()) {
+    throw new TeslaError(
+      "The Tesla vehicle-command proxy is not configured on this server (TESLA_COMMAND_PROXY_URL).",
+      { code: "COMMANDS_NOT_CONFIGURED" },
+    );
+  }
+  const account = await ownedAccount(userId);
+  if (!account?.vehicle_id) {
+    throw new TeslaError("No Tesla vehicle is selected yet.", { code: "NO_VEHICLE" });
+  }
+  const accessToken = await getValidAccessToken(userId);
+  if (!accessToken) throw new TeslaError("Tesla is not connected.", { code: "NOT_CONNECTED" });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  let res;
+  try {
+    res = await fetch(
+      `${config.teslaCommandProxyUrl}/api/1/vehicles/${encodeURIComponent(account.vehicle_id)}/command/${command}`,
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+        body: "{}",
+        signal: controller.signal,
+      },
+    );
+  } catch (err) {
+    throw new TeslaError(`Could not reach the Tesla command proxy: ${err.message}`, { code: "NETWORK" });
+  } finally {
+    clearTimeout(timer);
+  }
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    throw new TeslaError(`The Tesla command proxy returned a non-JSON response (HTTP ${res.status}).`, { status: res.status });
+  }
+  if (!res.ok || json?.response?.result === false) {
+    throw new TeslaError(json?.response?.reason || json?.error || `Tesla rejected the command (HTTP ${res.status}).`, {
+      status: res.status,
+    });
+  }
+  return json?.response;
+}
+
+/** Real per-user opt-in for the checkout-to-trunk automation -- defaults off (migration 056);
+ *  meaningless, and refused, without a real connected + selected vehicle. */
+export async function setAutoTrunkOnCheckout(userId, enabled) {
+  const account = await ownedAccount(userId);
+  if (!account?.vehicle_id) {
+    throw new TeslaError("Select a Tesla vehicle before enabling this.", { code: "NO_VEHICLE" });
+  }
+  await query("UPDATE tesla_accounts SET auto_trunk_on_checkout = $2, updated_at = now() WHERE user_id = $1", [
+    userId,
+    Boolean(enabled),
+  ]);
+  return { autoTrunkOnCheckout: Boolean(enabled) };
+}
+
+/**
+ * The real first Tesla-room automation Shane named: when a real Shopping run finishes ("Done
+ * shopping" / clear-checked, #3202), give him the real 5-minute walk-to-the-car window, then open
+ * the real trunk. Called from lists.clearCheckedItems's route, not lists.mjs itself -- Tesla is
+ * this file's concern, not Lists'. A no-op, not an error, for every real case where the
+ * automation isn't actually armed (not connected, no vehicle, opted out, proxy not configured) --
+ * finishing a shopping run must never fail because an unrelated automation isn't set up.
+ */
+export async function scheduleCheckoutTrunkOpen(userId) {
+  if (!teslaCommandsConfigured()) return null;
+  const account = await ownedAccount(userId);
+  if (!account?.vehicle_id || !account.auto_trunk_on_checkout) return null;
+
+  const row = await one(
+    `INSERT INTO tesla_scheduled_commands (user_id, command, reason, scheduled_for)
+     VALUES ($1, 'actuate_trunk', 'checkout-to-trunk', now() + interval '5 minutes')
+     RETURNING id, scheduled_for`,
+    [userId],
+  );
+  return row;
+}
+
+export async function listScheduledCommands(userId) {
+  return many(
+    `SELECT id, command, reason, scheduled_for, status, error, created_at, sent_at
+       FROM tesla_scheduled_commands
+      WHERE user_id = $1 AND status = 'pending'
+      ORDER BY scheduled_for ASC`,
+    [userId],
+  );
+}
+
+export async function cancelScheduledCommand(userId, commandId) {
+  const row = await one(
+    `UPDATE tesla_scheduled_commands SET status = 'canceled'
+      WHERE id = $1 AND user_id = $2 AND status = 'pending'
+      RETURNING id`,
+    [commandId, userId],
+  );
+  if (!row) throw notFound("Scheduled Tesla command not found, or it already ran.");
+  return row;
+}
+
+/**
+ * Real housekeeping call (server.mjs, same 5-minute cadence as redeliverSnoozedNudges): fires
+ * every scheduled command whose time has come. One command's real failure (Tesla unreachable, the
+ * vehicle asleep and not woken, the proxy down) is recorded on its own row and never blocks the
+ * next one -- the same "one bad row never wedges the sweep" shape runPlaidItemMaintenance uses.
+ */
+export async function dispatchDueCommands() {
+  const due = await many(
+    `SELECT id, user_id, command FROM tesla_scheduled_commands
+      WHERE status = 'pending' AND scheduled_for <= now()`,
+  );
+  let sent = 0;
+  for (const row of due) {
+    try {
+      await sendVehicleCommand(row.user_id, row.command);
+      await query(`UPDATE tesla_scheduled_commands SET status = 'sent', sent_at = now() WHERE id = $1`, [row.id]);
+      sent += 1;
+    } catch (err) {
+      await query(`UPDATE tesla_scheduled_commands SET status = 'failed', error = $2, sent_at = now() WHERE id = $1`, [
+        row.id,
+        err.message,
+      ]);
+    }
+  }
+  return sent;
+}
+
 export async function recordHookEvent(token, payload) {
   const resolved = await resolveHookToken(token);
   if (!resolved) throw notFound("This Tesla webhook link is not valid any more.");
