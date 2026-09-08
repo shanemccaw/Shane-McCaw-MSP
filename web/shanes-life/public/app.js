@@ -1863,9 +1863,15 @@ function entityTile(entity) {
   ]);
 }
 
+// Git #3277: Inbox's own real room header, via the generic roomHeader() (README "Rooms (sub
+// pages)") -- same pattern #3192/#3193/#3194 already used, not a bespoke header. ROOM_DEFS' own
+// tint for "inbox".
+const INBOX_TINT = "147,197,253";
+
 async function viewInbox(view) {
   const { captures } = await api("/api/captures?status=pending");
 
+  roomHeader(view, INBOX_TINT, "Inbox");
   view.append(
     el("section", { class: "section" }, [
       el("h2", { text: "Unfiled" }),
@@ -1933,6 +1939,11 @@ function contactRow(c) {
   ]);
 }
 
+// Git #3277: Things' own real room header, via the generic roomHeader() (README "Rooms (sub
+// pages)") -- same pattern #3192/#3193/#3194 already used, not a bespoke header. README's own
+// room-tint table, "Things".
+const THINGS_TINT = "251,146,60";
+
 async function viewThings(view) {
   const [{ items: things, houses }, { items: contacts }, { entities }, { categories }] = await Promise.all([
     api("/api/things"),
@@ -1940,6 +1951,8 @@ async function viewThings(view) {
     api("/api/entities?limit=200"),
     api("/api/categories"),
   ]);
+
+  roomHeader(view, THINGS_TINT, "Things");
 
   // "Where's the...?" -- real, deterministic search (no AI call, per contract Section 10).
   // Answers inline right under the box, same "trust stated facts immediately" instant-answer
@@ -1957,7 +1970,7 @@ async function viewThings(view) {
       ? `${thing.name} is ${thing.house ? `at ${thing.house}, ` : ""}${thing.place}.`
       : `Nothing on file for "${q}" yet.`;
   });
-  view.append(el("section", { class: "section" }, [el("h2", { text: "Things" }), searchForm, answer]));
+  view.append(el("section", { class: "section" }, [searchForm, answer]));
 
   // "Just logged" -- newest-said-first, what recordThing's upsert-by-name keeps current.
   const recentSection = el("section", { class: "section" }, [el("h2", { text: "Just logged" })]);
@@ -2058,10 +2071,15 @@ function personRow(p) {
   ]);
 }
 
+// Git #3277: People's own real room header, via the generic roomHeader() (README "Rooms (sub
+// pages)") -- same pattern #3192/#3193/#3194 already used, not a bespoke header. README's own
+// room-tint table, "People".
+const PEOPLE_TINT = "167,139,250";
+
 async function viewPeople(view) {
+  roomHeader(view, PEOPLE_TINT, "People");
   view.append(
     el("section", { class: "section" }, [
-      el("h2", { text: "People" }),
       el("p", { class: "muted small", text: "A private thread per person, in your own words. Only you can see this." }),
     ]),
   );
@@ -5443,12 +5461,17 @@ function moneyWinRow(win) {
  *  (source 'shane', typed right here) and Claude's `log_win` (source 'claude') land the same as
  *  the automatic ones detectMoneyWins() creates server-side (source 'debt_paid_off'). Deliberately
  *  no streak, badge or completion percentage anywhere on this room (Section 3/8). */
+// Git #3277: Wins' own real room header, via the generic roomHeader() (README "Rooms (sub
+// pages)") -- same pattern #3192/#3193/#3194 already used, not a bespoke header. README's own
+// room-tint table, "Wins".
+const WINS_TINT = "253,164,175";
+
 async function viewWins(view) {
   const { wins } = await api("/api/money/wins");
 
+  roomHeader(view, WINS_TINT, "Wins");
   view.append(
     el("section", { class: "section" }, [
-      el("h2", { text: "Wins" }),
       el("p", { class: "muted small", text: "Real wins · no streaks, no badges" }),
     ]),
   );
@@ -5847,15 +5870,23 @@ async function renderMoneyDecisionTools(view, gate) {
   }
 }
 
+// Git #3277: Money's own real room header, via the generic roomHeader() (README "Rooms (sub
+// pages)") -- same pattern #3192/#3193/#3194 already used, not a bespoke header. README's own
+// room-tint table, "Meds and Money" share this tint. Sits above the tab bar below so the two
+// don't duplicate navigation chrome; #3273 (Money nav restructure) is still open as of this
+// writing, so this is built compatible with Money's CURRENT tab structure and left for #3273 to
+// adjust further.
+const MONEY_TINT = "251,191,36";
+
 async function viewMoney(view) {
   // The extension's own reveal popup (see the extensionReveal bridge above) opens straight to
   // #/money with no way to also pick the Vault tab through the UI -- it's a popup with nothing
   // else to click. Force it once so the real reveal ceremony below has something to render into.
   if (extensionReveal && !extensionReveal.handled) moneyTab = "vault";
 
+  roomHeader(view, MONEY_TINT, "Money");
   view.append(
     el("section", { class: "section" }, [
-      el("h2", { text: "Money" }),
       el("p", { class: "muted small", text: "Never moves money. Do it at NFCU, then it syncs." }),
     ]),
   );
@@ -9036,11 +9067,14 @@ async function render() {
   // is the seventh, the second real roomHeader() caller. Git #3194: Lists is the eighth, the
   // third roomHeader() caller and the first to pass its own right-side icon -- the generic bar's
   // only other real function was "Sign out", which Settings' own "Sign out everywhere"
-  // (viewSettings) already covers, the same real check that cleared Shopping/Dates. Every other
-  // room still shows the generic bar until it gets its own redesign pass. #app-view.no-header
-  // lets .view collapse its top padding to just the native status-bar safe area instead of
-  // assuming a header row sits above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists";
+  // (viewSettings) already covers, the same real check that cleared Shopping/Dates. Git #3277:
+  // Things, People, Money, Wins and Inbox are the ninth through thirteenth -- the last five real
+  // rooms in ROOM_DEFS that were still falling through to the old generic bar (whose only real
+  // action, "Sign out", Settings already covers -- so those five had NO way back to Today at all).
+  // Every real ROOM_DEFS room now has its own header. #app-view.no-header lets .view collapse its
+  // top padding to just the native status-bar safe area instead of assuming a header row sits
+  // above it (see app.css).
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 
