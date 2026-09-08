@@ -1925,6 +1925,15 @@ export function buildApiRouter() {
     return sendJson(res, 201, row);
   });
 
+  // Real Undo (Git #3213, design 1f) for the entry just logged above -- the five-second Undo
+  // toast on the Cars card calls this, not a generic edit form.
+  router.delete("/api/cars/:id/maintenance/:entryId", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const row = await vehicles.deleteMaintenanceEntry(user.id, params.id, params.entryId);
+    await audit.record({ userId: user.id, actor: "web", action: "vehicle.maintenance.undo", entityId: params.id, detail: { entryId: params.entryId } });
+    return sendJson(res, 200, row);
+  });
+
   // -- Wins (Git #3151) -----------------------------------------------------
   //
   // Manual "I did it" capture straight from the Wins tab (source: 'shane') -- distinct from the

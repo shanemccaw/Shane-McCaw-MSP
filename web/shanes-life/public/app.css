@@ -1073,6 +1073,28 @@ pre.token {
   box-shadow: var(--shadow-dark-lg, 0 12px 28px rgba(0,0,0,.4));
 }
 
+/* Git #3213 (design 1f): the real Cars maintenance Undo toast -- a genuine icon + text + button
+   row, unlike the plain centered .quick-toast note above (that one has nothing to undo). */
+.car-undo-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(380px, 92vw);
+  text-align: left;
+  padding: 0.6rem 0.7rem;
+}
+.car-undo-check {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(52,211,153,.15);
+  color: #34d399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* ---------- Tonight -- multi-dish synchronized cooking (Git #3126) ----------
    Per-dish card: a thin progress bar along the top (fills as that dish cooks), the dish's own
    real name/total/live status below it. Colors mark phase, matching the prototype's own dot/glow

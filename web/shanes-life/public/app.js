@@ -4779,7 +4779,99 @@ function carReminderLine(label, r) {
   return el("div", { class: cls, text: `${label} ${dueLabel(r.dueInDays, r.on)} (${whenDate(r.on)})` });
 }
 
-function carCard(vehicle) {
+// Git #3213 (design 1f, "Cars · no forms"): the only real signal the client has that a capture
+// just landed on a given vehicle is "the vehicle's most recent maintenance log entry has an id I
+// haven't shown yet" -- captures classify asynchronously in a separate Claude conversation (see
+// captures.mjs's own header), so there is no request/response moment to hang a toast off of.
+// localStorage remembers the last entry id this browser has already shown per vehicle; the FIRST
+// time a vehicle is ever seen here, its current lastEntry is recorded silently (no sticker/toast)
+// so pre-existing history doesn't read as "just now" on a fresh login.
+function carLastSeenKey(vehicleId) {
+  return `carsLastSeenMaintenance:${vehicleId}`;
+}
+
+/** Returns true only when this vehicle's newest entry is genuinely new since we last looked, and
+ *  records it as seen either way -- callers get one honest "just now" per real change, not a
+ *  reshow on every reload. */
+function checkAndMarkCarMaintenanceSeen(vehicle) {
+  const entry = vehicle.maintenance.lastEntry;
+  if (!entry) return false;
+  const key = carLastSeenKey(vehicle.id);
+  const stored = localStorage.getItem(key);
+  localStorage.setItem(key, entry.id);
+  return stored !== null && stored !== entry.id;
+}
+
+function carOnboardingDismissed() {
+  return localStorage.getItem("carsOnboardingDismissed") === "1";
+}
+
+// Design 1f's "Say it, it lands" card -- the three example sentences shown once as onboarding
+// copy, dismissible once the grammar is learned (the design's own words: "shown once ... then
+// they can go"), same three examples verbatim.
+function carOnboardingCard(onDismiss) {
+  const examples = [
+    { line: '"oil change on the Kia, $84"', hint: "maintenance cost, rolled into the monthly average" },
+    { line: '"Tesla\'s at 40,900 miles"', hint: "mileage, moves the next-maintenance line" },
+    { line: '"we got a 2019 Odyssey, $410 a month, Allstate $96"', hint: "a new card here, and its loan as a bill account" },
+  ];
+  return el("div", { class: "card" }, [
+    el("div", { class: "row", style: "justify-content:space-between;align-items:baseline" }, [
+      el("div", { class: "small", style: "font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted-foreground)", text: "Say it, it lands" }),
+      el("button", {
+        class: "ghost small",
+        text: "Got it",
+        onClick: () => {
+          localStorage.setItem("carsOnboardingDismissed", "1");
+          onDismiss();
+        },
+      }),
+    ]),
+    ...examples.map((e) =>
+      el("div", { class: "row", style: "margin-top:.5rem;flex-direction:column;align-items:flex-start;gap:.1rem" }, [
+        el("div", { text: e.line }),
+        el("div", { class: "small muted", text: e.hint }),
+      ]),
+    ),
+    el("p", { class: "small muted", style: "margin:.6rem 0 0", text: "One number per car so \"is it worth keeping\" has an answer. Registration and oil changes use the same lead-time reminders as appointments and show up in Dates." }),
+  ]);
+}
+
+/** The five-second Undo toast (design 1f): "Logged $84.00 on the Kia Forte... Undo", a real
+ *  DELETE of that exact maintenance row, not a generic edit form. */
+function showCarMaintenanceUndoToast(vehicle, entry, onUndone) {
+  let dismissed = false;
+  const node = el("div", { class: "quick-toast car-undo-toast" }, [
+    el("div", { class: "car-undo-check" }, [
+      lineIcon('<path d="M20 6 9 17l-5-5"></path>'),
+    ]),
+    el("div", { style: "flex:1;min-width:0;text-align:left" }, [
+      el("div", { style: "font-weight:600", text: `Logged ${dollars(entry.amount)} on the ${vehicle.name}` }),
+      el("div", { class: "small muted", text: `Maintenance · ${entry.description} · in the monthly average` }),
+    ]),
+    el("button", {
+      class: "ghost small",
+      text: "Undo",
+      onClick: async (event) => {
+        if (dismissed) return;
+        dismissed = true;
+        event.currentTarget.disabled = true;
+        try {
+          await api(`/api/cars/${vehicle.id}/maintenance/${entry.id}`, { method: "DELETE" });
+        } finally {
+          node.remove();
+          onUndone();
+        }
+      },
+    }),
+  ]);
+  document.body.append(node);
+  setTimeout(() => {
+    if (!dismissed) node.remove();
+  }, 5000);
+}
+
+function carCard(vehicle, { justNow } = {}) {
   const rows = [];
   if (vehicle.loan) {
     rows.push(
@@ -4802,15 +4894,28 @@ function carCard(vehicle) {
         : "Maintenance, last 12 months: nothing logged yet",
     }),
   );
+  // Design 1f's real delta line -- only meaningful, and only shown, the moment the change that
+  // produced it is itself new; otherwise it's just restating the same average every visit.
+  if (justNow && vehicle.maintenance.lastEntry && vehicle.maintenance.previousAveragePerMonth !== null) {
+    rows.push(
+      el("div", {
+        class: "small",
+        text: `12-mo average: ${dollars(vehicle.maintenance.averagePerMonth)}/mo, was ${dollars(vehicle.maintenance.previousAveragePerMonth)} before today's ${dollars(vehicle.maintenance.lastEntry.amount)}`,
+      }),
+    );
+  }
 
   const reminders = [
     carReminderLine("Registration due", vehicle.registration.reminder),
     vehicle.maintenance.next ? carReminderLine(vehicle.maintenance.next.note || "Next maintenance", vehicle.maintenance.next) : null,
   ].filter(Boolean);
 
+  const titleRow = [el("div", { class: "title", text: vehicle.name })];
+  if (justNow) titleRow.push(sticker("blue", "just now"));
+
   return el("a", { class: "tile", href: `#/car/${vehicle.id}` }, [
     el("div", { class: "row", style: "justify-content:space-between;align-items:baseline" }, [
-      el("div", { class: "title", text: vehicle.name }),
+      el("div", { class: "row", style: "gap:.4rem;align-items:baseline" }, titleRow),
       el("div", { style: "text-align:right" }, [
         el("div", { class: "money-amount", style: "font-size:22px", text: vehicle.allInPerMonthFormatted }),
         el("div", { class: "small muted", text: `${vehicle.allInPerYearFormatted}/yr all-in` }),
@@ -4823,11 +4928,17 @@ function carCard(vehicle) {
 
 async function viewMoneyCars(view) {
   const { vehicles } = await api("/api/cars");
+  const justNowIds = new Set(vehicles.filter(checkAndMarkCarMaintenanceSeen).map((v) => v.id));
 
   if (vehicles.length === 0) {
     view.append(empty("No vehicles on file yet.", "Say the name below, e.g. \"add my Kia Forte\", and Claude adds it.", "idle"));
   } else {
-    view.append(el("section", { class: "section" }, vehicles.map(carCard)));
+    view.append(el("section", { class: "section" }, vehicles.map((v) => carCard(v, { justNow: justNowIds.has(v.id) }))));
+  }
+
+  if (!carOnboardingDismissed()) {
+    const onboarding = carOnboardingCard(() => onboarding.remove());
+    view.append(onboarding);
   }
 
   // Git #3182: no dedicated add-vehicle form -- "add my Kia Forte" typed into the universal
@@ -4835,6 +4946,14 @@ async function viewMoneyCars(view) {
 
   // "Money Bills and Cars -> bear" per the critter spec's room-watermark map (moneyhdr slot).
   attachRoomWatermark(view, "moneyhdr");
+
+  // Git #3213: the real, five-second Undo toast for whichever vehicle just got a fresh entry.
+  // At most one shows per view load (stacking several on a single tab switch reads as noise, not
+  // help) -- the newest of the freshly-seen ones wins.
+  const justNowVehicle = vehicles.find((v) => justNowIds.has(v.id));
+  if (justNowVehicle) {
+    showCarMaintenanceUndoToast(justNowVehicle, justNowVehicle.maintenance.lastEntry, () => render());
+  }
 }
 
 async function viewCarDetail(view, vehicleId) {
