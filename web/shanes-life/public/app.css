@@ -33,12 +33,26 @@ html, body {
    directly) but real wheel/touch-driven scrolling stopped dead, in both emulated mobile and
    normal desktop rendering, on every room -- confirmed live and reproduced headless (Input
    dispatchMouseEvent wheel: scrollY stuck at 0 with the rule on html, scrolls normally with it
-   removed from html). Clipping the room watermark's horizontal bleed (Git #3119) only needs one
-   element -- body alone -- so html is left unconstrained and the page's real scroll node stays
-   intact. */
-body {
-  overflow-x: hidden;
-}
+   removed from html).
+
+   Git #3264: it then sat on `body` alone for a while, which fixed #3128 but created a second,
+   real bug -- `body` is a genuine ancestor of `#capture` (`body > #app-view > #capture`, see
+   index.html), and giving an ancestor of a `position: fixed` element any non-`visible` overflow
+   axis is the same well-documented WebKit/Chromium containing-block trap this file's own
+   `.capture`/`.today-scene` comments already warn about for transform/filter/will-change --
+   `overflow-x: hidden` here forces `overflow-y` to also compute to `auto` (the CSS Overflow spec:
+   a `visible` axis paired with a non-`visible` axis on the same box computes to `auto`), and on
+   real iOS Safari that non-`visible` computed overflow on an ancestor of a `position: fixed`
+   descendant makes the fixed element track the ANCESTOR's box instead of the true viewport --
+   exactly the "docks correctly on short rooms, drifts/sticks mid-page once a room scrolls" shape
+   Shane reported, route-dependent because only rooms with enough content to actually scroll ever
+   reveal it. Clipping the room watermark's real horizontal bleed (Git #3119,
+   attachRoomWatermark() in critters.js: `right: -44px` on a `position: absolute` SVG) never
+   needed `body` at all -- every watermark is painted onto `#view` (see render() in app.js, which
+   passes the same `$("#view")` into every room renderer), which is a SIBLING of `#capture`, not
+   an ancestor. Moving the clip there (see `.view` below) keeps html's real scroll node intact
+   (unchanged from #3128), still clips the same bleed at its actual source, and stops being an
+   ancestor of the fixed capture bar at all. */
 
 [hidden] { display: none !important; }
 
@@ -127,6 +141,12 @@ a { color: inherit; }
   display: grid;
   gap: 14px;
   align-content: start;
+  /* Git #3264: the room watermark's real horizontal bleed (Git #3119, attachRoomWatermark() in
+     critters.js: `right: -44px` on a `position: absolute` SVG) is clipped here now instead of on
+     `body` -- `.view` is the actual container every watermark is painted onto (see render() in
+     app.js), and unlike `body` it is not an ancestor of the fixed `#capture` bar, so this can't
+     recreate the ancestor-overflow containing-block trap the comment above `[hidden]` explains. */
+  overflow-x: hidden;
 }
 
 /* Git #3174: Today has no generic header row (see #app-header.hidden in render()) -- its own
