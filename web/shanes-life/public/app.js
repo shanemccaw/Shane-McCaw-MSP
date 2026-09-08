@@ -5558,6 +5558,70 @@ async function viewSettings(view) {
   );
   view.append(mcp);
 
+  // Home Screen widget (Git #3188) -- a third-party iOS "Widget Web" app's own token, since its
+  // WKWebView shares neither this app's session cookie nor its passkeys.
+  const { tokens: widgetTokenList } = await api("/api/widget-tokens");
+  const widget = el("section", { class: "section" }, [
+    el("h2", { text: "Home Screen widget" }),
+    el("p", { class: "muted small", text: "Paste this URL into a Widget Web-style app (e.g. Widget Web 26) as the widget's page. It shows the same Next card Today does." }),
+  ]);
+
+  for (const token of widgetTokenList.filter((t) => !t.revoked_at)) {
+    widget.append(
+      el("div", { class: "card" }, [
+        el("div", { class: "spread" }, [
+          el("div", {}, [
+            el("div", { class: "title", text: token.label }),
+            el("div", { class: "meta", text: token.last_used_at ? `last loaded ${when(token.last_used_at)}` : "never loaded" }),
+          ]),
+          el("button", {
+            class: "ghost small danger",
+            text: "Revoke",
+            onClick: async (event) => {
+              event.target.disabled = true;
+              await api(`/api/widget-tokens/${token.id}`, { method: "DELETE" });
+              render();
+            },
+          }),
+        ]),
+      ]),
+    );
+  }
+
+  const widgetNameInput = el("input", { placeholder: "Name this widget, e.g. Home Screen", "aria-label": "Widget label" });
+  const widgetIssued = el("div");
+  widget.append(
+    el("div", { class: "card" }, [
+      widgetNameInput,
+      el("div", { class: "row", style: "margin-top:.6rem" }, [
+        el("button", {
+          class: "primary small",
+          text: "Create widget link",
+          onClick: async (event) => {
+            event.target.disabled = true;
+            try {
+              const token = await api("/api/widget-tokens", {
+                method: "POST",
+                body: JSON.stringify({ label: widgetNameInput.value.trim() }),
+              });
+              widgetIssued.replaceChildren(
+                el("p", { class: "small ok", text: "Shown once. Copy it now." }),
+                el("pre", { class: "token", text: token.urlForm }),
+              );
+              widgetNameInput.value = "";
+            } catch (err) {
+              widgetIssued.replaceChildren(el("p", { class: "small error", text: err.message }));
+            } finally {
+              event.target.disabled = false;
+            }
+          },
+        }),
+      ]),
+      widgetIssued,
+    ]),
+  );
+  view.append(widget);
+
   const { activity } = await api("/api/activity?limit=25");
   const log = el("section", { class: "section" }, [el("h2", { text: "Recent activity" })]);
   if (activity.length === 0) {

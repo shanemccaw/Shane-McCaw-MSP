@@ -14,6 +14,7 @@ import { purgeDeadChallenges } from "./auth/webauthn.mjs";
 import * as ratelimit from "./auth/ratelimit.mjs";
 import { buildApiRouter } from "./routes/api.mjs";
 import { buildPublicRouter } from "./routes/public.mjs";
+import { buildWidgetRouter } from "./routes/widget.mjs";
 import { handlePlaidWebhook } from "./routes/plaid-webhook.mjs";
 import * as plaid from "./core/plaid.mjs";
 import { describeMcpEndpoint, handleMcpRequest } from "./routes/mcp.mjs";
@@ -29,6 +30,7 @@ import { findDueBillReminders, findDueDebtReminders, formatMoney } from "./core/
 const PUBLIC_DIR = resolve(config.root, "public");
 const apiRouter = buildApiRouter();
 const publicRouter = buildPublicRouter();
+const widgetRouter = buildWidgetRouter();
 
 function log(...args) {
   console.log(new Date().toISOString(), ...args);
@@ -102,6 +104,14 @@ async function handle(req, res) {
   const publicMatch = publicRouter.match(method, pathname);
   if (publicMatch) {
     return publicMatch.handler(req, res, publicMatch.params, { url, ip: clientIp(req) });
+  }
+
+  // ---- /widget: authenticated by its own bearer token in the path, never by the session
+  // cookie -- a third-party iOS widget app's WKWebView shares neither Safari's cookies nor its
+  // passkeys (Git #3188). Sits above checkOrigin/session for the same reason /mcp does.
+  const widgetMatch = widgetRouter.match(method, pathname);
+  if (widgetMatch) {
+    return widgetMatch.handler(req, res, widgetMatch.params, { url, ip: clientIp(req) });
   }
 
   // ---- everything else may carry a session -----------------------------------------------

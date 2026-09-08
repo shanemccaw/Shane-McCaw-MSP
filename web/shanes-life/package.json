@@ -16,6 +16,7 @@
     "create-user": "node bin/create-user.mjs",
     "enroll-passkey": "node bin/enroll-passkey.mjs",
     "issue-mcp-token": "node bin/issue-mcp-token.mjs",
+    "issue-widget-token": "node bin/issue-widget-token.mjs",
     "make-icons": "node bin/make-icons.mjs",
     "mcp-stdio": "node bin/mcp-stdio.mjs",
     "check": "node bin/check.mjs",

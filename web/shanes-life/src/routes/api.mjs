@@ -20,6 +20,7 @@ import * as mealPlan from "../core/meal-plan.mjs";
 import * as media from "../core/media.mjs";
 import * as money from "../core/money.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
+import * as widgetTokens from "../core/widget-tokens.mjs";
 import * as medications from "../core/medications.mjs";
 import * as nudges from "../core/nudges.mjs";
 import * as people from "../core/people.mjs";
@@ -2092,6 +2093,35 @@ export function buildApiRouter() {
     const user = requireUser(ctx);
     await mcpTokens.revokeMcpToken(user.id, params.id);
     await audit.record({ userId: user.id, actor: "web", action: "mcp_token.revoke", detail: { tokenId: params.id } });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  // -- widget tokens (Git #3188) -------------------------------------------
+
+  router.get("/api/widget-tokens", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { tokens: await widgetTokens.listWidgetTokens(user.id) });
+  });
+
+  router.post("/api/widget-tokens", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    if (!body.label || !String(body.label).trim()) {
+      throw badRequest("label is required -- name the widget so it can be revoked later.");
+    }
+    const issued = await widgetTokens.issueWidgetToken(user.id, body.label);
+    await audit.record({ userId: user.id, actor: "web", action: "widget_token.issue", detail: { tokenId: issued.id, label: issued.label } });
+    // The raw token appears here and nowhere else, ever.
+    return sendJson(res, 201, {
+      ...issued,
+      urlForm: `${config.publicOrigin}/widget/t/${issued.token}`,
+    });
+  });
+
+  router.delete("/api/widget-tokens/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await widgetTokens.revokeWidgetToken(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "web", action: "widget_token.revoke", detail: { tokenId: params.id } });
     return sendJson(res, 200, { ok: true });
   });
 
