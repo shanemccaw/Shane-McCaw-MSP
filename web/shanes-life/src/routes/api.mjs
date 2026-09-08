@@ -19,6 +19,7 @@ import * as media from "../core/media.mjs";
 import * as money from "../core/money.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as medications from "../core/medications.mjs";
+import * as pets from "../core/pets.mjs";
 import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
 import * as scan from "../core/scan.mjs";
@@ -1010,6 +1011,114 @@ export function buildApiRouter() {
       label: body.label ?? null,
     });
     return sendJson(res, 201, row);
+  });
+
+  // -- pets (Git #3141) -------------------------------------------------------------------
+  // Vet visits stay on /api/dates (subjectType: 'pet'); this is real per-pet identity, vaccine
+  // tracking, feeding/meds care items (merged into /api/medications), and photo records.
+
+  router.get("/api/pets", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { pets: await pets.listPets(user.id) });
+  });
+
+  router.post("/api/pets", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await pets.createPet(user.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "pet.create", entityId: row.id, detail: { name: row.name } });
+    return sendJson(res, 201, row);
+  });
+
+  router.get("/api/pets/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const row = await pets.getPet(user.id, params.id);
+    if (!row) throw notFound("Pet not found");
+    return sendJson(res, 200, row);
+  });
+
+  router.patch("/api/pets/:id", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await pets.updatePet(user.id, params.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "pet.update", entityId: params.id, detail: { fields: Object.keys(body) } });
+    return sendJson(res, 200, row);
+  });
+
+  router.delete("/api/pets/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await pets.deletePet(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "web", action: "pet.delete", entityId: params.id });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  router.post("/api/pets/:id/vaccines", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await pets.createVaccine(user.id, params.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "pet.vaccine.create", entityId: row.id, detail: { petId: params.id, name: row.name } });
+    return sendJson(res, 201, row);
+  });
+
+  router.patch("/api/pets/:id/vaccines/:vaccineId", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await pets.updateVaccine(user.id, params.id, params.vaccineId, body);
+    await audit.record({ userId: user.id, actor: "web", action: "pet.vaccine.update", entityId: params.vaccineId });
+    return sendJson(res, 200, row);
+  });
+
+  router.post("/api/pets/:id/vaccines/:vaccineId/given", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req).catch(() => ({}));
+    const row = await pets.markVaccineGiven(user.id, params.id, params.vaccineId, { givenOn: body.givenOn ?? undefined });
+    await audit.record({ userId: user.id, actor: "web", action: "pet.vaccine.given", entityId: params.vaccineId, detail: { dueOn: row.due_on } });
+    return sendJson(res, 200, row);
+  });
+
+  router.delete("/api/pets/:id/vaccines/:vaccineId", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await pets.deleteVaccine(user.id, params.id, params.vaccineId);
+    await audit.record({ userId: user.id, actor: "web", action: "pet.vaccine.delete", entityId: params.vaccineId });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  router.post("/api/pets/:id/care", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await pets.createCare(user.id, params.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "pet.care.create", entityId: row.id, detail: { petId: params.id, batch: row.batch } });
+    return sendJson(res, 201, row);
+  });
+
+  router.patch("/api/pets/:id/care/:careId", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await pets.updateCare(user.id, params.id, params.careId, body);
+    await audit.record({ userId: user.id, actor: "web", action: "pet.care.update", entityId: params.careId });
+    return sendJson(res, 200, row);
+  });
+
+  router.delete("/api/pets/:id/care/:careId", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await pets.deleteCare(user.id, params.id, params.careId);
+    await audit.record({ userId: user.id, actor: "web", action: "pet.care.delete", entityId: params.careId });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  router.post("/api/pets/:id/records", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await pets.addRecord(user.id, params.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "pet.record.add", entityId: row.id, detail: { petId: params.id } });
+    return sendJson(res, 201, row);
+  });
+
+  router.delete("/api/pets/:id/records/:recordId", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await pets.deleteRecord(user.id, params.id, params.recordId);
+    await audit.record({ userId: user.id, actor: "web", action: "pet.record.delete", entityId: params.recordId });
+    return sendJson(res, 200, { ok: true });
   });
 
   // Read-only surface for the real, live-refreshed OPM federal holiday list.

@@ -2932,10 +2932,229 @@ async function viewDateDetail(view, dateId) {
 }
 
 // ---------------------------------------------------------------------------
+// pets (Git #3141 -- design contract pack Section 6)
+// ---------------------------------------------------------------------------
+
+function petCardEl(pet) {
+  const meta = [pet.species, pet.breed].filter(Boolean).join(" · ") || null;
+  const right = pet.nextVaccine
+    ? el("div", { class: "when", text: `${pet.nextVaccine.name}: ${dueLabel(pet.nextVaccine.dueInDays, pet.nextVaccine.dueOn)}` })
+    : null;
+  return el("a", { class: "tile", href: `#/pet/${pet.id}` }, [
+    el("div", { class: "date-row" }, [
+      el("div", { class: "body" }, [
+        el("div", { class: "title", text: pet.name }),
+        meta ? el("div", { class: "meta", text: meta }) : null,
+      ]),
+      right,
+    ]),
+  ]);
+}
+
+async function viewPets(view) {
+  const items = await api("/api/pets");
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("h2", { text: "Pets" }),
+      el("p", { class: "muted small", text: "Vet visits show up on Dates; vaccines, feeding and meds live here." }),
+    ]),
+  );
+
+  if (items.pets.length === 0) {
+    view.append(empty("No pets on file yet.", "Add one below, or ask Claude to add one for you.", "pets"));
+  } else {
+    const list = el("section", { class: "section" }, items.pets.map(petCardEl));
+    view.append(list);
+  }
+
+  const nameInput = el("input", { placeholder: "Pet's name", "aria-label": "Pet name" });
+  const speciesInput = el("input", { placeholder: "Species, e.g. dog", "aria-label": "Species" });
+  const breedInput = el("input", { placeholder: "Breed", "aria-label": "Breed" });
+  const addForm = el("form", { class: "section" }, [
+    nameInput,
+    el("div", { class: "row" }, [speciesInput, breedInput, el("button", { class: "primary small", type: "submit", text: "Add pet" })]),
+  ]);
+  addForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = nameInput.value.trim();
+    if (!name) return;
+    addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
+    try {
+      await api("/api/pets", {
+        method: "POST",
+        body: JSON.stringify({ name, species: speciesInput.value.trim() || null, breed: breedInput.value.trim() || null }),
+      });
+      render();
+    } finally {
+      addForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [addForm]));
+
+  attachRoomWatermark(view, "pets");
+}
+
+function vaccineRow(petId, v) {
+  const dueOnISO = v.due_on ? String(v.due_on).slice(0, 10) : null;
+  const dueInDays = dueOnISO ? Math.round((new Date(dueOnISO) - new Date(new Date().toISOString().slice(0, 10))) / 86_400_000) : null;
+  return el("div", { class: "date-row" }, [
+    el("div", { class: "body" }, [
+      el("div", { class: "title small", text: v.name }),
+      el("div", { class: "meta", text: dueOnISO ? `Due ${whenDate(dueOnISO)}${v.fine_until ? ` (fine until ${whenDate(String(v.fine_until).slice(0, 10))})` : ""}` : "No due date on file." }),
+      v.interval_days ? el("div", { class: "meta", text: `Every ${v.interval_days} days · ${v.lead_days}-day lead` }) : el("div", { class: "meta", text: `${v.lead_days}-day lead` }),
+    ]),
+    dueInDays === null ? null : el("div", { class: "when", text: dueLabel(dueInDays, dueOnISO) }),
+    el("button", {
+      class: "ghost small",
+      text: "Given",
+      onClick: async (event) => {
+        event.currentTarget.disabled = true;
+        await api(`/api/pets/${petId}/vaccines/${v.id}/given`, { method: "POST", body: JSON.stringify({}) });
+        await render();
+      },
+    }),
+  ]);
+}
+
+function careRow(petId, c) {
+  return el("div", { class: "date-row" }, [
+    el("div", { class: "body" }, [
+      el("div", { class: "title small", text: c.name }),
+      el("div", { class: "meta", text: `${kindLabel(c.batch)} batch${c.detail ? ` · ${c.detail}` : ""}` }),
+    ]),
+    el("button", {
+      class: "ghost small danger",
+      text: "Remove",
+      onClick: async (event) => {
+        if (!confirm(`Remove "${c.name}"?`)) return;
+        event.currentTarget.disabled = true;
+        await api(`/api/pets/${petId}/care/${c.id}`, { method: "DELETE" });
+        await render();
+      },
+    }),
+  ]);
+}
+
+async function viewPetDetail(view, petId) {
+  const pet = await api(`/api/pets/${petId}`);
+
+  view.append(
+    el("section", { class: "section" }, [
+      el("div", { class: "card" }, [
+        el("h1", { text: pet.name, style: "margin:0 0 .25rem" }),
+        el("div", { class: "meta", text: [pet.species, pet.breed, pet.born ? `born ${whenDate(pet.born)}` : null].filter(Boolean).join(" · ") || "No details on file." }),
+        pet.notes ? el("p", { class: "muted", text: pet.notes }) : null,
+        el("div", { class: "row", style: "margin-top:.75rem" }, [
+          el("button", {
+            class: "small ghost danger",
+            text: "Delete pet",
+            onClick: async (event) => {
+              if (!confirm(`Delete ${pet.name}? This removes their vaccines, care items and records too.`)) return;
+              event.currentTarget.disabled = true;
+              await api(`/api/pets/${petId}`, { method: "DELETE" });
+              location.hash = "#/pets";
+            },
+          }),
+        ]),
+      ]),
+    ]),
+  );
+
+  // Vaccines
+  const vaccines = el("section", { class: "section" }, [el("h2", { text: "Vaccines" })]);
+  const vCard = el("div", { class: "card" });
+  if (pet.vaccines.length === 0) vCard.append(el("p", { class: "muted small", text: "No vaccines on file yet." }));
+  for (const v of pet.vaccines) vCard.append(vaccineRow(petId, v));
+  const vName = el("input", { placeholder: "Vaccine name, e.g. Rabies", "aria-label": "Vaccine name" });
+  const vDue = el("input", { type: "date", "aria-label": "Due date" });
+  vCard.append(
+    el("div", { class: "row", style: "margin-top:.6rem" }, [
+      vName,
+      vDue,
+      el("button", {
+        class: "small",
+        text: "Add",
+        onClick: async (event) => {
+          const name = vName.value.trim();
+          if (!name) return;
+          event.currentTarget.disabled = true;
+          await api(`/api/pets/${petId}/vaccines`, { method: "POST", body: JSON.stringify({ name, dueOn: vDue.value || null }) });
+          await render();
+        },
+      }),
+    ]),
+  );
+  vaccines.append(vCard);
+  view.append(vaccines);
+
+  // Feeding & meds (Section 6: reuses the Meds batch system -- these merge into /api/medications).
+  const care = el("section", { class: "section" }, [
+    el("h2", { text: "Feeding & meds" }),
+    el("p", { class: "muted small", text: "Shows up in the same Meds batch swipe as Shane's own." }),
+  ]);
+  const cCard = el("div", { class: "card" });
+  if (pet.care.length === 0) cCard.append(el("p", { class: "muted small", text: "Nothing on file yet." }));
+  for (const c of pet.care) cCard.append(careRow(petId, c));
+  const cName = el("input", { placeholder: "e.g. Joint chew", "aria-label": "Care item name" });
+  const cBatch = el("input", { placeholder: "Batch, e.g. morning", "aria-label": "Batch" });
+  cCard.append(
+    el("div", { class: "row", style: "margin-top:.6rem" }, [
+      cName,
+      cBatch,
+      el("button", {
+        class: "small",
+        text: "Add",
+        onClick: async (event) => {
+          const name = cName.value.trim();
+          const batch = cBatch.value.trim();
+          if (!name || !batch) return;
+          event.currentTarget.disabled = true;
+          await api(`/api/pets/${petId}/care`, { method: "POST", body: JSON.stringify({ name, batch }) });
+          await render();
+        },
+      }),
+    ]),
+  );
+  care.append(cCard);
+  view.append(care);
+
+  // Real vet-visit history, read back from Dates (subjectType 'pet').
+  if (pet.vetDates.length > 0) {
+    const visits = el("section", { class: "section" }, [el("h2", { text: "Vet visits" })]);
+    const vetCard = el("div", { class: "card" });
+    for (const d of pet.vetDates) {
+      vetCard.append(
+        el("a", { class: "tile", href: `#/date/${d.id}` }, [
+          el("div", { class: "date-row" }, [
+            el("div", { class: "body" }, [
+              el("div", { class: "title small", text: d.title }),
+              el("div", { class: "meta", text: `${whenDate(String(d.at_date).slice(0, 10))}${d.provider ? ` · ${d.provider}` : ""}` }),
+            ]),
+          ]),
+        ]),
+      );
+    }
+    visits.append(vetCard);
+    view.append(visits);
+  }
+
+  // Records (photo chips) -- same media-or-url shape as date_photos.
+  const records = el("section", { class: "section" }, [el("h2", { text: "Records" })]);
+  const rCard = el("div", { class: "card" });
+  if (pet.records.length === 0) rCard.append(el("p", { class: "muted small", text: "No records yet." }));
+  else rCard.append(el("div", {}, pet.records.map((r) => el("span", { class: "photo-chip", text: r.label || "record" }))));
+  records.append(rCard);
+  view.append(records);
+
+  attachRoomWatermark(view, "pets");
+}
+
+// ---------------------------------------------------------------------------
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", inbox: "Inbox", dates: "Dates", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "", tonight: "Tonight" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", inbox: "Inbox", dates: "Dates", pets: "Pets", things: "Things", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", tonight: "Tonight" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -2945,6 +3164,7 @@ function parseRoute() {
   state.entity = state.route === "entity" ? rest[0] : null;
   state.cookRecipeId = state.route === "cook" ? rest[0] : null;
   state.dateId = state.route === "date" ? rest[0] : null;
+  state.petId = state.route === "pet" ? rest[0] : null;
 }
 
 async function render() {
@@ -2972,6 +3192,8 @@ async function render() {
     else if (state.route === "inbox") await viewInbox(view);
     else if (state.route === "dates") await viewDates(view);
     else if (state.route === "date") await viewDateDetail(view, state.dateId);
+    else if (state.route === "pets") await viewPets(view);
+    else if (state.route === "pet") await viewPetDetail(view, state.petId);
     else if (state.route === "things") await viewThings(view);
     else if (state.route === "settings") await viewSettings(view);
     else if (state.route === "entity") await viewEntity(view, state.entity);

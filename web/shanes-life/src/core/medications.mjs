@@ -160,6 +160,11 @@ function todayDateString() {
  * automatically" -- the two real sections screen 6 draws, bucketed purely by refill_tier per
  * #3135's own scope ("auto-refill items need no real action ... manual-watch items surface as a
  * real, distinct thing"), not by how close a due date is.
+ *
+ * Section 6 (Pets, #3141): a pet's feeding/meds is "the same real shape as Shane's own, just
+ * attached to a different subject" -- real pet_care rows sharing a batch name (e.g. 'morning')
+ * are merged straight into that same batch here, so one real swipe completes Shane's own meds
+ * and his pets' feeding/meds together, through the same med_batch_log row.
  */
 export async function getMedsToday(userId) {
   const meds = await many(
@@ -168,6 +173,14 @@ export async function getMedsToday(userId) {
        FROM medications
       WHERE user_id = $1 AND archived_at IS NULL
       ORDER BY batch, position, created_at`,
+    [userId],
+  );
+  const petCare = await many(
+    `SELECT c.id, c.name, c.batch, c.detail, p.name AS pet_name
+       FROM pet_care c
+       JOIN pets p ON p.id = c.pet_id
+      WHERE p.user_id = $1
+      ORDER BY c.batch, c.position, c.created_at`,
     [userId],
   );
 
@@ -190,6 +203,19 @@ export async function getMedsToday(userId) {
       name: med.name,
       doseNote: med.dose_note,
       refillTier: med.refill_tier,
+    });
+  }
+  for (const care of petCare) {
+    if (!byBatch.has(care.batch)) {
+      byBatch.set(care.batch, []);
+      batchOrder.push(care.batch);
+    }
+    byBatch.get(care.batch).push({
+      id: care.id,
+      name: `${care.pet_name} -- ${care.name}`,
+      doseNote: care.detail,
+      isPetCare: true,
+      petName: care.pet_name,
     });
   }
 

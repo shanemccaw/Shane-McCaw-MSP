@@ -17,6 +17,7 @@ import { buildPublicRouter } from "./routes/public.mjs";
 import { describeMcpEndpoint, handleMcpRequest } from "./routes/mcp.mjs";
 import { findDueDayBeforeReminders } from "./core/dates.mjs";
 import { needsMonthlyRefresh, refreshFederalHolidays } from "./core/federal-holidays.mjs";
+import { findDueVaccineReminders } from "./core/pets.mjs";
 import { queueNudge } from "./core/nudges.mjs";
 import { listUsers } from "./core/users.mjs";
 
@@ -207,6 +208,7 @@ async function main() {
         log("[housekeeping] failed:", err.message);
       }
       await runDayBeforeReminders();
+      await runVaccineLeadReminders();
       await runMonthlyFederalHolidaysRefresh();
     },
     6 * 60 * 60 * 1000,
@@ -216,6 +218,7 @@ async function main() {
   // Run once at boot too -- a 6-hour interval alone would leave a genuinely due day-before
   // reminder or a stale federal-holiday list waiting up to 6 hours after every redeploy.
   await runDayBeforeReminders();
+  await runVaccineLeadReminders();
   await runMonthlyFederalHolidaysRefresh();
 }
 
@@ -239,6 +242,31 @@ async function runDayBeforeReminders() {
         });
       }
       if (due.length > 0) log(`[reminders] queued ${due.length} day-before appointment reminder(s) for ${user.email}`);
+    }
+  } catch (err) {
+    log("[reminders] failed:", err.message);
+  }
+}
+
+/**
+ * Pets Section 6's real vaccine lead-time reminder: "enough real notice to actually book the
+ * vet visit before the vaccine lapses" -- fires once a vaccine's own lead_days window has
+ * opened, not just the day before like appointments.
+ */
+async function runVaccineLeadReminders() {
+  try {
+    for (const user of await listUsers()) {
+      const due = await findDueVaccineReminders(user.id);
+      for (const v of due) {
+        await queueNudge({
+          userId: user.id,
+          kind: "vaccine",
+          title: `${v.pet_name}'s ${v.vaccine_name} due ${new Date(v.due_on).toLocaleDateString()}`,
+          body: null,
+          payload: { vaccineId: v.id, petId: v.pet_id },
+        });
+      }
+      if (due.length > 0) log(`[reminders] queued ${due.length} vaccine reminder(s) for ${user.email}`);
     }
   } catch (err) {
     log("[reminders] failed:", err.message);

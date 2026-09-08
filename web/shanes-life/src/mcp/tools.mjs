@@ -19,6 +19,7 @@ import * as lists from "../core/lists.mjs";
 import * as mealPlan from "../core/meal-plan.mjs";
 import * as medications from "../core/medications.mjs";
 import * as money from "../core/money.mjs";
+import * as pets from "../core/pets.mjs";
 import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
 import * as shares from "../core/shares.mjs";
@@ -998,6 +999,140 @@ export const TOOLS = [
     async handler(args, ctx) {
       const row = await medications.markMedicationOrdered(ctx.user.id, args.medicationId);
       await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "medication.ordered", entityId: args.medicationId, detail: { nextRefillOn: row.next_refill_on } });
+      return row;
+    },
+  },
+
+  // -- pets (Git #3141) -------------------------------------------------------------------
+  // Contract pack Section 6: real per-pet identity + vaccine tracking live here. Vet visits go
+  // through push_date/list_dates instead (subjectType: 'pet', subjectId: this pet's id) --
+  // that's the real system Section 6 says to reuse, not reinvent. Feeding/meds go through
+  // set_medication/get_medications' same batch tools (create a pet_care item with set_pet_care,
+  // it then shows up in get_medications' own batch list automatically).
+
+  {
+    name: "list_pets",
+    title: "Read Shane's real pets",
+    description:
+      "Every real pet on file, each with its soonest real vaccine due (if any) already computed with dueInDays/surfacesInDays. Call this before set_pet to avoid a duplicate, and before push_date with subjectType 'pet' to get the real subjectId.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      return pets.listPets(ctx.user.id);
+    },
+  },
+
+  {
+    name: "get_pet",
+    title: "Read one pet in full",
+    description:
+      "One real pet's full profile: its vaccines, feeding/meds care items, photo records, and its real vet-visit history (read back from the Dates system).",
+    inputSchema: {
+      type: "object",
+      properties: { petId: { type: "string" } },
+      required: ["petId"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await pets.getPet(ctx.user.id, args.petId);
+      if (!row) throw new Error(`No pet ${args.petId}`);
+      return row;
+    },
+  },
+
+  {
+    name: "set_pet",
+    title: "Create or update a real pet",
+    description: "Create a new real pet, or update an existing one by passing its id.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Omit to create a new pet; pass an existing id to update it." },
+        name: { type: "string" },
+        species: { type: "string", description: "e.g. 'dog', 'cat'." },
+        breed: { type: "string" },
+        born: { type: "string", description: "ISO date, if known." },
+        notes: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = args.id ? await pets.updatePet(ctx.user.id, args.id, args) : await pets.createPet(ctx.user.id, args);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: args.id ? "pet.update" : "pet.create", entityId: row.id, detail: { name: row.name } });
+      return row;
+    },
+  },
+
+  {
+    name: "set_pet_vaccine",
+    title: "Create or update a real pet vaccine",
+    description:
+      "A real vaccine's own tracked cycle -- 'pepper rabies due february 2027' or 'biscuit's rabies booster is on a 3-year cycle'. intervalDays carries the real cycle length when it's regular (rabies is often 1- or 3-year depending on the vaccine/local requirement); dueOn is the real date the vet gave, which always wins over anything computed from intervalDays. leadDays defaults to 30 (Section 6: enough real notice to book the visit before it lapses, not same-day awareness of something already overdue).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        petId: { type: "string" },
+        id: { type: "string", description: "Omit to create a new vaccine; pass an existing id to update it." },
+        name: { type: "string", description: "e.g. 'Rabies', 'DHPP'." },
+        intervalDays: { type: "number", description: "The real cycle length in days, if regular, e.g. 1095 for a 3-year rabies cycle." },
+        lastOn: { type: "string", description: "ISO date last given, if known." },
+        dueOn: { type: "string", description: "ISO date the vet says it's next due -- always wins over a computed date." },
+        fineUntil: { type: "string", description: "ISO date -- the real 'due / fine until' grace date, if the vet gave one." },
+        leadDays: { type: "number", description: "Defaults to 30." },
+      },
+      required: ["petId"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const { petId, id, ...patch } = args;
+      const row = id ? await pets.updateVaccine(ctx.user.id, petId, id, patch) : await pets.createVaccine(ctx.user.id, petId, patch);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: id ? "pet.vaccine.update" : "pet.vaccine.create", entityId: row.id, detail: { petId, name: row.name } });
+      return row;
+    },
+  },
+
+  {
+    name: "mark_pet_vaccine_given",
+    title: "Mark a real vaccine as given",
+    description:
+      "The real vet-visit outcome -- 'pepper got her rabies shot today'. Sets last_on to when it was given and, when a real cycle interval is on file, projects the next due_on forward from that date (a real vet-given next-due date entered separately with set_pet_vaccine always beats this).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        petId: { type: "string" },
+        vaccineId: { type: "string" },
+        givenOn: { type: "string", description: "ISO date. Defaults to today." },
+      },
+      required: ["petId", "vaccineId"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await pets.markVaccineGiven(ctx.user.id, args.petId, args.vaccineId, { givenOn: args.givenOn });
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "pet.vaccine.given", entityId: args.vaccineId, detail: { dueOn: row.due_on } });
+      return row;
+    },
+  },
+
+  {
+    name: "set_pet_care",
+    title: "Create or update a real pet feeding/med item",
+    description:
+      "A real feeding or medication item for a pet -- 'give biscuit his joint chew every morning', 'pepper gets half a thyroid pill before bed'. batch must match an existing Meds batch name (see get_medications) to land in the same real swipe, or names a new one. This is the real Section 6 reuse: the item then shows up inside get_medications' own batch list, under that pet's name.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        petId: { type: "string" },
+        id: { type: "string", description: "Omit to create a new care item; pass an existing id to update it." },
+        name: { type: "string", description: "e.g. 'Joint chew', 'Thyroid half-pill'." },
+        batch: { type: "string", description: "e.g. 'morning', 'bed' -- must match an existing Meds batch to merge into the same swipe." },
+        detail: { type: "string" },
+      },
+      required: ["petId"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const { petId, id, ...patch } = args;
+      const row = id ? await pets.updateCare(ctx.user.id, petId, id, patch) : await pets.createCare(ctx.user.id, petId, patch);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: id ? "pet.care.update" : "pet.care.create", entityId: row.id, detail: { petId, batch: row.batch } });
       return row;
     },
   },
