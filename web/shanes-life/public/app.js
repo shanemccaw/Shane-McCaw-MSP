@@ -8,6 +8,7 @@ import {
   loadCritterSprite,
   resetCritterRender,
   critterIcon,
+  critterFor,
   attachPeeker,
   attachPeekerHat,
   attachRoomWatermark,
@@ -1200,6 +1201,201 @@ function renderNextCardV3(data, nextKind) {
   return wrap;
 }
 
+// ---------------------------------------------------------------------------
+// Later, by moment -- balloons (Git #3164, README "Later, by moment -- balloons (0...n)").
+//
+// Fixed order and real colors straight off the First Slice Prototype's own `momentDefs` (its
+// logic is the spec: README, "read `door()` in its logic for the exact expressions"). Each
+// moment's condition is real server state from /api/today's `later` (computeLaterMoments() in
+// api.mjs) -- Dinner is the one exception that also needs a client-only override: whether
+// tonight's cook session is actually done lives only in `mealSession` (never persisted; see its
+// own declaration), the same real limitation the Tonight teaser and roomsHouseSection's Recipes
+// cell already live with.
+const LATER_MOMENT_DEFS = {
+  headingOut: { title: "Heading out", pebbleTint: "147,197,253", env: "#FB923C", critterSlot: "heading", route: "#/lists" },
+  comingUp: { title: "Coming up", pebbleTint: "196,181,253", env: "#FDE68A", critterSlot: "comingup", route: "#/dates" },
+  dinner: { title: "Dinner", pebbleTint: "212,163,115", env: "#5EEAD4", critterSlot: "dinner", route: null }, // route resolved per-render below
+  rental: { title: "At the Rental", pebbleTint: "253,230,138", env: "#60A5FA", critterSlot: "home", route: "#/things" },
+  idle: { title: "Idle", pebbleTint: "209,213,219", env: "#F9A8D4", critterSlot: "idle", route: "#/inbox" },
+};
+
+// README "Sky panel": wash color per season/holiday, same theme keys theme.js already produces.
+const LATER_SKY_WASH = {
+  halloween: "rgba(168,85,247,.16)",
+  birthday: "rgba(244,114,182,.14)",
+  thanksgiving: "rgba(251,146,60,.14)",
+  christmas: "rgba(96,165,250,.14)",
+  newyear: "rgba(99,102,241,.16)",
+  spring: "rgba(134,239,172,.12)",
+  summer: "rgba(253,224,71,.12)",
+};
+
+// README pennant colors, same theme keys.
+const LATER_PENNANT = {
+  halloween: "#A855F7",
+  birthday: "#F472B6",
+  thanksgiving: "#F97316",
+  christmas: "#22C55E",
+  newyear: "#FBBF24",
+};
+
+/** The balloon itself: 56x92 envelope in the moment's color, a pennant, a pebble tinted for the
+ *  critter riding in the basket, sandbags and a woven basket -- README "Rows" geometry. Right-hand
+ *  (odd-index) balloons are mirrored so they face the tag they float beside. */
+function laterBalloonSvg({ critterSymbol, pebbleTint, env, pennant, flip, snowcap, dur, delay }) {
+  const snowCap = snowcap
+    ? `<path d="M18 6 Q28 -1 38 6" stroke="rgba(248,250,252,.9)" stroke-width="4" fill="none" stroke-linecap="round"/>`
+    : "";
+  return `<svg width="56" height="92" viewBox="0 0 56 92" style="overflow:visible;flex-shrink:0;animation:czFloat ${dur} ${delay} ease-in-out infinite alternate;transform-origin:50% 100%" aria-hidden="true">
+    <line x1="28" y1="4" x2="28" y2="-6" stroke="#B07A4A" stroke-width="1.5"/>
+    <path d="M28 -6 L38 -2 L28 2 Z" fill="${pennant}"/>
+    <path d="M28 4 C44 4 52 17 52 30 C52 46 38 55 31 61 L25 61 C18 55 4 46 4 30 C4 17 12 4 28 4Z" fill="${env}"/>
+    <path d="M28 4 C34 20 34 46 28 61 C22 46 22 20 28 4Z" fill="rgba(255,255,255,.32)"/>
+    <path d="M28 4 C34 20 34 46 28 61 M28 4 C22 20 22 46 28 61" stroke="rgba(0,0,0,.14)" stroke-width="2" fill="none"/>
+    <path d="M10 41 Q28 46 46 41" stroke="rgba(255,255,255,.45)" stroke-width="2" fill="none"/>
+    <path d="M14 20 C16 12 20 8 24 6" stroke="rgba(255,255,255,.35)" stroke-width="2" stroke-linecap="round" fill="none"/>
+    ${snowCap}
+    <path d="M25 61 L19 79 M31 61 L37 79" stroke="#B07A4A" stroke-width="1.4" fill="none"/>
+    <circle cx="28" cy="70" r="19" fill="rgba(${pebbleTint},.34)" stroke="rgba(255,255,255,.22)"/>
+    <use href="#${critterSymbol}" x="8" y="50" width="40" height="40"/>
+    <ellipse cx="16" cy="80" rx="5" ry="4" fill="#D6B08C"/>
+    <ellipse cx="40" cy="80" rx="5" ry="4" fill="#D6B08C"/>
+    <rect x="11" y="75" width="34" height="14" rx="2.5" fill="#D6B08C"/>
+    <path d="M11 82 H45 M19 75 V89 M28 75 V89 M37 75 V89" stroke="rgba(120,53,15,.35)" stroke-width="1"/>
+    <rect x="11" y="75" width="34" height="14" rx="2.5" fill="none" stroke="#B45309" stroke-width="1"/>
+    <line x1="28" y1="89" x2="28" y2="92" stroke="#B07A4A" stroke-width="1.4"/>
+  </svg>`;
+}
+
+/** One balloon + its luggage-tag note, laid out left/right alternating (README "Rows": `flex-
+ *  direction:row` even, `row-reverse` odd). `route` is the real room the moment's data actually
+ *  lives in -- tapping the whole row navigates there, same "the whole row is the tap target" rule
+ *  as the design. */
+function laterRow(moment, index, theme) {
+  const left = index % 2 === 0;
+  const dur = `${(5.5 + (index % 3) * 0.7).toFixed(1)}s`;
+  const delay = `${(index * 0.9).toFixed(1)}s`;
+  const delay2 = `${(index * 0.9 + 0.4).toFixed(1)}s`;
+  const def = LATER_MOMENT_DEFS[moment.key];
+  const pennant = LATER_PENNANT[theme.key] || "#F87171";
+
+  const balloon = el("div", {
+    style: `flex-shrink:0;transform:${left ? "none" : "scaleX(-1)"}`,
+    html: laterBalloonSvg({
+      critterSymbol: critterFor(def.critterSlot),
+      pebbleTint: def.pebbleTint,
+      env: def.env,
+      pennant,
+      flip: !left,
+      snowcap: Boolean(theme.snowcap),
+      dur,
+      delay,
+    }),
+  });
+
+  const tag = el(
+    "div",
+    { class: "later-tag", style: `animation:czFloat2 ${dur} ${delay2} ease-in-out infinite alternate` },
+    [
+      el("div", { class: "later-tag-title", text: def.title }),
+      el("div", { class: "later-tag-line", text: moment.line }),
+    ],
+  );
+
+  return el(
+    "a",
+    { class: "later-row", href: moment.route, style: `flex-direction:${left ? "row" : "row-reverse"}` },
+    [balloon, tag],
+  );
+}
+
+/** The koala-on-a-cloud empty state -- README "Empty": "the koala on his cloud (76px, `czFloat`
+ *  7s) with two rising z's." Same shape as `empty()` above, custom-built because the design gives
+ *  this one its own float animation instead of `empty()`'s static icon. */
+function laterEmpty() {
+  return el("div", { class: "later-empty" }, [
+    el("div", { class: "later-empty-critter", html: `<svg width="76" height="76" viewBox="0 0 120 120" style="animation:czFloat 7s ease-in-out infinite alternate;transform-origin:50% 100%" aria-hidden="true"><use href="#${critterFor("idle")}"></use></svg><span class="later-z">z</span><span class="later-z later-z2">z</span>` }),
+    el("div", {}, [
+      el("div", { class: "later-tag-title", text: "Nothing later" }),
+      el("div", { class: "later-tag-line", text: "Enjoy the day. Moments show up here as they come." }),
+    ]),
+  ]);
+}
+
+/**
+ * The whole "Later, by moment" panel: label row (with its own peeker roll), the sky panel (wash,
+ * clouds, a bird/bat crossing), then the balloon rows or the empty state. `data.later` is
+ * /api/today's real computeLaterMoments() read; `theme` is the same seasonal theme viewToday
+ * already resolved for the header. Returns `null` when there is genuinely nothing to render into
+ * (never happens in practice -- Idle always exists once the inbox is non-empty, and the empty
+ * state covers the rest -- but mirrors the other optional Today sections' own shape).
+ */
+function laterSection(data, theme) {
+  const later = data.later || {};
+  const moments = [];
+
+  if (later.headingOut) {
+    moments.push({ key: "headingOut", line: later.headingOut.names.join(" · "), route: "#/lists" });
+  }
+  if (later.comingUp) {
+    moments.push({
+      key: "comingUp",
+      line: later.comingUp.map((d) => `${d.title} ${dueLabel(d.dueInDays, d.atDate)}`).join(" · "),
+      route: "#/dates",
+    });
+  }
+  // Dinner: a real plan exists on the server AND it hasn't been marked done in the live (client-
+  // only) cook session -- same override roomsHouseSection() and resolveNextKind() already apply.
+  const dinnerDone = Boolean(mealSession && mealSession.done);
+  if (later.dinner && !dinnerDone) {
+    moments.push({
+      key: "dinner",
+      line: `Tonight: ${later.dinner.dishText}`,
+      route: mealSession ? "#/tonight" : "#/recipes",
+    });
+  }
+  if (later.rental) {
+    moments.push({ key: "rental", line: `${later.rental.did} · call ${later.rental.name}`, route: "#/things" });
+  }
+  if (later.idle) {
+    const n = later.idle.count;
+    moments.push({ key: "idle", line: `${n} thing${n === 1 ? "" : "s"} to look at, whenever`, route: "#/inbox" });
+  }
+
+  const wash = LATER_SKY_WASH[theme.key] || "rgba(147,197,253,.12)";
+  // README: "no flyer during Christmas (the sleigh) or New Year (fireworks)" -- both already run
+  // as their own full-phone weather-particle layer (see theme.js's wSleigh/wFireworks), so this
+  // just steps aside rather than duplicating them in the smaller sky panel.
+  const flyerBat = Boolean(theme.wBats);
+  const flyerNone = Boolean(theme.wSleigh || theme.wFireworks);
+  // dk-bat carries its own baked-in wing-flap keyframe (see critters-sprite.svg); dk-bird is a
+  // static resting-wing drawing ported byte-for-byte from the design's own embedded sprite -- a
+  // <use> can't animate just the inner wing paths of a shared symbol, so the bird crosses without
+  // flapping. Decorative only; no real behavior lost.
+  const flyerSymbol = flyerBat ? "dk-bat" : "dk-bird";
+  const flyerViewBox = flyerBat ? "0 0 34 16" : "0 0 30 26";
+
+  const sky = el("div", { class: "later-sky", style: `background:linear-gradient(180deg,${wash},transparent 85%)` }, [
+    el("div", { class: "later-cloud later-cloud-1", html: `<svg viewBox="0 0 28 22" width="84" height="66" aria-hidden="true"><use href="#dk-cloud" fill="#E2E8F0"/></svg>` }),
+    el("div", { class: "later-cloud later-cloud-2", html: `<svg viewBox="0 0 28 22" width="60" height="47" aria-hidden="true"><use href="#dk-cloud" fill="#E2E8F0"/></svg>` }),
+    el("div", { class: "later-cloud later-cloud-3", html: `<svg viewBox="0 0 28 22" width="48" height="38" aria-hidden="true"><use href="#dk-cloud" fill="#E2E8F0"/></svg>` }),
+    flyerNone
+      ? null
+      : el("div", {
+          class: `later-flyer ${flyerBat ? "bat" : "bird"}`,
+          style: `animation-duration:${flyerBat ? "18s" : "22s"}`,
+          html: `<svg viewBox="${flyerViewBox}" width="30" height="26" aria-hidden="true"><use href="#${flyerSymbol}"/></svg>`,
+        }),
+    el(
+      "div",
+      { class: "later-rows" },
+      moments.length > 0 ? moments.map((m, i) => laterRow(m, i, theme)) : [laterEmpty()],
+    ),
+  ]);
+
+  return sky;
+}
+
 /** The Meds pill (design handoff "Meds pill"): one compact tap-through summary of today's next
  *  not-yet-taken batch, real counts split "for you" vs "for the pets" via each item's real
  *  `isPetCare` flag. Skipped entirely when nothing is tracked yet -- no invented batches. */
@@ -1424,15 +1620,21 @@ async function viewToday(view) {
   view.append(next);
 
   // Peeker (Git #3119): "Next" is the one tray section label this app actually has today, so it
-  // gets the day's first peek roll (`b`). "Later" is the spec's other real label beyond Meds and
-  // Rooms and gets the next roll (`b+1` via rollPeekers()), but that balloon row doesn't exist in
-  // this app yet -- there's no tray Later row to attach it to. Wire that the moment it lands.
+  // gets the day's first peek roll (`b`). "Later" (below) is the spec's other real label beyond
+  // Meds and Rooms and gets the next roll (`b+1` via rollPeekers()).
   // Rooms (Git #3165, below) is spec'd with a plain "Label row 32px" of its own, no peeker
   // described for it the way Next/Later carry one -- so it stays unattached, matching that.
   // Git #3145: a holiday can force a fixed peeker over the daily roll (Halloween's `pkw-ghost`
   // "instead of the cat"), and/or add a hat riding on top of whichever peeker is showing.
   attachPeeker(nextLabel, theme.peeker || rollPeekers()[0]);
   if (theme.peekHatOn) attachPeekerHat(nextLabel, theme.peekHat);
+
+  // Later, by moment -- balloons (Git #3164): the second real tray label, gets the second peek
+  // roll.
+  const laterLabel = el("h2", { text: "Later, by moment" });
+  const laterLabelRow = el("div", { class: "section-label-row" }, [laterLabel]);
+  view.append(el("section", { class: "section" }, [laterLabelRow, laterSection(data, theme)]));
+  attachPeeker(laterLabel, rollPeekers()[1]);
 
   const medsPill = medsPillSection(data.meds);
   if (medsPill) view.append(medsPill);
@@ -1608,7 +1810,7 @@ async function viewThings(view) {
   // "Just logged" -- newest-said-first, what recordThing's upsert-by-name keeps current.
   const recentSection = el("section", { class: "section" }, [el("h2", { text: "Just logged" })]);
   if (things.length === 0) {
-    recentSection.append(empty("Nothing logged yet.", "Say where something is below, or ask Claude to save it.", "notfound"));
+    recentSection.append(empty("Nothing logged yet.", "Say \"the drill is in the garage\" in the capture box and Claude files it here.", "notfound"));
   } else {
     for (const t of things.slice(0, 8)) recentSection.append(thingRow(t));
   }
@@ -1632,72 +1834,21 @@ async function viewThings(view) {
     view.append(grouped);
   }
 
-  // Real capture: "X is in the garage" filed directly, no confirmation step.
-  const thingName = el("input", { placeholder: "What", "aria-label": "Thing name" });
-  const thingPlace = el("input", { placeholder: "Where, e.g. under the sink", "aria-label": "Place" });
-  const thingHouse = el("input", { placeholder: "House (optional), e.g. Home", "aria-label": "House" });
-  const thingForm = el("form", { class: "section" }, [
-    el("div", { class: "row" }, [thingName, thingPlace]),
-    el("div", { class: "row" }, [thingHouse, el("button", { class: "primary small", type: "submit", text: "Save location" })]),
-  ]);
-  thingForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = thingName.value.trim();
-    const place = thingPlace.value.trim();
-    if (!name || !place) return;
-    thingForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
-    try {
-      await api("/api/things", {
-        method: "POST",
-        body: JSON.stringify({ name, place, house: thingHouse.value.trim() || null }),
-      });
-      render();
-    } finally {
-      thingForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
-    }
-  });
-  view.append(el("div", { class: "card" }, [thingForm]));
+  // Git #3181: no dedicated "Add thing" form -- a location is a capture, same as everywhere
+  // else in the app. Say "the drill is in the garage" in the universal capture box and Claude
+  // routes it to set_thing over MCP. The upsert-by-name logic (recordThing) is unchanged.
 
   // "Who fixed what" -- real service-provider log.
   const contactsSection = el("section", { class: "section" }, [el("h2", { text: "Who fixed what" })]);
   if (contacts.length === 0) {
-    contactsSection.append(empty("Nothing on file yet.", "Say who did what below, or ask Claude to save it.", "notfound"));
+    contactsSection.append(empty("Nothing on file yet.", "Say \"Ray the plumber fixed the sink, 321-555-0142\" in the capture box and Claude files it here.", "notfound"));
   } else {
     for (const c of contacts) contactsSection.append(contactRow(c));
   }
   view.append(contactsSection);
 
-  const contactName = el("input", { placeholder: "Name, e.g. Ray", "aria-label": "Contact name" });
-  const contactTrade = el("input", { placeholder: "Trade, e.g. plumber", "aria-label": "Trade" });
-  const contactDid = el("input", { placeholder: "What they did", "aria-label": "What they did" });
-  const contactPhone = el("input", { placeholder: "Phone", "aria-label": "Phone" });
-  const contactForm = el("form", { class: "section" }, [
-    el("div", { class: "row" }, [contactName, contactTrade]),
-    el("div", { class: "row" }, [contactDid, contactPhone]),
-    el("div", { class: "row" }, [el("button", { class: "primary small", type: "submit", text: "Save contact" })]),
-  ]);
-  contactForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = contactName.value.trim();
-    if (!name) return;
-    contactForm.querySelectorAll("input,button").forEach((n) => (n.disabled = true));
-    try {
-      await api("/api/contacts", {
-        method: "POST",
-        body: JSON.stringify({
-          name,
-          trade: contactTrade.value.trim() || null,
-          did: contactDid.value.trim() || null,
-          phone: contactPhone.value.trim() || null,
-          fixedOn: new Date().toISOString().slice(0, 10),
-        }),
-      });
-      render();
-    } finally {
-      contactForm.querySelectorAll("input,button").forEach((n) => (n.disabled = false));
-    }
-  });
-  view.append(el("div", { class: "card" }, [contactForm]));
+  // Git #3181: no dedicated "Add contact" form -- a service-provider record is a capture too.
+  // Say "the plumber is Ray, 321-555-0142" and Claude routes it to set_contact over MCP.
 
   const used = categories.filter((c) => c.entity_count > 0);
   if (used.length > 0) {

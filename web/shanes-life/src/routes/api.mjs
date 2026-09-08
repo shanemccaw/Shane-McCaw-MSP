@@ -170,6 +170,44 @@ export async function roomsForToday(userId, { allDates, tonight, groceries }) {
   };
 }
 
+/**
+ * The Today tray's real "Later, by moment" balloons (Git #3164, README "Later, by moment"):
+ * each moment is real state, checked in the design's own fixed order, and only appears while
+ * its own real condition holds. `allDates` and `tonight` are passed in from the /api/today
+ * handler that already computed them (dates.listDates and the meal-plan read are real work; no
+ * reason to run either twice). `pendingCaptures` is the same real inbox count Today already
+ * surfaces as "N waiting in the inbox" -- the design's own "Idle" moment ("N things to look at,
+ * whenever") is that same real backlog, not a separate Review concept this app doesn't have.
+ *
+ * Dinner is a "does a real plan exist" read only -- whether Shane has actually finished cooking
+ * tonight is Cook mode's own client-only state (mealSession, never persisted; see
+ * meal-plan.mjs's header comment), so the client itself suppresses this moment once a live cook
+ * session reports done, the same override roomsForToday()'s own Recipes room and
+ * resolveNextKind()'s "dinner" case both already apply.
+ */
+export async function computeLaterMoments(userId, { allDates, tonight, pendingCaptures }) {
+  const [headingOut, rentalJob] = await Promise.all([
+    lists.getHeadingOutSignal(userId),
+    contacts.getOpenRentalJob(userId),
+  ]);
+
+  // "Coming up -- a date within 14 days (line = first two 'title + when')". Overdue rows
+  // (due_in_days < 0) are the Dates room's own concern, not a "coming up" moment.
+  const comingUp = allDates
+    .filter((d) => d.due_in_days != null && d.due_in_days >= 0 && d.due_in_days <= 14)
+    .sort((a, b) => a.due_in_days - b.due_in_days)
+    .slice(0, 2)
+    .map((d) => ({ title: d.title, dueInDays: d.due_in_days, atDate: d.at_date instanceof Date ? d.at_date.toISOString().slice(0, 10) : d.at_date }));
+
+  return {
+    headingOut: headingOut ? { names: headingOut.names } : null,
+    comingUp: comingUp.length > 0 ? comingUp : null,
+    dinner: Boolean(tonight) ? { dishText: tonight.dishText } : null,
+    rental: rentalJob ? { did: rentalJob.did, name: rentalJob.name } : null,
+    idle: pendingCaptures > 0 ? { count: pendingCaptures } : null,
+  };
+}
+
 export function buildApiRouter() {
   const router = new Router();
 
@@ -2042,10 +2080,12 @@ export function buildApiRouter() {
       openCount: shoppingDetail.items.filter((i) => !i.done).length,
     };
 
+    const pendingCaptures = await captures.pendingCount(user.id);
+
     return sendJson(res, 200, {
       // "Today view shows only what's next" (contract pack Section 3) -- three, not a backlog.
       next: await entities.nextUp(user.id, 3),
-      pendingCaptures: await captures.pendingCount(user.id),
+      pendingCaptures,
       recent: await entities.listEntities(user.id, { limit: 8 }),
       mealNudges,
       tonight,
@@ -2060,6 +2100,7 @@ export function buildApiRouter() {
       groceries,
       meds: await medications.getMedsToday(user.id),
       rooms: await roomsForToday(user.id, { allDates, tonight, groceries }),
+      later: await computeLaterMoments(user.id, { allDates, tonight, pendingCaptures }),
     });
   });
 

@@ -260,6 +260,30 @@ export async function replaceListItems(userId, listId, items) {
   return addListItems(userId, listId, items);
 }
 
+/**
+ * Real signal for the Today tray's "Heading out" balloon (Git #3164, README "Later, by moment":
+ * "any undone Heading-out item (line = the undone names)"). No new table -- Heading Out has no
+ * backend of its own yet, and doesn't need one: it is a real list exactly like Watch or Books,
+ * created the same way (push_list / Claude, or Shane starting one on the Lists room), just under
+ * the conventional name "Heading Out" so this can find it. Returns null when there is no such
+ * list, or it exists but everything on it is already done.
+ */
+export async function getHeadingOutSignal(userId) {
+  const list = await one(
+    `SELECT id FROM lists
+      WHERE user_id = $1 AND lower(name) = 'heading out' AND archived_at IS NULL
+      LIMIT 1`,
+    [userId],
+  );
+  if (!list) return null;
+  const items = await many(
+    `SELECT text FROM list_items WHERE list_id = $1 AND done = false ORDER BY position, created_at`,
+    [list.id],
+  );
+  if (items.length === 0) return null;
+  return { listId: list.id, names: items.map((i) => i.text) };
+}
+
 /** Ownership-checked delete of a single item -- correcting a mistaken add, same as entities. */
 export async function deleteListItem(userId, listId, itemId) {
   const owned = await getOwnedList(userId, listId);

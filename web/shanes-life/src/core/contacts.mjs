@@ -80,3 +80,22 @@ export async function searchContacts(userId, q) {
     [userId, query],
   );
 }
+
+/**
+ * Real signal for the Today tray's "At the Rental" balloon (Git #3164, README "Later, by
+ * moment": "while the water-heater quote is still urgent in Money" -- Money has no urgent/quote
+ * concept built yet, but this app already has a real, honest stand-in: a contacts row with no
+ * `fixed_on` IS an open job, per this module's own header comment ("a real, growing log"). The
+ * most recent one logged against a house that mentions "rental" is exactly the design's own
+ * example shape ("Water heater quote · call Marcus"): `did` is the quote/job, `name` is who to
+ * call. Returns null when nothing is open against the Rental.
+ */
+export async function getOpenRentalJob(userId) {
+  return one(
+    `SELECT name, did FROM contacts
+      WHERE user_id = $1 AND fixed_on IS NULL AND lower(coalesce(house, '')) LIKE '%rental%'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [userId],
+  );
+}
