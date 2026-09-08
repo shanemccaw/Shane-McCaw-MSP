@@ -90,7 +90,7 @@
 // text it was filed as its own follow-up Feature rather than squeezed in here: #3185.
 
 import { many, one } from "../db.mjs";
-import { badRequest } from "../http.mjs";
+import { badRequest, notFound } from "../http.mjs";
 import * as lists from "./lists.mjs";
 import * as prices from "./prices.mjs";
 
@@ -1217,4 +1217,161 @@ export async function getBudgetDay(userId, { asOf = new Date() } = {}) {
   ]);
   const base = computeBudgetDay(sources, asOf);
   return enrichBudgetDay(base, { userId, bills: computeGateMath(accounts).bills });
+}
+
+// ---------------------------------------------------------------------------
+// Bankruptcy/debt tracker (Git #3163) -- a real overlay on ShanesSurvival's own `debts` table
+// ---------------------------------------------------------------------------
+//
+// Ported from Finance-Tracker's `BankruptcyItem` (FinanceContext.tsx:160-169, 1087-1112) --
+// fully modeled and CRUD'd there, but FINANCE_TRACKER_AUDIT.md's own §6 calls it a "dead
+// sub-feature": no screen ever read `finance.bankruptcyItems` or called a mutator. Confirmed by
+// Shane directly: genuinely wanted, just never got surfaced.
+//
+// Real, investigated decision (also independently on record in
+// docs/shanes-life-design-contract-pack.md Section 12): ShanesSurvival's own `debts` table
+// already carries the real bankruptcy-relevant debts (H1 Mortgage arrears, the Treasury
+// Offset/IRS installment), both already `is_critical`. This overlays Finance-Tracker's fields
+// (`debt_type`, `original_balance`/`current_balance` payoff tracking, `last_payment_date`) plus
+// an explicit `included_in_bankruptcy` flag onto that SAME table (migration 041) -- not a second,
+// disconnected list. `creditor`/`currentBalance`/`notes` already existed as `creditor_name`/
+// `balance`/`notes`; only the genuinely new fields were added.
+
+function debtOut(d) {
+  return {
+    id: d.id,
+    creditor: d.creditor_name,
+    balance: toDollars(toCents(d.balance)),
+    minimumPayment: toDollars(toCents(d.minimum_payment)),
+    isDelinquent: d.is_delinquent,
+    daysPastDue: d.days_past_due,
+    isCritical: d.is_critical,
+    dueDay: d.due_day,
+    debtType: d.debt_type,
+    originalBalance: toDollars(toCents(d.original_balance)),
+    lastPaymentDate: d.last_payment_date ? isoDate(d.last_payment_date) : null,
+    includedInBankruptcy: d.included_in_bankruptcy,
+    notes: d.notes,
+    updatedAt: d.updated_at,
+  };
+}
+
+const DEBT_COLUMNS = `id, creditor_name, balance, minimum_payment, is_delinquent, days_past_due, is_critical,
+       due_day, debt_type, original_balance, last_payment_date, included_in_bankruptcy, notes, updated_at`;
+
+/** Every real debt, bankruptcy-filing ones first -- the Bankruptcy tab's own real list. */
+export async function listDebts() {
+  const rows = await many(
+    `SELECT ${DEBT_COLUMNS} FROM debts
+      ORDER BY included_in_bankruptcy DESC, is_critical DESC, balance DESC NULLS LAST`,
+  );
+  return rows.map(debtOut);
+}
+
+export async function getDebt(id) {
+  const row = await one(`SELECT ${DEBT_COLUMNS} FROM debts WHERE id = $1`, [id]);
+  if (!row) throw notFound("Debt not found");
+  return debtOut(row);
+}
+
+/** Add a real debt row. Every field beyond creditor/balance is optional -- most debts in this
+ *  table (Git #3161's due_day work included) started with only a subset known. */
+export async function createDebt({
+  creditor,
+  balance,
+  minimumPayment = null,
+  isDelinquent = false,
+  daysPastDue = 0,
+  isCritical = false,
+  dueDay = null,
+  debtType = null,
+  originalBalance = null,
+  lastPaymentDate = null,
+  includedInBankruptcy = false,
+  notes = null,
+} = {}) {
+  const trimmedCreditor = String(creditor ?? "").trim();
+  if (!trimmedCreditor) throw badRequest("creditor is required");
+  const balanceCents = parseAmountCents(balance, "balance");
+  const minimumPaymentCents = minimumPayment === null || minimumPayment === "" ? null : parseAmountCents(minimumPayment, "minimumPayment");
+  const originalBalanceCents = originalBalance === null || originalBalance === "" ? null : parseAmountCents(originalBalance, "originalBalance");
+  if (dueDay !== null && (!Number.isInteger(Number(dueDay)) || dueDay < 1 || dueDay > 31)) {
+    throw badRequest("dueDay must be an integer between 1 and 31");
+  }
+
+  const row = await one(
+    `INSERT INTO debts (creditor_name, balance, minimum_payment, is_delinquent, days_past_due, is_critical,
+                         due_day, debt_type, original_balance, last_payment_date, included_in_bankruptcy, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     RETURNING ${DEBT_COLUMNS}`,
+    [
+      trimmedCreditor,
+      toDollars(balanceCents),
+      minimumPaymentCents === null ? null : toDollars(minimumPaymentCents),
+      Boolean(isDelinquent),
+      Number(daysPastDue) || 0,
+      Boolean(isCritical),
+      dueDay,
+      debtType ? String(debtType).trim() : null,
+      originalBalanceCents === null ? null : toDollars(originalBalanceCents),
+      lastPaymentDate,
+      Boolean(includedInBankruptcy),
+      notes ? String(notes) : null,
+    ],
+  );
+  return debtOut(row);
+}
+
+/** Partial update -- only the fields present in `updates` are touched, same idiom as
+ *  updateBankruptcyItem's `Partial<BankruptcyItem>` in Finance-Tracker. */
+export async function updateDebt(id, updates = {}) {
+  const existing = await one(`SELECT ${DEBT_COLUMNS} FROM debts WHERE id = $1`, [id]);
+  if (!existing) throw notFound("Debt not found");
+
+  const sets = [];
+  const values = [];
+  let i = 1;
+
+  const put = (column, value) => {
+    sets.push(`${column} = $${i++}`);
+    values.push(value);
+  };
+
+  if ("creditor" in updates) {
+    const trimmed = String(updates.creditor ?? "").trim();
+    if (!trimmed) throw badRequest("creditor must not be empty");
+    put("creditor_name", trimmed);
+  }
+  if ("balance" in updates) put("balance", toDollars(parseAmountCents(updates.balance, "balance")));
+  if ("minimumPayment" in updates) {
+    put("minimum_payment", updates.minimumPayment === null || updates.minimumPayment === "" ? null : toDollars(parseAmountCents(updates.minimumPayment, "minimumPayment")));
+  }
+  if ("isDelinquent" in updates) put("is_delinquent", Boolean(updates.isDelinquent));
+  if ("daysPastDue" in updates) put("days_past_due", Number(updates.daysPastDue) || 0);
+  if ("isCritical" in updates) put("is_critical", Boolean(updates.isCritical));
+  if ("dueDay" in updates) {
+    const d = updates.dueDay;
+    if (d !== null && (!Number.isInteger(Number(d)) || d < 1 || d > 31)) throw badRequest("dueDay must be an integer between 1 and 31");
+    put("due_day", d);
+  }
+  if ("debtType" in updates) put("debt_type", updates.debtType ? String(updates.debtType).trim() : null);
+  if ("originalBalance" in updates) {
+    put("original_balance", updates.originalBalance === null || updates.originalBalance === "" ? null : toDollars(parseAmountCents(updates.originalBalance, "originalBalance")));
+  }
+  if ("lastPaymentDate" in updates) put("last_payment_date", updates.lastPaymentDate);
+  if ("includedInBankruptcy" in updates) put("included_in_bankruptcy", Boolean(updates.includedInBankruptcy));
+  if ("notes" in updates) put("notes", updates.notes ? String(updates.notes) : null);
+
+  if (sets.length === 0) return debtOut(existing);
+
+  sets.push(`updated_at = now()`);
+  values.push(id);
+  const row = await one(`UPDATE debts SET ${sets.join(", ")} WHERE id = $${i} RETURNING ${DEBT_COLUMNS}`, values);
+  return debtOut(row);
+}
+
+export async function deleteDebt(id) {
+  const row = await one(`DELETE FROM debts WHERE id = $1 RETURNING id`, [id]);
+  if (!row) throw notFound("Debt not found");
+  return { id: row.id };
 }

@@ -1188,6 +1188,60 @@ export function buildApiRouter() {
     return sendJson(res, 200, row);
   });
 
+  // -- Money -> Bankruptcy/debt tracker (Git #3163) -------------------------------------
+  //
+  // A real overlay on ShanesSurvival's own `debts` table (migration 041) -- see
+  // src/core/money.mjs's own header for the real investigation and decision. Full CRUD,
+  // matching Finance-Tracker's `BankruptcyItem` shape (add/update/delete), because this is the
+  // one real write surface in Money's own routes that writes to a ShanesSurvival table, not a
+  // Shane's Life one -- the design's own "surface and organize existing real debt data" scope,
+  // not read-only.
+
+  router.get("/api/money/debts", async (_req, res, _params, ctx) => {
+    requireUser(ctx);
+    return sendJson(res, 200, { debts: await money.listDebts() });
+  });
+
+  router.post("/api/money/debts", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await money.createDebt(body);
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.debt.create",
+      entityId: row.id,
+      detail: { creditor: row.creditor, balance: row.balance, includedInBankruptcy: row.includedInBankruptcy },
+    });
+    return sendJson(res, 201, row);
+  });
+
+  router.patch("/api/money/debts/:id", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await money.updateDebt(params.id, body);
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.debt.update",
+      entityId: row.id,
+      detail: { creditor: row.creditor, balance: row.balance, includedInBankruptcy: row.includedInBankruptcy },
+    });
+    return sendJson(res, 200, row);
+  });
+
+  router.delete("/api/money/debts/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const result = await money.deleteDebt(params.id);
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.debt.delete",
+      entityId: result.id,
+    });
+    return sendJson(res, 200, result);
+  });
+
   // -- Money -> Vault (Git #3150) -------------------------------------------------------
   //
   // The bill-payment reference vault. Design contract Section 9 flags this as "a real security
