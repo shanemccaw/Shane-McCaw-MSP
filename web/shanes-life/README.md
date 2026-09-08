@@ -517,19 +517,32 @@ claim to cover: that Plaid's own servers can reach a deployed URL, and that a ke
 `/webhook_verification_key/get` verifies a genuinely Plaid-signed body — both need a real public
 HTTPS deployment and live credentials.
 
-## Not built here, on purpose
+## Which rooms are real today
 
-The notification tray, Today's real content, Money, Dates, Pets, Things, the Vault and
-everything else in the handoff besides Shopping are later Features under #3086.
+This section was written during #3107, when Shopping was the only real room and every table
+under #3086 was schema-only. That is no longer true — each row below is a shipped Feature with
+a live route, not a placeholder:
 
-Their **schema** is here — migrations 014–018 create the real tables the handoff's *Data model
-additions* section names (`dates`, `date_asks`, `date_visits`, `date_photos`,
-`federal_holidays`, `pets`, `pet_vaccines`, `pet_care`, `pet_records`, `things`, `contacts`,
-`wins`, `smoke_log`, `catches`, `vault`, `vault_reveals`, `vehicles`, `nudges`, `nudge_events`,
-`hooks`). **No route reads or writes any of them yet**, and they are empty — no seed rows, no
-sample content, nothing invented to fill a screen. #3107's scope was the shared database and the
-auth correction; each room is its own Feature, and each one starts with its table already there
-and already the right shape.
+| table(s) | read/written by | issue |
+|---|---|---|
+| `dates`, `date_asks`, `date_visits`, `date_photos`, `federal_holidays` | `/api/dates*` | #3136 |
+| `pets`, `pet_vaccines`, `pet_care`, `pet_records` | `/api/pets*` | Pets Feature |
+| `things`, `contacts` | `/api/things*`, `/api/contacts*` | #3156 |
+| `vault`, `vault_reveals` | `/api/vault*` | #3150 |
+| `vehicles` | `/api/cars*` | #3149 |
+| `wins` | `/api/money/wins` | #3151 |
+| `smoke_log`, `catches` | `/api/money/catches`, `money.mjs` habit tracking | #3153, #3154 |
+| `nudges`, `nudge_events` | `/api/nudges*` | (Nudges Feature) |
+| Money generally | `/api/money/*` | #3137, #3147, #3148 |
+
+Web push is also live end to end, not just scaffolded: `/api/push/subscribe` /
+`/api/push/unsubscribe` register a real subscription, and `core/push-subscriptions.mjs`'s
+`notifyUser()` calls `sendWebPush()` to actually deliver — the tray's remaining open question is
+§10's iOS/Safari interactive-notification-action support, not whether anything sends.
+
+**Genuinely not built yet:** the `hooks` table (migration 018) has no route reading or writing
+it — nothing in this repo creates or consumes a hook. If you're picking this up, that's the one
+real gap left from the original list.
 
 Two things worth knowing before building one:
 
@@ -546,7 +559,3 @@ Two things worth knowing before building one:
 What this foundation owes the later Features is a shape they can be built on without a schema
 change — which is why `entities`, `entity_items`, `categories` and `data jsonb` are shaped the way
 they are, and why `captures.category` is free text rather than a foreign key.
-
-Web push has its service-worker handler and its manifest in place, but **nothing subscribes and
-nothing sends yet** — the tray Feature owns that, along with the real open question §10 raises
-about how much of iOS's interactive notification-action support Safari genuinely delivers.
