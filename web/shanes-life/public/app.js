@@ -2919,6 +2919,7 @@ const MONEY_TABS = [
   { key: "accounts", label: "Accounts" },
   { key: "cars", label: "Cars" },
   { key: "vault", label: "Vault" },
+  { key: "documents", label: "Documents" },
   { key: "wins", label: "Wins" },
 ];
 
@@ -3954,6 +3955,265 @@ async function viewMoneyVault(view) {
   attachRoomWatermark(view, "vault");
 }
 
+// -- Money -> Important documents (Git #3244) ---------------------------------------------
+//
+// Wills, life insurance, and the like. Real, deliberate reuse of the vault's own visual
+// language (vault-row/vault-value-box/etc. CSS classes, the Face ID overlay, the reveal
+// countdown) rather than a second parallel set of styles for what is the same real security
+// idiom on a different content type -- one encrypted-detail card, gated by a passkey, shown
+// for 20 real seconds. `documentReveal` is this tab's own module-scope "one thing revealed at
+// a time" state, distinct from `vaultReveal` -- the two rooms are different tabs and a document
+// reveal must not silently re-mask whatever is open in Vault, or vice versa.
+
+let documentReveal = null; // { id, tick, restore }
+
+function hideDocumentReveal() {
+  if (!documentReveal) return;
+  clearInterval(documentReveal.tick);
+  const { restore } = documentReveal;
+  documentReveal = null;
+  restore();
+}
+
+/** One document row. doc_type/name/location/summaryHint are real plaintext -- shown up front,
+ *  same as the vault's label/site/masked -- only `details` (provider, policy number,
+ *  beneficiary, executor, whatever matters) needs a reveal. */
+function documentRow(doc, { onReveal, onCopy }) {
+  const detailBox = el("div", { class: "vault-secret" });
+  const maskEl = el("div", {
+    class: "vault-masked",
+    text: doc.summaryHint || "Tap Reveal for the real details on file",
+  });
+  const revealBtn = el("button", { type: "button", class: "vault-reveal-btn", text: "Reveal" });
+  const errorEl = el("div", { class: "vault-row-error", hidden: true });
+
+  const row = el("div", { class: "vault-row" }, [
+    el("div", { class: "vault-row-head" }, [
+      el("div", { class: "vault-row-name" }, [
+        el("div", { class: "vault-row-label", text: doc.name }),
+        el("div", { class: "vault-row-site", text: doc.docType }),
+        doc.location ? el("div", { class: "vault-row-site", text: `at ${doc.location}` }) : null,
+      ]),
+      revealBtn,
+    ]),
+    maskEl,
+    detailBox,
+    errorEl,
+  ]);
+
+  function showMasked() {
+    detailBox.replaceChildren();
+    maskEl.hidden = false;
+    revealBtn.hidden = false;
+  }
+
+  function showValue(revealed) {
+    maskEl.hidden = true;
+    revealBtn.hidden = true;
+
+    const countdown = el("span", { class: "vault-countdown" });
+    const copyBtn = el("button", {
+      type: "button",
+      class: "vault-copy-btn",
+      text: "Copy",
+      onClick: () => onCopy(revealed),
+    });
+    detailBox.replaceChildren(
+      el("div", { class: "vault-value-box" }, [
+        el("span", { class: "vault-value", style: "white-space:pre-wrap;text-align:left", text: revealed.details }),
+        countdown,
+        copyBtn,
+      ]),
+    );
+
+    const deadline = new Date(revealed.expiresAt).getTime();
+    const secondsLeft = () => Math.ceil((deadline - Date.now()) / 1000);
+    const tick = setInterval(() => {
+      if (!row.isConnected || secondsLeft() <= 0) {
+        hideDocumentReveal();
+        return;
+      }
+      countdown.textContent = `${secondsLeft()}s`;
+    }, 250);
+    countdown.textContent = `${Math.max(0, secondsLeft())}s`;
+
+    hideDocumentReveal();
+    documentReveal = { id: doc.id, tick, restore: showMasked };
+  }
+
+  revealBtn.addEventListener("click", async () => {
+    errorEl.hidden = true;
+    revealBtn.disabled = true;
+    const overlay = vaultFaceOverlay();
+    try {
+      showValue(await onReveal(doc));
+    } catch (err) {
+      if (err && (err.name === "NotAllowedError" || err.name === "AbortError")) return;
+      errorEl.textContent = err?.message || "That did not reveal.";
+      errorEl.hidden = false;
+    } finally {
+      overlay.remove();
+      revealBtn.disabled = false;
+    }
+  });
+
+  showMasked();
+  return row;
+}
+
+async function viewMoneyDocuments(view) {
+  const { documents, keyConfigured } = await api("/api/documents");
+
+  view.append(
+    el("div", { class: "vault-lock-note" }, [
+      lineIcon(
+        '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><path d="M14 2v6h6"></path>',
+        { size: 14, strokeWidth: 2 },
+      ),
+      el("span", {
+        text: "Wills, life insurance, and the like -- real documents, not credentials, but the same real security bar as the Vault: encrypted at rest, Face ID every time, revealed for 20 seconds.",
+      }),
+    ]),
+  );
+
+  if (!keyConfigured) {
+    view.append(
+      el("div", { class: "card" }, [
+        el("p", { text: "The same encryption key the Vault uses isn't set on this server, so nothing here can be added or revealed." }),
+        el("p", { class: "small muted", text: "SL_VAULT_KEY needs 32 bytes of base64 randomness in the environment." }),
+      ]),
+    );
+    attachRoomWatermark(view, "moneyhdr");
+    return;
+  }
+
+  // Real search (item 2 of the issue's scope): "where's my will", "who's my life insurance
+  // beneficiary" -- answered directly from the real doc_type/name/location on file, no reveal
+  // needed just to find the right document.
+  const searchInput = el("input", { placeholder: "where's my will…", "aria-label": "Search documents" });
+  const searchResults = el("div", { class: "vault-card", style: "margin-top:8px" });
+  let searchTimer = null;
+  searchInput.addEventListener("input", () => {
+    if (searchTimer) clearTimeout(searchTimer);
+    const q = searchInput.value.trim();
+    if (!q) {
+      searchResults.replaceChildren();
+      searchResults.hidden = true;
+      return;
+    }
+    searchTimer = setTimeout(async () => {
+      const { documents: hits } = await api(`/api/documents/search?q=${encodeURIComponent(q)}`);
+      searchResults.hidden = false;
+      searchResults.replaceChildren(
+        hits.length === 0
+          ? el("p", { class: "small muted", style: "padding:.6rem 1rem", text: "Nothing on file matches that." })
+          : el("div", {}, hits.map((h) =>
+              el("div", { class: "vault-row-head", style: "padding:.6rem 1rem" }, [
+                el("div", { class: "vault-row-name" }, [
+                  el("div", { class: "vault-row-label", text: h.name }),
+                  el("div", { class: "vault-row-site", text: h.docType }),
+                  h.location ? el("div", { class: "vault-row-site", text: `at ${h.location}` }) : null,
+                ]),
+              ]),
+            )),
+      );
+    }, 200);
+  });
+  searchResults.hidden = true;
+  view.append(el("div", { class: "card" }, [el("h3", { class: "vault-add-title", text: "Find a document" }), searchInput, searchResults]));
+
+  const copy = async (revealed) => {
+    try {
+      await navigator.clipboard.writeText(revealed.details);
+    } catch {
+      showQuickToast("This browser wouldn't let the app write to the clipboard.");
+      return;
+    }
+    showQuickToast("Copied.");
+  };
+
+  const reveal = async (doc) => {
+    const options = await api(`/api/documents/${doc.id}/reveal/options`, { method: "POST", body: "{}" });
+    return api(`/api/documents/${doc.id}/reveal`, {
+      method: "POST",
+      body: JSON.stringify(await passkeyAssertion(options)),
+    });
+  };
+
+  if (documents.length === 0) {
+    view.append(
+      empty(
+        "Nothing on file yet.",
+        "Wills, life insurance, deeds, titles, whatever matters -- what it is, where it lives, and the real details worth surfacing at a glance. Add the first one below.",
+        "vault",
+      ),
+    );
+  } else {
+    const card = el("div", { class: "vault-card" });
+    for (const doc of documents) {
+      card.append(documentRow(doc, { onReveal: reveal, onCopy: copy }));
+    }
+    view.append(card);
+  }
+
+  // Same "real dedicated form" exception the vault takes (Git #3183 no-forms audit), for the
+  // same reason: this is genuinely sensitive content, and routing it through the universal
+  // capture box would mean it passes through Claude/MCP before encryption, defeating the whole
+  // point. No MCP tool for this module either -- same precedent as vault.mjs.
+  const typeInput = el("input", { placeholder: "Will · Life insurance · Deed · …", "aria-label": "What kind of document this is", required: true });
+  const nameInput = el("input", { placeholder: "Northwestern Mutual term life", "aria-label": "Name", required: true });
+  const locationInput = el("input", { placeholder: "Safe deposit box at NFCU", "aria-label": "Where it lives" });
+  const hintInput = el("input", { placeholder: "Summary shown before Reveal (optional)", "aria-label": "Summary hint" });
+  const detailsInput = el("textarea", {
+    placeholder: "Provider, policy number, beneficiary, executor -- whatever matters at a glance",
+    "aria-label": "The real details",
+    required: true,
+    rows: 3,
+  });
+  const addError = el("p", { class: "vault-row-error", hidden: true });
+  const addForm = el("form", { class: "section" }, [
+    el("div", { class: "row" }, [typeInput, nameInput]),
+    el("div", { class: "row" }, [locationInput, hintInput]),
+    detailsInput,
+    el("button", { type: "submit", class: "ghost small", text: "Add a document" }),
+    addError,
+  ]);
+  addForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!typeInput.value.trim() || !nameInput.value.trim() || !detailsInput.value.trim()) return;
+    addError.hidden = true;
+    addForm.querySelectorAll("input,button,textarea").forEach((n) => (n.disabled = true));
+    try {
+      await api("/api/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          docType: typeInput.value,
+          name: nameInput.value,
+          location: locationInput.value,
+          summaryHint: hintInput.value,
+          details: detailsInput.value,
+        }),
+      });
+      typeInput.value = "";
+      nameInput.value = "";
+      locationInput.value = "";
+      hintInput.value = "";
+      detailsInput.value = "";
+      render();
+    } catch (err) {
+      addError.textContent = err?.message || "That didn't save.";
+      addError.hidden = false;
+      addForm.querySelectorAll("input,button,textarea").forEach((n) => (n.disabled = false));
+    }
+  });
+  view.append(el("div", { class: "card" }, [el("h3", { class: "vault-add-title", text: "Add a document" }), addForm]));
+
+  // Same watermark as the rest of Money's own sub-tabs that have no bespoke critter of their
+  // own (Bills/Banks/Accounts/Cars) -- only Vault and Wins got one in the critter spec's room
+  // map.
+  attachRoomWatermark(view, "moneyhdr");
+}
+
 /** Git #3207 (design #2c, "Behind · 6 bills · 19 payments"): one row of the Behind summary --
  *  bill name, real months behind, real last-paid date, real amount owed. No "for <month>" --
  *  that's the design mockup's own inference on top of a single real `last_paid_date`, not a
@@ -4706,6 +4966,11 @@ async function viewMoney(view) {
 
   if (moneyTab === "vault") {
     await viewMoneyVault(view);
+    return;
+  }
+
+  if (moneyTab === "documents") {
+    await viewMoneyDocuments(view);
     return;
   }
 
