@@ -17,7 +17,9 @@
     "issue-mcp-token": "node bin/issue-mcp-token.mjs",
     "make-icons": "node bin/make-icons.mjs",
     "mcp-stdio": "node bin/mcp-stdio.mjs",
-    "check": "node bin/check.mjs"
+    "check": "node bin/check.mjs",
+    "generate-vapid-keys": "node bin/generate-vapid-keys.mjs",
+    "selftest-webpush": "node bin/selftest-webpush.mjs"
   },
   "dependencies": {
     "pg": "^8.20.0"

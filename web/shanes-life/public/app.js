@@ -4338,6 +4338,107 @@ async function renderPasskeys(view) {
   view.append(section);
 }
 
+// Real Web Push subscribe/unsubscribe (Git #3160). base64url -> Uint8Array for
+// pushManager.subscribe's applicationServerKey, which the Push API requires as raw bytes, not a
+// string -- there is no built-in decoder for this in the browser.
+function urlBase64ToUint8Array(base64url) {
+  const padded = base64url.padEnd(base64url.length + ((4 - (base64url.length % 4)) % 4), "=");
+  const raw = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return bytes;
+}
+
+async function renderPushSettings(view) {
+  const section = el("section", { class: "section" }, [
+    el("h2", { text: "Notifications" }),
+    el("p", {
+      class: "muted small",
+      text: "Real nudges (day-before appointments, vaccine reminders) as real OS notifications on this device, with mark done / snooze / dismiss right on the notification.",
+    }),
+  ]);
+
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    section.append(el("div", { class: "card" }, [el("div", { class: "meta", text: "This browser doesn't support push notifications." })]));
+    view.append(section);
+    return;
+  }
+
+  const card = el("div", { class: "card" });
+  section.append(card);
+  view.append(section);
+
+  async function refresh() {
+    card.replaceChildren(el("div", { class: "meta", text: "Checking…" }));
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+
+    if (subscription) {
+      card.replaceChildren(
+        el("div", { class: "spread" }, [
+          el("div", { class: "title", text: "Notifications are on" }),
+          el("button", {
+            class: "small danger",
+            text: "Turn off",
+            onClick: async (event) => {
+              event.currentTarget.disabled = true;
+              try {
+                await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: subscription.endpoint }) });
+                await subscription.unsubscribe();
+              } finally {
+                await refresh();
+              }
+            },
+          }),
+        ]),
+      );
+      return;
+    }
+
+    card.replaceChildren(
+      el("button", {
+        class: "primary small",
+        text: "Turn on notifications",
+        onClick: async (event) => {
+          const button = event.currentTarget;
+          button.disabled = true;
+          try {
+            const { publicKey } = await api("/api/push/vapid-public-key");
+            if (!publicKey) {
+              alert("Push isn't configured on the server yet.");
+              return;
+            }
+            const permission = await Notification.requestPermission();
+            if (permission !== "granted") return;
+            const sub = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(publicKey),
+            });
+            await api("/api/push/subscribe", {
+              method: "POST",
+              body: JSON.stringify({ endpoint: sub.endpoint, keys: { p256dh: arrayBufferToBase64url(sub.getKey("p256dh")), auth: arrayBufferToBase64url(sub.getKey("auth")) } }),
+            });
+          } catch (err) {
+            if (err.name !== "NotAllowedError") alert(err.message);
+          } finally {
+            button.disabled = false;
+            await refresh();
+          }
+        },
+      }),
+    );
+  }
+
+  await refresh();
+}
+
+function arrayBufferToBase64url(buf) {
+  const bytes = new Uint8Array(buf);
+  let str = "";
+  for (const b of bytes) str += String.fromCharCode(b);
+  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 async function viewSettings(view) {
   const { tokens, endpoint } = await api("/api/mcp-tokens");
 
@@ -4362,6 +4463,7 @@ async function viewSettings(view) {
   );
 
   await renderPasskeys(view);
+  await renderPushSettings(view);
 
   // Section 5's real health context -- stated once, read by Claude before it generates recipes
   // (Section 8: "state once, respected everywhere, forever"). Editable here too so it never has

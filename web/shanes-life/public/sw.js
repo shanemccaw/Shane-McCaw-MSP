@@ -69,11 +69,13 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// Web push. iOS 16.4+ delivers these to a Home-Screen web app's lock screen. Nothing sends one
-// yet -- the notification tray that will (contract pack Section 3) is a later Feature -- but the
-// handler exists so the subscription surface is real when it lands.
+// Web push. iOS 16.4+ delivers these to a Home-Screen web app's lock screen. Real sending is now
+// wired server-side (src/push/webpush.mjs + src/core/push-subscriptions.mjs, Git #3160), pushed
+// from queueNudge() whenever a real nudge actually sends (not held). The payload carries real
+// `actions` (mark done / snooze / dismiss, per nudge kind -- see nudges.mjs actionsForKind) so
+// this handler can show them as real slide-down action buttons.
 self.addEventListener("push", (event) => {
-  let payload = { title: "Shane's Life", body: "", url: "/" };
+  let payload = { title: "Shane's Life", body: "", url: "/", actions: [] };
   try {
     if (event.data) payload = { ...payload, ...event.data.json() };
   } catch {
@@ -84,23 +86,57 @@ self.addEventListener("push", (event) => {
       body: payload.body,
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
-      data: { url: payload.url },
+      tag: payload.tag,
+      // Real UNNotificationCategory-style action buttons. Chrome/Android honors these fully.
+      // Safari's Home-Screen web-push support for `actions` is genuinely unverified from this
+      // build (no physical iPhone to test against -- see build-journal/3160.md) -- if Safari
+      // ignores the array, showNotification still succeeds and the tap-to-open path below is
+      // the real, already-working fallback the design contract names for exactly this case.
+      actions: (payload.actions || []).slice(0, 2).map((a) => ({ action: a.action, title: a.title })),
+      data: { url: payload.url, nudgeId: payload.nudgeId },
     }),
   );
 });
 
+// Real act-on-notification (Git #3160): tapping a real action button fires this WITHOUT opening
+// the app -- a background fetch straight to /api/nudges/:id/action, same-origin so the session
+// cookie rides along automatically. Tapping the notification body itself (no action, or an iOS
+// Safari that doesn't honor `actions` at all) falls through to the existing open-the-app
+// behavior, which is the design contract's own stated fallback for exactly this uncertainty.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = event.notification.data?.url || "/";
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if ("focus" in client) {
-          client.navigate(target);
-          return client.focus();
-        }
-      }
-      return self.clients.openWindow(target);
-    }),
-  );
+  const { url, nudgeId } = event.notification.data || {};
+  const target = url || "/";
+
+  if (event.action && nudgeId) {
+    event.waitUntil(
+      fetch(`/api/nudges/${nudgeId}/action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: event.action }),
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error(`action fetch failed: ${res.status}`);
+          // A real, quiet confirmation -- no window to focus, nothing to navigate. If a "done"
+          // or "dismiss" tap fails (session expired, offline), fall back to opening the app so
+          // it isn't silently lost.
+        })
+        .catch(() => openOrFocus(target)),
+    );
+    return;
+  }
+
+  event.waitUntil(openOrFocus(target));
 });
+
+function openOrFocus(target) {
+  return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+    for (const client of clients) {
+      if ("focus" in client) {
+        client.navigate(target);
+        return client.focus();
+      }
+    }
+    return self.clients.openWindow(target);
+  });
+}

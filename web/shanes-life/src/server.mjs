@@ -19,7 +19,7 @@ import { runDetectors as runCatchDetectors } from "./core/catches.mjs";
 import { findDueDayBeforeReminders } from "./core/dates.mjs";
 import { needsMonthlyRefresh, refreshFederalHolidays } from "./core/federal-holidays.mjs";
 import { findDueVaccineReminders } from "./core/pets.mjs";
-import { queueNudge } from "./core/nudges.mjs";
+import { queueNudge, redeliverSnoozedNudges } from "./core/nudges.mjs";
 import { listUsers } from "./core/users.mjs";
 import { detectMoneyWins } from "./core/wins.mjs";
 import { findDueBillReminders, findDueDebtReminders, formatMoney } from "./core/money.mjs";
@@ -220,6 +220,22 @@ async function main() {
     6 * 60 * 60 * 1000,
   );
   housekeeping.unref();
+
+  // Snoozed nudges need a much tighter check than the 6-hour sweep above -- "Snooze 1h" would
+  // otherwise arrive up to 6 hours late, which is not a snooze. Real re-delivery only fires for
+  // rows whose snoozed_until has actually passed, so a 5-minute poll costs nothing extra.
+  const snoozeCheck = setInterval(
+    async () => {
+      try {
+        const redelivered = await redeliverSnoozedNudges();
+        if (redelivered > 0) log(`[nudges] redelivered ${redelivered} snoozed nudge(s)`);
+      } catch (err) {
+        log("[nudges] snooze redelivery failed:", err.message);
+      }
+    },
+    5 * 60 * 1000,
+  );
+  snoozeCheck.unref();
 
   // Run once at boot too -- a 6-hour interval alone would leave a genuinely due day-before
   // reminder or a stale federal-holiday list waiting up to 6 hours after every redeploy.
