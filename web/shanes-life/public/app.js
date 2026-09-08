@@ -3709,6 +3709,65 @@ let vaultClipboardTimer = null;
 let vaultQuery = "";
 let vaultKindFilter = "all";
 
+// -- Browser extension autofill bridge (Git #3243) -----------------------------------------
+//
+// #3243's own "how does the extension prove it's really Shane" question is answered by NOT
+// giving the extension a credential of its own: the extension's background worker opens this
+// app's own real, already-signed-in origin in a plain popup window carrying `?extReveal=<id>
+// &extNonce=<n>` (see web/shanes-life/extension/background.js), and this is that popup's whole
+// job -- run the EXACT SAME per-entry WebAuthn reveal ceremony the Vault room's own "Reveal"
+// button runs (nothing here calls a different endpoint or skips a step), then hand the result
+// back across the extension boundary via a plain DOM CustomEvent, which
+// web/shanes-life/extension/bridge.js (a content script matched only to this app's own origin)
+// relays into the extension's message bus. A page here has no way to talk to extension code
+// directly, and a CustomEvent is the standard way across that boundary.
+//
+// Read once, off the real query string (not the hash -- the app's hash router already owns
+// that, see parseRoute) at module load, before anything else touches the URL.
+const extensionReveal = (() => {
+  const params = new URLSearchParams(location.search);
+  const id = params.get("extReveal");
+  const nonce = params.get("extNonce");
+  return id && nonce ? { id, nonce, handled: false } : null;
+})();
+
+/** Runs the real reveal ceremony for the one entry the extension asked for, then reports the
+ *  outcome back across the page/extension boundary and closes the popup. Called once, from
+ *  viewMoneyVault, after its own entries list is loaded -- so this never invents a lookup path
+ *  the Vault room doesn't already have. */
+async function completeExtensionReveal(entries) {
+  if (!extensionReveal || extensionReveal.handled) return;
+  extensionReveal.handled = true;
+
+  const entry = entries.find((e) => e.id === extensionReveal.id);
+  const fail = (reason, message) => {
+    window.dispatchEvent(
+      new CustomEvent("sl:extension-reveal-error", { detail: { nonce: extensionReveal.nonce, reason, message } }),
+    );
+  };
+
+  if (!entry) return fail("not-found", "That vault entry no longer exists.");
+  if (entry.kind !== "login") return fail("wrong-kind", "That entry isn't a login.");
+
+  try {
+    const options = await api(`/api/vault/${entry.id}/reveal/options`, { method: "POST", body: "{}" });
+    const revealed = await api(`/api/vault/${entry.id}/reveal`, {
+      method: "POST",
+      body: JSON.stringify(await passkeyAssertion(options)),
+    });
+    window.dispatchEvent(
+      new CustomEvent("sl:extension-reveal", {
+        detail: { nonce: extensionReveal.nonce, value: revealed.value, username: entry.username || null },
+      }),
+    );
+  } catch (err) {
+    fail("reveal-failed", err?.message || "That did not reveal.");
+  } finally {
+    // A window this app didn't open itself can't close; one the extension opened, can.
+    setTimeout(() => window.close(), 400);
+  }
+}
+
 const VAULT_KIND_FILTERS = [
   { key: "all", label: "All" },
   { key: "login", label: "Logins" },
@@ -4072,6 +4131,14 @@ async function viewMoneyVault(view) {
   const [first, gate] = await Promise.all([api("/api/vault"), api("/api/money/gate")]);
   const { keyConfigured, clipboardClearSeconds } = first;
 
+  if (extensionReveal && !extensionReveal.handled) {
+    view.append(
+      el("div", { class: "vault-lock-note" }, [
+        el("span", { text: "Confirm with Face ID to autofill this password in the browser extension…" }),
+      ]),
+    );
+  }
+
   view.append(
     el("div", { class: "vault-lock-note" }, [
       lineIcon(
@@ -4136,6 +4203,12 @@ async function viewMoneyVault(view) {
     if (vaultQuery.trim()) params.set("q", vaultQuery.trim());
     const query = params.toString();
     const { entries, counts } = await api(`/api/vault${query ? `?${query}` : ""}`);
+
+    // A real fresh WebAuthn assertion for the one entry the extension's popup asked for --
+    // the same ceremony a normal "Reveal" tap below runs, just kicked off automatically since
+    // there's nothing else to click in a bare popup window. Fires at most once per page load
+    // (extensionReveal.handled), so the debounced search re-running refresh() doesn't re-prompt.
+    if (extensionReveal && !extensionReveal.handled) completeExtensionReveal(entries);
 
     filterRow.replaceChildren(
       ...VAULT_KIND_FILTERS.map((f) =>
@@ -5166,6 +5239,11 @@ async function renderMoneyDecisionTools(view, gate) {
 }
 
 async function viewMoney(view) {
+  // The extension's own reveal popup (see the extensionReveal bridge above) opens straight to
+  // #/money with no way to also pick the Vault tab through the UI -- it's a popup with nothing
+  // else to click. Force it once so the real reveal ceremony below has something to render into.
+  if (extensionReveal && !extensionReveal.handled) moneyTab = "vault";
+
   view.append(
     el("section", { class: "section" }, [
       el("h2", { text: "Money" }),
