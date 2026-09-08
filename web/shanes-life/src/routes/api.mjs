@@ -1711,13 +1711,64 @@ export function buildApiRouter() {
       action: "tesla.vehicle-selected",
       detail: { vehicleId: body.vehicleId, displayName: body.displayName ?? null },
     });
-    return sendJson(res, 200, await teslaCore.connectionStatus(user.id));
+    // Git #3270 gap #2: selecting a real Tesla vehicle here is the one moment this app knows
+    // both a real Tesla connection AND a real vehicle exist -- auto-link (or create) the matching
+    // Cars entity right now instead of leaving the two data models silently disconnected.
+    const carsLink = await vehicles.autoLinkTeslaVehicle(user.id, { displayName: body.displayName, vin: body.vin });
+    if (carsLink.linked) {
+      await audit.record({
+        userId: user.id,
+        actor: "web",
+        action: "vehicle.tesla-auto-link",
+        entityId: carsLink.vehicleId,
+        detail: { created: carsLink.created, vehicleName: carsLink.vehicleName },
+      });
+    }
+    return sendJson(res, 200, { ...(await teslaCore.connectionStatus(user.id)), carsLink });
+  });
+
+  /**
+   * Real, idempotent self-heal for an account that connected and selected a vehicle before the
+   * auto-link above existed (Git #3270 -- Shane's own real, already-connected account is exactly
+   * this case: `vehicles/select` already ran on the deployed server, so the auto-link above never
+   * fired for him). The Tesla room calls this once on load; a no-op when already linked.
+   */
+  router.post("/api/tesla/link-to-cars", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const status = await teslaCore.connectionStatus(user.id);
+    if (!status.connected || !status.vehicleId) throw badRequest("Connect Tesla and select a vehicle first.");
+    const carsLink = await vehicles.autoLinkTeslaVehicle(user.id, { displayName: status.vehicleDisplayName, vin: status.vehicleVin });
+    if (carsLink.linked) {
+      await audit.record({
+        userId: user.id,
+        actor: "web",
+        action: "vehicle.tesla-auto-link",
+        entityId: carsLink.vehicleId,
+        detail: { created: carsLink.created, vehicleName: carsLink.vehicleName },
+      });
+    }
+    return sendJson(res, 200, carsLink);
   });
 
   /** On-demand real climate read (not an auto-poll -- see tesla.mjs's own header on why). */
   router.get("/api/tesla/climate", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
     return sendJson(res, 200, await teslaCore.getVehicleClimateState(user.id));
+  });
+
+  /** On-demand real charge read (Git #3270's own Tesla room "Right now" card -- getChargeState
+   *  already existed for the housekeeping sweep/commute check but had no direct route of its
+   *  own). Same on-demand-only discipline as climate above. Real TeslaError (no vehicle, Tesla
+   *  unreachable, a stale/missing vault key) is a real, honest 400 -- not an uncaught 500 -- same
+   *  as this file's other new direct-command routes below. */
+  router.get("/api/tesla/charge", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    try {
+      return sendJson(res, 200, await teslaCore.getChargeState(user.id));
+    } catch (err) {
+      if (err instanceof TeslaError) throw badRequest(err.message);
+      throw err;
+    }
   });
 
   router.get("/api/tesla/hook-tokens", async (_req, res, _params, ctx) => {
@@ -1769,6 +1820,57 @@ export function buildApiRouter() {
   router.get("/api/tesla/commute-check", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
     return sendJson(res, 200, await teslaCore.checkLowBatteryForCommute(user.id));
+  });
+
+  // -- Tesla room direct commands (Git #3270, design handoff "Do" card) -- a real, immediate tap
+  // from the Tesla room itself: warm the car up (and stop), open the trunk right now. Distinct
+  // from Heading Home (a composed navigation+climate send) and from the checkout-to-trunk
+  // automation below (scheduled, not immediate).
+  router.post("/api/tesla/climate/start", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    try {
+      await teslaCore.startPreconditioning(user.id);
+    } catch (err) {
+      if (err instanceof TeslaError) throw badRequest(err.message);
+      throw err;
+    }
+    await audit.record({ userId: user.id, actor: "owner", action: "tesla.climate-start" });
+    return sendJson(res, 200, { sent: true });
+  });
+
+  router.post("/api/tesla/climate/stop", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    try {
+      await teslaCore.stopPreconditioning(user.id);
+    } catch (err) {
+      if (err instanceof TeslaError) throw badRequest(err.message);
+      throw err;
+    }
+    await audit.record({ userId: user.id, actor: "owner", action: "tesla.climate-stop" });
+    return sendJson(res, 200, { sent: true });
+  });
+
+  /** The two-tap confirm lives client-side (design: "tap, then confirm within 4 seconds") -- by
+   *  the time this route is called the real confirmation already happened. */
+  router.post("/api/tesla/trunk/open", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    try {
+      await teslaCore.openTrunkNow(user.id);
+    } catch (err) {
+      if (err instanceof TeslaError) throw badRequest(err.message);
+      throw err;
+    }
+    await audit.record({ userId: user.id, actor: "owner", action: "tesla.trunk-open" });
+    return sendJson(res, 200, { sent: true });
+  });
+
+  /** Real "Heading home · {house}" availability for the Tesla room's own Do card -- the same
+   *  headingHomeAvailability() /api/today already computes, exposed on its own so the room can
+   *  reload it independently (e.g. right after a Heading Home send). Null is a real, ordinary
+   *  state (not connected, no vehicle, or no recommended/tagged house yet), not an error. */
+  router.get("/api/tesla/heading-home/availability", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await headingHomeAvailability(user.id));
   });
 
   // -- Tesla vehicle commands (Git #3218) -- the checkout-to-trunk automation's real toggle and

@@ -505,6 +505,41 @@ export async function setTeslaSynced(userId, vehicleId, enabled) {
 }
 
 /**
+ * Real auto-link between the connected Tesla and Money's Cars tab (Git #3270, "Tesla is
+ * connected but has no room and doesn't appear in Cars" gap #2): a real Tesla OAuth connection
+ * (`tesla_accounts`) and a real Cars vehicle entity (`vehicles`) are two separate data models
+ * with no automatic bridge between them -- linking has always required a car entity to already
+ * exist AND have `tesla-sync` explicitly enabled. This closes that gap without ever guessing:
+ * if a real Cars vehicle whose name plainly matches the connected Tesla's own display name
+ * already exists (e.g. Shane tracked insurance/loan for "Tesla Model 3" in Cars before ever
+ * connecting Tesla), link that one rather than creating a duplicate; otherwise create a real new
+ * Cars entity named after the real Tesla display name and link it. Idempotent and a safe no-op
+ * once a vehicle is already tesla_synced -- called both right after vehicle selection and, as a
+ * one-time self-heal, from the Tesla room itself for an account that connected and selected a
+ * vehicle before this existed (Shane's own real, already-connected account).
+ */
+export async function autoLinkTeslaVehicle(userId, { displayName, vin } = {}) {
+  const alreadyLinked = await one("SELECT id FROM vehicles WHERE user_id = $1 AND tesla_synced = true", [userId]);
+  if (alreadyLinked) return { linked: false, reason: "already_linked", vehicleId: alreadyLinked.id };
+
+  const name = String(displayName || "").trim() || (vin ? `Tesla ${vin}` : "Tesla");
+  const nameLower = name.toLowerCase();
+  const candidates = await many("SELECT id, name FROM vehicles WHERE user_id = $1", [userId]);
+  const match = candidates.find(
+    (v) => v.name.toLowerCase().includes(nameLower) || nameLower.includes(v.name.toLowerCase()) || v.name.toLowerCase().includes("tesla"),
+  );
+
+  if (match) {
+    await setTeslaSynced(userId, match.id, true);
+    return { linked: true, created: false, vehicleId: match.id, vehicleName: match.name };
+  }
+
+  const created = await createVehicle(userId, { name });
+  await setTeslaSynced(userId, created.id, true);
+  return { linked: true, created: true, vehicleId: created.id, vehicleName: name };
+}
+
+/**
  * The real 6-hour housekeeping sweep's odometer half (Git #3217) -- reads Tesla's real
  * vehicle_state.odometer for whichever one vehicle is marked tesla_synced and persists it.
  * Returns a real, honest status rather than throwing for any of the ordinary "nothing to do"

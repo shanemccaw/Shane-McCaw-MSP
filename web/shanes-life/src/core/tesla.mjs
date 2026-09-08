@@ -761,6 +761,30 @@ async function sendVehicleCommand(userId, command, body = {}) {
   return json?.response;
 }
 
+/**
+ * On-demand, manually-triggered real commands (Git #3270, the Tesla room's own "Do" card --
+ * design handoff README "Warm it up Start/Stop", "Open the trunk"). Distinct from
+ * sendPreconditioningStart above (private, only ever called as half of Heading Home) and from
+ * scheduleCheckoutTrunkOpen below (the automatic checkout-to-trunk path) -- these three are a
+ * real, direct tap from the room itself, not a composed automation.
+ */
+export async function startPreconditioning(userId) {
+  return sendVehicleCommand(userId, "auto_conditioning_start");
+}
+
+/** `auto_conditioning_stop` -- the real command the design's own "Warm it up" toggle needs and
+ *  this file did not yet send (README: "not in tesla.mjs yet, add it"). */
+export async function stopPreconditioning(userId) {
+  return sendVehicleCommand(userId, "auto_conditioning_stop");
+}
+
+/** Real, immediate trunk open -- the room's own two-tap-confirmed "Open the trunk" row. The
+ *  confirm step lives client-side (the design's own "tap, then confirm within 4 seconds"); by
+ *  the time this is called the real confirmation already happened. */
+export async function openTrunkNow(userId) {
+  return sendVehicleCommand(userId, "actuate_trunk");
+}
+
 /** Real per-user opt-in for the checkout-to-trunk automation -- defaults off (migration 056);
  *  meaningless, and refused, without a real connected + selected vehicle. */
 export async function setAutoTrunkOnCheckout(userId, enabled) {

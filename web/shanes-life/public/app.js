@@ -421,6 +421,14 @@ function inShort(iso) {
   return `in ${diffMin} minutes`;
 }
 
+// Git #3270: Tesla's Fleet API reports temperatures in Celsius (tesla.mjs's climate read is
+// named insideTempC/outsideTempC for exactly this reason); the design's own Tesla room shows
+// them in °F ("Inside 92° · outside 88°"), same convention as every other temperature this app
+// shows.
+function cToF(celsius) {
+  return Math.round((celsius * 9) / 5 + 32);
+}
+
 // ---------------------------------------------------------------------------
 // Today v3 -- the cute skin, sky and real weather (Git #3144, "Round 2 rebuild").
 //
@@ -8242,6 +8250,340 @@ async function viewSettings(view) {
   view.append(log);
 }
 
+const TESLA_TINT = "34,211,238"; // design handoff's own real room-tint table, "Tesla".
+
+/**
+ * The real Tesla room (Git #3270 -- "Tesla is connected but has no room"). Consolidates what was
+ * previously a Settings-only section (checkout-to-trunk toggle/pending list, commute settings,
+ * on-demand climate check -- see renderTeslaSettings below, which now just points here) plus the
+ * real commands the design's own "Do" card calls for (Heading home, Warm it up start/stop, Open
+ * the trunk) that had no UI anywhere yet. Connect/disconnect, the vehicle picker and the webhook
+ * token list stay in Settings per the design handoff's own instruction ("the room owns the
+ * controls" -- those three are one-time setup, not a control you'd reach for from the room).
+ */
+async function viewTesla(view) {
+  roomHeader(view, TESLA_TINT, "Tesla");
+  const room = el("div", { class: "tesla-room" });
+
+  const status = await api("/api/tesla/status");
+
+  if (!status.configured) {
+    room.append(el("div", { class: "card" }, [el("p", { class: "muted small", text: "Tesla is not configured on this server." })]));
+    view.append(room);
+    attachRoomWatermark(view, "heading");
+    return;
+  }
+
+  if (!status.connected) {
+    room.append(
+      el("div", { class: "card" }, [
+        el("p", { text: "Not connected." }),
+        el("p", {
+          class: "muted small",
+          text: "Reads and commands go through Tesla's own Fleet API; commands are signed by the proxy on your own box. Nothing here can drive the car.",
+        }),
+        el("div", { class: "row", style: "margin-top:.6rem" }, [pillButton("a", { href: "/auth/tesla/start" }, "Connect Tesla", "primary")]),
+      ]),
+    );
+    view.append(room);
+    attachRoomWatermark(view, "heading");
+    return;
+  }
+
+  if (!status.vehicleId) {
+    room.append(
+      el("div", { class: "card" }, [
+        el("p", { text: "Connected -- pick a vehicle to finish setup." }),
+        el("a", { class: "small", href: "#/settings", text: "Open Settings → Connected →" }),
+      ]),
+    );
+    view.append(room);
+    attachRoomWatermark(view, "heading");
+    return;
+  }
+
+  room.append(
+    el("p", { class: "muted small", text: `${status.vehicleDisplayName || "Vehicle"} · connected ${agoShort(status.connectedAt)}` }),
+  );
+
+  // Git #3270 gap #2 self-heal: an account that connected and picked a vehicle before this
+  // auto-link existed (Shane's own real, already-connected account) never got a real Cars entity
+  // -- fix it once, silently, the first time the room loads, same as any other real housekeeping
+  // read. A no-op (carsLink.linked === false, reason "already_linked") once it's done.
+  const carsLink = await api("/api/tesla/link-to-cars", { method: "POST" }).catch((err) => ({ linked: false, error: err.message }));
+
+  // -- Right now: on-demand climate + charge read, never polled -- see tesla.mjs's own header. --
+  const rightNow = el("div", { class: "card" });
+  const rightNowHead = el("div", { class: "row spread small muted" }, [
+    el("span", { text: "RIGHT NOW" }),
+    el("span", { id: "tesla-read-ago", text: "not read yet" }),
+  ]);
+  const rangeLine = el("div", { style: "font-size:34px;font-weight:800;margin-top:.3rem", text: "—" });
+  const battLine = el("div", { class: "small muted" });
+  const climateLine = el("div", { class: "small", style: "margin-top:.5rem" });
+  const checkBtn = el("button", { class: "ghost small", text: "Check now" });
+  let lastClimate = null;
+
+  async function runCheckNow() {
+    checkBtn.disabled = true;
+    checkBtn.textContent = "Waking…";
+    try {
+      const [climate, charge] = await Promise.all([api("/api/tesla/climate"), api("/api/tesla/charge")]);
+      lastClimate = climate;
+      rangeLine.textContent = charge.batteryRangeMiles !== null ? `${charge.batteryRangeMiles} mi` : "—";
+      battLine.textContent = [
+        charge.batteryLevel !== null ? `${charge.batteryLevel}%` : null,
+        charge.chargingState || null,
+      ].filter(Boolean).join(" · ") || "No charge data yet.";
+      climateLine.textContent = climate.isPreconditioning
+        ? "Warming up"
+        : climate.isClimateOn
+          ? "Climate on"
+          : "Climate off";
+      if (climate.insideTempC != null) climateLine.textContent += ` · inside ${cToF(climate.insideTempC)}°`;
+      if (climate.outsideTempC != null) climateLine.textContent += ` · outside ${cToF(climate.outsideTempC)}°`;
+      rightNowHead.querySelector("#tesla-read-ago").textContent = "read just now";
+      warmBtn.textContent = lastClimate.isPreconditioning || lastClimate.isClimateOn ? "Stop" : "Start";
+    } catch (err) {
+      climateLine.textContent = err.message;
+    } finally {
+      checkBtn.disabled = false;
+      checkBtn.textContent = "Check now";
+    }
+  }
+  checkBtn.addEventListener("click", runCheckNow);
+
+  rightNow.append(
+    rightNowHead,
+    rangeLine,
+    battLine,
+    climateLine,
+    el("div", { class: "row spread", style: "margin-top:.6rem;align-items:center" }, [
+      el("p", { class: "muted small", style: "margin:0", text: "Reads wake the car, so nothing polls on its own." }),
+      checkBtn,
+    ]),
+  );
+  room.append(rightNow);
+
+  // -- Do: each one a real command. --
+  const doCard = el("div", { class: "card" }, [el("div", { class: "small muted", text: "DO · each one is a real command" })]);
+
+  // Heading home.
+  const headingRow = el("div", { class: "row spread", style: "margin-top:.6rem;align-items:center" });
+  doCard.append(headingRow);
+  api("/api/tesla/heading-home/availability")
+    .then((availability) => {
+      if (!availability) {
+        headingRow.replaceChildren(
+          el("div", {}, [
+            el("div", { class: "title small", text: "Heading home" }),
+            el("div", { class: "meta", text: "Not available yet -- tag a place as your house first." }),
+          ]),
+        );
+        return;
+      }
+      const sendBtn = el("button", {
+        class: "primary small",
+        text: "Send",
+        onClick: async (event) => {
+          event.target.disabled = true;
+          try {
+            const result = await api("/api/tesla/heading-home", { method: "POST", body: JSON.stringify({}) });
+            const navOk = result.navigation?.ok;
+            const climateOk = result.climate?.ok;
+            showQuickToast(navOk && climateOk ? "Navigation and preconditioning sent." : navOk ? "Navigation sent, preconditioning was rejected." : climateOk ? "Preconditioning sent, navigation was rejected." : "Tesla rejected both commands.");
+          } catch (err) {
+            showQuickToast(err.message || "Couldn't reach Tesla.");
+          } finally {
+            event.target.disabled = false;
+          }
+        },
+      });
+      headingRow.replaceChildren(
+        el("div", {}, [
+          el("div", { class: "title small", text: `Heading home · ${availability.recommendedLabel}` }),
+          availability.alternatives.length > 0
+            ? el("div", { class: "meta", text: `Not ${availability.recommendedLabel}? Send it to ${availability.alternatives.map((a) => a.label).join(", ")}.` })
+            : null,
+        ]),
+        sendBtn,
+      );
+    })
+    .catch(() => {
+      headingRow.replaceChildren(el("div", { class: "meta small", text: "Couldn't load Heading home." }));
+    });
+
+  // Warm it up -- start/stop preconditioning, real commands (auto_conditioning_start/_stop).
+  const warmBtn = el("button", {
+    class: "primary small",
+    text: "Start",
+    onClick: async (event) => {
+      event.target.disabled = true;
+      const stopping = lastClimate?.isPreconditioning || lastClimate?.isClimateOn;
+      try {
+        await api(`/api/tesla/climate/${stopping ? "stop" : "start"}`, { method: "POST" });
+        showQuickToast(stopping ? "Stopping preconditioning." : "Preconditioning started.");
+        await runCheckNow();
+      } catch (err) {
+        showQuickToast(err.message || "Tesla rejected the command.");
+      } finally {
+        event.target.disabled = false;
+      }
+    },
+  });
+  doCard.append(
+    el("div", { class: "row spread", style: "margin-top:.6rem;align-items:center" }, [
+      el("div", {}, [
+        el("div", { class: "title small", text: "Warm it up" }),
+        el("div", { class: "meta", text: "Preconditioning · Heading Out opens with it" }),
+      ]),
+      warmBtn,
+    ]),
+  );
+
+  // Open the trunk -- real two-tap confirm (design: "tap, then confirm within 4 seconds").
+  let trunkConfirmTimer = null;
+  const trunkBtn = el("button", {
+    class: "ghost small",
+    text: "Open",
+    onClick: async (event) => {
+      if (!trunkConfirmTimer) {
+        event.target.textContent = "Yes, open it";
+        event.target.classList.add("primary");
+        trunkConfirmTimer = setTimeout(() => {
+          trunkConfirmTimer = null;
+          event.target.textContent = "Open";
+          event.target.classList.remove("primary");
+        }, 4000);
+        return;
+      }
+      clearTimeout(trunkConfirmTimer);
+      trunkConfirmTimer = null;
+      event.target.disabled = true;
+      try {
+        await api("/api/tesla/trunk/open", { method: "POST" });
+        showQuickToast("Opened just now · pops the rear trunk.");
+      } catch (err) {
+        showQuickToast(err.message || "Tesla rejected the command.");
+      } finally {
+        event.target.disabled = false;
+        event.target.textContent = "Open";
+        event.target.classList.remove("primary");
+      }
+    },
+  });
+  doCard.append(
+    el("div", { class: "row spread", style: "margin-top:.6rem;align-items:center" }, [
+      el("div", {}, [
+        el("div", { class: "title small", text: "Open the trunk" }),
+        el("div", { class: "meta", text: "Pops the rear trunk · tap, then confirm" }),
+      ]),
+      trunkBtn,
+    ]),
+  );
+  room.append(doCard);
+
+  // -- On its own: off by default, your call. Checkout-to-trunk + the commute check, moved here
+  // from Settings (Git #3270). --
+  const onItsOwn = el("div", { class: "card" }, [el("div", { class: "small muted", text: "ON ITS OWN · off by default, your call" })]);
+  if (!status.commandsConfigured) {
+    onItsOwn.append(el("p", { class: "muted small", style: "margin-top:.5rem", text: "The vehicle-command proxy is not configured on this server -- these automations are armed but inert until it is." }));
+  }
+  const trunkToggleRow = el("label", { class: "row", style: "margin-top:.6rem;align-items:center;gap:.5rem" }, [
+    el("input", { type: "checkbox", ...(status.autoTrunkOnCheckout ? { checked: true } : {}) }),
+    el("span", { text: "Trunk opens after Done shopping" }),
+  ]);
+  trunkToggleRow.querySelector("input").addEventListener("change", async (event) => {
+    event.target.disabled = true;
+    try {
+      await api("/api/tesla/auto-trunk-on-checkout", { method: "PATCH", body: JSON.stringify({ enabled: event.target.checked }) });
+    } catch (err) {
+      event.target.checked = !event.target.checked;
+      alert(err.message);
+    } finally {
+      event.target.disabled = false;
+    }
+  });
+  onItsOwn.append(trunkToggleRow);
+
+  const pendingOut = el("div", { style: "margin-top:.5rem" });
+  onItsOwn.append(pendingOut);
+  api("/api/tesla/scheduled-commands")
+    .then(({ commands }) => {
+      if (commands.length === 0) return;
+      pendingOut.replaceChildren(
+        ...commands.map((c) =>
+          el("div", { class: "row spread", style: "align-items:center" }, [
+            el("span", { class: "small", text: `Trunk opens ${inShort(c.scheduled_for)}` }),
+            el("button", {
+              class: "ghost small",
+              text: "Cancel",
+              onClick: async (event) => {
+                event.target.disabled = true;
+                await api(`/api/tesla/scheduled-commands/${c.id}`, { method: "DELETE" });
+                render();
+              },
+            }),
+          ]),
+        ),
+      );
+    })
+    .catch(() => {});
+
+  onItsOwn.append(await renderTeslaCommuteSettings());
+  room.append(onItsOwn);
+
+  // -- Cars link: real Tesla<->Money bridge status (Git #3270 gap #2). --
+  const carsCard = el("div", { class: "card" }, [el("div", { class: "title small", text: "Cars" }) ]);
+  try {
+    const { vehicles: cars } = await api("/api/cars");
+    const linked = cars.find((v) => v.tesla?.synced);
+    if (linked) {
+      carsCard.append(
+        el("div", { class: "meta", text: carsLink?.created ? `Added "${linked.name}" and linked it to this Tesla.` : `Linked to "${linked.name}" in Money's Cars tab.` }),
+        el("a", { class: "small", href: `#/car/${linked.id}`, text: "View in Cars →" }),
+      );
+    } else {
+      // Real fallback one-tap link, per Git #3270's own gap #2: the self-heal above can only
+      // fail here if there was genuinely nothing to link it to and creating one also failed.
+      carsCard.append(
+        el("div", { class: "meta", text: carsLink?.error || "Not linked to a Cars entity yet." }),
+        el("button", {
+          class: "ghost small",
+          text: "Link to Cars",
+          onClick: async (event) => {
+            event.target.disabled = true;
+            try {
+              await api("/api/tesla/link-to-cars", { method: "POST" });
+              render();
+            } catch (err) {
+              showQuickToast(err.message);
+            } finally {
+              event.target.disabled = false;
+            }
+          },
+        }),
+      );
+    }
+  } catch {
+    carsCard.append(el("div", { class: "meta", text: "Couldn't load Cars link status." }));
+  }
+  room.append(carsCard);
+
+  room.append(
+    el("div", { class: "card" }, [
+      el("p", {
+        class: "muted small",
+        text: "Reads and commands go through Tesla's own Fleet API; commands are signed by the proxy on your own box. Nothing here can drive the car.",
+      }),
+      el("a", { class: "small", href: "#/settings", text: "Manage the connection, vehicle and webhook links in Settings →" }),
+    ]),
+  );
+
+  view.append(room);
+  attachRoomWatermark(view, "heading");
+}
+
 // Tesla (Git #3158): the real OAuth connection + vehicle pick + the webhook tokens that back the
 // "Heading Out" checklist's real climate-preconditioning trigger. Connecting is a real top-level
 // navigation (a plain <a href="/auth/tesla/start">), not a fetch -- Tesla's own authorize page is
@@ -8345,62 +8687,18 @@ async function renderTeslaSettings(view) {
   }
   section.append(vehicleCard);
 
+  // Git #3270: the checkout-to-trunk toggle/pending list and the commute-check settings that
+  // used to live here moved into the real Tesla room -- "consolidate the currently-scattered
+  // Settings-only Tesla UI into one real room, matching every other room's own pattern" (design
+  // handoff: "The full vehicle picker and hook-token list from renderTeslaSettings stay in
+  // Settings in production; the room owns the controls."). A vehicle is selected, so the room has
+  // real content -- point at it instead of duplicating those controls here.
   if (status.vehicleId) {
-    section.append(await renderTeslaCommuteSettings());
-
-    // Git #3218's real first Tesla-room automation: "Done shopping" -> a real 5-minute countdown
-    // -> the real trunk opens.
-    const commandsCard = el("div", { class: "card" }, [
-      el("div", { class: "title", text: "Checkout-to-trunk" }),
-      el("div", { class: "meta", text: "5 minutes after \"Done shopping\" clears the cart, the trunk opens automatically." }),
-    ]);
-    if (!status.commandsConfigured) {
-      commandsCard.append(el("p", { class: "muted small", style: "margin-top:.5rem", text: "The vehicle-command proxy is not configured on this server -- this automation is armed but inert until it is." }));
-    }
-    const toggleRow = el("label", { class: "row", style: "margin-top:.6rem;align-items:center;gap:.5rem" }, [
-      el("input", { type: "checkbox", ...(status.autoTrunkOnCheckout ? { checked: true } : {}) }),
-      el("span", { text: "Auto-open trunk after checkout" }),
-    ]);
-    toggleRow.querySelector("input").addEventListener("change", async (event) => {
-      event.target.disabled = true;
-      try {
-        await api("/api/tesla/auto-trunk-on-checkout", {
-          method: "PATCH",
-          body: JSON.stringify({ enabled: event.target.checked }),
-        });
-      } catch (err) {
-        event.target.checked = !event.target.checked;
-        alert(err.message);
-      } finally {
-        event.target.disabled = false;
-      }
-    });
-    commandsCard.append(toggleRow);
-
-    const pendingOut = el("div", { style: "margin-top:.5rem" });
-    commandsCard.append(pendingOut);
-    api("/api/tesla/scheduled-commands")
-      .then(({ commands }) => {
-        if (commands.length === 0) return;
-        pendingOut.replaceChildren(
-          ...commands.map((c) =>
-            el("div", { class: "row spread", style: "align-items:center" }, [
-              el("span", { class: "small", text: `Trunk opens ${inShort(c.scheduled_for)}` }),
-              el("button", {
-                class: "ghost small",
-                text: "Cancel",
-                onClick: async (event) => {
-                  event.target.disabled = true;
-                  await api(`/api/tesla/scheduled-commands/${c.id}`, { method: "DELETE" });
-                  render();
-                },
-              }),
-            ]),
-          ),
-        );
-      })
-      .catch(() => {});
-    section.append(commandsCard);
+    section.append(
+      el("div", { class: "card" }, [
+        el("a", { class: "small", href: "#/tesla", text: "Open the Tesla room →" }),
+      ]),
+    );
   }
 
   // The real webhook tokens -- same shape/discipline as MCP and widget tokens above: a
@@ -9047,7 +9345,7 @@ async function viewPetDetail(view, petId) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", wins: "Wins", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", people: "People", person: "", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", wins: "Wins", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", people: "People", person: "", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight", tesla: "Tesla" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -9085,10 +9383,10 @@ async function render() {
   // Things, People, Money, Wins and Inbox are the ninth through thirteenth -- the last five real
   // rooms in ROOM_DEFS that were still falling through to the old generic bar (whose only real
   // action, "Sign out", Settings already covers -- so those five had NO way back to Today at all).
-  // Every real ROOM_DEFS room now has its own header. #app-view.no-header lets .view collapse its
-  // top padding to just the native status-bar safe area instead of assuming a header row sits
-  // above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox";
+  // Git #3270: Tesla is the fourteenth roomHeader() caller. Every real ROOM_DEFS room now has its
+  // own header. #app-view.no-header lets .view collapse its top padding to just the native
+  // status-bar safe area instead of assuming a header row sits above it (see app.css).
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox" || state.route === "tesla";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 
@@ -9116,6 +9414,7 @@ async function render() {
     else if (state.route === "pet") await viewPetDetail(view, state.petId);
     else if (state.route === "car") await viewCarDetail(view, state.carId);
     else if (state.route === "lists") await viewLists(view);
+    else if (state.route === "tesla") await viewTesla(view);
     else if (state.route === "things") await viewThings(view);
     else if (state.route === "people") await viewPeople(view);
     else if (state.route === "person") await viewPersonDetail(view, state.personId);
