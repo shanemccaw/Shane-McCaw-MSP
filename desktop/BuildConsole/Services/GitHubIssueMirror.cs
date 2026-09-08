@@ -96,6 +96,22 @@ namespace BuildConsole.Services
         private static DateTime _lastSkipLogUtc = DateTime.MinValue;
         private static readonly TimeSpan SkipLogThrottle = TimeSpan.FromSeconds(60);
 
+        /// <summary>
+        /// Git #3253 — Shane's own architectural redirect (supersedes the original "new 10-15min
+        /// UI timer + Settings toggle" plan): raised at the end of a genuinely SUCCESSFUL sync
+        /// (never on a skip/no-op/failure), so any real, currently-open mirror-reading view
+        /// (Batter Up, AI Batter Up, ...) can refresh ITSELF the moment fresh data lands, instead
+        /// of a separate poller re-checking the mirror on its own schedule. Zero new GitHub calls,
+        /// zero new timer — this only fires off the sync this class already runs on its own
+        /// existing 5-minute interval (<see cref="SyncInterval"/>).
+        ///
+        /// Raised from whatever background context <see cref="MaybeSyncAsync"/>'s caller runs on
+        /// (today, <see cref="QueueWatcherService"/>'s watcher tick) — NOT the UI thread. Every
+        /// subscriber is responsible for marshaling back to its own Dispatcher before touching any
+        /// UI element; this event does no marshaling itself.
+        /// </summary>
+        public static event Action? SyncCompleted;
+
         private static string? ConnString()
         {
             lock (_connLock)
@@ -646,6 +662,21 @@ namespace BuildConsole.Services
                 summary.Ok
                     ? $"sync ok — {summary.OpenIssues} open issues, {summary.BoardStatuses} board statuses, {summary.BlockedByFetched} blocked_by fetched, {summary.MarkedClosed} newly-closed, in {summary.ElapsedMs}ms. Routine title/board-status/chain reads now serve from the local mirror (Git #3113)."
                     : $"sync FAILED — {summary.Error} ({summary.ElapsedMs}ms). Routine reads fall back to live GitHub until the next successful sync.");
+
+            // Git #3253 — only a genuinely successful sync means fresh data actually landed; a
+            // skip/no-op never reaches this line at all (MaybeSyncAsync returns early), and a
+            // failure must not tell subscribers to re-render against unchanged data.
+            if (summary.Ok)
+            {
+                // Invoke each subscriber independently — one misbehaving view throwing must not
+                // stop a sibling view's refresh from firing.
+                foreach (var handler in (SyncCompleted?.GetInvocationList() ?? Array.Empty<Delegate>()))
+                {
+                    try { ((Action)handler)(); }
+                    catch (Exception ex) { ActivityLog.Log("issue-mirror", $"SyncCompleted subscriber threw (non-fatal): {ex.Message}"); }
+                }
+            }
+
             return summary;
         }
 

@@ -78,6 +78,33 @@ namespace BuildConsole.Controls
             // DetailPane never had this set, so it was showing the near-always-empty SQL
             // Migrations/test-manifest panel instead of chat.
             DetailPane.ShowChatInsteadOfActions = true;
+
+            // Git #3253 — Shane's own architectural redirect: react to the mirror's own
+            // SyncCompleted event instead of a second polling timer. Subscribed only while this
+            // document tab is actually open (Loaded/Unloaded — same lifecycle idiom
+            // DispatchPanel's countdown timer already uses), so a closed tab's instance doesn't
+            // keep repainting off-screen and a static event never outlives the view.
+            Loaded += BatterUpPanel_Loaded;
+            Unloaded += BatterUpPanel_Unloaded;
+        }
+
+        private void BatterUpPanel_Loaded(object sender, RoutedEventArgs e)
+        {
+            Services.GitHubIssueMirror.SyncCompleted += OnMirrorSyncCompleted;
+        }
+
+        private void BatterUpPanel_Unloaded(object sender, RoutedEventArgs e)
+        {
+            Services.GitHubIssueMirror.SyncCompleted -= OnMirrorSyncCompleted;
+        }
+
+        /// <summary>Git #3253 — fired from whatever background context the mirror sync runs on
+        /// (the watcher tick), never the UI thread. Marshal to the Dispatcher before touching
+        /// anything, then just re-run the panel's own existing local-mirror RefreshAsync — no new
+        /// GitHub calls, the same call a manual refresh already makes.</summary>
+        private void OnMirrorSyncCompleted()
+        {
+            Dispatcher.InvokeAsync(async () => await RefreshAsync());
         }
 
         /// <summary>
