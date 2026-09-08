@@ -460,6 +460,34 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
 .dates-room button.small { border-radius: 999px; }
 .dates-room .date-tile { border-radius: 58% 42% 55% 45% / 48% 56% 44% 52%; }
 
+/* Pets Round 2 (Git #3193): same real scoped-conversion shape as .dates-room above -- no
+   dedicated "Shanes Life NN - Pets.dc.html" export exists (#3183's own audit confirmed it),
+   so this scopes the established Round 2 card system to this room alone via roomHeader()'s
+   second real caller. */
+.pets-room { position: relative; display: grid; gap: 14px; }
+.pets-room .tile,
+.pets-room .card { border-radius: 22px; }
+
+/* Pets (design contract Section 6 + README "Screens" #10): 44px initial-letter avatar, same
+   real convention as .person-avatar (Section 7) -- one fixed room tint, not a per-pet hash. */
+.pet-avatar {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: rgba(52, 211, 153, 0.16);
+  color: #34d399;
+  display: grid;
+  place-items: center;
+  font-weight: var(--weight-bold);
+  font-size: 16px;
+}
+
+/* A due line inside its vaccine's lead window goes amber, same real "needs you" signal as
+   Meds' own .refill-days-left.due (Git #3141 listPets already computes surfacesInDays for
+   exactly this). */
+.when.due { color: #fbbf24; font-weight: var(--weight-semibold); }
+
 /* Flat / Category / Best path (Git #3108) -- the design's own real segmented control. */
 .shop-segment {
   display: grid;

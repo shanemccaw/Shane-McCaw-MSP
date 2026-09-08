@@ -664,6 +664,27 @@ function whenDate(isoDate) {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+/** "Mar 2020" -- month + year, no day (Git #3193: a pet's "born" line, distinct from whenDate's
+ *  day-level format since a birthdate that old is never "3 days ago"). */
+function monthYear(isoDate) {
+  if (!isoDate) return null;
+  const d = new Date(`${String(isoDate).slice(0, 10)}T00:00:00`);
+  return d.toLocaleDateString([], { month: "short", year: "numeric" });
+}
+
+/** Real full years since a birthdate (Git #3193, design contract Section 6 / README "Screens"
+ *  #10: a pet card's "species · breed · age"). Same has-the-birthday-happened-yet math as any
+ *  real age calculation -- a bare year subtraction over-counts until the birthday passes. */
+function ageYears(bornISO) {
+  if (!bornISO) return null;
+  const born = new Date(`${String(bornISO).slice(0, 10)}T00:00:00`);
+  const now = new Date();
+  let age = now.getFullYear() - born.getFullYear();
+  const hadBirthdayThisYear = now.getMonth() > born.getMonth() || (now.getMonth() === born.getMonth() && now.getDate() >= born.getDate());
+  if (!hadBirthdayThisYear) age -= 1;
+  return age;
+}
+
 // ---------------------------------------------------------------------------
 // auth
 // ---------------------------------------------------------------------------
@@ -7750,15 +7771,31 @@ async function viewDateDetail(view, dateId) {
 
 // ---------------------------------------------------------------------------
 // pets (Git #3141 -- design contract pack Section 6)
+// Git #3193 -- Round 2 visual rebuild. No dedicated "Shanes Life NN - Pets.dc.html" export
+// exists (#3183's own audit confirmed it), so this follows the real design prose that does
+// exist: README "Screens" #10 (44px initial avatar, species/breed/age, amber-when-in-lead-
+// window due line) plus the rendered screenshots/06-pets.png reference -- and reuses the
+// generic roomHeader() chrome Dates (#3192) built for exactly this ("every *other* room's own
+// Round 2 pass reuses verbatim"), rather than a third bespoke header.
 // ---------------------------------------------------------------------------
 
+const PETS_TINT = "52,211,153"; // README's own room-tint table, "Pets".
+
 function petCardEl(pet) {
-  const meta = [pet.species, pet.breed].filter(Boolean).join(" · ") || null;
+  const age = ageYears(pet.born);
+  const born = monthYear(pet.born);
+  const ageBit = age === null ? null : born ? `${age}, born ${born}` : `${age}`;
+  const meta = [pet.species, pet.breed, ageBit].filter(Boolean).join(" · ") || null;
+  // A vaccine goes amber the moment it enters its lead window -- listPets already computes
+  // surfacesInDays (dueInDays - leadDays) for exactly this, same "needs you" signal as Meds'
+  // own .refill-days-left.due.
+  const dueSoon = pet.nextVaccine !== null && pet.nextVaccine.surfacesInDays <= 0;
   const right = pet.nextVaccine
-    ? el("div", { class: "when", text: `${pet.nextVaccine.name}: ${dueLabel(pet.nextVaccine.dueInDays, pet.nextVaccine.dueOn)}` })
-    : null;
+    ? el("div", { class: `when${dueSoon ? " due" : ""}`, text: `${pet.nextVaccine.name}: ${dueLabel(pet.nextVaccine.dueInDays, pet.nextVaccine.dueOn)}` })
+    : el("div", { class: "when", text: "Nothing due" });
   return el("a", { class: "tile", href: `#/pet/${pet.id}` }, [
     el("div", { class: "date-row" }, [
+      el("div", { class: "pet-avatar", text: personInitial(pet.name) }),
       el("div", { class: "body" }, [
         el("div", { class: "title", text: pet.name }),
         meta ? el("div", { class: "meta", text: meta }) : null,
@@ -7771,15 +7808,11 @@ function petCardEl(pet) {
 async function viewPets(view) {
   const items = await api("/api/pets");
 
-  view.append(
-    el("section", { class: "section" }, [
-      el("h2", { text: "Pets" }),
-      el("p", { class: "muted small", text: "Vet visits show up on Dates; vaccines, feeding and meds live here." }),
-    ]),
-  );
+  roomHeader(view, PETS_TINT, "Pets");
+  const room = el("div", { class: "pets-room" });
 
   if (items.pets.length === 0) {
-    view.append(
+    room.append(
       empty(
         "No pets on file yet.",
         "Tell Claude something like \"we have a dog named Pepper, a lab\" and it'll show up here.",
@@ -7788,12 +7821,25 @@ async function viewPets(view) {
     );
   } else {
     const list = el("section", { class: "section" }, items.pets.map(petCardEl));
-    view.append(list);
+    room.append(list);
   }
+
+  // Real, verbatim explanatory copy from the design's own rendered reference (screenshots/
+  // 06-pets.png, First Slice Prototype) -- same "vet visit is an appointment, feeding/meds ride
+  // Meds, vaccines get a month's notice" prose as contract pack Section 6, not paraphrased.
+  room.append(
+    el("section", { class: "section" }, [
+      el("p", {
+        class: "muted small",
+        text: "A vet visit is an appointment with the pet as the subject, same day-before reminder, same ask next time note. Feeding and pet meds ride the two Meds batches. Vaccines get a month's notice.",
+      }),
+    ]),
+  );
 
   // Git #3183: no dedicated "Add pet" form -- a new pet is a capture (set_pet over MCP
   // already exists for it), same as everything else (contract pack Section 8).
 
+  view.append(room);
   attachRoomWatermark(view, "pets");
 }
 
@@ -7845,7 +7891,10 @@ async function viewPetDetail(view, petId) {
     el("section", { class: "section" }, [
       el("div", { class: "card" }, [
         el("h1", { text: pet.name, style: "margin:0 0 .25rem" }),
-        el("div", { class: "meta", text: [pet.species, pet.breed, pet.born ? `born ${whenDate(pet.born)}` : null].filter(Boolean).join(" · ") || "No details on file." }),
+        // Git #3193: same age/born convention as the list card (petCardEl) -- whenDate's
+        // day-level "Mon D" format drops the year, which is meaningless for a birthdate years
+        // back (a pet "born Mar 15" reads like three days ago, not six years ago).
+        el("div", { class: "meta", text: [pet.species, pet.breed, pet.born ? `${ageYears(pet.born)}, born ${monthYear(pet.born)}` : null].filter(Boolean).join(" · ") || "No details on file." }),
         pet.notes ? el("p", { class: "muted", text: pet.notes }) : null,
         el("div", { class: "row", style: "margin-top:.75rem" }, [
           el("button", {
@@ -7951,10 +8000,13 @@ async function render() {
   // card-colored header band"), and its own content (title + live "you can make" count) now
   // supplies enough context on its own, same as #3190's own real question asked. Git #3192:
   // Dates and its detail screen are the fourth and fifth, via the generic roomHeader() (README
-  // "Rooms (sub pages)"). Every other room still shows the generic bar until it gets its own
-  // redesign pass. #app-view.no-header lets .view collapse its top padding to just the native
-  // status-bar safe area instead of assuming a header row sits above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "dates" || state.route === "date";
+  // "Rooms (sub pages)"). Git #3193: Pets is the sixth, the second real roomHeader() caller --
+  // the generic bar's only other real function was "Sign out", which Settings' own "Sign out
+  // everywhere" (viewSettings) already covers, the same real check that cleared Shopping/Dates.
+  // Every other room still shows the generic bar until it gets its own redesign pass.
+  // #app-view.no-header lets .view collapse its top padding to just the native status-bar safe
+  // area instead of assuming a header row sits above it (see app.css).
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "dates" || state.route === "date" || state.route === "pets";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 
