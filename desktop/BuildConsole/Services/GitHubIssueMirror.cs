@@ -392,6 +392,134 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>
+        /// Git #3358 — the Git Board tree's core open-issue read, served entirely from the local
+        /// mirror instead of the live 500+-issue GraphQL walk
+        /// (<see cref="GitHubApiClient.ListBoardIssuesAsync"/>). This is the single most-visible
+        /// remaining piece of the #3113 rate-limit fix: the whole #3113/#3134 effort scoped only to
+        /// Batter Up / AI Batter Up / chat-dock / title lookups, so the Git Board — the app's most-used
+        /// surface — still fired a live GraphQL walk on every refresh and failed outright whenever the
+        /// rate-limit circuit opened, even while Batter Up (mirror-backed) kept working.
+        ///
+        /// Reconstructs the full <see cref="GitBoardIssue"/> shape the board renders from the mirror's
+        /// now-extended columns (Git #3358 migration): title/state/labels/body + milestone assignment,
+        /// parent/epic linkage (+ the parent's own milestone, for Focus Mode), the sub-issue rollup
+        /// counts, child issue numbers, and the GraphQL databaseId. These are the POST-PROCESSED values
+        /// the full walk already persisted (parent inference, transitive milestone inheritance and
+        /// bidirectional child reconciliation are all applied inside ListBoardIssuesInternalAsync before
+        /// the sync ever sees them), so no post-processing and no live call is needed here.
+        ///
+        /// Returns <c>null</c> when the mirror has never completed a full sync (<see cref="HasUsableDataAsync"/>)
+        /// or on ANY error — the caller falls back to its existing live walk, exactly like every other
+        /// #3113 mirror read, so this can never make the board worse than today, only cheaper and
+        /// rate-limit-proof on the common hit. A non-null (possibly empty) list is authoritative.
+        /// </summary>
+        public static async Task<List<GitBoardIssue>?> TryGetBoardIssuesAsync(bool openOnly = true)
+        {
+            try
+            {
+                // Fail-closed to the live path until the mirror has genuinely synced at least once —
+                // an empty/never-populated table must not read as "the board is empty".
+                if (!await HasUsableDataAsync()) return null;
+
+                await using var conn = await TryOpenAsync();
+                if (conn == null) return null;
+
+                string sql = @"
+                    SELECT issue_number, title, state, labels, html_url, body, created_at, closed_at,
+                           milestone_title, milestone_number, parent_number, parent_milestone_number,
+                           sub_issue_count, sub_issue_completed, sub_issue_percent, child_issue_numbers, database_id
+                      FROM bt_issue_mirror";
+                if (openOnly) sql += " WHERE state = 'open'";
+                sql += " ORDER BY issue_number DESC";
+
+                await using var cmd = new NpgsqlCommand(sql, conn);
+                var list = new List<GitBoardIssue>();
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync()) list.Add(MapBoardRow(reader));
+                return list;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("issue-mirror", $"TryGetBoardIssuesAsync(openOnly={openOnly}) failed ({ex.Message}) — caller falls back to live.");
+                return null;
+            }
+        }
+
+        private static GitBoardIssue MapBoardRow(NpgsqlDataReader r)
+        {
+            var rawState = r.IsDBNull(2) ? "open" : r.GetString(2);
+            return new GitBoardIssue
+            {
+                Number = r.GetInt32(0),
+                Title = r.IsDBNull(1) ? "" : r.GetString(1),
+                // The live board path (GraphQL) yields UPPERCASE "OPEN"/"CLOSED", and several callers
+                // compare State == "OPEN" EXACTLY (LeftSidebar promotion/diff/signature) — the mirror
+                // stores lowercase, so normalize here to match the live shape exactly.
+                State = string.Equals(rawState, "closed", StringComparison.OrdinalIgnoreCase) ? "CLOSED" : "OPEN",
+                Labels = r.IsDBNull(3)
+                    ? new List<GitHubLabel>()
+                    : r.GetFieldValue<string[]>(3).Where(n => !string.IsNullOrEmpty(n)).Select(n => new GitHubLabel { Name = n }).ToList(),
+                HtmlUrl = r.IsDBNull(4) ? "" : r.GetString(4),
+                Body = r.IsDBNull(5) ? "" : r.GetString(5),
+                CreatedAt = r.IsDBNull(6) ? (DateTimeOffset?)null : r.GetFieldValue<DateTimeOffset>(6),
+                ClosedAt = r.IsDBNull(7) ? (DateTimeOffset?)null : r.GetFieldValue<DateTimeOffset>(7),
+                MilestoneTitle = r.IsDBNull(8) ? null : r.GetString(8),
+                MilestoneNumber = r.IsDBNull(9) ? (int?)null : r.GetInt32(9),
+                ParentNumber = r.IsDBNull(10) ? (int?)null : r.GetInt32(10),
+                ParentMilestoneNumber = r.IsDBNull(11) ? (int?)null : r.GetInt32(11),
+                SubIssueCount = r.IsDBNull(12) ? 0 : r.GetInt32(12),
+                SubIssueCompleted = r.IsDBNull(13) ? 0 : r.GetInt32(13),
+                SubIssuePercent = r.IsDBNull(14) ? 0 : r.GetInt32(14),
+                ChildIssueNumbers = r.IsDBNull(15) ? new List<int>() : r.GetFieldValue<int[]>(15).ToList(),
+                DatabaseId = r.IsDBNull(16) ? 0 : r.GetInt64(16),
+            };
+        }
+
+        /// <summary>
+        /// Git #3358 — the Git Board's per-milestone real open/closed counts (its milestone header
+        /// badges "947/1430 · 66%"), served from the local <c>bt_milestone_mirror</c> (refreshed by
+        /// the full walk) instead of the live milestones REST call the board fired in the SAME try
+        /// block as its issue walk — so a rate-limit-circuit failure no longer aborts the whole board.
+        /// Returns <c>null</c> when the milestone mirror is empty / never synced or on any error, so the
+        /// caller falls back to its live throttled fetch (cold-start / genuinely-no-milestones case).
+        /// A preserved (stale-but-present) set is returned as-is so the board stays resilient when the
+        /// most recent full walk's milestone fetch failed with the circuit open.
+        /// </summary>
+        public static async Task<List<GitHubApiClient.GitHubMilestoneInfo>?> TryGetMilestoneInfosAsync()
+        {
+            try
+            {
+                if (!await HasUsableDataAsync()) return null;
+                await using var conn = await TryOpenAsync();
+                if (conn == null) return null;
+                await using var cmd = new NpgsqlCommand(
+                    "SELECT number, title, state, open_issues, closed_issues FROM bt_milestone_mirror ORDER BY number", conn);
+                var list = new List<GitHubApiClient.GitHubMilestoneInfo>();
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    list.Add(new GitHubApiClient.GitHubMilestoneInfo
+                    {
+                        Number = reader.GetInt32(0),
+                        Title = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                        State = reader.IsDBNull(2) ? "open" : reader.GetString(2),
+                        OpenIssues = reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+                        ClosedIssues = reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+                    });
+                }
+                // Empty milestone mirror (a full sync landed but never a successful milestone fetch) →
+                // treat as a miss so the caller does its live milestone fetch rather than rendering a
+                // board with zero header badges.
+                return list.Count > 0 ? list : null;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("issue-mirror", $"TryGetMilestoneInfosAsync failed ({ex.Message}) — caller falls back to live.");
+                return null;
+            }
+        }
+
         /// <summary>The persisted sync bookkeeping: when the last full sync completed, whether it
         /// succeeded, and a short note. All null/false before the first ever sync.</summary>
         public static async Task<(DateTime? LastFullSyncAt, bool Ok, string? Note)> GetSyncStateAsync()
@@ -899,6 +1027,26 @@ namespace BuildConsole.Services
             }
             summary.BoardStatuses = boardStatuses.Count;
 
+            // Git #3358 — per-milestone real open/closed counts (the Git Board's milestone
+            // header badges "947/1430 · 66%"), from GitHub's own milestones object. Best-effort
+            // and independent of the issue walk: a failure here (e.g. the rate-limit circuit
+            // being open) preserves the existing bt_milestone_mirror rows rather than blanking
+            // the board's badges, exactly like the board-status sweep above. Fetched here —
+            // OUTSIDE the DB transaction below — so the upsert never holds a tx open across a
+            // network call. The Git Board used to fire this same call LIVE, in the same try
+            // block as its issue walk, so a circuit-open failure aborted the whole board; serving
+            // it from the mirror is what lets the board render its real milestone counts with the
+            // circuit open (and survives a BuildConsole restart, which the old in-memory cache did not).
+            List<GitHubApiClient.GitHubMilestoneInfo>? milestones = null;
+            try
+            {
+                milestones = await gh.GetMilestonesAsync();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("issue-mirror", $"sync: milestone-counts fetch failed ({ex.Message}) — preserving existing mirrored milestone counts this pass (Git #3358).");
+            }
+
             // 3. blocked_by for blocked-labeled issues only, inverted to blocking.
             bool blockedByPassComplete = true;
             var blockedByMap = new Dictionary<int, List<int>>();   // number -> declared blockers
@@ -961,10 +1109,14 @@ namespace BuildConsole.Services
                     INSERT INTO bt_issue_mirror
                         (issue_number, title, state, board_status_option_id, board_status_name,
                          labels, blocked_by_numbers, blocking_numbers, html_url, created_at, closed_at,
+                         body, milestone_title, milestone_number, parent_number, parent_milestone_number,
+                         sub_issue_count, sub_issue_completed, sub_issue_percent, child_issue_numbers, database_id,
                          last_synced_at, updated_at)
                     VALUES
                         (@n, @title, 'open', @boardOpt, @boardName,
                          @labels, @blockedBy, @blocking, @url, @createdAt, NULL,
+                         @body, @mTitle, @mNumber, @pNumber, @pmNumber,
+                         @subCount, @subCompleted, @subPercent, @children, @dbId,
                          NOW(), NOW())
                     ON CONFLICT (issue_number) DO UPDATE SET
                         title  = EXCLUDED.title,
@@ -977,6 +1129,21 @@ namespace BuildConsole.Services
                         html_url = EXCLUDED.html_url,
                         created_at = COALESCE(EXCLUDED.created_at, bt_issue_mirror.created_at),
                         closed_at = NULL,
+                        -- Git #3358 — the full walk is authoritative for every Git Board tree field
+                        -- (all come from the same ListBoardIssuesAsync result, already post-processed).
+                        -- The cheap incremental pass never touches these (its light REST since= shape
+                        -- carries none of them): it omits them from its own INSERT (DB defaults on a
+                        -- new row) and its DO UPDATE (preserved on an existing row), corrected here.
+                        body = EXCLUDED.body,
+                        milestone_title = EXCLUDED.milestone_title,
+                        milestone_number = EXCLUDED.milestone_number,
+                        parent_number = EXCLUDED.parent_number,
+                        parent_milestone_number = EXCLUDED.parent_milestone_number,
+                        sub_issue_count = EXCLUDED.sub_issue_count,
+                        sub_issue_completed = EXCLUDED.sub_issue_completed,
+                        sub_issue_percent = EXCLUDED.sub_issue_percent,
+                        child_issue_numbers = EXCLUDED.child_issue_numbers,
+                        database_id = EXCLUDED.database_id,
                         last_synced_at = NOW(),
                         updated_at = NOW()", conn, tx))
                 {
@@ -989,6 +1156,18 @@ namespace BuildConsole.Services
                     var pBlocking = cmd.Parameters.Add(new NpgsqlParameter("@blocking", NpgsqlDbType.Array | NpgsqlDbType.Integer));
                     var pUrl = cmd.Parameters.Add(new NpgsqlParameter("@url", NpgsqlDbType.Text));
                     var pCreated = cmd.Parameters.Add(new NpgsqlParameter("@createdAt", NpgsqlDbType.TimestampTz));
+                    // Git #3358 — the Git Board tree fields (persisted from the same enriched
+                    // GitBoardIssue the board itself renders, so a mirror read reconstructs it exactly).
+                    var pBody = cmd.Parameters.Add(new NpgsqlParameter("@body", NpgsqlDbType.Text));
+                    var pMTitle = cmd.Parameters.Add(new NpgsqlParameter("@mTitle", NpgsqlDbType.Text));
+                    var pMNumber = cmd.Parameters.Add(new NpgsqlParameter("@mNumber", NpgsqlDbType.Integer));
+                    var pPNumber = cmd.Parameters.Add(new NpgsqlParameter("@pNumber", NpgsqlDbType.Integer));
+                    var pPMNumber = cmd.Parameters.Add(new NpgsqlParameter("@pmNumber", NpgsqlDbType.Integer));
+                    var pSubCount = cmd.Parameters.Add(new NpgsqlParameter("@subCount", NpgsqlDbType.Integer));
+                    var pSubCompleted = cmd.Parameters.Add(new NpgsqlParameter("@subCompleted", NpgsqlDbType.Integer));
+                    var pSubPercent = cmd.Parameters.Add(new NpgsqlParameter("@subPercent", NpgsqlDbType.Integer));
+                    var pChildren = cmd.Parameters.Add(new NpgsqlParameter("@children", NpgsqlDbType.Array | NpgsqlDbType.Integer));
+                    var pDbId = cmd.Parameters.Add(new NpgsqlParameter("@dbId", NpgsqlDbType.Bigint));
                     var pBoardSweepOk = cmd.Parameters.Add(new NpgsqlParameter("@boardSweepOk", NpgsqlDbType.Boolean) { Value = boardSweepOk });
                     var pHaveBlockedBy = cmd.Parameters.Add(new NpgsqlParameter("@haveBlockedBy", NpgsqlDbType.Boolean));
                     var pBlockingComplete = cmd.Parameters.Add(new NpgsqlParameter("@blockingComplete", NpgsqlDbType.Boolean) { Value = blockedByPassComplete });
@@ -1016,6 +1195,17 @@ namespace BuildConsole.Services
                         pBlocking.Value = blockingMap.TryGetValue(issue.Number, out var bl) ? bl.ToArray() : Array.Empty<int>();
                         pUrl.Value = issue.HtmlUrl ?? "";
                         pCreated.Value = (object?)issue.CreatedAt ?? DBNull.Value;
+                        // Git #3358 — Git Board tree fields, straight off the enriched GitBoardIssue.
+                        pBody.Value = issue.Body ?? "";
+                        pMTitle.Value = (object?)issue.MilestoneTitle ?? DBNull.Value;
+                        pMNumber.Value = (object?)issue.MilestoneNumber ?? DBNull.Value;
+                        pPNumber.Value = (object?)issue.ParentNumber ?? DBNull.Value;
+                        pPMNumber.Value = (object?)issue.ParentMilestoneNumber ?? DBNull.Value;
+                        pSubCount.Value = issue.SubIssueCount;
+                        pSubCompleted.Value = issue.SubIssueCompleted;
+                        pSubPercent.Value = issue.SubIssuePercent;
+                        pChildren.Value = issue.ChildIssueNumbers?.ToArray() ?? Array.Empty<int>();
+                        pDbId.Value = issue.DatabaseId;
 
                         await cmd.ExecuteNonQueryAsync();
                     }
@@ -1034,6 +1224,49 @@ namespace BuildConsole.Services
                 {
                     closeCmd.Parameters.AddWithValue("@open", NpgsqlDbType.Array | NpgsqlDbType.Integer, openNums);
                     summary.MarkedClosed = await closeCmd.ExecuteNonQueryAsync();
+                }
+
+                // Git #3358 — refresh the mirrored per-milestone open/closed counts (the Git
+                // Board's milestone header badges) within the same tx. ONLY when the fetch above
+                // succeeded (milestones != null); a failed fetch (e.g. rate-limit circuit open)
+                // preserves the existing rows so the board keeps rendering its last-known real
+                // counts. Replace-in-place: upsert every fetched milestone, then delete any mirror
+                // row whose milestone no longer exists on GitHub (deleted/merged) so a stale
+                // header can't linger.
+                if (milestones != null)
+                {
+                    await using (var msCmd = new NpgsqlCommand(@"
+                        INSERT INTO bt_milestone_mirror (number, title, state, open_issues, closed_issues, last_synced_at)
+                        VALUES (@num, @title, @state, @open, @closed, NOW())
+                        ON CONFLICT (number) DO UPDATE SET
+                            title = EXCLUDED.title,
+                            state = EXCLUDED.state,
+                            open_issues = EXCLUDED.open_issues,
+                            closed_issues = EXCLUDED.closed_issues,
+                            last_synced_at = NOW()", conn, tx))
+                    {
+                        var mNum = msCmd.Parameters.Add(new NpgsqlParameter("@num", NpgsqlDbType.Integer));
+                        var mTitle = msCmd.Parameters.Add(new NpgsqlParameter("@title", NpgsqlDbType.Text));
+                        var mState = msCmd.Parameters.Add(new NpgsqlParameter("@state", NpgsqlDbType.Text));
+                        var mOpen = msCmd.Parameters.Add(new NpgsqlParameter("@open", NpgsqlDbType.Integer));
+                        var mClosed = msCmd.Parameters.Add(new NpgsqlParameter("@closed", NpgsqlDbType.Integer));
+                        foreach (var mi in milestones)
+                        {
+                            mNum.Value = mi.Number;
+                            mTitle.Value = mi.Title ?? "";
+                            mState.Value = mi.IsClosed ? "closed" : "open";
+                            mOpen.Value = mi.OpenIssues;
+                            mClosed.Value = mi.ClosedIssues;
+                            await msCmd.ExecuteNonQueryAsync();
+                        }
+                    }
+                    var msNums = milestones.Select(m => m.Number).ToArray();
+                    await using (var delCmd = new NpgsqlCommand(
+                        "DELETE FROM bt_milestone_mirror WHERE NOT (number = ANY(@nums))", conn, tx))
+                    {
+                        delCmd.Parameters.AddWithValue("@nums", NpgsqlDbType.Array | NpgsqlDbType.Integer, msNums);
+                        await delCmd.ExecuteNonQueryAsync();
+                    }
                 }
 
                 await tx.CommitAsync();

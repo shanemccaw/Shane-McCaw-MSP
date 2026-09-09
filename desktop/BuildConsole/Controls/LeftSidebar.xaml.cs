@@ -1899,18 +1899,57 @@ namespace BuildConsole.Controls
             // an actual measured fact from now on instead of a guess. See this
             // issue's own investigation for the before-fix numbers this replaced.
             var fetchSw = System.Diagnostics.Stopwatch.StartNew();
+            bool servedFromMirror = false;
             try
             {
                 var client = new GitHubApiClient(settings.GitHubPat);
-                // Default Git Board = real OPEN issues only. Closed drop out of
-                // view entirely ("done done get out of my view") and are
-                // reachable solely via the 🟢 Done chip (IssueFilter_Click).
-                issues = await client.ListBoardIssuesAsync(GitHubIssueState.Open);
-                // Git #875 — real open/closed counts per milestone; the issue
-                // list above is OPEN-only, so it can never supply a real
-                // "closed" count on its own (see GitMilestone.HasRealCounts).
-                // Git #876 (reopened) — throttled/cached, see GetMilestonesThrottledAsync.
-                milestoneInfos = await GetMilestonesThrottledAsync(client, forceFresh);
+
+                // Git #3358 — the Git Board's core OPEN-issue list now reads from the local
+                // bt_issue_mirror (the same #3113/#3134 pattern Batter Up / AI Batter Up already
+                // use), so the board no longer fires a live 500+-issue GraphQL walk on every
+                // refresh and stays resilient while the rate-limit circuit is open. This was the
+                // single most-visible surface the #3113 mirror effort never covered — it scoped
+                // only to Batter Up / AI Batter Up / chat-dock / title lookups, so the Git Board
+                // still failed outright every time the circuit opened while Batter Up kept working.
+                // The mirror carries every field the tree renders (title/state/labels/body,
+                // milestone, parent/epic linkage, sub-issue rollup, child numbers, databaseId) —
+                // the #3358 migration extended it and SyncAsync now persists them off the same
+                // enriched GitBoardIssue set. QueueWatcherService's own periodic MaybeSyncAsync
+                // (5-min incremental / 30-min full walk) keeps it current, independent of this board.
+                if (forceFresh)
+                {
+                    // A manual Refresh still forces a full LIVE re-sync INTO the mirror first, so
+                    // Shane keeps a guaranteed-fresh escape hatch. Best-effort: if GitHub is
+                    // unreachable / the circuit is open, we still read whatever the mirror has below.
+                    try { await BuildConsole.Services.GitHubIssueMirror.MaybeSyncAsync(client, force: true); }
+                    catch (Exception ex) { ActivityLog.Log("git-board.data", $"forced mirror re-sync failed ({ex.Message}) — reading last mirrored state (Git #3358)."); }
+                }
+
+                var mirroredIssues = await BuildConsole.Services.GitHubIssueMirror.TryGetBoardIssuesAsync(openOnly: true);
+                if (mirroredIssues != null)
+                {
+                    issues = mirroredIssues;
+                    servedFromMirror = true;
+                }
+                else
+                {
+                    // Mirror not usable yet (never completed a full sync) — fall back to the live
+                    // OPEN walk exactly as before; the background sync self-populates the mirror for
+                    // subsequent refreshes. Default Git Board = real OPEN issues only (closed drop
+                    // out of view entirely — "done done get out of my view" — and are reachable
+                    // solely via the 🟢 Done chip / IssueFilter_Click).
+                    issues = await client.ListBoardIssuesAsync(GitHubIssueState.Open);
+                }
+
+                // Git #875 — real open/closed counts per milestone; the issue list above is
+                // OPEN-only, so it can never supply a real "closed" count on its own (see
+                // GitMilestone.HasRealCounts). Git #3358 — served mirror-first too
+                // (bt_milestone_mirror), because the board fired this once-live REST call in the
+                // SAME try block as the issue walk, so a rate-limit-circuit failure here aborted
+                // the whole board. Falls back to the live throttled/cached fetch (Git #876,
+                // #923 forceFresh) only when the milestone mirror is empty (cold start).
+                milestoneInfos = await BuildConsole.Services.GitHubIssueMirror.TryGetMilestoneInfosAsync()
+                                 ?? await GetMilestonesThrottledAsync(client, forceFresh);
                 SyncError?.Invoke(this, null);
             }
             catch (Exception ex)
@@ -1924,7 +1963,11 @@ namespace BuildConsole.Controls
             fetchSw.Stop();
 
             ActivityLog.Log("git-board.data",
-                $"loaded {issues.Count} open issue(s), {issues.Count(i => i.IsEpic)} epic(s) — GraphQL+milestone fetch took {fetchSw.ElapsedMilliseconds}ms");
+                $"loaded {issues.Count} open issue(s), {issues.Count(i => i.IsEpic)} epic(s) — " +
+                (servedFromMirror
+                    ? "from local mirror (Git #3358 — no live GraphQL walk)"
+                    : "live GraphQL walk (mirror not yet populated)") +
+                $"; fetch took {fetchSw.ElapsedMilliseconds}ms");
 
             // Shane, 2026-08-28: "when a build is in Verifying state and then
             // the Git issue behind it is closed, it should change to closed
