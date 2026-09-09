@@ -552,6 +552,12 @@ router.get(
           .where(
             and(
               eq(mspDiagnosticFindingsTable.runId, latestFindingsRun.runId),
+              // #3102: defense-in-depth — customer_id is denormalized on this
+              // table with only an FK from run_id to msp_diagnostic_runs, not a
+              // constraint tying a finding's own customer_id to its run's. Scope
+              // this read by tenant on its own terms rather than by inference
+              // that run_id never spans customers.
+              eq(mspDiagnosticFindingsTable.customerId, customerId),
               inArray(mspDiagnosticFindingsTable.severity, ["critical", "warning"]),
             ),
           );
