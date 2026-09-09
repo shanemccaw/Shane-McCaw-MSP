@@ -998,6 +998,21 @@ export function buildApiRouter() {
     return sendJson(res, 200, { items, groups: pantry.groupPantryByCategory(items), houses });
   });
 
+  // Real Cook-mode ingredient-checkoff depletion (Git #3312) -- the one real write this room's
+  // "no forms, anywhere, ever" comment above doesn't cover, because it isn't a form: Cook mode's
+  // own checkbox tick fires this directly, same as capture-grammar and MCP already write pantry
+  // rows without a form. Silent, no confirmation (Shane's own real decision on #3308); does
+  // nothing (no fabricated row, no error) when the ingredient text doesn't unambiguously match a
+  // real pantry row -- see pantry.depleteForCookCheckoff's own doc comment.
+  router.post("/api/pantry/deplete-checkoff", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const text = String(body?.text || "").trim();
+    if (!text) throw badRequest("text is required");
+    const item = await pantry.depleteForCookCheckoff(user.id, text);
+    return sendJson(res, 200, { item });
+  });
+
   // "Who fixed what" -- real service-provider contact log (Git #3156). Each capture is a new
   // real history row, not a latest-state update -- see contacts.recordContact.
   router.post("/api/contacts", async (req, res, _params, ctx) => {

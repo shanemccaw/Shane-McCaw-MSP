@@ -2970,7 +2970,14 @@ async function viewCook(view, recipeId) {
             const box = el("input", { type: "checkbox", ...(done ? { checked: true } : {}) });
             const label = el("span", { class: done ? "done" : "", text: ing });
             box.addEventListener("change", () => {
+              const wasChecked = !!cookSession.checks[key];
               cookSession.checks[key] = box.checked;
+              // Real pantry depletion (Git #3312): silent, no confirmation -- only on the real
+              // unchecked->checked transition, never on uncheck (a misclick shouldn't hand
+              // quantity back; Shane can always correct with a plain "I have X" capture after).
+              if (box.checked && !wasChecked) {
+                api("/api/pantry/deplete-checkoff", { method: "POST", body: JSON.stringify({ text: ing }) }).catch(() => {});
+              }
               render();
             });
             return el("li", {}, [box, label]);

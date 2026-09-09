@@ -231,6 +231,42 @@ export async function hasPantryQuantity(userId, needText) {
   });
 }
 
+/** Real Cook-mode ingredient-checkoff depletion (Git #3312, sub-issue of #3308's own scope item
+ *  4). Shane's own real decision, recorded on #3308: silent decrement, no confirmation step --
+ *  ticking a Cook-mode ingredient checkbox should just quietly take 1 off the matching real
+ *  pantry row, same "trust stated facts immediately" philosophy the rest of this app already
+ *  follows (contract.md Section 8).
+ *
+ *  Matching is the same case-insensitive, both-ways substring rule hasPantryQuantity above
+ *  already uses for canMake ("chicken" <-> "chicken breasts") -- NOT tieredFind's narrower
+ *  exact/starts-with/contains ladder, and deliberately not house-scoped: Cook mode has no house
+ *  context to hand this from, and a real pantry item still gets decremented regardless of which
+ *  house it's tracked at. Ambiguous (more than one real row matches) or genuinely nothing on
+ *  file both do nothing and return null -- this never fabricates a new row the way
+ *  adjustPantryQuantity's own upsert would (its "create the row the first time this item is
+ *  ever mentioned" behavior is right for a real capture, but wrong here: an unmatched Cook-mode
+ *  ingredient checkbox is not itself a real statement that Shane owns that ingredient). */
+export async function depleteForCookCheckoff(userId, ingredientText) {
+  const need = String(ingredientText || "").trim().toLowerCase();
+  if (!need) return null;
+  const rows = await many(
+    `SELECT ${SELECT_COLUMNS} FROM pantry_items WHERE user_id = $1 AND quantity > 0`,
+    [userId],
+  );
+  const matched = rows.filter((r) => {
+    const have = r.name.toLowerCase();
+    return have.includes(need) || need.includes(have);
+  });
+  if (matched.length !== 1) return null;
+  const existing = matched[0];
+  const next = Math.max(0, Number(existing.quantity) - 1);
+  return one(
+    `UPDATE pantry_items SET quantity = $2, updated_at = now() WHERE id = $1
+      RETURNING ${SELECT_COLUMNS}`,
+    [existing.id, next],
+  );
+}
+
 /** Ownership-checked delete of a genuinely mistaken row -- distinct from depletePantryItem
  *  (which zeroes, keeping unit/category for the next restock): this removes the row entirely,
  *  for a real add-in-error correction. */
