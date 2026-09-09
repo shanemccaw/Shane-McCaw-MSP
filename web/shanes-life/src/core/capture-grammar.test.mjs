@@ -245,6 +245,23 @@ check("matchRule: 'new list:' and named-list-add do not collide with person_note
   assert.equal(matchRule("dana: had a rough day about the lease").rule, "person_note");
 });
 
+check("matchRule: occasional-purchase 'What I Like' list, both real phrasings (Git #3311)", () => {
+  const m1 = matchRule("I sometimes get almond butter");
+  assert.equal(m1.rule, "occasional_purchase_add");
+  assert.equal(m1.groups.item, "almond butter");
+
+  const m2 = matchRule("add cast iron skillet to what I like");
+  assert.equal(m2.rule, "occasional_purchase_add");
+  assert.equal(m2.groups.item, "cast iron skillet");
+});
+
+check("matchRule: 'add X to what I like' does not collide with named_list_add (Git #3311)", () => {
+  // No trailing "list" word -- named_list_add's own regexes both require one, so this must
+  // resolve to the dedicated occasional-purchase rule, not fall through to named_list_add.
+  assert.equal(matchRule("add tent stakes to the camping list").rule, "named_list_add");
+  assert.equal(matchRule("add cast iron skillet to what I like").rule, "occasional_purchase_add");
+});
+
 check("matchRule: where is X", () => {
   assert.equal(matchRule("where's the drill?").rule, "where_is_thing");
   assert.equal(matchRule("where is my passport").rule, "where_is_thing");

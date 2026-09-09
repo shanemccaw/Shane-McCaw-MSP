@@ -123,6 +123,10 @@ function pushUrlForNudge(row) {
   // carries are Money's own (Cars) data -- send the tap there, same as appointment/vaccine above
   // land on the real screen the nudge is about.
   if (row.kind === "tesla_battery") return "/#/money";
+  // Occasional-purchase deal match (Git #3311): the real match is on the "What I Like" list --
+  // same real route the Heading Out balloon above already lands on, since Lists has no per-list
+  // deep link of its own.
+  if (row.kind === "deal_match") return "/#/lists";
   return "/";
 }
 

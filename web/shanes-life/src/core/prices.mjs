@@ -17,6 +17,7 @@
 
 import { many, one, query } from "../db.mjs";
 import { badRequest, notFound } from "../http.mjs";
+import * as lists from "./lists.mjs";
 
 const MAX_ROWS_PER_CALL = 200;
 // A weekly ad is, by definition, this week's -- a forgotten push from a month ago should not
@@ -410,4 +411,35 @@ export async function attachWeeklyAdVerdicts(userId, items) {
     item.weeklyAdVerdict = verdictByText.get(normaliseItemText(item.text)) ?? null;
   }
   return items;
+}
+
+/**
+ * Git #3311's real deal-match half: check a batch of freshly `push_deals`/`push_coupons`-pushed
+ * rows (the real rows those functions just returned, already carrying the normalised item_text
+ * this matches on) against Shane's "What I Like" occasional-purchase list. Reuses the SAME
+ * bidirectional substring match (textsMatch, above) attachWeeklyAdVerdicts already uses for
+ * Shopping -- one real matching approach across this app, not a second one invented for this
+ * list. Called right after a push so a real match surfaces the moment Claude reads it in, not on
+ * some later full re-scan (src/mcp/tools.mjs queues the real proactive nudge with the result).
+ */
+export async function matchOccasionalListAgainst(userId, pushedRows) {
+  if (!Array.isArray(pushedRows) || pushedRows.length === 0) return [];
+  const occasional = await lists.getOccasionalListItems(userId);
+  if (!occasional || occasional.items.length === 0) return [];
+
+  const matches = [];
+  for (const row of pushedRows) {
+    const normPushed = normaliseItemText(row.item_text);
+    if (!normPushed) continue;
+    const hit = occasional.items.find((li) => textsMatch(normPushed, normaliseItemText(li.text)));
+    if (!hit) continue;
+    matches.push({
+      listItemText: hit.text,
+      matchedText: row.item_text,
+      store: row.store_name ?? row.store ?? null,
+      priceCents: row.price_cents ?? null,
+      description: row.description ?? null,
+    });
+  }
+  return matches;
 }
