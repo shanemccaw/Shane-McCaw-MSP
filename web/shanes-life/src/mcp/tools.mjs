@@ -24,6 +24,7 @@ import * as mealPlan from "../core/meal-plan.mjs";
 import * as media from "../core/media.mjs";
 import * as medications from "../core/medications.mjs";
 import * as money from "../core/money.mjs";
+import * as nudges from "../core/nudges.mjs";
 import * as nutrition from "../core/nutrition.mjs";
 import * as pantry from "../core/pantry.mjs";
 import * as people from "../core/people.mjs";
@@ -62,6 +63,38 @@ function categoryMeta(args) {
     itemNoun: args.categoryItemNoun,
     description: args.categoryDescription,
   };
+}
+
+/**
+ * Git #3311's real "proactive surfacing" half: check the rows push_deals/push_coupons just wrote
+ * against Shane's "What I Like" occasional-purchase list (prices.mjs's matchOccasionalListAgainst
+ * -- reuses the same real substring match attachWeeklyAdVerdicts already uses for Shopping), and
+ * queue a real Today's-tray nudge for any match. Same real push-notification mechanism
+ * (core/nudges.mjs) every other proactive surface in this app already uses
+ * (appointment/vaccine/tesla/bank) -- not a third, invented mechanism. A nudge failure (e.g. no
+ * push subscription registered yet) must never fail the push_deals/push_coupons call it rides in
+ * on, same real guard plaid-webhook.mjs's own nudgeItemNeedsAttention uses.
+ */
+async function notifyOccasionalMatches(userId, pushedRows) {
+  const matches = await prices.matchOccasionalListAgainst(userId, pushedRows);
+  if (matches.length === 0) return matches;
+  try {
+    const title = matches.length === 1
+      ? `${matches[0].listItemText} is on sale`
+      : `${matches.length} things on your "What I Like" list are on sale`;
+    const body = matches
+      .map((m) => {
+        const price = m.priceCents != null ? ` $${(m.priceCents / 100).toFixed(2)}` : "";
+        const where = m.store ? ` at ${m.store}` : "";
+        const deal = m.description ? ` -- ${m.description}` : "";
+        return `${m.listItemText}${price}${where}${deal}`;
+      })
+      .join(" · ");
+    await nudges.queueNudge({ userId, kind: "deal_match", title, body, payload: { matches } });
+  } catch (err) {
+    console.error(`[occasional-list] could not queue deal-match nudge: ${err.message}`);
+  }
+  return matches;
 }
 
 const ITEMS_SCHEMA = {
@@ -738,7 +771,7 @@ export const TOOLS = [
     name: "push_deals",
     title: "Push weekly-ad prices",
     description:
-      "Store real per-store prices you just read off a weekly ad flyer (Git #3110), so Shopping can show a real cross-store verdict on matching list items -- 'Walmart $2.99', cheapest store wins. Lands in the same real price history get_prices reads, tagged as this week's ad rather than a one-off observation. Call get_prices first to check what's already on file for an item before re-pushing the same flyer twice.",
+      "Store real per-store prices you just read off a weekly ad flyer (Git #3110), so Shopping can show a real cross-store verdict on matching list items -- 'Walmart $2.99', cheapest store wins. Lands in the same real price history get_prices reads, tagged as this week's ad rather than a one-off observation. Call get_prices first to check what's already on file for an item before re-pushing the same flyer twice. Also checked against Shane's 'What I Like' occasional-purchase list (Git #3311) -- a real match queues a real Today's-tray nudge automatically, no separate call needed.",
     inputSchema: {
       type: "object",
       properties: {
@@ -768,7 +801,8 @@ export const TOOLS = [
     async handler(args, ctx) {
       const rows = await prices.pushDeals(ctx.user.id, args);
       await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "prices.deals.push", detail: { store: args.store, count: rows.length } });
-      return { pushed: rows.length, prices: rows };
+      const occasionalMatches = await notifyOccasionalMatches(ctx.user.id, rows);
+      return { pushed: rows.length, prices: rows, occasionalMatches };
     },
   },
 
@@ -776,7 +810,7 @@ export const TOOLS = [
     name: "push_coupons",
     title: "Push coupons and multi-buy deals",
     description:
-      "Store real coupons, multi-buy counts ('2 for $5') and discounts you just read off a weekly ad flyer or a coupon (Git #3110), so Shopping can surface them on matching list items.",
+      "Store real coupons, multi-buy counts ('2 for $5') and discounts you just read off a weekly ad flyer or a coupon (Git #3110), so Shopping can surface them on matching list items. Also checked against Shane's 'What I Like' occasional-purchase list (Git #3311) -- a real match queues a real Today's-tray nudge automatically, no separate call needed.",
     inputSchema: {
       type: "object",
       properties: {
@@ -808,7 +842,8 @@ export const TOOLS = [
     async handler(args, ctx) {
       const rows = await prices.pushCoupons(ctx.user.id, args);
       await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "prices.coupons.push", detail: { store: args.store ?? null, count: rows.length } });
-      return { pushed: rows.length, coupons: rows };
+      const occasionalMatches = await notifyOccasionalMatches(ctx.user.id, rows);
+      return { pushed: rows.length, coupons: rows, occasionalMatches };
     },
   },
 

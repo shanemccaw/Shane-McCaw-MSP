@@ -804,7 +804,39 @@ const RULES = [
     },
   },
 
-  // 27. "Where's X" (README §121: "where's the drill?" -> answers in a toast). Pure read -- a
+  // 27. Occasional-purchase "What I Like" list (Git #3311, sub-issue of #3229/#3305's own real
+  //     Lists capture-grammar pattern): "I sometimes get X" / "add X to what I like" -- the
+  //     literal phrasings the issue names. Resolves to the SAME conventionally-named list
+  //     (lists.OCCASIONAL_LIST_NAME) prices.mjs's real deal-match check looks up by name, same
+  //     real "no dedicated table" shape as Watch/Books/Heading Out above.
+  {
+    name: "occasional_purchase_add",
+    match(text) {
+      let m = text.match(/^i\s+sometimes\s+get\s+(.+)$/i);
+      if (m) return { item: m[1].trim() };
+      m = text.match(/^add\s+(.+?)\s+to\s+what\s+i\s+like$/i);
+      if (m) return { item: m[1].trim() };
+      return null;
+    },
+    async run(userId, { item }) {
+      if (!item) return FALLBACK;
+      const list = await lists.getOrCreateListByName(userId, {
+        name: lists.OCCASIONAL_LIST_NAME,
+        category: lists.OCCASIONAL_LIST_CATEGORY,
+        categoryMeta: {
+          label: lists.OCCASIONAL_LIST_NAME,
+          icon: "heart",
+          color: "rose",
+          itemNoun: "item",
+          description: "Occasional-purchase items Shane buys sometimes, not routinely -- worth a nudge if a real weekly-ad deal or coupon matches one (Git #3311).",
+        },
+      });
+      await lists.addListItems(userId, list.id, [item]);
+      return { message: `Added "${item}" to ${lists.OCCASIONAL_LIST_NAME}.` };
+    },
+  },
+
+  // 28. "Where's X" (README §121: "where's the drill?" -> answers in a toast). Pure read -- a
   //     genuine no-match still gets a real, honest answer rather than a fallback, since nothing
   //     Shane said risks being lost by answering rather than filing it.
   {
@@ -822,7 +854,7 @@ const RULES = [
     },
   },
 
-  // 28. Thing location (README §122: "X is in the garage" -> Things, requires a place word;
+  // 29. Thing location (README §122: "X is in the garage" -> Things, requires a place word;
   //     issue #3292's own confirmed-live example "Drill is at home" -- "the" is optional there,
   //     so this accepts both).
   {
@@ -838,7 +870,7 @@ const RULES = [
     },
   },
 
-  // 29. Aisle memory (README §122: "pasta aisle 12 end cap" -> aisle memory). No store is stated
+  // 30. Aisle memory (README §122: "pasta aisle 12 end cap" -> aisle memory). No store is stated
   //     in the design's own example -- resolves against the current Shopping run's real stated
   //     store (#3108). A run with no store set yet is a genuine data-bearing statement Claude can
   //     still recover -> fallback, not a blocking message.
@@ -861,7 +893,7 @@ const RULES = [
     },
   },
 
-  // 30. Real price stated (log_price's own MCP description's literal examples: "chicken breasts
+  // 31. Real price stated (log_price's own MCP description's literal examples: "chicken breasts
   //     are $3.49 now", "paid $12 for the detergent at Aldi"). Store falls back to the current
   //     Shopping run's stated store when not said explicitly; still unresolved -> fallback (a
   //     real price is worth keeping for Claude to ask about, not worth losing).
@@ -894,7 +926,7 @@ const RULES = [
     },
   },
 
-  // 31. Grocery add (README §122: "grocery words -> the run"; issue #3292's own real MCP
+  // 32. Grocery add (README §122: "grocery words -> the run"; issue #3292's own real MCP
   //     precedent, push_list). Deliberately gated behind an explicit shopping verb ("add" is
   //     already claimed by vehicle_add above, and a bare noun phrase is too broad to trust).
   {

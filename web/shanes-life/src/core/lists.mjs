@@ -45,6 +45,16 @@ function normaliseListItems(items) {
   });
 }
 
+/**
+ * The occasional-purchase list's own canonical name/category (Git #3311, sub-issue of #3229):
+ * "What I like" -- items Shane buys sometimes, not routinely, worth a nudge if a real weekly-ad
+ * deal or coupon matches one. Same real "conventionally-named list, no table of its own" shape as
+ * Watch/Books/Heading Out above -- exported so capture-grammar.mjs (which creates/finds it) and
+ * prices.mjs (which reads it to run the real deal-match check) both name the exact same list.
+ */
+export const OCCASIONAL_LIST_NAME = "What I Like";
+export const OCCASIONAL_LIST_CATEGORY = "occasional";
+
 /** Ownership check before minting a share link against a list. Also the owner-side read used
  *  everywhere else in this module -- includes enough to show a list's own header, not just its
  *  name. */
@@ -306,6 +316,27 @@ export async function getHeadingOutSignal(userId) {
   );
   if (items.length === 0) return null;
   return { listId: list.id, names: items.map((i) => i.text) };
+}
+
+/**
+ * The occasional-purchase list's own real, undone items -- what prices.mjs's real deal-match
+ * check (Git #3311, matchOccasionalListAgainst) matches a freshly `push_deals`/`push_coupons`
+ * item against. Same real "no backend of its own beyond the list itself" shape as
+ * getHeadingOutSignal above. Returns null when the list doesn't exist yet -- nothing to match.
+ */
+export async function getOccasionalListItems(userId) {
+  const list = await one(
+    `SELECT id FROM lists
+      WHERE user_id = $1 AND lower(name) = lower($2) AND archived_at IS NULL
+      LIMIT 1`,
+    [userId, OCCASIONAL_LIST_NAME],
+  );
+  if (!list) return null;
+  const items = await many(
+    `SELECT id, text FROM list_items WHERE list_id = $1 AND done = false ORDER BY position, created_at`,
+    [list.id],
+  );
+  return { listId: list.id, items };
 }
 
 /** Ownership-checked delete of a single item -- correcting a mistaken add, same as entities. */
