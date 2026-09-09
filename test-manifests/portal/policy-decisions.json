@@ -2,7 +2,7 @@
   "issue": 1724,
   "feature": "Policy Decisions -- own-table register (#1724, Feature #1490) -- the real customer-facing Policy Decisions page in artifacts/portal (/policy-decisions), wired to GET/POST /api/portal/policy-register, PATCH /api/portal/policy-register/:id/clearance/resolve, and GET /api/portal/compliance-obligations -- see docs/policy-decisions-contract-pack.md. No fixture module: every row on screen comes from these endpoints. This is a DIFFERENT register from the risk-derived GET /api/portal/policy-decisions view already covered by test-manifests/portal/risk-register.json's A2/UI6 (PolicyDecisionsCard on the Risk Register page) -- the two are never merged, per contract pack §0/§9.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING_COMMIT",
+  "lastVerifiedAgainstCommit": "ea4192eb0",
 
   "notes": [
     "WHAT THIS COVERS: the real live-empty read (policy_decisions holds 0 rows for the testbed tenant, verified by direct SELECT this session -- {decisions: []} is a true empty, not a read failure), the real obligations catalogue read (8 real seeded compliance_obligations rows, verified by direct SELECT), the 400 validation guard on an invalid create body, and the 404 on a clearance-resolve for a decision that does not exist.",
