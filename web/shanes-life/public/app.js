@@ -7699,6 +7699,14 @@ async function openScanSheet(list) {
 
   body.append(video, status, resultBox, el("div", { class: "card" }, [manualForm]));
 
+  // Show the dialog BEFORE starting the async camera setup below -- a native <dialog>
+  // without showModal()/show() called is display:none per spec, so the video element was
+  // still hidden/unpainted while getUserMedia/decodeFromConstraints ran (Git #3315). iOS
+  // Safari has a real, known issue rendering video that begins streaming while its element
+  // isn't actually visible, which is exactly the black-box symptom this fixes. This also
+  // fixes the `!dialog.open` check below, which relied on the dialog already being open.
+  dialog.showModal();
+
   try {
     const ZXingBrowser = await loadZxingBrowser();
     const reader = new ZXingBrowser.BrowserMultiFormatReader();
@@ -7730,8 +7738,6 @@ async function openScanSheet(list) {
     video.remove();
     status.textContent = "Camera unavailable — type the barcode instead.";
   }
-
-  dialog.showModal();
 }
 
 /** Renders one of the three real match states (exact / near / unknown) plus the price form. */
