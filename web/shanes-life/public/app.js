@@ -1820,14 +1820,24 @@ function laterSection(data, theme) {
 /** The Meds pill (design handoff "Meds pill"): one compact tap-through summary of today's next
  *  not-yet-taken batch, real counts split "for you" vs "for the pets" via each item's real
  *  `isPetCare` flag. Skipped entirely when nothing is tracked yet -- no invented batches. */
+// Git #3330: "as needed"/"prn" is never a real scheduled batch -- it has no daily
+// pending/done state, so it must never be picked as `current` here. Same real
+// free-text convention medications.mjs's own AS_NEEDED_BATCH_RE matches server-side
+// (confirmed real data on file uses the literal batch "as needed").
+const MEDS_PILL_AS_NEEDED_RE = /as[- ]?needed|\bprn\b/i;
+
 function medsPillSection(meds) {
   if (!meds || !meds.batches || meds.batches.length === 0) return null;
-  const current = meds.batches.find((b) => !b.takenToday) || meds.batches[meds.batches.length - 1];
+  const scheduled = meds.batches.filter((b) => !MEDS_PILL_AS_NEEDED_RE.test(b.batch ?? ""));
+  if (scheduled.length === 0) return null;
+  const current = scheduled.find((b) => !b.takenToday) || scheduled[scheduled.length - 1];
   const takenToday = current.takenToday;
   const yours = current.items.filter((i) => !i.isPetCare).length;
   const pets = current.items.filter((i) => i.isPetCare).length;
   const batchName = current.batch ? current.batch[0].toUpperCase() + current.batch.slice(1) : "Meds";
   const countLine = pets > 0 ? `${yours} for you, ${pets} for the pets` : `${yours} for you`;
+  const allTaken = scheduled.every((b) => b.takenToday);
+  const title = allTaken ? "All taken" : `${batchName} · ${countLine}`;
   return el("section", { class: "section" }, [
     el(
       "a",
@@ -1835,7 +1845,7 @@ function medsPillSection(meds) {
       [
         el("div", { class: "meds-pill-pebble" }, [critterIcon("meds", { size: 42 })]),
         el("div", { class: "meds-pill-body" }, [
-          el("div", { class: "meds-pill-title", text: takenToday ? `${batchName} taken` : `${batchName} · ${countLine}` }),
+          el("div", { class: "meds-pill-title", text: title }),
           el("div", { class: "meds-pill-sub", text: current.items.map((i) => i.name).join(", ") }),
         ]),
         el("div", { class: `meds-pill-status ${takenToday ? "done" : "pending"}`, text: takenToday ? "done" : "not yet" }),

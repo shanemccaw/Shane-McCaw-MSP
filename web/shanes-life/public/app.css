@@ -241,6 +241,14 @@ a { color: inherit; }
   padding: 1rem;
 }
 
+/* Git #3330: a `.card` used as a real link (meds-pill, the Tonight teaser, ...) has no default
+   underline anywhere else in this file -- every other link-styled surface (`.later-row`, etc.)
+   resets this explicitly; `.card` itself was the one missed. */
+a.card {
+  text-decoration: none;
+  color: inherit;
+}
+
 .section { display: grid; gap: 0.55rem; }
 
 /* ---------- controls ---------- */
