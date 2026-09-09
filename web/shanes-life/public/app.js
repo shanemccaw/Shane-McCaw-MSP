@@ -6550,12 +6550,7 @@ const WINS_TINT = "253,164,175";
 async function viewWins(view) {
   const { wins } = await api("/api/money/wins");
 
-  roomHeader(view, WINS_TINT, "Wins");
-  view.append(
-    el("section", { class: "section" }, [
-      el("p", { class: "muted small", text: "Real wins · no streaks, no badges" }),
-    ]),
-  );
+  roomHeader(view, WINS_TINT, "Wins", { icon: critterIcon("wins", { size: 36 }), sub: "real things that got done" });
 
   // Git #3183: no dedicated "Log a win" form -- the design's own words are "Shane should be
   // able to just say 'I did it' and have it land here," which is exactly the universal
