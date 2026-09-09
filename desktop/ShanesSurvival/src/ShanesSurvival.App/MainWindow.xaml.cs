@@ -3,11 +3,13 @@ using System.Windows.Media;
 using ShanesSurvival.App.Accounts;
 using ShanesSurvival.App.Dashboard;
 using ShanesSurvival.App.Data;
+using ShanesSurvival.App.Groceries;
 using ShanesSurvival.App.Plaid;
 using ShanesSurvival.App.Settings;
 using ShanesSurvival.Core.Accounts;
 using ShanesSurvival.Core.Dashboard;
 using ShanesSurvival.Core.Debts;
+using ShanesSurvival.Core.Groceries;
 using ShanesSurvival.Core.Income;
 using ShanesSurvival.Core.PayPeriodPlans;
 using ShanesSurvival.Core.Settings;
@@ -451,6 +453,36 @@ public partial class MainWindow : Window
             // Same reasoning as SettingsButton_Click: this handler has no caller left to catch
             // an escaped exception, so it would otherwise crash the whole process.
             MessageBox.Show(this, $"Could not open Dashboard: {ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void WeeklyAdButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var settings = _settingsService.Load();
+            var credentials = new WeeklyAdCredentials(settings.ShanesLifeApiBaseUrl, settings.ShanesLifeMcpToken);
+            if (!credentials.IsConfigured)
+            {
+                MessageBox.Show(
+                    this,
+                    "No Shane's Life API URL / MCP token configured yet. Open Settings to add them first — " +
+                    "mint a token with `npm run issue-mcp-token` against the real deployment.",
+                    "Weekly Ad",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            var window = new WeeklyAdScraperWindow(credentials) { Owner = this };
+            window.Show();
+        }
+        catch (Exception ex)
+        {
+            // Same reasoning as SettingsButton_Click: this handler has no caller left to catch
+            // an escaped exception, so it would otherwise crash the whole process.
+            MessageBox.Show(this, $"Could not open Weekly Ad: {ex.Message}", "Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }

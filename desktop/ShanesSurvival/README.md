@@ -169,6 +169,11 @@ src/
     Dashboard/
       DashboardWindow.xaml(.cs) — top-line covered/short, GATE cards, bills, spend bleed by merchant
                                    (DashboardModels/DashboardService now live in ShanesSurvival.Core)
+    Groceries/                    — (#3288)
+      WeeklyAdScraperWindow.xaml(.cs) — real WebView2 window: Shane browses Publix's real weekly-ad
+                                         page like a normal browser, then Extract & Push Deals reads
+                                         the rendered DOM and pushes through shanes-life's own MCP
+                                         pipeline (see Weekly Ad section below)
 
   ShanesSurvival.Core/
     Settings/
@@ -190,6 +195,15 @@ src/
       PayPeriodPlanRepository.cs    — real create/revise/mark-executed/read-active, shared by
                                        the WPF Dashboard's "Current Plan" panel and the MCP
                                        write tools below — never reimplemented a second time
+    Groceries/                      — (#3288)
+      ScrapedAdModels.cs            — RawAdCard (raw DOM read), ScrapedDealItem/ScrapedCouponItem
+                                       (same shapes push_deals/push_coupons already accept)
+      PublixAdParser.cs             — pure text parsing, raw card -> deal/coupon; no I/O, real
+                                       unit-testable without a live WebView2 session
+      WeeklyAdCredentials.cs        — Shane's Life API base URL + MCP bearer token, from Settings
+      ShanesLifeMcpClient.cs        — real JSON-RPC client for shanes-life's own remote MCP
+                                       server (POST /mcp) — push_deals/push_coupons, no second
+                                       storage path
 
   ShanesSurvival.Mcp/
     Program.cs                   — real local MCP server entry point (stdio transport)
@@ -270,6 +284,68 @@ none synced yet" for an unassigned name. This run caught and fixed a real bug in
 `InvariantGlobalization` in the project file made `CultureInfo.GetCultureInfo("en-US")` throw at
 runtime (surfaced as MCP's generic "An error occurred invoking 'gate_status'"); removed, and all
 4 tools were re-verified clean afterward.
+
+## Weekly Ad — real WebView2 scraping (#3288)
+
+The WPF app's own real, planned narrowed role (per shanes-life's contract pack, Section 1:
+"exploring WebView2 automation to pull real coupon and weekly-ad data") — a real local
+automation source for the same cross-store price comparison already built and working in
+shanes-life's Shopping room, instead of Shane manually feeding a flyer into a Claude
+conversation every week. First real store, per Shane's own confirmation: **Publix** — he
+actually shops there (see build-journal/3152.md, 3184.md). Additional stores are separate,
+later issues, not assumed to generalize automatically — each store's ad page has its own real
+layout.
+
+**How it works**, from **"Weekly Ad (Publix)…"** on the main window:
+
+1. Opens a real WebView2 window navigated to `https://www.publix.com/savings/weekly-ad/view-all`
+   — Publix's own real weekly-ad page. Its price data is genuinely client-rendered (confirmed
+   live, 2026-09-08 — the raw HTML ships only skeleton-loader markup; real items load via
+   Publix's own Vuex-store JS after the page picks up a selected store).
+2. This is a real, ordinary browser window — Shane browses it like any browser, confirming/
+   picking his real store the first time (persisted in a dedicated WebView2 profile under
+   `%AppData%\ShanesSurvival\WebView2WeeklyAd`, so it isn't re-asked every run) and waiting for
+   the ad to actually render. No attempt is made to automate Publix's own store-picker UI —
+   same reasoning `PlaidLinkWindow` already follows for a real bank login: some steps genuinely
+   need Shane's own hands, not a scripted guess.
+3. **"Extract & Push Deals"** then reads the real rendered DOM (bounded poll, 20s, for the ad
+   grid to actually contain cards — never an indefinite wait), parses each card
+   (`PublixAdParser`, pure text parsing, no I/O), and pushes what it finds through
+   **shanes-life's own existing real MCP pipeline** — `push_deals`/`push_coupons` (Git #3110),
+   the same pipeline manual flyer-reading already used. This app is just another real MCP
+   client speaking the same JSON-RPC protocol Claude Code/Desktop already speak to that server
+   (`POST {base}/mcp`, `Authorization: Bearer slmcp_...`) — not a second, parallel storage path.
+
+**Setup** (Settings… → "Shane's Life"):
+- **API base URL** — the real shanes-life deployment's public origin (its `PUBLIC_ORIGIN`).
+- **MCP token** — mint one against that real deployment with
+  `npm run issue-mcp-token -- --email you@example.com --label "ShanesSurvival Weekly Ad"`
+  (see `web/shanes-life/bin/issue-mcp-token.mjs`), or from that app's own Settings screen. Same
+  storage rule as everything else here: saved only to `%AppData%\ShanesSurvival\settings.json`,
+  never hardcoded, never logged.
+
+**Real, honest maintenance note (from the issue itself):** store ad pages change layout
+periodically. `WeeklyAdScraperWindow.ExtractionScript`'s selectors
+(`.weekly-ad-card-grids .card-grid`, `.savings-badge`) were read directly off Publix's real, live
+page on 2026-09-08 via its own shipped skeleton-loader markup and its `pb_SavingsInitializeComponent`
+JS bundle (which also exposes a real, separate `services.publix.com/api/v4/savings` JSON API —
+deliberately not used here: it requires a bearer token whose real acquisition flow isn't
+reverse-engineered, and DOM extraction over an already-authenticated real browser session is the
+same real approach the issue itself asks for). A Publix redesign breaking this is expected
+occasional upkeep, not a defect to chase to zero — `PublixAdParser` reports every card it
+couldn't parse by name rather than silently dropping or guessing at it, so a layout change shows
+up as a real, visible "skipped N card(s)" in the status line instead of a quiet gap.
+
+**What was and wasn't live-verified:** `PublixAdParser`'s real parsing logic (plain price,
+"N for $X" multi-buy, "$X off" discount vs. a sale price that happens to contain the same digits,
+BOGO, and an unparseable card correctly reported as skipped rather than guessed) was run for real
+against representative fixture text in a scratch harness and passed — that harness (and its
+temporary project file) was deleted afterward, not committed; it exercises no I/O so there is
+nothing left to keep. **Not live-verified:** an actual WebView2 session against Publix's real
+live page, a real store pick-and-confirm, and a real end-to-end push into a real Shopping list —
+none of this could be exercised without an interactive Windows desktop session to click through
+(this build ran headless). Open "Weekly Ad (Publix)…", pick your store, wait for the ad to
+render, and click Extract to complete that path for real.
 
 ## Dashboard — account roles, targets, and shortfall math
 
@@ -396,3 +472,5 @@ Pay-Period Plan (#2892), added on top of the above:
   source and never logged — they live only in `%AppData%\ShanesSurvival\settings.json`.
 - Real Plaid access tokens (one per linked institution) live only in `plaid_items.access_token`
   in Postgres — never logged, never written anywhere else.
+- Same rule for shanes-life's API base URL and MCP bearer token (#3288) — never hardcoded,
+  never logged, live only in `%AppData%\ShanesSurvival\settings.json`.

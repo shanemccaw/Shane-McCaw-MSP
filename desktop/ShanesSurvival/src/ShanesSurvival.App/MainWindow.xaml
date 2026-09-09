@@ -39,6 +39,8 @@
                     Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="AssignRolesButton_Click"/>
             <Button x:Name="OpenDashboardButton" Content="Open Dashboard" Height="28"
                     Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="OpenDashboardButton_Click"/>
+            <Button x:Name="WeeklyAdButton" Content="Weekly Ad (Publix)…" Height="28"
+                    Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="WeeklyAdButton_Click"/>
         </StackPanel>
 
         <Border Grid.Row="2" BorderThickness="1" Padding="12" Margin="0,0,0,12">

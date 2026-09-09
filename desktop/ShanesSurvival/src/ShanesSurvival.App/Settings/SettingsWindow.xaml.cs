@@ -36,6 +36,9 @@ public partial class SettingsWindow : Window
         }
         PlaidEnvironmentComboBox.SelectedItem ??= PlaidEnvironmentComboBox.Items[0];
 
+        ShanesLifeApiBaseUrlTextBox.Text = settings.ShanesLifeApiBaseUrl ?? string.Empty;
+        ShanesLifeMcpTokenPasswordBox.Password = settings.ShanesLifeMcpToken ?? string.Empty;
+
         SettingsFilePathText.Text = $"Stored locally at: {_settingsService.SettingsFileDisplayPath}";
     }
 
@@ -81,6 +84,12 @@ public partial class SettingsWindow : Window
                 : PlaidSecretPasswordBox.Password,
             PlaidEnvironment = (PlaidEnvironmentComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Content as string
                 ?? "sandbox",
+            ShanesLifeApiBaseUrl = string.IsNullOrWhiteSpace(ShanesLifeApiBaseUrlTextBox.Text)
+                ? null
+                : ShanesLifeApiBaseUrlTextBox.Text.Trim(),
+            ShanesLifeMcpToken = string.IsNullOrWhiteSpace(ShanesLifeMcpTokenPasswordBox.Password)
+                ? null
+                : ShanesLifeMcpTokenPasswordBox.Password,
         };
 
         try
