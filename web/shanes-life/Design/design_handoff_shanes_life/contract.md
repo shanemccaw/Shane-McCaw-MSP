@@ -313,15 +313,10 @@ database Shane manages by hand.
 - No separate recipe-authoring UI, no manual meal-planning calendar — the generation
   happens in a Claude conversation, the app's job is to host, display, and let Shane check
   items off, same division of labor as the rest of this app (see Section 10).
-- **Real, further superseding update (2026-09-09): the pantry cut is reversed.** Shane
-  directly, explicitly confirmed a genuine change of mind, not a lighter-weight
-  reinterpretation: real pantry tracking is now wanted — what he actually has at home
-  (spices, vegetables, meats, etc.) and real quantities. See the dedicated real Pantry
-  feature (Epic #3086) for scope. The original reasoning ("that's not even my area") no
-  longer applies as stated by Shane himself.
-- No automatic *expiration* tracking is still out of scope unless Shane says otherwise —
-  the reversal above covers real quantity tracking specifically, not shelf-life/expiry
-  dates, which were never separately requested.
+- **The original cut still stands for what it was actually about**: no automatic inventory/
+  expiration tracking, no recipe-from-pantry-contents generation. Those remain out of
+  scope — this update is about *how* Shopping/Recipes get populated (Claude + MCP, on
+  request), not about resurrecting pantry-management features Shane already ruled out.
 - **The Money-feeder use case still applies, separately**: when Ronnie/DJ mention something
   they need, that's still real budget-awareness information feeding the Money triage view,
   distinct from Shane actively generating his own shopping/recipe lists via Claude.
@@ -453,3 +448,22 @@ inference. Keep this boundary clean in the architecture.
 Given the size of the full blueprint versus tonight's real immediate need (hosted
 checklists + login + shareable links), what's the real first slice to actually build? The
 full blueprint is locked in intent, not in build order.
+
+
+---
+
+## Addendum (2026-09-08, night) — The Pantry room, Shane's addition
+
+Supersedes the "no inventory" line in Section 5 (the rest of that section stands; expiry
+tracking and recipe-from-pantry generation are still out).
+
+- **A room for what is in the house, split Home / the Rental.** Eight zones: Spices &
+  seasonings, Cans & jars, Dry goods, Oils & condiments, Fridge, Freezer, Produce,
+  Snacks & drinks. Counts for cans, bags, boxes; spices and oils read Full / Half /
+  Almost out / Out.
+- **Running low leads the room** and feeds Shopping in one tap ("Add to run", "Add all").
+  Items already on the run fold away. Checking an item off the run restocks the Home pantry.
+- **Talk-it-through capture, no forms**: "used the last of the paprika" (out, onto the run),
+  "3 cans of black beans at the rental", "do we have cumin", "where's the cumin".
+- Decorative critters only (mouse with cheese, squirrel with an acorn): never a score,
+  never a nag. The room lights up only while something is out and not yet on the run.

@@ -1,22 +1,21 @@
 <!DOCTYPE html>
-<!-- SUPERSEDED (Sep 8, 2026): exploration history, not the design. Every screen here was redesigned in ../Shanes Life - First Slice Prototype.dc.html, the only file to build from. See ../README.md, "Source of truth". -->
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="../support.js"></script>
+<script src="./support.js"></script>
 </head>
 <body>
 <x-dc>
 <helmet>
 <meta name="design_doc_mode" content="canvas">
-<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
-<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
-<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
-<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
-<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
-<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
-<script src="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
 <style>
 body{margin:0;background:#1e293b!important;font-family:'Inter',system-ui,sans-serif;color:#EEF2F8;-webkit-font-smoothing:antialiased}
 a{color:#60a5fa}a:hover{color:#93c5fd}
@@ -46,7 +45,6 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
 .dv-ph{width:402px;height:200px;border:1px dashed rgba(255,255,255,.25);border-radius:16px;display:flex;align-items:center;justify-content:center;font:500 12px 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.45)}
 </style>
 </helmet>
-<div style="position:relative;z-index:99999;margin:0 0 18px;padding:14px 20px;background:#7F1D1D;border-bottom:2px solid #FCA5A5;color:#FFFFFF;font:600 14px/1.5 Inter,-apple-system,system-ui,sans-serif;text-align:center;text-wrap:pretty">SUPERSEDED · exploration history, not the design. Every screen on this page was redesigned in <a href="../Shanes%20Life%20-%20First%20Slice%20Prototype.dc.html" style="color:#FDE68A">Shanes Life - First Slice Prototype.dc.html</a>, the only file to build from. See <span style="color:#FDE68A">../README.md → “Source of truth”</span>.</div>
 <section class="dv-turn" id="t1" style="min-width:0">
 <div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Shane's Life · full v1 blueprint · phone + desktop · dark mode · options where you asked for them</span></div>
 <div class="dv-intro">
@@ -130,13 +128,14 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
 <li>Tray: Review lives under Idle. Meds is its own card (two batched notifications a day: morning, before bed). Rooms are a list with icon tiles: Shopping, Recipes, Money, Things, People. The capture bar answers "where's the drill?" in place.</li>
 <li>Shopping: stores are Aldi, Walmart, Publix. Prices and aisle spots are per store; items show "cheaper at Walmart $1.58" when a better recorded price exists. Coupons arrive from Claude over MCP (store, quantity, saving) and sit on the item. A running cart total shows on both phones; Shane sets a budget per run.</li>
 <li>Recipes: "Tonight" cooks several dishes to one finish. Longest dish first, it rings when each next dish should go in, re-plans if something starts late, quick access to each dish's steps.</li>
+<li><b>Pantry (Sep 8, night, Shane's addition)</b>: a fourteenth room for what is in the house, split Home / the Rental. Eight zones (Spices &amp; seasonings, Cans &amp; jars, Dry goods, Oils &amp; condiments, Fridge, Freezer, Produce, Snacks &amp; drinks), each a tinted tile with a count and its low items first; a zone opens to rows with − / quantity / +. Counts for cans and bags; spices and oils go Full, Half, Almost out. "Running low" sits on top with one-tap Add to run, and anything already on the run is folded away. Checking an item off the run restocks the Home pantry. Grammar: "used the last of the paprika" (out, onto the run), "3 cans of black beans at the rental", "do we have cumin", "where's the cumin". Supersedes the original "no inventory" cut; still no expiry tracking. Critters: <a class="dv-oid" href="Shanes%20Life%2014%20-%20Critters.dc.html#1y">1y</a>, mouse with cheese or squirrel with an acorn.</li>
 <li>Weekly ads: Claude fetches and parses the ads (fetch_weekly_ad), matches them to the list, and pushes per-item verdicts ("Aldi wins", "Publix BOGO", "no deal"). The app shows the verdict on the item and a one-line summary per store.</li>
 <li>Quantities: items carry a planned quantity ("Pasta, 3 boxes"). A multi-buy coupon that needs more than planned opens a quantity sheet (stepper, live math, "coupon applies" or "1 more unlocks it"); the total uses the real count.</li>
 <li>Budget: set per run by Shane, seen by both phones. Under budget: quiet. Projected over: amber pill and a strip naming the 2–3 non-deal items to skip to land under; those items get an amber "could skip this trip" tag. Actually over: red readout plus a persistent card listing what could go back (non-deal items, biggest first) with "I put it back" and "Keep" on each; the total updates the moment one is put back.</li>
 <li>Stores are per phone, never synced: Shane can be at Walmart while Ronnie is at Publix on the same run. Prices, aisles and deal verdicts follow each phone's store.</li>
 <li>Scan mismatch: exact / near (pick from 2–3 chips, remembered per barcode) / unknown (add it, or pick from the list).</li>
 </ul>
-<p style="margin:14px 0 0;font-size:13px"><a class="dv-oid" href="../Shanes%20Life%20-%20First%20Slice%20Prototype.dc.html" style="font-size:12px;padding:6px 10px;background:#1A8CFF;color:#fff">Open the first-slice prototype →</a> <span style="color:rgba(238,242,248,.62);margin-left:8px">Sign in → tray → share → shop from either phone. Two phones, one live list.</span></p>
+<p style="margin:14px 0 0;font-size:13px"><a class="dv-oid" href="Shanes%20Life%20-%20First%20Slice%20Prototype.dc.html" style="font-size:12px;padding:6px 10px;background:#1A8CFF;color:#fff">Open the first-slice prototype →</a> <span style="color:rgba(238,242,248,.62);margin-left:8px">Sign in → tray → share → shop from either phone. Two phones, one live list.</span></p>
 </div>
 <div class="dv-grp" id="g-contents"><h4 class="dv-gname">Groups</h4><p class="dv-gnote">Each group is its own page so it loads fast. Open one, pan and zoom, and reference options by badge in chat.</p></div>
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;max-width:1240px">

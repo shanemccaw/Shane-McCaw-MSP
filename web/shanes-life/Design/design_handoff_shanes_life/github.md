@@ -3,9 +3,16 @@ branch: main
 path: web/shanes-life
 
 ## Last sync
-date: 2026-09-08T21:05:00Z
+date: 2026-09-09T03:12:00Z
 
 ### Updated in this project
+- Pantry stays a room in the design (Shane, Sep 8) while the repo shipped it as a Shopping tab (Git #3308, migration 068); README maps the room onto pantry_items and the eight zones onto CAT_ORDER
+- Pantry grammar aligned with capture-grammar.mjs rules 33–35: "I have 2 lbs of X" absolute, "bought 3 cans of X" additive (+3 in the toast), "used the last of X" zeroes; place suffix "at the rental" kept as a design extra
+- Things "take X to the rental" (Git #3300), Lists "I sometimes get X" → What I Like (Git #3311), scan sheet Open Food Facts strip (Git #3260) added to the prototype
+- Drawn on request: Today timer card (069, server timers), Terbinafine course row and resting line in Meds (061), Tesla Charging card with Supercharger $0.39 vs a home rate Shane states (060, 065; "home electricity is 14 cents"), typed deal chips + valid-through + ad thumbnail on Shopping rows (066)
+
+## Sync history
+### 2026-09-08T21:05:00Z
 - Vault Autofill add-on designed (Shanes Life 19): chip, toolbar popup, Face ID window, options page; a 30-day trusted-device model (vault_device_trust, /api/vault/:id/fill, vault.always_ask) replaces one-Face-ID-per-fill from extension/README.md
 - Vault is its own room (logins, bill refs, documents, trusted browsers); Money is a five-cell segmented control: Now / Bills / Accounts / Bankruptcy / Cars
 - Settings has four tabs (House, You, Connected, Activity); Banks (plaid_items health + Plaid Link reconnect, migration 041) lives under Connected and lights the attic vent when a bank needs a reconnect
@@ -13,7 +20,6 @@ date: 2026-09-08T21:05:00Z
 - Capture bar redrawn: multi-line textarea (Enter = newline), Camera / Mic / Send inside the pill; Today's fox bubble made translucent
 - Thirteen rooms; an odd count gives the last room the whole ground floor
 
-## Sync history
 ### 2026-09-08T19:58:00Z
 - Wins pulled out of Money into its own room (Git #3241): rose tile, lit for 3 days after a win, dated rows, "I did it" capture; Money keeps Now / Bills / Accounts / Cars / Vault
 - New Tesla room on the real Fleet API surface (tesla.mjs, heading-home.mjs, migrations 055–058): on-demand read, Heading home, Warm it up, trunk with confirm, checkout-to-trunk countdown, commute charge check, Heading Out webhook status; Tesla card in Settings
@@ -36,6 +42,15 @@ date: 2026-09-08T21:05:00Z
 ## Screen map
 | Screen | Repo files |
 | --- | --- |
+| Pantry room + zone screens | web/shanes-life/src/core/pantry.mjs, src/core/capture-grammar.mjs (pantry_have, pantry_bought, pantry_used_last), src/routes/api.mjs (/api/pantry), src/mcp/tools.mjs (set_pantry_item, get_pantry), public/app.js (renderPantryTab, pantryItemRow), src/core/recipes.mjs (canMake counts pantry), migrations/068_pantry_items.sql |
+| Things (Next Rental run · take) | web/shanes-life/src/core/things.mjs (queueForTake), src/core/capture-grammar.mjs (queue_take), migrations/067_things_take_checklist.sql |
+| Lists (What I Like) | web/shanes-life/src/core/lists.mjs (OCCASIONAL_LIST_NAME), src/core/capture-grammar.mjs (occasional_purchase_add), src/core/prices.mjs |
+| Shopping scan (Open Food Facts strip) | web/shanes-life/src/core/scan.mjs, migrations/059_off_nutrition.sql |
+| Capture bar grammar (all rooms) | web/shanes-life/src/core/capture-grammar.mjs, src/core/capture-grammar.test.mjs |
+| Today timer card | web/shanes-life/src/core/timers.mjs, src/core/capture-grammar.mjs (extractTimerDuration, formatDuration), migrations/069_timers.sql |
+| Meds (course row, resting line) | web/shanes-life/src/core/medications.mjs (getMedsToday course window), migrations/061_medication_course_cycle.sql, 054_medication_pharmacy_phone.sql |
+| Tesla room (Charging card, odometer) | web/shanes-life/src/core/tesla.mjs (getChargingHistory, getVehicleState), src/core/vehicles.mjs (syncOdometerFromTesla), migrations/060_tesla_odometer_charging_sync.sql, 065_tesla_supercharge_rate.sql |
+| Shopping rows (deal kind, through, ad image) | web/shanes-life/src/core/prices.mjs, src/mcp/tools.mjs (push_deals, push_coupons), migrations/066_weekly_ad_deals_category_image_dealtype.sql |
 | Tesla room | web/shanes-life/src/core/tesla.mjs, src/core/heading-home.mjs, src/core/places.mjs (headingHomeSignal, presence), src/routes/api.mjs (/api/tesla/*), src/routes/tesla.mjs (/hooks/tesla/:token), public/app.js (renderTeslaSettings, headingHome Next card), migrations/055_tesla_integration.sql, 056_tesla_commute_charge_nudge.sql, 057_heading_home.sql, 058_tesla_vehicle_commands.sql |
 | Wins room | web/shanes-life/src/core/wins.mjs, src/routes/api.mjs (roomsForToday wins rule, /api/money/wins), public/app.js (ROOM_DEFS wins, viewWins), public/critters-sprite.svg (c-wins, c-wins2, r-wins), migrations/017_money_extras.sql, 033_wins_watch_state.sql |
 | House (rooms, lamps, order) | web/shanes-life/public/app.js (ROOM_DEFS, roomsHouseSection), src/core/room-order.mjs (ROOM_KEYS, reconcile), src/routes/api.mjs (roomsForToday), migrations/050_room_order.sql |
