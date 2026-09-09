@@ -113,7 +113,7 @@ export default function OverviewPage() {
       title: item.title ?? "Finding withheld on your tier",
       ink: item.title ? "#f8fafc" : "#94a3b8",
       action: "Raise change request",
-      href: comingSoonHref("Change Control", "module"),
+      href: "/change-control",
       alt: "Remediation",
       altHref: "/remediation-tracking",
     });
@@ -161,7 +161,7 @@ export default function OverviewPage() {
   const comingRows = d
     ? [
         { count: d.overviewCounts.microsoftChangesThisWeek, label: "Microsoft changes this week", href: comingSoonHref("Microsoft Changes", "module"), color: BLU },
-        { count: d.overviewCounts.changeScheduleThisWeek, label: "Change windows this week", href: comingSoonHref("Change Control", "module"), color: "#00B4D8" },
+        { count: d.overviewCounts.changeScheduleThisWeek, label: "Change windows this week", href: "/change-control", color: "#00B4D8" },
         { count: d.overviewCounts.policiesExpiringSoon, label: "Policies due for review", href: comingSoonHref("Policy Decisions", "module"), color: AMB },
       ].filter((r) => r.count > 0)
     : [];
@@ -172,7 +172,7 @@ export default function OverviewPage() {
         { value: d.overviewCounts.rbdWaiting, label: "Risk decisions waiting", href: comingSoonHref("Risk Register", "module"), ink: AMB },
         { value: d.overviewCounts.rbdActive, label: "Risk acceptances active", href: comingSoonHref("Risk Register", "module"), ink: NEUTRAL },
         { value: d.overviewCounts.microsoftChangesThisWeek, label: "MS changes this week", href: comingSoonHref("Microsoft Changes", "module"), ink: BLU },
-        { value: d.overviewCounts.changeScheduleThisWeek, label: "Change windows this week", href: comingSoonHref("Change Control", "module"), ink: BLU },
+        { value: d.overviewCounts.changeScheduleThisWeek, label: "Change windows this week", href: "/change-control", ink: BLU },
         { value: d.overviewCounts.remediationInProgress, label: "Remediation outstanding", href: "/remediation-tracking", ink: RED },
         { value: d.overviewCounts.policiesExpiringSoon, label: "Policies due for review", href: comingSoonHref("Policy Decisions", "module"), ink: AMB },
       ]

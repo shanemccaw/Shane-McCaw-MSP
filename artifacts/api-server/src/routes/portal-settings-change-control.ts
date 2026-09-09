@@ -92,6 +92,9 @@ interface WireCcPolicy {
    *  persists it. */
   readonly freeze: boolean;
   readonly emergency: boolean;
+  /** #1717 — enforced by the catalog-execute path (#3044's gate); this route
+   *  only persists it, same as `freeze` above. */
+  readonly maintenanceWindows: boolean;
 }
 
 interface WireCcNotifRule {
@@ -196,6 +199,7 @@ router.get(
           separate: policyRow?.requireSeparateApprover ?? DEFAULT_CC_POLICY.requireSeparateApprover,
           freeze: policyRow?.enforceFreezeCalendar ?? DEFAULT_CC_POLICY.enforceFreezeCalendar,
           emergency: policyRow?.allowEmergencyPath ?? DEFAULT_CC_POLICY.allowEmergencyPath,
+          maintenanceWindows: policyRow?.enforceMaintenanceWindows ?? DEFAULT_CC_POLICY.enforceMaintenanceWindows,
         },
         notifications,
         people,
@@ -237,14 +241,15 @@ router.put(
     const requireSeparateApprover = typeof body.separate === "boolean" ? body.separate : DEFAULT_CC_POLICY.requireSeparateApprover;
     const enforceFreezeCalendar = typeof body.freeze === "boolean" ? body.freeze : DEFAULT_CC_POLICY.enforceFreezeCalendar;
     const allowEmergencyPath = typeof body.emergency === "boolean" ? body.emergency : DEFAULT_CC_POLICY.allowEmergencyPath;
+    const enforceMaintenanceWindows = typeof body.maintenanceWindows === "boolean" ? body.maintenanceWindows : DEFAULT_CC_POLICY.enforceMaintenanceWindows;
 
     try {
       await db
         .insert(portalChangeControlPolicyTable)
-        .values({ customerId, enabled, gated, requiredSignatures, requireSeparateApprover, enforceFreezeCalendar, allowEmergencyPath })
+        .values({ customerId, enabled, gated, requiredSignatures, requireSeparateApprover, enforceFreezeCalendar, allowEmergencyPath, enforceMaintenanceWindows })
         .onConflictDoUpdate({
           target: [portalChangeControlPolicyTable.customerId],
-          set: { enabled, gated, requiredSignatures, requireSeparateApprover, enforceFreezeCalendar, allowEmergencyPath, updatedAt: new Date() },
+          set: { enabled, gated, requiredSignatures, requireSeparateApprover, enforceFreezeCalendar, allowEmergencyPath, enforceMaintenanceWindows, updatedAt: new Date() },
         });
 
       log.info({ customerId, enabled, requiredSignatures }, "portal change control policy saved");

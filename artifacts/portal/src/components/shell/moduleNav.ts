@@ -41,7 +41,7 @@ export interface ModuleNavItem {
 export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [
   { key: "overview", label: "Overview", icon: LayoutDashboard, builtPath: "/" },
   { key: "changes", label: "Microsoft Changes", icon: Megaphone, builtPath: "/microsoft-changes" },
-  { key: "change-control", label: "Change Control", icon: Waypoints, builtPath: null },
+  { key: "change-control", label: "Change Control", icon: Waypoints, builtPath: "/change-control" },
   { key: "risk-register", label: "Risk Register", icon: AlertTriangle, builtPath: "/risk-register" },
   { key: "remediation", label: "Remediation", icon: Wrench, builtPath: "/remediation-tracking" },
   { key: "sops", label: "SOPs", icon: BookOpen, builtPath: "/sops" },

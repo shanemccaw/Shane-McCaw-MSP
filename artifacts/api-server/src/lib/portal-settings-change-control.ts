@@ -26,6 +26,15 @@ export interface CcPolicyRow {
   readonly requireSeparateApprover: boolean;
   readonly enforceFreezeCalendar: boolean;
   readonly allowEmergencyPath: boolean;
+  /**
+   * `portal_change_control_policy.enforce_maintenance_windows` — real column
+   * (msp.ts:8207), read by the catalog-execute path (#3044's freeze/window
+   * gate) since before this settings surface existed, but never previously
+   * exposed on this route's wire. #1717 added it here so the design's
+   * "Enforce maintenance windows" toggle has a real field to read/write
+   * instead of drawing a policy switch with nothing behind it.
+   */
+  readonly enforceMaintenanceWindows: boolean;
 }
 
 export const DEFAULT_CC_POLICY: CcPolicyRow = {
@@ -35,6 +44,7 @@ export const DEFAULT_CC_POLICY: CcPolicyRow = {
   requireSeparateApprover: true,
   enforceFreezeCalendar: false,
   allowEmergencyPath: false,
+  enforceMaintenanceWindows: false,
 };
 
 /** Merge a stored policy row's `gated` jsonb with the real gate catalogue, so

@@ -131,6 +131,8 @@ import { loadApprovalPolicy, recordApproval } from "../lib/portal-change-approva
 import { recordRejection } from "../lib/portal-change-rejection";
 import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise";
 import { dependencyEdgesForMany, type DependencyEdges } from "../lib/portal-change-dependencies-store";
+import { isWindowActiveAt } from "../lib/portal-change-freeze";
+import { spanWithinMaintenanceWindow } from "../lib/portal-change-maintenance";
 import {
   addAttachment,
   addComment,
@@ -740,19 +742,32 @@ interface WireFreezeWindow {
   readonly endsAt: string;
   readonly recurrence: string;
   readonly recurrenceUntil: string | null;
+  /**
+   * #1717 — whether `now` falls inside a live occurrence of this standing
+   * rule, via the same `isWindowActiveAt` the submit-time enforcement path
+   * uses (`portal-change-freeze.ts`). Added because the customer page needs a
+   * real "a freeze is in effect right now" signal and none existed on this
+   * read before — reusing the existing pure function, not duplicating its
+   * recurrence-walking logic client-side.
+   */
+  readonly activeNow: boolean;
 }
 
-function toWireFreezeWindow(row: {
-  id: number;
-  scope: string;
-  workload: string | null;
-  name: string;
-  reason: string | null;
-  startsAt: Date;
-  endsAt: Date;
-  recurrence: string;
-  recurrenceUntil: Date | null;
-}): WireFreezeWindow {
+function toWireFreezeWindow(
+  row: {
+    id: number;
+    scope: string;
+    workload: string | null;
+    name: string;
+    reason: string | null;
+    startsAt: Date;
+    endsAt: Date;
+    recurrence: string;
+    recurrenceUntil: Date | null;
+    active: boolean;
+  },
+  now: Date,
+): WireFreezeWindow {
   return {
     id: row.id,
     scope: row.scope,
@@ -763,6 +778,16 @@ function toWireFreezeWindow(row: {
     endsAt: row.endsAt.toISOString(),
     recurrence: row.recurrence,
     recurrenceUntil: row.recurrenceUntil ? row.recurrenceUntil.toISOString() : null,
+    activeNow: isWindowActiveAt(
+      {
+        startsAt: row.startsAt,
+        endsAt: row.endsAt,
+        recurrence: row.recurrence as Parameters<typeof isWindowActiveAt>[0]["recurrence"],
+        recurrenceUntil: row.recurrenceUntil,
+        active: row.active,
+      },
+      now,
+    ),
   };
 }
 
@@ -797,7 +822,8 @@ router.get(
           ),
         )
         .orderBy(asc(changeFreezeWindowsTable.startsAt));
-      res.json({ windows: rows.map(toWireFreezeWindow) });
+      const now = new Date();
+      res.json({ windows: rows.map((row) => toWireFreezeWindow(row, now)) });
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/change-control/freeze-windows failed");
       res.status(500).json({ error: "Failed to load the freeze calendar" });
@@ -820,19 +846,28 @@ interface WireMaintenanceWindow {
   readonly endsAt: string;
   readonly recurrence: string;
   readonly recurrenceUntil: string | null;
+  /** #1717 — same treatment as `WireFreezeWindow.activeNow`, via the real
+   *  `spanWithinMaintenanceWindow(window, now, null)` coverage check the
+   *  catalog-execute path already uses (a null end evaluates coverage at the
+   *  `now` instant). */
+  readonly activeNow: boolean;
 }
 
-function toWireMaintenanceWindow(row: {
-  id: number;
-  scope: string;
-  workload: string | null;
-  name: string;
-  reason: string | null;
-  startsAt: Date;
-  endsAt: Date;
-  recurrence: string;
-  recurrenceUntil: Date | null;
-}): WireMaintenanceWindow {
+function toWireMaintenanceWindow(
+  row: {
+    id: number;
+    scope: string;
+    workload: string | null;
+    name: string;
+    reason: string | null;
+    startsAt: Date;
+    endsAt: Date;
+    recurrence: string;
+    recurrenceUntil: Date | null;
+    active: boolean;
+  },
+  now: Date,
+): WireMaintenanceWindow {
   return {
     id: row.id,
     scope: row.scope,
@@ -843,6 +878,17 @@ function toWireMaintenanceWindow(row: {
     endsAt: row.endsAt.toISOString(),
     recurrence: row.recurrence,
     recurrenceUntil: row.recurrenceUntil ? row.recurrenceUntil.toISOString() : null,
+    activeNow: spanWithinMaintenanceWindow(
+      {
+        startsAt: row.startsAt,
+        endsAt: row.endsAt,
+        recurrence: row.recurrence as Parameters<typeof spanWithinMaintenanceWindow>[0]["recurrence"],
+        recurrenceUntil: row.recurrenceUntil,
+        active: row.active,
+      },
+      now,
+      null,
+    ),
   };
 }
 
@@ -877,7 +923,8 @@ router.get(
           ),
         )
         .orderBy(asc(changeMaintenanceWindowsTable.startsAt));
-      res.json({ windows: rows.map(toWireMaintenanceWindow) });
+      const now = new Date();
+      res.json({ windows: rows.map((row) => toWireMaintenanceWindow(row, now)) });
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/change-control/maintenance-windows failed");
       res.status(500).json({ error: "Failed to load the maintenance calendar" });

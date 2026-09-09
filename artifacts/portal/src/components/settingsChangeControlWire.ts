@@ -1,17 +1,17 @@
 /**
  * settingsChangeControlWire.ts — the wire shapes behind
- * GET /api/portal/settings/change-control, the real backend for the Settings
- * page's "Change control policy" section (Git #1592).
+ * GET /api/portal/settings/change-control, the real backend for the "Your
+ * change policy" section on the Change Control page (Git #1592, wired by
+ * #1717 as part of `Design/portal/design_handoff_full_site/screens/Change
+ * Control.dc.html`).
  *
  * Pure functions, no React — the fetching lives in
- * `settingsChangeControlLive.ts`. There is no `Design/portal/` export for
- * Settings yet, so nothing in `artifacts/portal/src/pages` consumes this file
- * today; it exists so wiring the page is a straight import once that design
- * lands, instead of a second pass through this endpoint's shape. The retired
+ * `settingsChangeControlLive.ts`, consumed by
+ * `components/change-control/PolicySection.tsx`. The retired
  * `portal-v2-settings.tsx` / `settingsData.ts` (see
- * `portal-archive-2026-08-29`) is the closest reference for what a future page
- * would do with these fields — `CcPolicy` / `CcNotifRule` below match its field
- * names on purpose.
+ * `portal-archive-2026-08-29`) is the closest reference for what a future
+ * standalone Settings page would do with these fields — `CcPolicy` /
+ * `CcNotifRule` below match its field names on purpose.
  */
 
 export interface CcPolicy {
@@ -23,6 +23,9 @@ export interface CcPolicy {
    *  page only persists it. */
   readonly freeze: boolean;
   readonly emergency: boolean;
+  /** #1717 — enforced by the standard-catalog execute path's #3044 gate; the
+   *  settings page only persists it, same as `freeze` above. */
+  readonly maintenanceWindows: boolean;
 }
 
 export interface CcNotifRule {
@@ -53,6 +56,7 @@ const DEFAULT_POLICY: CcPolicy = {
   separate: true,
   freeze: false,
   emergency: false,
+  maintenanceWindows: false,
 };
 
 function bool(v: unknown, fallback: boolean): boolean {
@@ -75,6 +79,7 @@ export function toPolicy(raw: unknown): CcPolicy {
     separate: bool(p.separate, DEFAULT_POLICY.separate),
     freeze: bool(p.freeze, DEFAULT_POLICY.freeze),
     emergency: bool(p.emergency, DEFAULT_POLICY.emergency),
+    maintenanceWindows: bool(p.maintenanceWindows, DEFAULT_POLICY.maintenanceWindows),
   };
 }
 

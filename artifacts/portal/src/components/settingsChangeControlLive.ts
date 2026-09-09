@@ -13,10 +13,7 @@
  * server-side from `users.can_approve_changes`, so there is no `saveApprovers` —
  * the page shows who may sign, it does not edit the set.
  *
- * No page imports this yet — there is no `Design/portal/` Settings export to
- * wire it into (see the header of `settingsChangeControlWire.ts`). This file
- * exists so that work is a straight import once the design lands, rather than
- * a second pass through the endpoint.
+ * Consumed by `components/change-control/PolicySection.tsx` (#1717).
  */
 
 import { useCallback, useEffect, useState } from "react";
