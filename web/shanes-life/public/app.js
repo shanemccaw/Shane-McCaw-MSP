@@ -2388,26 +2388,52 @@ async function viewPersonDetail(view, personId) {
   attachRoomWatermark(view, "people");
 }
 
-// Lists (Git #3155) -- the real, deliberately light-touch case Section 3 calls out: movies/shows
-// to watch, recommended books, and anything else Claude files on the fly via `push_list`'s
-// generic `category` path. Same real typed shape as Shopping (core/lists.mjs), just every list
-// except the Shopping singleton, which keeps its own dedicated room. No bespoke design needed
-// per the contract pack -- one simple check-circle row per item, same as the design's own
-// "sensible list treatment" line.
-// Lists (Git #3155, Round 2 visual rebuild Git #3194) -- the real, deliberately light-touch
-// case Section 3 calls out: movies/shows to watch, recommended books, and anything else Claude
-// files on the fly via `push_list`'s generic `category` path. Same real typed shape as Shopping
-// (core/lists.mjs), just every list except the Shopping singleton, which keeps its own dedicated
-// room. Real design source is the First Slice Prototype's own `showLists` block (`d.listGroups`),
-// confirmed live by screenshots/07-lists.png -- NOT "Shanes Life 12 - Shared list.dc.html", which
-// #3184 already built against for the separate no-login share page (public/share.js). Native
-// chrome reuses the generic roomHeader() Dates/Pets already established (#3192/#3193), extended
-// here with its optional right-side icon for the design's own critter blob pebble; the rows
-// reuse Shopping's already-shipped .shop-list/.shop-check/.shop-item-row (Git #3178) rather than
-// a parallel set of near-identical CSS.
+// Lists (Git #3155, shelf rebuild Git #3305) -- the real, deliberately light-touch case Section 3
+// calls out: movies/shows to watch, recommended books, and anything else Claude files on the fly
+// via `push_list`'s generic `category` path. Same real typed shape as Shopping (core/lists.mjs),
+// just every list except the Shopping singleton, which keeps its own dedicated room.
+//
+// Real design source, per README "What changed... the Lists room" (Sep 8 night pass): "Lists is
+// a shelf of lists, not one long page" -- a 2-column grid of hue-tinted list cards (the First
+// Slice Prototype's own `d.showLists`/`d.listCards`), each opening its own real screen
+// (`d.showList`/`d.lOpen`/`d.lDone`) with open items on top and a collapsed "Done · {n}" section
+// underneath. This supersedes Git #3194's one-long-page rebuild -- that pass is what #3305
+// replaces, not what it extends.
 const LISTS_TINT = "165,180,252"; // ROOMS' own real tint for "lists", matching the design's glow.
 
-function listsItemRow(listId, item) {
+// README §1: five named hues, plus a hash fallback for anything else -- the real FNV-1a hash and
+// 7-hue palette the prototype's own `LIST_HUES`/`HUES`/`fnv` use verbatim (`listHue()` in
+// `Shanes Life - First Slice Prototype.dc.html`), so an arbitrary list name always lands on the
+// same hue across reloads instead of a color picked at random each render.
+const LIST_HUES = {
+  Watch: "165,180,252",
+  Books: "251,191,36",
+  Gifts: "244,114,182",
+  "House projects": "45,212,191",
+  Someday: "167,139,250",
+  Visits: "134,239,172",
+};
+const LIST_HUE_PALETTE = ["165,180,252", "45,212,191", "244,114,182", "251,191,36", "52,211,153", "167,139,250", "251,146,60"];
+function fnv1a(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function listHue(name) {
+  return LIST_HUES[name] || LIST_HUE_PALETTE[fnv1a(name) % LIST_HUE_PALETTE.length];
+}
+
+const LIST_BACK_CHEVRON_ICON =
+  '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>';
+
+/** One check-circle row on a list's own detail screen (README §2: open items on top, tap to
+ *  check off; Done items underneath, tap to un-do). Reuses Shopping's already-shipped
+ *  .shop-list/.shop-check row skin (Git #3178) -- no per-row expand/remove chevron here, unlike
+ *  Shopping's own row: the design never draws one on this screen. */
+function listDetailItemRow(listId, item) {
   const box = el("div", {
     class: `shop-check${item.done ? " done" : ""}`,
     role: "checkbox",
@@ -2417,21 +2443,16 @@ function listsItemRow(listId, item) {
     html: item.done ? SHOP_CHECK_ICON : "",
   });
   const nameEl = el("div", { class: `shop-item-name${item.done ? " done" : ""}`, text: item.text });
-  const subEl = item.note ? el("div", { class: "shop-item-sub", text: item.note }) : null;
 
   const toggleDone = async () => {
     if (box.classList.contains("pending")) return;
     box.classList.add("pending");
     try {
-      const updated = await api(`/api/lists/${listId}/items/${item.id}`, {
+      await api(`/api/lists/${listId}/items/${item.id}`, {
         method: "PATCH",
         body: JSON.stringify({ checked: !item.done }),
       });
-      item.done = updated.done;
-      box.classList.toggle("done", item.done);
-      box.innerHTML = item.done ? SHOP_CHECK_ICON : "";
-      box.setAttribute("aria-checked", item.done ? "true" : "false");
-      nameEl.classList.toggle("done", item.done);
+      render();
     } finally {
       box.classList.remove("pending");
     }
@@ -2445,102 +2466,222 @@ function listsItemRow(listId, item) {
   });
   nameEl.addEventListener("click", toggleDone);
 
-  // Remove lives behind the same trailing-chevron detail panel Shopping's own row uses (Git
-  // #3178) rather than a permanent ghost button on the row -- the design never shows one
-  // permanently either.
-  const expandBtn = el("button", {
-    type: "button",
-    class: "shop-item-more",
-    "aria-label": `More actions for ${item.text}`,
-    "aria-expanded": "false",
-    html: SHOP_CHEVRON_RIGHT_ICON,
-  });
-  const detail = el("div", { class: "shop-item-detail" });
-  detail.hidden = true;
-  expandBtn.addEventListener("click", (event) => {
-    event.stopPropagation();
-    const opening = detail.hidden;
-    detail.hidden = !opening;
-    expandBtn.classList.toggle("open", opening);
-    expandBtn.setAttribute("aria-expanded", opening ? "true" : "false");
-    if (opening) {
-      detail.replaceChildren(
-        el("div", { class: "shop-item-detail-inner" }, [
-          el("div", { class: "row" }, [
-            el("button", {
-              class: "ghost small danger",
-              text: "Remove",
-              onClick: async (removeEvent) => {
-                removeEvent.currentTarget.disabled = true;
-                await api(`/api/lists/${listId}/items/${item.id}`, { method: "DELETE" });
-                render();
-              },
-            }),
-          ]),
-        ]),
-      );
-    }
-  });
-
   return el("li", { class: "shop-item-row" }, [
-    el("div", { class: "shop-item-main" }, [box, el("div", { class: "shop-item-text" }, [nameEl, subEl]), expandBtn]),
-    detail,
+    el("div", { class: "shop-item-main" }, [box, el("div", { class: "shop-item-text" }, [nameEl])]),
   ]);
 }
 
-/** One list = one design "group": an uppercase "{{name}} · N left" label (plus the same
- *  "New category" chip Dates already surfaces for an on-the-fly kind) over a rounded card of
- *  check-circle rows. */
-function listsGroupCard(list) {
-  const remaining = Math.max(0, (list.item_count ?? 0) - (list.done_count ?? 0));
-  const label = el("span", {
-    class: "shop-group-label",
-    text: `${list.category_label || list.category || "List"} · ${remaining} left`,
-  });
-  const newBadge = list.created_by === "claude" ? el("span", { class: "chip", text: "New category" }) : null;
+/** One shelf card (README §1): hue-tinted background/border, name, a real pill ("{n} left" /
+ *  "all done" / "empty"), up to three open items inline, "+N more", a "{n} done" footer, and a
+ *  small "new" tag -- the same real signal Dates' own "New category" chip and this room's prior
+ *  round already used (`created_by === "claude"`, i.e. filed on the fly rather than by Shane
+ *  himself typing "new list: …"). Opens the list's own screen on tap. */
+function listCardEl(list) {
+  const openCount = Math.max(0, (list.item_count ?? 0) - (list.done_count ?? 0));
+  const doneCount = list.done_count ?? 0;
+  const hue = listHue(list.name);
+  const pillText = openCount > 0 ? `${openCount} left` : (list.item_count ?? 0) > 0 ? "all done" : "empty";
+  const footText = doneCount > 0 ? `${doneCount} done` : (list.item_count ?? 0) > 0 ? "nothing done yet" : "just made";
 
-  // Git #3183: no dedicated "Add {noun}" form -- adding to a list is a capture, same as
-  // starting one (see viewLists below). Say "watch The Bear" or "add The Bear to Watch" in the
-  // universal capture box and Claude files it onto the right list.
-  const ul = el("ul", { class: "shop-list" });
-  api(`/api/lists/${list.id}`)
-    .then((detail) => {
-      ul.replaceChildren();
-      if (detail.items.length === 0) {
-        ul.append(el("li", { class: "muted small", style: "padding:12px 16px", text: "Nothing on this list yet." }));
-      } else {
-        for (const item of detail.items) ul.append(listsItemRow(list.id, item));
-      }
-    })
-    .catch(() => {
-      ul.replaceChildren(el("li", { class: "error small", style: "padding:12px 16px", text: "Couldn't load items." }));
-    });
-  return el("div", { style: "display:flex;flex-direction:column;gap:8px" }, [
-    el("div", { class: "row", style: "align-items:center;gap:8px" }, [label, newBadge]),
-    ul,
-  ]);
+  const preview = el("div", { class: "list-card-preview" });
+  const card = el(
+    "a",
+    { class: "list-card", href: `#/list/${list.id}`, style: `background:rgba(${hue},.10);border-color:rgba(${hue},.28)` },
+    [
+      el("div", { class: "list-card-head" }, [
+        el("span", { class: "list-card-name", text: list.name }),
+        el("span", { class: "list-card-pill", text: pillText }),
+      ]),
+      preview,
+      el("div", { class: "list-card-foot" }, [
+        el("span", { text: footText }),
+        list.created_by === "claude" ? el("span", { class: "list-card-new", style: `color:rgb(${hue})`, text: "new" }) : null,
+      ]),
+    ],
+  );
+
+  // /api/lists only carries item/done counts, not the items themselves -- fetch this one card's
+  // real open items to draw its up-to-three preview (same real per-card fetch the prior round's
+  // listsGroupCard already did; it's not a new N+1, just the same one now feeding a preview
+  // instead of a full expanded row list).
+  if (openCount === 0) {
+    preview.append(el("div", { class: "list-card-empty-hint", text: "Nothing open. Say it and it lands here." }));
+  } else {
+    api(`/api/lists/${list.id}`)
+      .then((detail) => {
+        preview.replaceChildren();
+        const open = detail.items.filter((i) => !i.done);
+        for (const item of open.slice(0, 3)) {
+          preview.append(
+            el("div", { class: "list-card-row" }, [
+              el("span", { class: "list-card-dot", style: `border-color:rgb(${hue})` }),
+              el("span", { class: "list-card-row-text", text: item.text }),
+            ]),
+          );
+        }
+        if (open.length > 3) preview.append(el("div", { class: "list-card-more", text: `+${open.length - 3} more` }));
+      })
+      .catch(() => {});
+  }
+
+  return card;
 }
 
-// The design's own real, locked line (First Slice Prototype's showLists footer) -- shown under
-// the lists whether or not any exist yet, per screenshots/07-lists.png. Copy is final.
-const LISTS_HINT = 'Say "watch …" or "read …" and it lands here. A new kind of list shows up on its own the first time you need one. No form, ever.';
+/** The dashed "+" card (README §1: 'Say "new list: Gifts" and it appears here') -- pre-fills the
+ *  universal capture box rather than opening a form, the same "no form, ever" discipline Git
+ *  #3183 already established for adding to an existing list. */
+function newListCardEl() {
+  return el(
+    "button",
+    {
+      type: "button",
+      class: "list-card-new-list",
+      onClick: () => {
+        captureText.value = "new list: ";
+        captureText.dispatchEvent(new Event("input"));
+        captureText.focus();
+      },
+    },
+    [
+      el("span", { class: "list-card-plus", "aria-hidden": "true", text: "+" }),
+      el("span", { text: 'Say "new list: Gifts" and it appears here' }),
+    ],
+  );
+}
+
+// The design's own real, locked line (First Slice Prototype's showLists footer). Copy is final.
+const LISTS_HINT =
+  'Any list, any name: "gifts list: speaker for DJ", "add batteries to the House projects list", "watch Severance". Open a list to check things off; done items drop below so a long list stays short.';
 
 async function viewLists(view) {
   const { lists } = await api("/api/lists");
+  const openTotal = lists.reduce((sum, l) => sum + Math.max(0, (l.item_count ?? 0) - (l.done_count ?? 0)), 0);
+  const sub = lists.length ? `${lists.length} ${lists.length === 1 ? "list" : "lists"} · ${openTotal} open` : null;
 
-  roomHeader(view, LISTS_TINT, "Lists", { icon: critterIcon("lists", { size: 36 }) });
+  roomHeader(view, LISTS_TINT, "Lists", { icon: critterIcon("lists", { size: 36 }), sub });
 
-  if (lists.length === 0) {
-    view.append(empty("No lists yet.", LISTS_HINT, "notfound"));
-  } else {
-    const section = el("section", { class: "section" });
-    for (const list of lists) section.append(listsGroupCard(list));
-    view.append(section);
-    view.append(el("p", { class: "lists-footer-hint", text: LISTS_HINT }));
-  }
+  const shelf = el("div", { class: "list-shelf" });
+  for (const list of lists) shelf.append(listCardEl(list));
+  shelf.append(newListCardEl());
+  view.append(shelf);
+  view.append(el("p", { class: "lists-footer-hint", text: LISTS_HINT }));
 
   // Room watermark (Git #3119): "lists" (1j) is the critter slot the spec already carries for
   // this room.
+  attachRoomWatermark(view, "lists");
+}
+
+// One list's own screen (Git #3305, README §2) -- back link to Lists (not Today, unlike every
+// other roomHeader() caller), glowed and pebbled in this list's own real hue.
+function listDetailHeader(view, hue, title, sub) {
+  view.append(
+    el("div", { class: "room-scene" }, [
+      el("div", { class: "room-glow", style: `background: radial-gradient(120% 70% at 50% -20%, rgba(${hue},.22), transparent 70%)` }),
+      el("div", { class: "room-header" }, [
+        el("a", { href: "#/lists", class: "room-header-back" }, [el("span", { html: LIST_BACK_CHEVRON_ICON }), el("span", { text: "Lists" })]),
+        el("div", { class: "room-header-title with-icon", text: title }),
+        el("div", { class: "room-header-icon", style: `background:rgba(${hue},.16)` }, [critterIcon("lists", { size: 36 })]),
+      ]),
+      el("div", { class: "room-header-subline", text: sub }),
+    ]),
+  );
+}
+
+// Transient, per-list UI state (Find query + Done-section expanded) -- deliberately not
+// persisted, same "one real screen in front of Shane right now" model `cookSession` above
+// already uses. Reset whenever navigation lands on a different list.
+let listDetailUi = { listId: null, query: "", showDone: false };
+
+async function viewListDetail(view, listId) {
+  if (listDetailUi.listId !== listId) listDetailUi = { listId, query: "", showDone: false };
+  const list = await api(`/api/lists/${listId}`);
+  const hue = listHue(list.name);
+  const openItems = list.items.filter((i) => !i.done);
+  const doneItems = list.items.filter((i) => i.done);
+
+  listDetailHeader(view, hue, list.name, `${openItems.length} left · ${doneItems.length} done`);
+
+  // README §2: "Lists over 10 items get a 'Find in {list}' pill that filters both sections." A
+  // real input, not a fixed pill, since the design's own `d.lQuery` is a real search box, not a
+  // toggle. Mounted once outside drawBody() so retyping doesn't lose focus/cursor position on
+  // every keystroke -- only the filtered results below it redraw.
+  if (list.items.length > 10) {
+    view.append(
+      el("input", {
+        type: "text",
+        class: "list-find-input",
+        placeholder: `Find in ${list.name}`,
+        value: listDetailUi.query,
+        onInput: (event) => {
+          listDetailUi.query = event.target.value;
+          drawBody();
+        },
+      }),
+    );
+  }
+
+  const body = el("div", { class: "list-detail-body" });
+  view.append(body);
+
+  function drawBody() {
+    body.replaceChildren();
+    const q = listDetailUi.query.trim().toLowerCase();
+    const filteredOpen = openItems.filter((i) => !q || i.text.toLowerCase().includes(q));
+
+    if (filteredOpen.length > 0) {
+      const ul = el("ul", { class: "shop-list" });
+      for (const item of filteredOpen) ul.append(listDetailItemRow(listId, item));
+      body.append(ul);
+    } else {
+      const text = q
+        ? `Nothing open matches "${listDetailUi.query.trim()}".`
+        : list.items.length
+          ? "Everything here is checked off. Say something and it lands on top."
+          : `Empty so far. Say "add … to the ${list.name} list".`;
+      body.append(el("div", { class: "card", style: "padding:16px;font-size:15px;line-height:1.45", text }));
+    }
+
+    if (doneItems.length > 0) {
+      const filteredDone = doneItems.filter((i) => !q || i.text.toLowerCase().includes(q));
+      const chevron = el("span", { class: `list-done-chevron${listDetailUi.showDone ? " open" : ""}`, html: SHOP_CHEVRON_RIGHT_ICON });
+      const clearBtn = el("button", {
+        type: "button",
+        class: "list-done-clear",
+        text: "Clear",
+        onClick: async (event) => {
+          event.stopPropagation();
+          await api(`/api/lists/${listId}/clear-checked`, { method: "POST" });
+          render();
+        },
+      });
+      const head = el("div", { class: "list-done-head" }, [
+        el("span", { class: "list-done-label", text: `Done · ${doneItems.length}` }),
+        clearBtn,
+        chevron,
+      ]);
+      head.addEventListener("click", (event) => {
+        if (clearBtn.contains(event.target)) return;
+        listDetailUi.showDone = !listDetailUi.showDone;
+        drawBody();
+      });
+      const doneCard = el("div", { class: "list-done-card" }, [head]);
+      if (listDetailUi.showDone) {
+        const doneUl = el("ul", { class: "shop-list" });
+        for (const item of filteredDone) doneUl.append(listDetailItemRow(listId, item));
+        doneCard.append(doneUl);
+      }
+      body.append(doneCard);
+    }
+
+    // README §2's own real, locked footer line, per list -- Watch/Books keep their real named
+    // examples, any other list gets the generic "add … to the {list} list" form.
+    const footHint =
+      `Say "${list.name === "Watch" ? "watch Severance" : list.name === "Books" ? "read Project Hail Mary" : `add … to the ${list.name} list`}"` +
+      ` from anywhere. Tap a row to check it off; it drops under Done so the list stays short.`;
+    body.append(el("p", { class: "lists-footer-hint", text: footHint }));
+  }
+
+  drawBody();
   attachRoomWatermark(view, "lists");
 }
 
@@ -9461,7 +9602,10 @@ const DATES_TINT = "244,114,182"; // README's own room-tint table, "Dates".
  *  (`d.cr.lists`) -- when passed, the title centers between the two, mirroring the same
  *  back/center/right symmetry Shopping's own header (#3178) already uses. Omitted, this is
  *  Dates/Pets' original plain back-link + left-flowing title, unchanged. */
-function roomHeader(view, tintRgb, title, { icon } = {}) {
+// `sub` (Git #3305) is optional and additive -- a centered subtitle line under the title, for a
+// room whose own design names one (Lists' own `d.listsSub`, "{n} lists · {m} open"). Every
+// existing caller that never passes it keeps rendering exactly as before.
+function roomHeader(view, tintRgb, title, { icon, sub } = {}) {
   view.append(
     el("div", { class: "room-scene" }, [
       el("div", { class: "room-glow", style: `background: radial-gradient(120% 70% at 50% -20%, rgba(${tintRgb},.22), transparent 70%)` }),
@@ -9470,6 +9614,7 @@ function roomHeader(view, tintRgb, title, { icon } = {}) {
         el("div", { class: `room-header-title${icon ? " with-icon" : ""}`, text: title }),
         icon ? el("div", { class: "room-header-icon", style: `background:rgba(${tintRgb},.16)` }, [icon]) : null,
       ]),
+      sub ? el("div", { class: "room-header-subline", text: sub }) : null,
     ]),
   );
 }
@@ -10140,7 +10285,7 @@ async function viewPetDetail(view, petId) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", wins: "Wins", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", people: "People", person: "", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight", tesla: "Tesla" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", wins: "Wins", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", list: "", things: "Things", people: "People", person: "", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight", tesla: "Tesla" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -10153,6 +10298,7 @@ function parseRoute() {
   state.petId = state.route === "pet" ? rest[0] : null;
   state.carId = state.route === "car" ? rest[0] : null;
   state.personId = state.route === "person" ? rest[0] : null;
+  state.listId = state.route === "list" ? rest[0] : null;
 }
 
 async function render() {
@@ -10185,7 +10331,7 @@ async function render() {
   // Every real ROOM_DEFS room now has its own header. #app-view.no-header lets .view collapse
   // its top padding to just the native status-bar safe area instead of assuming a header row
   // sits above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox" || state.route === "tesla" || state.route === "vault" || state.route === "settings";
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "list" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox" || state.route === "tesla" || state.route === "vault" || state.route === "settings";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 
@@ -10214,6 +10360,7 @@ async function render() {
     else if (state.route === "pet") await viewPetDetail(view, state.petId);
     else if (state.route === "car") await viewCarDetail(view, state.carId);
     else if (state.route === "lists") await viewLists(view);
+    else if (state.route === "list") await viewListDetail(view, state.listId);
     else if (state.route === "tesla") await viewTesla(view);
     else if (state.route === "things") await viewThings(view);
     else if (state.route === "people") await viewPeople(view);

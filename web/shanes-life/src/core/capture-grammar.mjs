@@ -206,6 +206,14 @@ function titleCasePhrase(phrase) {
     .join(" ");
 }
 
+/** Capitalizes just the first letter -- an item's own stated text ("tent stakes", "headlamp")
+ *  keeps its own casing otherwise, unlike a list's own name above. Mirrors the prototype's own
+ *  `cap1` used for exactly this in `nlst`/`atl`/`li` (Git #3305). */
+function cap1(s) {
+  const str = String(s || "");
+  return str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
+}
+
 const KNOWN_VEHICLE_MAKES =
   "tesla|kia|ford|toyota|honda|chevrolet|chevy|nissan|jeep|ram|gmc|hyundai|subaru|mazda|bmw|audi|" +
   "mercedes|volkswagen|vw|dodge|chrysler|buick|cadillac|lincoln|volvo|lexus|acura|infiniti|mitsubishi|porsche";
@@ -715,11 +723,12 @@ const RULES = [
           description: `${title} -- a list Shane started.`,
         },
       });
-      if (firstItem) await lists.addListItems(userId, list.id, [firstItem]);
+      const item = firstItem ? cap1(firstItem) : null;
+      if (item) await lists.addListItems(userId, list.id, [item]);
       return {
         message: isNew
-          ? `New list: ${title}.${firstItem ? ` ${firstItem} is the first thing on it.` : ""}`
-          : `${title} already exists.${firstItem ? ` Added ${firstItem}.` : ""}`,
+          ? `New list: ${title}.${item ? ` ${item} is the first thing on it.` : ""}`
+          : `${title} already exists.${item ? ` Added ${item}.` : ""}`,
       };
     },
   },
@@ -742,8 +751,9 @@ const RULES = [
       if (m && !isGenericName(m[1].trim())) return { item: m[2].trim(), rawName: m[1].trim() };
       return null;
     },
-    async run(userId, { item, rawName }) {
-      if (!item || !rawName) return FALLBACK;
+    async run(userId, { item: rawItem, rawName }) {
+      if (!rawItem || !rawName) return FALLBACK;
+      const item = cap1(rawItem);
       const all = await lists.listAllListNames(userId);
       const resolved = tieredMatch(all, rawName);
       if (!resolved.ok && resolved.reason === "ambiguous") return FALLBACK;
