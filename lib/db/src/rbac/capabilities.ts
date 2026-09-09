@@ -23,16 +23,27 @@
  * same name would be different authorities over different money; nothing in this
  * file lets them collide.
  *
- * ── What is seeded here, and what deliberately is not ───────────────────────
+ * ── What is catalogued here, and what deliberately is not ───────────────────
  * Every entry below is backed by a REAL, distinct authorization decision that
  * already exists in the running product — the three live per-user capability
- * columns, plus the one real customer-side surface #1696 was filed about. This is
- * a foundation step: it does NOT attempt to enumerate all ~480 `requireRole` call
- * sites. Expressing today's seven roles and the boolean columns as data is #2457;
- * moving enforcement onto this evaluator is #2458; the mechanical route-coverage
- * pass is #1698. Adding an entry here is a one-line change plus a catalog sync —
- * that being cheap is the entire point of the redesign.
+ * columns, the one real customer-side surface #1696 was filed about, and (added
+ * by #2457) the seven rungs of the `ROLE_ORDER` ladder, one capability each.
+ *
+ * With the rungs catalogued, every one of the ~480 `requireRole` call sites is
+ * expressible: `requireRole("MSPAdmin")` is `ladder.msp-admin`. What has NOT
+ * happened is any call site being changed — #2457 only makes the data correct,
+ * #2458 moves enforcement onto this evaluator, and #1698 is the mechanical
+ * route-coverage pass. Adding an entry here is a one-line change plus a catalog
+ * sync — that being cheap is the entire point of the redesign.
  */
+
+import {
+  LADDER_CAPABILITY_CATEGORY,
+  LEGACY_ROLE_ORDER,
+  ladderCapabilityDescription,
+  ladderCapabilityKey,
+  ladderCapabilityLabel,
+} from "./legacy-ladder";
 
 /** The two identity systems. Separate tables, separate admins, shared mechanism. */
 export const RBAC_SYSTEMS = ["msp", "customer"] as const;
@@ -55,6 +66,25 @@ export interface RbacCapability {
 }
 
 export const RBAC_CAPABILITIES: readonly RbacCapability[] = Object.freeze([
+  // ── MSP system: the ROLE_ORDER ladder, one capability per rung (#2457) ────
+  //
+  // Added by migration step 2. `requireRole("MSPAdmin")` is an authorization
+  // decision like any other, and these seven keys are what it becomes once the
+  // decision comes out of the database instead of an array index — the allow set
+  // of `ladder.msp-admin` is literally {MSPAdmin, PlatformAdmin}, which is
+  // `roleIndex >= roleIndex("MSPAdmin")` enumerated rather than computed.
+  //
+  // Generated from LEGACY_ROLE_ORDER rather than typed out, so a rung cannot be
+  // catalogued that the ladder does not have, or vice versa. Transitional: #2458
+  // reads them, #2460 retires them with MSP_ROLES itself.
+  ...LEGACY_ROLE_ORDER.map((role): RbacCapability => ({
+    system: "msp",
+    key: ladderCapabilityKey(role),
+    category: LADDER_CAPABILITY_CATEGORY,
+    label: ladderCapabilityLabel(role),
+    description: ladderCapabilityDescription(role),
+  })),
+
   // ── MSP system ────────────────────────────────────────────────────────────
   {
     system: "msp",

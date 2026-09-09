@@ -14,10 +14,26 @@
  * Run:
  *   pnpm --filter @workspace/db run check-rbac-integrity
  *
- * Safe by construction: every row it writes goes into ONE transaction that is
- * always rolled back, and the run ends by asserting the tables are empty again.
- * It needs `DATABASE_URL` pointed at a database the migration has been applied
- * to (local dev — never staging or production).
+ * Safe by construction: everything it does happens inside ONE transaction that is
+ * always rolled back, and the run ends by asserting every table holds exactly the
+ * rows it held before. It needs `DATABASE_URL` pointed at a database the
+ * migration has been applied to (local dev — never staging or production).
+ *
+ * ── Why it clears the tables first (#2457) ──────────────────────────────────
+ * These checks were written against empty tables, and #2457 stopped them being
+ * empty: it seeds the seven ladder rungs, three capability-column roles, a
+ * platform mapping for every catalogued capability, and a grant for every real
+ * user. Several checks here assert an exact set — "the loader returns both held
+ * roles", "an unmapped capability defaults to deny" — and a platform-scoped
+ * `billing.view` mapping row now already exists, which the "real writes the
+ * product will make" block would collide with.
+ *
+ * So the transaction begins by deleting every RBAC row, restoring the
+ * precondition these assertions were designed for, and the rollback puts the
+ * seed back untouched. That keeps this harness testing what it was written to
+ * test — the schema's integrity mechanisms — rather than turning it into a
+ * second, weaker parity check. Whether the SEEDED rows are correct is
+ * ./parity-check.ts's job, against the real seed, with the real evaluator.
  */
 
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -80,8 +96,37 @@ const OTHER_TENANT = 3;
 const MSP_USER = 1;
 const CUSTOMER_USER = 39;
 
+/** Row counts across the six RBAC tables, in a fixed order. */
+async function rbacCounts(handle: { execute: (q: ReturnType<typeof sql>) => Promise<{ rows: unknown[] }> }): Promise<number[]> {
+  const [row] = (await handle.execute(sql`
+    SELECT (SELECT count(*)::int FROM msp_roles)                     AS msp_roles,
+           (SELECT count(*)::int FROM customer_roles)                AS customer_roles,
+           (SELECT count(*)::int FROM msp_user_roles)                AS msp_user_roles,
+           (SELECT count(*)::int FROM customer_user_roles)           AS customer_user_roles,
+           (SELECT count(*)::int FROM msp_feature_role_mapping)      AS msp_mappings,
+           (SELECT count(*)::int FROM customer_feature_role_mapping) AS customer_mappings
+  `)).rows as Array<Record<string, number>>;
+  return Object.values(row!);
+}
+
+// Taken BEFORE the transaction opens, and re-taken after it rolls back. The
+// harness is only safe if these agree.
+const countsBefore = await rbacCounts(db);
+
 try {
   await db.transaction(async (tx) => {
+    // ── clear the seed, inside the rollback ────────────────────────────────
+    // See the header: these assertions were written against empty tables and
+    // #2457's seed populated them. Deleting here is scoped to this transaction
+    // and undone by the rollback below; the mapping rows go first because the
+    // role-delete trigger rewrites them.
+    await tx.execute(sql`DELETE FROM msp_feature_role_mapping`);
+    await tx.execute(sql`DELETE FROM customer_feature_role_mapping`);
+    await tx.execute(sql`DELETE FROM msp_user_roles`);
+    await tx.execute(sql`DELETE FROM customer_user_roles`);
+    await tx.execute(sql`DELETE FROM msp_roles`);
+    await tx.execute(sql`DELETE FROM customer_roles`);
+
     // ── roles: uuid pks, both scopes, both systems ─────────────────────────
     const [platformMspRole] = await tx.insert(mspRolesTable)
       .values({ mspId: null, key: "zz-check-platform", name: "Platform Baseline", isSystem: true }).returning();
@@ -207,15 +252,9 @@ try {
   }
 }
 
-const [counts] = (await db.execute(sql`
-  SELECT (SELECT count(*)::int FROM msp_roles)                     AS msp_roles,
-         (SELECT count(*)::int FROM customer_roles)                AS customer_roles,
-         (SELECT count(*)::int FROM msp_user_roles)                AS msp_user_roles,
-         (SELECT count(*)::int FROM customer_user_roles)           AS customer_user_roles,
-         (SELECT count(*)::int FROM msp_feature_role_mapping)      AS msp_mappings,
-         (SELECT count(*)::int FROM customer_feature_role_mapping) AS customer_mappings
-`)).rows as Array<Record<string, number>>;
-check("rollback left no rows behind", Object.values(counts), Object.values(counts).map(() => 0));
+// The rollback must have restored the #2457 seed exactly — both the rows this
+// harness wrote and the rows it deleted to make room for them.
+check("rollback restored every row it touched", await rbacCounts(db), countsBefore);
 
 await pool.end();
 console.log(failures === 0 ? "\n--- RBAC LIVE INTEGRITY: ALL CHECKS PASSED ---" : `\n--- RBAC LIVE INTEGRITY: ${failures} FAILURE(S) ---`);

@@ -17,6 +17,12 @@ export default defineConfig({
       // fail-closed rules (#1696 requirements 1 and 3).
       "src/rbac/capabilities.test.ts",
       "src/rbac/evaluate.test.ts",
+      // #2457 — the transcription of today's model: the ROLE_ORDER ladder (checked
+      // against the live requireAuth.ts, so drift fails loudly), the legacy admin
+      // promotion, and the asymmetric way the three capability columns are actually
+      // read. The seeded DATA is proven separately and against the real database by
+      // `pnpm --filter @workspace/db run check-rbac-parity`.
+      "src/rbac/legacy-ladder.test.ts",
     ],
   },
 });
