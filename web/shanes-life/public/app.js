@@ -10522,6 +10522,17 @@ async function render() {
     if (err.status === 401) return showLogin();
     view.replaceChildren(el("div", { class: "card" }, [el("p", { class: "error", text: err.message })]));
   }
+
+  // Git #3313: room-to-room navigation was an instant hard cut (replaceChildren() above has no
+  // transition of its own). A plain opacity crossfade, per the issue's own stated default (no
+  // transition preference found in the design handoff). Re-triggered on every render(), including
+  // pull-to-refresh's own re-render of the same room (#3268) -- remove-then-reflow-then-add
+  // restarts the CSS animation even when the class is already present from the previous run.
+  // Purely visual: the new content is already live in the DOM and fully interactive the instant
+  // it's appended above, this only animates how it looks arriving.
+  view.classList.remove("room-fade-in");
+  void view.offsetWidth;
+  view.classList.add("room-fade-in");
 }
 
 window.addEventListener("hashchange", render);
