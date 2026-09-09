@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import {
   deriveVerdict,
   planDriftEvents,
@@ -10,8 +10,10 @@ import {
   getCurrentBaseline,
   maybeCollectDriftForCheck,
   recordDriftCollectionStatus,
+  upgradeBaselineShape,
   type PlannedDriftEvent,
 } from "./drift-collector.ts";
+import { CA_POLICY_CONFIG_VERSION, migrateCaPolicyBaselineConfig } from "./drift-check-specs.ts";
 import { detectDrift } from "./pcc/drift-detector.ts";
 import { db } from "@workspace/db";
 import { driftEventsTable, driftBaselineSnapshotsTable, driftCollectionStatusTable } from "@workspace/db";
@@ -532,5 +534,205 @@ describe.skipIf(!process.env.DATABASE_URL)("drift-collector — maybeCollectDrif
     expect(rows[0].status).toBe("tracked");
     expect(rows[0].reason).toBeNull();
     expect(rows[0].eventsInserted).toBe(4);
+  });
+});
+
+// ── Baseline config shape migration (#3089), live Postgres ────────────────────
+//
+// The dangerous half of re-keying Conditional Access. A stored baseline is diffed
+// against whatever the builder emits today, so an un-migrated v1 array baseline
+// meeting the v2 keyed shape would report the tenant's ENTIRE policy set as
+// drifted. These prove the upgrade happens in place, on read, before any diff —
+// and that the honest fallbacks (un-migratable / newer-than-this-build) are real.
+
+const SHAPE_TENANT = `vitest-3089-${Math.floor(Math.random() * 1e9)}`;
+const P1 = "aaaaaaaa-1111-2222-3333-444444444444";
+const P2 = "bbbbbbbb-5555-6666-7777-888888888888";
+
+const legacyPolicies = () => [
+  { id: P1, displayName: "Block legacy auth", state: "enabled" },
+  { id: P2, displayName: "Require MFA for admins", state: "enabled" },
+];
+const keyedPolicies = (): Record<string, { id: string; displayName: string; state: string }> => ({
+  [P1]: { id: P1, displayName: "Block legacy auth", state: "enabled" },
+  [P2]: { id: P2, displayName: "Require MFA for admins", state: "enabled" },
+});
+
+describe.skipIf(!process.env.DATABASE_URL)("drift-collector — baseline config shape migration (#3089, live Postgres)", () => {
+  beforeAll(async () => {
+    // The #3089 columns, applied inline (idempotent) in the same style as the
+    // #1290 lifecycle columns above.
+    await db.execute(
+      sql.raw(`
+        ALTER TABLE drift_baseline_snapshots ADD COLUMN IF NOT EXISTS config_version INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE drift_baseline_snapshots ADD COLUMN IF NOT EXISTS shape_migrated_at TIMESTAMPTZ;
+      `),
+    );
+  });
+
+  afterEach(async () => {
+    await db.delete(driftEventsTable).where(eq(driftEventsTable.tenantId, SHAPE_TENANT));
+    await db.delete(driftBaselineSnapshotsTable).where(eq(driftBaselineSnapshotsTable.tenantId, SHAPE_TENANT));
+    await db.delete(driftCollectionStatusTable).where(eq(driftCollectionStatusTable.tenantId, SHAPE_TENANT));
+  });
+
+  /** Insert a baseline directly at a given shape version, as a pre-#3089 row would be. */
+  async function seedBaseline(config: unknown, configVersion: number, signed = false): Promise<number> {
+    const [row] = await db
+      .insert(driftBaselineSnapshotsTable)
+      .values({ tenantId: SHAPE_TENANT, domainKey: DOMAIN, config, configVersion, signed, capturedBy: "vitest" })
+      .returning({ id: driftBaselineSnapshotsTable.id });
+    return row.id;
+  }
+
+  it("upgrades a v1 array baseline IN PLACE and reports no drift for an unchanged policy set", async () => {
+    const baselineId = await seedBaseline({ policies: legacyPolicies() }, 1, true);
+
+    const result = await collectDrift(SHAPE_TENANT, DOMAIN, { policies: keyedPolicies() }, {
+      configVersion: CA_POLICY_CONFIG_VERSION,
+      migrateBaselineConfig: migrateCaPolicyBaselineConfig,
+    });
+
+    // THE regression this guards: nothing changed in the tenant, so nothing drifted.
+    expect(result.inserted).toEqual([]);
+    expect(result.firstRun).toBe(false);
+    expect(result.baselineShapeUpgraded).toBe(true);
+    // Same snapshot — not a re-baseline. A re-baseline would silently adopt today's
+    // config as the approved reference and bless any drift accumulated since.
+    expect(result.baselineSnapshotId).toBe(baselineId);
+
+    const stored = await getCurrentBaseline(SHAPE_TENANT, DOMAIN);
+    expect(stored!.id).toBe(baselineId);
+    expect(stored!.configVersion).toBe(2);
+    expect(stored!.shapeMigratedAt).toBeTruthy();
+    expect(stored!.signed).toBe(true); // a re-key changes no approved value
+    expect(stored!.config).toEqual({ policies: keyedPolicies() });
+  });
+
+  it("moves the drift events attached to that baseline onto the keyed paths", async () => {
+    const baselineId = await seedBaseline({ policies: legacyPolicies() }, 1);
+    await db.insert(driftEventsTable).values([
+      {
+        tenantId: SHAPE_TENANT,
+        domainKey: DOMAIN,
+        idempotencyKey: buildDriftIdempotencyKey(SHAPE_TENANT, DOMAIN, baselineId, "replace", "/policies/1/state"),
+        setting: "/policies/1/state",
+        op: "replace",
+        baselineSnapshotId: baselineId,
+      },
+      {
+        // The opaque whole-collection event #3089 removes — not derivable per policy.
+        tenantId: SHAPE_TENANT,
+        domainKey: DOMAIN,
+        idempotencyKey: buildDriftIdempotencyKey(SHAPE_TENANT, DOMAIN, baselineId, "replace", "/policies"),
+        setting: "/policies",
+        op: "replace",
+        baselineSnapshotId: baselineId,
+      },
+    ]);
+
+    const upgrade = await upgradeBaselineShape({
+      baselineId,
+      tenantId: SHAPE_TENANT,
+      domainKey: DOMAIN,
+      storedConfig: { policies: legacyPolicies() },
+      storedVersion: 1,
+      targetVersion: CA_POLICY_CONFIG_VERSION,
+      migrate: migrateCaPolicyBaselineConfig,
+    });
+    expect(upgrade.upgraded).toBe(true);
+    expect(upgrade.rewrittenEvents).toBe(1);
+
+    const rows = await db.select().from(driftEventsTable).where(eq(driftEventsTable.tenantId, SHAPE_TENANT));
+    const settings = rows.map((r) => r.setting).sort();
+    expect(settings).toEqual(["/policies", `/policies/${P2}/state`].sort());
+    // The idempotency key embeds the setting, so it moved with it.
+    const moved = rows.find((r) => r.setting === `/policies/${P2}/state`)!;
+    expect(moved.idempotencyKey).toBe(
+      buildDriftIdempotencyKey(SHAPE_TENANT, DOMAIN, baselineId, "replace", `/policies/${P2}/state`),
+    );
+  });
+
+  it("still detects a REAL change across the migration, per policy", async () => {
+    await seedBaseline({ policies: legacyPolicies() }, 1);
+    const current = keyedPolicies();
+    current[P2] = { ...current[P2], state: "disabled" };
+
+    const result = await collectDrift(SHAPE_TENANT, DOMAIN, { policies: current }, {
+      configVersion: CA_POLICY_CONFIG_VERSION,
+      migrateBaselineConfig: migrateCaPolicyBaselineConfig,
+    });
+    expect(result.inserted).toHaveLength(1);
+    expect(result.inserted[0]).toMatchObject({ op: "replace", setting: `/policies/${P2}/state` });
+  });
+
+  it("supersedes and re-captures a baseline it genuinely cannot key, with the real reason", async () => {
+    const baselineId = await seedBaseline({ policies: [{ displayName: "no id at all", state: "enabled" }] }, 1);
+
+    const result = await collectDrift(SHAPE_TENANT, DOMAIN, { policies: keyedPolicies() }, {
+      configVersion: CA_POLICY_CONFIG_VERSION,
+      migrateBaselineConfig: migrateCaPolicyBaselineConfig,
+    });
+    expect(result.firstRun).toBe(true);
+    expect(result.baselineSnapshotId).not.toBe(baselineId);
+    expect(result.rebaselinedReason).toContain("has no");
+    expect(result.inserted).toEqual([]);
+
+    const stored = await getCurrentBaseline(SHAPE_TENANT, DOMAIN);
+    expect(stored!.id).toBe(result.baselineSnapshotId);
+    expect(stored!.configVersion).toBe(2);
+  });
+
+  it("refuses to diff a baseline NEWER than this build, rather than re-baselining over it", async () => {
+    // A rolled-back deploy meeting a snapshot a newer build wrote. Re-baselining
+    // here would destroy a reference the newer build is still using.
+    const baselineId = await seedBaseline({ policies: keyedPolicies() }, 99);
+
+    const result = await collectDrift(SHAPE_TENANT, DOMAIN, { policies: keyedPolicies() }, {
+      configVersion: CA_POLICY_CONFIG_VERSION,
+      migrateBaselineConfig: migrateCaPolicyBaselineConfig,
+    });
+    expect(result.notComparableReason).toContain("refusing to diff across shapes");
+    expect(result.inserted).toEqual([]);
+    expect(result.baselineSnapshotId).toBe(baselineId);
+
+    const stored = await getCurrentBaseline(SHAPE_TENANT, DOMAIN);
+    expect(stored!.id).toBe(baselineId);
+    expect(stored!.configVersion).toBe(99);
+  });
+
+  it("maybeCollectDriftForCheck wires the real CA spec's version + migration through", async () => {
+    const baselineId = await seedBaseline({ policies: legacyPolicies() }, 1);
+
+    const out = await maybeCollectDriftForCheck({
+      checkKey: "identity:ca-policy-count",
+      tenantId: SHAPE_TENANT,
+      scan: { items: legacyPolicies(), extracted: {}, status: "ok" },
+    });
+    expect(out).toMatchObject({ driftTracked: true, domainKey: DOMAIN, status: "tracked" });
+
+    const stored = await getCurrentBaseline(SHAPE_TENANT, DOMAIN);
+    expect(stored!.id).toBe(baselineId);
+    expect(stored!.configVersion).toBe(CA_POLICY_CONFIG_VERSION);
+    const events = await db.select().from(driftEventsTable).where(eq(driftEventsTable.tenantId, SHAPE_TENANT));
+    expect(events).toEqual([]);
+  });
+
+  it("records a not_comparable status — with the reason — for a baseline it cannot bring forward", async () => {
+    await seedBaseline({ policies: keyedPolicies() }, 99);
+
+    const out = await maybeCollectDriftForCheck({
+      checkKey: "identity:ca-policy-count",
+      tenantId: SHAPE_TENANT,
+      scan: { items: legacyPolicies(), extracted: {}, status: "ok" },
+    });
+    expect(out.status).toBe("not_comparable");
+
+    const [status] = await db
+      .select()
+      .from(driftCollectionStatusTable)
+      .where(and(eq(driftCollectionStatusTable.tenantId, SHAPE_TENANT), eq(driftCollectionStatusTable.domainKey, DOMAIN)));
+    expect(status.status).toBe("not_comparable");
+    expect(status.reason).toContain("refusing to diff across shapes");
   });
 });

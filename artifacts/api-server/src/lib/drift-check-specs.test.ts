@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   buildCaPolicyDriftConfig,
+  migrateCaPolicyBaselineConfig,
+  specConfigVersion,
   buildPublicTeamsDriftConfig,
   buildEeeuSiteSharingDriftConfig,
   buildTenantSharingCapabilityDriftConfig,
@@ -34,7 +36,7 @@ describe("drift-check-specs — registry (#1287)", () => {
     // `change-request-scope` (a real per-resource/object/property match), and made
     // the identity mapping it needs part of the declaration.
     expect(DRIFT_CHECK_SPECS["identity:ca-policy-count"].attribution).toBe("change-request-scope");
-    expect(DRIFT_CHECK_SPECS["identity:ca-policy-count"].identity).toEqual({ collection: "policies", idField: "id" });
+    expect(DRIFT_CHECK_SPECS["identity:ca-policy-count"].identity).toEqual({ collection: "policies" });
     expect(DRIFT_CHECK_SPECS["governance:public-teams-discoverable"].attribution).toBeUndefined();
     expect(DRIFT_CHECK_SPECS["compliance:eeeu-site-sharing"].attribution).toBeUndefined();
   });
@@ -65,16 +67,159 @@ describe("drift-check-specs — domain -> accountable workload routing (Git #154
   });
 });
 
-describe("drift-check-specs — Conditional Access (graph, unchanged from #1283)", () => {
-  it("wraps the raw policy array as { policies } verbatim", () => {
-    const items = [{ id: "p1", state: "enabled" }];
+describe("drift-check-specs — Conditional Access (graph, id-keyed since #3089)", () => {
+  it("keys the policies by their own Graph id, carrying each policy verbatim", () => {
+    const items = [{ id: "p1", state: "enabled" }, { id: "p2", state: "disabled" }];
     const out = buildCaPolicyDriftConfig(ctx({ items }));
-    expect(out).toEqual({ comparable: true, config: { policies: items } });
+    expect(out).toEqual({ comparable: true, config: { policies: { p1: items[0], p2: items[1] } } });
   });
 
   it("refuses when the run did not complete", () => {
     const out = buildCaPolicyDriftConfig(ctx({ items: [], status: "error" }));
     expect(out.comparable).toBe(false);
+  });
+
+  it("a CREATED policy is an add at its own id, not a whole-array replace — the #3089 regression", () => {
+    const before = buildCaPolicyDriftConfig(ctx({ items: [{ id: "p1", state: "enabled" }] }));
+    const after = buildCaPolicyDriftConfig(ctx({
+      items: [{ id: "p1", state: "enabled" }, { id: "p2", displayName: "New policy", state: "enabled" }],
+    }));
+    if (!before.comparable || !after.comparable) throw new Error("expected comparable");
+    const diffs = detectDrift(before.config, after.config);
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0]).toMatchObject({ op: "add", path: "/policies/p2" });
+  });
+
+  it("a DELETED policy is a remove at its own id", () => {
+    const before = buildCaPolicyDriftConfig(ctx({
+      items: [{ id: "p1", state: "enabled" }, { id: "p2", state: "enabled" }],
+    }));
+    const after = buildCaPolicyDriftConfig(ctx({ items: [{ id: "p1", state: "enabled" }] }));
+    if (!before.comparable || !after.comparable) throw new Error("expected comparable");
+    const diffs = detectDrift(before.config, after.config);
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0]).toMatchObject({ op: "remove", path: "/policies/p2" });
+  });
+
+  it("a policy set returned in a DIFFERENT order is not drift at all", () => {
+    // The positional array reported most fields of most policies as changed the
+    // moment Graph reordered the collection (or one policy was added and another
+    // removed between scans, leaving the length unchanged).
+    const before = buildCaPolicyDriftConfig(ctx({
+      items: [{ id: "p1", state: "enabled" }, { id: "p2", state: "disabled" }],
+    }));
+    const after = buildCaPolicyDriftConfig(ctx({
+      items: [{ id: "p2", state: "disabled" }, { id: "p1", state: "enabled" }],
+    }));
+    if (!before.comparable || !after.comparable) throw new Error("expected comparable");
+    expect(detectDrift(before.config, after.config)).toEqual([]);
+  });
+
+  it("an add-one-remove-one between scans is exactly two per-policy events", () => {
+    const before = buildCaPolicyDriftConfig(ctx({
+      items: [{ id: "p1", state: "enabled" }, { id: "p2", state: "enabled" }],
+    }));
+    const after = buildCaPolicyDriftConfig(ctx({
+      items: [{ id: "p1", state: "enabled" }, { id: "p3", state: "enabled" }],
+    }));
+    if (!before.comparable || !after.comparable) throw new Error("expected comparable");
+    const diffs = detectDrift(before.config, after.config);
+    expect(diffs.map((d) => `${d.op} ${d.path}`).sort()).toEqual(["add /policies/p3", "remove /policies/p2"]);
+  });
+
+  it("a state flip is a precise replace at that policy's own state", () => {
+    const before = buildCaPolicyDriftConfig(ctx({ items: [{ id: "p1", state: "enabled" }] }));
+    const after = buildCaPolicyDriftConfig(ctx({ items: [{ id: "p1", state: "disabled" }] }));
+    if (!before.comparable || !after.comparable) throw new Error("expected comparable");
+    expect(detectDrift(before.config, after.config)).toEqual([
+      { op: "replace", path: "/policies/p1/state", value: "disabled", oldValue: "enabled" },
+    ]);
+  });
+
+  it("refuses a policy set it cannot key rather than dropping a policy", () => {
+    // Silently omitting an id-less policy would surface on the next scan as a
+    // `remove` — a deletion that never happened.
+    const noId = buildCaPolicyDriftConfig(ctx({ items: [{ id: "p1" }, { state: "enabled" }] }));
+    expect(noId.comparable).toBe(false);
+    if (noId.comparable) return;
+    expect(noId.reason).toContain('has no "id"');
+
+    const dup = buildCaPolicyDriftConfig(ctx({ items: [{ id: "p1" }, { id: "p1" }] }));
+    expect(dup.comparable).toBe(false);
+    if (dup.comparable) return;
+    expect(dup.reason).toContain("more than once");
+  });
+});
+
+describe("drift-check-specs — Conditional Access baseline shape migration (#3089)", () => {
+  it("re-keys a stored v1 array baseline by policy id, carrying every policy across", () => {
+    const stored = {
+      policies: [
+        { id: "p1", displayName: "Block legacy auth", state: "enabled" },
+        { id: "p2", displayName: "Require MFA", state: "disabled" },
+      ],
+    };
+    const out = migrateCaPolicyBaselineConfig(stored, 1);
+    expect(out.migrated).toBe(true);
+    if (!out.migrated) return;
+    expect(out.config).toEqual({ policies: { p1: stored.policies[0], p2: stored.policies[1] } });
+  });
+
+  it("a migrated baseline diffed against the same live policy set reports NO drift", () => {
+    // The whole point of migrating rather than reshaping silently: the alternative
+    // is every tenant reporting its entire policy set as drifted on the next scan.
+    const items = [
+      { id: "p1", displayName: "Block legacy auth", state: "enabled" },
+      { id: "p2", displayName: "Require MFA", state: "disabled" },
+    ];
+    const out = migrateCaPolicyBaselineConfig({ policies: items }, 1);
+    if (!out.migrated) throw new Error("expected migrated");
+    const current = buildCaPolicyDriftConfig(ctx({ items }));
+    if (!current.comparable) throw new Error("expected comparable");
+    expect(detectDrift(out.config, current.config)).toEqual([]);
+  });
+
+  it("moves a stored positional setting path onto the policy it was really about", () => {
+    const out = migrateCaPolicyBaselineConfig({ policies: [{ id: "p1" }, { id: "p2" }] }, 1);
+    if (!out.migrated) throw new Error("expected migrated");
+    expect(out.rewriteSetting!("/policies/1/state")).toBe("/policies/p2/state");
+    expect(out.rewriteSetting!("/policies/0")).toBe("/policies/p1");
+    expect(out.rewriteSetting!("/policies/0/conditions/users/includeUsers/1"))
+      .toBe("/policies/p1/conditions/users/includeUsers/1");
+  });
+
+  it("leaves paths it cannot move — including the opaque whole-collection event", () => {
+    const out = migrateCaPolicyBaselineConfig({ policies: [{ id: "p1" }] }, 1);
+    if (!out.migrated) throw new Error("expected migrated");
+    // `/policies` is the very event #3089 removes; which policies it was about is
+    // not recoverable from a stored index, so it is left to resolve out.
+    expect(out.rewriteSetting!("/policies")).toBeNull();
+    expect(out.rewriteSetting!("/policies/9/state")).toBeNull();
+    // Already migrated — re-running the upgrade must not double-rewrite.
+    expect(out.rewriteSetting!("/policies/p1/state")).toBeNull();
+  });
+
+  it("refuses a stored baseline it cannot key, so the caller re-baselines honestly", () => {
+    const noId = migrateCaPolicyBaselineConfig({ policies: [{ state: "enabled" }] }, 1);
+    expect(noId.migrated).toBe(false);
+    const dup = migrateCaPolicyBaselineConfig({ policies: [{ id: "p1" }, { id: "p1" }] }, 1);
+    expect(dup.migrated).toBe(false);
+    const notAnArray = migrateCaPolicyBaselineConfig({ policies: { p1: { id: "p1" } } }, 1);
+    expect(notAnArray.migrated).toBe(false);
+    const unknownVersion = migrateCaPolicyBaselineConfig({ policies: [] }, 7);
+    expect(unknownVersion.migrated).toBe(false);
+  });
+
+  it("the registry declares the version and the migration together", () => {
+    const spec = DRIFT_CHECK_SPECS["identity:ca-policy-count"]!;
+    expect(specConfigVersion(spec)).toBe(2);
+    expect(spec.migrateBaselineConfig).toBeTypeOf("function");
+    // A domain that has never been reshaped is version 1 and needs no migration.
+    for (const [key, s] of Object.entries(DRIFT_CHECK_SPECS)) {
+      if (specConfigVersion(s) > 1) {
+        expect(s.migrateBaselineConfig, `${key} bumped configVersion without a migration`).toBeTypeOf("function");
+      }
+    }
   });
 });
 

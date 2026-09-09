@@ -26,9 +26,28 @@
  * added or reordered. So every builder here emits an object keyed by a STABLE
  * identity (site id, team id) — a new site becomes an `add` at `/sites/<id>`, a
  * revoked share a `replace` at `/sites/<id>/highestSharingLevel`, a removed site
- * a `remove` — which is the real per-entity drift the UI wants. (The pre-existing
- * CA spec keeps its original `{ policies: [...] }` array shape so its already
- * captured baselines stay valid; that is #1283's behaviour, preserved verbatim.)
+ * a `remove` — which is the real per-entity drift the UI wants.
+ *
+ * Conditional Access was the one exception, kept on #1283's positional
+ * `{ policies: [...] }` array so already-captured baselines stayed valid. #3089
+ * closed it: a policy being CREATED or DELETED is the most security-relevant
+ * Conditional Access change there is, and the length change collapsed it into one
+ * opaque `/policies` replace carrying the whole before/after array — no policy id,
+ * no display name, and (since #2819) nothing an attribution scope could match to
+ * an object, so an unapproved deletion could still be absorbed by an unrelated
+ * approved policy edit. CA is now id-keyed like every other domain. The baselines
+ * that exception protected are handled by a real, versioned migration rather than
+ * by keeping the wrong shape — see {@link DriftCheckSpec.configVersion}.
+ *
+ * ── Reshaping a builder is a MIGRATION, never just an edit ───────────────────
+ * A stored baseline is diffed against whatever the builder emits today, so the
+ * two must speak the same dialect. Changing a builder's shape without migrating
+ * would report the entire tenant as drifted on the next scan. A spec that has
+ * reshaped therefore declares a `configVersion` and a `migrateBaselineConfig`
+ * that upgrades an older snapshot (and rewrites the setting paths of the drift
+ * events already recorded against it); `drift-collector.ts` applies it in place
+ * before it diffs. Bumping the version without supplying the migration is caught
+ * by the collector, which refuses to diff across shapes.
  *
  * ── Honest not_comparable ────────────────────────────────────────────────────
  * Where a scan genuinely can't yield a trustworthy diff — a fan-out that hit its
@@ -70,26 +89,56 @@ export interface DriftScanContext {
 export type DriftAttributionKind = "change-request-scope";
 
 /**
- * How a drift `setting` path resolves to the OBJECT the change touched (#2819).
+ * How a drift `setting` path resolves to the OBJECT the change touched (#2819,
+ * re-grounded by #3089).
  *
- * Per-setting attribution needs to answer "which Conditional Access policy is
- * `/policies/3/state` about?" — and the only thing that can answer it is the
- * scan's own item list, because `detectDrift` walks arrays POSITIONALLY. So a
- * domain declares where its objects live in the comparable config it built
- * (`collection`) and which field on a scan item carries that object's stable
- * Graph id (`idField`); `drift-change-attribution.ts` does the rest.
+ * Per-setting attribution has to answer "which Conditional Access policy is this
+ * drift event about?". Under #2819 that answer had to be reconstructed: the
+ * config was a positional array, so the path said `/policies/3/state` and the
+ * only thing that could turn `3` into a policy id was the scan's own item list —
+ * plus a guard checking the baseline agreed that index 3 was the same object,
+ * because `detectDrift` walks arrays positionally and Graph does not promise a
+ * stable order. #3089 removed the reconstruction entirely by keying the config
+ * itself: the path is now `/policies/<policyId>/state` and the identity IS the
+ * path segment.
+ *
+ * So a domain only declares WHERE its objects live in the comparable config it
+ * builds, and the builder must key that collection by the object's own stable id
+ * (the Graph `id`, a site id, a team id). `drift-change-attribution.ts` does the
+ * rest — with no scan items, no baseline items and no positional guard, because
+ * there is no longer a position to be wrong about.
  *
  * A domain WITHOUT this cannot be attributed per setting, and therefore is not
  * attributed at all rather than attributed by category — which is the whole
- * point of #2819. Declaring it is only safe when the config builder emits the
- * collection in the same order as `ctx.items`.
+ * point of #2819.
  */
 export interface DriftSettingIdentity {
-  /** Top-level property of the comparable config holding the positional array. */
+  /**
+   * Top-level property of the comparable config holding the objects, keyed by
+   * their own stable id (e.g. `policies` for `{ policies: { "<policyId>": … } }`).
+   */
   collection: string;
-  /** Field on a scan item carrying its stable object identity (e.g. the Graph `id`). */
-  idField: string;
 }
+
+/**
+ * The outcome of upgrading a stored baseline snapshot to the spec's current
+ * config shape (#3089).
+ *
+ * `migrated` carries the reshaped config plus, optionally, a rewrite for the
+ * setting paths of drift events already recorded against that snapshot — those
+ * paths address the OLD shape, and leaving them would make the next scan read
+ * them as "returned to baseline" (a resolution that never happened) while the
+ * same drift reappears under a new path.
+ *
+ * `impossible` is the honest answer when the stored config cannot be expressed
+ * in the new shape at all (e.g. a legacy CA baseline holding a policy with no
+ * usable id). The collector then supersedes it and captures a fresh baseline,
+ * recording the specific reason — a re-baseline, which does lose the old
+ * reference point, but is the only alternative to diffing two dialects.
+ */
+export type BaselineMigrationOutcome =
+  | { migrated: true; config: unknown; rewriteSetting?: (setting: string) => string | null }
+  | { migrated: false; reason: string };
 
 export interface DriftCheckSpec {
   /** Bare drift domain slug stored on drift_events.domain_key (metric sourceKey minus "drift:"). */
@@ -103,8 +152,30 @@ export interface DriftCheckSpec {
    * to an object and nothing can be attributed. See {@link DriftSettingIdentity}.
    */
   identity?: DriftSettingIdentity;
+  /**
+   * #3089 — the SHAPE version `buildConfig` currently emits. Omitted means 1 (the
+   * original shape); every stored snapshot predating versioning is version 1 too,
+   * so an unreshaped domain compares equal and nothing runs.
+   *
+   * Bumping this is the ONLY sanctioned way to change a builder's config shape,
+   * and it obliges `migrateBaselineConfig`: the collector refuses to diff a
+   * baseline whose version is behind the spec's without one, rather than
+   * silently reporting a whole tenant as drifted.
+   */
+  configVersion?: number;
+  /**
+   * Pure: upgrade a stored baseline `config` captured at `fromVersion` to the
+   * shape `buildConfig` emits today. Called once, on read, only while
+   * `fromVersion < configVersion`; the collector persists the result in place.
+   */
+  migrateBaselineConfig?(config: unknown, fromVersion: number): BaselineMigrationOutcome;
   /** Pure: a completed scan → a stable comparable config, or an honest reason it isn't. */
   buildConfig(ctx: DriftScanContext): DriftConfigOutcome;
+}
+
+/** The shape version a spec's `buildConfig` emits (1 when it has never been reshaped). */
+export function specConfigVersion(spec: DriftCheckSpec): number {
+  return spec.configVersion ?? 1;
 }
 
 // ── small pure helpers ────────────────────────────────────────────────────────
@@ -129,16 +200,114 @@ function fanOutCoverage(extracted: Record<string, unknown>): Record<string, unkn
 
 // ── config builders (one per domain) ──────────────────────────────────────────
 
+/** The shape version {@link buildCaPolicyDriftConfig} emits: 1 = #1283's positional array, 2 = #3089's id-keyed map. */
+export const CA_POLICY_CONFIG_VERSION = 2;
+
 /**
- * Conditional Access — UNCHANGED from #1283: the whole policies array as
- * `{ policies }`. Kept verbatim so baselines captured under #1283 stay valid;
- * do not "improve" this to an id-keyed map without re-baselining every tenant.
+ * Conditional Access (graph) — id-keyed since #3089, `{ policies: { "<id>": <policy> } }`.
+ *
+ * #1283 emitted `{ policies: ctx.items }`, the raw array. Because `detectDrift`
+ * collapses any array LENGTH change into a single whole-array `replace`, creating
+ * or deleting a policy — the most security-relevant Conditional Access change
+ * there is — landed as one opaque `/policies` event carrying the entire before and
+ * after array, with no policy id and no display name. Worse, #2819's per-setting
+ * attribution can only resolve such a path to `objectIdentity: null`, so it
+ * matched at RESOURCE precision: an unapproved deletion could be explained away by
+ * an unrelated approved edit to a different policy. Keying by the policy's own
+ * Graph id makes a creation an `add` at `/policies/<id>`, a deletion a `remove`,
+ * and a state flip a `replace` at `/policies/<id>/state` — each naming the object
+ * it is about, which is exactly what makes it attributable per policy.
+ *
+ * The VALUE is the scan item verbatim, unchanged from #1283, so the migration
+ * from the old shape is a pure re-key that loses nothing (see
+ * {@link migrateCaPolicyBaselineConfig}).
+ *
+ * A policy with no usable id, or two policies sharing one id, is refused rather
+ * than dropped: silently omitting a policy from the keyed config would surface on
+ * the next scan as a `remove` — a deletion that never happened, which is the same
+ * class of fabricated finding the fan-out coverage guard below exists to prevent.
+ * (Contrast the teams/sites builders, which skip an id-less item: those enumerate
+ * a broad population where an id-less row is noise, whereas a CA policy set is
+ * small, wholly security-relevant, and always id-bearing in Graph.)
  */
 export function buildCaPolicyDriftConfig(ctx: DriftScanContext): DriftConfigOutcome {
   if (!isCompleteRun(ctx.status)) {
     return { comparable: false, reason: `Conditional Access scan did not complete (status "${ctx.status}") — no policy set to compare` };
   }
-  return { comparable: true, config: { policies: ctx.items } };
+  const keyed = keyPoliciesById(ctx.items);
+  if (!keyed.ok) {
+    return { comparable: false, reason: `Conditional Access policy set could not be keyed by policy id (${keyed.reason}) — an unkeyable policy would read as a deletion on the next scan` };
+  }
+  return { comparable: true, config: { policies: keyed.policies } };
+}
+
+/** Pure: raw CA policy items → an id-keyed map, or the specific reason they cannot be keyed. */
+function keyPoliciesById(
+  items: readonly unknown[],
+): { ok: true; policies: Record<string, unknown> } | { ok: false; reason: string } {
+  const policies: Record<string, unknown> = {};
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!isRecord(it)) return { ok: false, reason: `item at index ${i} is not an object` };
+    const id = strOrNull(it.id);
+    if (!id) return { ok: false, reason: `policy at index ${i} has no "id"` };
+    if (id in policies) return { ok: false, reason: `policy id "${id}" appears more than once` };
+    policies[id] = it;
+  }
+  return { ok: true, policies };
+}
+
+/**
+ * Upgrade a stored Conditional Access baseline from #1283's positional array to
+ * #3089's id-keyed map (#3089).
+ *
+ * This is a pure RE-KEY, not a re-capture: every policy object is carried across
+ * byte-for-byte, so the upgraded snapshot is the same approved reference state
+ * expressed under a different address — which is why the collector applies it in
+ * place, keeping the snapshot id, its `capturedAt`, its `signed` flag and the
+ * drift events already attached to it.
+ *
+ * `rewriteSetting` moves those events' paths with the config. A stored
+ * `/policies/3/state` indexes the BASELINE array (that is the side the diff walked
+ * from), so index 3's id in this very config is the policy that event is about.
+ * Paths that cannot move — `/policies` itself, the opaque whole-collection event
+ * this issue is about — return null, since the per-policy events replacing them
+ * are not derivable from a stored index.
+ */
+export function migrateCaPolicyBaselineConfig(config: unknown, fromVersion: number): BaselineMigrationOutcome {
+  if (fromVersion !== 1) {
+    return { migrated: false, reason: `no Conditional Access baseline migration from shape version ${fromVersion}` };
+  }
+  const legacy = isRecord(config) ? config.policies : undefined;
+  if (!Array.isArray(legacy)) {
+    return { migrated: false, reason: `version 1 baseline does not hold a "policies" array (found ${describeShape(isRecord(config) ? config.policies : config)})` };
+  }
+  const keyed = keyPoliciesById(legacy);
+  if (!keyed.ok) {
+    return { migrated: false, reason: `stored baseline cannot be keyed by policy id (${keyed.reason})` };
+  }
+  const idAt = (index: number): string | null => {
+    const it = legacy[index];
+    return isRecord(it) ? strOrNull(it.id) : null;
+  };
+  return {
+    migrated: true,
+    config: { policies: keyed.policies },
+    rewriteSetting: (setting: string) => {
+      const m = /^\/policies\/(\d+)(\/.*)?$/.exec(setting);
+      if (!m) return null;
+      const id = idAt(Number(m[1]));
+      return id ? `/policies/${id}${m[2] ?? ""}` : null;
+    },
+  };
+}
+
+/** Short human description of a value's shape, for an honest migration-refusal reason. */
+function describeShape(v: unknown): string {
+  if (v === undefined) return "nothing";
+  if (v === null) return "null";
+  if (Array.isArray(v)) return "an array";
+  return typeof v === "object" ? "an object" : typeof v;
 }
 
 /**
@@ -282,11 +451,13 @@ export const DRIFT_CHECK_SPECS: Record<string, DriftCheckSpec> = {
     domainKey: "ca-policy",
     label: "Conditional Access policy",
     attribution: "change-request-scope",
-    // `buildCaPolicyDriftConfig` emits `{ policies: ctx.items }` verbatim, so index
-    // N of the diff path IS index N of the scan items — the positional agreement
-    // per-setting attribution depends on. Do not reshape that builder without
-    // revisiting this.
-    identity: { collection: "policies", idField: "id" },
+    // #3089 — `buildCaPolicyDriftConfig` keys by the policy's own Graph id, so the
+    // object identity IS the path segment (`/policies/<policyId>/state`). Nothing
+    // positional is left to agree about; reshaping the builder again means bumping
+    // `configVersion` and extending the migration below, never an edit in place.
+    identity: { collection: "policies" },
+    configVersion: CA_POLICY_CONFIG_VERSION,
+    migrateBaselineConfig: migrateCaPolicyBaselineConfig,
     buildConfig: buildCaPolicyDriftConfig,
   },
   "governance:public-teams-discoverable": {

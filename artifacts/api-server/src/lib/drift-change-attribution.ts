@@ -25,7 +25,7 @@
  * by `(resource_key, object_identity, property_path_normalized)`. This file's job
  * is the one piece #2759 does not have: turning a drift event's `setting` — a
  * JSON-pointer path into the domain's comparable config, e.g.
- * `/policies/3/conditions/users/includeUsers/1` — into that same triple, so
+ * `/policies/<policyId>/conditions/users/includeUsers/1` — into that same triple, so
  * `matchScopeFor` can decide per setting whether a given CR actually explains it.
  *
  * ─── What honest failure looks like here ──────────────────────────────────────
@@ -86,10 +86,19 @@ const log = logger.child({ channel: "engine.monitor" });
  * is keyed by.
  *
  * `objectIdentity: null` means "this change is about the collection as a whole,
- * not one identifiable object" — the case `detectDrift` produces when the array
- * length changed (a policy was created or deleted) and it collapsed the whole
- * array into a single `replace`. It is NOT "unknown"; it deliberately restricts
+ * not one identifiable object". It is NOT "unknown"; it deliberately restricts
  * matching to resource-level scopes below.
+ *
+ * #3089 made that case rare rather than routine. It used to be the NORMAL outcome
+ * of a Conditional Access policy being created or deleted: the config was a
+ * positional array, so a length change collapsed into one whole-array `replace`
+ * at `/policies` — the single most security-relevant CA change, arriving with no
+ * object to match and therefore matchable only by a resource-level scope, which
+ * is how an unapproved deletion could be absorbed by an unrelated approved edit.
+ * With the config keyed by policy id, a creation is an `add` at `/policies/<id>`
+ * and a deletion a `remove`, each naming its object. The branch stays because a
+ * config whose collection is missing or was captured in another shape can still
+ * produce it, and answering `null` there is right.
  */
 export interface DriftSettingTarget {
   objectIdentity: string | null;
@@ -128,21 +137,20 @@ export function driftPropertyPath(segments: readonly string[]): string | null {
 /**
  * Resolve one drift `setting` path to the object + property it touched.
  *
- * `identity` says which top-level array in the domain's comparable config carries
- * the objects, and which field on a scan item is that object's stable Graph id
- * (see `DriftCheckSpec.identity`). `items` is the scan's own item list in the SAME
- * positional order the config was built from — which is what makes the index in
- * the path resolvable at all, and the reason this takes the scan items rather
- * than re-reading anything.
+ * `identity` says which top-level property of the domain's comparable config
+ * carries the objects (see `DriftCheckSpec.identity`); the builder keys that
+ * collection by each object's own stable id, so the path segment after the
+ * collection IS the object identity — `/policies/<policyId>/state` is about
+ * `<policyId>`, whatever order Graph happened to return the policies in.
  *
- * `baselineItems`, when supplied, is the SAME collection out of the baseline the
- * diff was taken against, and it is a real guard rather than a nicety: `detectDrift`
- * walks arrays positionally, so index N only names one object if it names the same
- * object on both sides. If Graph returns the collection in a different order between
- * scans, index N is two different policies and reading identity off the current side
- * alone would credit a change request with a change to a policy it never touched —
- * the exact class of mis-attribution #2819 exists to remove. Mismatch ⇒ no object is
- * named, which restricts matching to resource-level scopes.
+ * #3089 removed the positional machinery this used to need. While Conditional
+ * Access was stored as an array the path said `/policies/3/state`, so resolving it
+ * meant reading index 3 out of the scan's own item list AND checking the baseline
+ * agreed index 3 was the same object — because `detectDrift` walks arrays
+ * positionally and Graph promises no stable order, and reading the current side
+ * alone would credit a change request with a change to a policy it never touched.
+ * A keyed config has no position to be wrong about, so neither the scan items nor
+ * the guard exist any more.
  *
  * Returns null when the path does not belong to that collection (e.g. a
  * whole-config `/` replace), which attributes nothing.
@@ -150,33 +158,19 @@ export function driftPropertyPath(segments: readonly string[]): string | null {
 export function resolveDriftSettingTarget(
   setting: string,
   identity: DriftSettingIdentity,
-  items: readonly unknown[],
-  baselineItems?: readonly unknown[],
 ): DriftSettingTarget | null {
   const segments = setting.split("/").filter((s) => s.length > 0);
   if (segments.length === 0) return null;
   if (segments[0] !== identity.collection) return null;
 
-  // `/policies` — the whole collection was replaced, because `detectDrift` collapses
-  // any array LENGTH change into one whole-array replace. A policy was created or
-  // deleted; WHICH one is not recoverable from the path, and guessing is exactly the
-  // blanket this file exists to remove.
+  // `/policies` — the collection as a whole, with no object named. See the note on
+  // DriftSettingTarget: for a keyed domain this only happens when the collection is
+  // missing or was captured in a different shape, never for an ordinary create or
+  // delete. Guessing which object it is about is exactly the blanket #2819 removed.
   if (segments.length === 1) return { objectIdentity: null, propertyPathNormalized: null };
 
-  const index = Number(segments[1]);
-  if (!Number.isInteger(index) || index < 0 || index >= items.length) {
-    return { objectIdentity: null, propertyPathNormalized: null };
-  }
-  const idAt = (list: readonly unknown[], i: number): string | null => {
-    const it = list[i];
-    const raw = it && typeof it === "object" ? (it as Record<string, unknown>)[identity.idField] : undefined;
-    return typeof raw === "string" && raw.length > 0 ? raw : null;
-  };
-  const objectIdentity = idAt(items, index);
-  if (objectIdentity === null) return { objectIdentity: null, propertyPathNormalized: null };
-  if (baselineItems && idAt(baselineItems, index) !== objectIdentity) {
-    return { objectIdentity: null, propertyPathNormalized: null };
-  }
+  const objectIdentity = segments[1];
+  if (objectIdentity.length === 0) return { objectIdentity: null, propertyPathNormalized: null };
 
   return { objectIdentity, propertyPathNormalized: driftPropertyPath(segments.slice(2)) };
 }
@@ -240,13 +234,6 @@ export interface BuildDriftAttributionParams {
   endpoint: string;
   /** Where object identity lives in this domain's comparable config. */
   identity: DriftSettingIdentity;
-  /** The scan items, positionally identical to the config the diff walked. */
-  items: readonly unknown[];
-  /**
-   * The same collection out of the BASELINE config, when available — the positional
-   * identity guard in {@link resolveDriftSettingTarget}.
-   */
-  baselineItems?: readonly unknown[];
   /** When the baseline this scan is diffed against was captured. */
   baselineCapturedAt: Date | null;
   /** When this scan observed the current state. Defaults to now. */
@@ -267,7 +254,7 @@ export interface BuildDriftAttributionParams {
 export async function buildDriftScopeAttribution(
   params: BuildDriftAttributionParams,
 ): Promise<((setting: string) => DriftAttribution | undefined) | undefined> {
-  const { tenantId, endpoint, identity, items, baselineItems, baselineCapturedAt, checkKey, domainKey } = params;
+  const { tenantId, endpoint, identity, baselineCapturedAt, checkKey, domainKey } = params;
   const observedAt = params.observedAt ?? new Date();
 
   const resolved = await resolveEndpointToResource(endpoint);
@@ -357,7 +344,7 @@ export async function buildDriftScopeAttribution(
     return undefined;
   }
 
-  return makeDriftAttributionResolver({ resourceKey, identity, items, baselineItems, eligible });
+  return makeDriftAttributionResolver({ resourceKey, identity, eligible });
 }
 
 /**
@@ -368,18 +355,16 @@ export async function buildDriftScopeAttribution(
 export function makeDriftAttributionResolver(args: {
   resourceKey: string;
   identity: DriftSettingIdentity;
-  items: readonly unknown[];
-  baselineItems?: readonly unknown[];
   eligible: readonly EligibleDriftScope[];
 }): (setting: string) => DriftAttribution | undefined {
-  const { resourceKey, identity, items, baselineItems, eligible } = args;
+  const { resourceKey, identity, eligible } = args;
   const cache = new Map<string, DriftAttribution | undefined>();
 
   return (setting: string): DriftAttribution | undefined => {
     if (cache.has(setting)) return cache.get(setting);
     let answer: DriftAttribution | undefined;
 
-    const target = resolveDriftSettingTarget(setting, identity, items, baselineItems);
+    const target = resolveDriftSettingTarget(setting, identity);
     if (target) {
       const change = { resourceKey, ...target };
       const matches = eligible

@@ -33,7 +33,12 @@ import { driftBaselineSnapshotsTable, driftEventsTable, driftCollectionStatusTab
 import type { DriftEventStatus, DriftEventVerdict, InsertDriftEvent, DriftCollectionStatus } from "@workspace/db";
 import { and, eq, isNull, desc, inArray, sql } from "drizzle-orm";
 import { detectDrift, type PccDiff } from "./pcc/drift-detector.ts";
-import { driftSpecForCheck, type DriftScanContext } from "./drift-check-specs.ts";
+import {
+  driftSpecForCheck,
+  specConfigVersion,
+  type BaselineMigrationOutcome,
+  type DriftScanContext,
+} from "./drift-check-specs.ts";
 import { recordShadowItDrift, isUnauthorizedVerdict, type ShadowItDriftOccurrence } from "./shadow-it-governance.ts";
 import { logger } from "./logger.ts";
 
@@ -217,6 +222,12 @@ export async function getCurrentBaseline(tenantId: string, domainKey: string) {
 export interface CaptureBaselineOpts {
   capturedBy?: string;
   signed?: boolean;
+  /**
+   * #3089 — the shape version of the config being captured (the spec's
+   * `configVersion`). Defaults to 1, matching every snapshot captured before
+   * shapes were versioned.
+   */
+  configVersion?: number;
 }
 
 /**
@@ -245,11 +256,139 @@ export async function captureBaseline(
       tenantId,
       domainKey,
       config,
+      configVersion: opts.configVersion ?? 1,
       signed: opts.signed ?? false,
       capturedBy: opts.capturedBy ?? "system",
     })
     .returning({ id: driftBaselineSnapshotsTable.id });
   return inserted.id;
+}
+
+// ── Baseline shape migration (#3089) ─────────────────────────────────────────
+//
+// A stored baseline is diffed against whatever its spec's builder emits TODAY, so
+// the two have to speak the same dialect. When a builder is reshaped — Conditional
+// Access went from #1283's positional `{ policies: [...] }` array to an id-keyed
+// `{ policies: { "<id>": ... } }` map so a created or deleted policy stops being
+// one opaque whole-array event — every already-captured baseline is suddenly in
+// the old dialect, and diffing across the two would report the ENTIRE tenant as
+// drifted. That is a false alarm on the exact signal this engine exists to raise,
+// and it is why the reshape is versioned rather than silent.
+//
+// The upgrade runs on READ, before anything is diffed, and in PLACE: same snapshot
+// id, same `capturedAt`, same `signed` flag, same drift events attached to it. It
+// is deliberately not a re-baseline, because a re-baseline would adopt whatever the
+// tenant looks like right now as the approved reference — quietly blessing any
+// unapproved drift that had accumulated since the real baseline was signed.
+// Running here rather than only in a SQL migration is what makes an environment
+// whose manual migration has not run yet (Staging before its release step, a
+// restored database, a baseline captured between deploy and migration) behave
+// correctly instead of silently wrong.
+
+/** The result of bringing one stored baseline up to its spec's current shape version. */
+export interface BaselineShapeUpgrade {
+  /** The config to diff against — migrated when `upgraded`, the stored one otherwise. */
+  config: unknown;
+  /** True when the stored snapshot was rewritten in place this run. */
+  upgraded: boolean;
+  /** Set when the stored baseline could NOT be brought forward; carries the specific reason. */
+  blockedReason?: string;
+  /** How many attached drift events had their setting path moved onto the new shape. */
+  rewrittenEvents: number;
+}
+
+/**
+ * Bring one stored baseline forward to `targetVersion`, rewriting the drift events
+ * attached to it so their setting paths keep addressing the same real objects.
+ *
+ * Exported for the live-DB test; `collectDrift` is the only production caller.
+ */
+export async function upgradeBaselineShape(args: {
+  baselineId: number;
+  tenantId: string;
+  domainKey: string;
+  storedConfig: unknown;
+  storedVersion: number;
+  targetVersion: number;
+  migrate?: (config: unknown, fromVersion: number) => BaselineMigrationOutcome;
+}): Promise<BaselineShapeUpgrade> {
+  const { baselineId, tenantId, domainKey, storedConfig, storedVersion, targetVersion, migrate } = args;
+
+  // Data AHEAD of code — a snapshot written by a newer deploy than the one running
+  // (a rollback, or a mixed fleet). There is no forward migration to apply and no
+  // safe reading of a shape this build does not know, so refuse. Re-baselining here
+  // would destroy a reference the newer build is still using.
+  if (storedVersion > targetVersion) {
+    return {
+      config: storedConfig,
+      upgraded: false,
+      rewrittenEvents: 0,
+      blockedReason: `baseline was captured in config shape version ${storedVersion} but this build emits version ${targetVersion} — refusing to diff across shapes (a rolled-back deploy reading a newer baseline)`,
+    };
+  }
+  if (!migrate) {
+    return {
+      config: storedConfig,
+      upgraded: false,
+      rewrittenEvents: 0,
+      blockedReason: `baseline is config shape version ${storedVersion} and this build emits version ${targetVersion}, but the ${domainKey} spec declares no migration between them`,
+    };
+  }
+
+  const outcome = migrate(storedConfig, storedVersion);
+  if (!outcome.migrated) {
+    return { config: storedConfig, upgraded: false, rewrittenEvents: 0, blockedReason: outcome.reason };
+  }
+
+  // Events first, config second — deliberately. `rewriteSetting` returns null for a
+  // path that is already in the new shape, so a run interrupted between the two
+  // steps re-runs cleanly rather than double-rewriting.
+  let rewrittenEvents = 0;
+  if (outcome.rewriteSetting) {
+    const existing = await db
+      .select({
+        id: driftEventsTable.id,
+        setting: driftEventsTable.setting,
+        op: driftEventsTable.op,
+      })
+      .from(driftEventsTable)
+      .where(and(
+        eq(driftEventsTable.tenantId, tenantId),
+        eq(driftEventsTable.domainKey, domainKey),
+        eq(driftEventsTable.baselineSnapshotId, baselineId),
+      ));
+    for (const ev of existing) {
+      const moved = outcome.rewriteSetting(ev.setting);
+      if (!moved || moved === ev.setting) continue;
+      const key = buildDriftIdempotencyKey(tenantId, domainKey, baselineId, ev.op, moved);
+      try {
+        await db
+          .update(driftEventsTable)
+          .set({ setting: moved, idempotencyKey: key })
+          .where(eq(driftEventsTable.id, ev.id));
+        rewrittenEvents++;
+      } catch (err) {
+        // The only realistic failure is the unique idempotency key: two old
+        // positional paths collapsing onto one new keyed path. Leave the loser as
+        // it is — the next scan resolves it out — rather than dropping audit trail.
+        log.warn(
+          { err, tenantId, domainKey, baselineSnapshotId: baselineId, from: ev.setting, to: moved },
+          "drift: could not move a drift event onto the migrated baseline shape (left as-is)",
+        );
+      }
+    }
+  }
+
+  await db
+    .update(driftBaselineSnapshotsTable)
+    .set({ config: outcome.config, configVersion: targetVersion, shapeMigratedAt: new Date() })
+    .where(eq(driftBaselineSnapshotsTable.id, baselineId));
+
+  log.info(
+    { tenantId, domainKey, baselineSnapshotId: baselineId, fromVersion: storedVersion, toVersion: targetVersion, rewrittenEvents },
+    "drift: upgraded stored baseline to the current config shape in place (#3089)",
+  );
+  return { config: outcome.config, upgraded: true, rewrittenEvents };
 }
 
 /**
@@ -291,6 +430,14 @@ export interface CollectDriftOpts {
   /** After detecting drift, capture the fresh config as the new baseline. Default false. */
   rebaselineAfter?: boolean;
   capturedBy?: string;
+  /**
+   * #3089 — the shape version `currentConfig` is in (the spec's `configVersion`).
+   * A stored baseline behind this is migrated in place before anything is diffed;
+   * see {@link upgradeBaselineShape}. Defaults to 1.
+   */
+  configVersion?: number;
+  /** #3089 — the spec's baseline migration, required to cross a version gap. */
+  migrateBaselineConfig?: (config: unknown, fromVersion: number) => BaselineMigrationOutcome;
 }
 
 export interface CollectDriftResult {
@@ -303,6 +450,22 @@ export interface CollectDriftResult {
   reopened: PlannedDriftEvent[];
   /** How many open/reopened events returned to baseline this run and were resolved (#1290). */
   resolved: number;
+  /**
+   * #3089 — set when NO diff was possible because the stored baseline is in a
+   * config shape this build cannot bring forward, and re-baselining would be the
+   * wrong answer (a newer snapshot than the running code). No events were written;
+   * the caller records this verbatim as the not_comparable reason.
+   */
+  notComparableReason?: string;
+  /**
+   * #3089 — set when the stored baseline could not be migrated to the current
+   * shape and was therefore SUPERSEDED and re-captured from this scan. Honest, and
+   * lossy: the old reference point is gone, so drift that accumulated against it is
+   * now part of the new baseline. Carries the specific reason the upgrade failed.
+   */
+  rebaselinedReason?: string;
+  /** #3089 — the stored baseline was migrated in place to the current shape this run. */
+  baselineShapeUpgraded?: boolean;
 }
 
 /**
@@ -316,14 +479,73 @@ export async function collectDrift(
   opts: CollectDriftOpts = {},
 ): Promise<CollectDriftResult> {
   const baseline = await getCurrentBaseline(tenantId, domainKey);
+  const targetVersion = opts.configVersion ?? 1;
 
   if (!baseline) {
-    const id = await captureBaseline(tenantId, domainKey, currentConfig, { capturedBy: opts.capturedBy });
+    const id = await captureBaseline(tenantId, domainKey, currentConfig, {
+      capturedBy: opts.capturedBy,
+      configVersion: targetVersion,
+    });
     log.info({ tenantId, domainKey, baselineSnapshotId: id }, "drift: captured first baseline (no prior reference)");
     return { firstRun: true, baselineSnapshotId: id, inserted: [], reopened: [], resolved: 0 };
   }
 
-  const diffs = detectDrift(baseline.config, currentConfig);
+  // #3089 — bring an older-shaped baseline forward BEFORE diffing anything. Diffing
+  // across two shapes would report the whole tenant as drifted.
+  let baselineConfig = baseline.config;
+  let baselineShapeUpgraded = false;
+  const storedVersion = baseline.configVersion ?? 1;
+  if (storedVersion !== targetVersion) {
+    const upgrade = await upgradeBaselineShape({
+      baselineId: baseline.id,
+      tenantId,
+      domainKey,
+      storedConfig: baseline.config,
+      storedVersion,
+      targetVersion,
+      migrate: opts.migrateBaselineConfig,
+    });
+    if (upgrade.blockedReason) {
+      if (storedVersion > targetVersion) {
+        // Never re-baseline over a snapshot written by a newer build than this one.
+        log.warn(
+          { tenantId, domainKey, baselineSnapshotId: baseline.id, storedVersion, targetVersion },
+          "drift: refusing to diff against a newer-shaped baseline — no events written",
+        );
+        return {
+          firstRun: false,
+          baselineSnapshotId: baseline.id,
+          inserted: [],
+          reopened: [],
+          resolved: 0,
+          notComparableReason: upgrade.blockedReason,
+        };
+      }
+      // The stored baseline genuinely cannot be expressed in the current shape.
+      // Supersede it and capture a fresh reference — the honest last resort, and a
+      // lossy one: whatever had drifted from the old reference is now baseline.
+      const id = await captureBaseline(tenantId, domainKey, currentConfig, {
+        capturedBy: opts.capturedBy,
+        configVersion: targetVersion,
+      });
+      log.warn(
+        { tenantId, domainKey, supersededSnapshotId: baseline.id, baselineSnapshotId: id, reason: upgrade.blockedReason },
+        "drift: stored baseline could not be migrated to the current config shape — superseded and re-captured (#3089)",
+      );
+      return {
+        firstRun: true,
+        baselineSnapshotId: id,
+        inserted: [],
+        reopened: [],
+        resolved: 0,
+        rebaselinedReason: upgrade.blockedReason,
+      };
+    }
+    baselineConfig = upgrade.config;
+    baselineShapeUpgraded = upgrade.upgraded;
+  }
+
+  const diffs = detectDrift(baselineConfig, currentConfig);
   // #2819 — the factory form is resolved here, not by the caller, because real
   // per-setting attribution has to bound itself to the baseline capture and the
   // baseline is only known at this point.
@@ -332,7 +554,10 @@ export async function collectDrift(
       ? await opts.attributionFactory({
           baselineSnapshotId: baseline.id,
           baselineCapturedAt: baseline.capturedAt ?? null,
-          baselineConfig: baseline.config,
+          // The MIGRATED config when a shape upgrade ran this call — the same
+          // config the diff above walked, so a consumer never sees paths from one
+          // shape described by a config in another.
+          baselineConfig,
         })
       : undefined);
   const planned = planDriftEvents(diffs, attributionFor);
@@ -475,10 +700,13 @@ export async function collectDrift(
   }
 
   if (opts.rebaselineAfter) {
-    const id = await captureBaseline(tenantId, domainKey, currentConfig, { capturedBy: opts.capturedBy });
-    return { firstRun: false, baselineSnapshotId: id, inserted, reopened, resolved: plan.toResolveKeys.length };
+    const id = await captureBaseline(tenantId, domainKey, currentConfig, {
+      capturedBy: opts.capturedBy,
+      configVersion: targetVersion,
+    });
+    return { firstRun: false, baselineSnapshotId: id, inserted, reopened, resolved: plan.toResolveKeys.length, baselineShapeUpgraded };
   }
-  return { firstRun: false, baselineSnapshotId: baseline.id, inserted, reopened, resolved: plan.toResolveKeys.length };
+  return { firstRun: false, baselineSnapshotId: baseline.id, inserted, reopened, resolved: plan.toResolveKeys.length, baselineShapeUpgraded };
 }
 
 // ── Honest per-domain collection status (#1287) ───────────────────────────────
@@ -603,15 +831,36 @@ export async function maybeCollectDriftForCheck(
     const result = await collectDrift(tenantId, spec.domainKey, outcome.config, {
       attributionFor,
       attributionFactory,
+      configVersion: specConfigVersion(spec),
+      migrateBaselineConfig: spec.migrateBaselineConfig?.bind(spec),
     });
+
+    // #3089 — a baseline this build cannot bring forward is a real not_comparable,
+    // reported with the specific reason, not a silent zero-drift run.
+    if (result.notComparableReason) {
+      await recordDriftCollectionStatus(tenantId, spec.domainKey, {
+        status: "not_comparable",
+        reason: result.notComparableReason,
+        checkKey,
+        coverage,
+      });
+      log.warn(
+        { tenantId, checkKey, domainKey: spec.domainKey, reason: result.notComparableReason },
+        "drift: baseline config shape is not comparable with this build — no events written",
+      );
+      return { driftTracked: true, domainKey: spec.domainKey, status: "not_comparable", reason: result.notComparableReason };
+    }
+
     const status: DriftCollectionStatus = result.firstRun ? "baseline_captured" : "tracked";
     await recordDriftCollectionStatus(tenantId, spec.domainKey, {
       status,
+      // Only a forced re-baseline carries a reason here; a normal capture has none.
+      reason: result.rebaselinedReason ?? null,
       checkKey,
       coverage,
       eventsInserted: result.inserted.length + result.reopened.length,
     });
-    return { driftTracked: true, domainKey: spec.domainKey, status };
+    return { driftTracked: true, domainKey: spec.domainKey, status, reason: result.rebaselinedReason };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.warn({ err, tenantId, checkKey, domainKey: spec.domainKey }, "drift: collection failed (non-fatal)");

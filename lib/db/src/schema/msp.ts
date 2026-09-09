@@ -8443,7 +8443,27 @@ export const driftBaselineSnapshotsTable = pgTable("drift_baseline_snapshots", {
   domainKey: text("domain_key").notNull(),
   /** The captured configuration snapshot the collector diffs a fresh scan against. */
   config: jsonb("config").$type<unknown>().notNull(),
-  /** True once this baseline has been explicitly approved/signed as the reference. */
+  /**
+   * #3089 — which SHAPE version of its domain's comparable config this snapshot
+   * holds. A domain's config shape is part of the diff contract: `detectDrift`
+   * walks the stored config against a freshly-built one, so reshaping a builder
+   * (Conditional Access went from a positional `{ policies: [...] }` array to an
+   * id-keyed `{ policies: { "<id>": ... } }` map) would diff two different
+   * dialects and report the ENTIRE tenant as drifted. Every existing row predates
+   * versioning and is therefore version 1 by default; a spec that has reshaped
+   * declares a higher `configVersion` plus a real migration, and the collector
+   * upgrades a stale baseline IN PLACE (same snapshot id, so the events attached
+   * to it and their idempotency keys survive) before it diffs anything.
+   */
+  configVersion: integer("config_version").notNull().default(1),
+  /** When this snapshot's config was last upgraded to a newer shape version (#3089). NULL = never reshaped. */
+  shapeMigratedAt: timestamp("shape_migrated_at", { withTimezone: true }),
+  /**
+   * True once this baseline has been explicitly approved/signed as the reference.
+   * A #3089 shape migration deliberately does NOT clear this: re-keying a
+   * collection by object id preserves every value that was signed off, it only
+   * changes how the same objects are addressed.
+   */
   signed: boolean("signed").notNull().default(false),
   /** Who/what captured this baseline ("system" for an automated scan, or a user id). */
   capturedBy: text("captured_by"),

@@ -121,17 +121,6 @@ const FAN_OUT_SAMPLE_ERROR_LIMIT = 5;
 // carry the correctness weight a category-only match put on it.
 
 /**
- * Read a drift spec's declared object collection out of a stored baseline config.
- * Undefined when the baseline predates the collection or was built in another shape
- * — the positional guard is then simply not applied, never applied against garbage.
- */
-function readDriftCollection(config: unknown, collection: string): unknown[] | undefined {
-  if (!config || typeof config !== "object") return undefined;
-  const value = (config as Record<string, unknown>)[collection];
-  return Array.isArray(value) ? value : undefined;
-}
-
-/**
  * The universal drift hook every executor path calls once its scan is complete
  * (#1287). #1283 hard-coded a single inline collectDrift for Conditional Access
  * in the graph path; this generalises it: a check is drift-tracked iff it has a
@@ -169,11 +158,11 @@ async function collectDriftForCompletedCheck(
             buildDriftScopeAttribution({
               tenantId,
               endpoint: check.endpoint,
+              // #3089 — the domain's config is keyed by each object's own id, so a
+              // setting path names its object outright. The scan items and the
+              // baseline-order guard this used to pass are gone with the positional
+              // shape they existed to compensate for.
               identity,
-              items,
-              // The same collection out of the baseline, so index N can be checked
-              // to mean the same object on both sides before its identity is read.
-              baselineItems: readDriftCollection(ctx.baselineConfig, identity.collection),
               baselineCapturedAt: ctx.baselineCapturedAt,
               checkKey: check.key,
               domainKey: spec.domainKey,
