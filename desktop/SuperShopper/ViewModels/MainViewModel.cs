@@ -411,7 +411,6 @@ namespace SuperShopper.ViewModels
         {
             if (string.IsNullOrWhiteSpace(deal.Title) || deal.Title.Length < 3) return;
 
-            // Thread-safe dispatch to UI thread
             var dispatcher = Application.Current?.Dispatcher;
             if (dispatcher != null && !dispatcher.CheckAccess())
             {
@@ -419,8 +418,11 @@ namespace SuperShopper.ViewModels
                 return;
             }
 
-            if (!ExtractedDeals.Any(d => d.Title.Equals(deal.Title, StringComparison.OrdinalIgnoreCase)))
+            // Standardize title and check duplicates
+            string cleanTitle = deal.Title.Trim();
+            if (!ExtractedDeals.Any(d => d.Title.Equals(cleanTitle, StringComparison.OrdinalIgnoreCase)))
             {
+                deal.Title = cleanTitle;
                 ExtractedDeals.Add(deal);
                 FilterDeals(DealFilterQuery);
                 OnPropertyChanged(nameof(ExtractedDealsCount));
@@ -449,9 +451,6 @@ namespace SuperShopper.ViewModels
             }
         }
 
-        /// <summary>
-        /// Deep Recursive JSON Parser that searches any arbitrary JSON payload for deals/products.
-        /// </summary>
         public void ProcessExtractedJson(string jsonString)
         {
             if (string.IsNullOrWhiteSpace(jsonString)) return;
@@ -462,7 +461,19 @@ namespace SuperShopper.ViewModels
                 {
                     using var doc = JsonDocument.Parse(jsonString);
                     var dealsList = new List<ExtractedDealModel>();
-                    TraverseJsonElement(doc.RootElement, dealsList);
+
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var elem in doc.RootElement.EnumerateArray())
+                        {
+                            var deal = TryParseDirectDealObject(elem);
+                            if (deal != null) dealsList.Add(deal);
+                        }
+                    }
+                    else
+                    {
+                        TraverseJsonElement(doc.RootElement, dealsList);
+                    }
 
                     foreach (var deal in dealsList)
                     {
@@ -471,17 +482,44 @@ namespace SuperShopper.ViewModels
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"Deep JSON parse error: {ex.Message}");
+                    Debug.WriteLine($"JSON deal parse notice: {ex.Message}");
                 }
             });
+        }
+
+        private ExtractedDealModel? TryParseDirectDealObject(JsonElement obj)
+        {
+            if (obj.ValueKind != JsonValueKind.Object) return null;
+
+            string? title = GetStringProp(obj, "title", "name", "headline", "productName", "itemName");
+            if (string.IsNullOrWhiteSpace(title) || title.Length < 3 || title.Length > 150) return null;
+
+            string dealType = GetStringProp(obj, "dealType", "promotionType", "badge", "savingsText", "offerType") ?? "Weekly Sale";
+            string price = GetStringProp(obj, "price", "savings", "priceInfo", "salePrice", "originalPrice") ?? "See Circular";
+            string category = GetStringProp(obj, "category", "department", "departmentName") ?? "Groceries";
+            string validDates = GetStringProp(obj, "validDates", "validity", "validFrom") ?? "Weekly Ad";
+
+            if (title.Contains("BOGO", StringComparison.OrdinalIgnoreCase) || dealType.Contains("BOGO", StringComparison.OrdinalIgnoreCase))
+            {
+                dealType = "Buy 1 Get 1 Free";
+            }
+
+            return new ExtractedDealModel
+            {
+                Title = title.Trim(),
+                DealType = dealType.Trim(),
+                PriceInfo = price.Trim(),
+                Category = category.Trim(),
+                ValidDates = validDates.Trim(),
+                StoreName = ActiveStoreName
+            };
         }
 
         private void TraverseJsonElement(JsonElement elem, List<ExtractedDealModel> dealsList)
         {
             if (elem.ValueKind == JsonValueKind.Object)
             {
-                // Check if this object looks like a deal / product
-                var deal = TryExtractDealFromObject(elem);
+                var deal = TryParseDirectDealObject(elem);
                 if (deal != null)
                 {
                     dealsList.Add(deal);
@@ -499,40 +537,6 @@ namespace SuperShopper.ViewModels
                     TraverseJsonElement(item, dealsList);
                 }
             }
-        }
-
-        private ExtractedDealModel? TryExtractDealFromObject(JsonElement obj)
-        {
-            string? title = GetStringProp(obj, "title", "name", "headline", "productName", "itemName", "description");
-            if (string.IsNullOrWhiteSpace(title) || title.Length < 3 || title.Length > 120) return null;
-
-            // Reject generic non-product JSON titles like "metadata", "success", "settings"
-            if (title.Equals("Success", StringComparison.OrdinalIgnoreCase) || 
-                title.Equals("Home", StringComparison.OrdinalIgnoreCase) ||
-                title.Contains("javascript", StringComparison.OrdinalIgnoreCase)) return null;
-
-            string dealType = GetStringProp(obj, "dealType", "promotionType", "badge", "savingsText", "badgeText", "offerType", "deal_type") ?? "Weekly Sale";
-            string price = GetStringProp(obj, "price", "savings", "priceInfo", "salePrice", "originalPrice", "priceString", "formattedPrice") ?? "See Circular";
-            string category = GetStringProp(obj, "category", "department", "departmentName", "categoryName") ?? "Groceries";
-            string validDates = GetStringProp(obj, "validDates", "validity", "validFrom", "dateRange") ?? "Weekly Ad";
-
-            // Infer BOGO if text mentions BOGO or buy 1 get 1
-            if (title.Contains("BOGO", StringComparison.OrdinalIgnoreCase) || 
-                dealType.Contains("BOGO", StringComparison.OrdinalIgnoreCase) ||
-                dealType.Contains("Buy 1 Get 1", StringComparison.OrdinalIgnoreCase))
-            {
-                dealType = "Buy 1 Get 1 Free";
-            }
-
-            return new ExtractedDealModel
-            {
-                Title = title.Trim(),
-                DealType = dealType.Trim(),
-                PriceInfo = price.Trim(),
-                Category = category.Trim(),
-                ValidDates = validDates.Trim(),
-                StoreName = ActiveStoreName
-            };
         }
 
         private string? GetStringProp(JsonElement elem, params string[] propNames)

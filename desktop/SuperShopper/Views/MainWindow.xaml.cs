@@ -126,7 +126,6 @@ namespace SuperShopper.Views
 
         private void CoreWebView2_WebResourceResponseReceived(object? sender, CoreWebView2WebResourceResponseReceivedEventArgs e)
         {
-            // Thread-safe background execution so network response reading never blocks WebView2 or UI thread
             var requestUri = e.Request.Uri.ToLowerInvariant();
             var response = e.Response;
 
@@ -157,7 +156,7 @@ namespace SuperShopper.Views
                     }
                     catch
                     {
-                        // Background stream read timeout or cancellation swallow
+                        // Background stream read timeout swallow
                     }
                 });
             }
@@ -175,19 +174,26 @@ namespace SuperShopper.Views
 
             try
             {
-                // Comprehensive JavaScript Scraper for Publix & Supermarkets
+                // 1. Scroll page slightly to trigger lazy-loaded images & deals
+                await webView.ExecuteScriptAsync("window.scrollBy(0, 400);");
+                await Task.Delay(300);
+
+                // 2. Comprehensive Client-Side JS Scraper
                 string script = @"(function() {
                     let deals = [];
                     let titlesSeen = new Set();
 
-                    // Helper to add deal
-                    function addDeal(title, dealType, price, category) {
-                        if (!title || title.length < 3 || title.length > 120) return;
-                        let cleanTitle = title.trim();
-                        if (!titlesSeen.has(cleanTitle.toLowerCase())) {
-                            titlesSeen.add(cleanTitle.toLowerCase());
+                    function add(title, dealType, price, category) {
+                        if (!title) return;
+                        title = title.trim();
+                        if (title.length < 3 || title.length > 140) return;
+                        if (/^(home|savings|weekly ad|publix|cart|account|search|store|login|sign in|help|menu|all|departments)$/i.test(title)) return;
+
+                        let key = title.toLowerCase();
+                        if (!titlesSeen.has(key)) {
+                            titlesSeen.add(key);
                             deals.push({
-                                title: cleanTitle,
+                                title: title,
                                 dealType: dealType || 'Weekly Sale',
                                 price: price || 'See Circular',
                                 category: category || 'Groceries'
@@ -196,52 +202,45 @@ namespace SuperShopper.Views
                     }
 
                     try {
-                        // 1. Inspect Next.js __NEXT_DATA__
-                        if (window.__NEXT_DATA__ && window.__NEXT_DATA__.props) {
-                            let jsonStr = JSON.stringify(window.__NEXT_DATA__.props);
-                            if (jsonStr.length > 50) return jsonStr;
-                        }
-                    } catch(e){}
-
-                    try {
-                        // 2. Inspect JSON-LD scripts
-                        let ldScripts = document.querySelectorAll('script[type=""application/ld+json""]');
-                        ldScripts.forEach(s => {
-                            try {
-                                let data = JSON.parse(s.innerText);
-                                if (data.name) addDeal(data.name, 'Weekly Deal', data.price || 'Sale', 'Groceries');
-                                if (Array.isArray(data.itemListElement)) {
-                                    data.itemListElement.forEach(item => {
-                                        if (item.name) addDeal(item.name, 'Weekly Deal', 'Sale', 'Groceries');
-                                    });
+                        // A. Inspect DOM elements containing deal cards / tiles
+                        let containers = document.querySelectorAll('div, article, section, li, a');
+                        containers.forEach(el => {
+                            let text = el.innerText || '';
+                            if (text.length > 5 && text.length < 300 && (text.includes('BOGO') || text.includes('$') || text.includes('Save') || text.includes('off') || text.includes('ea'))) {
+                                let h = el.querySelector('h1, h2, h3, h4, h5, strong, [class*=""title""], [class*=""name""], [data-qa*=""title""]');
+                                let titleText = h ? h.innerText : '';
+                                if (!titleText && el.children.length <= 4) {
+                                    let lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 3);
+                                    if (lines.length > 0) titleText = lines[0];
                                 }
-                            } catch(e){}
+
+                                if (titleText) {
+                                    let dealType = 'Weekly Sale';
+                                    if (text.includes('BOGO') || text.includes('Buy 1 Get 1')) dealType = 'Buy 1 Get 1 Free';
+                                    else if (text.includes('2 for') || text.includes('3 for')) {
+                                        let m = text.match(/\d+ for \$\d+(\.\d{2})?/i);
+                                        if (m) dealType = m[0];
+                                    }
+
+                                    let priceMatch = text.match(/\$\d+(\.\d{2})?(\s*ea)?/i) || text.match(/Save up to \$\d+(\.\d{2})?/i);
+                                    let priceText = priceMatch ? priceMatch[0] : 'Weekly Special';
+
+                                    add(titleText, dealType, priceText, 'Weekly Ad');
+                                }
+                            }
                         });
                     } catch(e){}
 
-                    // 3. Scan DOM for Publix & Supermarket Cards/Tiles
-                    let selectors = [
-                        '[data-qa*=""tile""]', '[data-qa*=""card""]', '[data-testid*=""deal""]', 
-                        '.p-tile', '.p-card', 'article', '[class*=""tile""]', '[class*=""card""]', 
-                        'a[href*=""weekly-ad""]', 'li[class*=""item""]'
-                    ];
-
-                    let elements = document.querySelectorAll(selectors.join(', '));
-                    elements.forEach(el => {
-                        let titleEl = el.querySelector('h2, h3, h4, p, [class*=""title""], [class*=""name""], [data-qa*=""title""]');
-                        let dealEl = el.querySelector('[class*=""badge""], [class*=""savings""], [class*=""promo""], [data-qa*=""badge""]');
-                        let priceEl = el.querySelector('[class*=""price""], [data-qa*=""price""]');
-                        let catEl = el.querySelector('[class*=""category""], [class*=""department""]');
-
-                        if (titleEl && titleEl.innerText) {
-                            addDeal(
-                                titleEl.innerText,
-                                dealEl ? dealEl.innerText : 'Weekly Sale',
-                                priceEl ? priceEl.innerText : 'See Weekly Circular',
-                                catEl ? catEl.innerText : 'Groceries'
-                            );
+                    try {
+                        // B. Inspect Next.js __NEXT_DATA__
+                        if (window.__NEXT_DATA__ && window.__NEXT_DATA__.props) {
+                            let str = JSON.stringify(window.__NEXT_DATA__.props);
+                            let matches = str.matchAll(/""title""\s*:\s*""([^""]+)""/g);
+                            for (let m of matches) {
+                                if (m[1]) add(m[1], 'Weekly Deal', 'Sale Price', 'Groceries');
+                            }
                         }
-                    });
+                    } catch(e){}
 
                     return JSON.stringify(deals);
                 })();";
@@ -265,7 +264,8 @@ namespace SuperShopper.Views
                 if (DataContext is MainViewModel mainVm)
                 {
                     mainVm.IsExtractingDeals = false;
-                    mainVm.StatusMessage = $"Scan completed: {mainVm.ExtractedDealsCount} deals found!";
+                    mainVm.IsPanelOpen = true;
+                    mainVm.StatusMessage = $"Extracted {mainVm.ExtractedDealsCount} deals from page!";
                 }
             }
         }
@@ -363,7 +363,7 @@ namespace SuperShopper.Views
                 vm.IsLoading = false;
                 if (e.IsSuccess)
                 {
-                    vm.StatusMessage = "Page loaded successfully";
+                    vm.StatusMessage = "Weekly ad loaded! Click '⚡ Extract Sales Deals' to extract deals.";
                     if (webView.Source != null)
                     {
                         vm.AddressBarInput = webView.Source.ToString();
