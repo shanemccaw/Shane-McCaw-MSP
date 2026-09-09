@@ -269,7 +269,8 @@ namespace BuildConsole.Services
         private DateTime _lastApiServerStartUtc = DateTime.MinValue;
         /// <summary>Git #3113 — cheap local throttle on the GitHub-issue-mirror sync trigger fired from
         /// TickAsync, so we don't even build a client / read the sync-state row on every ~10s tick. The
-        /// real interval gate (5 min) + failed-attempt backoff + single-flight all live in
+        /// real interval gates (#3337: a 5 min incremental + a 30 min full-walk reconciliation) +
+        /// failed-attempt backoff + single-flight all live in
         /// <see cref="GitHubIssueMirror.MaybeSyncAsync"/>; this is just a fast pre-filter.</summary>
         private DateTime _lastMirrorSyncTriggerUtc = DateTime.MinValue;
         /// <summary>
@@ -976,8 +977,9 @@ namespace BuildConsole.Services
         ///
         /// Runs regardless of pause/readiness (a background refresh, not a claim), same as the sweeps
         /// above. The heavy lifting and ALL the real gating live in
-        /// <see cref="GitHubIssueMirror.MaybeSyncAsync"/> (persisted 5-min interval, failed-attempt
-        /// backoff, single-flight), so this method is safe to call every tick; the cheap local throttle
+        /// <see cref="GitHubIssueMirror.MaybeSyncAsync"/> (persisted intervals — #3337: a 5 min cheap
+        /// incremental issue-level pass and a 30 min full board-walk reconciliation pass — plus
+        /// failed-attempt backoff, single-flight), so this method is safe to call every tick; the cheap local throttle
         /// here just avoids constructing a client / touching the DB on the ~10s ticks in between. The
         /// first (heavy, full-board) sync is routed through <see cref="StartupGitHubCoordinator"/> so it
         /// is staggered against the other cold-start GitHub bursts (#3022) rather than joining them.

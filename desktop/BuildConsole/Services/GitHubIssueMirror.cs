@@ -43,14 +43,53 @@ namespace BuildConsole.Services
     /// Every mirror read is wrapped so that ANY failure (unresolved DB, table not migrated, a
     /// query error) falls through to the caller's existing live path — this change can never make
     /// a read worse than it is today, only cheaper on the common hit.
+    ///
+    /// ── Git #3337 — two-tier sync, not one ─────────────────────────────────────────────────
+    /// The original #3113 design ran ONE full sync (a ~32-paginated-call GraphQL issues walk +
+    /// board-status sweep) every <see cref="FullSyncInterval"/>, unconditionally, even when
+    /// nothing had changed — real, ongoing, unnecessary rate-limit pressure even at zero user
+    /// activity. There are now two independently-gated passes:
+    ///   • <see cref="IncrementalSyncAsync"/> — cheap, runs every <see cref="IncrementalSyncInterval"/>.
+    ///     Uses GitHub's real REST `since=` filter (<see cref="GitHubApiClient.ListIssuesUpdatedSinceAsync"/>)
+    ///     to fetch ONLY issues whose title/state/labels genuinely changed. Board status is
+    ///     deliberately NOT touched here — see the next bullet for why.
+    ///   • <see cref="SyncAsync"/> — the original full walk, unchanged, now purely a periodic
+    ///     reconciliation pass on the longer <see cref="FullSyncInterval"/>.
+    /// Real, live investigation (2026-09-09) confirmed GitHub's Projects v2 GraphQL API has NO
+    /// reliable incremental signal for board-status (Status field) moves: `ProjectV2Item.updatedAt`
+    /// is real and accurate, but the only way to ask for "items changed since X" is the
+    /// search-index-backed `items(query: "updated:>...")` filter, which measurably lagged 15+
+    /// minutes behind a confirmed real change in live testing against this repo's own project
+    /// board (an item whose own `updatedAt` was unambiguously inside the filtered window still
+    /// came back `totalCount: 0` many minutes later) — and there is no `orderBy` by `updatedAt`
+    /// either (`ProjectV2ItemOrderField` only offers `POSITION`). Shipping board-status diffing
+    /// against that filter would silently stop picking up real board moves for as long as the
+    /// index lags, which is exactly what this issue required NOT doing. So board status stays
+    /// full-walk-only, same mechanism as before, just on a distinct interval from issue-level data.
     /// </summary>
     public static class GitHubIssueMirror
     {
-        /// <summary>How stale the mirror may get before <see cref="MaybeSyncAsync"/> refreshes it.
-        /// A full sync is ~40 batched GraphQL requests (one issues walk + one board-status sweep),
-        /// spread and low-concurrency — trivial next to the hundreds of per-issue calls it replaces.
-        /// Self-gated on the persisted <c>last_full_sync_at</c> so it survives restarts.</summary>
-        public static readonly TimeSpan SyncInterval = TimeSpan.FromMinutes(5);
+        /// <summary>Git #3337 — how stale ISSUE-level mirror data (title/state/labels) may get before
+        /// <see cref="MaybeSyncAsync"/> runs the cheap incremental REST `since=` pass. Safe to keep
+        /// short: unlike <see cref="FullSyncInterval"/>, this pass's cost does not scale with the
+        /// interval — GitHub's REST `since=` filter returns (near-)nothing when little has changed,
+        /// so a short interval here does not reintroduce the rate-limit pressure this issue fixes.</summary>
+        public static readonly TimeSpan IncrementalSyncInterval = TimeSpan.FromMinutes(5);
+
+        /// <summary>How stale the mirror's BOARD STATUS and full issue set may get before
+        /// <see cref="MaybeSyncAsync"/> runs the expensive full walk (<see cref="SyncAsync"/>) — a
+        /// ~32+ paginated-call GraphQL issues walk + board-status sweep, spread and low-concurrency,
+        /// but a real, non-incrementable cost every time it runs (see the class doc comment: GitHub's
+        /// Projects v2 API has no reliable incremental signal, so this is unavoidably a full walk).
+        /// Self-gated on the persisted <c>last_full_sync_at</c> so it survives restarts. Git #3339
+        /// proposed bumping the (then-single) sync interval from 5 to 25 minutes as a stopgap for the
+        /// same rate-limit pressure; #3339 never actually landed on <c>main</c> before this real fix
+        /// did, so there was nothing to revert — this constant is set to the same ~25-30 minute order
+        /// of magnitude Shane already accepted as a reasonable board-status staleness trade-off in
+        /// #3339's own body, now scoped to just the genuinely-expensive full walk rather than
+        /// (as #3339 would have) also slowing down issue-level freshness that no longer needs to be
+        /// slow at all.</summary>
+        public static readonly TimeSpan FullSyncInterval = TimeSpan.FromMinutes(30);
 
         /// <summary>Runaway guard on the per-blocked-issue <c>blocked_by</c> fetch during a sync
         /// (the one part of the sync that is still per-issue REST). Only issues carrying the
@@ -102,13 +141,18 @@ namespace BuildConsole.Services
         /// (never on a skip/no-op/failure), so any real, currently-open mirror-reading view
         /// (Batter Up, AI Batter Up, ...) can refresh ITSELF the moment fresh data lands, instead
         /// of a separate poller re-checking the mirror on its own schedule. Zero new GitHub calls,
-        /// zero new timer — this only fires off the sync this class already runs on its own
-        /// existing 5-minute interval (<see cref="SyncInterval"/>).
+        /// zero new timer — this only fires off syncs this class already runs on its own existing
+        /// intervals (<see cref="IncrementalSyncInterval"/> / <see cref="FullSyncInterval"/>).
         ///
         /// Raised from whatever background context <see cref="MaybeSyncAsync"/>'s caller runs on
         /// (today, <see cref="QueueWatcherService"/>'s watcher tick) — NOT the UI thread. Every
         /// subscriber is responsible for marshaling back to its own Dispatcher before touching any
         /// UI element; this event does no marshaling itself.
+        ///
+        /// Git #3337 — fires after EITHER a successful incremental OR full sync (not just full).
+        /// An incremental pass doesn't touch board status, but it DOES refresh title/state — an
+        /// issue closing while sitting in Batter Up should disappear from the badge count as soon
+        /// as the next (now fast) incremental pass sees it, not wait for the slower full walk.
         /// </summary>
         public static event Action? SyncCompleted;
 
@@ -292,10 +336,14 @@ namespace BuildConsole.Services
         /// the sweep captured the whole board, an empty result genuinely means "nothing in that
         /// column right now", not "unknown".
         ///
-        /// Freshness (the #3134 audit): served on the same 5-minute sync interval as everything else.
-        /// That is sufficient for this use case — the pain point is Batter Up NEVER filling in (the big
-        /// live walk fails under GitHub's secondary rate limit), so a reliably ≤5-min-fresh local read
-        /// is strictly better than a live walk that never completes. The closed-sweep case is covered
+        /// Freshness (the #3134 audit, updated for #3337): board status is only ever refreshed by the
+        /// full walk, so it is as fresh as <see cref="FullSyncInterval"/> allows (not the shorter
+        /// <see cref="IncrementalSyncInterval"/> — board status has no reliable incremental signal,
+        /// see the class doc comment). That is still sufficient for this use case — the pain point is
+        /// Batter Up NEVER filling in (the big live walk fails under GitHub's secondary rate limit),
+        /// so a reliably ≤<see cref="FullSyncInterval"/>-fresh local read is strictly better than a
+        /// live walk that never completes. State (open/closed) itself is fresher, via the incremental
+        /// pass. The closed-sweep case is covered
         /// because an open→closed transition preserves the row's board Status option (the sync's
         /// mark-closed pass only flips <c>state</c>), so a just-closed Batter Up item is a real
         /// <c>state='closed' AND board_status_option_id=…</c> mirror row.
@@ -355,6 +403,31 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>Git #3337 — the persisted INCREMENTAL sync bookkeeping, tracked separately from
+        /// <see cref="GetSyncStateAsync"/>'s full-sync state so the two intervals gate independently.
+        /// All null/false before the first ever incremental sync (which cannot run until at least one
+        /// full sync has established a `since=` baseline — see <see cref="MaybeSyncAsync"/>).</summary>
+        public static async Task<(DateTime? LastIncrementalSyncAt, bool Ok, string? Note)> GetIncrementalSyncStateAsync()
+        {
+            try
+            {
+                await using var conn = await TryOpenAsync();
+                if (conn == null) return (null, false, "db unavailable");
+                await using var cmd = new NpgsqlCommand(
+                    "SELECT last_incremental_sync_at, last_incremental_sync_ok, last_incremental_sync_note FROM bt_issue_mirror_sync_state WHERE id = 1", conn);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                if (!await reader.ReadAsync()) return (null, false, "no sync-state row");
+                DateTime? at = reader.IsDBNull(0) ? null : reader.GetFieldValue<DateTime>(0);
+                bool ok = !reader.IsDBNull(1) && reader.GetBoolean(1);
+                string? note = reader.IsDBNull(2) ? null : reader.GetString(2);
+                return (at, ok, note);
+            }
+            catch (Exception ex)
+            {
+                return (null, false, ex.Message);
+            }
+        }
+
         /// <summary>True once the mirror has completed at least one full sync — i.e. its rows are a
         /// real reflection of GitHub, not an empty/never-populated table. Callers that need
         /// fail-closed semantics (the chat dock) use this to decide whether a miss means "closed /
@@ -370,6 +443,14 @@ namespace BuildConsole.Services
         public sealed class SyncSummary
         {
             public bool Ok { get; set; }
+            /// <summary>Git #3337 — true when this summary came from the cheap incremental pass
+            /// (<see cref="IncrementalSyncAsync"/>) rather than the full walk (<see cref="SyncAsync"/>).
+            /// <see cref="BoardStatuses"/>/<see cref="MarkedClosed"/> are always 0 on an incremental
+            /// summary — board status and the mark-closed pass are full-walk-only.</summary>
+            public bool Incremental { get; set; }
+            /// <summary>On a full sync: every open issue walked. On an incremental sync: every
+            /// CHANGED issue in the batch (open or closed) — the field is reused rather than adding a
+            /// parallel "ChangedIssues" count, since the two passes' logs already say which is which.</summary>
             public int OpenIssues { get; set; }
             public int BoardStatuses { get; set; }
             public int BlockedByFetched { get; set; }
@@ -379,39 +460,79 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// Runs a full sync only if the mirror is older than <see cref="SyncInterval"/> (or has never
-        /// synced), and only if a sync isn't already in flight. Self-gates on the persisted
-        /// <c>last_full_sync_at</c>, so it does the right thing across BuildConsole restarts and no
-        /// matter how often the watcher tick calls it. <paramref name="force"/> bypasses the interval
-        /// (a manual refresh). Returns null when it decided not to sync this call.
+        /// Git #3337 — decides between three outcomes: skip (still fresh), a cheap incremental sync,
+        /// or the expensive full walk, and only if a sync isn't already in flight. Self-gates on the
+        /// persisted <c>last_full_sync_at</c> / <c>last_incremental_sync_at</c>, so it does the right
+        /// thing across BuildConsole restarts and no matter how often the watcher tick calls it.
+        /// <paramref name="force"/> bypasses both intervals and always runs the FULL walk (existing
+        /// "manual refresh" semantics, unchanged — a deliberate refresh should be the fully
+        /// authoritative one, not the incremental subset). Returns null when it decided not to sync
+        /// this call.
+        ///
+        /// Decision order:
+        ///   1. Never completed a full sync (<c>last_full_sync_at</c> is null) → FULL. The incremental
+        ///      REST `since=` fetch has nothing to diff against without a baseline (this is the one
+        ///      genuinely-expected full walk the issue calls out: first sync ever).
+        ///   2. The last full sync is older than <see cref="FullSyncInterval"/> → FULL (the periodic
+        ///      reconciliation pass — also the only path that ever refreshes board status).
+        ///   3. Otherwise, if the more recent of the two last-successful-sync timestamps is older than
+        ///      <see cref="IncrementalSyncInterval"/> → INCREMENTAL.
+        ///   4. Otherwise → skip, still fresh.
         /// </summary>
         public static async Task<SyncSummary?> MaybeSyncAsync(GitHubApiClient gh, bool force = false)
         {
             if (gh == null) return null;
 
-            if (!force)
+            bool runFull;
+            DateTime? lastFullAt = null;
+            DateTime? lastIncrAt = null;
+
+            if (force)
             {
-                // last_full_sync_at only advances on a SUCCESSFUL sync, so this gate says "we have a
-                // recent SUCCESS" — a failed sync leaves it stale and this returns false → eligible.
-                var (lastAt, lastOk, lastNote) = await GetSyncStateAsync();
-                if (lastAt != null && DateTime.UtcNow - lastAt.Value.ToUniversalTime() < SyncInterval)
+                runFull = true;
+            }
+            else
+            {
+                // last_full_sync_at / last_incremental_sync_at only advance on a SUCCESSFUL sync of
+                // their own kind, so these gates say "we have a recent SUCCESS of this kind" — a
+                // failed sync leaves its own timestamp stale, making it eligible again.
+                var (fullAt, fullOk, fullNote) = await GetSyncStateAsync();
+                var (incrAt, _, _) = await GetIncrementalSyncStateAsync();
+                lastFullAt = fullAt;
+                lastIncrAt = incrAt;
+
+                if (fullAt == null)
                 {
-                    // Git #3131 — this "still fresh, skip" path used to be totally silent, which made a
-                    // deliberate no-op indistinguishable in the ActivityLog from "the sync was never
-                    // wired at all" (Shane's real #3131 report: zero `issue-mirror` lines after well past
-                    // the interval, because a fresh cold start skips silently for up to the whole
-                    // SyncInterval when last_full_sync_at is already recent from a prior session). Leave a
-                    // throttled trace, and surface the last attempt's real outcome so an intermittent 403
-                    // (the #2815 rate-limit circuit) is visible here without a separate DB query.
-                    var freshAge = DateTime.UtcNow - lastAt.Value.ToUniversalTime();
-                    MaybeLogSkip(
-                        $"skip: mirror still fresh (last successful sync {freshAge.TotalMinutes:0.0}m ago, " +
-                        $"under the {SyncInterval.TotalMinutes:0}m interval)" +
-                        (lastOk ? "." : $"; NOTE last recorded attempt FAILED: {lastNote}"));
-                    return null; // still fresh enough
+                    runFull = true; // first sync ever — no `since=` baseline to diff against yet.
+                }
+                else if (DateTime.UtcNow - fullAt.Value.ToUniversalTime() >= FullSyncInterval)
+                {
+                    runFull = true; // periodic reconciliation (and the only path that refreshes board status) is due.
+                }
+                else
+                {
+                    runFull = false;
+                    var lastAnySync = (incrAt.HasValue && incrAt.Value > fullAt.Value) ? incrAt.Value : fullAt.Value;
+                    if (DateTime.UtcNow - lastAnySync.ToUniversalTime() < IncrementalSyncInterval)
+                    {
+                        // Git #3131 — this "still fresh, skip" path used to be totally silent, which made a
+                        // deliberate no-op indistinguishable in the ActivityLog from "the sync was never
+                        // wired at all". Leave a throttled trace, and surface the last FULL attempt's real
+                        // outcome so an intermittent 403 (the #2815 rate-limit circuit) is visible here
+                        // without a separate DB query.
+                        var freshAge = DateTime.UtcNow - lastAnySync.ToUniversalTime();
+                        MaybeLogSkip(
+                            $"skip: mirror still fresh (last sync of either kind {freshAge.TotalMinutes:0.0}m ago, " +
+                            $"incremental due at {IncrementalSyncInterval.TotalMinutes:0}m, full reconciliation due at " +
+                            $"{FullSyncInterval.TotalMinutes:0}m)" +
+                            (fullOk ? "." : $"; NOTE last recorded FULL attempt FAILED: {fullNote}"));
+                        return null; // still fresh enough
+                    }
+                    // else: due for an incremental sync (runFull stays false).
                 }
 
-                // Back off failed attempts so a persistently-unreachable GitHub isn't re-hit every tick.
+                // Back off failed attempts (of either kind) so a persistently-unreachable GitHub isn't
+                // re-hit every tick.
                 if (DateTime.UtcNow - _lastAttemptUtc < FailedAttemptBackoff)
                 {
                     // Git #3131 — likewise: the failed-attempt backoff was silent, so a run of transient
@@ -419,8 +540,7 @@ namespace BuildConsole.Services
                     var backoffAge = DateTime.UtcNow - _lastAttemptUtc;
                     MaybeLogSkip(
                         $"skip: backing off after a recent failed attempt {backoffAge.TotalSeconds:0}s ago " +
-                        $"(retry once past the {FailedAttemptBackoff.TotalSeconds:0}s backoff)" +
-                        (lastNote != null ? $"; last note: {lastNote}" : "."));
+                        $"(retry once past the {FailedAttemptBackoff.TotalSeconds:0}s backoff)");
                     return null;
                 }
             }
@@ -428,16 +548,22 @@ namespace BuildConsole.Services
             // Single-flight: never let two syncs overlap.
             if (Interlocked.CompareExchange(ref _syncing, 1, 0) != 0)
             {
-                // Git #3131 — a sync genuinely in flight (a slow ~40s sync spanning multiple ticks) also
-                // returned silently. Distinguish it from a skip so the log shows the sync IS working.
-                MaybeLogSkip("skip: a full sync is already in flight (single-flight guard) — not starting a second.");
+                // Git #3131 — a sync genuinely in flight also returned silently. Distinguish it from a
+                // skip so the log shows the sync IS working.
+                MaybeLogSkip("skip: a sync is already in flight (single-flight guard) — not starting a second.");
                 return null;
             }
             try
             {
                 _lastAttemptUtc = DateTime.UtcNow;
                 _lastSkipLogUtc = DateTime.MinValue; // a real attempt is running — let the next skip log promptly.
-                return await SyncAsync(gh);
+                if (runFull) return await SyncAsync(gh);
+
+                // lastFullAt is guaranteed non-null here (runFull is only false when fullAt != null and
+                // still within FullSyncInterval) — that's the incremental pass's real `since=` baseline,
+                // superseded by a more recent successful incremental sync if one has happened since.
+                var since = (lastIncrAt.HasValue && lastIncrAt.Value > lastFullAt!.Value) ? lastIncrAt.Value : lastFullAt!.Value;
+                return await IncrementalSyncAsync(gh, since);
             }
             finally
             {
@@ -457,7 +583,199 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// The real batched sync/diff. In as few GitHub requests as possible:
+        /// Git #3337 — the cheap incremental sync: <see cref="GitHubApiClient.ListIssuesUpdatedSinceAsync"/>
+        /// returns only issues whose title/state/labels genuinely changed since <paramref name="sinceUtc"/>
+        /// (GitHub's real REST `since=` filter — a DB-backed filter, not the search-index-lagged one
+        /// Projects v2's board-status query would have been — see the class doc comment). Upserts just
+        /// that (normally tiny) changed set:
+        ///   • title/state/labels/html_url/created_at/closed_at are refreshed directly from the batch.
+        ///   • blocked_by IS refreshed for any changed issue carrying the <c>blocked</c> label (or that
+        ///     just lost it), mirroring <see cref="SyncAsync"/>'s own per-blocked-issue REST fetch —
+        ///     cheap here because the batch is small.
+        ///   • board_status_option_id/board_status_name and blocking_numbers (the inverse blocked_by
+        ///     graph) are DELIBERATELY left untouched — board status has no reliable incremental
+        ///     signal, and blocking_numbers needs the WHOLE graph to recompute safely, not just this
+        ///     batch's slice. Both are only ever corrected by the next full sync.
+        /// If the changed set is large enough that <see cref="GitHubApiClient.ListIssuesUpdatedSinceAsync"/>
+        /// reports it truncated (e.g. BuildConsole was closed for days), this escalates to a full
+        /// <see cref="SyncAsync"/> for that pass instead of risking a silent partial miss.
+        /// </summary>
+        private static async Task<SyncSummary> IncrementalSyncAsync(GitHubApiClient gh, DateTime sinceUtc)
+        {
+            var sw = Stopwatch.StartNew();
+            var summary = new SyncSummary { Incremental = true };
+
+            List<GitHubIssueSinceUpdate> changed;
+            bool truncated;
+            try
+            {
+                (changed, truncated) = await gh.ListIssuesUpdatedSinceAsync(sinceUtc);
+            }
+            catch (Exception ex)
+            {
+                summary.Ok = false;
+                summary.Error = "incremental since= fetch failed: " + ex.Message;
+                summary.ElapsedMs = sw.ElapsedMilliseconds;
+                await RecordIncrementalSyncStateAsync(false, summary.Error);
+                ActivityLog.Log("issue-mirror", $"incremental sync FAILED (mirror left untouched): {summary.Error}");
+                return summary;
+            }
+
+            if (truncated)
+            {
+                ActivityLog.Log("issue-mirror",
+                    $"incremental sync since {sinceUtc:o} hit its page cap — too much may have changed to diff " +
+                    "safely; escalating to a full walk this pass instead of risking a silent partial miss.");
+                return await SyncAsync(gh);
+            }
+
+            summary.OpenIssues = changed.Count;
+
+            if (changed.Count == 0)
+            {
+                summary.Ok = true;
+                summary.ElapsedMs = sw.ElapsedMilliseconds;
+                await RecordIncrementalSyncStateAsync(true, $"ok: no issue-level changes since {sinceUtc:o} ({summary.ElapsedMs}ms)");
+                ActivityLog.Log("issue-mirror", $"incremental sync ok — nothing changed since {sinceUtc:o} ({summary.ElapsedMs}ms).");
+                // Still a real success — advance the SyncCompleted trigger's own timestamp bookkeeping
+                // via RecordIncrementalSyncStateAsync above, but nothing actually changed, so there is
+                // nothing new for a subscriber to redraw. Deliberately do NOT fire SyncCompleted here.
+                return summary;
+            }
+
+            // blocked_by refresh, scoped to this small changed batch only (mirrors SyncAsync's own logic).
+            var blockedByMap = new Dictionary<int, List<int>>();
+            var blockedNumbers = changed
+                .Where(i => i.Labels.Any(l => string.Equals(l.Name, "blocked", StringComparison.OrdinalIgnoreCase)))
+                .Select(i => i.Number)
+                .Distinct()
+                .Take(MaxBlockedByFetchesPerSync)
+                .ToList();
+            var blockedSet = new HashSet<int>(blockedNumbers);
+            foreach (var i in changed)
+                if (!blockedSet.Contains(i.Number))
+                    blockedByMap[i.Number] = new List<int>();
+            foreach (var num in blockedNumbers)
+            {
+                try
+                {
+                    var blockers = await gh.GetBlockedByAsync(num);
+                    blockedByMap[num] = blockers.Select(b => b.Number).Where(n => n > 0).Distinct().ToList();
+                    summary.BlockedByFetched++;
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("issue-mirror", $"incremental sync: blocked_by fetch for #{num} failed ({ex.Message}) — its blocked_by preserved this pass.");
+                }
+            }
+
+            try
+            {
+                await using var conn = await TryOpenAsync();
+                if (conn == null)
+                {
+                    summary.Ok = false;
+                    summary.Error = "db unavailable for incremental upsert";
+                    summary.ElapsedMs = sw.ElapsedMilliseconds;
+                    ActivityLog.Log("issue-mirror", "incremental sync: DB unavailable at upsert — mirror left untouched.");
+                    return summary;
+                }
+
+                await using var tx = await conn.BeginTransactionAsync();
+                await using (var cmd = new NpgsqlCommand(@"
+                    INSERT INTO bt_issue_mirror
+                        (issue_number, title, state, board_status_option_id, board_status_name,
+                         labels, blocked_by_numbers, blocking_numbers, html_url, created_at, closed_at,
+                         last_synced_at, updated_at)
+                    VALUES
+                        (@n, @title, @state, NULL, NULL,
+                         @labels, @blockedBy, '{}', @url, @createdAt, @closedAt,
+                         NOW(), NOW())
+                    ON CONFLICT (issue_number) DO UPDATE SET
+                        title  = EXCLUDED.title,
+                        state  = EXCLUDED.state,
+                        -- Board status has no reliable incremental signal (see the class doc comment) —
+                        -- always preserved here; only the full walk (SyncAsync) ever changes it.
+                        board_status_option_id = bt_issue_mirror.board_status_option_id,
+                        board_status_name      = bt_issue_mirror.board_status_name,
+                        labels = EXCLUDED.labels,
+                        blocked_by_numbers = CASE WHEN @haveBlockedBy THEN EXCLUDED.blocked_by_numbers ELSE bt_issue_mirror.blocked_by_numbers END,
+                        -- blocking_numbers (the inverse graph) needs the WHOLE blocked_by graph to
+                        -- recompute safely, not just this small batch — preserved, corrected by the
+                        -- next full sync.
+                        blocking_numbers = bt_issue_mirror.blocking_numbers,
+                        html_url = EXCLUDED.html_url,
+                        created_at = COALESCE(bt_issue_mirror.created_at, EXCLUDED.created_at),
+                        closed_at = EXCLUDED.closed_at,
+                        last_synced_at = NOW(),
+                        updated_at = NOW()", conn, tx))
+                {
+                    var pN = cmd.Parameters.Add(new NpgsqlParameter("@n", NpgsqlDbType.Integer));
+                    var pTitle = cmd.Parameters.Add(new NpgsqlParameter("@title", NpgsqlDbType.Text));
+                    var pState = cmd.Parameters.Add(new NpgsqlParameter("@state", NpgsqlDbType.Text));
+                    var pLabels = cmd.Parameters.Add(new NpgsqlParameter("@labels", NpgsqlDbType.Array | NpgsqlDbType.Text));
+                    var pBlockedBy = cmd.Parameters.Add(new NpgsqlParameter("@blockedBy", NpgsqlDbType.Array | NpgsqlDbType.Integer));
+                    var pUrl = cmd.Parameters.Add(new NpgsqlParameter("@url", NpgsqlDbType.Text));
+                    var pCreated = cmd.Parameters.Add(new NpgsqlParameter("@createdAt", NpgsqlDbType.TimestampTz));
+                    var pClosed = cmd.Parameters.Add(new NpgsqlParameter("@closedAt", NpgsqlDbType.TimestampTz));
+                    var pHaveBlockedBy = cmd.Parameters.Add(new NpgsqlParameter("@haveBlockedBy", NpgsqlDbType.Boolean));
+
+                    foreach (var issue in changed)
+                    {
+                        pN.Value = issue.Number;
+                        pTitle.Value = issue.Title ?? "";
+                        pState.Value = string.Equals(issue.State, "closed", StringComparison.OrdinalIgnoreCase) ? "closed" : "open";
+                        pLabels.Value = issue.Labels.Select(l => l.Name).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToArray();
+                        bool haveBlockedBy = blockedByMap.TryGetValue(issue.Number, out var bb);
+                        pBlockedBy.Value = haveBlockedBy ? bb!.ToArray() : Array.Empty<int>();
+                        pHaveBlockedBy.Value = haveBlockedBy;
+                        pUrl.Value = issue.HtmlUrl ?? "";
+                        pCreated.Value = (object?)issue.CreatedAt?.UtcDateTime ?? DBNull.Value;
+                        pClosed.Value = (object?)issue.ClosedAt?.UtcDateTime ?? DBNull.Value;
+                        await cmd.ExecuteNonQueryAsync();
+                    }
+                }
+                await tx.CommitAsync();
+                summary.Ok = true;
+            }
+            catch (Exception ex)
+            {
+                summary.Ok = false;
+                summary.Error = "incremental upsert failed: " + ex.Message;
+                ActivityLog.Log("issue-mirror", $"incremental sync upsert failed ({ex.Message}) — transaction rolled back.");
+            }
+
+            summary.ElapsedMs = sw.ElapsedMilliseconds;
+            await RecordIncrementalSyncStateAsync(summary.Ok,
+                summary.Ok
+                    ? $"ok: {changed.Count} issue(s) changed since {sinceUtc:o}, {summary.BlockedByFetched} blocked_by refreshed, {summary.ElapsedMs}ms"
+                    : summary.Error);
+
+            ActivityLog.Log("issue-mirror",
+                summary.Ok
+                    ? $"incremental sync ok — {changed.Count} issue(s) changed since {sinceUtc:o} ({summary.BlockedByFetched} blocked_by refreshed), in {summary.ElapsedMs}ms. Board status untouched — needs the next full walk."
+                    : $"incremental sync FAILED — {summary.Error} ({summary.ElapsedMs}ms).");
+
+            if (summary.Ok)
+            {
+                foreach (var handler in (SyncCompleted?.GetInvocationList() ?? Array.Empty<Delegate>()))
+                {
+                    try { ((Action)handler)(); }
+                    catch (Exception ex) { ActivityLog.Log("issue-mirror", $"SyncCompleted subscriber threw (non-fatal): {ex.Message}"); }
+                }
+            }
+
+            return summary;
+        }
+
+        /// <summary>
+        /// The real batched FULL sync/diff — unchanged since #3113 except that, as of #3337, it is now
+        /// purely a periodic reconciliation pass on <see cref="FullSyncInterval"/> (or a manual
+        /// <c>force</c> refresh) rather than the only sync that ever runs; the common "nothing much
+        /// changed" case is now handled by the cheaper <see cref="IncrementalSyncAsync"/> instead. This
+        /// remains the ONLY path that refreshes board status and the blocking_numbers inverse graph —
+        /// see the class doc comment for why those specifically can't be done incrementally. In as few
+        /// GitHub requests as possible:
         ///   1. ONE paginated GraphQL issues walk (<see cref="GitHubApiClient.ListBoardIssuesAsync"/>)
         ///      → every OPEN issue's number/title/state/labels/url/timestamps.
         ///   2. ONE paginated project-items sweep (<see cref="GitHubApiClient.GetAllIssueBoardStatusesAsync"/>)
@@ -467,7 +785,9 @@ namespace BuildConsole.Services
         /// Then upserts every open issue and marks any previously-open mirror row that is no longer in
         /// the open set as closed. Fail-safe: if the board sweep or a blocked_by fetch fails, those
         /// columns are PRESERVED (CASE-guarded) rather than wiped, and the issues walk failing aborts
-        /// the whole sync without touching the mirror.
+        /// the whole sync without touching the mirror. Also callable directly by
+        /// <see cref="IncrementalSyncAsync"/> when it detects its own changed-set was truncated (too
+        /// much changed to diff safely) — same full walk, same guarantees, just triggered early.
         /// </summary>
         public static async Task<SyncSummary> SyncAsync(GitHubApiClient gh)
         {
@@ -708,6 +1028,37 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 ActivityLog.Log("issue-mirror", $"RecordSyncStateAsync failed ({ex.Message}) — sync bookkeeping not updated.");
+            }
+        }
+
+        /// <summary>Git #3337 — the incremental-sync counterpart of <see cref="RecordSyncStateAsync"/>.
+        /// Deliberately a plain UPDATE (not INSERT ON CONFLICT): the singleton row is guaranteed to
+        /// already exist by the time this can ever run, since an incremental sync only happens after
+        /// at least one full sync has already succeeded (see <see cref="MaybeSyncAsync"/>'s decision
+        /// order), and that full sync's own <see cref="RecordSyncStateAsync"/> call is what creates the
+        /// row in the first place.</summary>
+        private static async Task RecordIncrementalSyncStateAsync(bool ok, string? note)
+        {
+            try
+            {
+                await using var conn = await TryOpenAsync();
+                if (conn == null) return;
+                // last_incremental_sync_at advances ONLY on success — same "genuinely fresh" contract
+                // as last_full_sync_at (see RecordSyncStateAsync above), just for the cheap pass.
+                string sql = ok
+                    ? @"UPDATE bt_issue_mirror_sync_state
+                           SET last_incremental_sync_at = NOW(), last_incremental_sync_ok = true, last_incremental_sync_note = @note
+                         WHERE id = 1"
+                    : @"UPDATE bt_issue_mirror_sync_state
+                           SET last_incremental_sync_ok = false, last_incremental_sync_note = @note
+                         WHERE id = 1";
+                await using var cmd = new NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@note", (object?)note ?? DBNull.Value);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("issue-mirror", $"RecordIncrementalSyncStateAsync failed ({ex.Message}) — sync bookkeeping not updated.");
             }
         }
     }

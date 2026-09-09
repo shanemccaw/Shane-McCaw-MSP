@@ -77,6 +77,41 @@ namespace BuildConsole.Services
     }
 
     /// <summary>
+    /// Git #3337 — one entry from `GET /issues?since=...&amp;sort=updated&amp;direction=desc`, the
+    /// real incremental REST issues list. GitHub's REST `since=` is a genuine DB-backed filter
+    /// (unlike the Projects v2 search-index case — see <see cref="Services.GitHubIssueMirror"/>),
+    /// so this is trustworthy as "only issues that actually changed since this timestamp".
+    /// Deliberately a thin, mirror-shaped subset — no body/milestone/sub-issue fields, those stay
+    /// on the full GraphQL walk (<see cref="GitHubApiClient.ListBoardIssuesAsync"/>) other callers
+    /// still use unmodified.
+    /// </summary>
+    public class GitHubIssueSinceUpdate
+    {
+        public int Number { get; set; }
+        public string Title { get; set; } = "";
+        /// <summary>REST's real "open"/"closed" (lowercase) — matches <c>bt_issue_mirror.state</c>'s
+        /// own stored convention directly, no case translation needed.</summary>
+        public string State { get; set; } = "";
+        public List<GitHubLabel> Labels { get; set; } = new();
+        [JsonPropertyName("html_url")]
+        public string HtmlUrl { get; set; } = "";
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset? CreatedAt { get; set; }
+        [JsonPropertyName("closed_at")]
+        public DateTimeOffset? ClosedAt { get; set; }
+        /// <summary>REST's real "updated_at" — GitHub's own incremental cursor value, the field
+        /// `since=` filters on. Not otherwise consumed here (the caller re-derives the next
+        /// `since=` from its own persisted sync-state row), kept for diagnostics/logging.</summary>
+        [JsonPropertyName("updated_at")]
+        public DateTimeOffset? UpdatedAt { get; set; }
+        /// <summary>Non-null iff this row is actually a Pull Request — GitHub's REST issues-list
+        /// endpoint returns PRs interleaved with real issues with no separate flag; the documented
+        /// way to tell them apart is the presence of this key. Callers must filter these out.</summary>
+        [JsonPropertyName("pull_request")]
+        public object? PullRequest { get; set; }
+    }
+
+    /// <summary>
     /// Git #1709 — one real, open issue sitting in the project board's "Batter Up"
     /// status (`Status` field `PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0`, option `Batter Up` =
     /// `09b1927f` — same field CLAUDE.md's "AI Batter Up" routing writes to, different
@@ -704,6 +739,58 @@ namespace BuildConsole.Services
                         $"GetSubIssuesAsync(#{parentNumber}): hit the {SubIssuesMaxPages}-page ({SubIssuesMaxPages * SubIssuesPageSize}-item) cap with more sub-issues possibly remaining — results may be incomplete; raise SubIssuesMaxPages.");
             }
             return result;
+        }
+
+        private const int SinceSyncPageSize = 100;
+        // Runaway guard for a genuinely huge changed-set (e.g. BuildConsole was offline for days).
+        // Small on purpose: hitting this is a signal the incremental diff can no longer be trusted
+        // as complete, not something to page indefinitely through — see the `Truncated` contract below.
+        private const int SinceSyncMaxPages = 10; // 1,000 changed issues since the last sync
+
+        /// <summary>
+        /// Git #3337 — the real, incremental REST issues fetch: `GET /issues?state=all&amp;sort=updated
+        /// &amp;direction=desc&amp;since=&lt;ISO8601&gt;`, GitHub's genuine, DB-backed "only what changed"
+        /// filter (title/body/state/labels) — the fix for <see cref="GitHubIssueMirror"/>'s full
+        /// board walk running unconditionally every cycle regardless of whether anything changed.
+        /// <paramref name="bypassCache"/> semantics don't apply here: every call passes a fresh
+        /// `since=` (the caller's own persisted last-sync timestamp), so the URL — and therefore the
+        /// ETag cache key — is different almost every time anyway; this always fetches fresh rather
+        /// than risk a coincidentally-reused URL replaying a stale conditional-GET body.
+        ///
+        /// Always excludes Pull Requests (GitHub's issues-list endpoint interleaves them; the
+        /// documented tell is a non-null <see cref="GitHubIssueSinceUpdate.PullRequest"/>).
+        ///
+        /// Returns <c>Truncated = true</c> if the changed-set is large enough to hit
+        /// <see cref="SinceSyncMaxPages"/> — the caller must NOT treat a truncated result as
+        /// complete (silently missing whatever fell past the cap); the correct response is to fall
+        /// back to a full walk for that pass, exactly as the caller already does.
+        /// </summary>
+        public async Task<(List<GitHubIssueSinceUpdate> Items, bool Truncated)> ListIssuesUpdatedSinceAsync(DateTime sinceUtc)
+        {
+            var result = new List<GitHubIssueSinceUpdate>();
+            string sinceParam = sinceUtc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
+            bool truncated = false;
+
+            for (int page = 1; page <= SinceSyncMaxPages; page++)
+            {
+                var pageItems = await GetConditionalAsync<List<GitHubIssueSinceUpdate>>(
+                    $"repos/{Owner}/{Repo}/issues?state=all&sort=updated&direction=desc&since={sinceParam}&per_page={SinceSyncPageSize}&page={page}",
+                    bypassCache: true);
+
+                if (pageItems == null || pageItems.Count == 0) break;
+                result.AddRange(pageItems.Where(i => i.PullRequest == null));
+                if (pageItems.Count < SinceSyncPageSize) break; // short page = last page
+
+                if (page == SinceSyncMaxPages)
+                {
+                    truncated = true;
+                    ActivityLog.Log("issue-mirror",
+                        $"ListIssuesUpdatedSinceAsync(since={sinceParam}): hit the {SinceSyncMaxPages}-page " +
+                        $"({SinceSyncMaxPages * SinceSyncPageSize}-item) cap — more changed issues may exist; " +
+                        "this incremental pass is INCOMPLETE, caller should fall back to a full walk.");
+                }
+            }
+            return (result, truncated);
         }
 
         /// <summary>Git #840 (Git Board Phase 2) — real `GET /issues/{n}`, the full current title/body for the issue detail panel.</summary>

@@ -375,9 +375,15 @@ namespace BuildConsole.Controls
         /// Git #3254 — Shane: a real, visible display of when the local issue-mirror's (#3113) next
         /// automatic sync will fire, in the Build Queue panel. Rides the existing 5s local-refresh
         /// tick above (no new timer/poll) and reads GitHubIssueMirror's cheap in-memory
-        /// IsSyncing/LastAttemptUtc plus one trivial local Postgres read of the persisted
+        /// IsSyncing/LastAttemptUtc plus two trivial local Postgres reads of the persisted
         /// bt_issue_mirror_sync_state row. Honest about the real in-progress/backoff states rather
         /// than showing a misleading countdown during them.
+        ///
+        /// Git #3337 — there are now two independently-gated passes (a cheap incremental issue-level
+        /// sync and the expensive full board-status walk); this shows whichever is due SOONER
+        /// (normally the incremental one), and labels it "next board-status sync" instead of the
+        /// generic "next sync" on the (rarer) occasions the full walk is actually the nearer event, so
+        /// the display never silently implies a board-status refresh is coming sooner than it is.
         /// </summary>
         private async Task UpdateIssueMirrorSyncStatusAsync()
         {
@@ -394,9 +400,9 @@ namespace BuildConsole.Controls
                     ? TimeSpan.Zero
                     : GitHubIssueMirror.FailedAttemptBackoff - (DateTime.UtcNow - GitHubIssueMirror.LastAttemptUtc);
 
-                var (lastFullSyncAt, ok, note) = await GitHubIssueMirror.GetSyncStateAsync();
+                var (lastFullSyncAt, fullOk, fullNote) = await GitHubIssueMirror.GetSyncStateAsync();
 
-                if (!ok && backoffRemaining > TimeSpan.Zero)
+                if (!fullOk && backoffRemaining > TimeSpan.Zero)
                 {
                     IssueMirrorSyncText.Text = $"Issue mirror: retrying in {Math.Ceiling(backoffRemaining.TotalSeconds):0}s (last attempt failed)";
                     IssueMirrorSyncText.Visibility = Visibility.Visible;
@@ -410,10 +416,20 @@ namespace BuildConsole.Controls
                     return;
                 }
 
-                var next = lastFullSyncAt.Value.ToUniversalTime() + GitHubIssueMirror.SyncInterval;
+                var (lastIncrSyncAt, _, _) = await GitHubIssueMirror.GetIncrementalSyncStateAsync();
+                var lastAnySyncAt = (lastIncrSyncAt.HasValue && lastIncrSyncAt.Value > lastFullSyncAt.Value)
+                    ? lastIncrSyncAt.Value
+                    : lastFullSyncAt.Value;
+
+                var nextIncremental = lastAnySyncAt.ToUniversalTime() + GitHubIssueMirror.IncrementalSyncInterval;
+                var nextFull = lastFullSyncAt.Value.ToUniversalTime() + GitHubIssueMirror.FullSyncInterval;
+                bool fullIsNext = nextFull < nextIncremental;
+                var next = fullIsNext ? nextFull : nextIncremental;
+                var label = fullIsNext ? "next board-status sync" : "next sync";
+
                 var remaining = next - DateTime.UtcNow;
                 IssueMirrorSyncText.Text = remaining > TimeSpan.Zero
-                    ? $"Issue mirror: next sync in {FormatCountdown(remaining)}"
+                    ? $"Issue mirror: {label} in {FormatCountdown(remaining)}"
                     : "Issue mirror: sync due";
                 IssueMirrorSyncText.Visibility = Visibility.Visible;
             }
