@@ -1468,8 +1468,16 @@ pre.token {
      getBoundingClientRect is now fully within the 402px viewport. (This was never the #3264
      capture-bar bug itself -- `.view`'s own overflow-x:hidden, commit 298bd12c5, already contains
      that regardless of tab count -- this is a real, separate reachability bug on the same
-     element, fixed in the same pass rather than left for later.) */
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+     element, fixed in the same pass rather than left for later.)
+
+     Git #3298: MONEY_TABS (app.js) dropped back to 5 real entries (Now/Bills/Accounts/
+     Bankruptcy/Cars) once Banks moved to Settings (#3273) and Vault/Documents became their own
+     room (#3271), but this column count was never brought back down from 8 to match -- the exact
+     same stale-count bug as above, just inverted (over-provisioned now instead of under-
+     provisioned then). With only 5 real `.money-tab` buttons in an 8-column grid, each tab
+     rendered at ~1/8 the container width instead of ~1/5, and the longer labels visibly
+     collided/overlapped at a real 420px mobile viewport. Back to 5, tied to MONEY_TABS.length. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 3px;
   padding: 3px;
   background: hsl(var(--muted));
