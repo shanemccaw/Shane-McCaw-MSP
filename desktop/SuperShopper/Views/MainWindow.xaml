@@ -448,11 +448,11 @@
 
                                 <!-- Navigation Buttons -->
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
-                                    <Button Style="{StaticResource TitleBarButtonStyle}" Content="&lt;" Width="28" Height="28" 
+                                    <Button Style="{StaticResource VSCodePanelTabButtonStyle}" Content="&lt;" Width="28" Height="26" 
                                             ToolTip="Back" Click="WebBack_Click"/>
-                                    <Button Style="{StaticResource TitleBarButtonStyle}" Content="&gt;" Width="28" Height="28" 
+                                    <Button Style="{StaticResource VSCodePanelTabButtonStyle}" Content="&gt;" Width="28" Height="26" 
                                             ToolTip="Forward" Click="WebForward_Click"/>
-                                    <Button Style="{StaticResource TitleBarButtonStyle}" Content="&#x21BB;" Width="28" Height="28" 
+                                    <Button Style="{StaticResource VSCodePanelTabButtonStyle}" Content="&#x21BB;" Width="28" Height="26" 
                                             ToolTip="Refresh Page" Click="WebRefresh_Click"/>
                                 </StackPanel>
 
@@ -469,17 +469,17 @@
                                         <TextBox Grid.Column="1" Text="{Binding AddressBarInput, UpdateSourceTrigger=PropertyChanged}"
                                                  BorderThickness="0" Background="Transparent" Foreground="{StaticResource ForegroundBrightBrush}"
                                                  FontSize="12" VerticalAlignment="Center" Padding="4,2" KeyDown="AddressBar_KeyDown"/>
-                                        <Button Grid.Column="2" Content="Go" Style="{StaticResource TitleBarButtonStyle}" Width="32" Height="22" 
+                                        <Button Grid.Column="2" Content="Go" Style="{StaticResource VSCodePanelTabButtonStyle}" Width="32" Height="22" Foreground="{StaticResource ForegroundBrightBrush}"
                                                 Command="{Binding NavigateToUrlCommand}"/>
                                     </Grid>
                                 </Border>
 
                                 <!-- Actions -->
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
-                                    <Button Content="⚡ Extract Sales Deals" Style="{StaticResource TitleBarButtonStyle}" Width="140" Height="26"
+                                    <Button Content="⚡ Extract Sales Deals" Style="{StaticResource VSCodePanelTabButtonStyle}" Height="26" Padding="10,4"
                                             Background="{StaticResource AccentBrush}" Foreground="#FFFFFF" FontWeight="Bold" Margin="0,0,6,0"
                                             Click="ExtractDeals_Click" ToolTip="Scrape and parse weekly ad deals from current page"/>
-                                    <Button Content="Open in Browser ↗" Style="{StaticResource TitleBarButtonStyle}" Width="110" Height="26"
+                                    <Button Content="Open in Browser ↗" Style="{StaticResource VSCodePanelTabButtonStyle}" Height="26" Padding="8,4" Foreground="{StaticResource ForegroundBrush}"
                                             Command="{Binding OpenExternalBrowserCommand}"/>
                                 </StackPanel>
                             </Grid>
@@ -520,7 +520,8 @@
                                     <!-- Panel Tabs -->
                                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                                         <Button Content="⚡ ALL WEEKLY AD DEALS" 
-                                                Style="{StaticResource TitleBarButtonStyle}" 
+                                                Style="{StaticResource VSCodePanelTabButtonStyle}" 
+                                                Foreground="{StaticResource ForegroundBrightBrush}"
                                                 FontWeight="Bold" FontSize="11" Margin="0,0,4,0" Padding="8,4"
                                                 Command="{Binding SelectPanelCommand}" CommandParameter="{x:Static vm:ActivePanelMode.Terminal}"/>
                                         <Border Background="{StaticResource AccentBrush}" Padding="5,1" CornerRadius="8" Margin="0,0,16,0" VerticalAlignment="Center">
@@ -528,7 +529,7 @@
                                         </Border>
 
                                         <Button Content="🎯 MY PERSONALIZED WEEKLY AD" 
-                                                Style="{StaticResource TitleBarButtonStyle}" 
+                                                Style="{StaticResource VSCodePanelTabButtonStyle}" 
                                                 Foreground="#4EC9B0" FontWeight="Bold" FontSize="11" Margin="0,0,4,0" Padding="8,4"
                                                 Command="{Binding SelectPanelCommand}" CommandParameter="{x:Static vm:ActivePanelMode.Personalized}"/>
                                         <Border Background="#68217A" Padding="5,1" CornerRadius="8" Margin="0,0,8,0" VerticalAlignment="Center">
@@ -537,7 +538,7 @@
                                     </StackPanel>
 
                                     <!-- Deal Search Filter -->
-                                    <Border Grid.Column="1" Width="220" Height="22" HorizontalAlignment="Center" Background="#1E1E1E" 
+                                    <Border Grid.Column="1" Width="200" Height="22" HorizontalAlignment="Center" Background="#1E1E1E" 
                                             BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="3">
                                         <Grid Margin="4,0">
                                             <Grid.ColumnDefinitions>
@@ -552,14 +553,17 @@
 
                                     <!-- Action Buttons -->
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                                        <Button Content="Add All Matched Deals 🛒" Style="{StaticResource TitleBarButtonStyle}" Height="22" FontSize="10" FontWeight="Bold" Margin="0,0,6,0"
+                                        <Button Content="Add All Matched Deals 🛒" Style="{StaticResource VSCodePanelTabButtonStyle}" Height="24" FontSize="10" FontWeight="Bold" Margin="0,0,6,0" Padding="8,2"
+                                                Foreground="#DCDCAA" Background="#2A2A2E"
                                                 Visibility="{Binding IsPersonalizedActive, Converter={StaticResource BoolToVisConverter}}"
                                                 ToolTip="Add all personalized matched deals to your saved shopping list"
                                                 Command="{Binding AddAllMatchedDealsToShoppingListCommand}"/>
-                                        <Button Content="Sync DB 🗄️" Style="{StaticResource TitleBarButtonStyle}" Width="75" Height="22" FontSize="11" Margin="0,0,6,0"
+                                        <Button Content="Sync DB 🗄️" Style="{StaticResource VSCodePanelTabButtonStyle}" Height="24" FontSize="11" Margin="0,0,6,0" Padding="8,2"
+                                                Foreground="#4EC9B0" Background="#2A2A2E"
                                                 ToolTip="Sync deals to PostgreSQL (Configured via .env)"
                                                 Command="{Binding SyncDealsToPostgresCommand}"/>
-                                        <Button Content="Clear" Style="{StaticResource TitleBarButtonStyle}" Width="45" Height="22" FontSize="11" Margin="0,0,6,0"
+                                        <Button Content="Clear" Style="{StaticResource VSCodePanelTabButtonStyle}" Height="24" FontSize="11" Margin="0,0,6,0" Padding="8,2"
+                                                Foreground="{StaticResource ForegroundMutedBrush}"
                                                 Command="{Binding ClearExtractedDealsCommand}"/>
                                         <Button Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconCloseSmall}" 
                                                 Width="24" Height="24" Command="{Binding TogglePanelCommand}"/>
