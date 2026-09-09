@@ -319,6 +319,36 @@ export async function getHeadingOutSignal(userId) {
 }
 
 /**
+ * Git #3328: the Heading Out list's own "run complete" reset -- the real gap this closes.
+ * `clearTakeRun` (things.mjs) moves checked-off take-for-house items to their destination house;
+ * the design prototype's own `trip` chip (`Shanes Life - First Slice Prototype.dc.html` ~2819)
+ * resets Heading Out items' `done` back to `false` on arrival, so next time's run starts fresh
+ * with the same full checklist rather than everything staying checked forever. This mirrors that
+ * real drawn intent: reset, not delete -- unlike `clearCheckedItems` (Shopping), Heading Out is a
+ * recurring checklist (keys, wallet, phone charger...), not a run that consumes its own items.
+ * No-op (returns 0) when there's no Heading Out list on file yet, or nothing was checked.
+ */
+export async function resetHeadingOutList(userId) {
+  const list = await one(
+    `SELECT id FROM lists
+      WHERE user_id = $1 AND lower(name) = 'heading out' AND archived_at IS NULL
+      LIMIT 1`,
+    [userId],
+  );
+  if (!list) return 0;
+  const rows = await many(
+    `UPDATE list_items SET done = false, done_at = NULL, checked_by = NULL
+      WHERE list_id = $1 AND done = true
+      RETURNING id`,
+    [list.id],
+  );
+  if (rows.length > 0) {
+    await query("UPDATE lists SET updated_at = now() WHERE id = $1", [list.id]);
+  }
+  return rows.length;
+}
+
+/**
  * The occasional-purchase list's own real, undone items -- what prices.mjs's real deal-match
  * check (Git #3311, matchOccasionalListAgainst) matches a freshly `push_deals`/`push_coupons`
  * item against. Same real "no backend of its own beyond the list itself" shape as

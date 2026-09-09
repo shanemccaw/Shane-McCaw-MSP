@@ -1255,6 +1255,16 @@ export function buildApiRouter() {
     return sendJson(res, 200, { id: item.id, position: item.position, text: item.text, note: item.note, done: Boolean(item.checked_at), done_at: item.checked_at, added_by: item.added_by, checked_by: item.checked_by });
   });
 
+  // Git #3328: the Lists room's own manual "run complete" reset for Heading Out -- the same real
+  // action /api/trip/confirm now fires automatically on Rental arrival, exposed here so Shane can
+  // also reset it by hand from the list view itself (e.g. after driving off without confirming
+  // the trip card, or resetting mid-day for an unplanned second trip).
+  router.post("/api/lists/heading-out/reset", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const reset = await lists.resetHeadingOutList(user.id);
+    return sendJson(res, 200, { ok: true, reset });
+  });
+
   router.delete("/api/lists/:id/items/:itemId", async (_req, res, params, ctx) => {
     const user = requireUser(ctx);
     await lists.deleteListItem(user.id, params.id, params.itemId);
@@ -3353,8 +3363,16 @@ export function buildApiRouter() {
     const user = requireUser(ctx);
     const trip = await locationState.getHeadingTo(user.id, { staleAfterMs: 12 * 60 * 60 * 1000 });
     await locationState.clearHeadingTo(user.id);
-    await audit.record({ userId: user.id, actor: "web", action: "trip.confirm", detail: { house: trip?.house || null } });
-    return sendJson(res, 200, { ok: true });
+    // Git #3328: arriving at the Rental is the real "run complete" moment for the Heading Out
+    // list, same as the design's own trip chip intent -- checked-off items reset for next time
+    // instead of sitting done forever. Only the Rental destination; the take-for-house checklist
+    // (things.mjs's clearTakeRun) already covers the home-destination equivalent separately.
+    let headingOutReset = 0;
+    if (trip?.house === "rental") {
+      headingOutReset = await lists.resetHeadingOutList(user.id);
+    }
+    await audit.record({ userId: user.id, actor: "web", action: "trip.confirm", detail: { house: trip?.house || null, headingOutReset } });
+    return sendJson(res, 200, { ok: true, headingOutReset });
   });
 
   router.post("/api/trip/cancel", async (_req, res, _params, ctx) => {

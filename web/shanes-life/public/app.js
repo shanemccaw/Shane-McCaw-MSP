@@ -2927,14 +2927,22 @@ async function viewListDetail(view, listId) {
 
     if (doneItems.length > 0) {
       const filteredDone = doneItems.filter((i) => !q || i.text.toLowerCase().includes(q));
+      // Git #3328: Heading Out is a recurring checklist (keys, wallet, phone charger...), not a
+      // run that consumes its own items like Shopping -- its own "Done" head offers Reset
+      // (uncheck for next time, via resetHeadingOutList) instead of the generic Clear (delete).
+      const isHeadingOut = list.name.trim().toLowerCase() === "heading out";
       const chevron = el("span", { class: `list-done-chevron${listDetailUi.showDone ? " open" : ""}`, html: SHOP_CHEVRON_RIGHT_ICON });
       const clearBtn = el("button", {
         type: "button",
         class: "list-done-clear",
-        text: "Clear",
+        text: isHeadingOut ? "Reset" : "Clear",
         onClick: async (event) => {
           event.stopPropagation();
-          await api(`/api/lists/${listId}/clear-checked`, { method: "POST" });
+          if (isHeadingOut) {
+            await api("/api/lists/heading-out/reset", { method: "POST" });
+          } else {
+            await api(`/api/lists/${listId}/clear-checked`, { method: "POST" });
+          }
           render();
         },
       });
