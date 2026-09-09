@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.Json;
 using System.Windows.Input;
 using SuperShopper.Models;
 
@@ -40,8 +41,13 @@ namespace SuperShopper.ViewModels
         private string _newBookmarkName = string.Empty;
         private string _newBookmarkUrl = string.Empty;
 
+        private string _dealFilterQuery = string.Empty;
+        private bool _isExtractingDeals;
+
         public ObservableCollection<StoreBookmarkModel> StoreBookmarks { get; } = new();
         public ObservableCollection<ShoppingItemModel> ShoppingList { get; } = new();
+        public ObservableCollection<ExtractedDealModel> ExtractedDeals { get; } = new();
+        public ObservableCollection<ExtractedDealModel> FilteredExtractedDeals { get; } = new();
 
         public ActiveViewMode ActiveView
         {
@@ -141,6 +147,26 @@ namespace SuperShopper.ViewModels
             set => SetField(ref _newBookmarkUrl, value);
         }
 
+        public string DealFilterQuery
+        {
+            get => _dealFilterQuery;
+            set
+            {
+                if (SetField(ref _dealFilterQuery, value))
+                {
+                    FilterDeals(value);
+                }
+            }
+        }
+
+        public bool IsExtractingDeals
+        {
+            get => _isExtractingDeals;
+            set => SetField(ref _isExtractingDeals, value);
+        }
+
+        public int ExtractedDealsCount => ExtractedDeals.Count;
+
         public bool IsExplorerActive => ActiveView == ActiveViewMode.Explorer;
         public bool IsSearchActive => ActiveView == ActiveViewMode.Search;
         public bool IsSourceControlActive => ActiveView == ActiveViewMode.SourceControl;
@@ -171,6 +197,7 @@ namespace SuperShopper.ViewModels
         public ICommand AddShoppingItemCommand { get; }
         public ICommand AddBookmarkCommand { get; }
         public ICommand OpenExternalBrowserCommand { get; }
+        public ICommand AddDealToShoppingListCommand { get; }
 
         public MainViewModel()
         {
@@ -277,8 +304,24 @@ namespace SuperShopper.ViewModels
                 }
             });
 
+            AddDealToShoppingListCommand = new RelayCommand(param =>
+            {
+                if (param is ExtractedDealModel deal)
+                {
+                    ShoppingList.Add(new ShoppingItemModel
+                    {
+                        Title = deal.Title,
+                        StoreName = deal.StoreName,
+                        PriceInfo = deal.DealType + " (" + deal.PriceInfo + ")",
+                        IsCompleted = false
+                    });
+                    StatusMessage = $"Added '{deal.Title}' to shopping list!";
+                }
+            });
+
             InitializeStoreBookmarks();
             InitializeSampleShoppingList();
+            InitializeSampleExtractedDeals();
         }
 
         private void InitializeStoreBookmarks()
@@ -352,6 +395,162 @@ namespace SuperShopper.ViewModels
             ShoppingList.Add(new ShoppingItemModel { Title = "Organic Strawberries (BOGO)", StoreName = "Publix Super Markets", PriceInfo = "Buy 1 Get 1 Free", IsCompleted = false });
             ShoppingList.Add(new ShoppingItemModel { Title = "Whole Milk (Gallon)", StoreName = "Kroger", PriceInfo = "$2.99", IsCompleted = false });
             ShoppingList.Add(new ShoppingItemModel { Title = "Avocados (Bag of 5)", StoreName = "ALDI", PriceInfo = "$1.99 / bag", IsCompleted = true });
+        }
+
+        private void InitializeSampleExtractedDeals()
+        {
+            AddExtractedDeal(new ExtractedDealModel
+            {
+                Title = "Publix Premium Ice Cream",
+                DealType = "Buy 1 Get 1 Free",
+                PriceInfo = "Save up to $6.49",
+                Category = "Frozen Foods",
+                ValidDates = "Valid 9/8 - 9/14",
+                StoreName = "Publix",
+                Description = "Half Gallon, Assorted Varieties"
+            });
+
+            AddExtractedDeal(new ExtractedDealModel
+            {
+                Title = "Boneless Skinless Chicken Breasts",
+                DealType = "Buy 1 Get 1 Free",
+                PriceInfo = "Save up to $7.19/lb",
+                Category = "Meat & Seafood",
+                ValidDates = "Valid 9/8 - 9/14",
+                StoreName = "Publix",
+                Description = "USDA Choice, Fresh Never Frozen"
+            });
+
+            AddExtractedDeal(new ExtractedDealModel
+            {
+                Title = "Lay's Potato Chips or Poppables",
+                DealType = "2 for $6.00",
+                PriceInfo = "$3.00 ea when you buy 2",
+                Category = "Snacks",
+                ValidDates = "Valid 9/8 - 9/14",
+                StoreName = "Publix",
+                Description = "4.75 - 8 oz bag, Selected Varieties"
+            });
+
+            AddExtractedDeal(new ExtractedDealModel
+            {
+                Title = "Strawberries or Blackberries",
+                DealType = "Buy 1 Get 1 Free",
+                PriceInfo = "Save up to $4.99",
+                Category = "Produce",
+                ValidDates = "Valid 9/8 - 9/14",
+                StoreName = "Publix",
+                Description = "1-lb container Strawberries or 6-oz Blackberries"
+            });
+
+            AddExtractedDeal(new ExtractedDealModel
+            {
+                Title = "Coca-Cola Products (12 pk 12 oz cans)",
+                DealType = "Buy 2 Get 2 Free",
+                PriceInfo = "Save up to $19.98 on 4",
+                Category = "Beverages",
+                ValidDates = "Valid 9/8 - 9/14",
+                StoreName = "Publix",
+                Description = "Assorted Varieties"
+            });
+        }
+
+        public void AddExtractedDeal(ExtractedDealModel deal)
+        {
+            if (!ExtractedDeals.Any(d => d.Title.Equals(deal.Title, StringComparison.OrdinalIgnoreCase)))
+            {
+                ExtractedDeals.Add(deal);
+                FilterDeals(DealFilterQuery);
+                OnPropertyChanged(nameof(ExtractedDealsCount));
+            }
+        }
+
+        private void FilterDeals(string query)
+        {
+            FilteredExtractedDeals.Clear();
+            var matches = string.IsNullOrWhiteSpace(query)
+                ? ExtractedDeals
+                : ExtractedDeals.Where(d => d.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                                            d.Category.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                                            d.DealType.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+            foreach (var item in matches)
+            {
+                FilteredExtractedDeals.Add(item);
+            }
+        }
+
+        public void ProcessExtractedJson(string jsonString)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(jsonString);
+                var root = doc.RootElement;
+
+                // Handle array of deals or nested items object
+                if (root.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var elem in root.EnumerateArray())
+                    {
+                        ParseJsonDealElement(elem);
+                    }
+                }
+                else if (root.ValueKind == JsonValueKind.Object)
+                {
+                    if (root.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var elem in items.EnumerateArray()) ParseJsonDealElement(elem);
+                    }
+                    else if (root.TryGetProperty("deals", out var deals) && deals.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var elem in deals.EnumerateArray()) ParseJsonDealElement(elem);
+                    }
+                    else
+                    {
+                        ParseJsonDealElement(root);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"JSON parse error: {ex.Message}");
+            }
+        }
+
+        private void ParseJsonDealElement(JsonElement elem)
+        {
+            string title = GetStringProp(elem, "title", "name", "headline") ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(title)) return;
+
+            string dealType = GetStringProp(elem, "dealType", "promotionType", "badge") ?? "Weekly Sale";
+            string price = GetStringProp(elem, "price", "savings", "priceInfo") ?? "Special Price";
+            string category = GetStringProp(elem, "category", "department") ?? "Grocery";
+            string validDates = GetStringProp(elem, "validDates", "validity") ?? "Weekly Ad";
+
+            App.Current.Dispatcher.Invoke(() =>
+            {
+                AddExtractedDeal(new ExtractedDealModel
+                {
+                    Title = title,
+                    DealType = dealType,
+                    PriceInfo = price,
+                    Category = category,
+                    ValidDates = validDates,
+                    StoreName = ActiveStoreName
+                });
+            });
+        }
+
+        private string? GetStringProp(JsonElement elem, params string[] propNames)
+        {
+            foreach (var name in propNames)
+            {
+                if (elem.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String)
+                {
+                    return prop.GetString();
+                }
+            }
+            return null;
         }
 
         private void UpdateActiveStoreFromUrl(string url)

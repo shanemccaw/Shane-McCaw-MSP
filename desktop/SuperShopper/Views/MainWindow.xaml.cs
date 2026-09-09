@@ -1,5 +1,8 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -61,7 +64,20 @@ namespace SuperShopper.Views
         {
             try
             {
-                await webView.EnsureCoreWebView2Async();
+                // Permanent User Data Folder to preserve cookies, store selection, local storage, & cache across sessions
+                string userDataFolder = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "SuperShopper",
+                    "WebView2Data"
+                );
+
+                Directory.CreateDirectory(userDataFolder);
+
+                var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+                await webView.EnsureCoreWebView2Async(env);
+
+                // Wire up Network Response Interceptor for API deal feeds
+                webView.CoreWebView2.WebResourceResponseReceived += CoreWebView2_WebResourceResponseReceived;
             }
             catch (Exception ex)
             {
@@ -69,11 +85,110 @@ namespace SuperShopper.Views
             }
         }
 
+        private async void CoreWebView2_WebResourceResponseReceived(object? sender, CoreWebView2WebResourceResponseReceivedEventArgs e)
+        {
+            try
+            {
+                var uri = e.Request.Uri.ToLowerInvariant();
+                // Check if response is from Publix or store API endpoints
+                if (uri.Contains("publix.com") || uri.Contains("weeklyad") || uri.Contains("savings") || uri.Contains("promotion") || uri.Contains("deals") || uri.Contains("api"))
+                {
+                    var headers = e.Response.Headers;
+                    if (headers.Contains("content-type"))
+                    {
+                        var contentType = headers.GetHeader("content-type");
+                        if (contentType != null && contentType.Contains("application/json"))
+                        {
+                            using var stream = await e.Response.GetContentAsync();
+                            if (stream != null)
+                            {
+                                using var reader = new StreamReader(stream);
+                                string json = await reader.ReadToEndAsync();
+                                if (DataContext is MainViewModel vm && !string.IsNullOrWhiteSpace(json))
+                                {
+                                    vm.ProcessExtractedJson(json);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Silently swallow background stream reading exceptions
+            }
+        }
+
+        private async void ExtractDeals_Click(object sender, RoutedEventArgs e)
+        {
+            if (webView == null || webView.CoreWebView2 == null) return;
+
+            if (DataContext is MainViewModel vm)
+            {
+                vm.IsExtractingDeals = true;
+                vm.StatusMessage = "Extracting deals from page...";
+            }
+
+            try
+            {
+                // Execute JavaScript extraction on current page DOM & Next.js state
+                string script = @"(function() {
+                    let deals = [];
+                    try {
+                        // 1. Try Next.js __NEXT_DATA__
+                        if (window.__NEXT_DATA__ && window.__NEXT_DATA__.props) {
+                            let jsonStr = JSON.stringify(window.__NEXT_DATA__.props);
+                            return jsonStr;
+                        }
+                    } catch(e){}
+
+                    // 2. Query DOM for product deal tiles
+                    let cards = document.querySelectorAll('[data-testid*=""deal""], [class*=""deal""], [class*=""card""], article');
+                    cards.forEach(card => {
+                        let titleEl = card.querySelector('h2, h3, h4, p, [class*=""title""], [class*=""name""]');
+                        let dealEl = card.querySelector('[class*=""badge""], [class*=""savings""], [class*=""promo""]');
+                        let priceEl = card.querySelector('[class*=""price""]');
+                        if (titleEl && titleEl.innerText && titleEl.innerText.length > 3 && titleEl.innerText.length < 80) {
+                            deals.push({
+                                title: titleEl.innerText.trim(),
+                                dealType: dealEl ? dealEl.innerText.trim() : 'Weekly Sale',
+                                price: priceEl ? priceEl.innerText.trim() : 'See Weekly Circular',
+                                category: 'Weekly Ad'
+                            });
+                        }
+                    });
+                    return JSON.stringify(deals);
+                })();";
+
+                string resultJson = await webView.ExecuteScriptAsync(script);
+                if (DataContext is MainViewModel mainVm && !string.IsNullOrWhiteSpace(resultJson) && resultJson != "null")
+                {
+                    // Unescape string returned by ExecuteScriptAsync
+                    string rawJson = JsonSerializer.Deserialize<string>(resultJson) ?? resultJson;
+                    mainVm.ProcessExtractedJson(rawJson);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (DataContext is MainViewModel mainVm)
+                {
+                    mainVm.StatusMessage = $"Extraction notice: {ex.Message}";
+                }
+            }
+            finally
+            {
+                if (DataContext is MainViewModel mainVm)
+                {
+                    mainVm.IsExtractingDeals = false;
+                    mainVm.StatusMessage = $"Extracted {mainVm.ExtractedDealsCount} deals!";
+                }
+            }
+        }
+
         private void Window_StateChanged(object sender, EventArgs e)
         {
             if (WindowState == WindowState.Maximized)
             {
-                // Slight border adjustment to ensure border rendering stays clean when maximized
                 mainBorder.BorderThickness = new Thickness(0);
                 mainBorder.Margin = new Thickness(0);
             }

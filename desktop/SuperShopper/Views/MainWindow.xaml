@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:SuperShopper.ViewModels"
         xmlns:models="clr-namespace:SuperShopper.Models"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-        Title="SuperShopper Desktop - Supermarket Weekly Ads &amp; Deals" 
+        Title="SuperShopper Desktop - Supermarket Weekly Ads &amp; Deals Extractor" 
         Height="850" Width="1350"
         MinHeight="600" MinWidth="900"
         WindowStartupLocation="CenterScreen"
@@ -33,7 +33,7 @@
             <Grid.RowDefinitions>
                 <!-- Row 0: Custom TitleBar -->
                 <RowDefinition Height="35"/>
-                <!-- Row 1: Main IDE Workspace (Activity Bar, Store Directory Sidebar, WebView2 Browser, Shopping Notes Panel) -->
+                <!-- Row 1: Main IDE Workspace (Activity Bar, Store Directory Sidebar, WebView2 Browser, Deals Panel) -->
                 <RowDefinition Height="*"/>
                 <!-- Row 2: Status Bar -->
                 <RowDefinition Height="22"/>
@@ -63,16 +63,17 @@
                                 <Separator Background="{StaticResource BorderBrush}"/>
                                 <MenuItem Header="Exit" Click="MenuExit_Click"/>
                             </MenuItem>
+                            <MenuItem Header="Deals Extractor">
+                                <MenuItem Header="Extract Deals from Page" Click="ExtractDeals_Click"/>
+                                <MenuItem Header="View Extracted Sales" Command="{Binding TogglePanelCommand}"/>
+                            </MenuItem>
                             <MenuItem Header="Shopping List">
                                 <MenuItem Header="View Saved Items" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Search}"/>
                                 <MenuItem Header="Add New Custom Store" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.SourceControl}"/>
                             </MenuItem>
                             <MenuItem Header="View">
                                 <MenuItem Header="Toggle Sidebar" Command="{Binding ToggleSidebarCommand}"/>
-                                <MenuItem Header="Toggle Shopping Notes Panel" Command="{Binding TogglePanelCommand}"/>
-                            </MenuItem>
-                            <MenuItem Header="Help">
-                                <MenuItem Header="About SuperShopper"/>
+                                <MenuItem Header="Toggle Extracted Deals Panel" Command="{Binding TogglePanelCommand}"/>
                             </MenuItem>
                         </Menu>
                     </StackPanel>
@@ -261,8 +262,8 @@
                             <!-- View 4: Settings -->
                             <StackPanel Visibility="{Binding IsSettingsActive, Converter={StaticResource BoolToVisConverter}}" Margin="8">
                                 <TextBlock Text="SUPERSHOPPER PREFERENCES" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" FontWeight="Bold" Margin="0,0,0,8"/>
-                                <CheckBox Content="Remember Last Opened Store" Foreground="{StaticResource ForegroundBrush}" IsChecked="True" Margin="0,4"/>
-                                <CheckBox Content="Enable Hardware Acceleration" Foreground="{StaticResource ForegroundBrush}" IsChecked="True" Margin="0,4"/>
+                                <CheckBox Content="Persistent Cookies &amp; Session Data" Foreground="{StaticResource ForegroundBrush}" IsChecked="True" IsEnabled="False" Margin="0,4"/>
+                                <CheckBox Content="Auto-Extract API Sales Payload" Foreground="{StaticResource ForegroundBrush}" IsChecked="True" Margin="0,4"/>
                                 <CheckBox Content="Microsoft Dark Mode Theme" Foreground="{StaticResource ForegroundBrush}" IsChecked="True" IsEnabled="False" Margin="0,4"/>
                             </StackPanel>
                         </Grid>
@@ -281,14 +282,14 @@
                         <RowDefinition Height="*"/>
                         <!-- Row 1: Panel Splitter -->
                         <RowDefinition Height="Auto"/>
-                        <!-- Row 2: Bottom Shopping Notes Panel -->
+                        <!-- Row 2: Bottom Extracted Sales Panel -->
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <!-- ==================== WEBVIEW2 BROWSER VIEWPORT ==================== -->
                     <Grid Grid.Row="0">
                         <Grid.RowDefinitions>
-                            <!-- Row 0: Browser Control Bar (Back, Refresh, Address Bar) -->
+                            <!-- Row 0: Browser Control Bar (Back, Refresh, Address Bar, Extract Deals) -->
                             <RowDefinition Height="38"/>
                             <!-- Row 1: WebView2 Renderer -->
                             <RowDefinition Height="*"/>
@@ -336,6 +337,9 @@
 
                                 <!-- Actions -->
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+                                    <Button Content="⚡ Extract Sales Deals" Style="{StaticResource TitleBarButtonStyle}" Width="140" Height="26"
+                                            Background="{StaticResource AccentBrush}" Foreground="#FFFFFF" FontWeight="Bold" Margin="0,0,6,0"
+                                            Click="ExtractDeals_Click" ToolTip="Scrape and parse weekly ad deals from current page"/>
                                     <Button Content="Open in Browser ↗" Style="{StaticResource TitleBarButtonStyle}" Width="110" Height="26"
                                             Command="{Binding OpenExternalBrowserCommand}"/>
                                 </StackPanel>
@@ -355,35 +359,96 @@
                                   Background="{StaticResource BorderBrush}" ShowsPreview="False"
                                   Visibility="{Binding IsPanelOpen, Converter={StaticResource BoolToVisConverter}}"/>
 
-                    <!-- ==================== BOTTOM PANEL (SHOPPING NOTES) ==================== -->
-                    <Border Grid.Row="2" Height="150" Background="#1E1E1E" 
+                    <!-- ==================== BOTTOM PANEL (EXTRACTED WEEKLY SALES) ==================== -->
+                    <Border Grid.Row="2" Height="240" Background="#1E1E1E" 
                             BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
                             Visibility="{Binding IsPanelOpen, Converter={StaticResource BoolToVisConverter}}">
                         <Grid>
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="28"/>
+                                <RowDefinition Height="30"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
                             <!-- Panel Header -->
-                            <Border Grid.Row="0" Background="#252526" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                            <Border Grid.Row="0" Background="#252526" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="8,0">
                                 <Grid>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0">
-                                        <TextBlock Text="DEAL NOTES &amp; SHOPPING SCRATCHPAD" Foreground="{StaticResource ForegroundBrightBrush}" 
-                                                   FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="⚡ EXTRACTED WEEKLY SALES DEALS" Foreground="{StaticResource ForegroundBrightBrush}" 
+                                                   FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
+                                        <Border Background="{StaticResource AccentBrush}" Padding="6,1" CornerRadius="10" Margin="8,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding ExtractedDealsCount, StringFormat={}{0} Deals}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold"/>
+                                        </Border>
                                     </StackPanel>
-                                    <Button Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconCloseSmall}" 
+
+                                    <!-- Deal Search Filter -->
+                                    <Border Grid.Column="1" Width="240" Height="22" HorizontalAlignment="Center" Background="#1E1E1E" 
+                                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="3">
+                                        <Grid Margin="4,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Path Data="{StaticResource IconSearch}" Fill="{StaticResource ForegroundMutedBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center"/>
+                                            <TextBox Grid.Column="1" Text="{Binding DealFilterQuery, UpdateSourceTrigger=PropertyChanged}" 
+                                                     BorderThickness="0" Background="Transparent" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="11" Padding="4,0"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Button Grid.Column="2" Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconCloseSmall}" 
                                             HorizontalAlignment="Right" Width="24" Height="24" Command="{Binding TogglePanelCommand}"/>
                                 </Grid>
                             </Border>
 
-                            <!-- Notes Scratchpad -->
-                            <TextBox Grid.Row="1" Margin="8" AcceptsReturn="True" AcceptsTab="True"
-                                     FontFamily="Segoe UI, Consolas" FontSize="12"
-                                     Background="#252526" Foreground="{StaticResource ForegroundBrightBrush}"
-                                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                     Text="Paste weekly ad deals, item coupon codes, and shopping notes here..."
-                                     VerticalScrollBarVisibility="Auto"/>
+                            <!-- Extracted Deals Data Items Grid -->
+                            <ListBox Grid.Row="1" ItemsSource="{Binding FilteredExtractedDeals}" Background="Transparent" BorderThickness="0" Margin="6">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type models:ExtractedDealModel}">
+                                        <Border Background="#252526" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" 
+                                                CornerRadius="4" Width="290" Padding="8" Margin="4">
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <Grid Grid.Row="0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Title}" Foreground="{StaticResource ForegroundBrightBrush}" 
+                                                               FontWeight="Bold" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                                    <Border Grid.Column="1" Background="#007ACC" Padding="4,1" CornerRadius="2" Margin="4,0,0,0">
+                                                        <TextBlock Text="{Binding DealType}" Foreground="#FFFFFF" FontSize="9" FontWeight="Bold"/>
+                                                    </Border>
+                                                </Grid>
+
+                                                <TextBlock Grid.Row="1" Text="{Binding PriceInfo}" Foreground="#4EC9B0" FontSize="11" FontWeight="SemiBold" Margin="0,4,0,0"/>
+
+                                                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,4,0,6">
+                                                    <TextBlock Text="{Binding Category}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" Margin="0,0,8,0"/>
+                                                    <TextBlock Text="{Binding ValidDates}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10"/>
+                                                </StackPanel>
+
+                                                <Button Grid.Row="3" Content="+ Add to Shopping List" HorizontalAlignment="Right" Height="22" FontSize="10"
+                                                        Command="{Binding DataContext.AddDealToShoppingListCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </Grid>
                     </Border>
                 </Grid>
@@ -396,15 +461,16 @@
                     <!-- Left Status Items -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Border Background="#007ACC" Padding="6,1" CornerRadius="2" Margin="0,0,8,0">
-                            <TextBlock Text="{Binding ActiveStoreName, StringFormat='Store: {0}'}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding ActiveStoreName, StringFormat=Store: \{0\}}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
                         </Border>
                         <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource ForegroundBrush}" FontSize="11" VerticalAlignment="Center"/>
                     </StackPanel>
 
                     <!-- Right Status Items -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding ShoppingList.Count, StringFormat='Saved Items: {0}'}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="11" Margin="10,0"/>
-                        <TextBlock Text="Microsoft Dark Mode" Foreground="{StaticResource ForegroundBrush}" FontSize="11" FontWeight="SemiBold" Margin="10,0"/>
+                        <TextBlock Text="{Binding ExtractedDealsCount, StringFormat=Extracted Deals: \{0\}}" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="11" Margin="10,0"/>
+                        <TextBlock Text="{Binding ShoppingList.Count, StringFormat=Saved Items: \{0\}}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="11" Margin="10,0"/>
+                        <TextBlock Text="Cookies: Persistent (%LocalAppData%)" Foreground="{StaticResource ForegroundBrush}" FontSize="11" FontWeight="SemiBold" Margin="10,0"/>
                     </StackPanel>
                 </Grid>
             </Border>
