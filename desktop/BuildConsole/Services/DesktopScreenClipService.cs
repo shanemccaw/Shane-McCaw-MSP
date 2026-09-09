@@ -45,41 +45,54 @@ namespace BuildConsole.Services
                 return;
             }
 
-            Int32Rect rect;
+            // Git #3338 — this used to be TWO separate protected regions: an inner try/FINALLY
+            // (no catch) around overlay construction/ConfigureForVirtualScreen()/ShowDialog(),
+            // then a second, independent try/catch around the CopyFromScreen+save+clipboard work.
+            // Both are called synchronously from the raw Win32 message hook for the global
+            // PrintScreen hotkey (ScreenClipWndProc -> HwndSource.PublicHooksFilterMessage ->
+            // WndProc), which has no Dispatcher-level unhandled-exception net of its own — so any
+            // exception thrown while the overlay window is being constructed/shown (the first
+            // block) propagated straight out as an unhandled crash, never reaching the method's
+            // own catch-all one block down. That's the real gap: the catch-all existed, it just
+            // didn't cover the method's own first half. One try/catch around the entire method
+            // body now closes it — ANY exception from the very first line through disposal
+            // degrades to the same ActivityLog + friendly toast, matching the rest of this
+            // method's established error-handling discipline.
             _overlayOpen = true;
-            try
-            {
-                var overlay = new RegionSelectOverlayWindow();
-                overlay.ConfigureForVirtualScreen();
-                bool? drawn = overlay.ShowDialog();
-                if (drawn != true)
-                {
-                    // Esc, or a too-small selection: nothing captured, nothing saved, clipboard untouched.
-                    ActivityLog.Log(Channel, "Screen clip cancelled (Esc or too-small selection) — clipboard and disk untouched.");
-                    return;
-                }
-                rect = overlay.SelectedPhysicalRect;
-            }
-            finally
-            {
-                _overlayOpen = false;
-            }
-
-            if (rect.Width <= 0 || rect.Height <= 0)
-            {
-                ActivityLog.Log(Channel, "Screen clip aborted — empty selection rectangle.");
-                return;
-            }
-
-            // The overlay window is CLOSED (not merely Hidden) once ShowDialog returns, but the
-            // compositor may not have presented the frame without the dim layer yet. Flush WPF's
-            // pending renders and give DWM a beat before reading pixels — capturing the dimming
-            // layer over the content is the classic bug here.
-            SettleAfterOverlayClosed();
-
             Bitmap? bmp = null;
             try
             {
+                Int32Rect rect;
+                try
+                {
+                    var overlay = new RegionSelectOverlayWindow();
+                    overlay.ConfigureForVirtualScreen();
+                    bool? drawn = overlay.ShowDialog();
+                    if (drawn != true)
+                    {
+                        // Esc, or a too-small selection: nothing captured, nothing saved, clipboard untouched.
+                        ActivityLog.Log(Channel, "Screen clip cancelled (Esc or too-small selection) — clipboard and disk untouched.");
+                        return;
+                    }
+                    rect = overlay.SelectedPhysicalRect;
+                }
+                finally
+                {
+                    _overlayOpen = false;
+                }
+
+                if (rect.Width <= 0 || rect.Height <= 0)
+                {
+                    ActivityLog.Log(Channel, "Screen clip aborted — empty selection rectangle.");
+                    return;
+                }
+
+                // The overlay window is CLOSED (not merely Hidden) once ShowDialog returns, but the
+                // compositor may not have presented the frame without the dim layer yet. Flush WPF's
+                // pending renders and give DWM a beat before reading pixels — capturing the dimming
+                // layer over the content is the classic bug here.
+                SettleAfterOverlayClosed();
+
                 // 24bpp (no alpha): CopyFromScreen never writes the alpha channel, so a 32bpp target
                 // would leave alpha=0 and paste BLACK in classic apps. 24bpp sidesteps that entirely.
                 bmp = new Bitmap(rect.Width, rect.Height, PixelFormat.Format24bppRgb);
@@ -115,6 +128,9 @@ namespace BuildConsole.Services
             }
             finally
             {
+                _overlayOpen = false; // belt-and-suspenders: the inner finally already clears this
+                                       // on the normal path; this covers any exception thrown before
+                                       // that inner try/finally is even entered.
                 bmp?.Dispose();
             }
         }
