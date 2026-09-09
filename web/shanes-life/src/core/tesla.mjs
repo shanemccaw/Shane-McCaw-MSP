@@ -518,6 +518,23 @@ export async function getVehicleState(userId) {
   return { vehicleDisplayName: account.vehicle_display_name, odometerMiles: odometer };
 }
 
+// Git #3287: real classification of which rate a charging session should use. Tesla's Fleet API
+// publishes no dedicated session-type/location-category field (same real limitation this file's
+// own header above already confirms for cost), but Tesla's own real, long-standing Supercharger
+// site-naming convention always includes the literal word "Supercharger" in the site name (e.g.
+// "Chicago, IL Supercharger") -- the same real, documented convention every third-party Tesla
+// integration (TeslaFi, TezLab, etc) relies on for exactly this classification. A session whose
+// location text doesn't contain that word -- including a null/unset location -- is classified
+// 'home', matching this app's pre-#3287 behavior of always applying the one shared rate. This is
+// best-evidenced, not live-confirmed: no live Tesla connection exists in this build yet (same gap
+// #3217/#3238's own bookends already state), so this should be re-checked once a real account
+// connects and real `location` values are actually observed. #3287 asked to confirm rather than
+// assume Tesla's own data is sufficient before reaching for Shane's own separate location-history
+// cross-reference (#3217's earlier disambiguation idea) -- this is that confirmation.
+export function classifyChargingRateSource(location) {
+  return typeof location === "string" && /supercharger/i.test(location) ? "supercharger" : "home";
+}
+
 /**
  * Real charging-session data off Tesla's own Charging Endpoints (Git #3217) -- confirmed,
  * investigated real limitation (see migration 060's own header): `charging/history` has no
@@ -532,7 +549,8 @@ export async function getVehicleState(userId) {
  * field exists anywhere in this endpoint for a personal developer account; inventing a lookup
  * for a field that has never been shown to exist would be exactly the fabrication the HARD RULE
  * forbids. Energy added is what funds this app's own cost ESTIMATE (Shane's real
- * charge_cost_per_kwh x real kWh), computed by the caller, not here.
+ * charge_cost_per_kwh/supercharge_cost_per_kwh x real kWh, picked per session by
+ * classifyChargingRateSource above), computed by the caller, not here.
  */
 export async function getChargingHistory(userId) {
   const account = await ownedAccount(userId);
@@ -551,13 +569,17 @@ export async function getChargingHistory(userId) {
         : Array.isArray(data?.charges)
           ? data.charges
           : [];
-  return list.map((raw) => ({
-    sessionKey: String(raw.sessionId ?? raw.session_id ?? raw.id ?? `${raw.chargeStartDateTime ?? raw.charge_start_date_time ?? ""}:${raw.siteLocationName ?? raw.site_location_name ?? ""}`),
-    startedAt: raw.chargeStartDateTime ?? raw.charge_start_date_time ?? raw.started_at ?? null,
-    location: raw.siteLocationName ?? raw.site_location_name ?? raw.location ?? null,
-    energyAddedKwh: typeof raw.energyAdded === "number" ? raw.energyAdded : typeof raw.energy_added === "number" ? raw.energy_added : null,
-    raw,
-  }));
+  return list.map((raw) => {
+    const location = raw.siteLocationName ?? raw.site_location_name ?? raw.location ?? null;
+    return {
+      sessionKey: String(raw.sessionId ?? raw.session_id ?? raw.id ?? `${raw.chargeStartDateTime ?? raw.charge_start_date_time ?? ""}:${location ?? ""}`),
+      startedAt: raw.chargeStartDateTime ?? raw.charge_start_date_time ?? raw.started_at ?? null,
+      location,
+      rateSource: classifyChargingRateSource(location),
+      energyAddedKwh: typeof raw.energyAdded === "number" ? raw.energyAdded : typeof raw.energy_added === "number" ? raw.energy_added : null,
+      raw,
+    };
+  });
 }
 
 /** Real, Shane-entered commute-nudge settings for the Settings -> Tesla section (Git #3238).
@@ -565,7 +587,8 @@ export async function getChargingHistory(userId) {
  *  none of it can come from Tesla directly. */
 export async function getCommuteSettings(userId) {
   const account = await one(
-    `SELECT low_battery_nudge_enabled, commute_miles_needed, efficiency_miles_per_kwh, charge_cost_per_kwh
+    `SELECT low_battery_nudge_enabled, commute_miles_needed, efficiency_miles_per_kwh, charge_cost_per_kwh,
+            supercharge_cost_per_kwh
        FROM tesla_accounts WHERE user_id = $1`,
     [userId],
   );
@@ -574,13 +597,18 @@ export async function getCommuteSettings(userId) {
     lowBatteryNudgeEnabled: account.low_battery_nudge_enabled,
     commuteMilesNeeded: account.commute_miles_needed !== null ? Number(account.commute_miles_needed) : null,
     efficiencyMilesPerKwh: account.efficiency_miles_per_kwh !== null ? Number(account.efficiency_miles_per_kwh) : null,
+    // Home electricity rate (Git #3287 -- previously the one shared rate; commute-check nudge
+    // below keeps reading exactly this, since that nudge is about charging at home overnight).
     chargeCostPerKwh: account.charge_cost_per_kwh !== null ? Number(account.charge_cost_per_kwh) : null,
+    // Real, distinct Supercharger rate (Git #3287, migration 065) -- $0.39/kWh, Shane's own
+    // real stated value, applied to away-from-home/Supercharger charging sessions.
+    superchargeCostPerKwh: account.supercharge_cost_per_kwh !== null ? Number(account.supercharge_cost_per_kwh) : null,
   };
 }
 
 export async function updateCommuteSettings(
   userId,
-  { lowBatteryNudgeEnabled, commuteMilesNeeded, efficiencyMilesPerKwh, chargeCostPerKwh } = {},
+  { lowBatteryNudgeEnabled, commuteMilesNeeded, efficiencyMilesPerKwh, chargeCostPerKwh, superchargeCostPerKwh } = {},
 ) {
   const row = await query(
     `UPDATE tesla_accounts SET
@@ -588,6 +616,7 @@ export async function updateCommuteSettings(
         commute_miles_needed = $3,
         efficiency_miles_per_kwh = $4,
         charge_cost_per_kwh = $5,
+        supercharge_cost_per_kwh = $6,
         updated_at = now()
       WHERE user_id = $1`,
     [
@@ -596,6 +625,7 @@ export async function updateCommuteSettings(
       commuteMilesNeeded === null || commuteMilesNeeded === undefined ? null : Number(commuteMilesNeeded),
       efficiencyMilesPerKwh === null || efficiencyMilesPerKwh === undefined ? null : Number(efficiencyMilesPerKwh),
       chargeCostPerKwh === null || chargeCostPerKwh === undefined ? null : Number(chargeCostPerKwh),
+      superchargeCostPerKwh === null || superchargeCostPerKwh === undefined ? null : Number(superchargeCostPerKwh),
     ],
   );
   if (row.rowCount === 0) throw notFound("Connect Tesla before configuring commute nudges.");

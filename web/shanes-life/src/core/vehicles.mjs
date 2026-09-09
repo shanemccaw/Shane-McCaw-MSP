@@ -567,11 +567,12 @@ export async function syncOdometerFromTesla(userId) {
 }
 
 /** Every real synced charging session for this user, newest first -- the Cars detail page's own
- *  Charging section. costEstimateCents is always Shane's own rate x real kWh, see tesla.mjs's
- *  getChargingHistory header for why it is never a Tesla-sourced figure. */
+ *  Charging section. costEstimateCents is always Shane's own rate x real kWh (home or
+ *  Supercharger, per rateSource -- Git #3287), see tesla.mjs's getChargingHistory header for why
+ *  it is never a Tesla-sourced figure. */
 export async function listChargingSessions(userId, { limit = 20 } = {}) {
   const rows = await many(
-    `SELECT id, started_at, location, energy_added_kwh, cost_estimate_cents, synced_at
+    `SELECT id, started_at, location, rate_source, energy_added_kwh, cost_estimate_cents, synced_at
        FROM tesla_charging_sessions WHERE user_id = $1 ORDER BY started_at DESC NULLS LAST, synced_at DESC LIMIT $2`,
     [userId, limit],
   );
@@ -579,6 +580,7 @@ export async function listChargingSessions(userId, { limit = 20 } = {}) {
     id: r.id,
     startedAt: r.started_at,
     location: r.location,
+    rateSource: r.rate_source,
     energyAddedKwh: r.energy_added_kwh === null ? null : Number(r.energy_added_kwh),
     costEstimate: r.cost_estimate_cents === null ? null : toDollars(r.cost_estimate_cents),
     syncedAt: r.synced_at,
@@ -589,9 +591,14 @@ export async function listChargingSessions(userId, { limit = 20 } = {}) {
  * The real 6-hour housekeeping sweep's charging half (Git #3217). Pulls Tesla's real charging
  * sessions (energy added, timestamp, location -- see tesla.mjs's getChargingHistory for the real,
  * investigated limitation on cost) and upserts them, computing a cost ESTIMATE off Shane's own
- * real charge_cost_per_kwh (migration 056) x real kWh when both are known. Idempotent: a repeat
- * sync of the same real session (migration 060's tesla_session_key unique index) just refreshes
- * synced_at/the estimate rather than duplicating the row.
+ * real rate x real kWh when both are known. Git #3287: home electricity and Tesla Supercharging
+ * are genuinely different real rates, so each session picks its own correct rate --
+ * `charge_cost_per_kwh` (home) or `supercharge_cost_per_kwh` (Supercharger) -- per
+ * classifyChargingRateSource's real, per-session classification (see tesla.mjs's own header for
+ * why that's the confirmed, best-evidenced answer rather than a fabricated one), instead of one
+ * shared rate for everything. Idempotent: a repeat sync of the same real session (migration 060's
+ * tesla_session_key unique index) just refreshes synced_at/the estimate rather than duplicating
+ * the row.
  */
 export async function syncChargingSessionsFromTesla(userId) {
   let sessions;
@@ -604,19 +611,19 @@ export async function syncChargingSessionsFromTesla(userId) {
   if (sessions.length === 0) return { synced: true, count: 0 };
 
   const settings = await teslaCore.getCommuteSettings(userId);
-  const costPerKwh = settings?.chargeCostPerKwh ?? null;
 
   let count = 0;
   for (const s of sessions) {
+    const costPerKwh = s.rateSource === "supercharger" ? settings?.superchargeCostPerKwh ?? null : settings?.chargeCostPerKwh ?? null;
     const costEstimateCents = costPerKwh !== null && s.energyAddedKwh !== null ? Math.round(s.energyAddedKwh * costPerKwh * 100) : null;
     await query(
-      `INSERT INTO tesla_charging_sessions (user_id, tesla_session_key, started_at, location, energy_added_kwh, cost_estimate_cents, raw, synced_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, now())
+      `INSERT INTO tesla_charging_sessions (user_id, tesla_session_key, started_at, location, rate_source, energy_added_kwh, cost_estimate_cents, raw, synced_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, now())
        ON CONFLICT (user_id, tesla_session_key) DO UPDATE SET
-         started_at = EXCLUDED.started_at, location = EXCLUDED.location,
+         started_at = EXCLUDED.started_at, location = EXCLUDED.location, rate_source = EXCLUDED.rate_source,
          energy_added_kwh = EXCLUDED.energy_added_kwh, cost_estimate_cents = EXCLUDED.cost_estimate_cents,
          raw = EXCLUDED.raw, synced_at = now()`,
-      [userId, s.sessionKey, s.startedAt, s.location, s.energyAddedKwh, costEstimateCents, JSON.stringify(s.raw)],
+      [userId, s.sessionKey, s.startedAt, s.location, s.rateSource, s.energyAddedKwh, costEstimateCents, JSON.stringify(s.raw)],
     );
     count += 1;
   }
