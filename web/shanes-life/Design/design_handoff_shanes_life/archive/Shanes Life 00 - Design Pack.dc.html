@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<!-- SUPERSEDED (Sep 8, 2026): exploration history, not the design. Every screen here was redesigned in ../Shanes Life - First Slice Prototype.dc.html, the only file to build from. See ../README.md, "Source of truth". -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#1e293b!important;font-family:'Inter',system-ui,sans-serif;color:#EEF2F8;-webkit-font-smoothing:antialiased}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(255,255,255,.08);scroll-margin-top:16px;background:#1e293b;min-width:max-content}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#EEF2F8;color:#0A2540;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 'Inter',system-ui,sans-serif;color:#EEF2F8}
+.dv-grp{display:flex;flex-direction:column;gap:4px;margin:44px 0 16px;padding-top:26px;border-top:1px dashed rgba(255,255,255,.18);scroll-margin-top:16px}
+.dv-gname{font:700 16px/1.2 'Inter',system-ui,sans-serif;color:#EEF2F8;letter-spacing:-.01em;margin:0}
+.dv-gnote{font:400 12.5px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.62);max-width:760px;margin:0}
+.dv-opts{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px;max-width:100%}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(255,255,255,.12);color:#EEF2F8;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.62)}
+.dv-olabel b{font-weight:600;color:#EEF2F8}
+.dv-card{max-width:100%;display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+.dv-opt:target .dv-oid{background:#1A8CFF;color:#fff}
+.dv-next{margin:26px 0 0;font:12px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.55)}
+.dv-note{font:400 12px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.68);max-width:402px;margin:0}
+.dv-note b{font-weight:600;color:#EEF2F8}
+.dv-intro{background:#0D1F35;border:1px solid #22364F;border-radius:12px;padding:24px 28px;max-width:980px;font:400 13px/1.55 'Inter',system-ui,sans-serif;color:#EEF2F8;display:grid;grid-template-columns:1fr 1fr;gap:4px 36px}
+.dv-intro h2{margin:0 0 4px;font:700 20px/1.2 'Inter',system-ui,sans-serif;letter-spacing:-.015em;grid-column:1/-1}
+.dv-intro p{margin:0 0 6px;grid-column:1/-1}
+.dv-intro h3{margin:14px 0 4px;font:600 10.5px/1 'Inter',system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.55)}
+.dv-intro ul{margin:0;padding-left:18px}
+.dv-intro li{margin:3px 0}
+.dv-ph{width:402px;height:200px;border:1px dashed rgba(255,255,255,.25);border-radius:16px;display:flex;align-items:center;justify-content:center;font:500 12px 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.45)}
+</style>
+</helmet>
+<div style="position:relative;z-index:99999;margin:0 0 18px;padding:14px 20px;background:#7F1D1D;border-bottom:2px solid #FCA5A5;color:#FFFFFF;font:600 14px/1.5 Inter,-apple-system,system-ui,sans-serif;text-align:center;text-wrap:pretty">SUPERSEDED · exploration history, not the design. Every screen on this page was redesigned in <a href="../Shanes%20Life%20-%20First%20Slice%20Prototype.dc.html" style="color:#FDE68A">Shanes Life - First Slice Prototype.dc.html</a>, the only file to build from. See <span style="color:#FDE68A">../README.md → “Source of truth”</span>.</div>
+<section class="dv-turn" id="t1" style="min-width:0">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Shane's Life · full v1 blueprint · phone + desktop · dark mode · options where you asked for them</span></div>
+<div class="dv-intro">
+<h2>What this pack is</h2>
+<p>Every screen in the locked blueprint, drawn against the Shane McCaw system in its Deep-Navy dark mode (navy canvas, off-white text, Electric Blue actions, Inter, Lucide). Dark throughout; a light theme is one token switch away if ever wanted. Five screens get 2–3 directions to pick from; everything else is one direction. Desktop appears where a laptop is plausible (sign-in, tray, recipes, money, people, architecture); Shopping, the shared link, Meds, Heading Out and Things are phone-only by nature.</p>
+<div>
+<h3>Assumptions I made</h3>
+<ul>
+<li>Dark mode is the only mode. Every screen sits on the system's dark tokens, so contrast is set once.</li>
+<li>Sign-in is passkey / Face ID. No passwords anywhere. Shared links skip auth entirely.</li>
+<li>Lists pushed from Claude over MCP carry a quiet <b>From Claude</b> tag so Shane knows where a list came from.</li>
+<li>Households are named <b>Home</b> (hub) and <b>Rental</b> (spoke). Medication names are placeholders.</li>
+<li>The nudge cap is shown once, quietly ("1 of up to 3 today"). No other counts that could read as a score.</li>
+<li>The in-app capture box can't call Claude live (§6). Proposal: simple on-device rules route the obvious cases instantly (groceries → Aldi list); everything else waits in an <b>Inbox</b> that Claude tidies on its next MCP pull. See <a class="dv-oid" href="Shanes%20Life%2013%20-%20Architecture.dc.html#1w">1w</a>.</li>
+</ul>
+</div>
+<div>
+<h3>Design moves that follow from the brief</h3>
+<ul>
+<li>The tray leads. There is no home grid; the first screen is "what's next" plus the capture bar, docked on every screen.</li>
+<li>Time never appears as a trigger. Groupings are moments: Heading out, At Aldi, At the Rental, Idle.</li>
+<li>Full-screen modes (Shopping, Recipes, Review) get a thin blue→teal strip under the header so they feel like a different room, not another tab.</li>
+<li>Reset language instead of overdue language: "Let it go", "Not this trip", "Ask again next time at the Rental". Nothing turns red, nothing stacks.</li>
+<li>Stated facts land instantly with an Undo, never a confirm. Only ambiguous captures ask, and they ask with two chips, not a form.</li>
+</ul>
+</div>
+<p style="margin:16px 0 0;font-size:12px;color:rgba(238,242,248,.6)">Reference any option by its badge (e.g. <a class="dv-oid" href="Shanes%20Life%2002%20-%20Today%20tray.dc.html#1c">1c</a>) in chat. Groups run in the order Shane would meet them: sign in → tray → capture → modes → systems → sharing → architecture.</p>
+</div>
+<div class="dv-grp" id="g-contract"><h4 class="dv-gname">Contract v2 (Sep 5): what changed</h4><p class="dv-gnote">Read against what is drawn and prototyped. Nothing already built comes out.</p></div>
+<div class="dv-intro">
+<h2>Kept as Shane's additions outside the contract</h2>
+<p>Scan → real price, aisle memory from voice, weekly-ad verdicts, coupons and multi-buy counts, budget per run with the put-it-back card, per-store prices with stores per phone, and Tonight (several dishes to one finish). All stay exactly as they are.</p>
+<div>
+<h3>Already covered by the pack</h3>
+<ul>
+<li>Tray first, one capture box, 1–3 nudges a day, moments not clocks, the three full-screen modes, Meds batched by time of day, Money's three buckets, hub-and-spoke, Heading Out on Tesla preconditioning, item memory, the things-that-need-to-move queue, People &amp; Patterns, passkey login, Replit, MCP push, no-login share links, no live AI inside the app.</li>
+<li>§12 (first slice) is answered by the prototype: login + hosted checklists + shareable link.</li>
+</ul>
+<h3>One thing to settle before Money v2</h3>
+<ul>
+<li>§1 makes this app the primary money surface ("real dashboards, account funding, everything in the WPF Dashboard"). §3 and §11 still say no charts, no categories, no monthly totals. Proposed reading: accounts, bills, debts and the GATE/shortfall math come across as plain rows and numbers, the three buckets stay the front door, still no charts.</li>
+</ul>
+</div>
+<div>
+<h3>New, not yet drawn</h3>
+<ul>
+<li><b>Architecture.</b> Shane's Life is the cloud half of ShanesSurvival: one app, one login, one database. WPF narrows to local automation (WebView2 pulling coupons and weekly ads). <a class="dv-oid" href="Shanes%20Life%2013%20-%20Architecture.dc.html#1w">1w</a> needs redrawing.</li>
+<li><b>Capture v2.</b> Open categories: Claude assigns a new one on the fly ("mom's visiting the 12th–18th"). Third tier: an unclassifiable capture gets talked through, and can scope a build.</li>
+<li><b>Dates.</b> Appointments from natural speech, any interval (6 weeks, 2 months), reminder the day before. "Ask next time at Dr. Fonji" threads to that appointment. In-visit notes and document photos per appointment. Birthdays and want-to-attend events with real lead time. Federal holidays from OPM's live calendar, no entry needed.</li>
+<li><b>Money v2.</b> Available to spend and "what if I spend $X" from Claude mobile. Transfer simulator that never executes. Per-vehicle profiles (Tesla Model 3, Kia Forte). Pool and yard as plain bills. Encrypted bill-payment vault. Wins log. Budget Day every other Friday. Smoking tracker as the one deliberate guilt exception. Habit modeling. Renewal watch, forgotten-money sweep, duplicate-request catch, borrowed-from-bill detection, bulk-buy suggestion.</li>
+<li><b>Pets.</b> Per-pet profiles. Vet visits are appointments. Vaccines on irregular multi-year cycles with lead time. Feeding and pet meds ride the Meds system.</li>
+<li><b>Triggers.</b> BuildConsole queue depth → "go do a physical task" nudge (webhook capability unverified). Location-aware surfacing: Walmart list at Walmart, home tasks at home, work items at work. Needs scoping.</li>
+<li><b>Food.</b> Heart-healthy generation (stated once). Sunday meal-planning ritual surfaces as Today nudges, never a calendar.</li>
+<li><b>Small.</b> Simple lists (movies, books). Service-provider contacts: who fixed what, which house.</li>
+<li><b>Critters.</b> Cute animal critters as decoration, not a mechanic. BuildConsole's implementation is the reference; nothing drawn until it's in hand.</li>
+</ul>
+</div>
+</div>
+<div class="dv-grp" id="g-v2"><h4 class="dv-gname">Contract v2 decisions (Sep 7): built straight into the prototype</h4><p class="dv-gnote">Everything picked in the form is live. Architecture <a class="dv-oid" href="Shanes%20Life%2013%20-%20Architecture.dc.html#2a">2a</a> holds the unification diagram; the handoff package is in <span style="font-family:ui-monospace,Menlo,monospace">design_handoff_shanes_life/</span>.</p></div>
+<div class="dv-intro" style="display:block;font-size:13px">
+<ul style="columns:2;column-gap:36px;margin:0;padding-left:18px">
+<li><b>Money v2</b>: one bar per pay period (spoken-for share of what's available), never a chart. Available to spend = Income Gate + reserve − shortfall, the same top line as the WPF Dashboard. What-if spend and the transfer simulator answer from the capture box; the simulator never moves money and flags borrowed-from-bill. Tabs: Now / Bills / Cars / Vault / Wins.</li>
+<li><b>Dates</b> is its own room: what's coming as a list, grouped this week / this month / later. Appointments carry any interval, ask-next-time notes and per-visit notes and photos. Birthdays 10 days out, events 14, holidays 7 (from OPM), visits 3, renewals 21, vaccines 30.</li>
+<li><b>Pets</b> is its own room. Vet visits are appointments with the pet as subject; feeding and pet meds ride the two Meds batches.</li>
+<li><b>Capture v2</b>: confident new kinds land instantly with a New category badge (Visits, Watch, Books). Anything that fits nowhere opens a talk-it-through sheet: hold for Claude, make a category, or scope a build.</li>
+<li><b>Triggers</b>: location switches the Next card (Walmart list at Walmart, work items at NASA); BuildConsole queue depth proposes a physical task; day-before and Budget Day arrive as banners. All spend one of the day's 3 nudges; the fourth is held.</li>
+<li><b>Critters</b>: Clarity-style, decorative only: fox, bear with book, bird with megaphone, cat from behind. Full set in pairs, one pair per moment (raccoon or puppy in the car, owl or bird for Coming up, otter or bear for Dinner, and one pair per room), rolled once a day by date; sign-in fox and alarm bird stay fixed: <a class="dv-oid" href="Shanes%20Life%2014%20-%20Critters.dc.html">14</a>. Sign-in, tray, room headers, wins, alarm, shared list, empty states. Production reuses BuildConsole's roster.</li>
+<li><b>Kept</b>: every Shopping tool Shane added outside the contract, unchanged.</li>
+</ul>
+</div>
+<div class="dv-grp" id="g-decisions"><h4 class="dv-gname">Decisions so far (Sep 6)</h4><p class="dv-gnote">Recorded from chat. Turn 2 on Shopping and Recipes holds the additions.</p></div>
+<div class="dv-intro" style="display:block;font-size:13px">
+<ul style="columns:2;column-gap:36px;margin:0;padding-left:18px">
+<li>Tray: <a class="dv-oid" href="Shanes%20Life%2002%20-%20Today%20tray.dc.html#1b">1b</a></li>
+<li>Capture: <a class="dv-oid" href="Shanes%20Life%2003%20-%20Capture.dc.html#1e">1e</a> default, <a class="dv-oid" href="Shanes%20Life%2003%20-%20Capture.dc.html#1f">1f</a> when there's more to dump</li>
+<li>Shopping: all three views, plus scan → real price <a class="dv-oid" href="Shanes%20Life%2004%20-%20Shopping.dc.html#2a">2a</a> and aisle memory <a class="dv-oid" href="Shanes%20Life%2004%20-%20Shopping.dc.html#2b">2b</a></li>
+<li>Recipes: <a class="dv-oid" href="Shanes%20Life%2005%20-%20Recipes.dc.html#1k">1k</a>, plus ingredient checks <a class="dv-oid" href="Shanes%20Life%2005%20-%20Recipes.dc.html#2a">2a</a> and the loud in-app timer <a class="dv-oid" href="Shanes%20Life%2005%20-%20Recipes.dc.html#2b">2b</a></li>
+<li>Review: <a class="dv-oid" href="Shanes%20Life%2006%20-%20Review.dc.html#1l">1l</a></li>
+<li>Meds, Money, Things, Heading Out, People, Architecture: as drawn</li>
+<li>Shared list: <a class="dv-oid" href="Shanes%20Life%2012%20-%20Shared%20list.dc.html#1t">1t</a>, one list with a Flat / Category / Best path toggle and Shopping mode's tools (<a class="dv-oid" href="Shanes%20Life%2012%20-%20Shared%20list.dc.html#2a">2a</a>), phone only, no note, no Home/Rental split</li>
+<li>Tray: Review lives under Idle. Meds is its own card (two batched notifications a day: morning, before bed). Rooms are a list with icon tiles: Shopping, Recipes, Money, Things, People. The capture bar answers "where's the drill?" in place.</li>
+<li>Shopping: stores are Aldi, Walmart, Publix. Prices and aisle spots are per store; items show "cheaper at Walmart $1.58" when a better recorded price exists. Coupons arrive from Claude over MCP (store, quantity, saving) and sit on the item. A running cart total shows on both phones; Shane sets a budget per run.</li>
+<li>Recipes: "Tonight" cooks several dishes to one finish. Longest dish first, it rings when each next dish should go in, re-plans if something starts late, quick access to each dish's steps.</li>
+<li>Weekly ads: Claude fetches and parses the ads (fetch_weekly_ad), matches them to the list, and pushes per-item verdicts ("Aldi wins", "Publix BOGO", "no deal"). The app shows the verdict on the item and a one-line summary per store.</li>
+<li>Quantities: items carry a planned quantity ("Pasta, 3 boxes"). A multi-buy coupon that needs more than planned opens a quantity sheet (stepper, live math, "coupon applies" or "1 more unlocks it"); the total uses the real count.</li>
+<li>Budget: set per run by Shane, seen by both phones. Under budget: quiet. Projected over: amber pill and a strip naming the 2–3 non-deal items to skip to land under; those items get an amber "could skip this trip" tag. Actually over: red readout plus a persistent card listing what could go back (non-deal items, biggest first) with "I put it back" and "Keep" on each; the total updates the moment one is put back.</li>
+<li>Stores are per phone, never synced: Shane can be at Walmart while Ronnie is at Publix on the same run. Prices, aisles and deal verdicts follow each phone's store.</li>
+<li>Scan mismatch: exact / near (pick from 2–3 chips, remembered per barcode) / unknown (add it, or pick from the list).</li>
+</ul>
+<p style="margin:14px 0 0;font-size:13px"><a class="dv-oid" href="../Shanes%20Life%20-%20First%20Slice%20Prototype.dc.html" style="font-size:12px;padding:6px 10px;background:#1A8CFF;color:#fff">Open the first-slice prototype →</a> <span style="color:rgba(238,242,248,.62);margin-left:8px">Sign in → tray → share → shop from either phone. Two phones, one live list.</span></p>
+</div>
+<div class="dv-grp" id="g-contents"><h4 class="dv-gname">Groups</h4><p class="dv-gnote">Each group is its own page so it loads fast. Open one, pan and zoom, and reference options by badge in chat.</p></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;max-width:1240px">
+<a href="Shanes%20Life%2001%20-%20Sign%20in.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">01</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Sign in</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">One direction. Passkey only; the screen exists once per device and then gets out of the way.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1a</span></span></a>
+<a href="Shanes%20Life%2002%20-%20Today%20tray.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">02</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Today / notification tray</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">Three directions. All three show only what's next and dock the capture bar. They differ in how much of "later" is visible and how Shane moves between moments.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1b</span><span class="dv-oid">1c</span><span class="dv-oid">1d</span></span></a>
+<a href="Shanes%20Life%2003%20-%20Capture.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">03</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Universal capture</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">Three interaction directions for the single entry point. Same parser behind all three; they differ in where the parse result shows up and how voice fits.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1e</span><span class="dv-oid">1f</span><span class="dv-oid">1g</span></span></a>
+<a href="Shanes%20Life%2004%20-%20Shopping.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">04</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Shopping mode</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">Three directions, all using the real Aldi list. Phone only: this screen is used with one hand on a cart.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1h</span><span class="dv-oid">1i</span><span class="dv-oid">1j</span></span></a>
+<a href="Shanes%20Life%2005%20-%20Recipes.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">05</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Recipes mode</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">One direction. Recipes are matched against what's already on the Aldi list; the phone shows cook mode, the desktop shows the recipe with the have/missing check.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1k</span></span></a>
+<a href="Shanes%20Life%2006%20-%20Review.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">06</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Review (idle-moment triage)</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">Three directions for the card stack. Each shows the same open item; they differ in gesture versus buttons versus conversation.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1l</span><span class="dv-oid">1m</span><span class="dv-oid">1n</span></span></a>
+<a href="Shanes%20Life%2007%20-%20Meds.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">07</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Medication</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">One direction. Batched by time of day, one swipe per batch, and the two refill tiers kept visibly separate.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1o</span></span></a>
+<a href="Shanes%20Life%2008%20-%20Money.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">08</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Money triage</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">One direction drawn: three neutral buckets, the watchers, and the sale proposal from the webhook. Contract v2 makes this the primary money surface (accounts, bills, debts, shortfall math, vehicles, vault, Wins, Budget Day). v2 pending.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1p</span></span></a>
+<a href="Shanes%20Life%2009%20-%20Things.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">09</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Things: hub-and-spoke logistics + item memory</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">One direction. Supplies live at Home unless a Rental run is happening; groceries are the exception and split at capture time.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1q</span></span></a>
+<a href="Shanes%20Life%2010%20-%20Heading%20out.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">10</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Heading Out checklist</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">One direction. Triggered by Tesla preconditioning: the lock-screen notification and the checklist it opens.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1r</span></span></a>
+<a href="Shanes%20Life%2011%20-%20People.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">11</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">People and Patterns</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">One direction. A private thread per person in Shane's own words; the patterns panel only counts and quotes those words. No persona, no opinions.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1s</span></span></a>
+<a href="Shanes%20Life%2012%20-%20Shared%20list.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">12</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Shared list (no login)</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">Three directions for the public-by-link page. Anyone with the link can check off and add. Teal marks the shared surface so it never looks like the private app.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1t</span><span class="dv-oid">1u</span><span class="dv-oid">1v</span></span></a>
+<a href="Shanes%20Life%2013%20-%20Architecture.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">13</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Claude → MCP → app boundary</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">One diagram. Where AI happens (Claude, on the subscription) versus what the hosted app does (store, show, share, check off), plus the mixed access model.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1w</span></span></a>
+<a href="Shanes%20Life%2014%20-%20Critters.dc.html" style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#0D1F35;border:1px solid #22364F;border-radius:12px;text-decoration:none;color:#EEF2F8;min-height:120px"><span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.5)">14</span><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Critters, one per moment</span><span style="font-size:12px;line-height:1.5;color:rgba(238,242,248,.62)">Every moment gets a pair of critters (Idle gets three) and the app rolls one per slot per day, seeded by the date. Raccoon or puppy in the car for Heading out, owl or bird for Coming up, otter or bear for Dinner, and so on through every room and Money moment. 44 drawings in 23 slots, shown at 120, 36 and 20px, with a "Roll another day" preview.</span><span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px"><span class="dv-oid">1a</span><span class="dv-oid">1b</span><span class="dv-oid">1c</span><span class="dv-oid">1d</span><span class="dv-oid">1e</span><span class="dv-oid">…</span><span class="dv-oid">1w</span></span></a>
+</div>
+<p class="dv-next">Try next: "put the picked critters into the prototype tray" · "draw Money v2 against the WPF Dashboard" · "redraw <a class="dv-oid" href="Shanes%20Life%2013%20-%20Architecture.dc.html#1w">1w</a> for the ShanesSurvival unification"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return { dw: 1100, dh: 700, dwS: 1000, dhS: 640, dwL: 1200, dhL: 620 };
+  }
+}
+</script>
+</body>
+</html>

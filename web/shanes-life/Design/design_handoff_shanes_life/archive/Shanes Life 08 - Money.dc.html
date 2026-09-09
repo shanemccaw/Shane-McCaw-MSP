@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<!-- SUPERSEDED (Sep 8, 2026): exploration history, not the design. Every screen here was redesigned in ../Shanes Life - First Slice Prototype.dc.html, the only file to build from. See ../README.md, "Source of truth". -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#1e293b!important;font-family:'Inter',system-ui,sans-serif;color:#EEF2F8;-webkit-font-smoothing:antialiased}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(255,255,255,.08);scroll-margin-top:16px;background:#1e293b;min-width:max-content}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#EEF2F8;color:#0A2540;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 'Inter',system-ui,sans-serif;color:#EEF2F8}
+.dv-grp{display:flex;flex-direction:column;gap:4px;margin:44px 0 16px;padding-top:26px;border-top:1px dashed rgba(255,255,255,.18);scroll-margin-top:16px}
+.dv-gname{font:700 16px/1.2 'Inter',system-ui,sans-serif;color:#EEF2F8;letter-spacing:-.01em;margin:0}
+.dv-gnote{font:400 12.5px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.62);max-width:760px;margin:0}
+.dv-opts{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px;max-width:100%}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(255,255,255,.12);color:#EEF2F8;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.62)}
+.dv-olabel b{font-weight:600;color:#EEF2F8}
+.dv-card{max-width:100%;display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+.dv-opt:target .dv-oid{background:#1A8CFF;color:#fff}
+.dv-next{margin:26px 0 0;font:12px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.55)}
+.dv-note{font:400 12px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.68);max-width:402px;margin:0}
+.dv-note b{font-weight:600;color:#EEF2F8}
+.dv-intro{background:#0D1F35;border:1px solid #22364F;border-radius:12px;padding:24px 28px;max-width:980px;font:400 13px/1.55 'Inter',system-ui,sans-serif;color:#EEF2F8;display:grid;grid-template-columns:1fr 1fr;gap:4px 36px}
+.dv-intro h2{margin:0 0 4px;font:700 20px/1.2 'Inter',system-ui,sans-serif;letter-spacing:-.015em;grid-column:1/-1}
+.dv-intro p{margin:0 0 6px;grid-column:1/-1}
+.dv-intro h3{margin:14px 0 4px;font:600 10.5px/1 'Inter',system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.55)}
+.dv-intro ul{margin:0;padding-left:18px}
+.dv-intro li{margin:3px 0}
+.dv-ph{width:402px;height:200px;border:1px dashed rgba(255,255,255,.25);border-radius:16px;display:flex;align-items:center;justify-content:center;font:500 12px 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.45)}
+</style>
+</helmet>
+<div style="position:relative;z-index:99999;margin:0 0 18px;padding:14px 20px;background:#7F1D1D;border-bottom:2px solid #FCA5A5;color:#FFFFFF;font:600 14px/1.5 Inter,-apple-system,system-ui,sans-serif;text-align:center;text-wrap:pretty">SUPERSEDED · exploration history, not the design. Every screen on this page was redesigned in <a href="../Shanes%20Life%20-%20First%20Slice%20Prototype.dc.html" style="color:#FDE68A">Shanes Life - First Slice Prototype.dc.html</a>, the only file to build from. See <span style="color:#FDE68A">../README.md → “Source of truth”</span>.</div>
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="Shanes%20Life%2000%20-%20Design%20Pack.dc.html">1</a><span class="dv-tname">Shane's Life · Money triage · <a href="Shanes%20Life%2000%20-%20Design%20Pack.dc.html" style="font-weight:500">all groups</a></span></div>
+<div class="dv-grp" id="g-money"><h4 class="dv-gname">Money triage</h4><p class="dv-gnote">One direction. Three neutral buckets, the watchers, and the sale proposal that arrives from the webhook. No charts, no totals, no categories.</p></div>
+<div class="dv-opts">
+<div class="dv-opt" id="1p"><div class="dv-olabel"><a class="dv-oid" href="#1p">1p</a><b>Three buckets + watchers + the sale proposal</b> · phone + desktop</div>
+<div class="dv-card">
+<x-import component-from-global-scope="IOSDevice" from="../ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div class="dark" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;padding-top:54px;background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--font-sans);-webkit-font-smoothing:antialiased">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px 4px">
+<div style="display:flex;align-items:center;color:#60a5fa;font-size:15px;min-width:88px;height:40px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>Today</div>
+<div style="text-align:center;flex:1;min-width:0;white-space:nowrap"><div style="font-size:17px;font-weight:700">Money</div><div style="font-size:12px;color:hsl(var(--muted-foreground))">triage, not a budget</div></div>
+<div style="min-width:88px"></div>
+</div>
+<div style="flex:1;overflow:hidden;padding:8px 16px 0;display:flex;flex-direction:column;gap:14px">
+<div style="background:hsl(var(--card));border:1px solid rgba(45,212,191,.35);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:flex-start;gap:12px">
+<div style="width:36px;height:36px;border-radius:10px;background:rgba(45,212,191,.14);color:#2dd4bf;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle></svg></div>
+<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#2dd4bf">Price watcher</div><div style="font-size:17px;font-weight:700;margin-top:3px;letter-spacing:-.01em">Standing desk dropped to $379</div><div style="font-size:14px;color:hsl(var(--muted-foreground));margin-top:4px;line-height:1.45">Was $489. After Protected, it fits this month ahead of the office chair you deferred. Your call.</div></div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;grid-auto-rows:44px"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" hint-size="100%,44px">Buy it now</x-import><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="outline" hint-size="100%,44px">Keep waiting</x-import></div>
+</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:16px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:10px;padding:12px 16px 6px;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground))"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>Protected</div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;font-size:15px"><span style="flex:1">Rental mortgage</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">auto · paid Sep 1</span></div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;font-size:15px;border-top:1px solid hsl(var(--card-border) / .6)"><span style="flex:1">Tesla</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">auto · Sep 12</span></div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 16px 14px;font-size:15px;border-top:1px solid hsl(var(--card-border) / .6)"><span style="flex:1">Insurance, both houses</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">auto · Sep 15</span></div>
+</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:16px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:10px;padding:12px 16px 6px;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg>Urgent</div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;font-size:15px"><span style="flex:1">Water heater repair, Rental</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">$640 quote</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 16px 14px;font-size:15px;border-top:1px solid hsl(var(--card-border) / .6)"><span style="flex:1">Property tax notice, Rental</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">figure in ShanesSurvival</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:16px;overflow:hidden;opacity:.75">
+<div style="display:flex;align-items:center;gap:10px;padding:12px 16px 6px;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground))"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Already handled</div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;font-size:15px"><span style="flex:1">Aldi run</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">weekly · counted already</span></div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 16px 14px;font-size:15px;border-top:1px solid hsl(var(--card-border) / .6)"><span style="flex:1">Refills, phone, streaming</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">auto</span></div>
+</div>
+<div style="display:flex;align-items:center;gap:10px;padding:0 4px;font-size:13px;color:hsl(var(--muted-foreground))"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle></svg>Also watching: Dyson filter, under $45</div>
+</div>
+<div style="padding:12px 20px 44px;text-align:center;font-size:12px;color:hsl(var(--muted-foreground))">Amounts, totals and history live in ShanesSurvival.</div>
+</div>
+</x-import>
+<x-import component-from-global-scope="ChromeWindow" from="../browser-window.jsx" url="shaneslife.replit.app/money" width="{{ dw }}" height="{{ dh }}" hint-size="1100px,700px">
+<div class="dark" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--font-sans);-webkit-font-smoothing:antialiased">
+<div style="height:64px;flex-shrink:0;background:hsl(var(--card));border-bottom:1px solid hsl(var(--card-border));display:flex;align-items:center;gap:24px;padding:0 24px">
+<div style="display:flex;align-items:center;gap:10px;flex-shrink:0"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Logo" size="sm" show-text="{{ false }}" hint-size="32px,32px"></x-import><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Shane's Life</span></div>
+<div style="flex:1;max-width:520px;margin:0 auto;display:flex;align-items:center;gap:10px;height:40px;padding:0 8px 0 14px;border:1px solid hsl(var(--border));border-radius:8px;background:hsl(var(--background));color:hsl(var(--muted-foreground));font-size:14px"><span style="flex:1">Say or type anything</span><span style="font-size:11px;font-weight:600;padding:2px 6px;border:1px solid rgba(255,255,255,.18);border-radius:4px;color:hsl(var(--muted-foreground))">⌘K</span></div>
+<div style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:500;flex-shrink:0"><span style="padding:6px 10px;border-radius:6px">Shopping</span><span style="padding:6px 10px;border-radius:6px">Recipes</span><span style="padding:6px 10px;border-radius:6px">Review</span><span style="padding:6px 10px;border-radius:6px">Things</span><span style="padding:6px 10px;border-radius:6px;background:rgba(255,255,255,.08)">Money</span><span style="padding:6px 10px;border-radius:6px">People</span></div>
+<div style="width:32px;height:32px;border-radius:999px;background:linear-gradient(135deg,#0078D4,#00B4D8);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">S</div>
+</div>
+<div style="flex:1;padding:28px 40px;display:flex;flex-direction:column;gap:20px;overflow:hidden">
+<div style="display:flex;align-items:flex-end;justify-content:space-between"><div><div style="font-size:26px;font-weight:800;letter-spacing:-.02em">Money</div><div style="font-size:14px;color:hsl(var(--muted-foreground));margin-top:4px">Three buckets. No categories, no charts. Figures live in ShanesSurvival.</div></div><span style="font-size:13px;color:#60a5fa;font-weight:600">Open ShanesSurvival →</span></div>
+<div style="background:hsl(var(--card));border:1px solid rgba(45,212,191,.35);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px">
+<div style="width:40px;height:40px;border-radius:10px;background:rgba(45,212,191,.14);color:#2dd4bf;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle></svg></div>
+<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:700">Standing desk dropped to $379 <span style="font-weight:400;color:hsl(var(--muted-foreground))">· was $489</span></div><div style="font-size:14px;color:hsl(var(--muted-foreground));margin-top:3px">After Protected, it fits this month ahead of the office chair you deferred. Sale webhook, 20 minutes ago.</div></div>
+<div style="display:grid;grid-template-columns:auto auto auto;gap:8px;grid-auto-rows:36px"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="sm" hint-size="auto,36px">Buy it now</x-import><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="sm" variant="outline" hint-size="auto,36px">Keep waiting</x-import><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="sm" variant="ghost" hint-size="auto,36px">Stop watching</x-import></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px">
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid hsl(var(--card-border));font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground))"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>Protected</div>
+<div style="padding:6px 0;font-size:14px">
+<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 18px"><span>Rental mortgage</span><span style="color:hsl(var(--muted-foreground))">auto · paid Sep 1</span></div>
+<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 18px"><span>Tesla</span><span style="color:hsl(var(--muted-foreground))">auto · Sep 12</span></div>
+<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 18px"><span>Insurance, both houses</span><span style="color:hsl(var(--muted-foreground))">auto · Sep 15</span></div>
+<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 18px"><span>Rental utilities</span><span style="color:hsl(var(--muted-foreground))">auto · Sep 20</span></div>
+</div>
+</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid hsl(var(--card-border));font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg>Urgent</div>
+<div style="padding:6px 0;font-size:14px">
+<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 18px"><span>Water heater repair, Rental</span><span style="color:hsl(var(--muted-foreground))">$640 quote</span></div>
+<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 18px"><span>Property tax notice, Rental</span><span style="color:hsl(var(--muted-foreground))">see ShanesSurvival</span></div>
+<div style="padding:12px 18px 6px"><div style="display:grid;grid-auto-rows:32px;grid-template-columns:auto"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="sm" variant="outline" hint-size="auto,32px">Mark handled</x-import></div></div>
+</div>
+</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;overflow:hidden;opacity:.8">
+<div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid hsl(var(--card-border));font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground))"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Already handled</div>
+<div style="padding:6px 0;font-size:14px">
+<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 18px"><span>Aldi run</span><span style="color:hsl(var(--muted-foreground))">weekly · counted</span></div>
+<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 18px"><span>Meds refills</span><span style="color:hsl(var(--muted-foreground))">auto</span></div>
+<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 18px"><span>Phone, streaming</span><span style="color:hsl(var(--muted-foreground))">auto</span></div>
+</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground));padding-left:4px">Watching · set from your own deferrals, not rules you wrote</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px">
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;font-size:14px"><div><div style="font-weight:600">Standing desk</div><div style="color:hsl(var(--muted-foreground));font-size:13px;margin-top:2px">alert under $400 · deferred in July</div></div><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Badge" variant="soft" tone="teal" hint-size="auto,24px">On sale</x-import></div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;font-size:14px"><div><div style="font-weight:600">Dyson filter</div><div style="color:hsl(var(--muted-foreground));font-size:13px;margin-top:2px">alert under $45 · deferred in August</div></div><span style="font-size:13px;color:hsl(var(--muted-foreground))">$58</span></div>
+<div style="border:1px dashed hsl(var(--border));border-radius:12px;padding:14px 18px;display:flex;align-items:center;font-size:13px;color:hsl(var(--muted-foreground))">Anything you say "not now" to shows up here on its own.</div>
+</div>
+</div>
+</div>
+</div>
+</x-import>
+</div>
+<p class="dv-note"><b>Why:</b> buckets are named for what Shane needs to feel (safe / needs a decision / already done), not for spend types. The proposal is the only card allowed to talk about a number, and it phrases the trade-off against something he deferred himself. Everything Already-handled is dimmed so it reads as closed.</p>
+</div>
+</div>
+<p class="dv-next"><a href="Shanes%20Life%2007%20-%20Meds.dc.html">← Medication</a> · <a href="Shanes%20Life%2000%20-%20Design%20Pack.dc.html">All groups</a> · <a href="Shanes%20Life%2009%20-%20Things.dc.html">Things: hub-and-spoke logistics + item memory →</a></p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return { dw: 1100, dh: 700, dwS: 1000, dhS: 640, dwL: 1200, dhL: 620 };
+  }
+}
+</script>
+</body>
+</html>

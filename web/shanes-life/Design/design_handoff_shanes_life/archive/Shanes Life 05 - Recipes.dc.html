@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<!-- SUPERSEDED (Sep 8, 2026): exploration history, not the design. Every screen here was redesigned in ../Shanes Life - First Slice Prototype.dc.html, the only file to build from. See ../README.md, "Source of truth". -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#1e293b!important;font-family:'Inter',system-ui,sans-serif;color:#EEF2F8;-webkit-font-smoothing:antialiased}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(255,255,255,.08);scroll-margin-top:16px;background:#1e293b;min-width:max-content}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#EEF2F8;color:#0A2540;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 'Inter',system-ui,sans-serif;color:#EEF2F8}
+.dv-grp{display:flex;flex-direction:column;gap:4px;margin:44px 0 16px;padding-top:26px;border-top:1px dashed rgba(255,255,255,.18);scroll-margin-top:16px}
+.dv-gname{font:700 16px/1.2 'Inter',system-ui,sans-serif;color:#EEF2F8;letter-spacing:-.01em;margin:0}
+.dv-gnote{font:400 12.5px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.62);max-width:760px;margin:0}
+.dv-opts{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px;max-width:100%}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(255,255,255,.12);color:#EEF2F8;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.62)}
+.dv-olabel b{font-weight:600;color:#EEF2F8}
+.dv-card{max-width:100%;display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+.dv-opt:target .dv-oid{background:#1A8CFF;color:#fff}
+.dv-next{margin:26px 0 0;font:12px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.55)}
+.dv-note{font:400 12px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.68);max-width:402px;margin:0}
+.dv-note b{font-weight:600;color:#EEF2F8}
+.dv-intro{background:#0D1F35;border:1px solid #22364F;border-radius:12px;padding:24px 28px;max-width:980px;font:400 13px/1.55 'Inter',system-ui,sans-serif;color:#EEF2F8;display:grid;grid-template-columns:1fr 1fr;gap:4px 36px}
+.dv-intro h2{margin:0 0 4px;font:700 20px/1.2 'Inter',system-ui,sans-serif;letter-spacing:-.015em;grid-column:1/-1}
+.dv-intro p{margin:0 0 6px;grid-column:1/-1}
+.dv-intro h3{margin:14px 0 4px;font:600 10.5px/1 'Inter',system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.55)}
+.dv-intro ul{margin:0;padding-left:18px}
+.dv-intro li{margin:3px 0}
+.dv-ph{width:402px;height:200px;border:1px dashed rgba(255,255,255,.25);border-radius:16px;display:flex;align-items:center;justify-content:center;font:500 12px 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.45)}
+</style>
+</helmet>
+<div style="position:relative;z-index:99999;margin:0 0 18px;padding:14px 20px;background:#7F1D1D;border-bottom:2px solid #FCA5A5;color:#FFFFFF;font:600 14px/1.5 Inter,-apple-system,system-ui,sans-serif;text-align:center;text-wrap:pretty">SUPERSEDED · exploration history, not the design. Every screen on this page was redesigned in <a href="../Shanes%20Life%20-%20First%20Slice%20Prototype.dc.html" style="color:#FDE68A">Shanes Life - First Slice Prototype.dc.html</a>, the only file to build from. See <span style="color:#FDE68A">../README.md → “Source of truth”</span>.</div>
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Additions to <a class="dv-oid" href="#1k">1k</a> from your notes: ingredient check boxes inside steps, and a timer that lives in the app and rings loud</span></div>
+<div class="dv-opts">
+<div class="dv-opt" id="2a"><div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a><b>Step with ingredient checks, timer running</b></div>
+<div class="dv-card">
+<x-import component-from-global-scope="IOSDevice" from="../ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div class="dark" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;padding-top:54px;background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--font-sans);-webkit-font-smoothing:antialiased">
+<div style="background:hsl(var(--card))">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px 8px">
+<div style="display:flex;align-items:center;color:#60a5fa;font-size:15px;min-width:96px;height:40px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>Recipes</div>
+<div style="text-align:center;flex:1;min-width:0;white-space:nowrap"><div style="font-size:16px;font-weight:700;overflow:hidden;text-overflow:ellipsis">Spaghetti, meat sauce</div><div style="font-size:12px;color:hsl(var(--muted-foreground))">Step 3 of 6</div></div>
+<div style="display:flex;justify-content:flex-end;min-width:96px;color:#60a5fa;font-size:15px;align-items:center;height:40px;padding-right:6px">Ingredients</div>
+</div>
+<div style="height:3px;background:linear-gradient(90deg,#0078D4,#00B4D8)"></div>
+</div>
+<div style="margin:12px 16px 0;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;border-radius:14px;background:hsl(var(--primary));color:#fff;box-shadow:var(--glow-blue-sm)">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+<div style="flex:1;min-width:0"><div style="font-size:12px;opacity:.85">Pasta · rings loud when it hits 0</div><div style="font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1.05;font-variant-numeric:tabular-nums">6:42</div></div>
+<span style="font-size:13px;font-weight:600;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.18)">+1 min</span>
+<span style="font-size:13px;font-weight:600;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.18)">Stop</span>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 22px;gap:18px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground))">Step 3</div>
+<div style="font-size:27px;font-weight:700;letter-spacing:-.02em;line-height:1.2;text-wrap:pretty">Pour the sauce over the beef, add the veg, season, and drop the heat to low.</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:16px;overflow:hidden;font-size:16px">
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px"><div style="width:28px;height:28px;border-radius:999px;background:hsl(var(--primary));display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div><span style="flex:1;color:hsl(var(--muted-foreground));text-decoration:line-through">Spaghetti sauce, 1 jar</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Frozen mixed veg, half a bag</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Salt, ½ tsp</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Pepper, a few grinds</span></div>
+</div>
+</div>
+<div style="padding:12px 16px 42px;display:flex;flex-direction:column;gap:8px">
+<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;grid-auto-rows:56px"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="outline" hint-size="100%,56px">Back</x-import><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="lg" hint-size="100%,56px"><span style="font-size:16px">Next step</span></x-import></div>
+<div style="text-align:center;font-size:12px;color:hsl(var(--muted-foreground))">Unchecked ingredients don't block Next; they just stay visible.</div>
+</div>
+</div>
+</x-import>
+</div>
+<p class="dv-note"><b>Why:</b> every step that uses ingredients lists them as 52px check rows, so "did I add the salt?" is answered by looking, not remembering. The timer is pinned above the step while it runs, so Shane can move to the next step without losing it.</p>
+</div>
+
+<div class="dv-opt" id="2b"><div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a><b>Timer done</b> · takes the whole screen and keeps ringing until stopped</div>
+<div class="dv-card">
+<x-import component-from-global-scope="IOSDevice" from="../ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div class="dark" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;padding:58px 24px 60px;background:hsl(var(--primary));color:#fff;font-family:var(--font-sans);-webkit-font-smoothing:antialiased">
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;text-align:center">
+<div style="width:132px;height:132px;border-radius:999px;border:6px solid rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 18px rgba(255,255,255,.08),0 0 0 40px rgba(255,255,255,.04)"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg></div>
+<div style="font-size:64px;font-weight:800;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums">0:00</div>
+<div style="font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.2">Pasta is done</div>
+<div style="font-size:15px;line-height:1.5;color:rgba(255,255,255,.8);max-width:280px;text-wrap:pretty">Step 4 · drain it and toss with the sauce. Ringing at full volume, even on silent.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="height:64px;border-radius:14px;background:#fff;color:hsl(var(--primary));display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700">Stop</div>
+<div style="height:48px;border-radius:14px;border:1px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600">Give it 1 more minute</div>
+</div>
+</div>
+</x-import>
+</div>
+<p class="dv-note"><b>Why:</b> the alarm is the one place the app is allowed to be loud. Full-screen, one giant Stop, and it names the next step so Shane lands back in the recipe. The app keeps the timer alive in the background and fires a critical alert if the phone is locked.</p>
+</div>
+</div>
+<p class="dv-next">Applies to <a class="dv-oid" href="#1k">1k</a>. Desktop shows the same timer chip under the top bar with a browser notification when it ends.</p>
+</section>
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="Shanes%20Life%2000%20-%20Design%20Pack.dc.html">1</a><span class="dv-tname">Shane's Life · Recipes mode · <a href="Shanes%20Life%2000%20-%20Design%20Pack.dc.html" style="font-weight:500">all groups</a></span></div>
+<div class="dv-grp" id="g-recipes"><h4 class="dv-gname">Recipes mode</h4><p class="dv-gnote">One direction. Recipes are matched against what's already on the Aldi list; the phone shows cook mode, the desktop shows the recipe with the have/missing check.</p></div>
+<div class="dv-opts">
+<div class="dv-opt" id="1k"><div class="dv-olabel"><a class="dv-oid" href="#1k">1k</a><b>Cook mode + recipe browser</b> · phone in the kitchen, desktop for choosing</div>
+<div class="dv-card">
+<x-import component-from-global-scope="IOSDevice" from="../ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div class="dark" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;padding-top:54px;background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--font-sans);-webkit-font-smoothing:antialiased">
+<div style="background:hsl(var(--card))">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px 8px">
+<div style="display:flex;align-items:center;color:#60a5fa;font-size:15px;min-width:96px;height:40px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>Recipes</div>
+<div style="text-align:center;flex:1;min-width:0;white-space:nowrap"><div style="font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px">Spaghetti, meat sauce</div><div style="font-size:12px;color:hsl(var(--muted-foreground))">Step 2 of 6</div></div>
+<div style="display:flex;justify-content:flex-end;min-width:96px;color:#60a5fa;font-size:15px;align-items:center;height:40px;padding-right:6px">Ingredients</div>
+</div>
+<div style="height:3px;background:linear-gradient(90deg,#0078D4,#00B4D8)"></div>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 26px;gap:22px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground))">Step 2</div>
+<div style="font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.2;text-wrap:pretty">Brown the ground beef over medium-high heat, breaking it up as it goes. About 6 to 8 minutes.</div>
+<div style="display:flex;flex-wrap:wrap;gap:8px">
+<span style="display:inline-flex;align-items:center;gap:8px;font-size:14px;padding:9px 14px;border-radius:999px;background:hsl(var(--card));border:1px solid hsl(var(--card-border))"><span style="width:8px;height:8px;border-radius:99px;background:#34d399"></span>Ground beef, 1 lb · in the cart today</span>
+</div>
+<div style="display:flex"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="outline" hint-size="auto,40px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>Start a 7-minute timer</x-import></div>
+</div>
+<div style="padding:12px 16px 42px;display:flex;flex-direction:column;gap:8px">
+<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;grid-auto-rows:56px"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="outline" hint-size="100%,56px">Back</x-import><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="lg" hint-size="100%,56px"><span style="font-size:16px">Next step</span></x-import></div>
+<div style="text-align:center;font-size:12px;color:hsl(var(--muted-foreground))">Screen stays awake in cook mode</div>
+</div>
+</div>
+</x-import>
+<x-import component-from-global-scope="ChromeWindow" from="../browser-window.jsx" url="shaneslife.replit.app/recipes" width="{{ dw }}" height="{{ dh }}" hint-size="1100px,700px">
+<div class="dark" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--font-sans);-webkit-font-smoothing:antialiased">
+<div style="height:64px;flex-shrink:0;background:hsl(var(--card));border-bottom:1px solid hsl(var(--card-border));display:flex;align-items:center;gap:24px;padding:0 24px">
+<div style="display:flex;align-items:center;gap:10px;flex-shrink:0"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Logo" size="sm" show-text="{{ false }}" hint-size="32px,32px"></x-import><span style="font-size:15px;font-weight:700;letter-spacing:-.01em">Shane's Life</span></div>
+<div style="flex:1;max-width:520px;margin:0 auto;display:flex;align-items:center;gap:10px;height:40px;padding:0 8px 0 14px;border:1px solid hsl(var(--border));border-radius:8px;background:hsl(var(--background));color:hsl(var(--muted-foreground));font-size:14px"><span style="flex:1">Say or type anything</span><span style="font-size:11px;font-weight:600;padding:2px 6px;border:1px solid rgba(255,255,255,.18);border-radius:4px;color:hsl(var(--muted-foreground))">⌘K</span></div>
+<div style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:500;flex-shrink:0"><span style="padding:6px 10px;border-radius:6px">Shopping</span><span style="padding:6px 10px;border-radius:6px;background:rgba(255,255,255,.08)">Recipes</span><span style="padding:6px 10px;border-radius:6px">Review</span><span style="padding:6px 10px;border-radius:6px">Things</span><span style="padding:6px 10px;border-radius:6px">Money</span><span style="padding:6px 10px;border-radius:6px">People</span></div>
+<div style="width:32px;height:32px;border-radius:999px;background:linear-gradient(135deg,#0078D4,#00B4D8);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">S</div>
+</div>
+<div style="height:3px;background:linear-gradient(90deg,#0078D4,#00B4D8);flex-shrink:0"></div>
+<div style="flex:1;display:grid;grid-template-columns:320px minmax(0,1fr);gap:0;overflow:hidden">
+<div style="border-right:1px solid hsl(var(--card-border));padding:24px 20px;display:flex;flex-direction:column;gap:10px;overflow:hidden">
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground));padding:0 4px 6px">From what's on the Aldi list</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--primary) / .5);border-radius:12px;padding:14px 16px"><div style="font-size:15px;font-weight:600">Spaghetti with meat sauce</div><div style="font-size:13px;color:#34d399;margin-top:4px">You'll have everything</div></div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;padding:14px 16px"><div style="font-size:15px;font-weight:600">Chicken alfredo</div><div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px">Missing parmesan · <span style="color:#60a5fa">add to Aldi</span></div></div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;padding:14px 16px"><div style="font-size:15px;font-weight:600">Baked potatoes, lunch-meat melts</div><div style="font-size:13px;color:#34d399;margin-top:4px">You'll have everything</div></div>
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground));padding:16px 4px 6px">Saved</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;padding:14px 16px"><div style="font-size:15px;font-weight:600">Sheet-pan chicken thighs</div><div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px">Missing lemons, rosemary</div></div>
+</div>
+<div style="padding:28px 36px;display:flex;flex-direction:column;gap:22px;overflow:hidden">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
+<div><div style="font-size:28px;font-weight:800;letter-spacing:-.02em;line-height:1.1">Spaghetti with meat sauce</div><div style="display:flex;align-items:center;gap:10px;margin-top:10px"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Badge" variant="soft" tone="emerald" hint-size="auto,24px">Everything on the Aldi list</x-import><span style="font-size:13px;color:hsl(var(--muted-foreground))">35 min · serves 4, leftovers for the Rental</span></div></div>
+<div style="display:grid;grid-auto-rows:40px"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" hint-size="auto,40px">Cook on phone</x-import></div>
+</div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:28px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground))">Ingredients</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;overflow:hidden;font-size:14px">
+<div style="display:flex;align-items:center;gap:10px;padding:10px 14px"><span style="width:8px;height:8px;border-radius:99px;background:#34d399"></span><span style="flex:1">Ground beef, 1 lb</span><span style="font-size:12px;color:hsl(var(--muted-foreground));white-space:nowrap">on the list</span></div>
+<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid hsl(var(--card-border) / .6)"><span style="width:8px;height:8px;border-radius:99px;background:#34d399"></span><span style="flex:1">Spaghetti sauce</span><span style="font-size:12px;color:hsl(var(--muted-foreground));white-space:nowrap">on the list</span></div>
+<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid hsl(var(--card-border) / .6)"><span style="width:8px;height:8px;border-radius:99px;background:#34d399"></span><span style="flex:1">Pasta, 1 box</span><span style="font-size:12px;color:hsl(var(--muted-foreground));white-space:nowrap">on the list</span></div>
+<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid hsl(var(--card-border) / .6)"><span style="width:8px;height:8px;border-radius:99px;background:#34d399"></span><span style="flex:1">Frozen mixed veg, 1 bag</span><span style="font-size:12px;color:hsl(var(--muted-foreground));white-space:nowrap">on the list</span></div>
+<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid hsl(var(--card-border) / .6)"><span style="width:8px;height:8px;border-radius:99px;background:#94a3b8"></span><span style="flex:1">Salt, pepper, oil</span><span style="font-size:12px;color:hsl(var(--muted-foreground));white-space:nowrap">at Home</span></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground))">Steps</div>
+<div style="display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:1.5">
+<div style="display:flex;gap:12px"><span style="width:24px;height:24px;border-radius:99px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">1</span><span>Boil a big pot of salted water.</span></div>
+<div style="display:flex;gap:12px"><span style="width:24px;height:24px;border-radius:99px;background:hsl(var(--primary));color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">2</span><span>Brown the ground beef over medium-high heat, breaking it up. 6 to 8 minutes.</span></div>
+<div style="display:flex;gap:12px"><span style="width:24px;height:24px;border-radius:99px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">3</span><span>Pour in the sauce, drop to low, let it sit while the pasta cooks.</span></div>
+<div style="display:flex;gap:12px"><span style="width:24px;height:24px;border-radius:99px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">4</span><span>Cook the pasta one minute short of the box time.</span></div>
+<div style="display:flex;gap:12px"><span style="width:24px;height:24px;border-radius:99px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">5</span><span>Microwave the veg, stir into the sauce.</span></div>
+<div style="display:flex;gap:12px"><span style="width:24px;height:24px;border-radius:99px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">6</span><span>Toss pasta with sauce. Box half for the Rental fridge.</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</x-import>
+</div>
+<p class="dv-note"><b>Why:</b> recipes are ranked by what's already on the Aldi list, so cooking never generates a second shopping trip. Cook mode is one step per screen at 30px with a timer that lives in the step, not in a notification schedule.</p>
+</div>
+</div>
+<p class="dv-next"><a href="Shanes%20Life%2004%20-%20Shopping.dc.html">← Shopping mode</a> · <a href="Shanes%20Life%2000%20-%20Design%20Pack.dc.html">All groups</a> · <a href="Shanes%20Life%2006%20-%20Review.dc.html">Review (idle-moment triage) →</a></p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return { dw: 1100, dh: 700, dwS: 1000, dhS: 640, dwL: 1200, dhL: 620 };
+  }
+}
+</script>
+</body>
+</html>

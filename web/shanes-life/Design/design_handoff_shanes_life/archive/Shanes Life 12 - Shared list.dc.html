@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<!-- SUPERSEDED (Sep 8, 2026): exploration history, not the design. Every screen here was redesigned in ../Shanes Life - First Slice Prototype.dc.html, the only file to build from. See ../README.md, "Source of truth". -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#1e293b!important;font-family:'Inter',system-ui,sans-serif;color:#EEF2F8;-webkit-font-smoothing:antialiased}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(255,255,255,.08);scroll-margin-top:16px;background:#1e293b;min-width:max-content}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#EEF2F8;color:#0A2540;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 'Inter',system-ui,sans-serif;color:#EEF2F8}
+.dv-grp{display:flex;flex-direction:column;gap:4px;margin:44px 0 16px;padding-top:26px;border-top:1px dashed rgba(255,255,255,.18);scroll-margin-top:16px}
+.dv-gname{font:700 16px/1.2 'Inter',system-ui,sans-serif;color:#EEF2F8;letter-spacing:-.01em;margin:0}
+.dv-gnote{font:400 12.5px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.62);max-width:760px;margin:0}
+.dv-opts{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px;max-width:100%}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(255,255,255,.12);color:#EEF2F8;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.62)}
+.dv-olabel b{font-weight:600;color:#EEF2F8}
+.dv-card{max-width:100%;display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+.dv-opt:target .dv-oid{background:#1A8CFF;color:#fff}
+.dv-next{margin:26px 0 0;font:12px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.55)}
+.dv-note{font:400 12px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.68);max-width:402px;margin:0}
+.dv-note b{font-weight:600;color:#EEF2F8}
+.dv-intro{background:#0D1F35;border:1px solid #22364F;border-radius:12px;padding:24px 28px;max-width:980px;font:400 13px/1.55 'Inter',system-ui,sans-serif;color:#EEF2F8;display:grid;grid-template-columns:1fr 1fr;gap:4px 36px}
+.dv-intro h2{margin:0 0 4px;font:700 20px/1.2 'Inter',system-ui,sans-serif;letter-spacing:-.015em;grid-column:1/-1}
+.dv-intro p{margin:0 0 6px;grid-column:1/-1}
+.dv-intro h3{margin:14px 0 4px;font:600 10.5px/1 'Inter',system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.55)}
+.dv-intro ul{margin:0;padding-left:18px}
+.dv-intro li{margin:3px 0}
+.dv-ph{width:402px;height:200px;border:1px dashed rgba(255,255,255,.25);border-radius:16px;display:flex;align-items:center;justify-content:center;font:500 12px 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.45)}
+</style>
+</helmet>
+<div style="position:relative;z-index:99999;margin:0 0 18px;padding:14px 20px;background:#7F1D1D;border-bottom:2px solid #FCA5A5;color:#FFFFFF;font:600 14px/1.5 Inter,-apple-system,system-ui,sans-serif;text-align:center;text-wrap:pretty">SUPERSEDED · exploration history, not the design. Every screen on this page was redesigned in <a href="../Shanes%20Life%20-%20First%20Slice%20Prototype.dc.html" style="color:#FDE68A">Shanes Life - First Slice Prototype.dc.html</a>, the only file to build from. See <span style="color:#FDE68A">../README.md → “Source of truth”</span>.</div>
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Decision: <a class="dv-oid" href="#1t">1t</a> is the page, with a three-way toggle: Flat (<a class="dv-oid" href="#1t">1t</a>), Category (from <a class="dv-oid" href="#1u">1u</a>), and Best path, which orders the list by aisle number. No note from Shane, no Home/Rental split. It carries Shopping mode's tools: scan, aisle memory, one-at-a-time, check off, add. Phone only.</span></div>
+<div class="dv-opts">
+<div class="dv-opt" id="2a"><div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a><b>1t with Shopping mode's tools</b> · Flat / Category / Best path toggle, shown on Best path</div>
+<div class="dv-card">
+<x-import component-from-global-scope="IOSDevice" from="../ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div class="dark" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;padding-top:58px;background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--font-sans);-webkit-font-smoothing:antialiased">
+<div style="margin:6px 16px 0;height:38px;border-radius:12px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;color:hsl(var(--muted-foreground))"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>shaneslife.replit.app/l/aldi-9f3k</div>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px 20px">
+<div style="min-width:0"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:800;letter-spacing:-.02em">Aldi run</span><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Badge" variant="soft" tone="teal" hint-size="auto,24px">Shared</x-import></div><div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:2px">From Shane · 7 left · you're at aisle 5</div></div>
+<div style="width:44px;height:44px;border-radius:12px;background:rgba(45,212,191,.14);border:1px solid rgba(45,212,191,.3);color:#2dd4bf;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path><path d="M8 7v10"></path><path d="M12 7v10"></path><path d="M17 7v10"></path></svg></div>
+</div>
+<div style="margin:0 16px;display:grid;grid-template-columns:1fr 1fr 1fr;padding:3px;background:rgba(255,255,255,.08);border-radius:10px;font-size:13px;font-weight:600;text-align:center">
+<div style="padding:8px 0;color:hsl(var(--muted-foreground))">Flat</div><div style="padding:8px 0;color:hsl(var(--muted-foreground))">Category</div><div style="padding:8px 0;border-radius:8px;background:hsl(var(--card));box-shadow:var(--shadow-dark-md)">Best path</div>
+</div>
+<div style="flex:1;overflow:hidden;padding:12px 16px 0;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:12px;align-items:flex-start">
+<div style="width:44px;flex-shrink:0;text-align:center;padding-top:8px"><div style="font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground))">Aisle</div><div style="font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1;color:hsl(var(--foreground))">5</div></div>
+<div style="flex:1;min-width:0;background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:16px;overflow:hidden;font-size:16px"><div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:54px"><div style="width:28px;height:28px;border-radius:999px;background:#2dd4bf;display:flex;align-items:center;justify-content:center;color:#07182C;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div><span style="flex:1;color:hsl(var(--muted-foreground));text-decoration:line-through">Chicken thighs, family pack</span></div><div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:54px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Ground beef, 1 lb</span></div></div>
+</div>
+<div style="display:flex;gap:12px;align-items:flex-start">
+<div style="width:44px;flex-shrink:0;text-align:center;padding-top:8px"><div style="font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#2dd4bf">Aisle</div><div style="font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1;color:#2dd4bf">12</div></div>
+<div style="flex:1;min-width:0;background:hsl(var(--card));border:1px solid rgba(45,212,191,.45);border-radius:16px;overflow:hidden;font-size:16px"><div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:54px"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Spaghetti sauce</span><span style="font-size:12px;color:hsl(var(--muted-foreground))">left, 2nd row</span></div><div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:54px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Alfredo sauce</span><span style="font-size:12px;color:hsl(var(--muted-foreground))">same shelf</span></div><div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:54px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Pasta, 3 boxes</span><span style="font-size:12px;color:hsl(var(--muted-foreground))">end cap</span></div></div>
+</div>
+<div style="display:flex;gap:12px;align-items:flex-start">
+<div style="width:44px;flex-shrink:0;text-align:center;padding-top:8px"><div style="font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground))">Aisle</div><div style="font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1;color:hsl(var(--foreground))">15</div></div>
+<div style="flex:1;min-width:0;background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:16px;overflow:hidden;font-size:16px"><div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:54px"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Milk, full gallon</span></div></div>
+</div>
+<div style="display:flex;gap:12px;align-items:flex-start">
+<div style="width:44px;flex-shrink:0;text-align:center;padding-top:10px;color:hsl(var(--muted-foreground))"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><path d="M12 17h.01"></path></svg></div>
+<div style="flex:1;min-width:0;background:hsl(var(--card));border:1px dashed hsl(var(--border));border-radius:16px;overflow:hidden;font-size:16px"><div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:54px"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Mustard</span><span style="font-size:12px;color:hsl(var(--muted-foreground))"><span style="font-style:italic">say the aisle when you find it</span></span></div></div>
+</div>
+</div>
+<div style="margin:0 16px 10px;padding:12px 14px;background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;box-shadow:var(--shadow-dark-lg);display:flex;align-items:center;gap:12px">
+<div style="width:28px;height:28px;border-radius:999px;background:rgba(45,212,191,.16);color:#2dd4bf;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:700">S</div>
+<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">Shane just checked off Chicken thighs</div><div style="font-size:13px;color:hsl(var(--muted-foreground))">Live · everyone on this link sees the same list</div></div>
+</div>
+<div style="padding:10px 16px 42px;border-top:1px solid hsl(var(--card-border));background:hsl(var(--card));display:flex;align-items:center;gap:10px">
+<div style="flex:1;display:flex;align-items:center;min-height:48px;padding:0 14px;border:1px solid hsl(var(--border));border-radius:12px;background:hsl(var(--background));color:hsl(var(--muted-foreground));font-size:15px">Add, or say where you found it</div>
+<div style="width:48px;height:48px;border-radius:12px;background:#2dd4bf;color:#07182C;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg></div>
+</div>
+</div>
+</x-import>
+</div>
+<p class="dv-note"><b>Why:</b> Best path is as simple as it gets: the aisle number is the heading, items sit under it, the aisle you're in is teal, and anything without a saved aisle waits at the bottom with a dashed border. Flat is <a class="dv-oid" href="#1t">1t</a> as drawn; Category groups by Meat / Pantry / Dairy. The toggle is remembered per person. One Shopping mode, two doors. Signed-in Shane and a link holder render the same screen; the only differences are the URL bar, teal instead of blue (so it's obvious which door you came through), and no path back into the rest of the app. Scans, prices, aisle spots, check-offs and adds from either door write to the same list and the same store memory, and every phone on the link updates live.</p>
+</div>
+</div>
+<p class="dv-next">Builds on <a class="dv-oid" href="#1t">1t</a> with <a class="dv-oid" href="#1u">1u</a>'s grouping as a toggle; <a class="dv-oid" href="#1v">1v</a> is not used. Views and layers: <a class="dv-oid" href="Shanes%20Life%2004%20-%20Shopping.dc.html#1h">1h</a> <a class="dv-oid" href="Shanes%20Life%2004%20-%20Shopping.dc.html#1i">1i</a> <a class="dv-oid" href="Shanes%20Life%2004%20-%20Shopping.dc.html#1j">1j</a> + <a class="dv-oid" href="Shanes%20Life%2004%20-%20Shopping.dc.html#2a">2a</a> <a class="dv-oid" href="Shanes%20Life%2004%20-%20Shopping.dc.html#2b">2b</a>.</p>
+</section>
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="Shanes%20Life%2000%20-%20Design%20Pack.dc.html">1</a><span class="dv-tname">Shane's Life · Shared list (no login) · <a href="Shanes%20Life%2000%20-%20Design%20Pack.dc.html" style="font-weight:500">all groups</a></span></div>
+<div class="dv-grp" id="g-shared"><h4 class="dv-gname">Shared list (no login)</h4><p class="dv-gnote">Three directions for the public-by-link page. Phone only: the link is opened from a text, in a store. Anyone with it can check off and add. Teal marks the shared surface so it never looks like the private app.</p></div>
+<div class="dv-opts">
+<div class="dv-opt" id="1t"><div class="dv-olabel"><a class="dv-oid" href="#1t">1t</a><b>Plain public list</b> · the list, a check, an add box, nothing else</div>
+<div class="dv-card">
+<x-import component-from-global-scope="IOSDevice" from="../ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div class="dark" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;padding-top:58px;background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--font-sans);-webkit-font-smoothing:antialiased">
+<div style="margin:6px 16px 0;height:38px;border-radius:12px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;color:hsl(var(--muted-foreground))"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>shaneslife.replit.app/l/aldi-9f3k</div>
+<div style="flex:1;overflow:hidden;padding:18px 16px 0;display:flex;flex-direction:column;gap:14px">
+<div style="padding:0 4px">
+<div style="display:flex"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Badge" variant="soft" tone="teal" hint-size="auto,24px">Shared link · no sign-in</x-import></div>
+<div style="font-size:28px;font-weight:800;letter-spacing:-.02em;line-height:1.1;margin-top:10px">Aldi run</div>
+<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-top:4px">From Shane · 13 left · live for everyone on this link</div>
+</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:16px;overflow:hidden;font-size:16px">
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px"><div style="width:28px;height:28px;border-radius:999px;background:#2dd4bf;display:flex;align-items:center;justify-content:center;color:#07182C;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div><span style="flex:1;color:hsl(var(--muted-foreground));text-decoration:line-through">Bananas</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;background:#2dd4bf;display:flex;align-items:center;justify-content:center;color:#07182C;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div><span style="flex:1;color:hsl(var(--muted-foreground));text-decoration:line-through">Potatoes, 5 lb bag</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Eggs, 1 dozen</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Chicken thighs, family pack</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Ground beef, 1 lb</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Spaghetti sauce</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Alfredo sauce</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Pasta, 3 boxes</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Mustard</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Bread</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Frozen mixed veg, 2 bags</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Milk, full gallon</span></div>
+</div>
+</div>
+<div style="padding:10px 16px 42px;border-top:1px solid hsl(var(--card-border));background:hsl(var(--card));display:flex;align-items:center;gap:10px">
+<div style="flex:1;display:flex;align-items:center;min-height:48px;padding:0 14px;border:1px solid hsl(var(--border));border-radius:12px;background:hsl(var(--background));color:hsl(var(--muted-foreground));font-size:15px">Add an item</div>
+<div style="display:grid;grid-auto-rows:48px;min-width:76px"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" hint-size="76px,48px">Add</x-import></div>
+</div>
+</div>
+</x-import>
+</div>
+<p class="dv-note"><b>Why:</b> the minimum viable public page, and the likely first slice to ship. Teal check marks and the teal badge are the only signal that this is the shared surface; no app chrome, no account prompt, no download nag.</p>
+</div>
+
+<div class="dv-opt" id="1u"><div class="dv-olabel"><a class="dv-oid" href="#1u">1u</a><b>Store handoff</b> · written for the person holding the cart, with a way to say "done"</div>
+<div class="dv-card">
+<x-import component-from-global-scope="IOSDevice" from="../ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div class="dark" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;padding-top:58px;background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--font-sans);-webkit-font-smoothing:antialiased">
+<div style="margin:6px 16px 0;height:38px;border-radius:12px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;color:hsl(var(--muted-foreground))"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>shaneslife.replit.app/l/aldi-9f3k</div>
+<div style="flex:1;overflow:hidden;padding:18px 16px 0;display:flex;flex-direction:column;gap:14px">
+<div style="padding:0 4px">
+<div style="font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1.15;text-wrap:pretty">Could you grab these at Aldi?</div>
+<div style="display:flex;align-items:flex-start;gap:10px;margin-top:10px;padding:12px 14px;background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;font-size:14px;line-height:1.45"><div style="width:28px;height:28px;border-radius:999px;background:linear-gradient(135deg,#0078D4,#00B4D8);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">S</div><div><span style="font-weight:600">Shane:</span> Milk and bread go to the Rental, everything else comes home. Thank you.</div></div>
+</div>
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground));padding-left:4px">Meat</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:16px;overflow:hidden;font-size:17px">
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:58px"><div style="width:30px;height:30px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Chicken thighs, family pack</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:58px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:30px;height:30px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Ground beef, 1 lb</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:58px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:30px;height:30px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Lunch meat</span></div>
+</div>
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground));padding-left:4px">Dairy</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:16px;overflow:hidden;font-size:17px">
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:58px"><div style="width:30px;height:30px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Eggs, 1 dozen</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:58px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:30px;height:30px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Milk, full gallon</span><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Badge" variant="soft" tone="teal" hint-size="auto,24px">Rental</x-import></div>
+</div>
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground));padding-left:4px">Pantry</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:16px;overflow:hidden;font-size:17px">
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:58px"><div style="width:30px;height:30px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Spaghetti sauce</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:58px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:30px;height:30px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Alfredo sauce</span></div>
+</div>
+</div>
+<div style="padding:10px 16px 42px;border-top:1px solid hsl(var(--card-border));background:hsl(var(--card));display:flex;align-items:center;gap:12px">
+<div style="flex:1;font-size:14px;color:hsl(var(--muted-foreground))">9 left</div>
+<div style="display:grid;grid-auto-rows:48px"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="lg" hint-size="auto,48px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Text Shane I'm done</x-import></div>
+</div>
+</div>
+</x-import>
+</div>
+<p class="dv-note"><b>Why:</b> the link is usually opened by someone else. The page opens with a request and Shane's one-line note, groups by aisle, and ends with a single "I'm done" that fires an SMS. Rental items are tagged so nothing has to be explained twice.</p>
+</div>
+
+<div class="dv-opt" id="1v"><div class="dv-olabel"><a class="dv-oid" href="#1v">1v</a><b>Split by destination</b> · Home and Rental as two sections, estimates shown</div>
+<div class="dv-card">
+<x-import component-from-global-scope="IOSDevice" from="../ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div class="dark" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;padding-top:58px;background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--font-sans);-webkit-font-smoothing:antialiased">
+<div style="margin:6px 16px 0;height:38px;border-radius:12px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;color:hsl(var(--muted-foreground))"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>shaneslife.replit.app/l/aldi-9f3k</div>
+<div style="flex:1;overflow:hidden;padding:18px 16px 0;display:flex;flex-direction:column;gap:14px">
+<div style="padding:0 4px;display:flex;align-items:flex-end;justify-content:space-between;gap:10px">
+<div><div style="font-size:28px;font-weight:800;letter-spacing:-.02em;line-height:1.1">Aldi run</div><div style="font-size:14px;color:hsl(var(--muted-foreground));margin-top:4px">From Shane · about $45 to $55</div></div>
+<x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Badge" variant="soft" tone="teal" hint-size="auto,24px">Shared</x-import>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:3px;background:rgba(255,255,255,.08);border-radius:10px;font-size:13px;font-weight:600;text-align:center">
+<div style="padding:8px 0;border-radius:8px;background:hsl(var(--card));box-shadow:var(--shadow-dark-md)">All · 15</div><div style="padding:8px 0;color:hsl(var(--muted-foreground))">Home · 12</div><div style="padding:8px 0;color:hsl(var(--muted-foreground))">Rental · 3</div>
+</div>
+<div style="display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground));padding-left:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>Home</div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:16px;overflow:hidden;font-size:16px">
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px"><div style="width:28px;height:28px;border-radius:999px;background:#2dd4bf;display:flex;align-items:center;justify-content:center;color:#07182C;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div><span style="flex:1;color:hsl(var(--muted-foreground));text-decoration:line-through">Bananas</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">~$1.50</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Chicken thighs, family pack</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">~$6–7</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Ground beef, 1 lb</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">~$4–5</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Eggs, 1 dozen</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">~$2</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Pasta, 3 boxes</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">~$3</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Cereal</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">~$2–2.50</span></div>
+<div style="display:flex;align-items:center;justify-content:center;padding:10px;font-size:13px;color:#60a5fa;font-weight:600;border-top:1px solid hsl(var(--card-border) / .6)">6 more</div>
+</div>
+<div style="display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#2dd4bf;padding-left:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>Rental</div>
+<div style="background:hsl(var(--card));border:1px solid rgba(45,212,191,.3);border-radius:16px;overflow:hidden;font-size:16px">
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Milk, full gallon</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">~$3–3.50</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Bread</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">~$1.50–2</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:0 16px;min-height:52px;border-top:1px solid hsl(var(--card-border) / .6)"><div style="width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);box-sizing:border-box;flex-shrink:0"></div><span style="flex:1">Lunch meat</span><span style="font-size:13px;color:hsl(var(--muted-foreground))">~$3–4</span></div>
+</div>
+</div>
+<div style="padding:10px 16px 42px;border-top:1px solid hsl(var(--card-border));background:hsl(var(--card));display:flex;align-items:center;gap:10px">
+<div style="flex:1;display:flex;align-items:center;min-height:48px;padding:0 14px;border:1px solid hsl(var(--border));border-radius:12px;background:hsl(var(--background));color:hsl(var(--muted-foreground));font-size:15px">Add an item</div>
+<div style="display:grid;grid-auto-rows:48px;min-width:76px"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" hint-size="76px,48px">Add</x-import></div>
+</div>
+</div>
+</x-import>
+</div>
+<p class="dv-note"><b>Why:</b> the hub-and-spoke grocery exception made visible. Anyone bagging the groceries can see what goes where; the split comes from capture ("milk and bread for the rental"), not from a form. Estimates ride along because Shane already thinks in them.</p>
+</div>
+</div>
+<p class="dv-next"><a href="Shanes%20Life%2011%20-%20People.dc.html">← People and Patterns</a> · <a href="Shanes%20Life%2000%20-%20Design%20Pack.dc.html">All groups</a> · <a href="Shanes%20Life%2013%20-%20Architecture.dc.html">Claude → MCP → app boundary →</a></p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return { dw: 1100, dh: 700, dwS: 1000, dhS: 640, dwL: 1200, dhL: 620 };
+  }
+}
+</script>
+</body>
+</html>
