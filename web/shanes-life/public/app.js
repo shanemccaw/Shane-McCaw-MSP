@@ -2043,7 +2043,8 @@ async function viewToday(view) {
   // prototype's own `foxLine` ternary orders it (doctor check before `th.thFox`).
   const foxLine = nextKind === "doctor" ? `${foxOpener(hour)} ${matchLine}` : theme.thFox || (matchLine ? `${foxOpener(hour)} ${matchLine}` : foxOpener(hour));
   const wx = cachedWeather() || sampleWeather(hour >= 7 && hour < 19);
-  view.append(renderTodayHeader(now, dateNow, wx, foxLine, theme));
+  const todayScene = renderTodayHeader(now, dateNow, wx, foxLine, theme);
+  view.append(todayScene);
   // The design's own stated fallback: render instantly with the sample/cached weather, then
   // swap in the real Open-Meteo read the moment it answers (decorative only -- a failed fetch
   // just leaves the sample in place, see weather.js).
@@ -2063,6 +2064,13 @@ async function viewToday(view) {
   view.append(geoSlot);
   fillNearbyPlaceSlot(geoSlot);
 
+  // Git #3332: Next only overlaps the scene's own tail -- never whatever real content (a place
+  // slot, a Tonight teaser, a Meals nudge) actually landed between them, since pulling Next up
+  // over one of those would overlap the wrong thing entirely. This only ever goes true when
+  // Next genuinely renders right after the scene, which is the case the gap itself was ever
+  // about (nothing else showing between .today-scene and Next).
+  let nextFollowsSceneDirectly = true;
+
   // Tonight teaser (Git #3126) -- purely real client state (mealSession is never persisted
   // server-side, see its own declaration), so this only ever shows while a live synchronized
   // cook session genuinely exists right now. Takes priority over #3127's own "Tonight" plan
@@ -2081,6 +2089,7 @@ async function viewToday(view) {
         ]),
       ]),
     );
+    nextFollowsSceneDirectly = false;
   } else if (data.tonight) {
     // #3127's real "Tonight" teaser -- today's real planned dinner, matched against what Claude
     // pushed for the Sunday ritual. A label, not a timer: multi-dish Cook-mode timing is Git
@@ -2093,6 +2102,7 @@ async function viewToday(view) {
         ]),
       ]),
     );
+    nextFollowsSceneDirectly = false;
   }
 
   // The rest of #3127's real moment-based meal nudges -- "don't forget to make lunch for
@@ -2109,14 +2119,19 @@ async function viewToday(view) {
       );
     }
     view.append(meals);
+    nextFollowsSceneDirectly = false;
   }
+  // fillNearbyPlaceSlot() above resolves async -- geoSlot is reliably still empty at this point
+  // in the render pass (it only ever gets a real match, never a placeholder), same real reason
+  // #3159 gives for why opening Today never blocks on it.
+  if (geoSlot.childElementCount > 0) nextFollowsSceneDirectly = false;
 
   // The label sits in its own row, separate from the card list below it -- attachPeeker turns
   // this row (and only this row) into the spec's "position:relative; display:flex;
   // align-items:flex-end" label row; the cards stay in normal block flow beneath it.
   const nextLabel = el("h2", { text: "Next" });
   const nextLabelRow = el("div", { class: "section-label-row" }, [nextLabel]);
-  const next = el("section", { class: "section" }, [nextLabelRow]);
+  const next = el("section", { class: "section next-overlap-scene" }, [nextLabelRow]);
   // Standalone timers (Git #3307, real chip drawn per Git #3318 / README "Drawn in the same
   // pass" item 6) -- a real blue-tinted action row at the TOP of Next (prototype's own `d.acts`
   // chip for a live timer, First Slice Prototype.dc.html lines 308-315/2816), replacing the old
@@ -2129,6 +2144,25 @@ async function viewToday(view) {
   if (data.later?.trip) next.append(tripActRow(data.later.trip));
   next.append(renderNextCardV3(data, nextKind));
   view.append(next);
+
+  // Git #3332: Shane's own real fix -- Next overlaps the tail of `.today-scene`'s box (its real
+  // min-height 320px, #3303) instead of leaving the rest of the sky/star background as dead
+  // space when the real greeting is shorter than that. `tailSpace` is the *actual* empty room
+  // left inside the scene once its real content (`.today-scene-content`, meta row + fox bubble)
+  // is laid out -- 320px minus that content's own real height, never a guessed constant, so a
+  // short greeting (plenty of empty tail) pulls Next well up into the sky, and a long, wrapping
+  // one (content already fills or exceeds 320px, tailSpace <= 0) pulls it up by nothing at all --
+  // structurally incapable of reaching into the real greeting text itself, exactly what the
+  // issue's own scope calls out to check. Capped so a very short greeting doesn't pull Next up
+  // further than reads as "sitting on top of" the backdrop.
+  if (nextFollowsSceneDirectly) {
+    const sceneContent = todayScene.querySelector(".today-scene-content");
+    const tailSpace = sceneContent ? todayScene.offsetHeight - sceneContent.offsetHeight : 0;
+    if (tailSpace > 0) {
+      const NEXT_SCENE_MAX_OVERLAP_PX = 56;
+      next.style.marginTop = `-${Math.min(tailSpace, NEXT_SCENE_MAX_OVERLAP_PX)}px`;
+    }
+  }
 
   // Peeker (Git #3119): "Next" is the one tray section label this app actually has today, so it
   // gets the day's first peek roll (`b`). "Later" (below) is the spec's other real label beyond

@@ -1562,6 +1562,20 @@ pre.token {
   gap: 12px;
 }
 
+/* Git #3332: when Next is pulled up (negative margin-top set live in app.js, sized to the
+   scene's own real empty tail space -- see viewToday) to overlap `.today-scene`'s tail, it needs
+   a real z-index above the sky/night/weather background layers (`.today-sky`/`.today-night`/
+   `.today-wx-sky`, all z-index:auto) so the card renders on top while the animated backdrop
+   continues visually behind and around it, matching the design's own original "continuous
+   backdrop the foreground sits on" intent -- not the bounded box #3303 was a compromise on its
+   own. Kept below `.today-scene-content`'s z-index:2 on purpose: app.js already caps the overlap
+   so it can never reach into real greeting content, and staying under it is a second, free line
+   of defense against ever painting over that content even if the measurement is ever off. */
+.next-overlap-scene {
+  position: relative;
+  z-index: 1;
+}
+
 .today-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; color: hsl(var(--muted-foreground)); }
 .today-meta-date { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .today-date-text { font-weight: var(--weight-semibold); color: hsl(var(--foreground)); white-space: nowrap; }
