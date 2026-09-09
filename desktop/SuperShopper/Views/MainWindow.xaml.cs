@@ -25,6 +25,23 @@ namespace SuperShopper.Views
             }
         }
 
+        private void Window_StateChanged(object sender, EventArgs e)
+        {
+            if (WindowState == WindowState.Maximized)
+            {
+                // When maximized in WindowChrome, add padding so the window stays strictly within screen work area (doesn't cover Windows taskbar/Start menu)
+                mainBorder.Margin = new Thickness(
+                    SystemParameters.WindowResizeBorderThickness.Left + 2,
+                    SystemParameters.WindowResizeBorderThickness.Top + 2,
+                    SystemParameters.WindowResizeBorderThickness.Right + 2,
+                    SystemParameters.WindowResizeBorderThickness.Bottom + 2);
+            }
+            else
+            {
+                mainBorder.Margin = new Thickness(0);
+            }
+        }
+
         private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ChangedButton == MouseButton.Left)

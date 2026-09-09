@@ -8,9 +8,10 @@
         Height="850" Width="1350"
         MinHeight="600" MinWidth="900"
         WindowStartupLocation="CenterScreen"
-        WindowStyle="None" AllowsTransparency="True"
-        Background="Transparent"
-        Loaded="Window_Loaded">
+        WindowStyle="None" AllowsTransparency="False"
+        Background="{StaticResource WindowBackgroundBrush}"
+        Loaded="Window_Loaded"
+        StateChanged="Window_StateChanged">
 
     <Window.DataContext>
         <vm:MainViewModel/>
@@ -20,8 +21,12 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
     </Window.Resources>
 
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="35" CornerRadius="0" GlassFrameThickness="0" ResizeBorderThickness="6" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
     <!-- Main Outer Window Border -->
-    <Border Background="{StaticResource WindowBackgroundBrush}" 
+    <Border x:Name="mainBorder" Background="{StaticResource WindowBackgroundBrush}" 
             BorderBrush="{StaticResource BorderBrush}" 
             BorderThickness="1">
         <Grid>
@@ -36,8 +41,7 @@
 
             <!-- ==================== ROW 0: CUSTOM TITLEBAR ==================== -->
             <Border Grid.Row="0" Background="{StaticResource HeaderBackgroundBrush}" 
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
-                    MouseDown="TitleBar_MouseDown">
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -50,7 +54,7 @@
                         <Path Data="{StaticResource IconExplorer}" Fill="{StaticResource AccentBrush}"
                               Width="16" Height="16" Stretch="Uniform" Margin="4,0,8,0"/>
                         <TextBlock Text="SuperShopper" Foreground="{StaticResource ForegroundBrightBrush}" FontWeight="Bold" FontSize="13" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                        <Menu VerticalAlignment="Center">
+                        <Menu VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="True">
                             <MenuItem Header="Stores">
                                 <MenuItem Header="Publix Weekly Ad" Command="{Binding NavigateToUrlCommand}" CommandParameter="https://www.publix.com/savings/weekly-ad/view-all"/>
                                 <MenuItem Header="Kroger Weekly Ad" Command="{Binding NavigateToUrlCommand}" CommandParameter="https://www.kroger.com/weeklyad"/>
@@ -76,7 +80,8 @@
                     <!-- Middle: Quick Store Search / Status -->
                     <Border Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
                             Width="450" Height="24" Background="#1E1E1E" 
-                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4">
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
                         <Grid Margin="8,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
@@ -91,7 +96,7 @@
                     </Border>
 
                     <!-- Right: Window Management Controls -->
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconWindowMinimize}" Click="WindowMinimize_Click"/>
                         <Button Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconWindowMaximize}" Click="WindowMaximize_Click"/>
                         <Button Style="{StaticResource TitleBarCloseButtonStyle}" Content="{StaticResource IconWindowClose}" Click="WindowClose_Click"/>
