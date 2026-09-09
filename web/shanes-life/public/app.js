@@ -9417,6 +9417,42 @@ function kindTint(kind) {
   return KIND_TINT[kind] || "#94a3b8"; // slate, for a genuinely on-the-fly kind
 }
 
+// Month calendar day-cell fill (Git #3304, "a calendar in Dates" README pass, Sep 8 2026
+// night) -- same kinds/colors as KIND_TINT above, at the design's own .14/.16 tint for a cell
+// background instead of a solid tile. rgba(148,163,184,.14) is #94a3b8 (KIND_TINT's own
+// on-the-fly slate) at the same opacity, so an unknown kind's cell and tile agree.
+const KIND_BG = {
+  appointment: "rgba(96,165,250,.14)",
+  vet: "rgba(45,212,191,.14)",
+  vaccine: "rgba(45,212,191,.14)",
+  birthday: "rgba(244,114,182,.14)",
+  event: "rgba(251,191,36,.14)",
+  holiday: "rgba(167,139,250,.16)",
+  visit: "rgba(52,211,153,.14)",
+  renewal: "rgba(251,146,60,.14)",
+};
+
+function kindBg(kind) {
+  return KIND_BG[kind] || "rgba(148,163,184,.14)";
+}
+
+// Calendar legend's own lowercase labels (prototype's KIND_LABEL, lowercased) -- "want to go"
+// for `event`, not the title-cased kindLabel() the list rows use for an on-the-fly category.
+const KIND_LEGEND_LABEL = {
+  appointment: "appointment",
+  vet: "vet",
+  vaccine: "vaccine",
+  birthday: "birthday",
+  event: "want to go",
+  holiday: "federal holiday",
+  visit: "visit",
+  renewal: "renewal",
+};
+
+function kindLegendLabel(kind) {
+  return KIND_LEGEND_LABEL[kind] || kindLabel(kind).toLowerCase();
+}
+
 function dateTileEl(atDateISO, kind) {
   const d = new Date(`${String(atDateISO).slice(0, 10)}T00:00:00`);
   const tint = kindTint(kind);
@@ -9480,11 +9516,199 @@ function dateRow(item) {
   return el("a", { class: "tile", href: `#/date/${item.id}` }, [row]);
 }
 
+// Month calendar transient state (Git #3304, "a calendar in Dates" README pass, Sep 8 2026
+// night) -- `calMonth` is the offset from the real current month (clamped -1..12, one back /
+// twelve ahead per the design), `calDay` is the "<monthIndex>-<day>" key of the day card
+// currently expanded. Same idiom as moneyTab/vaultRoomQuery above: transient client-only state,
+// not persisted server-side or to localStorage, reset only by a real page reload.
+let datesCalMonth = 0;
+let datesCalDay = null;
+
+/** The `‹ September 2026 ›` card: nav, S-S weekday letters, 7-col day grid, and the kind
+ *  legend -- exactly the First Slice Prototype's own `calCells`/`calLegend` computation
+ *  (`d.showDates`, `calMonth`/`calDay` in the logic class), against the same `/api/dates` rows
+ *  the grouped list below already uses. Returns the card element plus the events for whatever
+ *  day is currently selected, so the caller can build the day-detail card from the same data
+ *  without re-walking `items`. */
+function datesCalendarCard(items) {
+  const today = new Date();
+  const base = new Date(today.getFullYear(), today.getMonth() + datesCalMonth, 1);
+  const calY = base.getFullYear();
+  const calM = base.getMonth();
+  const firstWeekday = base.getDay();
+  const daysInMonth = new Date(calY, calM + 1, 0).getDate();
+  const rows = Math.ceil((firstWeekday + daysInMonth) / 7);
+  const isCurrentMonth = calY === today.getFullYear() && calM === today.getMonth();
+
+  const evByDay = new Map();
+  for (const item of items) {
+    const d = new Date(`${String(item.at_date).slice(0, 10)}T00:00:00`);
+    if (d.getFullYear() !== calY || d.getMonth() !== calM) continue;
+    const day = d.getDate();
+    if (!evByDay.has(day)) evByDay.set(day, []);
+    evByDay.get(day).push(item);
+  }
+
+  const cellEls = [];
+  const kindsPresent = [];
+  for (let i = 0; i < rows * 7; i++) {
+    const dayNum = i - firstWeekday + 1;
+    if (dayNum < 1 || dayNum > daysInMonth) {
+      cellEls.push(el("div", { class: "dates-cal-cell", style: "visibility:hidden" }));
+      continue;
+    }
+    const evs = evByDay.get(dayNum) || [];
+    for (const e of evs) if (!kindsPresent.includes(e.kind)) kindsPresent.push(e.kind);
+    const isToday = isCurrentMonth && dayNum === today.getDate();
+    const key = `${calM}-${dayNum}`;
+    const selected = datesCalDay === key;
+    const isPast = new Date(calY, calM, dayNum) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const bg = evs.length ? kindBg(evs[0].kind) : selected ? "rgba(255,255,255,.06)" : "transparent";
+    const fg = evs.length ? kindTint(evs[0].kind) : isPast ? "hsl(var(--muted-foreground))" : "hsl(var(--foreground))";
+    const ring = isToday ? "#fff" : selected ? "hsl(var(--primary))" : "transparent";
+    const bold = isToday || evs.length > 0;
+    const opacity = isPast && !isToday && evs.length === 0 ? ".45" : "1";
+    cellEls.push(
+      el(
+        "div",
+        {
+          class: "dates-cal-cell pickable",
+          style: `background:${bg};border-color:${ring};opacity:${opacity}`,
+          onClick: () => {
+            datesCalDay = selected ? null : key;
+            render();
+          },
+        },
+        [
+          el("span", { class: "day-num", style: `color:${fg};font-weight:${bold ? 700 : 500}`, text: String(dayNum) }),
+          el("div", { class: "dots" }, evs.slice(0, 3).map((e) => el("span", { style: `background:${kindTint(e.kind)}` }))),
+        ],
+      ),
+    );
+  }
+
+  const away = datesCalMonth !== 0 || datesCalDay !== null;
+  const navRow = el("div", { class: "dates-cal-nav" }, [
+    el(
+      "button",
+      {
+        type: "button",
+        class: "dates-cal-nav-btn",
+        "aria-label": "Previous month",
+        onClick: () => {
+          datesCalMonth = Math.max(-1, datesCalMonth - 1);
+          datesCalDay = null;
+          render();
+        },
+      },
+      [chevron("left")],
+    ),
+    el("div", { class: "dates-cal-title" }, [
+      el("span", { class: "month-year", text: base.toLocaleDateString([], { month: "long", year: "numeric" }) }),
+      away
+        ? el("button", {
+            type: "button",
+            class: "dates-cal-today-link",
+            text: "Today",
+            onClick: () => {
+              datesCalMonth = 0;
+              datesCalDay = null;
+              render();
+            },
+          })
+        : null,
+    ]),
+    el(
+      "button",
+      {
+        type: "button",
+        class: "dates-cal-nav-btn",
+        "aria-label": "Next month",
+        onClick: () => {
+          datesCalMonth = Math.min(12, datesCalMonth + 1);
+          datesCalDay = null;
+          render();
+        },
+      },
+      [chevron("right")],
+    ),
+  ]);
+
+  const weekdayRow = el(
+    "div",
+    { class: "dates-cal-weekdays" },
+    ["S", "M", "T", "W", "T", "F", "S"].map((l) => el("span", { text: l })),
+  );
+
+  const legend = el("div", { class: "dates-cal-legend" }, [
+    el("span", { class: "dates-cal-legend-item" }, [
+      el("span", { class: "dates-cal-legend-today" }),
+      el("span", { text: "today" }),
+    ]),
+    ...kindsPresent.map((k) =>
+      el("span", { class: "dates-cal-legend-item" }, [
+        el("span", { class: "dates-cal-legend-swatch", style: `background:${kindTint(k)}` }),
+        el("span", { text: kindLegendLabel(k) }),
+      ]),
+    ),
+  ]);
+
+  const card = el("div", { class: "card dates-cal-card" }, [
+    navRow,
+    weekdayRow,
+    el("div", { class: "dates-cal-grid" }, cellEls),
+    legend,
+  ]);
+
+  const selDayNum = datesCalDay !== null ? Number(datesCalDay.split("-")[1]) : null;
+  const selEvents = selDayNum !== null ? evByDay.get(selDayNum) || [] : [];
+  const selDate = selDayNum !== null ? new Date(calY, calM, selDayNum) : null;
+
+  return { card, selDate, selEvents };
+}
+
+/** The day-detail card between the calendar and the grouped list ("Tuesday, Sep 15", tap-again
+ *  or Clear to dismiss) -- same real tile+title+line rows as the list below, via dateRow(). */
+function datesCalendarDayCard(selDate, selEvents) {
+  const header = el("div", { class: "dates-cal-day-header" }, [
+    el("span", { class: "dates-cal-day-label", text: selDate.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }) }),
+    el("button", {
+      type: "button",
+      class: "dates-cal-clear",
+      text: "Clear",
+      onClick: () => {
+        datesCalDay = null;
+        render();
+      },
+    }),
+  ]);
+
+  let body;
+  if (selEvents.length > 0) {
+    // Same real .tile rows the grouped list below uses (each is its own card, `.tile + .tile`
+    // margin already stacks them) -- not a second card wrapper around them.
+    body = el("div", { class: "dates-cal-day-rows" }, selEvents.map((item) => dateRow(item)));
+  } else {
+    const monthAbbr = selDate.toLocaleDateString([], { month: "short" });
+    const day = selDate.getDate();
+    body = el("div", {
+      class: "card dates-cal-empty",
+      text: `Nothing on ${monthAbbr} ${day}. Say “appointment ${monthAbbr.toLowerCase()} ${day} 2pm dr fonji” and it lands here.`,
+    });
+  }
+
+  return el("div", { class: "dates-cal-day-card" }, [header, body]);
+}
+
 async function viewDates(view) {
   const { dates: items } = await api("/api/dates");
 
   roomHeader(view, DATES_TINT, "Dates");
   const room = el("div", { class: "dates-room" });
+
+  const { card: calCard, selDate, selEvents } = datesCalendarCard(items);
+  room.append(calCard);
+  if (selDate) room.append(datesCalendarDayCard(selDate, selEvents));
 
   const groups = [
     { label: "This week", items: items.filter((i) => i.due_in_days <= 6) },
