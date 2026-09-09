@@ -103,14 +103,16 @@ namespace BuildConsole.Services
 
         /// <summary>
         /// Git #2557 — sweeps every real CLOSED issue still sitting in "AI Batter Up" status to
-        /// "Done" (<see cref="GitHubApiClient.DoneOptionId"/>) and the existing real
-        /// <see cref="GitHubApiClient.SetIssueStatusByNumberAsync"/> mutation. Git #3134 — the
-        /// closed-issue READ is now mirror-first (<see cref="GitHubIssueMirror.TryGetByBoardStatusAsync"/>
-        /// with <c>state="closed"</c>), falling back to the live
+        /// "Done" (<see cref="GitHubApiClient.DoneOptionId"/>). Git #3134 — the closed-issue READ is
+        /// mirror-first (<see cref="GitHubIssueMirror.TryGetByBoardStatusAsync"/> with
+        /// <c>state="closed"</c>), falling back to the live
         /// <see cref="GitHubApiClient.GetClosedAiBatterUpIssuesAsync"/> project-page walk only when the
-        /// mirror isn't usable. The Done move itself stays a live write. Each sweep is logged
-        /// individually to the "ai-batter-up" channel (traceable, not silent) whether it succeeds or
-        /// fails; a single failed move doesn't stop the rest of the sweep.
+        /// mirror isn't usable.
+        ///
+        /// Git #3347 — the actual MOVE is no longer one resolve+mutation per item (that burst is the
+        /// root of the cold-start rate-limit cascade); it delegates to the shared, batched, bounded,
+        /// circuit-aware <see cref="BatterUpQueueService.SweepClosedCandidatesToDoneAsync"/> — the
+        /// same cross-service reuse this class already uses for <c>FindBuildCommentAsync</c>.
         /// </summary>
         private static async Task SweepClosedIssuesAsync(GitHubApiClient gh)
         {
@@ -135,18 +137,9 @@ namespace BuildConsole.Services
                 return;
             }
 
-            foreach (var (number, title) in stale)
-            {
-                try
-                {
-                    await gh.SetIssueStatusByNumberAsync(number, GitHubApiClient.DoneOptionId);
-                    ActivityLog.Log("ai-batter-up", $"AI Batter Up #{number} \"{title}\" — closed but still in AI Batter Up status; auto-swept to Done.");
-                }
-                catch (System.Exception ex)
-                {
-                    ActivityLog.Log("ai-batter-up", $"AI Batter Up #{number} \"{title}\" — auto-sweep to Done FAILED: {ex.Message}");
-                }
-            }
+            await BatterUpQueueService.SweepClosedCandidatesToDoneAsync(
+                gh, GitHubApiClient.AiBatterUpOptionId, stale,
+                s => ActivityLog.Log("ai-batter-up", "AI Batter Up " + s));
         }
 
         /// <summary>Yes — promotes the item's Status to real "Batter Up". Does NOT queue or launch

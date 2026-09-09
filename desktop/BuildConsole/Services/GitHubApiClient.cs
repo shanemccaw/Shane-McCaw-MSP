@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
@@ -1536,6 +1537,185 @@ namespace BuildConsole.Services
             if (string.IsNullOrEmpty(itemId)) return false;
             await SetProjectItemStatusAsync(itemId, optionId);
             return true;
+        }
+
+        // ── Git #3347: batched closed-sweep primitives ─────────────────────────────────────────
+        // The closed-sweep (BatterUpQueueService / AiBatterUpQueueService) used to call
+        // SetIssueStatusByNumberAsync once per stale mirror candidate, and THAT method itself fires
+        // a resolve query (GetProjectItemIdForIssueAsync) + a mutation (SetProjectItemStatusAsync) —
+        // so N candidates cost ~2N rapid GraphQL calls (59 candidates ≈ 118 calls in ~2s), which
+        // trips GitHub's secondary rate limit at cold start and cascades into everything failing
+        // (Git #3347). These two primitives collapse that per-item burst into a handful of aliased,
+        // chunked GraphQL calls — the same batching philosophy #3337 applied to the mirror sync.
+
+        /// <summary>Git #3347 — aliased `issue(number:)` lookups per GraphQL READ. 25 × projectItems(first:20)
+        /// = 500 nodes, comfortably within GraphQL's node/complexity limits.</summary>
+        private const int ClosedSweepLookupChunkSize = 25;
+
+        /// <summary>Git #3347 — aliased `updateProjectV2ItemFieldValue` mutations per GraphQL WRITE. Kept
+        /// modest: mutations weigh more against GitHub's secondary rate limit than reads do, and one
+        /// chunk is one HTTP request regardless of how many aliases it carries.</summary>
+        private const int ClosedSweepMutateChunkSize = 20;
+
+        /// <summary>
+        /// Git #3347 — the batched, by-issue-NUMBER equivalent of <see cref="GetIssueBoardStatusAsync"/>:
+        /// resolves MANY issue numbers to their current ProjectV2Item node id + LIVE Status option id
+        /// on THIS board in a small, bounded number of GraphQL reads (aliased <c>issue(number:)</c>
+        /// sub-queries, <see cref="ClosedSweepLookupChunkSize"/> per call) rather than one call per
+        /// number. Reading every candidate's real current state here in a handful of calls eliminates
+        /// the old per-item resolve AND lets the caller skip candidates the deliberately-lagged
+        /// (#3337) mirror still shows in a status they've actually already left — so a steady-state
+        /// sweep issues ZERO mutations. Only numbers with a real item on THIS project appear in the
+        /// result. Each chunk is one HTTP request through the shared rate-limit circuit
+        /// (<see cref="GitHubRateLimitHandler"/>); a rate-limited/short-circuited chunk throws, so the
+        /// caller can stop the sweep instead of firing the rest of the chunks.
+        /// </summary>
+        public async Task<Dictionary<int, IssueBoardStatus>> BatchGetProjectItemStatusesAsync(IReadOnlyList<int> issueNumbers)
+        {
+            var result = new Dictionary<int, IssueBoardStatus>();
+            if (issueNumbers == null || issueNumbers.Count == 0) return result;
+
+            // De-dupe: two identical aliases would be fine, but two identical `issue(number:)` at the
+            // same alias index can't happen once distinct — and it keeps the call count minimal.
+            var distinct = issueNumbers.Where(n => n > 0).Distinct().ToList();
+
+            for (int offset = 0; offset < distinct.Count; offset += ClosedSweepLookupChunkSize)
+            {
+                var chunk = distinct.Skip(offset).Take(ClosedSweepLookupChunkSize).ToList();
+                var sb = new StringBuilder();
+                sb.Append("query { ");
+                sb.Append($"repository(owner: \"{Owner}\", name: \"{Repo}\") {{ ");
+                for (int i = 0; i < chunk.Count; i++)
+                    sb.Append($"a{i}: issue(number: {chunk[i]}) {{ projectItems(first: 20) {{ nodes {{ id project {{ id }} fieldValueByName(name: \"Status\") {{ ... on ProjectV2ItemFieldSingleSelectValue {{ optionId name }} }} }} }} }} ");
+                sb.Append("} }");
+
+                using var req = new HttpRequestMessage(HttpMethod.Post, "graphql")
+                {
+                    Content = JsonContent.Create(new { query = sb.ToString() }),
+                };
+                var res = await _http.SendAsync(req);
+                LogIfUnauthorized(res, "graphql (closed-sweep batch status lookup)");
+                res.EnsureSuccessStatusCode();
+
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("errors", out var errs) && errs.ValueKind == JsonValueKind.Array && errs.GetArrayLength() > 0)
+                {
+                    var msg = string.Join("; ", errs.EnumerateArray()
+                        .Select(e => e.TryGetProperty("message", out var m) ? m.GetString() : null)
+                        .Where(s => !string.IsNullOrEmpty(s)));
+                    // A rate-limit error stops the whole sweep (don't fire the rest of the chunks);
+                    // any other field-level error is logged but we still parse the partial data.
+                    if (GitHubRateLimitCircuit.LooksLikeRateLimit(msg) || GitHubRateLimitCircuit.IsCircuitOpenMessage(msg))
+                        throw new Exception("GitHub GraphQL: " + msg);
+                    ActivityLog.Log("git-board.data",
+                        $"closed-sweep batch status lookup — partial GraphQL error(s), continuing with returned data: {msg}");
+                }
+
+                if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object) continue;
+                if (!data.TryGetProperty("repository", out var repo) || repo.ValueKind != JsonValueKind.Object) continue;
+
+                for (int i = 0; i < chunk.Count; i++)
+                {
+                    if (!repo.TryGetProperty($"a{i}", out var issueEl) || issueEl.ValueKind != JsonValueKind.Object) continue;
+                    if (!issueEl.TryGetProperty("projectItems", out var pit) || pit.ValueKind != JsonValueKind.Object) continue;
+                    if (!pit.TryGetProperty("nodes", out var nodes) || nodes.ValueKind != JsonValueKind.Array) continue;
+
+                    foreach (var node in nodes.EnumerateArray())
+                    {
+                        string? projectId = node.TryGetProperty("project", out var proj) && proj.ValueKind == JsonValueKind.Object
+                            && proj.TryGetProperty("id", out var pid) ? pid.GetString() : null;
+                        if (!string.Equals(projectId, BatterUpProjectId, StringComparison.OrdinalIgnoreCase)) continue;
+
+                        string? itemId = node.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                        if (string.IsNullOrEmpty(itemId)) continue;
+
+                        string? optionId = null, statusName = null;
+                        if (node.TryGetProperty("fieldValueByName", out var fv) && fv.ValueKind == JsonValueKind.Object)
+                        {
+                            if (fv.TryGetProperty("optionId", out var oi)) optionId = oi.GetString();
+                            if (fv.TryGetProperty("name", out var nm)) statusName = nm.GetString();
+                        }
+
+                        result[chunk[i]] = new IssueBoardStatus { ItemId = itemId!, OptionId = optionId, StatusName = statusName };
+                        break; // an issue has exactly one item on this project
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Git #3347 — moves MANY project items' Status to <paramref name="optionId"/> in a small,
+        /// bounded number of GraphQL WRITES (aliased <c>updateProjectV2ItemFieldValue</c> mutations,
+        /// <see cref="ClosedSweepMutateChunkSize"/> per call) rather than one mutation call per item —
+        /// the write half of the closed-sweep de-burst. GitHub executes the aliased mutations in one
+        /// request serially; from the rate-limit circuit's point of view it is ONE HTTP call per
+        /// chunk, not one per item, and a single bad item id nulls only its own alias (the rest still
+        /// apply). Returns the set of item ids GitHub confirmed moved. A rate-limited/short-circuited
+        /// chunk throws (the same failure shape a single mutation would), so the caller can stop and
+        /// report a partial sweep rather than hammering the remaining chunks.
+        /// </summary>
+        public async Task<HashSet<string>> BatchSetProjectItemsStatusAsync(IReadOnlyList<string> itemIds, string optionId)
+        {
+            var moved = new HashSet<string>();
+            if (itemIds == null || itemIds.Count == 0) return moved;
+
+            var distinct = itemIds.Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
+
+            for (int offset = 0; offset < distinct.Count; offset += ClosedSweepMutateChunkSize)
+            {
+                var chunk = distinct.Skip(offset).Take(ClosedSweepMutateChunkSize).ToList();
+                var sb = new StringBuilder();
+                sb.Append("mutation { ");
+                for (int i = 0; i < chunk.Count; i++)
+                    sb.Append($"m{i}: updateProjectV2ItemFieldValue(input: {{ projectId: \"{BatterUpProjectId}\", itemId: \"{chunk[i]}\", fieldId: \"{StatusFieldId}\", value: {{ singleSelectOptionId: \"{optionId}\" }} }}) {{ projectV2Item {{ id }} }} ");
+                sb.Append("}");
+
+                using var req = new HttpRequestMessage(HttpMethod.Post, "graphql")
+                {
+                    Content = JsonContent.Create(new { query = sb.ToString() }),
+                };
+                var res = await _http.SendAsync(req);
+                LogIfUnauthorized(res, "graphql (closed-sweep batch status write)");
+                res.EnsureSuccessStatusCode();
+
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                var root = doc.RootElement;
+
+                // GraphQL reports a `path` per error; the alias named in an error's path failed (its
+                // data entry is null), everything else with a present data node succeeded.
+                var failedAliases = new HashSet<string>();
+                string? errMsg = null;
+                if (root.TryGetProperty("errors", out var errs) && errs.ValueKind == JsonValueKind.Array && errs.GetArrayLength() > 0)
+                {
+                    errMsg = string.Join("; ", errs.EnumerateArray()
+                        .Select(e => e.TryGetProperty("message", out var m) ? m.GetString() : null)
+                        .Where(s => !string.IsNullOrEmpty(s)));
+                    foreach (var e in errs.EnumerateArray())
+                        if (e.TryGetProperty("path", out var p) && p.ValueKind == JsonValueKind.Array && p.GetArrayLength() > 0)
+                            failedAliases.Add(p[0].GetString() ?? "");
+
+                    if (GitHubRateLimitCircuit.LooksLikeRateLimit(errMsg) || GitHubRateLimitCircuit.IsCircuitOpenMessage(errMsg))
+                        throw new Exception("GitHub GraphQL: " + errMsg);
+                }
+
+                bool haveData = root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object;
+                for (int i = 0; i < chunk.Count; i++)
+                {
+                    string alias = $"m{i}";
+                    if (failedAliases.Contains(alias)) continue;
+                    if (haveData && data.TryGetProperty(alias, out var mEl) && mEl.ValueKind == JsonValueKind.Object)
+                        moved.Add(chunk[i]);
+                }
+
+                if (!string.IsNullOrEmpty(errMsg))
+                    ActivityLog.Log("git-board.data", $"closed-sweep batch status write — partial GraphQL error(s): {errMsg}");
+            }
+
+            return moved;
         }
 
         private class ProjectItemLookupResponse

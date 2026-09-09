@@ -299,15 +299,19 @@ namespace BuildConsole.Services
 
         /// <summary>
         /// Git #2557 — sweeps every real CLOSED issue still sitting in "Batter Up" status to
-        /// "Done" (<see cref="GitHubApiClient.DoneOptionId"/>) and the existing real
-        /// <see cref="GitHubApiClient.SetIssueStatusByNumberAsync"/> mutation. Git #3134 — the
-        /// closed-issue READ is now mirror-first (<see cref="GitHubIssueMirror.TryGetByBoardStatusAsync"/>
-        /// with <c>state="closed"</c>; an open→closed transition preserves the row's board Status
-        /// option, so a just-closed Batter Up item is a real mirror row), falling back to the live
+        /// "Done" (<see cref="GitHubApiClient.DoneOptionId"/>). Git #3134 — the closed-issue READ is
+        /// mirror-first (<see cref="GitHubIssueMirror.TryGetByBoardStatusAsync"/> with
+        /// <c>state="closed"</c>; an open→closed transition preserves the row's board Status option,
+        /// so a just-closed Batter Up item is a real mirror row), falling back to the live
         /// <see cref="GitHubApiClient.GetClosedBatterUpIssuesAsync"/> project-page walk only when the
-        /// mirror isn't usable. The Done move itself stays a live write (writes never read the mirror).
-        /// Each sweep is logged individually (traceable, not silent) whether it succeeds or fails; a
-        /// single failed move doesn't stop the rest of the sweep.
+        /// mirror isn't usable.
+        ///
+        /// Git #3347 — the actual MOVE is no longer one resolve+mutation per item. That loop fired
+        /// ~2N rapid GraphQL calls (59 candidates ≈ 118 calls in ~2s), tripping GitHub's secondary
+        /// rate limit at cold start and cascading into the whole app appearing broken. It now
+        /// delegates to <see cref="SweepClosedCandidatesToDoneAsync"/>, which reads every candidate's
+        /// LIVE status and moves the survivors to Done in a handful of batched, bounded, circuit-aware
+        /// GraphQL calls.
         /// </summary>
         private static async Task SweepClosedIssuesAsync(GitHubApiClient gh, Action<string> log)
         {
@@ -332,18 +336,129 @@ namespace BuildConsole.Services
                 return;
             }
 
-            foreach (var (number, title) in stale)
+            await SweepClosedCandidatesToDoneAsync(gh, GitHubApiClient.BatterUpPromoteOptionId, stale,
+                s => log("Batter Up " + s));
+        }
+
+        /// <summary>Git #3347 — hard per-run cap on how many stale closed-sweep candidates one refresh
+        /// processes. #3337 slowed the board-status full-sync (to 30 min), so the mirror's stale
+        /// "closed but still shown here" backlog can grow between syncs; capping keeps even the
+        /// batched calls bounded, so a large backlog drains over several refreshes rather than one
+        /// big burst (the exact "don't verify hundreds in one go" concern #3347 raised).</summary>
+        private const int MaxClosedSweepPerRun = 100;
+
+        /// <summary>
+        /// Git #3347 — the batched, bounded, circuit-aware closed-sweep shared by BOTH the Batter Up
+        /// and AI Batter Up panels (AI Batter Up calls this exactly as it already reuses
+        /// <see cref="FindBuildCommentAsync"/>). Given the stale candidates a panel read from the
+        /// local mirror — issues that closed while still sitting in <paramref name="sourceOptionId"/> —
+        /// it:
+        /// <list type="number">
+        /// <item>short-circuits entirely if the shared rate-limit circuit is already open (never worth
+        /// piling onto an open breaker — the #3022 blocked-by-sweep stance);</item>
+        /// <item>caps the candidate set at <see cref="MaxClosedSweepPerRun"/> so a backlog grown large
+        /// between #3337's slow full-syncs drains over several runs, never in one burst;</item>
+        /// <item>reads every capped candidate's LIVE board status in a handful of batched GraphQL
+        /// reads (<see cref="GitHubApiClient.BatchGetProjectItemStatusesAsync"/>) and keeps only those
+        /// STILL in <paramref name="sourceOptionId"/> — the mirror lags board status by up to #3337's
+        /// full-sync interval, so on a repeat cold start most candidates have already been moved and
+        /// are skipped with ZERO writes (this is what stops the recurring burst);</item>
+        /// <item>moves the survivors to Done in a handful of batched GraphQL mutations
+        /// (<see cref="GitHubApiClient.BatchSetProjectItemsStatusAsync"/>).</item>
+        /// </list>
+        /// A rate-limit mid-sweep stops the remaining chunks and reports the partial result rather
+        /// than hammering. Replaces the old one-resolve-plus-one-mutation-per-item loop.
+        /// </summary>
+        public static async Task SweepClosedCandidatesToDoneAsync(
+            GitHubApiClient gh, string sourceOptionId,
+            IReadOnlyList<(int Number, string Title)> candidates, Action<string> log)
+        {
+            if (candidates == null || candidates.Count == 0) return;
+
+            if (GitHubRateLimitCircuit.IsOpen)
             {
-                try
+                log($"closed-sweep skipped — GitHub rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); " +
+                    $"{candidates.Count} candidate(s) reattempted on a later refresh (Git #3347).");
+                return;
+            }
+
+            var work = candidates;
+            if (candidates.Count > MaxClosedSweepPerRun)
+            {
+                log($"closed-sweep — {candidates.Count} stale candidate(s) exceeds the per-run cap of {MaxClosedSweepPerRun}; " +
+                    $"sweeping the first {MaxClosedSweepPerRun} this run, the rest next refresh (Git #3347).");
+                work = candidates.Take(MaxClosedSweepPerRun).ToList();
+            }
+
+            var titleByNumber = new Dictionary<int, string>();
+            foreach (var c in work) titleByNumber[c.Number] = c.Title;
+
+            // 1) Batched live-status read — replaces the per-item resolve AND verifies current state,
+            //    so a candidate the (lagged) mirror still shows here but that already moved is skipped.
+            Dictionary<int, GitHubApiClient.IssueBoardStatus> live;
+            try
+            {
+                live = await gh.BatchGetProjectItemStatusesAsync(work.Select(c => c.Number).Distinct().ToList());
+            }
+            catch (Exception ex)
+            {
+                log($"closed-sweep — batched live-status lookup failed ({ex.Message}); nothing moved this run (Git #3347).");
+                return;
+            }
+
+            var toMoveItemIds = new List<string>();
+            var numberByItemId = new Dictionary<string, int>();
+            int alreadyGone = 0;
+            foreach (var c in work)
+            {
+                if (live.TryGetValue(c.Number, out var st)
+                    && !string.IsNullOrEmpty(st.ItemId)
+                    && string.Equals(st.OptionId, sourceOptionId, StringComparison.OrdinalIgnoreCase))
                 {
-                    await gh.SetIssueStatusByNumberAsync(number, GitHubApiClient.DoneOptionId);
-                    log($"Batter Up #{number} \"{title}\" — closed but still in Batter Up status; auto-swept to Done.");
+                    if (!numberByItemId.ContainsKey(st.ItemId))
+                    {
+                        numberByItemId[st.ItemId] = c.Number;
+                        toMoveItemIds.Add(st.ItemId);
+                    }
                 }
-                catch (Exception ex)
+                else alreadyGone++;
+            }
+
+            if (toMoveItemIds.Count == 0)
+            {
+                log($"closed-sweep — nothing to move: all {work.Count} candidate(s) already off this status on the real " +
+                    $"board (mirror lag, #3337); zero writes (Git #3347).");
+                return;
+            }
+
+            // 2) Batched Done move — replaces the per-item mutation burst.
+            HashSet<string> moved;
+            try
+            {
+                moved = await gh.BatchSetProjectItemsStatusAsync(toMoveItemIds, GitHubApiClient.DoneOptionId);
+            }
+            catch (Exception ex)
+            {
+                log($"closed-sweep — batched Done move failed ({ex.Message}); {toMoveItemIds.Count} item(s) still stale, " +
+                    $"retry next refresh (Git #3347).");
+                return;
+            }
+
+            var okNumbers = new List<int>();
+            foreach (var itemId in toMoveItemIds)
+            {
+                int number = numberByItemId[itemId];
+                if (moved.Contains(itemId)) okNumbers.Add(number);
+                else
                 {
-                    log($"Batter Up #{number} \"{title}\" — auto-sweep to Done FAILED: {ex.Message}");
+                    string title = titleByNumber.TryGetValue(number, out var t) ? t : "";
+                    log($"closed-sweep #{number} \"{title}\" — Done move did not apply (no matching mutation result); retry next refresh.");
                 }
             }
+
+            string movedList = okNumbers.Count == 0 ? "" : "#" + string.Join(" #", okNumbers) + "; ";
+            log($"closed-sweep complete — moved {okNumbers.Count} closed item(s) to Done ({movedList}" +
+                $"{alreadyGone} already off-status, {toMoveItemIds.Count - okNumbers.Count} deferred) (Git #3347).");
         }
 
         /// <summary>
