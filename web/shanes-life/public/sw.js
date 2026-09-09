@@ -9,7 +9,10 @@
 // /api/entities would be indistinguishable from fixture data the moment it went stale, which is
 // exactly the failure this project has already paid for once.
 
-const CACHE = "shanes-life-shell-v2";
+// The placeholder in the CACHE string below is substituted server-side (server.mjs's /sw.js
+// handler) with the running deploy's real git commit sha -- see Git #3334. That ties this cache
+// version to every real deploy automatically; nobody has to remember to bump it by hand again.
+const CACHE = "shanes-life-shell-__SW_BUILD_ID__";
 const SHELL = [
   "/",
   "/index.html",

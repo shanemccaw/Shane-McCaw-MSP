@@ -4,6 +4,8 @@
 // cannot serve one request against a schema that has not caught up with the code.
 
 import { createServer } from "node:http";
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { config } from "./config.mjs";
 import { closePool, query } from "./db.mjs";
@@ -36,6 +38,27 @@ const PUBLIC_DIR = resolve(config.root, "public");
 const apiRouter = buildApiRouter();
 const publicRouter = buildPublicRouter();
 const widgetRouter = buildWidgetRouter();
+
+// Real structural fix for Git #3334: the service worker's own cache-version string used to be a
+// manually-maintained constant in public/sw.js -- nobody bumped it for hundreds of commits (since
+// #3160), so every real deploy since kept serving whatever app.js/app.css were cached at install
+// time. Instead of trusting a human to remember, this ties the SW cache name to the real commit
+// this process is actually running -- computed once at boot (a real deploy always restarts the
+// process) so it changes automatically on every real deploy and never on a bare restart of the
+// same code. `/sw.js` below serves the file through this substitution instead of the raw static
+// file, so nothing has to remember to bump `CACHE` in public/sw.js by hand again.
+const SW_BUILD_ID = (() => {
+  try {
+    return execSync("git rev-parse --short HEAD", { cwd: config.root, stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
+  } catch {
+    // No git available in this deploy environment (e.g. a stripped artifact with no .git) --
+    // fall back to this boot's own timestamp so the cache still rolls forward on every real
+    // restart, just without the human-readable commit tie.
+    return String(Date.now());
+  }
+})();
 
 function log(...args) {
   console.log(new Date().toISOString(), ...args);
@@ -224,6 +247,19 @@ async function handle(req, res) {
   // already degrades cleanly once the probe fails honestly.
   if (pathname === "/.well-known" || pathname.includes("/.well-known/")) {
     return sendJson(res, 404, { error: "Not found" });
+  }
+
+  // The one file that isn't served as a raw static file: see SW_BUILD_ID above (Git #3334).
+  if (pathname === "/sw.js") {
+    const src = readFileSync(resolve(PUBLIC_DIR, "sw.js"), "utf8").replaceAll("__SW_BUILD_ID__", SW_BUILD_ID);
+    res.writeHead(200, {
+      "content-type": "text/javascript; charset=utf-8",
+      "content-length": Buffer.byteLength(src),
+      // Must never be cached, or a redeploy cannot roll the app forward (same reasoning as
+      // http.mjs's serveStatic already applies to sw.js).
+      "cache-control": "no-cache",
+    });
+    return res.end(src);
   }
 
   if (pathname !== "/" && serveStatic(PUBLIC_DIR, pathname, res)) return;
