@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -42,12 +43,55 @@ namespace BuildConsole.Services
 
             if (IsRateLimited(res))
                 GitHubRateLimitCircuit.RecordRateLimited("HTTP API", ReadResetUtc(res));
+            else if (res.IsSuccessStatusCode && await IsGraphQlRateLimitedBodyAsync(request, res).ConfigureAwait(false))
+                GitHubRateLimitCircuit.RecordRateLimited("GraphQL body");
             else if (res.IsSuccessStatusCode || res.StatusCode == HttpStatusCode.NotModified)
                 GitHubRateLimitCircuit.RecordSuccess();
             // Any other failure (404, a genuine non-rate-limit 403 permission error, 5xx) leaves the
             // breaker untouched — we only trip on a real rate-limit signal, never a generic error.
 
             return res;
+        }
+
+        /// <summary>Git #3349 — GitHub's GraphQL endpoint commonly signals a secondary/point rate
+        /// limit as an HTTP <c>200 OK</c> whose JSON body carries
+        /// <c>{"errors":[{"type":"RATE_LIMITED",...}]}</c>, not a 429/403. <see cref="IsRateLimited"/>
+        /// only looks at HTTP status + headers, so that shape used to fall straight into the success
+        /// branch and RESET the breaker instead of tripping it. Scoped to the <c>/graphql</c> request
+        /// path (the only transport this shape applies to) and buffers the body once, re-attaching an
+        /// equivalent <see cref="ByteArrayContent"/> so every downstream reader still sees the exact
+        /// same content it would have without this check.</summary>
+        private static async Task<bool> IsGraphQlRateLimitedBodyAsync(HttpRequestMessage request, HttpResponseMessage res)
+        {
+            if (res.Content == null) return false;
+            if (request.RequestUri is not { } uri || !uri.AbsolutePath.TrimEnd('/').EndsWith("/graphql", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            string body = string.Empty;
+            bool readOk = true;
+            try
+            {
+                body = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // Body unreadable for some reason — don't let this check break the response.
+                readOk = false;
+            }
+            finally
+            {
+                // Re-buffer so every existing caller downstream of this handler can still read the
+                // body exactly as before (HttpContent can only be read once off the wire).
+                var bytes = Encoding.UTF8.GetBytes(body ?? string.Empty);
+                var replacement = new ByteArrayContent(bytes);
+                foreach (var header in res.Content.Headers)
+                    replacement.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                res.Content = replacement;
+            }
+
+            if (!readOk || string.IsNullOrEmpty(body)) return false;
+            return body.Contains("RATE_LIMITED", StringComparison.OrdinalIgnoreCase)
+                && GitHubRateLimitCircuit.LooksLikeRateLimit(body);
         }
 
         /// <summary>GitHub signals a rate limit as HTTP 429 (secondary/abuse) or 403 accompanied by
