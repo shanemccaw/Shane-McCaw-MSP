@@ -348,7 +348,7 @@
 
                         <!-- WebView2 Web Rendering Control -->
                         <Grid Grid.Row="1" Background="{StaticResource WindowBackgroundBrush}">
-                            <wv2:WebView2 x:Name="webView" Source="{Binding CurrentUrl}" 
+                            <wv2:WebView2 x:Name="webView" 
                                           NavigationStarting="WebView_NavigationStarting" 
                                           NavigationCompleted="WebView_NavigationCompleted"/>
                         </Grid>

@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -17,6 +18,38 @@ namespace SuperShopper.Views
         {
             InitializeComponent();
             SourceInitialized += MainWindow_SourceInitialized;
+            DataContextChanged += MainWindow_DataContextChanged;
+        }
+
+        private void MainWindow_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (e.OldValue is INotifyPropertyChanged oldVm)
+            {
+                oldVm.PropertyChanged -= ViewModel_PropertyChanged;
+            }
+            if (e.NewValue is INotifyPropertyChanged newVm)
+            {
+                newVm.PropertyChanged += ViewModel_PropertyChanged;
+            }
+        }
+
+        private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(MainViewModel.CurrentUrl) && webView != null && webView.CoreWebView2 != null)
+            {
+                if (DataContext is MainViewModel vm && !string.IsNullOrWhiteSpace(vm.CurrentUrl))
+                {
+                    try
+                    {
+                        var targetUri = new Uri(vm.CurrentUrl);
+                        if (webView.Source != targetUri)
+                        {
+                            webView.Source = targetUri;
+                        }
+                    }
+                    catch { }
+                }
+            }
         }
 
         private void MainWindow_SourceInitialized(object? sender, EventArgs e)
@@ -78,6 +111,12 @@ namespace SuperShopper.Views
 
                 // Wire up Network Response Interceptor for API deal feeds
                 webView.CoreWebView2.WebResourceResponseReceived += CoreWebView2_WebResourceResponseReceived;
+
+                // Navigate to initial URL after CoreWebView2 environment is ready
+                if (DataContext is MainViewModel vm && !string.IsNullOrWhiteSpace(vm.CurrentUrl))
+                {
+                    webView.Source = new Uri(vm.CurrentUrl);
+                }
             }
             catch (Exception ex)
             {
