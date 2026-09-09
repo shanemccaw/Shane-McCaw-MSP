@@ -29,6 +29,7 @@ import {
 import { setAdCachedRecord } from "../adNameCache";
 import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
 import { DIRECTORY_GROUP_ROLES, type AdEntitlementsView, type AdUserDetail, type DirectoryGroupRole } from "../adTypes";
+import { AdRbacUserRolesSection } from "../AdRbacPanels";
 import {
   AdArmedButton,
   AdButton,
@@ -288,6 +289,10 @@ export function AdUserCanvas({ userId }: { userId: number }) {
             </span>
           )}
         </AdSection>
+
+        {linkage && (
+          <AdRbacUserRolesSection userId={userId} system={linkageRequirement === "customer" ? "customer" : "msp"} />
+        )}
 
         <AdSection title="Credential ops" note="Every action here is written to the audit log with your name against it.">
           <AdListRowGroup>

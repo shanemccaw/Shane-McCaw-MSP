@@ -19,6 +19,7 @@ import { fetchAdMsp, impersonateAdMsp, reactivateAdMsp, suspendAdMsp, updateAdMs
 import { setAdCachedRecord } from "../adNameCache";
 import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
 import type { AdMspDetail } from "../adTypes";
+import { AdRbacOrgRolesPanel } from "../AdRbacPanels";
 import {
   AdArmedButton,
   AdButton,
@@ -419,6 +420,8 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
             )}
           </AdListRowGroup>
         </AdSection>
+
+        <AdRbacOrgRolesPanel system="msp" orgId={mspId} />
 
         <AdSection title="Platform agreement" note={hasAcceptedCurrentAgreement ? undefined : "The current agreement version has not been accepted."}>
           <AdListRowGroup>

@@ -31,8 +31,19 @@ import { createRbacEvaluator, type RbacContext, type RbacEvaluator, type RbacFea
  * ../index.ts: importing that would require DATABASE_URL at module load, which
  * would make this module unimportable from a unit test or a script that only
  * wants the types.
+ *
+ * The schema type param is `any`, not `Record<string, never>` (#2461 found this
+ * the first time a real caller — artifacts/api-server/src/routes/admin-rbac.ts —
+ * passed the actual `db` singleton in: `NodePgDatabase<TSchema>` is structurally
+ * invariant enough in `TSchema` that the fully-typed singleton is NOT assignable
+ * to `NodePgDatabase<Record<string, never>>`, because `ExtractTablesWithRelations`
+ * requires every real table's `dbName`/`columns` to be assignable to `never`. Every
+ * function in this file and ./admin.ts only uses the query-builder chain
+ * (`.select().from()...`), never the schema-typed `.query.*` relational API, so
+ * nothing here actually depends on the schema shape — `any` says that honestly
+ * instead of asserting a shape that doesn't hold.
  */
-export type RbacDb = NodePgDatabase<Record<string, never>>;
+export type RbacDb = NodePgDatabase<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 export interface LoadRbacContextInput {
   readonly system: RbacSystem;

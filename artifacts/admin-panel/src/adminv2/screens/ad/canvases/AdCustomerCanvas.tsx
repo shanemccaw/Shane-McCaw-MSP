@@ -29,6 +29,7 @@ import {
 import { setAdCachedRecord } from "../adNameCache";
 import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
 import type { AdConsentStatus, AdCustomerDetail, AdWriteConsentStatus } from "../adTypes";
+import { AdRbacOrgRolesPanel } from "../AdRbacPanels";
 import {
   AdArmedButton,
   AdButton,
@@ -466,6 +467,8 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
             )}
           </AdListRowGroup>
         </AdSection>
+
+        <AdRbacOrgRolesPanel system="customer" orgId={customerId} />
 
         <AdSection
           title="Delete"

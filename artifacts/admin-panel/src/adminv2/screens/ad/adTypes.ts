@@ -338,3 +338,45 @@ export interface AdOu {
   createdAt: string;
   updatedAt: string;
 }
+
+// ── RBAC (GET/POST/PATCH/DELETE /admin/rbac/*) ────────────────────────────────
+// #2461, part of #1696 — the new roles/user_roles/feature_role_mapping model
+// #2455 landed. Additive alongside the DirectoryGroupRole ladder above: this
+// manages the NEW tables, it does not (yet) replace what actually gates a
+// request — that cutover is #2457/#2458, still pending.
+
+/** The two separate identity systems (#1696's "two systems, one mechanism"). */
+export type RbacSystem = "msp" | "customer";
+
+export interface RbacCapability {
+  system: RbacSystem;
+  key: string;
+  category: string;
+  label: string;
+  description: string;
+}
+
+export interface RbacRoleSummary {
+  id: string;
+  system: RbacSystem;
+  /** null = platform-scoped role, holdable/applicable across every org. */
+  orgId: number | null;
+  key: string;
+  name: string;
+  description: string;
+  isSystem: boolean;
+  memberCount: number;
+}
+
+export interface RbacRoleMappingPayload {
+  allow: string[];
+  deny: string[];
+}
+
+export interface RbacMappingRow {
+  capability: RbacCapability;
+  /** The platform-default allow/deny row for this capability. */
+  platform: RbacRoleMappingPayload;
+  /** This org's own override row, or null when no org scope was requested. */
+  org: RbacRoleMappingPayload | null;
+}

@@ -24,6 +24,11 @@ import type {
   AdUserDetail,
   AdWriteConsentStatus,
   DirectoryGroupRole,
+  RbacCapability,
+  RbacMappingRow,
+  RbacRoleMappingPayload,
+  RbacRoleSummary,
+  RbacSystem,
 } from "./adTypes";
 
 export type AdminFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -310,4 +315,99 @@ export async function startAdCustomerWriteConsent(
 ): Promise<{ consentUrl: string; expiresAt: string }> {
   const res = await adminFetch(`/api/admin/customers/${customerId}/write-consent/start`);
   return json<{ consentUrl: string; expiresAt: string }>(res);
+}
+
+// ── RBAC (#2461, part of #1696) ───────────────────────────────────────────────
+// Manages the roles/user_roles/feature_role_mapping tables #2455 landed —
+// additive alongside the DirectoryGroupRole ladder writes above. See
+// adTypes.ts's RBAC section header for why this is a separate surface rather
+// than a replacement for setAdUserRole.
+
+function orgQuery(orgId: number | null): string {
+  return orgId == null ? "" : `&orgId=${orgId}`;
+}
+
+export async function fetchAdRbacCapabilities(adminFetch: AdminFetch, system: RbacSystem): Promise<RbacCapability[]> {
+  const res = await adminFetch(`/api/admin/rbac/capabilities?system=${system}`);
+  const body = await json<{ capabilities: RbacCapability[] }>(res);
+  return body.capabilities;
+}
+
+export async function fetchAdRbacRoles(adminFetch: AdminFetch, system: RbacSystem, orgId: number | null): Promise<RbacRoleSummary[]> {
+  const res = await adminFetch(`/api/admin/rbac/roles?system=${system}${orgQuery(orgId)}`);
+  const body = await json<{ roles: RbacRoleSummary[] }>(res);
+  return body.roles;
+}
+
+export async function createAdRbacRole(
+  adminFetch: AdminFetch,
+  input: { system: RbacSystem; orgId: number | null; key: string; name: string; description?: string },
+): Promise<RbacRoleSummary> {
+  const res = await postJson(adminFetch, "/api/admin/rbac/roles", input);
+  const body = await json<{ role: RbacRoleSummary }>(res);
+  return body.role;
+}
+
+export async function renameAdRbacRole(
+  adminFetch: AdminFetch,
+  roleId: string,
+  input: { system: RbacSystem; name?: string; description?: string },
+): Promise<RbacRoleSummary> {
+  const res = await patchJson(adminFetch, `/api/admin/rbac/roles/${roleId}`, input);
+  const body = await json<{ role: RbacRoleSummary }>(res);
+  return body.role;
+}
+
+export async function deleteAdRbacRole(adminFetch: AdminFetch, roleId: string, system: RbacSystem): Promise<{ ok: true }> {
+  const res = await adminFetch(`/api/admin/rbac/roles/${roleId}?system=${system}`, { method: "DELETE" });
+  if (res.status === 204) return { ok: true };
+  return json<{ ok: true }>(res);
+}
+
+export async function fetchAdUserRbacRoles(
+  adminFetch: AdminFetch,
+  userId: number,
+  system: RbacSystem,
+): Promise<{ roles: RbacRoleSummary[]; orgId: number | null }> {
+  const res = await adminFetch(`/api/admin/rbac/user/${userId}/roles?system=${system}`);
+  return json(res);
+}
+
+export async function grantAdUserRbacRole(
+  adminFetch: AdminFetch,
+  userId: number,
+  system: RbacSystem,
+  roleId: string,
+): Promise<{ roles: RbacRoleSummary[] }> {
+  const res = await postJson(adminFetch, `/api/admin/rbac/user/${userId}/roles`, { system, roleId });
+  return json(res);
+}
+
+export async function revokeAdUserRbacRole(
+  adminFetch: AdminFetch,
+  userId: number,
+  system: RbacSystem,
+  roleId: string,
+): Promise<{ roles: RbacRoleSummary[] }> {
+  const res = await adminFetch(`/api/admin/rbac/user/${userId}/roles/${roleId}?system=${system}`, { method: "DELETE" });
+  return json(res);
+}
+
+export async function fetchAdRbacMappings(adminFetch: AdminFetch, system: RbacSystem, orgId: number | null): Promise<RbacMappingRow[]> {
+  const res = await adminFetch(`/api/admin/rbac/mappings?system=${system}${orgQuery(orgId)}`);
+  const body = await json<{ mappings: RbacMappingRow[] }>(res);
+  return body.mappings;
+}
+
+export async function setAdRbacMapping(
+  adminFetch: AdminFetch,
+  input: { system: RbacSystem; orgId: number | null; capabilityKey: string; allow: string[]; deny: string[] },
+): Promise<RbacRoleMappingPayload> {
+  const res = await adminFetch("/api/admin/rbac/mapping", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const body = await json<{ roles: RbacRoleMappingPayload }>(res);
+  return body.roles;
 }

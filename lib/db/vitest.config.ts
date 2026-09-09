@@ -1,8 +1,9 @@
 // #1907 — real test infrastructure for lib/db (a schema-only package, no server
-// process to boot, no live-DB tests today — see the file's own header for why
-// only the pure schema helpers are covered). Pattern adapted from
-// artifacts/api-server/vitest.config.ts's explicit include list, scoped down for
-// a package with no `src/lib` / `src/routes` split.
+// process to boot). Pattern adapted from artifacts/api-server/vitest.config.ts's
+// explicit include list, scoped down for a package with no `src/lib` /
+// `src/routes` split. #2461 added the first live-DB case (admin.test.ts) — it
+// needs DATABASE_URL pointed at a database the RBAC migration has been applied
+// to (local dev), same requirement as `pnpm run check-rbac-integrity`.
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -23,6 +24,10 @@ export default defineConfig({
       // read. The seeded DATA is proven separately and against the real database by
       // `pnpm --filter @workspace/db run check-rbac-parity`.
       "src/rbac/legacy-ladder.test.ts",
+      // #2461 — the admin CRUD's real-database half: role/membership/mapping
+      // create-list-rename-delete, cross-org refusal, uncatalogued-capability
+      // refusal. Runs against DATABASE_URL, everything rolled back.
+      "src/rbac/admin.test.ts",
     ],
   },
 });

@@ -61,3 +61,23 @@ export {
 } from "./load";
 
 export { syncCapabilityCatalog, type CapabilitySyncResult } from "./sync";
+
+export {
+  listRoles,
+  createRole,
+  renameRole,
+  deleteRole,
+  listUserRoles,
+  assignUserRole,
+  removeUserRole,
+  resolveUserOrgId,
+  getMapping,
+  upsertMapping,
+  listMappings,
+  type RbacRoleSummary,
+  type CreateRoleResult,
+  type MutateRoleResult,
+  type DeleteRoleResult,
+  type AssignRoleResult,
+  type UpsertMappingResult,
+} from "./admin";
