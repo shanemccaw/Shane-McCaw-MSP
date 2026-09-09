@@ -441,6 +441,62 @@ check("matchRule: pantry_have requires a real number and unit word before 'of' -
 });
 
 // ---------------------------------------------------------------------------------------------
+// pantry_query (Git #3326) -- the Pantry room's own locked footer hint literally invites "do we
+// have cumin" into the universal capture bar; ported verbatim from the design's own `pHave`
+// regex (First Slice Prototype.dc.html).
+// ---------------------------------------------------------------------------------------------
+
+check("matchRule: pantry_query -- 'do we have cumin'", () => {
+  const m = matchRule("do we have cumin");
+  assert.equal(m.rule, "pantry_query");
+  assert.deepEqual(m.groups, { name: "cumin", house: null });
+});
+
+check("matchRule: pantry_query -- 'how many eggs do we have'", () => {
+  const m = matchRule("how many eggs do we have");
+  assert.equal(m.rule, "pantry_query");
+  assert.equal(m.groups.name, "eggs");
+});
+
+check("matchRule: pantry_query -- 'any salsa at the rental' sets house", () => {
+  const m = matchRule("any salsa at the rental");
+  assert.equal(m.rule, "pantry_query");
+  assert.deepEqual(m.groups, { name: "salsa", house: "Rental" });
+});
+
+check("matchRule: pantry_query -- checked ahead of pantry_spice_bare for 'got any paprika'", () => {
+  assert.equal(matchRule("got any paprika").rule, "pantry_query");
+});
+
+// ---------------------------------------------------------------------------------------------
+// pantry_spice_bare (Git #3326) -- a spice/oil-shaped name stated with no numeric unit becomes a
+// real `unit = 'lvl'` row; gated strictly on pantry.isSpiceOrOilName so it can't become the same
+// "I have X" false-positive risk pantry_have's own comment above flags.
+// ---------------------------------------------------------------------------------------------
+
+check("matchRule: pantry_spice_bare -- 'I have salt'", () => {
+  const m = matchRule("I have salt");
+  assert.equal(m.rule, "pantry_spice_bare");
+  assert.deepEqual(m.groups, { name: "salt", house: null, lowStated: false });
+});
+
+check("matchRule: pantry_spice_bare -- 'we're low on paprika' sets lowStated", () => {
+  const m = matchRule("we're low on paprika");
+  assert.equal(m.rule, "pantry_spice_bare");
+  assert.deepEqual(m.groups, { name: "paprika", house: null, lowStated: true });
+});
+
+check("matchRule: pantry_spice_bare -- 'bought cumin at the rental' sets house", () => {
+  const m = matchRule("bought cumin at the rental");
+  assert.equal(m.rule, "pantry_spice_bare");
+  assert.deepEqual(m.groups, { name: "cumin", house: "Rental", lowStated: false });
+});
+
+check("matchRule: pantry_spice_bare -- a non-spice bare name falls through untouched ('I have milk' is not spicy)", () => {
+  assert.equal(matchRule("I have milk") == null, true);
+});
+
+// ---------------------------------------------------------------------------------------------
 // meds_usage_log (Git #3321) -- real, individual as-needed dose events, distinct from
 // meds_batch_taken above. Real classification only here (no DB) -- resolveAsNeededMedication's
 // own fuzzy match against real medications is exercised live via `npm run check`.

@@ -82,6 +82,46 @@ function normaliseLowAt(lowAt) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// `lvl` auto-classification (Git #3326) -- the design's own real rule (First Slice Prototype.dc.html,
+// the `pAdd` capture block): a spice/oil-shaped name stated with no unit, or with a jar/bottle
+// unit, is a real level row (Out/Almost out/Half/Full), not a plain count. Nothing in this
+// backend ever set unit = 'lvl' automatically before this -- low_at's own unit-based default and
+// qtyLabel's Out/Almost out/Half/Full rendering (both already real, #3316) were reachable only by
+// a caller stating `unit: 'lvl'` explicitly, which no real capture ever did.
+// ---------------------------------------------------------------------------------------------
+
+const SPICY = /salt|pepper|paprika|cumin|oregano|cinnamon|powder|seasoning|spice|cayenne|\boil\b|vinegar|soy|honey|worcestershire/i;
+
+/** Same real spice/oil name test the design's own SPICY regex uses -- exported so
+ *  capture-grammar.mjs's pantry rules can gate a bare, unit-less statement ("I have salt") on the
+ *  same real vocabulary, rather than the broad "I have X" shape rule 33's own comment already
+ *  flags as a false-positive risk ("I have 2 hours", "I have 2 kids"). */
+export function isSpiceOrOilName(name) {
+  return SPICY.test(String(name || ""));
+}
+
+/** Ported verbatim from the design's own pAdd: `SPICY.test(name) && (!unit || unit === 'jar' ||
+ *  unit === 'bottle')`. Only meaningful for a brand-new row -- setPantryQuantity/
+ *  adjustPantryQuantity below both already defer to an existing row's own real unit first, same
+ *  as the design's own `same ? same.u === 'lvl' : ...` branch. */
+function classifyLevelUnit(name, unit) {
+  return isSpiceOrOilName(name) && (!unit || unit === "jar" || unit === "bottle") ? "lvl" : null;
+}
+
+// "3 boxes", "1 can", "Almost out" -- ported verbatim from the design's own qtyLabel (already
+// duplicated client-side in public/app.js's pantryQtyLabel; mirrored here too so a server-built
+// message -- the "do we have X" query rule below -- can echo the exact same real label).
+const PANTRY_PLURAL_UNIT = { box: "boxes", bunch: "bunches", loaf: "loaves" };
+const PANTRY_INVARIANT_UNIT = new Set(["lb", "gal", "oz", "dozen"]);
+export function qtyLabel(item) {
+  if (item.unit === "lvl") return ["Out", "Almost out", "Half", "Full"][Math.max(0, Math.min(3, item.quantity))];
+  if (item.quantity === 0) return "Out";
+  if (!item.unit) return String(item.quantity);
+  const word = item.quantity === 1 || PANTRY_INVARIANT_UNIT.has(item.unit) ? item.unit : PANTRY_PLURAL_UNIT[item.unit] || `${item.unit}s`;
+  return `${item.quantity} ${word}`;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Zones -- the design's 8 real display zones (Git #3316, README "eight zone tiles"), a grouping
 // layered ON TOP OF the existing fixed CAT_ORDER category, never a restructuring of category
 // itself (#3316's own explicit instruction). Order matches the design's own real `PZ` array
@@ -245,6 +285,31 @@ async function tieredFind(userId, name, house) {
 }
 export { tieredFind as findPantryItemFuzzy };
 
+/** Same real tiered exact->starts-with->contains match as tieredFind, but across every real
+ *  house on file rather than one -- "do we have cumin" (Git #3326) has no place context to scope
+ *  to the way a write capture ("I have 2 lbs of chicken breasts at the rental") does, so a query
+ *  with no stated place looks everywhere rather than defaulting to (or being limited by) one
+ *  house. */
+async function tieredFindAnyHouse(userId, name) {
+  const n = String(name || "").trim().toLowerCase();
+  if (!n) return null;
+  const rows = await many(`SELECT ${SELECT_COLUMNS} FROM pantry_items WHERE user_id = $1`, [userId]);
+  const exact = rows.filter((r) => r.name.toLowerCase() === n);
+  if (exact.length === 1) return attachZone(exact[0]);
+  if (exact.length > 1) return null;
+  const starts = rows.filter((r) => r.name.toLowerCase().startsWith(n));
+  if (starts.length === 1) return attachZone(starts[0]);
+  if (starts.length > 1) return null;
+  const contains = rows.filter((r) => r.name.toLowerCase().includes(n));
+  return contains.length === 1 ? attachZone(contains[0]) : null;
+}
+
+/** The real "do we have X" query's own lookup (Git #3326) -- scoped to a stated place ("at the
+ *  rental") the same way a write capture is, or every house when none is stated. */
+export async function findPantryItemForQuery(userId, name, house) {
+  return house ? tieredFind(userId, name, house) : tieredFindAnyHouse(userId, name);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Pantry <-> the shopping run (#3316 scope items 5 + 6) -- one real definition of "the same real
 // item" shared by the out-of-X capture rule (join the run, don't duplicate an already-queued
@@ -330,11 +395,20 @@ export async function restockHomeFromRun(userId, itemText, direction) {
  *  real override with a guessed default (see normaliseLowAt above). */
 export async function setPantryQuantity(userId, { name, quantity, unit, category, house, lowAt }) {
   const n = normaliseName(name);
-  const qty = normaliseQuantity(quantity);
-  const u = normaliseUnit(unit);
+  let qty = normaliseQuantity(quantity);
+  let u = normaliseUnit(unit);
   const h = normaliseHouse(house);
   const cat = normaliseCategory(category, n);
   const low = normaliseLowAt(lowAt);
+
+  // Git #3326: only a brand-new row (nothing on file yet) gets auto-classified -- an already-real
+  // row keeps its own already-real unit via the COALESCE below, same as the design's own `same ?
+  // same.u === 'lvl' : ...` branch.
+  const existing = await tieredFind(userId, n, h);
+  if (!existing && classifyLevelUnit(n, u) === "lvl") {
+    u = "lvl";
+    qty = 3; // Full -- a spice/oil name's stated count has no meaning on the 0-3 level scale.
+  }
 
   return attachZone(
     await one(
@@ -368,6 +442,19 @@ export async function adjustPantryQuantity(userId, { name, delta, unit, category
 
   const existing = await tieredFind(userId, n, h);
   if (existing) {
+    // Git #3326: a level row doesn't accumulate a delta -- restocking it ("bought" some more
+    // paprika) always jumps straight to Full, same real rule adjustPantryItemById's own + button
+    // already applies to a level item.
+    if (existing.unit === "lvl") {
+      return attachZone(
+        await one(
+          `UPDATE pantry_items SET quantity = 3, low_at = COALESCE($2, low_at), updated_at = now()
+            WHERE id = $1
+            RETURNING ${SELECT_COLUMNS}`,
+          [existing.id, low],
+        ),
+      );
+    }
     const next = Math.max(0, Number(existing.quantity) + d);
     return attachZone(
       await one(
@@ -377,6 +464,16 @@ export async function adjustPantryQuantity(userId, { name, delta, unit, category
         [existing.id, next, u, low],
       ),
     );
+  }
+
+  // Git #3326: a brand-new spice/oil-shaped row with no stated unit (or a jar/bottle unit) lands
+  // as a real level row at Full, same as setPantryQuantity's own classification above -- a
+  // stated delta has no meaning on the 0-3 level scale.
+  let insertUnit = u;
+  let insertQty = Math.max(0, d);
+  if (classifyLevelUnit(n, u) === "lvl") {
+    insertUnit = "lvl";
+    insertQty = 3;
   }
 
   return attachZone(
@@ -389,7 +486,7 @@ export async function adjustPantryQuantity(userId, { name, delta, unit, category
                       low_at = COALESCE(EXCLUDED.low_at, pantry_items.low_at),
                       updated_at = now()
        RETURNING ${SELECT_COLUMNS}`,
-      [userId, n, Math.max(0, d), u, cat, h, low],
+      [userId, n, insertQty, insertUnit, cat, h, low],
     ),
   );
 }

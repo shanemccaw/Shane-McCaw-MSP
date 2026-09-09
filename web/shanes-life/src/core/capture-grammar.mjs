@@ -1219,6 +1219,61 @@ const RULES = [
     },
   },
 
+  // 35a. Real pantry stock query (Git #3326) -- the Pantry room's own locked footer hint
+  //      (PANTRY_ROOM_HINT, public/app.js) literally invites saying "do we have cumin" into the
+  //      universal capture bar, but no rule here ever recognized it; it fell through to the
+  //      generic pending-inbox path. Ported verbatim from the design's own `pHave` regex (First
+  //      Slice Prototype.dc.html) -- read-only, no DB write, just a real toast naming quantity,
+  //      place and zone. Checked ahead of pantry_out/meds_usage_log's broader verb shapes (neither
+  //      starts with "do"/"is there"/"how much"/"how many"/"got any", so there's no real priority
+  //      conflict), but still after pantry_have/pantry_bought/pantry_out's own narrower, more
+  //      specific phrasings.
+  {
+    name: "pantry_query",
+    match(text) {
+      const m = text.match(
+        /^(?:do (?:we|i) have|have we got|is there|got any|any|how (?:much|many))\s+(?:any\s+|some\s+)?(.+?)(?:\s+(?:do we have|is there|are there|is left|are left|left))?(?:\s+(?:at|in)\s+(?:the\s+)?(rental|home))?\??[.!]*$/i,
+      );
+      if (!m) return null;
+      const name = m[1].trim();
+      if (!name) return null;
+      return { name, house: m[2] ? cap1(m[2].toLowerCase()) : null };
+    },
+    async run(userId, { name, house }) {
+      const hit = await pantry.findPantryItemForQuery(userId, name, house);
+      if (!hit) {
+        const placeNote = house ? ` at ${pantry.placeName(house)}` : "";
+        return { message: `No ${name.toLowerCase()}${placeNote} on file. Say how much when you buy it and it lands in the Pantry.` };
+      }
+      const placeNote = hit.house ? ` at ${pantry.placeName(hit.house)}` : "";
+      return { message: `${hit.name}${placeNote} · ${pantry.qtyLabel(hit)}.`, pantryItemId: hit.id };
+    },
+  },
+
+  // 35b. Bare spice/oil pantry statement with no stated numeric unit (Git #3326: "I have salt",
+  //      "we're low on paprika", "bought cumin") -- pantry_have/pantry_bought above both require a
+  //      literal "N <unit> of" shape and fall through untouched otherwise, so a bare spice/oil
+  //      statement never became a real `unit = 'lvl'` row. Gated strictly on
+  //      pantry.isSpiceOrOilName(name) so this can't become rule 33's own flagged "I have X" false-
+  //      positive risk ("I have 2 hours", "I have 2 kids") -- a non-spice name simply returns null
+  //      and falls through exactly as before.
+  {
+    name: "pantry_spice_bare",
+    match(text) {
+      const low = text.match(/^(?:we'?re|i'?m)\s+(?:running\s+)?low\s+on\s+(?:the\s+|some\s+|any\s+)?(.+?)(?:\s+(?:at|in)\s+(?:the\s+)?(rental|home))?[.!]*$/i);
+      const m = low || text.match(/^(?:i |we )?(?:have|bought|got)\s+(?:some\s+)?(.+?)(?:\s+(?:at|in)\s+(?:the\s+)?(rental|home))?[.!]*$/i);
+      if (!m) return null;
+      const name = m[1].trim();
+      if (!name || !pantry.isSpiceOrOilName(name)) return null;
+      return { name, house: m[2] ? cap1(m[2].toLowerCase()) : null, lowStated: Boolean(low) };
+    },
+    async run(userId, { name, house, lowStated }) {
+      const row = await pantry.setPantryQuantity(userId, { name, quantity: lowStated ? 1 : 3, unit: "lvl", house });
+      const placeNote = row.house ? ` at ${pantry.placeName(row.house)}` : "";
+      return { message: `${row.name}: ${pantry.qtyLabel(row)}${placeNote}.`, pantryItemId: row.id };
+    },
+  },
+
   // 36. Standalone timer (Git #3307, README §112-123 item 3: "8 min timer for pasta"; Shane's
   //     own decision comment adds "set a timer for 5 minutes"). A pure command with no stated
   //     fact to lose, so a "timer" with no real duration falls straight through to the inbox
