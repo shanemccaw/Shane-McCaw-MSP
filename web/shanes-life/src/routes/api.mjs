@@ -1703,7 +1703,12 @@ export function buildApiRouter() {
 
   router.get("/api/tesla/vehicles", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
-    return sendJson(res, 200, { vehicles: await teslaCore.listVehicles(user.id) });
+    try {
+      return sendJson(res, 200, { vehicles: await teslaCore.listVehicles(user.id) });
+    } catch (err) {
+      if (err instanceof TeslaError) throw badRequest(err.message);
+      throw err;
+    }
   });
 
   router.post("/api/tesla/vehicles/select", async (req, res, _params, ctx) => {
@@ -1763,7 +1768,12 @@ export function buildApiRouter() {
   /** On-demand real climate read (not an auto-poll -- see tesla.mjs's own header on why). */
   router.get("/api/tesla/climate", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
-    return sendJson(res, 200, await teslaCore.getVehicleClimateState(user.id));
+    try {
+      return sendJson(res, 200, await teslaCore.getVehicleClimateState(user.id));
+    } catch (err) {
+      if (err instanceof TeslaError) throw badRequest(err.message);
+      throw err;
+    }
   });
 
   /** On-demand real charge read (Git #3270's own Tesla room "Right now" card -- getChargeState
@@ -1829,7 +1839,12 @@ export function buildApiRouter() {
    *  6-hour housekeeping sweep runs, exposed for a Settings "check now" action. */
   router.get("/api/tesla/commute-check", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
-    return sendJson(res, 200, await teslaCore.checkLowBatteryForCommute(user.id));
+    try {
+      return sendJson(res, 200, await teslaCore.checkLowBatteryForCommute(user.id));
+    } catch (err) {
+      if (err instanceof TeslaError) throw badRequest(err.message);
+      throw err;
+    }
   });
 
   // -- Tesla room direct commands (Git #3270, design handoff "Do" card) -- a real, immediate tap

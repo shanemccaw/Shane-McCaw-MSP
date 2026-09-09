@@ -6935,13 +6935,14 @@ async function viewCarDetail(view, vehicleId) {
     if (sessions.length === 0) {
       tCard.append(el("p", { class: "small muted", style: "margin-top:.75rem", text: "No real charging sessions synced yet." }));
     } else {
-      tCard.append(el("p", { class: "small muted", style: "margin-top:.75rem", text: "Real charging sessions from Tesla. Cost is an estimate (your own rate × real kWh added) -- Tesla's API does not expose real per-session cost to a personal account." }));
+      tCard.append(el("p", { class: "small muted", style: "margin-top:.75rem", text: "Real charging sessions from Tesla. Cost is an estimate (your own home or Supercharger rate × real kWh added) -- Tesla's API does not expose real per-session cost to a personal account." }));
       for (const s of sessions) {
+        const rateLabel = s.rateSource === "supercharger" ? "Supercharger" : "Home";
         tCard.append(
           el("div", { class: "date-row" }, [
             el("div", { class: "body" }, [
               el("div", { class: "title small", text: s.location || "Charging session" }),
-              el("div", { class: "meta", text: `${s.startedAt ? whenDate(s.startedAt) : "unknown date"}${s.energyAddedKwh !== null ? ` · ${s.energyAddedKwh} kWh` : ""}` }),
+              el("div", { class: "meta", text: `${s.startedAt ? whenDate(s.startedAt) : "unknown date"}${s.energyAddedKwh !== null ? ` · ${s.energyAddedKwh} kWh` : ""} · ${rateLabel} rate` }),
             ]),
             el("div", { class: "when", text: s.costEstimate !== null ? `~${dollars(s.costEstimate)}` : "?" }),
           ]),
@@ -9253,7 +9254,15 @@ async function renderTeslaCommuteSettings() {
   });
   const costInput = el("input", {
     type: "number", step: "0.001", inputmode: "decimal", placeholder: "e.g. 0.36",
-    value: settings.chargeCostPerKwh ?? "", "aria-label": "Cost per kWh",
+    value: settings.chargeCostPerKwh ?? "", "aria-label": "Home cost per kWh",
+  });
+  // Git #3287: genuinely different real rate from home electricity -- Shane's real Supercharger
+  // rate is $0.39/kWh, distinct from the (not-yet-stated) home rate above. Used by
+  // syncChargingSessionsFromTesla for away-from-home/Supercharger sessions, not this commute nudge
+  // (which is specifically about charging at home overnight, so it keeps reading the home rate).
+  const superchargeCostInput = el("input", {
+    type: "number", step: "0.001", inputmode: "decimal", placeholder: "e.g. 0.39",
+    value: settings.superchargeCostPerKwh ?? "", "aria-label": "Supercharger cost per kWh",
   });
   const saveOut = el("div", { class: "small", style: "margin-top:.4rem" });
   const checkOut = el("div", { class: "small", style: "margin-top:.4rem" });
@@ -9264,8 +9273,10 @@ async function renderTeslaCommuteSettings() {
     commuteInput,
     el("label", { class: "small muted", style: "margin-top:.4rem", text: "Your vehicle's real efficiency (miles per kWh) -- optional, needed for a cost estimate" }),
     efficiencyInput,
-    el("label", { class: "small muted", style: "margin-top:.4rem", text: "Your real cost per kWh (home electricity or Supercharger rate) -- optional, needed for a cost estimate" }),
+    el("label", { class: "small muted", style: "margin-top:.4rem", text: "Your real home electricity cost per kWh -- optional, used for this commute nudge and home charging sessions" }),
     costInput,
+    el("label", { class: "small muted", style: "margin-top:.4rem", text: "Your real Supercharger cost per kWh -- used for away-from-home/Supercharger charging sessions" }),
+    superchargeCostInput,
     el("div", { class: "row", style: "margin-top:.6rem" }, [
       el("button", {
         class: "primary small",
@@ -9280,6 +9291,7 @@ async function renderTeslaCommuteSettings() {
                 commuteMilesNeeded: commuteInput.value === "" ? null : Number(commuteInput.value),
                 efficiencyMilesPerKwh: efficiencyInput.value === "" ? null : Number(efficiencyInput.value),
                 chargeCostPerKwh: costInput.value === "" ? null : Number(costInput.value),
+                superchargeCostPerKwh: superchargeCostInput.value === "" ? null : Number(superchargeCostInput.value),
               }),
             });
             saveOut.textContent = "Saved.";
