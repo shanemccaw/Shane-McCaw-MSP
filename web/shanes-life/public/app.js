@@ -3511,6 +3511,17 @@ function medsDaypartRank(batchName) {
   return 3;
 }
 
+// Git #3324, Shane's own direct correction: rank alone isn't enough to decide "current" -- taking
+// Night at 12:37am made Morning (the only untaken rank-0/1/2 batch left) immediately "current",
+// hours before it's real-world morning. Morning specifically needs a real clock check: it's only
+// eligible to become "current" once the actual local hour has passed a sensible cutoff (Shane's
+// own stated 6am). Midday/evening have no such problem -- by the time either is the only untaken
+// batch left, its own real daypart has already started -- so this only gates rank 0.
+const MEDS_MORNING_ELIGIBLE_HOUR = 6;
+function medsRankEligibleNow(rank, now = new Date()) {
+  return rank !== 0 || now.getHours() >= MEDS_MORNING_ELIGIBLE_HOUR;
+}
+
 // Git #3282, Shane's own direct correction (supersedes #3269's itemized-when-active
 // treatment): a batch's real item names, comma-truncated to at most 3 with a "+N more" tail --
 // the taken-state summary line ("Taken 7:12a · Morning Rx, Vitamin D3, Omega-3 · +1 more") and
@@ -3775,16 +3786,23 @@ async function viewMeds(view) {
     // Shane's own direct correction: every batch is now the same real compact-line card
     // (medBatchCard no longer itemizes the one real "current" batch) -- only whether the
     // slide-to-take control shows still depends on rank/current the same way it always did. Only
-    // the one real "current" batch -- the earliest untaken timed batch -- (or an untimed batch,
+    // the one real "current" batch -- the earliest untaken timed batch that's also real-clock
+    // eligible right now (Git #3324: Morning specifically can't become "current" before 6am local,
+    // no matter what else is already taken -- see medsRankEligibleNow) -- (or an untimed batch,
     // e.g. "as needed", which has no "later" state to collapse into) gets the real slide-to-take
-    // control; every other untaken timed batch stays dimmed with no swipe ("later"). An
+    // control; every other untaken timed batch stays dimmed with no swipe ("later"). If nothing
+    // untaken is eligible yet (e.g. Night taken at 12:37am, Morning not eligible until 6am), no
+    // batch is "current" and every untaken timed batch falls back to that same dimmed "later"
+    // state -- an honest "nothing due right now" rather than jumping ahead to Morning. An
     // already-taken batch keeps its existing compact + Undo treatment regardless of rank -- the
     // design shows no "later, but taken" state, and there's real value in seeing what was
     // actually taken.
     const ordered = batches
       .map((batchState, i) => ({ batchState, rank: medsDaypartRank(batchState.batch), i }))
       .sort((a, b) => a.rank - b.rank || a.i - b.i);
-    const current = ordered.find((b) => b.rank < 3 && !b.batchState.takenToday);
+    const current = ordered.find(
+      (b) => b.rank < 3 && !b.batchState.takenToday && medsRankEligibleNow(b.rank),
+    );
 
     const list = el("section", { class: "section" });
     // Git #3318: a dormant course med's own real dashed note goes right under whichever batch
