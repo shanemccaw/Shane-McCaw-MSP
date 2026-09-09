@@ -5810,7 +5810,10 @@ function moneyWinRow(win) {
   return el("div", { class: "money-bucket-row" }, [
     el("div", { class: "money-bucket-name" }, [
       el("div", { text: win.text }),
-      el("div", { class: "money-bucket-meta", text: win.happened_on }),
+      el("div", {
+        class: "money-bucket-meta",
+        text: new Date(win.happened_on).toLocaleDateString([], { month: "short", day: "numeric" }),
+      }),
     ]),
     win.source === "debt_paid_off" ? sticker("green", "automatic") : null,
   ]);
