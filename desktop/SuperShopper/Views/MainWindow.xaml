@@ -4,9 +4,9 @@
         xmlns:vm="clr-namespace:SuperShopper.ViewModels"
         xmlns:models="clr-namespace:SuperShopper.Models"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-        Title="SuperShopper Desktop - Supermarket Weekly Ads &amp; Deals Extractor" 
-        Height="850" Width="1350"
-        MinHeight="600" MinWidth="900"
+        Title="Weekly Grocery Deal Finder" 
+        Height="880" Width="1440"
+        MinHeight="700" MinWidth="1100"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" AllowsTransparency="False"
         Background="{StaticResource WindowBackgroundBrush}"
@@ -22,26 +22,22 @@
     </Window.Resources>
 
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="35" CornerRadius="0" GlassFrameThickness="0" ResizeBorderThickness="6" UseAeroCaptionButtons="False"/>
+        <WindowChrome CaptionHeight="40" CornerRadius="0" GlassFrameThickness="0" ResizeBorderThickness="6" UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
 
-    <!-- Main Outer Window Border -->
+    <!-- Outer Window Border -->
     <Border x:Name="mainBorder" Background="{StaticResource WindowBackgroundBrush}" 
-            BorderBrush="{StaticResource BorderBrush}" 
-            BorderThickness="1">
+            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
-                <!-- Row 0: Custom TitleBar -->
-                <RowDefinition Height="35"/>
-                <!-- Row 1: Main IDE Workspace (Activity Bar, Store Directory Sidebar, WebView2 Browser, Deals Panel) -->
+                <!-- Row 0: Top Header Bar -->
+                <RowDefinition Height="42"/>
+                <!-- Row 1: Main Dashboard Workspace -->
                 <RowDefinition Height="*"/>
-                <!-- Row 2: Status Bar -->
-                <RowDefinition Height="22"/>
             </Grid.RowDefinitions>
 
-            <!-- ==================== ROW 0: CUSTOM TITLEBAR ==================== -->
-            <Border Grid.Row="0" Background="{StaticResource HeaderBackgroundBrush}" 
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <!-- ==================== ROW 0: TOP HEADER BAR ==================== -->
+            <Border Grid.Row="0" Background="#0B0E14" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -49,664 +45,456 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Left: App Brand & Dropdown Menu -->
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0">
-                        <Path Data="{StaticResource IconExplorer}" Fill="{StaticResource AccentBrush}"
-                              Width="16" Height="16" Stretch="Uniform" Margin="4,0,8,0"/>
-                        <TextBlock Text="SuperShopper" Foreground="{StaticResource ForegroundBrightBrush}" FontWeight="Bold" FontSize="13" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                        <Menu VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="True">
-                            <MenuItem Header="Stores">
-                                <MenuItem Header="Publix Weekly Ad" Command="{Binding NavigateToUrlCommand}" CommandParameter="https://www.publix.com/savings/weekly-ad/view-all"/>
-                                <MenuItem Header="Kroger Weekly Ad" Command="{Binding NavigateToUrlCommand}" CommandParameter="https://www.kroger.com/weeklyad"/>
-                                <MenuItem Header="Walmart Savings" Command="{Binding NavigateToUrlCommand}" CommandParameter="https://www.walmart.com/savings-spotlight"/>
-                                <MenuItem Header="Target Circle Offers" Command="{Binding NavigateToUrlCommand}" CommandParameter="https://www.target.com/c/target-circle-offers/-/N-55119"/>
-                                <Separator Background="{StaticResource BorderBrush}"/>
-                                <MenuItem Header="Exit" Click="MenuExit_Click"/>
-                            </MenuItem>
-                            <MenuItem Header="Deals Extractor">
-                                <MenuItem Header="Extract Deals from Page" Click="ExtractDeals_Click"/>
-                                <MenuItem Header="View Extracted Sales" Command="{Binding TogglePanelCommand}"/>
-                            </MenuItem>
-                            <MenuItem Header="Shopping List">
-                                <MenuItem Header="View Saved Items" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Search}"/>
-                                <MenuItem Header="Add New Custom Store" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.SourceControl}"/>
-                            </MenuItem>
-                            <MenuItem Header="View">
-                                <MenuItem Header="Toggle Sidebar" Command="{Binding ToggleSidebarCommand}"/>
-                                <MenuItem Header="Toggle Extracted Deals Panel" Command="{Binding TogglePanelCommand}"/>
-                            </MenuItem>
-                        </Menu>
+                    <!-- App Title -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Path Data="{StaticResource IconExplorer}" Fill="#0084FF" Width="16" Height="16" Stretch="Uniform" Margin="0,0,8,0"/>
+                        <TextBlock Text="Weekly Grocery Deal Finder" Foreground="{StaticResource ForegroundBrightBrush}" FontWeight="SemiBold" FontSize="13"/>
                     </StackPanel>
 
-                    <!-- Middle: Quick Store Search / Status -->
-                    <Border Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
-                            Width="450" Height="24" Background="#1E1E1E" 
-                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4"
-                            WindowChrome.IsHitTestVisibleInChrome="True">
-                        <Grid Margin="8,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Path Data="{StaticResource IconSearch}" Fill="{StaticResource ForegroundMutedBrush}"
-                                  Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="1" Text="{Binding ActiveStoreName, StringFormat='Active Supermarket: {0}'}"
-                                       Foreground="{StaticResource ForegroundBrightBrush}" FontSize="11" 
-                                       VerticalAlignment="Center" Margin="8,0,0,0"/>
-                        </Grid>
-                    </Border>
+                    <!-- Top Sync Info & Global Controls -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <!-- Sync Indicator -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
+                            <Ellipse Width="6" Height="6" Fill="#F59E0B" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="5 of 7 stores synced" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="12" VerticalAlignment="Center"/>
+                        </StackPanel>
 
-                    <!-- Right: Window Management Controls -->
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" WindowChrome.IsHitTestVisibleInChrome="True">
-                        <Button Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconWindowMinimize}" Click="WindowMinimize_Click"/>
-                        <Button Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconWindowMaximize}" Click="WindowMaximize_Click"/>
-                        <Button Style="{StaticResource TitleBarCloseButtonStyle}" Content="{StaticResource IconWindowClose}" Click="WindowClose_Click"/>
+                        <!-- Week Date Switcher -->
+                        <Border Background="#141A26" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,12,0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="&lt;" Style="{StaticResource VSCodePanelTabButtonStyle}" Padding="4,0" Foreground="{StaticResource ForegroundMutedBrush}"/>
+                                <Path Data="{StaticResource IconPantry}" Fill="{StaticResource ForegroundMutedBrush}" Width="12" Height="12" Stretch="Uniform" Margin="6,0"/>
+                                <TextBlock Text="Week of Sep 6 – 12" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="12" FontWeight="SemiBold" Margin="4,0"/>
+                                <Button Content="&gt;" Style="{StaticResource VSCodePanelTabButtonStyle}" Padding="4,0" Foreground="{StaticResource ForegroundMutedBrush}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Search Button -->
+                        <Button Style="{StaticResource VSCodePanelTabButtonStyle}" Width="32" Height="30" Margin="0,0,8,0" ToolTip="Search Deals">
+                            <Path Data="{StaticResource IconSearch}" Fill="{StaticResource ForegroundMutedBrush}" Width="12" Height="12" Stretch="Uniform"/>
+                        </Button>
+
+                        <!-- Refresh Ads Button -->
+                        <Button Content="↻  Refresh ads" Style="{StaticResource PrimaryActionButtonStyle}" Height="30" Margin="0,0,16,0" Click="ExtractDeals_Click"/>
+
+                        <!-- Window Controls -->
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconWindowMinimize}" Click="WindowMinimize_Click"/>
+                            <Button Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconWindowMaximize}" Click="WindowMaximize_Click"/>
+                            <Button Style="{StaticResource TitleBarCloseButtonStyle}" Content="{StaticResource IconWindowClose}" Click="WindowClose_Click"/>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <!-- ==================== ROW 1: MAIN WORKSPACE ==================== -->
+            <!-- ==================== ROW 1: MAIN DASHBOARD WORKSPACE ==================== -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <!-- Activity Bar Column -->
-                    <ColumnDefinition Width="48"/>
-                    <!-- Sidebar Column -->
-                    <ColumnDefinition Width="Auto"/>
-                    <!-- Splitter Column -->
-                    <ColumnDefinition Width="Auto"/>
-                    <!-- Main Browser & Shopping Panel Column -->
+                    <!-- Col 0: Left Navigation Drawer -->
+                    <ColumnDefinition Width="240"/>
+                    <!-- Col 1: Main Content Surface -->
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Activity Bar (Far Left Strip) -->
-                <Border Grid.Column="0" Background="{StaticResource ActivityBarBackgroundBrush}" 
-                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
-                    <Grid>
-                        <!-- Top Navigation Icons -->
-                        <StackPanel VerticalAlignment="Top" Margin="0,4,0,0">
-                            <ToggleButton Style="{StaticResource ActivityBarButtonStyle}" Content="{StaticResource IconExplorer}" 
-                                          IsChecked="{Binding IsExplorerActive, Mode=OneWay}" ToolTip="Supermarket Directory &amp; Weekly Ads"
-                                          Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Explorer}"/>
-                            <ToggleButton Style="{StaticResource ActivityBarButtonStyle}" Content="{StaticResource IconSearch}" 
-                                          IsChecked="{Binding IsSearchActive, Mode=OneWay}" ToolTip="Shopping List &amp; Saved Deals"
-                                          Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Search}"/>
-                            <ToggleButton Style="{StaticResource ActivityBarButtonStyle}" Content="{StaticResource IconPantry}" 
-                                          IsChecked="{Binding IsPantryActive, Mode=OneWay}" ToolTip="Pantry Inventory (Git 3308 - Needs Refill)"
-                                          Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Pantry}"/>
-                            <ToggleButton Style="{StaticResource ActivityBarButtonStyle}" Content="{StaticResource IconHeart}" 
-                                          IsChecked="{Binding IsPreferencesActive, Mode=OneWay}" ToolTip="What I Like &amp; Favorites (Git 3311)"
-                                          Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Preferences}"/>
-                            <ToggleButton Style="{StaticResource ActivityBarButtonStyle}" Content="{StaticResource IconSourceControl}" 
-                                          IsChecked="{Binding IsSourceControlActive, Mode=OneWay}" ToolTip="Add Custom Store Bookmark"
-                                          Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.SourceControl}"/>
-                        </StackPanel>
-
-                        <!-- Bottom Settings Icon -->
-                        <StackPanel VerticalAlignment="Bottom" Margin="0,0,0,4">
-                            <ToggleButton Style="{StaticResource ActivityBarButtonStyle}" Content="{StaticResource IconSettings}" 
-                                          IsChecked="{Binding IsSettingsActive, Mode=OneWay}" ToolTip="Settings &amp; Preferences"
-                                          Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Settings}"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-
-                <!-- Primary Sidebar (Store Directory & Deals) -->
-                <Border Grid.Column="1" Width="280" Background="{StaticResource SidebarBackgroundBrush}"
-                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0"
-                        Visibility="{Binding IsSidebarOpen, Converter={StaticResource BoolToVisConverter}}">
+                <!-- ==================== LEFT NAVIGATION DRAWER ==================== -->
+                <Border Grid.Column="0" Background="#10141D" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="12">
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="35"/>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <!-- Sidebar Header -->
-                        <Border Grid.Row="0" Padding="12,0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
-                            <Grid>
-                                <TextBlock Text="{Binding SidebarHeaderTitle}" Foreground="{StaticResource ForegroundMutedBrush}"
-                                           FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
-                                <Button Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconCloseSmall}"
-                                        HorizontalAlignment="Right" Width="24" Height="24" Command="{Binding ToggleSidebarCommand}"/>
-                            </Grid>
-                        </Border>
-
-                        <!-- Sidebar Body Content -->
-                        <Grid Grid.Row="1" Margin="4">
-
-                            <!-- View 1: Supermarket Directory & Weekly Ads -->
-                            <ScrollViewer Visibility="{Binding IsExplorerActive, Converter={StaticResource BoolToVisConverter}}" VerticalScrollBarVisibility="Auto">
-                                <ItemsControl ItemsSource="{Binding StoreBookmarks}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type models:StoreBookmarkModel}">
-                                            <Border Background="#1E1E1E" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" 
-                                                    CornerRadius="4" Padding="10" Margin="4">
-                                                <Grid>
-                                                    <Grid.RowDefinitions>
-                                                        <RowDefinition Height="Auto"/>
-                                                        <RowDefinition Height="Auto"/>
-                                                        <RowDefinition Height="Auto"/>
-                                                    </Grid.RowDefinitions>
-                                                    <Grid Grid.Row="0">
-                                                        <TextBlock Text="{Binding Name}" Foreground="{StaticResource ForegroundBrightBrush}" 
-                                                                   FontWeight="Bold" FontSize="13" VerticalAlignment="Center"/>
-                                                    </Grid>
-                                                    <TextBlock Grid.Row="1" Text="{Binding Description}" Foreground="{StaticResource ForegroundMutedBrush}" 
-                                                               FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8"/>
-                                                    <Button Grid.Row="2" Content="View Weekly Ad &gt;" HorizontalAlignment="Right"
-                                                            Command="{Binding DataContext.SelectStoreCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                            CommandParameter="{Binding}"/>
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
-
-                            <!-- View 2: Shopping List & Saved Deals -->
-                            <Grid Visibility="{Binding IsSearchActive, Converter={StaticResource BoolToVisConverter}}" Margin="6">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="*"/>
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Grid.Row="0" Text="SAVED SHOPPING LIST" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" FontWeight="Bold" Margin="0,0,0,6"/>
-
-                                <!-- Quick Add Item Box -->
-                                <Border Grid.Row="1" Background="{StaticResource InputBackgroundBrush}" Padding="6" CornerRadius="3" Margin="0,0,0,8">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBox Text="{Binding NewItemTitle, UpdateSourceTrigger=PropertyChanged}" 
-                                                 BorderThickness="0" Background="Transparent" 
-                                                 Padding="4" VerticalAlignment="Center"/>
-                                        <Button Grid.Column="1" Content="Add" Command="{Binding AddShoppingItemCommand}" Margin="4,0,0,0"/>
-                                    </Grid>
-                                </Border>
-
-                                <!-- Shopping List View -->
-                                <ListBox Grid.Row="2" ItemsSource="{Binding ShoppingList}" Background="Transparent" BorderThickness="0">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type models:ShoppingItemModel}">
-                                            <Border Background="#1E1E1E" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" 
-                                                    CornerRadius="3" Padding="8" Margin="0,2,0,4">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <CheckBox IsChecked="{Binding IsCompleted}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                                    <StackPanel Grid.Column="1">
-                                                        <TextBlock Text="{Binding Title}" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="12" FontWeight="SemiBold"/>
-                                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                                            <TextBlock Text="{Binding StoreName}" Foreground="{StaticResource AccentBrush}" FontSize="10" Margin="0,0,6,0"/>
-                                                            <TextBlock Text="{Binding PriceInfo}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10"/>
-                                                        </StackPanel>
-                                                    </StackPanel>
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </Grid>
-
-                            <!-- View 3: Add Custom Store Bookmark -->
-                            <StackPanel Visibility="{Binding IsSourceControlActive, Converter={StaticResource BoolToVisConverter}}" Margin="8">
-                                <TextBlock Text="ADD CUSTOM STORE BOOKMARK" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" FontWeight="Bold" Margin="0,0,0,8"/>
-
-                                <TextBlock Text="Store Name:" Foreground="{StaticResource ForegroundBrush}" FontSize="11" Margin="0,4,0,2"/>
-                                <TextBox Text="{Binding NewBookmarkName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
-
-                                <TextBlock Text="Weekly Ad / Deals URL:" Foreground="{StaticResource ForegroundBrush}" FontSize="11" Margin="0,4,0,2"/>
-                                <TextBox Text="{Binding NewBookmarkUrl, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"/>
-
-                                <Button Content="Save Bookmark" Command="{Binding AddBookmarkCommand}"/>
-                            </StackPanel>
-
-                            <!-- View 4: Settings -->
-                            <StackPanel Visibility="{Binding IsSettingsActive, Converter={StaticResource BoolToVisConverter}}" Margin="8">
-                                <TextBlock Text="SUPERSHOPPER PREFERENCES" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" FontWeight="Bold" Margin="0,0,0,8"/>
-                                <CheckBox Content="Persistent Cookies &amp; Session Data" Foreground="{StaticResource ForegroundBrush}" IsChecked="True" IsEnabled="False" Margin="0,4"/>
-                                <CheckBox Content="Auto-Extract API Sales Payload" Foreground="{StaticResource ForegroundBrush}" IsChecked="True" Margin="0,4"/>
-                                <CheckBox Content="Microsoft Dark Mode Theme" Foreground="{StaticResource ForegroundBrush}" IsChecked="True" IsEnabled="False" Margin="0,4"/>
-                            </StackPanel>
-
-                            <!-- View 5: Pantry Inventory (Git 3308) -->
-                            <Grid Visibility="{Binding IsPantryActive, Converter={StaticResource BoolToVisConverter}}" Margin="6">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="*"/>
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Grid.Row="0" Text="PANTRY INVENTORY (GIT 3308)" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" FontWeight="Bold" Margin="0,0,0,6"/>
-
-                                <!-- Add Pantry Item Input -->
-                                <Border Grid.Row="1" Background="{StaticResource InputBackgroundBrush}" Padding="6" CornerRadius="3" Margin="0,0,0,8">
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
-                                        <Grid Grid.Row="0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBox Text="{Binding NewPantryItemName, UpdateSourceTrigger=PropertyChanged}" 
-                                                     BorderThickness="0" Background="Transparent" 
-                                                     Padding="4" VerticalAlignment="Center"/>
-                                            <Button Grid.Column="1" Content="+ Add Item" Command="{Binding AddPantryItemCommand}" Margin="4,0,0,0"/>
-                                        </Grid>
-                                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,4,0,0">
-                                            <TextBlock Text="Category: " Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" VerticalAlignment="Center"/>
-                                            <ComboBox SelectedValue="{Binding NewPantryCategory}" SelectedValuePath="Content" FontSize="10" Width="120">
-                                                <ComboBoxItem Content="Produce"/>
-                                                <ComboBoxItem Content="Meat"/>
-                                                <ComboBoxItem Content="Dairy"/>
-                                                <ComboBoxItem Content="Frozen"/>
-                                                <ComboBoxItem Content="Snacks"/>
-                                                <ComboBoxItem Content="Beverages"/>
-                                                <ComboBoxItem Content="Pantry"/>
-                                            </ComboBox>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-
-                                <!-- Pantry List View -->
-                                <ListBox Grid.Row="2" ItemsSource="{Binding PantryItems}" Background="Transparent" BorderThickness="0">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type models:PantryItemModel}">
-                                            <Border Background="#1E1E1E" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" 
-                                                    CornerRadius="3" Padding="8" Margin="0,2,0,4">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <StackPanel Grid.Column="0">
-                                                        <TextBlock Text="{Binding ItemName}" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="12" FontWeight="Bold"/>
-                                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                                            <TextBlock Text="{Binding Category}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" Margin="0,0,8,0"/>
-                                                            <TextBlock Text="{Binding CurrentQuantity, StringFormat='Qty: {0}'}" Foreground="{StaticResource ForegroundBrush}" FontSize="10"/>
-                                                        </StackPanel>
-                                                    </StackPanel>
-                                                    <CheckBox Grid.Column="1" Content="Needs Refill" IsChecked="{Binding NeedsRefill}" 
-                                                              Foreground="#DCDCAA" FontSize="10" VerticalAlignment="Center"
-                                                              Command="{Binding DataContext.GeneratePersonalizedAdCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </Grid>
-
-                            <!-- View 6: What I Like / User Preferences (Git 3311) -->
-                            <Grid Visibility="{Binding IsPreferencesActive, Converter={StaticResource BoolToVisConverter}}" Margin="6">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="*"/>
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Grid.Row="0" Text="WHAT I LIKE / PREFERENCES (GIT 3311)" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" FontWeight="Bold" Margin="0,0,0,6"/>
-
-                                <!-- Add Preference Input -->
-                                <Border Grid.Row="1" Background="{StaticResource InputBackgroundBrush}" Padding="6" CornerRadius="3" Margin="0,0,0,8">
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
-                                        <Grid Grid.Row="0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBox Text="{Binding NewPrefKeyword, UpdateSourceTrigger=PropertyChanged}" 
-                                                     BorderThickness="0" Background="Transparent" 
-                                                     Padding="4" VerticalAlignment="Center"/>
-                                            <Button Grid.Column="1" Content="+ Add Brand" Command="{Binding AddPreferenceCommand}" Margin="4,0,0,0"/>
-                                        </Grid>
-                                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,4,0,0">
-                                            <TextBlock Text="Preference: " Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" VerticalAlignment="Center"/>
-                                            <ComboBox SelectedValue="{Binding NewPrefLevel}" SelectedValuePath="Content" FontSize="10" Width="120">
-                                                <ComboBoxItem Content="Must Have"/>
-                                                <ComboBoxItem Content="Favorite"/>
-                                                <ComboBoxItem Content="Like"/>
-                                            </ComboBox>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-
-                                <!-- Preferences List View -->
-                                <ListBox Grid.Row="2" ItemsSource="{Binding UserPreferences}" Background="Transparent" BorderThickness="0">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type models:UserPreferenceModel}">
-                                            <Border Background="#1E1E1E" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" 
-                                                    CornerRadius="3" Padding="8" Margin="0,2,0,4">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <StackPanel Grid.Column="0">
-                                                        <TextBlock Text="{Binding KeywordOrBrand}" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="12" FontWeight="Bold"/>
-                                                        <TextBlock Text="{Binding Category}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10"/>
-                                                    </StackPanel>
-                                                    <Border Grid.Column="1" Background="#0E639C" Padding="6,2" CornerRadius="3" VerticalAlignment="Center">
-                                                        <TextBlock Text="{Binding PreferenceLevel}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold"/>
-                                                    </Border>
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </Grid>
-                        </Grid>
-                    </Grid>
-                </Border>
-
-                <!-- Grid Splitter for Resizable Sidebar -->
-                <GridSplitter Grid.Column="2" Width="2" HorizontalAlignment="Center" VerticalAlignment="Stretch"
-                              Background="{StaticResource BorderBrush}" ShowsPreview="False"
-                              Visibility="{Binding IsSidebarOpen, Converter={StaticResource BoolToVisConverter}}"/>
-
-                <!-- Main WebView2 Browser & Bottom Shopping Panel -->
-                <Grid Grid.Column="3">
-                    <Grid.RowDefinitions>
-                        <!-- Row 0: WebView2 Browser Viewport -->
-                        <RowDefinition Height="*"/>
-                        <!-- Row 1: Panel Splitter -->
-                        <RowDefinition Height="Auto"/>
-                        <!-- Row 2: Bottom Extracted Sales Panel -->
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- ==================== WEBVIEW2 BROWSER VIEWPORT ==================== -->
-                    <Grid Grid.Row="0">
-                        <Grid.RowDefinitions>
-                            <!-- Row 0: Browser Control Bar (Back, Refresh, Address Bar, Extract Deals) -->
-                            <RowDefinition Height="38"/>
-                            <!-- Row 1: WebView2 Renderer -->
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-
-                        <!-- Browser Navigation Bar -->
-                        <Border Grid.Row="0" Background="#2D2D2D" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="8,4">
+                        <!-- Drawer Brand Header -->
+                        <Border Grid.Row="0" Background="#141A26" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,16">
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <!-- Back/Forward/Refresh Buttons -->
                                     <ColumnDefinition Width="Auto"/>
-                                    <!-- Address Bar Input -->
                                     <ColumnDefinition Width="*"/>
-                                    <!-- Action Buttons -->
-                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-
-                                <!-- Navigation Buttons -->
-                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
-                                    <Button Style="{StaticResource VSCodePanelTabButtonStyle}" Content="&lt;" Width="28" Height="26" 
-                                            ToolTip="Back" Click="WebBack_Click"/>
-                                    <Button Style="{StaticResource VSCodePanelTabButtonStyle}" Content="&gt;" Width="28" Height="26" 
-                                            ToolTip="Forward" Click="WebForward_Click"/>
-                                    <Button Style="{StaticResource VSCodePanelTabButtonStyle}" Content="&#x21BB;" Width="28" Height="26" 
-                                            ToolTip="Refresh Page" Click="WebRefresh_Click"/>
+                                <Border Background="#0084FF" CornerRadius="6" Width="32" Height="32" Margin="0,0,10,0">
+                                    <Path Data="{StaticResource IconSearch}" Fill="#FFFFFF" Width="16" Height="16" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="Deal Finder" Foreground="{StaticResource ForegroundBrightBrush}" FontWeight="Bold" FontSize="13"/>
+                                    <TextBlock Text="Weekly ads • 7 stores" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10"/>
                                 </StackPanel>
+                            </Grid>
+                        </Border>
 
-                                <!-- Address Bar Input Box -->
-                                <Border Grid.Column="1" Background="#1E1E1E" BorderBrush="{StaticResource BorderBrush}" 
-                                        BorderThickness="1" CornerRadius="3" VerticalAlignment="Center">
-                                    <Grid Margin="6,0">
+                        <!-- Navigation Menu Sections -->
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <!-- Section 1: RENTAL -->
+                                <TextBlock Text="RENTAL" Foreground="#475569" FontSize="10" FontWeight="Bold" Margin="8,0,0,6"/>
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,2" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Search}">
+                                    <Grid Width="190">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                            <Path Data="{StaticResource IconFolder}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
+                                            <TextBlock Text="Shopping list" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                        </StackPanel>
+                                        <Border Background="#1E293B" Padding="6,1" CornerRadius="10" HorizontalAlignment="Right">
+                                            <TextBlock Text="15" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" FontWeight="Bold"/>
+                                        </Border>
+                                    </Grid>
+                                </Button>
+
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconHeart}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Best deals" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                    </StackPanel>
+                                </Button>
+
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,14" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Pantry}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconPantry}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Pantry" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                    </StackPanel>
+                                </Button>
+
+                                <!-- Section 2: HOME -->
+                                <TextBlock Text="HOME" Foreground="#475569" FontSize="10" FontWeight="Bold" Margin="8,0,0,6"/>
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,2" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Search}">
+                                    <Grid Width="190">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                            <Path Data="{StaticResource IconFolder}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
+                                            <TextBlock Text="Shopping list" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                        </StackPanel>
+                                        <Border Background="#1E293B" Padding="6,1" CornerRadius="10" HorizontalAlignment="Right">
+                                            <TextBlock Text="19" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" FontWeight="Bold"/>
+                                        </Border>
+                                    </Grid>
+                                </Button>
+
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconHeart}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Best deals" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                    </StackPanel>
+                                </Button>
+
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,14" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Pantry}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconPantry}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Pantry" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                    </StackPanel>
+                                </Button>
+
+                                <!-- Section 3: WEEKLY ADS -->
+                                <TextBlock Text="WEEKLY ADS" Foreground="#475569" FontSize="10" FontWeight="Bold" Margin="8,0,0,6"/>
+                                <Border Background="#0084FF" CornerRadius="8" Padding="10,8" Margin="0,0,0,2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconExplorer}" Fill="#FFFFFF" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Ad viewer" Foreground="#FFFFFF" FontWeight="Bold" FontSize="12"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconSettings}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Stores &amp; scraping" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                    </StackPanel>
+                                </Button>
+
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconGitBranch}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Savings history" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <!-- Drawer Footer Scraping Schedule Status -->
+                        <Border Grid.Row="2" Background="#141A26" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,12,0,0">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,4">
+                                    <TextBlock Text="Ads for week of Sep 6" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="11" FontWeight="Bold"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Ellipse Width="6" Height="6" Fill="#10B981" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="Live" Foreground="#10B981" FontSize="10" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Text="Last scrape today 6:56 AM" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" Margin="0,0,0,2"/>
+                                <TextBlock Text="Next run Wed 6:00 AM" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- ==================== MAIN CONTENT SURFACE ==================== -->
+                <Grid Grid.Column="1" Margin="16">
+                    <Grid.RowDefinitions>
+                        <!-- Row 0: Page Subheader & Action Buttons -->
+                        <RowDefinition Height="Auto"/>
+                        <!-- Row 1: 3-Column Workspace -->
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Page Subheader & Primary Actions Bar -->
+                    <Grid Grid.Row="0" Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Heading Text -->
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Weekly ad viewer" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="22" FontWeight="Bold"/>
+                            <TextBlock Text="Each store's ad loads in the embedded WebView2. The extractor reads offers off the page and matches them to your pantry." 
+                                       Foreground="{StaticResource ForegroundMutedBrush}" FontSize="12" Margin="0,4,0,0"/>
+                        </StackPanel>
+
+                        <!-- Action Buttons -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="↻  Re-scrape all" Height="34" Margin="0,0,10,0" Padding="14,6" Foreground="{StaticResource ForegroundBrightBrush}"/>
+                            <Button Content="⚡ Extract from this page" Style="{StaticResource PrimaryActionButtonStyle}" Height="34" Padding="16,6" Click="ExtractDeals_Click"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 3-Column Workspace Layout -->
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <!-- Col 0: Stores List Panel -->
+                            <ColumnDefinition Width="260"/>
+                            <!-- Col 1: Center Browser Surface -->
+                            <ColumnDefinition Width="*"/>
+                            <!-- Col 2: Right Extracted Deals Stream & Log -->
+                            <ColumnDefinition Width="340"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- ==================== COLUMN 0: STORES STATUS PANEL ==================== -->
+                        <Border Grid.Column="0" Background="#141A26" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,12,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Header -->
+                                <Grid Grid.Row="0" Margin="0,0,0,12">
+                                    <TextBlock Text="Stores" Foreground="{StaticResource ForegroundBrightBrush}" FontWeight="Bold" FontSize="14"/>
+                                    <TextBlock Text="5 of 7 stores synced" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <!-- Stores List -->
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding StoreBookmarks}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type models:StoreBookmarkModel}">
+                                                <Border Background="#1A2232" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,8">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
+                                                        </Grid.RowDefinitions>
+
+                                                        <!-- Store Name Badge & Sync Status -->
+                                                        <Grid Grid.Row="0">
+                                                            <Border Background="{Binding PillColor}" Padding="8,2" CornerRadius="12" HorizontalAlignment="Left">
+                                                                <TextBlock Text="{Binding Name}" Foreground="#FFFFFF" FontSize="11" FontWeight="Bold"/>
+                                                            </Border>
+                                                            <TextBlock Text="{Binding StatusText}" Foreground="#10B981" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                                        </Grid>
+
+                                                        <!-- Offers Count & Latency -->
+                                                        <TextBlock Grid.Row="1" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="11" Margin="0,6,0,0">
+                                                            <Run Text="{Binding OfferCount}"/>
+                                                            <Run Text=" • "/>
+                                                            <Run Text="{Binding LastScrapeTime}"/>
+                                                            <Run Text=" • "/>
+                                                            <Run Text="{Binding ScrapeSpeed}"/>
+                                                        </TextBlock>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+
+                        <!-- ==================== COLUMN 1: CENTER WEBVIEW2 VIEWPORT ==================== -->
+                        <Border Grid.Column="1" Background="#141A26" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="10" Margin="0,0,12,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <!-- Mini Browser Top Bar -->
+                                    <RowDefinition Height="36"/>
+                                    <!-- WebView2 Viewport Surface -->
+                                    <RowDefinition Height="*"/>
+                                    <!-- Bottom Info Status Strip -->
+                                    <RowDefinition Height="32"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Mini Browser Header -->
+                                <Border Grid.Row="0" Background="#0B0E14" CornerRadius="6" Padding="6,2" Margin="0,0,0,8">
+                                    <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="🔒 " Foreground="{StaticResource AccentBrush}" FontSize="11" VerticalAlignment="Center"/>
-                                        <TextBox Grid.Column="1" Text="{Binding AddressBarInput, UpdateSourceTrigger=PropertyChanged}"
-                                                 BorderThickness="0" Background="Transparent" Foreground="{StaticResource ForegroundBrightBrush}"
-                                                 FontSize="12" VerticalAlignment="Center" Padding="4,2" KeyDown="AddressBar_KeyDown"/>
-                                        <Button Grid.Column="2" Content="Go" Style="{StaticResource VSCodePanelTabButtonStyle}" Width="32" Height="22" Foreground="{StaticResource ForegroundBrightBrush}"
-                                                Command="{Binding NavigateToUrlCommand}"/>
+
+                                        <!-- Nav Buttons -->
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Content="&lt;" Style="{StaticResource VSCodePanelTabButtonStyle}" Width="24" Height="22" Padding="0" Click="WebBack_Click"/>
+                                            <Button Content="&gt;" Style="{StaticResource VSCodePanelTabButtonStyle}" Width="24" Height="22" Padding="0" Click="WebForward_Click"/>
+                                            <Button Content="↻" Style="{StaticResource VSCodePanelTabButtonStyle}" Width="24" Height="22" Padding="0" Click="WebRefresh_Click"/>
+                                        </StackPanel>
+
+                                        <!-- URL Input -->
+                                        <Border Grid.Column="1" Background="#141A26" CornerRadius="4" Margin="6,0" Padding="6,2">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="🌐 " FontSize="10" VerticalAlignment="Center"/>
+                                                <TextBox Grid.Column="1" Text="{Binding AddressBarInput, UpdateSourceTrigger=PropertyChanged}" 
+                                                         BorderThickness="0" Background="Transparent" Foreground="{StaticResource ForegroundMutedBrush}" 
+                                                         FontSize="11" VerticalAlignment="Center" Padding="2,0" KeyDown="AddressBar_KeyDown"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Right Badges -->
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Background="#0084FF" Padding="8,2" CornerRadius="4" Margin="0,0,6,0">
+                                                <TextBlock Text="WebView2" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold"/>
+                                            </Border>
+                                            <Button Content="↗" Style="{StaticResource VSCodePanelTabButtonStyle}" Width="24" Height="22" Padding="0" Command="{Binding OpenExternalBrowserCommand}"/>
+                                        </StackPanel>
                                     </Grid>
                                 </Border>
 
-                                <!-- Actions -->
-                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
-                                    <Button Content="⚡ Extract Sales Deals" Style="{StaticResource VSCodePanelTabButtonStyle}" Height="26" Padding="10,4"
-                                            Background="{StaticResource AccentBrush}" Foreground="#FFFFFF" FontWeight="Bold" Margin="0,0,6,0"
-                                            Click="ExtractDeals_Click" ToolTip="Scrape and parse weekly ad deals from current page"/>
-                                    <Button Content="Open in Browser ↗" Style="{StaticResource VSCodePanelTabButtonStyle}" Height="26" Padding="8,4" Foreground="{StaticResource ForegroundBrush}"
-                                            Command="{Binding OpenExternalBrowserCommand}"/>
-                                </StackPanel>
+                                <!-- WebView2 Rendering Surface -->
+                                <Border Grid.Row="1" Background="#FFFFFF" CornerRadius="6" ClipToBounds="True">
+                                    <wv2:WebView2 x:Name="webView" 
+                                                  NavigationStarting="WebView_NavigationStarting" 
+                                                  NavigationCompleted="WebView_NavigationCompleted"/>
+                                </Border>
+
+                                <!-- Bottom Status Bar -->
+                                <Border Grid.Row="2" Background="#0B0E14" CornerRadius="6" Padding="10,0" Margin="0,8,0,0">
+                                    <Grid VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Path Data="{StaticResource IconExplorer}" Fill="#0084FF" Width="12" Height="12" Stretch="Uniform" Margin="0,0,6,0"/>
+                                            <TextBlock Text="Aldi • live page renders here" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="11"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding ExtractedDealsCount, StringFormat='{}{0} offers parsed'}" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="11" FontWeight="Bold" Margin="0,0,12,0"/>
+                                            <TextBlock Text="{Binding PersonalizedDealsCount, StringFormat='{}{0} matched'}" Foreground="#10B981" FontSize="11" FontWeight="Bold" Margin="0,0,12,0"/>
+                                            <TextBlock Text="2.4 s" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="11"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
                             </Grid>
                         </Border>
 
-                        <!-- WebView2 Web Rendering Control -->
-                        <Grid Grid.Row="1" Background="{StaticResource WindowBackgroundBrush}">
-                            <wv2:WebView2 x:Name="webView" 
-                                          NavigationStarting="WebView_NavigationStarting" 
-                                          NavigationCompleted="WebView_NavigationCompleted"/>
-                        </Grid>
-                    </Grid>
-
-                    <!-- Bottom Panel Splitter -->
-                    <GridSplitter Grid.Row="1" Height="2" HorizontalAlignment="Stretch" VerticalAlignment="Center"
-                                  Background="{StaticResource BorderBrush}" ShowsPreview="False"
-                                  Visibility="{Binding IsPanelOpen, Converter={StaticResource BoolToVisConverter}}"/>
-
-                    <!-- ==================== BOTTOM PANEL (EXTRACTED WEEKLY SALES & PERSONALIZED MATCHES) ==================== -->
-                    <Border Grid.Row="2" Height="250" Background="#1E1E1E" 
-                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
-                            Visibility="{Binding IsPanelOpen, Converter={StaticResource BoolToVisConverter}}">
-                        <Grid>
+                        <!-- ==================== COLUMN 2: RIGHT EXTRACTED DEALS & LOG ==================== -->
+                        <Grid Grid.Column="2">
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="32"/>
+                                <!-- Section 1: Live Deals Stream -->
                                 <RowDefinition Height="*"/>
+                                <!-- Section 2: Real-time Extraction Log Terminal -->
+                                <RowDefinition Height="200"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Panel Header with Tab Navigation -->
-                            <Border Grid.Row="0" Background="#252526" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="8,0">
+                            <!-- Live Extracted Deals Container -->
+                            <Border Grid.Row="0" Background="#141A26" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,12">
                                 <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
 
-                                    <!-- Panel Tabs -->
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Button Content="⚡ ALL WEEKLY AD DEALS" 
-                                                Style="{StaticResource VSCodePanelTabButtonStyle}" 
-                                                Foreground="{StaticResource ForegroundBrightBrush}"
-                                                FontWeight="Bold" FontSize="11" Margin="0,0,4,0" Padding="8,4"
-                                                Command="{Binding SelectPanelCommand}" CommandParameter="{x:Static vm:ActivePanelMode.Terminal}"/>
-                                        <Border Background="{StaticResource AccentBrush}" Padding="5,1" CornerRadius="8" Margin="0,0,16,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding ExtractedDealsCount}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold"/>
-                                        </Border>
+                                    <!-- Deal Stream Header -->
+                                    <Grid Grid.Row="0" Margin="0,0,0,8">
+                                        <TextBlock Text="Extracted from Aldi" Foreground="{StaticResource ForegroundBrightBrush}" FontWeight="Bold" FontSize="14"/>
+                                        <TextBlock Text="Today 6:42 AM" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
 
-                                        <Button Content="🎯 MY PERSONALIZED WEEKLY AD" 
-                                                Style="{StaticResource VSCodePanelTabButtonStyle}" 
-                                                Foreground="#4EC9B0" FontWeight="Bold" FontSize="11" Margin="0,0,4,0" Padding="8,4"
-                                                Command="{Binding SelectPanelCommand}" CommandParameter="{x:Static vm:ActivePanelMode.Personalized}"/>
-                                        <Border Background="#68217A" Padding="5,1" CornerRadius="8" Margin="0,0,8,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding PersonalizedDealsCount, StringFormat={}{0} Matches}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold"/>
-                                        </Border>
+                                    <!-- Filter Pill Tabs -->
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                                        <RadioButton Content="All" IsChecked="True" Style="{StaticResource {x:Type ToggleButton}}" 
+                                                     Padding="10,3" Margin="0,0,6,0" FontSize="11" FontWeight="Bold"/>
+                                        <RadioButton Content="Matched" Style="{StaticResource {x:Type ToggleButton}}" 
+                                                     Padding="10,3" Margin="0,0,6,0" FontSize="11" FontWeight="Bold"/>
+                                        <RadioButton Content="Unmatched" Style="{StaticResource {x:Type ToggleButton}}" 
+                                                     Padding="10,3" FontSize="11" FontWeight="Bold"/>
                                     </StackPanel>
 
-                                    <!-- Deal Search Filter -->
-                                    <Border Grid.Column="1" Width="200" Height="22" HorizontalAlignment="Center" Background="#1E1E1E" 
-                                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="3">
-                                        <Grid Margin="4,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Path Data="{StaticResource IconSearch}" Fill="{StaticResource ForegroundMutedBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center"/>
-                                            <TextBox Grid.Column="1" Text="{Binding DealFilterQuery, UpdateSourceTrigger=PropertyChanged}" 
-                                                     BorderThickness="0" Background="Transparent" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="11" Padding="4,0"/>
-                                        </Grid>
-                                    </Border>
+                                    <!-- Extracted Items Stream -->
+                                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{Binding FilteredExtractedDeals}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type models:ExtractedDealModel}">
+                                                    <Border Background="#1A2232" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,6">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
 
-                                    <!-- Action Buttons -->
-                                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                                        <Button Content="Add All Matched Deals 🛒" Style="{StaticResource VSCodePanelTabButtonStyle}" Height="24" FontSize="10" FontWeight="Bold" Margin="0,0,6,0" Padding="8,2"
-                                                Foreground="#DCDCAA" Background="#2A2A2E"
-                                                Visibility="{Binding IsPersonalizedActive, Converter={StaticResource BoolToVisConverter}}"
-                                                ToolTip="Add all personalized matched deals to your saved shopping list"
-                                                Command="{Binding AddAllMatchedDealsToShoppingListCommand}"/>
-                                        <Button Content="Sync DB 🗄️" Style="{StaticResource VSCodePanelTabButtonStyle}" Height="24" FontSize="11" Margin="0,0,6,0" Padding="8,2"
-                                                Foreground="#4EC9B0" Background="#2A2A2E"
-                                                ToolTip="Sync deals to PostgreSQL (Configured via .env)"
-                                                Command="{Binding SyncDealsToPostgresCommand}"/>
-                                        <Button Content="Clear" Style="{StaticResource VSCodePanelTabButtonStyle}" Height="24" FontSize="11" Margin="0,0,6,0" Padding="8,2"
-                                                Foreground="{StaticResource ForegroundMutedBrush}"
-                                                Command="{Binding ClearExtractedDealsCommand}"/>
-                                        <Button Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconCloseSmall}" 
-                                                Width="24" Height="24" Command="{Binding TogglePanelCommand}"/>
-                                    </StackPanel>
+                                                            <!-- Indicator Dot -->
+                                                            <Ellipse Grid.Column="0" Width="6" Height="6" Fill="#10B981" VerticalAlignment="Center" Margin="0,0,8,0"/>
+
+                                                            <!-- Item Details -->
+                                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding Title}" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                                <TextBlock Text="{Binding Category, StringFormat='Matched → {0}'}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" Margin="0,2,0,0"/>
+                                                            </StackPanel>
+
+                                                            <!-- Price Tag -->
+                                                            <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="6,0,0,0">
+                                                                <TextBlock Text="{Binding PriceInfo}" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="12" FontWeight="Bold" HorizontalAlignment="Right"/>
+                                                                <TextBlock Text="reg. $3.89" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="9" HorizontalAlignment="Right"/>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
                                 </Grid>
                             </Border>
 
-                            <!-- Tab Content Container -->
-                            <Grid Grid.Row="1" Margin="6">
-                                <!-- View 1: Extracted Deals Grid -->
-                                <ScrollViewer Visibility="{Binding IsTerminalActive, Converter={StaticResource BoolToVisConverter}}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                    <ItemsControl ItemsSource="{Binding FilteredExtractedDeals}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel Orientation="Horizontal"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate DataType="{x:Type models:ExtractedDealModel}">
-                                                <Border Background="#252526" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" 
-                                                        CornerRadius="4" Width="290" Padding="8" Margin="4">
-                                                    <Grid>
-                                                        <Grid.RowDefinitions>
-                                                            <RowDefinition Height="Auto"/>
-                                                            <RowDefinition Height="Auto"/>
-                                                            <RowDefinition Height="Auto"/>
-                                                            <RowDefinition Height="Auto"/>
-                                                        </Grid.RowDefinitions>
-                                                        <Grid Grid.Row="0">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="*"/>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding Title}" Foreground="{StaticResource ForegroundBrightBrush}" 
-                                                                       FontWeight="Bold" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                                                            <Border Grid.Column="1" Background="#007ACC" Padding="4,1" CornerRadius="2" Margin="4,0,0,0">
-                                                                <TextBlock Text="{Binding DealType}" Foreground="#FFFFFF" FontSize="9" FontWeight="Bold"/>
-                                                            </Border>
-                                                        </Grid>
+                            <!-- Extraction Log Terminal Container -->
+                            <Border Grid.Row="1" Background="#141A26" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
 
-                                                        <TextBlock Grid.Row="1" Text="{Binding PriceInfo}" Foreground="#4EC9B0" FontSize="11" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                    <!-- Log Header -->
+                                    <Grid Grid.Row="0" Margin="0,0,0,6">
+                                        <TextBlock Text="Extraction log" Foreground="{StaticResource ForegroundBrightBrush}" FontWeight="Bold" FontSize="13"/>
+                                        <TextBlock Text="Synced" Foreground="#10B981" FontSize="10" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
 
-                                                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,4,0,6">
-                                                            <TextBlock Text="{Binding Category}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" Margin="0,0,8,0"/>
-                                                            <TextBlock Text="{Binding ValidDates}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10"/>
-                                                        </StackPanel>
-
-                                                        <Button Grid.Row="3" Content="+ Add to Shopping List" HorizontalAlignment="Right" Height="22" FontSize="10"
-                                                                Command="{Binding DataContext.AddDealToShoppingListCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                CommandParameter="{Binding}"/>
-                                                    </Grid>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </ScrollViewer>
-
-                                <!-- View 2: Personalized Matches Grid -->
-                                <ScrollViewer Visibility="{Binding IsPersonalizedActive, Converter={StaticResource BoolToVisConverter}}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                    <ItemsControl ItemsSource="{Binding PersonalizedDeals}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel Orientation="Horizontal"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate DataType="{x:Type models:PersonalizedMatchModel}">
-                                                <Border Background="#252526" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1.5" 
-                                                        CornerRadius="4" Width="310" Padding="8" Margin="4">
-                                                    <Grid>
-                                                        <Grid.RowDefinitions>
-                                                            <RowDefinition Height="Auto"/>
-                                                            <RowDefinition Height="Auto"/>
-                                                            <RowDefinition Height="Auto"/>
-                                                            <RowDefinition Height="Auto"/>
-                                                            <RowDefinition Height="Auto"/>
-                                                        </Grid.RowDefinitions>
-
-                                                        <!-- Match Header Badge & Score -->
-                                                        <Grid Grid.Row="0">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="*"/>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                            </Grid.ColumnDefinitions>
-                                                            <Border Background="#68217A" Padding="6,2" CornerRadius="3" HorizontalAlignment="Left">
-                                                                <TextBlock Text="{Binding MatchBadgeText}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold"/>
-                                                            </Border>
-                                                            <Border Grid.Column="1" Background="#007ACC" Padding="6,2" CornerRadius="3">
-                                                                <TextBlock Text="{Binding MatchScore, StringFormat='{}{0}% Match'}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold"/>
-                                                            </Border>
-                                                        </Grid>
-
-                                                        <!-- Deal Title & Type -->
-                                                        <TextBlock Grid.Row="1" Text="{Binding Deal.Title}" Foreground="{StaticResource ForegroundBrightBrush}" 
-                                                                   FontWeight="Bold" FontSize="13" TextWrapping="Wrap" Margin="0,6,0,2"/>
-
-                                                        <!-- Price & Deal Type -->
-                                                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,2,0,4">
-                                                            <TextBlock Text="{Binding Deal.PriceInfo}" Foreground="#4EC9B0" FontSize="12" FontWeight="Bold" Margin="0,0,8,0"/>
-                                                            <Border Background="#2D2D2D" Padding="4,1" CornerRadius="2">
-                                                                <TextBlock Text="{Binding Deal.DealType}" Foreground="{StaticResource ForegroundBrush}" FontSize="9"/>
-                                                            </Border>
-                                                        </StackPanel>
-
-                                                        <!-- Match Reason -->
-                                                        <TextBlock Grid.Row="3" Text="{Binding MatchReason}" Foreground="#DCDCAA" FontSize="10" TextWrapping="Wrap" Margin="0,2,0,6"/>
-
-                                                        <!-- Action Button -->
-                                                        <Button Grid.Row="4" Content="+ Add Match to Shopping List" HorizontalAlignment="Right" Height="24" FontSize="10" FontWeight="Bold"
-                                                                Command="{Binding DataContext.AddDealToShoppingListCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                CommandParameter="{Binding}"/>
-                                                    </Grid>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </ScrollViewer>
-                            </Grid>
+                                    <!-- Log Lines List -->
+                                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{Binding ExtractionLogs}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type models:ExtractionLogModel}">
+                                                    <TextBlock FontSize="10" FontFamily="Consolas, Courier New" Margin="0,2">
+                                                        <Run Text="{Binding Timestamp}" Foreground="{StaticResource ForegroundMutedBrush}"/>
+                                                        <Run Text=" "/>
+                                                        <Run Text="{Binding Message}" Foreground="{StaticResource ForegroundBrush}"/>
+                                                    </TextBlock>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
                         </Grid>
-                    </Border>
+                    </Grid>
                 </Grid>
             </Grid>
-
-            <!-- ==================== ROW 2: STATUS BAR ==================== -->
-            <Border Grid.Row="2" Background="{StaticResource ActivityBarBackgroundBrush}" 
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
-                <Grid Margin="8,0">
-                    <!-- Left Status Items -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Background="#007ACC" Padding="6,1" CornerRadius="2" Margin="0,0,8,0">
-                            <TextBlock Text="{Binding ActiveStoreName, StringFormat=Store: \{0\}}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
-                        </Border>
-                        <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource ForegroundBrush}" FontSize="11" VerticalAlignment="Center"/>
-                    </StackPanel>
-
-                    <!-- Right Status Items -->
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding ExtractedDealsCount, StringFormat=Extracted Deals: \{0\}}" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="11" Margin="10,0"/>
-                        <TextBlock Text="{Binding ShoppingList.Count, StringFormat=Saved Items: \{0\}}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="11" Margin="10,0"/>
-                        <TextBlock Text="Cookies: Persistent (%LocalAppData%)" Foreground="{StaticResource ForegroundBrush}" FontSize="11" FontWeight="SemiBold" Margin="10,0"/>
-                    </StackPanel>
-                </Grid>
-            </Border>
         </Grid>
     </Border>
 </Window>

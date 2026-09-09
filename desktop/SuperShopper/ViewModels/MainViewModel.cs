@@ -55,6 +55,7 @@ namespace SuperShopper.ViewModels
         private string _newPrefLevel = "Favorite";
 
         private string _dealFilterQuery = string.Empty;
+        private string _selectedDealFilter = "All"; // All, Matched, Unmatched
         private bool _isExtractingDeals;
 
         public ObservableCollection<StoreBookmarkModel> StoreBookmarks { get; } = new();
@@ -65,6 +66,19 @@ namespace SuperShopper.ViewModels
         public ObservableCollection<PantryItemModel> PantryItems { get; } = new();
         public ObservableCollection<UserPreferenceModel> UserPreferences { get; } = new();
         public ObservableCollection<PersonalizedMatchModel> PersonalizedDeals { get; } = new();
+        public ObservableCollection<ExtractionLogModel> ExtractionLogs { get; } = new();
+
+        public string SelectedDealFilter
+        {
+            get => _selectedDealFilter;
+            set
+            {
+                if (SetField(ref _selectedDealFilter, value))
+                {
+                    FilterDeals(DealFilterQuery);
+                }
+            }
+        }
 
         public ActiveViewMode ActiveView
         {
@@ -483,66 +497,108 @@ namespace SuperShopper.ViewModels
         {
             StoreBookmarks.Add(new StoreBookmarkModel
             {
-                Name = "Publix Weekly Ad",
+                Name = "Aldi",
+                Url = "https://www.aldi.us/weekly-specials/this-weeks-aldi-finds/",
+                Category = "Discount Grocers",
+                Description = "ALDI Finds of the week and fresh produce discounts",
+                StatusText = "Synced",
+                OfferCount = "128 offers",
+                LastScrapeTime = "6:42 AM",
+                ScrapeSpeed = "2.4 s",
+                PillColor = "#0084FF",
+                IsSelected = true
+            });
+
+            StoreBookmarks.Add(new StoreBookmarkModel
+            {
+                Name = "Publix",
                 Url = "https://www.publix.com/savings/weekly-ad/view-all",
                 Category = "Supermarkets",
                 Description = "View all weekly deals, BOGOs, and digital coupons",
-                IsFavorite = true
+                StatusText = "Synced",
+                OfferCount = "212 offers",
+                LastScrapeTime = "6:44 AM",
+                ScrapeSpeed = "3.1 s",
+                PillColor = "#10B981",
+                IsSelected = false
             });
 
             StoreBookmarks.Add(new StoreBookmarkModel
             {
-                Name = "Kroger Weekly Ad",
-                Url = "https://www.kroger.com/weeklyad",
-                Category = "Supermarkets",
-                Description = "Digital coupons, weekly circular, and mega sale deals",
-                IsFavorite = true
-            });
-
-            StoreBookmarks.Add(new StoreBookmarkModel
-            {
-                Name = "Walmart Savings Spotlight",
+                Name = "Walmart",
                 Url = "https://www.walmart.com/savings-spotlight",
                 Category = "Discount Superstores",
                 Description = "Rollbacks, clearance, and weekly grocery savings",
-                IsFavorite = true
+                StatusText = "Synced",
+                OfferCount = "96 offers",
+                LastScrapeTime = "6:47 AM",
+                ScrapeSpeed = "4.6 s",
+                PillColor = "#0071DC",
+                IsSelected = false
             });
 
             StoreBookmarks.Add(new StoreBookmarkModel
             {
-                Name = "Target Circle Offers",
+                Name = "Target",
                 Url = "https://www.target.com/c/target-circle-offers/-/N-55119",
                 Category = "Superstores",
                 Description = "Weekly ad circular, Target Circle 20% off promos",
-                IsFavorite = true
+                StatusText = "Synced",
+                OfferCount = "143 offers",
+                LastScrapeTime = "6:49 AM",
+                ScrapeSpeed = "2.9 s",
+                PillColor = "#CC0000",
+                IsSelected = false
             });
 
             StoreBookmarks.Add(new StoreBookmarkModel
             {
-                Name = "ALDI Weekly Ads",
-                Url = "https://www.aldi.us/weekly-ads/",
-                Category = "Discount Grocers",
-                Description = "ALDI Finds of the week and fresh produce discounts",
-                IsFavorite = true
-            });
-
-            StoreBookmarks.Add(new StoreBookmarkModel
-            {
-                Name = "Trader Joe's Stories",
-                Url = "https://www.traderjoes.com/home/discover/stories",
-                Category = "Specialty Grocers",
-                Description = "New products, seasonal guides, and recipe deals",
-                IsFavorite = false
-            });
-
-            StoreBookmarks.Add(new StoreBookmarkModel
-            {
-                Name = "Costco Warehouse Savings",
-                Url = "https://www.costco.com/warehouse-locations",
+                Name = "Sam's Club",
+                Url = "https://www.samsclub.com/savings",
                 Category = "Wholesale Clubs",
                 Description = "Member-only savings coupon book and warehouse deals",
-                IsFavorite = false
+                StatusText = "Synced",
+                OfferCount = "74 offers",
+                LastScrapeTime = "6:51 AM",
+                ScrapeSpeed = "2.2 s",
+                PillColor = "#7B2CBF",
+                IsSelected = false
             });
+
+            StoreBookmarks.Add(new StoreBookmarkModel
+            {
+                Name = "Winn-Dixie",
+                Url = "https://www.winndixie.com/savings/weekly-ad",
+                Category = "Supermarkets",
+                Description = "Timed out waiting for the flyer frame",
+                StatusText = "Failed",
+                OfferCount = "0 offers",
+                LastScrapeTime = "Timed out",
+                ScrapeSpeed = "N/A",
+                PillColor = "#D97706",
+                IsSelected = false
+            });
+
+            StoreBookmarks.Add(new StoreBookmarkModel
+            {
+                Name = "Dollar General",
+                Url = "https://www.dollargeneral.com/deals/weekly-ads",
+                Category = "Discount Grocers",
+                Description = "Loading the flyer frame • 62%",
+                StatusText = "Scraping...",
+                OfferCount = "Scraping...",
+                LastScrapeTime = "6:52 AM",
+                ScrapeSpeed = "1.8 s",
+                PillColor = "#EAB308",
+                IsSelected = false
+            });
+
+            // Initial log entries matching mockup
+            ExtractionLogs.Add(new ExtractionLogModel { Timestamp = "6:42:01", Message = "Navigating WebView2 -> aldi.us", LogLevel = "Info" });
+            ExtractionLogs.Add(new ExtractionLogModel { Timestamp = "6:42:03", Message = "DOM ready • flyer frame found", LogLevel = "Info" });
+            ExtractionLogs.Add(new ExtractionLogModel { Timestamp = "6:42:04", Message = "Parsed 128 offers • aldi parser v3", LogLevel = "Success" });
+            ExtractionLogs.Add(new ExtractionLogModel { Timestamp = "6:42:05", Message = "Matched 13 offers to pantry 1", LogLevel = "Success" });
+            ExtractionLogs.Add(new ExtractionLogModel { Timestamp = "6:42:05", Message = "Saved to weeklyAds • 2026-W37", LogLevel = "Success" });
         }
 
         private void InitializeSamplePantryAndPreferences()
@@ -683,16 +739,48 @@ namespace SuperShopper.ViewModels
             }
 
             FilteredExtractedDeals.Clear();
-            var matches = string.IsNullOrWhiteSpace(query)
-                ? ExtractedDeals
-                : ExtractedDeals.Where(d => d.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                                            d.Category.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                                            d.DealType.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+            var matches = ExtractedDeals.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                matches = matches.Where(d => d.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                                             d.Category.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                                             d.DealType.Contains(query, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (SelectedDealFilter == "Matched")
+            {
+                var matchedTitles = PersonalizedDeals.Select(p => p.Deal.Title).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                matches = matches.Where(d => matchedTitles.Contains(d.Title));
+            }
+            else if (SelectedDealFilter == "Unmatched")
+            {
+                var matchedTitles = PersonalizedDeals.Select(p => p.Deal.Title).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                matches = matches.Where(d => !matchedTitles.Contains(d.Title));
+            }
 
             foreach (var item in matches)
             {
                 FilteredExtractedDeals.Add(item);
             }
+        }
+
+        public void AddExtractionLog(string message, string level = "Info")
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.InvokeAsync(() => AddExtractionLog(message, level));
+                return;
+            }
+
+            ExtractionLogs.Add(new ExtractionLogModel
+            {
+                Timestamp = DateTime.Now.ToString("H:mm:ss"),
+                Message = message,
+                LogLevel = level
+            });
         }
 
         public void ProcessExtractedJson(string jsonString)
