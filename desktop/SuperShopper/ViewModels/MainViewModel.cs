@@ -17,7 +17,9 @@ namespace SuperShopper.ViewModels
         Explorer,
         Search,
         SourceControl,
-        Settings
+        Settings,
+        Pantry,
+        Preferences
     }
 
     public enum ActivePanelMode
@@ -25,7 +27,8 @@ namespace SuperShopper.ViewModels
         Terminal,
         Output,
         Problems,
-        Debug
+        Debug,
+        Personalized
     }
 
     public class MainViewModel : ObservableObject
@@ -45,6 +48,12 @@ namespace SuperShopper.ViewModels
         private string _newBookmarkName = string.Empty;
         private string _newBookmarkUrl = string.Empty;
 
+        private string _newPantryItemName = string.Empty;
+        private string _newPantryCategory = "Produce";
+
+        private string _newPrefKeyword = string.Empty;
+        private string _newPrefLevel = "Favorite";
+
         private string _dealFilterQuery = string.Empty;
         private bool _isExtractingDeals;
 
@@ -52,6 +61,10 @@ namespace SuperShopper.ViewModels
         public ObservableCollection<ShoppingItemModel> ShoppingList { get; } = new();
         public ObservableCollection<ExtractedDealModel> ExtractedDeals { get; } = new();
         public ObservableCollection<ExtractedDealModel> FilteredExtractedDeals { get; } = new();
+
+        public ObservableCollection<PantryItemModel> PantryItems { get; } = new();
+        public ObservableCollection<UserPreferenceModel> UserPreferences { get; } = new();
+        public ObservableCollection<PersonalizedMatchModel> PersonalizedDeals { get; } = new();
 
         public ActiveViewMode ActiveView
         {
@@ -64,6 +77,8 @@ namespace SuperShopper.ViewModels
                     OnPropertyChanged(nameof(IsSearchActive));
                     OnPropertyChanged(nameof(IsSourceControlActive));
                     OnPropertyChanged(nameof(IsSettingsActive));
+                    OnPropertyChanged(nameof(IsPantryActive));
+                    OnPropertyChanged(nameof(IsPreferencesActive));
                     OnPropertyChanged(nameof(SidebarHeaderTitle));
                 }
             }
@@ -80,6 +95,7 @@ namespace SuperShopper.ViewModels
                     OnPropertyChanged(nameof(IsOutputActive));
                     OnPropertyChanged(nameof(IsProblemsActive));
                     OnPropertyChanged(nameof(IsDebugActive));
+                    OnPropertyChanged(nameof(IsPersonalizedActive));
                 }
             }
         }
@@ -151,6 +167,30 @@ namespace SuperShopper.ViewModels
             set => SetField(ref _newBookmarkUrl, value);
         }
 
+        public string NewPantryItemName
+        {
+            get => _newPantryItemName;
+            set => SetField(ref _newPantryItemName, value);
+        }
+
+        public string NewPantryCategory
+        {
+            get => _newPantryCategory;
+            set => SetField(ref _newPantryCategory, value);
+        }
+
+        public string NewPrefKeyword
+        {
+            get => _newPrefKeyword;
+            set => SetField(ref _newPrefKeyword, value);
+        }
+
+        public string NewPrefLevel
+        {
+            get => _newPrefLevel;
+            set => SetField(ref _newPrefLevel, value);
+        }
+
         public string DealFilterQuery
         {
             get => _dealFilterQuery;
@@ -170,17 +210,21 @@ namespace SuperShopper.ViewModels
         }
 
         public int ExtractedDealsCount => ExtractedDeals.Count;
+        public int PersonalizedDealsCount => PersonalizedDeals.Count;
         public string DbTargetEnv => PostgresService.ActiveTargetEnv.ToUpper();
 
         public bool IsExplorerActive => ActiveView == ActiveViewMode.Explorer;
         public bool IsSearchActive => ActiveView == ActiveViewMode.Search;
         public bool IsSourceControlActive => ActiveView == ActiveViewMode.SourceControl;
         public bool IsSettingsActive => ActiveView == ActiveViewMode.Settings;
+        public bool IsPantryActive => ActiveView == ActiveViewMode.Pantry;
+        public bool IsPreferencesActive => ActiveView == ActiveViewMode.Preferences;
 
         public bool IsTerminalActive => ActivePanel == ActivePanelMode.Terminal;
         public bool IsOutputActive => ActivePanel == ActivePanelMode.Output;
         public bool IsProblemsActive => ActivePanel == ActivePanelMode.Problems;
         public bool IsDebugActive => ActivePanel == ActivePanelMode.Debug;
+        public bool IsPersonalizedActive => ActivePanel == ActivePanelMode.Personalized;
 
         public string SidebarHeaderTitle => ActiveView switch
         {
@@ -188,6 +232,8 @@ namespace SuperShopper.ViewModels
             ActiveViewMode.Search => "SHOPPING LIST & SAVED DEALS",
             ActiveViewMode.SourceControl => "ADD NEW STORE BOOKMARK",
             ActiveViewMode.Settings => "PREFERENCES",
+            ActiveViewMode.Pantry => "MY PANTRY INVENTORY",
+            ActiveViewMode.Preferences => "WHAT I LIKE & FAVORITES",
             _ => "SIDEBAR"
         };
 
@@ -205,6 +251,11 @@ namespace SuperShopper.ViewModels
         public ICommand AddDealToShoppingListCommand { get; }
         public ICommand ClearExtractedDealsCommand { get; }
         public ICommand SyncDealsToPostgresCommand { get; }
+
+        public ICommand AddPantryItemCommand { get; }
+        public ICommand AddPreferenceCommand { get; }
+        public ICommand GeneratePersonalizedAdCommand { get; }
+        public ICommand AddAllMatchedDealsToShoppingListCommand { get; }
 
         public MainViewModel()
         {
@@ -295,6 +346,62 @@ namespace SuperShopper.ViewModels
                 }
             });
 
+            AddPantryItemCommand = new RelayCommand(_ =>
+            {
+                if (!string.IsNullOrWhiteSpace(NewPantryItemName))
+                {
+                    PantryItems.Add(new PantryItemModel
+                    {
+                        ItemName = NewPantryItemName.Trim(),
+                        Category = NewPantryCategory,
+                        CurrentQuantity = 0,
+                        MinQuantity = 1,
+                        NeedsRefill = true
+                    });
+                    NewPantryItemName = string.Empty;
+                    GeneratePersonalizedWeeklyAd();
+                    StatusMessage = "Added item to Pantry inventory (Marked for Refill)";
+                }
+            });
+
+            AddPreferenceCommand = new RelayCommand(_ =>
+            {
+                if (!string.IsNullOrWhiteSpace(NewPrefKeyword))
+                {
+                    UserPreferences.Add(new UserPreferenceModel
+                    {
+                        KeywordOrBrand = NewPrefKeyword.Trim(),
+                        PreferenceLevel = NewPrefLevel,
+                        Category = "Favorites"
+                    });
+                    NewPrefKeyword = string.Empty;
+                    GeneratePersonalizedWeeklyAd();
+                    StatusMessage = "Added new favorite/liked product preference";
+                }
+            });
+
+            GeneratePersonalizedAdCommand = new RelayCommand(_ => GeneratePersonalizedWeeklyAd());
+
+            AddAllMatchedDealsToShoppingListCommand = new RelayCommand(_ =>
+            {
+                int count = 0;
+                foreach (var match in PersonalizedDeals)
+                {
+                    if (!ShoppingList.Any(s => s.Title.Equals(match.Deal.Title, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        ShoppingList.Add(new ShoppingItemModel
+                        {
+                            Title = match.Deal.Title,
+                            StoreName = match.Deal.StoreName,
+                            PriceInfo = match.MatchBadgeText + " (" + match.Deal.PriceInfo + ")",
+                            IsCompleted = false
+                        });
+                        count++;
+                    }
+                }
+                StatusMessage = $"Added {count} personalized matched deals to your shopping list!";
+            });
+
             OpenExternalBrowserCommand = new RelayCommand(_ =>
             {
                 try
@@ -324,13 +431,26 @@ namespace SuperShopper.ViewModels
                     });
                     StatusMessage = $"Added '{deal.Title}' to shopping list!";
                 }
+                else if (param is PersonalizedMatchModel match)
+                {
+                    ShoppingList.Add(new ShoppingItemModel
+                    {
+                        Title = match.Deal.Title,
+                        StoreName = match.Deal.StoreName,
+                        PriceInfo = match.MatchBadgeText + " (" + match.Deal.PriceInfo + ")",
+                        IsCompleted = false
+                    });
+                    StatusMessage = $"Added '{match.Deal.Title}' to shopping list!";
+                }
             });
 
             ClearExtractedDealsCommand = new RelayCommand(_ =>
             {
                 ExtractedDeals.Clear();
                 FilteredExtractedDeals.Clear();
+                PersonalizedDeals.Clear();
                 OnPropertyChanged(nameof(ExtractedDealsCount));
+                OnPropertyChanged(nameof(PersonalizedDealsCount));
                 StatusMessage = "Cleared extracted deals";
             });
 
@@ -355,6 +475,7 @@ namespace SuperShopper.ViewModels
             });
 
             InitializeStoreBookmarks();
+            InitializeSamplePantryAndPreferences();
             InitializeSampleShoppingList();
         }
 
@@ -424,6 +545,23 @@ namespace SuperShopper.ViewModels
             });
         }
 
+        private void InitializeSamplePantryAndPreferences()
+        {
+            // Sample Pantry Inventory Items (Git 3308)
+            PantryItems.Add(new PantryItemModel { ItemName = "Chicken Breasts", Category = "Meat", CurrentQuantity = 0, MinQuantity = 1, NeedsRefill = true });
+            PantryItems.Add(new PantryItemModel { ItemName = "Strawberries", Category = "Produce", CurrentQuantity = 0, MinQuantity = 1, NeedsRefill = true });
+            PantryItems.Add(new PantryItemModel { ItemName = "Ice Cream", Category = "Frozen", CurrentQuantity = 0, MinQuantity = 1, NeedsRefill = true });
+            PantryItems.Add(new PantryItemModel { ItemName = "Whole Milk", Category = "Dairy", CurrentQuantity = 1, MinQuantity = 1, NeedsRefill = false });
+            PantryItems.Add(new PantryItemModel { ItemName = "Potato Chips", Category = "Snacks", CurrentQuantity = 0, MinQuantity = 1, NeedsRefill = true });
+
+            // Sample Preferences / What I Like Items (Git 3311)
+            UserPreferences.Add(new UserPreferenceModel { KeywordOrBrand = "Chicken Breasts", PreferenceLevel = "Must Have", Category = "Meat" });
+            UserPreferences.Add(new UserPreferenceModel { KeywordOrBrand = "Ice Cream", PreferenceLevel = "Must Have", Category = "Frozen" });
+            UserPreferences.Add(new UserPreferenceModel { KeywordOrBrand = "Strawberries", PreferenceLevel = "Favorite", Category = "Produce" });
+            UserPreferences.Add(new UserPreferenceModel { KeywordOrBrand = "Lay's", PreferenceLevel = "Like", Category = "Snacks" });
+            UserPreferences.Add(new UserPreferenceModel { KeywordOrBrand = "Coca-Cola", PreferenceLevel = "Favorite", Category = "Beverages" });
+        }
+
         private void InitializeSampleShoppingList()
         {
             ShoppingList.Add(new ShoppingItemModel { Title = "Organic Strawberries (BOGO)", StoreName = "Publix Super Markets", PriceInfo = "Buy 1 Get 1 Free", IsCompleted = false });
@@ -448,8 +586,91 @@ namespace SuperShopper.ViewModels
                 deal.Title = cleanTitle;
                 ExtractedDeals.Add(deal);
                 FilterDeals(DealFilterQuery);
+                GeneratePersonalizedWeeklyAd();
                 OnPropertyChanged(nameof(ExtractedDealsCount));
             }
+        }
+
+        /// <summary>
+        /// Personalized Match Engine: Matches live Extracted Deals against Pantry Refills & User Preferences.
+        /// </summary>
+        public void GeneratePersonalizedWeeklyAd()
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.InvokeAsync(() => GeneratePersonalizedWeeklyAd());
+                return;
+            }
+
+            PersonalizedDeals.Clear();
+
+            var refillItems = PantryItems.Where(p => p.NeedsRefill).ToList();
+
+            foreach (var deal in ExtractedDeals)
+            {
+                int score = 0;
+                bool isRefill = false;
+                bool isPref = false;
+                var reasons = new List<string>();
+
+                // Check 1: Pantry Refill Match
+                var pantryMatch = refillItems.FirstOrDefault(p => deal.Title.Contains(p.ItemName, StringComparison.OrdinalIgnoreCase) || p.ItemName.Contains(deal.Title, StringComparison.OrdinalIgnoreCase));
+                if (pantryMatch != null)
+                {
+                    score += 55;
+                    isRefill = true;
+                    reasons.Add($"⚡ Pantry Refill: {pantryMatch.ItemName}");
+                }
+
+                // Check 2: What I Like / Preference Match
+                var prefMatch = UserPreferences.FirstOrDefault(pref => deal.Title.Contains(pref.KeywordOrBrand, StringComparison.OrdinalIgnoreCase) || pref.KeywordOrBrand.Contains(deal.Title, StringComparison.OrdinalIgnoreCase));
+                if (prefMatch != null)
+                {
+                    int prefPts = prefMatch.PreferenceLevel switch
+                    {
+                        "Must Have" => 35,
+                        "Favorite" => 25,
+                        _ => 15
+                    };
+                    score += prefPts;
+                    isPref = true;
+                    reasons.Add($"❤️ {prefMatch.PreferenceLevel}: {prefMatch.KeywordOrBrand}");
+                }
+
+                // Check 3: BOGO / Heavy Savings Bonus
+                if (deal.DealType.Contains("BOGO", StringComparison.OrdinalIgnoreCase) || deal.DealType.Contains("Buy 1 Get 1", StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 15;
+                    reasons.Add("🔥 BOGO Deal");
+                }
+
+                if (score > 0)
+                {
+                    int finalScore = Math.Min(99, score);
+                    string badge = isRefill && isPref ? "🎯 MUST HAVE & REFILL" : (isRefill ? "⚡ PANTRY REFILL" : "❤️ FAVORITE DEAL");
+
+                    PersonalizedDeals.Add(new PersonalizedMatchModel
+                    {
+                        Deal = deal,
+                        MatchScore = finalScore,
+                        IsPantryRefillMatch = isRefill,
+                        IsPreferenceMatch = isPref,
+                        MatchReason = string.Join(" • ", reasons),
+                        MatchBadgeText = badge
+                    });
+                }
+            }
+
+            // Sort matched deals descending by score
+            var sorted = PersonalizedDeals.OrderByDescending(p => p.MatchScore).ToList();
+            PersonalizedDeals.Clear();
+            foreach (var match in sorted)
+            {
+                PersonalizedDeals.Add(match);
+            }
+
+            OnPropertyChanged(nameof(PersonalizedDealsCount));
         }
 
         public void FilterDeals(string query)
