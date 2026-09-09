@@ -101,6 +101,24 @@ function fmtUsd(amount) {
   return `$${Math.abs(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Server-side mirror of public/app.js's own agoShort() -- same real minute/hour-granularity
+// convention ("4 minutes ago" / "4 hours ago", falling back to a real date once it's far enough
+// out), needed here because the Tesla room's fallback tile subtitle (Git #3331) is a fully-formed
+// string built server-side, the same way every other room's subtitle already is.
+function agoShort(iso) {
+  if (!iso) return null;
+  const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? "" : "s"} ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? "" : "s"} ago`;
+  const d = new Date(iso);
+  const diffDays = Math.round((d - new Date()) / 86_400_000);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (diffDays === -1) return `yesterday ${time}`;
+  return d.toLocaleDateString([], { month: "short", day: "numeric" }) + ` ${time}`;
+}
+
 /**
  * Real per-room lit/dark state + subtitle for the Today "Rooms -- the house" grid (Git #3165,
  * README "Rooms -- the house" + "Lamp rules"). Every number here is a real read off the same
@@ -292,10 +310,22 @@ export async function roomsForToday(userId, { allDates, tonight, groceries, runI
     teslaRoom = { lit: true, subtitle: `Trunk opens in ${mm}:${ss}` };
   } else if (teslaShortfall) {
     teslaRoom = { lit: true, subtitle: `${teslaShortfall.batteryRangeMiles} mi · charge tonight` };
+  } else if (teslaStatus.lastRead) {
+    // Git #3331, real decision from Shane 2026-09-09 -- still no live battery/range read here
+    // (that's the room's own on-demand "Check now"), but #3284 already persisted that read's
+    // last_battery_range/last_read_at onto tesla_accounts, so the house tile can show the real
+    // cached number instead of a generic line. Honest staleness -- no cap on how old the read is;
+    // a days-old read says so plainly rather than being hidden.
+    const { batteryRangeMiles, readAt } = teslaStatus.lastRead;
+    teslaRoom = {
+      lit: false,
+      subtitle: batteryRangeMiles !== null
+        ? `${batteryRangeMiles} mi · read ${agoShort(readAt)}`
+        : `read ${agoShort(readAt)}`,
+    };
   } else {
-    // Connected, nothing due -- no live battery/range read here (that's the room's own on-demand
-    // "Check now", never this background tile), so this stays a real "nothing to report" line
-    // rather than a stale or fabricated number.
+    // Connected, nothing due, and never read even once (no "Check now" yet) -- genuinely nothing
+    // cached to show, so this stays the real "nothing to report" line.
     teslaRoom = { lit: false, subtitle: "Nothing needs you" };
   }
 
