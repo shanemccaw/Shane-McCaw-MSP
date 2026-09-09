@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +12,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
+  useDeclineChecklistItemToRisk,
   useRaiseChangeFromChecklistItem,
   useRevealFix,
   useUpdateChecklistItem,
@@ -33,7 +39,9 @@ const WRITABLE_STATUS_LABEL: Record<Exclude<RemediationTrackerStepStatus, "accep
   shane_handles: "Have Shane do this one",
 };
 
-type DialogKind = "affordance" | "reveal" | "raise" | null;
+type DialogKind = "affordance" | "reveal" | "raise" | "decline" | null;
+
+const STATEMENT_MAX = 2000;
 
 export function ChecklistItemCard({
   item,
@@ -54,6 +62,11 @@ export function ChecklistItemCard({
 
   const primaryLabel = item.fixRoute === "you_must_run" ? "Get the script" : route.primaryLabel;
   const openPrimary = () => setDialog(item.fixRoute === "you_must_run" ? "reveal" : "affordance");
+
+  // #2869's signed exit to accepted_risk, offered only while the finding is still
+  // outstanding — a plain status change to accepted_risk is refused server-side (400),
+  // and a repeat decline once already accepted is refused server-side (409).
+  const canDecline = item.status !== "accepted_risk" && item.verificationState !== "verified";
 
   return (
     <div className="flex flex-col gap-2.5 rounded-xl border border-border/60 bg-muted/5 p-4">
@@ -113,19 +126,35 @@ export function ChecklistItemCard({
             no verified content yet
           </span>
         )}
-        <div className="ml-auto flex flex-wrap gap-1.5">
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <Button size="sm" variant={item.fixRoute === "admin_center_only" ? "outline" : "default"} onClick={openPrimary} data-testid={`checklist-primary-${item.checkKey}`}>
             {primaryLabel}
           </Button>
           <Button size="sm" variant="outline" onClick={() => setDialog("raise")} data-testid={`checklist-raise-${item.checkKey}`}>
             Raise a change request
           </Button>
+          {item.status === "accepted_risk" ? (
+            <Badge
+              variant="outline"
+              className="h-8 items-center border-violet-400/40 bg-violet-400/10 text-violet-400"
+              data-testid={`checklist-decline-status-${item.checkKey}`}
+            >
+              Signed acceptance
+            </Badge>
+          ) : (
+            canDecline && (
+              <Button size="sm" variant="outline" onClick={() => setDialog("decline")} data-testid={`checklist-decline-${item.checkKey}`}>
+                Decline and accept the risk
+              </Button>
+            )
+          )}
         </div>
       </div>
 
       {dialog === "affordance" && <AffordanceDialog item={item} onClose={() => setDialog(null)} />}
       {dialog === "reveal" && <RevealDialog item={item} onClose={() => setDialog(null)} />}
       {dialog === "raise" && <RaiseChangeDialog item={item} onClose={() => setDialog(null)} />}
+      {dialog === "decline" && <DeclineToRiskDialog item={item} onClose={() => setDialog(null)} />}
     </div>
   );
 }
@@ -320,6 +349,120 @@ function RaiseChangeDialog({ item, onClose }: { readonly item: RemediationCheckl
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * The checklist's own signed exit to accepted_risk (#2869, wired here per #3346 —
+ * the Design export added this affordance after the page was already wired). Same
+ * form and same `POST .../decline-to-risk` contract as the 28-step programme's own
+ * decline flow (`StepActionDialog.tsx`'s "decline" mode), applied to a `checkKey`
+ * instead of a `stepId`.
+ */
+function DeclineToRiskDialog({ item, onClose }: { readonly item: RemediationChecklistItem; readonly onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [statement, setStatement] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const declineMutation = useDeclineChecklistItemToRisk();
+
+  const result = declineMutation.data;
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Accept the risk on {item.checkKey}</DialogTitle>
+          <DialogDescription>{item.title}</DialogDescription>
+        </DialogHeader>
+
+        {result ? (
+          <div className="flex flex-col gap-2.5 rounded-xl border border-violet-400/30 bg-violet-400/5 p-4">
+            <span className="text-[12.5px] font-semibold text-foreground">
+              Recorded as {result.rbdId} on your risk register, signed by {result.accepted.by}.
+            </span>
+            <span className="text-[11.5px] leading-relaxed text-muted-foreground">
+              This finding now reads as accepted rather than outstanding. It stays on your scan
+              results until a re-scan clears it — acceptance is a decision about the risk, not
+              about the reading. It comes back for review on a real clock; accepting is not the
+              same as closing. No monetary exposure and no technical detail are attached to this
+              record — neither is known, so neither is invented.
+            </span>
+            <Link href="/risk-register" className="text-[11.5px] font-semibold text-primary hover:underline">
+              View it on your Risk Register →
+            </Link>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <span className="text-[11.5px] leading-relaxed text-muted-foreground">
+              Closes this finding without fixing it, by putting a signed acceptance on your risk
+              register in its place — the same signed route the 28-step programme uses. This is a
+              terminal decision: the finding stops being outstanding.
+            </span>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`decline-name-${item.checkKey}`} className="text-[11px] text-muted-foreground">
+                Your full name
+              </Label>
+              <Input
+                id={`decline-name-${item.checkKey}`}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="As it should appear on the record"
+                data-testid={`checklist-decline-name-${item.checkKey}`}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`decline-statement-${item.checkKey}`} className="text-[11px] text-muted-foreground">
+                Why this risk is being accepted
+              </Label>
+              <Textarea
+                id={`decline-statement-${item.checkKey}`}
+                value={statement}
+                onChange={(e) => setStatement(e.target.value.slice(0, STATEMENT_MAX))}
+                placeholder="The reasoning that will be read at review, in your words"
+                className="min-h-[80px] resize-y"
+                data-testid={`checklist-decline-statement-${item.checkKey}`}
+              />
+              <span className="text-[10.5px] text-muted-foreground/70">
+                {statement.length} of {STATEMENT_MAX} characters
+              </span>
+            </div>
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <Checkbox checked={confirmed} onCheckedChange={(v) => setConfirmed(v === true)} className="mt-0.5" />
+              <span className="text-xs leading-relaxed text-foreground">
+                I accept this risk on behalf of my organisation. This is a permanent signed record
+                with no expiry — it can be superseded, never deleted.
+              </span>
+            </label>
+            {declineMutation.isError && (
+              <p className="rounded-lg border border-status-red/30 bg-status-red/5 p-3 text-[12.5px] text-status-red">
+                {(declineMutation.error as Error)?.message ?? "Failed to accept the risk."}
+              </p>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {result ? "Close" : "Cancel"}
+          </Button>
+          {!result && (
+            <Button
+              disabled={name.trim().length < 2 || statement.trim().length === 0 || !confirmed || declineMutation.isPending}
+              onClick={() =>
+                declineMutation.mutate({
+                  checkKey: item.checkKey,
+                  body: { fullName: name.trim(), confirmed: true, statement: statement.trim() },
+                })
+              }
+              data-testid={`checklist-decline-submit-${item.checkKey}`}
+            >
+              {declineMutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
+              Sign and accept
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
