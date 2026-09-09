@@ -1,7 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
-using System.Windows;
 using System.Windows.Input;
 using SuperShopper.Models;
 
@@ -29,17 +29,19 @@ namespace SuperShopper.ViewModels
         private ActivePanelMode _activePanel = ActivePanelMode.Terminal;
         private bool _isSidebarOpen = true;
         private bool _isPanelOpen = true;
-        private EditorTabModel? _activeTab;
-        private string _searchQuery = string.Empty;
-        private string _terminalInput = string.Empty;
-        private string _terminalOutput = string.Empty;
-        private string _statusBranch = "main*";
-        private int _errorCount = 0;
-        private int _warningCount = 0;
 
-        public ObservableCollection<FileItemModel> FileTree { get; } = new();
-        public ObservableCollection<EditorTabModel> Tabs { get; } = new();
-        public ObservableCollection<string> SearchResults { get; } = new();
+        private string _currentUrl = "https://www.publix.com/savings/weekly-ad/view-all";
+        private string _addressBarInput = "https://www.publix.com/savings/weekly-ad/view-all";
+        private string _activeStoreName = "Publix Super Markets";
+        private bool _isLoading;
+        private string _statusMessage = "Ready";
+
+        private string _newItemTitle = string.Empty;
+        private string _newBookmarkName = string.Empty;
+        private string _newBookmarkUrl = string.Empty;
+
+        public ObservableCollection<StoreBookmarkModel> StoreBookmarks { get; } = new();
+        public ObservableCollection<ShoppingItemModel> ShoppingList { get; } = new();
 
         public ActiveViewMode ActiveView
         {
@@ -84,52 +86,59 @@ namespace SuperShopper.ViewModels
             set => SetField(ref _isPanelOpen, value);
         }
 
-        public EditorTabModel? ActiveTab
+        public string CurrentUrl
         {
-            get => _activeTab;
-            set => SetField(ref _activeTab, value);
-        }
-
-        public string SearchQuery
-        {
-            get => _searchQuery;
+            get => _currentUrl;
             set
             {
-                if (SetField(ref _searchQuery, value))
+                if (SetField(ref _currentUrl, value))
                 {
-                    PerformSearch(value);
+                    AddressBarInput = value;
+                    UpdateActiveStoreFromUrl(value);
                 }
             }
         }
 
-        public string TerminalInput
+        public string AddressBarInput
         {
-            get => _terminalInput;
-            set => SetField(ref _terminalInput, value);
+            get => _addressBarInput;
+            set => SetField(ref _addressBarInput, value);
         }
 
-        public string TerminalOutput
+        public string ActiveStoreName
         {
-            get => _terminalOutput;
-            set => SetField(ref _terminalOutput, value);
+            get => _activeStoreName;
+            set => SetField(ref _activeStoreName, value);
         }
 
-        public string StatusBranch
+        public bool IsLoading
         {
-            get => _statusBranch;
-            set => SetField(ref _statusBranch, value);
+            get => _isLoading;
+            set => SetField(ref _isLoading, value);
         }
 
-        public int ErrorCount
+        public string StatusMessage
         {
-            get => _errorCount;
-            set => SetField(ref _errorCount, value);
+            get => _statusMessage;
+            set => SetField(ref _statusMessage, value);
         }
 
-        public int WarningCount
+        public string NewItemTitle
         {
-            get => _warningCount;
-            set => SetField(ref _warningCount, value);
+            get => _newItemTitle;
+            set => SetField(ref _newItemTitle, value);
+        }
+
+        public string NewBookmarkName
+        {
+            get => _newBookmarkName;
+            set => SetField(ref _newBookmarkName, value);
+        }
+
+        public string NewBookmarkUrl
+        {
+            get => _newBookmarkUrl;
+            set => SetField(ref _newBookmarkUrl, value);
         }
 
         public bool IsExplorerActive => ActiveView == ActiveViewMode.Explorer;
@@ -144,10 +153,10 @@ namespace SuperShopper.ViewModels
 
         public string SidebarHeaderTitle => ActiveView switch
         {
-            ActiveViewMode.Explorer => "EXPLORER: SUPERSHOPPER",
-            ActiveViewMode.Search => "SEARCH",
-            ActiveViewMode.SourceControl => "SOURCE CONTROL",
-            ActiveViewMode.Settings => "SETTINGS",
+            ActiveViewMode.Explorer => "SUPERMARKETS & WEEKLY ADS",
+            ActiveViewMode.Search => "SHOPPING LIST & SAVED DEALS",
+            ActiveViewMode.SourceControl => "ADD NEW STORE BOOKMARK",
+            ActiveViewMode.Settings => "PREFERENCES",
             _ => "SIDEBAR"
         };
 
@@ -156,10 +165,12 @@ namespace SuperShopper.ViewModels
         public ICommand SelectPanelCommand { get; }
         public ICommand ToggleSidebarCommand { get; }
         public ICommand TogglePanelCommand { get; }
-        public ICommand OpenFileCommand { get; }
-        public ICommand CloseTabCommand { get; }
-        public ICommand RunTerminalCommand { get; }
-        public ICommand ClearTerminalCommand { get; }
+
+        public ICommand NavigateToUrlCommand { get; }
+        public ICommand SelectStoreCommand { get; }
+        public ICommand AddShoppingItemCommand { get; }
+        public ICommand AddBookmarkCommand { get; }
+        public ICommand OpenExternalBrowserCommand { get; }
 
         public MainViewModel()
         {
@@ -189,238 +200,179 @@ namespace SuperShopper.ViewModels
             ToggleSidebarCommand = new RelayCommand(_ => IsSidebarOpen = !IsSidebarOpen);
             TogglePanelCommand = new RelayCommand(_ => IsPanelOpen = !IsPanelOpen);
 
-            OpenFileCommand = new RelayCommand(param =>
+            NavigateToUrlCommand = new RelayCommand(param =>
             {
-                if (param is FileItemModel file && !file.IsDirectory)
+                var target = param as string ?? AddressBarInput;
+                if (!string.IsNullOrWhiteSpace(target))
                 {
-                    OpenFileInTab(file);
+                    if (!target.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                        !target.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    {
+                        target = "https://" + target;
+                    }
+                    CurrentUrl = target;
                 }
             });
 
-            CloseTabCommand = new RelayCommand(param =>
+            SelectStoreCommand = new RelayCommand(param =>
             {
-                if (param is EditorTabModel tab)
+                if (param is StoreBookmarkModel store)
                 {
-                    CloseTab(tab);
+                    ActiveStoreName = store.Name;
+                    CurrentUrl = store.Url;
                 }
             });
 
-            RunTerminalCommand = new RelayCommand(_ => ExecuteTerminalCommand());
-            ClearTerminalCommand = new RelayCommand(_ => TerminalOutput = "PS C:\\Source\\SuperShopper> ");
-
-            InitializeSampleWorkspace();
-        }
-
-        private void InitializeSampleWorkspace()
-        {
-            // Build File Tree
-            var srcFolder = new FileItemModel
+            AddShoppingItemCommand = new RelayCommand(_ =>
             {
-                Name = "src",
-                Path = "src",
-                IsDirectory = true,
-                IsExpanded = true,
-                IconKey = "IconFolder"
-            };
-
-            var viewsFolder = new FileItemModel
-            {
-                Name = "Views",
-                Path = "src/Views",
-                IsDirectory = true,
-                IsExpanded = true,
-                IconKey = "IconFolder"
-            };
-            viewsFolder.Children.Add(new FileItemModel
-            {
-                Name = "MainWindow.xaml",
-                Path = "src/Views/MainWindow.xaml",
-                IsDirectory = false,
-                IconKey = "IconFileCode"
-            });
-            viewsFolder.Children.Add(new FileItemModel
-            {
-                Name = "MainWindow.xaml.cs",
-                Path = "src/Views/MainWindow.xaml.cs",
-                IsDirectory = false,
-                IconKey = "IconFileCode"
+                if (!string.IsNullOrWhiteSpace(NewItemTitle))
+                {
+                    ShoppingList.Add(new ShoppingItemModel
+                    {
+                        Title = NewItemTitle.Trim(),
+                        StoreName = ActiveStoreName,
+                        PriceInfo = "Weekly Deal",
+                        IsCompleted = false
+                    });
+                    NewItemTitle = string.Empty;
+                    StatusMessage = "Item added to shopping list";
+                }
             });
 
-            var vmFolder = new FileItemModel
+            AddBookmarkCommand = new RelayCommand(_ =>
             {
-                Name = "ViewModels",
-                Path = "src/ViewModels",
-                IsDirectory = true,
-                IsExpanded = true,
-                IconKey = "IconFolder"
-            };
-            vmFolder.Children.Add(new FileItemModel
-            {
-                Name = "MainViewModel.cs",
-                Path = "src/ViewModels/MainViewModel.cs",
-                IsDirectory = false,
-                IconKey = "IconFileCode"
+                if (!string.IsNullOrWhiteSpace(NewBookmarkName) && !string.IsNullOrWhiteSpace(NewBookmarkUrl))
+                {
+                    var url = NewBookmarkUrl.Trim();
+                    if (!url.StartsWith("http://") && !url.StartsWith("https://")) url = "https://" + url;
+
+                    StoreBookmarks.Add(new StoreBookmarkModel
+                    {
+                        Name = NewBookmarkName.Trim(),
+                        Url = url,
+                        Category = "Custom Store",
+                        Description = "Custom weekly ad link",
+                        IsFavorite = true
+                    });
+                    NewBookmarkName = string.Empty;
+                    NewBookmarkUrl = string.Empty;
+                    ActiveView = ActiveViewMode.Explorer;
+                    StatusMessage = "New store bookmark added";
+                }
             });
 
-            var themesFolder = new FileItemModel
+            OpenExternalBrowserCommand = new RelayCommand(_ =>
             {
-                Name = "Themes",
-                Path = "src/Themes",
-                IsDirectory = true,
-                IsExpanded = false,
-                IconKey = "IconFolder"
-            };
-            themesFolder.Children.Add(new FileItemModel
-            {
-                Name = "DarkTheme.xaml",
-                Path = "src/Themes/DarkTheme.xaml",
-                IsDirectory = false,
-                IconKey = "IconFileCode"
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = CurrentUrl,
+                        UseShellExecute = true
+                    });
+                }
+                catch (Exception ex)
+                {
+                    StatusMessage = $"Unable to open external browser: {ex.Message}";
+                }
             });
 
-            srcFolder.Children.Add(viewsFolder);
-            srcFolder.Children.Add(vmFolder);
-            srcFolder.Children.Add(themesFolder);
+            InitializeStoreBookmarks();
+            InitializeSampleShoppingList();
+        }
 
-            FileTree.Add(srcFolder);
-            FileTree.Add(new FileItemModel
+        private void InitializeStoreBookmarks()
+        {
+            StoreBookmarks.Add(new StoreBookmarkModel
             {
-                Name = "SuperShopper.csproj",
-                Path = "SuperShopper.csproj",
-                IsDirectory = false,
-                IconKey = "IconFileCode"
-            });
-            FileTree.Add(new FileItemModel
-            {
-                Name = "appsettings.json",
-                Path = "appsettings.json",
-                IsDirectory = false,
-                IconKey = "IconFileJson"
+                Name = "Publix Weekly Ad",
+                Url = "https://www.publix.com/savings/weekly-ad/view-all",
+                Category = "Supermarkets",
+                Description = "View all weekly deals, BOGOs, and digital coupons",
+                IsFavorite = true
             });
 
-            // Default Open Tabs
-            var defaultTab = new EditorTabModel
+            StoreBookmarks.Add(new StoreBookmarkModel
             {
-                Title = "MainWindow.xaml",
-                FilePath = "src/Views/MainWindow.xaml",
-                Language = "XAML",
-                IconKey = "IconFileCode",
-                LineNumber = 14,
-                ColumnNumber = 28,
-                Content = @"<Window x:Class=""SuperShopper.MainWindow""
-        xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation""
-        xmlns:x=""http://schemas.microsoft.com/winfx/2006/xaml""
-        Title=""SuperShopper IDE"" Height=""800"" Width=""1280""
-        Background=""{StaticResource WindowBackgroundBrush}""
-        WindowStyle=""None"" AllowsTransparency=""True"">
-    
-    <!-- Microsoft Dark Mode VS Code IDE Scaffolding -->
-    <Grid>
-        <!-- Activity Bar, Sidebar, Editor Tabs, Terminal & Status Bar -->
-    </Grid>
-</Window>"
-            };
+                Name = "Kroger Weekly Ad",
+                Url = "https://www.kroger.com/weeklyad",
+                Category = "Supermarkets",
+                Description = "Digital coupons, weekly circular, and mega sale deals",
+                IsFavorite = true
+            });
 
-            var csTab = new EditorTabModel
+            StoreBookmarks.Add(new StoreBookmarkModel
             {
-                Title = "MainViewModel.cs",
-                FilePath = "src/ViewModels/MainViewModel.cs",
-                Language = "C#",
-                IconKey = "IconFileCode",
-                LineNumber = 42,
-                ColumnNumber = 12,
-                Content = @"namespace SuperShopper.ViewModels
-{
-    public class MainViewModel : ObservableObject
-    {
-        // Microsoft Dark Mode IDE Scaffold ViewModel
-        public MainViewModel()
-        {
-            InitializeSampleWorkspace();
-        }
-    }
-}"
-            };
+                Name = "Walmart Savings Spotlight",
+                Url = "https://www.walmart.com/savings-spotlight",
+                Category = "Discount Superstores",
+                Description = "Rollbacks, clearance, and weekly grocery savings",
+                IsFavorite = true
+            });
 
-            Tabs.Add(defaultTab);
-            Tabs.Add(csTab);
-            ActiveTab = defaultTab;
+            StoreBookmarks.Add(new StoreBookmarkModel
+            {
+                Name = "Target Circle Offers",
+                Url = "https://www.target.com/c/target-circle-offers/-/N-55119",
+                Category = "Superstores",
+                Description = "Weekly ad circular, Target Circle 20% off promos",
+                IsFavorite = true
+            });
 
-            // Initial Terminal Output
-            TerminalOutput = "SuperShopper IDE Build Console [Version 1.0.0]\n" +
-                             "(c) 2026 Antigravity IDE Engine. All rights reserved.\n\n" +
-                             "PS C:\\Source\\SuperShopper> dotnet build --configuration Debug\n" +
-                             "Build succeeded.\n" +
-                             "    0 Warning(s)\n" +
-                             "    0 Error(s)\n\n" +
-                             "Time Elapsed 00:00:01.42\n" +
-                             "PS C:\\Source\\SuperShopper> ";
+            StoreBookmarks.Add(new StoreBookmarkModel
+            {
+                Name = "ALDI Weekly Ads",
+                Url = "https://www.aldi.us/weekly-ads/",
+                Category = "Discount Grocers",
+                Description = "ALDI Finds of the week and fresh produce discounts",
+                IsFavorite = true
+            });
+
+            StoreBookmarks.Add(new StoreBookmarkModel
+            {
+                Name = "Trader Joe's Stories",
+                Url = "https://www.traderjoes.com/home/discover/stories",
+                Category = "Specialty Grocers",
+                Description = "New products, seasonal guides, and recipe deals",
+                IsFavorite = false
+            });
+
+            StoreBookmarks.Add(new StoreBookmarkModel
+            {
+                Name = "Costco Warehouse Savings",
+                Url = "https://www.costco.com/warehouse-locations",
+                Category = "Wholesale Clubs",
+                Description = "Member-only savings coupon book and warehouse deals",
+                IsFavorite = false
+            });
         }
 
-        private void OpenFileInTab(FileItemModel file)
+        private void InitializeSampleShoppingList()
         {
-            var existing = Tabs.FirstOrDefault(t => t.FilePath == file.Path);
-            if (existing != null)
-            {
-                ActiveTab = existing;
-                return;
-            }
-
-            var newTab = new EditorTabModel
-            {
-                Title = file.Name,
-                FilePath = file.Path,
-                Language = file.Name.EndsWith(".cs") ? "C#" : (file.Name.EndsWith(".xaml") ? "XAML" : "JSON"),
-                IconKey = file.IconKey,
-                LineNumber = 1,
-                ColumnNumber = 1,
-                Content = $"// File contents for {file.Path}\n// Microsoft Dark Mode IDE View\n\nusing System;\n\nnamespace SuperShopper\n{{\n    public class {file.Name.Replace(".", "")}\n    {{\n        // Implementation details...\n    }}\n}}"
-            };
-
-            Tabs.Add(newTab);
-            ActiveTab = newTab;
+            ShoppingList.Add(new ShoppingItemModel { Title = "Organic Strawberries (BOGO)", StoreName = "Publix Super Markets", PriceInfo = "Buy 1 Get 1 Free", IsCompleted = false });
+            ShoppingList.Add(new ShoppingItemModel { Title = "Whole Milk (Gallon)", StoreName = "Kroger", PriceInfo = "$2.99", IsCompleted = false });
+            ShoppingList.Add(new ShoppingItemModel { Title = "Avocados (Bag of 5)", StoreName = "ALDI", PriceInfo = "$1.99 / bag", IsCompleted = true });
         }
 
-        private void CloseTab(EditorTabModel tab)
+        private void UpdateActiveStoreFromUrl(string url)
         {
-            Tabs.Remove(tab);
-            if (ActiveTab == tab)
+            var match = StoreBookmarks.FirstOrDefault(b => url.StartsWith(b.Url, StringComparison.OrdinalIgnoreCase) || b.Url.StartsWith(url, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
             {
-                ActiveTab = Tabs.LastOrDefault();
-            }
-        }
-
-        private void PerformSearch(string query)
-        {
-            SearchResults.Clear();
-            if (string.IsNullOrWhiteSpace(query)) return;
-
-            SearchResults.Add($"src/Views/MainWindow.xaml (Match: '{query}')");
-            SearchResults.Add($"src/ViewModels/MainViewModel.cs (Match: '{query}')");
-            SearchResults.Add($"Themes/DarkTheme.xaml (Match: '{query}')");
-        }
-
-        private void ExecuteTerminalCommand()
-        {
-            if (string.IsNullOrWhiteSpace(TerminalInput)) return;
-
-            var cmd = TerminalInput.Trim();
-            TerminalOutput += $"{cmd}\n";
-
-            if (cmd.Equals("clear", StringComparison.OrdinalIgnoreCase) || cmd.Equals("cls", StringComparison.OrdinalIgnoreCase))
-            {
-                TerminalOutput = "PS C:\\Source\\SuperShopper> ";
-            }
-            else if (cmd.Equals("dotnet build", StringComparison.OrdinalIgnoreCase))
-            {
-                TerminalOutput += "Build started...\nBuild succeeded: 0 Errors, 0 Warnings.\nPS C:\\Source\\SuperShopper> ";
+                ActiveStoreName = match.Name;
             }
             else
             {
-                TerminalOutput += $"Executed command '{cmd}'. Status: OK.\nPS C:\\Source\\SuperShopper> ";
+                try
+                {
+                    var uri = new Uri(url);
+                    ActiveStoreName = uri.Host.Replace("www.", "");
+                }
+                catch
+                {
+                    ActiveStoreName = "Web Store";
+                }
             }
-
-            TerminalInput = string.Empty;
         }
     }
 }
