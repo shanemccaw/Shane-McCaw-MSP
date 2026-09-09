@@ -627,7 +627,10 @@ export const projectsTable = pgTable("projects", {
   quickWinElapsedSeconds: integer("quick_win_elapsed_seconds"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("projects_client_user_id_idx").on(t.clientUserId),
+  index("projects_signed_off_by_idx").on(t.signedOffBy),
+]);
 
 export type InsertProject = typeof projectsTable.$inferInsert;
 export type Project = typeof projectsTable.$inferSelect;
@@ -659,7 +662,9 @@ export const clientServicesTable = pgTable("client_services", {
   // or is canceled.
   stripeScheduleId: text("stripe_schedule_id"),
   pendingBillingInterval: text("pending_billing_interval", { enum: CLIENT_BILLING_INTERVALS }),
-});
+}, (t) => [
+  index("client_services_client_user_id_idx").on(t.clientUserId),
+]);
 
 export type InsertClientService = typeof clientServicesTable.$inferInsert;
 export type ClientService = typeof clientServicesTable.$inferSelect;
@@ -724,7 +729,9 @@ export const documentsTable = pgTable("documents", {
   sizeBytes: integer("size_bytes"),
   uploadedBy: integer("uploaded_by").references(() => usersTable.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("documents_uploaded_by_idx").on(t.uploadedBy),
+]);
 
 export type InsertDocument = typeof documentsTable.$inferInsert;
 export type Document = typeof documentsTable.$inferSelect;
@@ -741,7 +748,9 @@ export const reportsTable = pgTable("reports", {
   sizeBytes: integer("size_bytes"),
   reportDate: timestamp("report_date"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("reports_client_user_id_idx").on(t.clientUserId),
+]);
 
 export type InsertReport = typeof reportsTable.$inferInsert;
 export type Report = typeof reportsTable.$inferSelect;
@@ -779,7 +788,9 @@ export const invoicesTable = pgTable("invoices", {
   zohoBooksInvoiceId: text("zoho_books_invoice_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("invoices_client_user_id_idx").on(t.clientUserId),
+]);
 
 export type InsertInvoice = typeof invoicesTable.$inferInsert;
 export type Invoice = typeof invoicesTable.$inferSelect;
@@ -805,7 +816,10 @@ export const messagesTable = pgTable("messages", {
   readByAdmin: boolean("read_by_admin").notNull().default(false),
   readByClient: boolean("read_by_client").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("messages_client_user_id_idx").on(t.clientUserId),
+  index("messages_sender_user_id_idx").on(t.senderUserId),
+]);
 
 export type InsertMessage = typeof messagesTable.$inferInsert;
 export type Message = typeof messagesTable.$inferSelect;
@@ -859,7 +873,9 @@ export const projectUpdatesTable = pgTable("project_updates", {
   authorUserId: integer("author_user_id").references(() => usersTable.id),
   type: text("type", { enum: ["update", "milestone", "message", "file"] }).notNull().default("update"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("project_updates_author_user_id_idx").on(t.authorUserId),
+]);
 
 export type InsertProjectUpdate = typeof projectUpdatesTable.$inferInsert;
 export type ProjectUpdate = typeof projectUpdatesTable.$inferSelect;
@@ -887,7 +903,9 @@ export const contractsTable = pgTable("contracts", {
   localFilePath: text("local_file_path"),
   appRegPermissionsAgreed: boolean("app_reg_permissions_agreed").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("contracts_user_id_idx").on(t.userId),
+]);
 
 export type InsertContract = typeof contractsTable.$inferInsert;
 export type Contract = typeof contractsTable.$inferSelect;
@@ -899,7 +917,9 @@ export const passwordResetTokensTable = pgTable("password_reset_tokens", {
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("password_reset_tokens_user_id_idx").on(t.userId),
+]);
 
 export type InsertPasswordResetToken = typeof passwordResetTokensTable.$inferInsert;
 export type PasswordResetToken = typeof passwordResetTokensTable.$inferSelect;
@@ -912,7 +932,10 @@ export const impersonationTokensTable = pgTable("impersonation_tokens", {
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("impersonation_tokens_admin_user_id_idx").on(t.adminUserId),
+  index("impersonation_tokens_client_user_id_idx").on(t.clientUserId),
+]);
 
 export type InsertImpersonationToken = typeof impersonationTokensTable.$inferInsert;
 export type ImpersonationToken = typeof impersonationTokensTable.$inferSelect;
@@ -924,7 +947,9 @@ export const accountSetupTokensTable = pgTable("account_setup_tokens", {
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("account_setup_tokens_user_id_idx").on(t.userId),
+]);
 
 export type InsertAccountSetupToken = typeof accountSetupTokensTable.$inferInsert;
 export type AccountSetupToken = typeof accountSetupTokensTable.$inferSelect;
@@ -945,7 +970,9 @@ export const printTokensTable = pgTable("print_tokens", {
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("print_tokens_user_id_idx").on(t.userId),
+]);
 
 export type InsertPrintToken = typeof printTokensTable.$inferInsert;
 export type PrintToken = typeof printTokensTable.$inferSelect;
@@ -967,7 +994,9 @@ export const documentPrintTokensTable = pgTable("document_print_tokens", {
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("document_print_tokens_user_id_idx").on(t.userId),
+]);
 
 export type InsertDocumentPrintToken = typeof documentPrintTokensTable.$inferInsert;
 export type DocumentPrintToken = typeof documentPrintTokensTable.$inferSelect;
@@ -996,7 +1025,9 @@ export const signupExchangeTokensTable = pgTable("signup_exchange_tokens", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("signup_exchange_tokens_user_id_idx").on(t.userId),
+]);
 
 export type InsertSignupExchangeToken = typeof signupExchangeTokensTable.$inferInsert;
 export type SignupExchangeToken = typeof signupExchangeTokensTable.$inferSelect;
@@ -1437,7 +1468,9 @@ export const statusReportsTable = pgTable("status_reports", {
   replyThread: jsonb("reply_thread").$type<Array<{ sender: "client" | "admin"; content: string; timestamp: string }>>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("status_reports_client_user_id_idx").on(t.clientUserId),
+]);
 
 export type InsertStatusReport = typeof statusReportsTable.$inferInsert;
 export type StatusReport = typeof statusReportsTable.$inferSelect;
@@ -1456,7 +1489,9 @@ export const emailsTable = pgTable("emails", {
   linkedProjectId: integer("linked_project_id").references(() => projectsTable.id, { onDelete: "set null" }),
   linkedLeadId: integer("linked_lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
   ingestedAt: timestamp("ingested_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("emails_linked_user_id_idx").on(t.linkedUserId),
+]);
 
 export type InsertEmail = typeof emailsTable.$inferInsert;
 export type Email = typeof emailsTable.$inferSelect;
@@ -1467,7 +1502,9 @@ export const emailDomainRulesTable = pgTable("email_domain_rules", {
   domain: text("domain").notNull().unique(),
   linkedUserId: integer("linked_user_id").notNull().references(() => usersTable.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("email_domain_rules_linked_user_id_idx").on(t.linkedUserId),
+]);
 
 export type InsertEmailDomainRule = typeof emailDomainRulesTable.$inferInsert;
 export type EmailDomainRule = typeof emailDomainRulesTable.$inferSelect;
@@ -1482,7 +1519,9 @@ export const projectClosuresTable = pgTable("project_closures", {
   signatureDataUrl: text("signature_data_url"),
   signedAt: timestamp("signed_at"),
   signerUserId: integer("signer_user_id").references(() => usersTable.id, { onDelete: "set null" }),
-});
+}, (t) => [
+  index("project_closures_signer_user_id_idx").on(t.signerUserId),
+]);
 
 export type InsertProjectClosure = typeof projectClosuresTable.$inferInsert;
 export type ProjectClosure = typeof projectClosuresTable.$inferSelect;
@@ -1798,7 +1837,9 @@ export const azureTenantCredentialsTable = pgTable("azure_tenant_credentials", {
   keyVaultSecretName: text("key_vault_secret_name").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("azure_tenant_credentials_client_user_id_idx").on(t.clientUserId),
+]);
 
 export type InsertAzureTenantCredential = typeof azureTenantCredentialsTable.$inferInsert;
 export type AzureTenantCredential = typeof azureTenantCredentialsTable.$inferSelect;
@@ -1858,7 +1899,9 @@ export const mfaEnrollmentsTable = pgTable("mfa_enrollments", {
   phone: text("phone"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("mfa_enrollments_user_id_idx").on(t.userId),
+]);
 
 export type InsertMfaEnrollment = typeof mfaEnrollmentsTable.$inferInsert;
 export type MfaEnrollment = typeof mfaEnrollmentsTable.$inferSelect;
@@ -1872,7 +1915,9 @@ export const mfaChallengesTable = pgTable("mfa_challenges", {
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("mfa_challenges_user_id_idx").on(t.userId),
+]);
 
 export type InsertMfaChallenge = typeof mfaChallengesTable.$inferInsert;
 export type MfaChallenge = typeof mfaChallengesTable.$inferSelect;
@@ -1898,7 +1943,9 @@ export const mfaBypassCodesTable = pgTable("mfa_bypass_codes", {
   usedIp: text("used_ip"),
   usedUserAgent: text("used_user_agent"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("mfa_bypass_codes_created_by_user_id_idx").on(t.createdByUserId),
+]);
 
 export type InsertMfaBypassCode = typeof mfaBypassCodesTable.$inferInsert;
 export type MfaBypassCode = typeof mfaBypassCodesTable.$inferSelect;
@@ -1913,7 +1960,9 @@ export const webauthnCredentialsTable = pgTable("webauthn_credentials", {
   backedUp: boolean("backed_up").notNull().default(false),
   transports: jsonb("transports").$type<string[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("webauthn_credentials_user_id_idx").on(t.userId),
+]);
 
 export type InsertWebauthnCredential = typeof webauthnCredentialsTable.$inferInsert;
 export type WebauthnCredential = typeof webauthnCredentialsTable.$inferSelect;
@@ -1925,7 +1974,9 @@ export const webauthnChallengesTable = pgTable("webauthn_challenges", {
   purpose: text("purpose", { enum: ["registration", "authentication"] }).notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("webauthn_challenges_user_id_idx").on(t.userId),
+]);
 
 export type InsertWebauthnChallenge = typeof webauthnChallengesTable.$inferInsert;
 export type WebauthnChallenge = typeof webauthnChallengesTable.$inferSelect;
@@ -2026,7 +2077,9 @@ export const inboxMessageLinksTable = pgTable("inbox_message_links", {
   taskId: integer("task_id").references(() => kanbanTasksTable.id, { onDelete: "set null" }),
   direction: text("direction", { enum: ["inbound", "outbound"] }).notNull().default("inbound"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("inbox_message_links_customer_id_idx").on(t.customerId),
+]);
 
 export type InsertInboxMessageLink = typeof inboxMessageLinksTable.$inferInsert;
 export type InboxMessageLink = typeof inboxMessageLinksTable.$inferSelect;
@@ -2075,7 +2128,9 @@ export const clientHealthHistoryTable = pgTable("client_health_history", {
   score: integer("score").notNull(),
   recordedAt: timestamp("recorded_at").notNull().defaultNow(),
   sourceKanbanTaskId: integer("source_kanban_task_id").references(() => kanbanTasksTable.id, { onDelete: "set null" }),
-});
+}, (t) => [
+  index("client_health_history_client_id_idx").on(t.clientId),
+]);
 
 export type InsertClientHealthHistory = typeof clientHealthHistoryTable.$inferInsert;
 export type ClientHealthHistory = typeof clientHealthHistoryTable.$inferSelect;
@@ -2240,7 +2295,10 @@ export const clientDocumentsTable = pgTable("client_documents", {
   sizeBytes: integer("size_bytes"),
   uploadedBy: integer("uploaded_by").references(() => usersTable.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("client_documents_client_user_id_idx").on(t.clientUserId),
+  index("client_documents_uploaded_by_idx").on(t.uploadedBy),
+]);
 
 export type InsertClientDocument = typeof clientDocumentsTable.$inferInsert;
 export type ClientDocument = typeof clientDocumentsTable.$inferSelect;
@@ -2383,7 +2441,9 @@ export const scriptRunResultsTable = pgTable("script_run_results", {
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   scriptName: text("script_name"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("script_run_results_customer_id_idx").on(t.customerId),
+]);
 
 export type InsertScriptRunResult = typeof scriptRunResultsTable.$inferInsert;
 export type ScriptRunResult = typeof scriptRunResultsTable.$inferSelect;
@@ -2399,7 +2459,10 @@ export const clientCallbackTokensTable = pgTable("client_callback_tokens", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   revokedAt: timestamp("revoked_at"),
   lastUsedAt: timestamp("last_used_at"),
-}, (t) => [index("client_callback_tokens_project_id_idx").on(t.projectId)]);
+}, (t) => [
+  index("client_callback_tokens_project_id_idx").on(t.projectId),
+  index("client_callback_tokens_client_user_id_idx").on(t.clientUserId),
+]);
 
 export type InsertClientCallbackToken = typeof clientCallbackTokensTable.$inferInsert;
 export type ClientCallbackToken = typeof clientCallbackTokensTable.$inferSelect;
@@ -2472,7 +2535,9 @@ export const scriptDownloadTokensTable = pgTable("script_download_tokens", {
   usedAt: timestamp("used_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("script_download_tokens_customer_id_idx").on(t.customerId),
+]);
 
 export type InsertScriptDownloadToken = typeof scriptDownloadTokensTable.$inferInsert;
 export type ScriptDownloadToken = typeof scriptDownloadTokensTable.$inferSelect;
@@ -2520,7 +2585,9 @@ export const clientAutomationRunsTable = pgTable("client_automation_runs", {
   lastLogSnippet: text("last_log_snippet"),
   errorMessage: text("error_message"),
   finishedAt: timestamp("finished_at"),
-});
+}, (t) => [
+  index("client_automation_runs_client_user_id_idx").on(t.clientUserId),
+]);
 
 export type InsertClientAutomationRun = typeof clientAutomationRunsTable.$inferInsert;
 export type ClientAutomationRun = typeof clientAutomationRunsTable.$inferSelect;
@@ -2778,7 +2845,9 @@ export const insightsAutomationsTable = pgTable("insights_automations", {
   lastRunLog: jsonb("last_run_log").$type<{ ts: string; level: "info" | "warn" | "error"; message: string }[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("insights_automations_customer_id_idx").on(t.customerId),
+]);
 
 export type InsertInsightsAutomation = typeof insightsAutomationsTable.$inferInsert;
 export type InsightsAutomation = typeof insightsAutomationsTable.$inferSelect;
@@ -2885,7 +2954,9 @@ export const quickWinPresentationsTable = pgTable("quick_win_presentations", {
   projectTitle: text("project_title"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("quick_win_presentations_client_user_id_idx").on(t.clientUserId),
+]);
 
 export type InsertQuickWinPresentation = typeof quickWinPresentationsTable.$inferInsert;
 export type QuickWinPresentation = typeof quickWinPresentationsTable.$inferSelect;
@@ -2924,7 +2995,9 @@ export const quickWinResultSharesTable = pgTable("quick_win_result_shares", {
   expiresAt: timestamp("expires_at").notNull(),
   viewCount: integer("view_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("quick_win_result_shares_client_user_id_idx").on(t.clientUserId),
+]);
 
 export type InsertQuickWinResultShare = typeof quickWinResultSharesTable.$inferInsert;
 export type QuickWinResultShare = typeof quickWinResultSharesTable.$inferSelect;
@@ -3405,7 +3478,9 @@ export const salesOfferEventsTable = pgTable("sales_offer_events", {
   idempotencyKey: text("idempotency_key"),
   actorUserId: integer("actor_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("sales_offer_events_actor_user_id_idx").on(t.actorUserId),
+]);
 
 export type InsertSalesOfferEvent = typeof salesOfferEventsTable.$inferInsert;
 export type SalesOfferEvent = typeof salesOfferEventsTable.$inferSelect;
@@ -3653,6 +3728,7 @@ export const checkoutSessionsTable = pgTable("checkout_sessions", {
 }, (t) => [
   index("checkout_sessions_email_idx").on(t.email),
   index("checkout_sessions_expires_at_idx").on(t.expiresAt),
+  index("checkout_sessions_account_user_id_idx").on(t.accountUserId),
 ]);
 
 export type InsertCheckoutSession = typeof checkoutSessionsTable.$inferInsert;
@@ -4469,6 +4545,7 @@ export const activeDirectoryOuAssignmentsTable = pgTable("active_directory_ou_as
   index("active_directory_ou_assignments_ou_id_idx").on(t.ouId),
   index("active_directory_ou_assignments_customer_id_idx").on(t.customerId),
   uniqueIndex("active_directory_ou_assignments_customer_object_idx").on(t.customerId, t.objectId),
+  index("active_directory_ou_assignments_assigned_by_user_id_idx").on(t.assignedByUserId),
 ]);
 
 export type InsertActiveDirectoryOuAssignment = typeof activeDirectoryOuAssignmentsTable.$inferInsert;
@@ -4543,6 +4620,8 @@ export const activeDirectoryOuAssignmentRequestsTable = pgTable("active_director
   index("active_directory_ou_assignment_requests_customer_id_idx").on(t.customerId),
   index("active_directory_ou_assignment_requests_msp_id_idx").on(t.mspId),
   index("active_directory_ou_assignment_requests_status_idx").on(t.status),
+  index("active_directory_ou_assignment_requests_requested_by_idx").on(t.requestedByUserId),
+  index("active_directory_ou_assignment_requests_resolved_by_idx").on(t.resolvedByUserId),
 ]);
 
 export type InsertActiveDirectoryOuAssignmentRequest = typeof activeDirectoryOuAssignmentRequestsTable.$inferInsert;
@@ -4572,6 +4651,7 @@ export const userEntitlementOverridesTable = pgTable("user_entitlement_overrides
 }, (t) => [
   uniqueIndex("user_entitlement_overrides_user_capability_uniq").on(t.userId, t.capabilityKey),
   index("user_entitlement_overrides_user_id_idx").on(t.userId),
+  index("user_entitlement_overrides_granted_by_user_id_idx").on(t.grantedByUserId),
 ]);
 
 export type InsertUserEntitlementOverride = typeof userEntitlementOverridesTable.$inferInsert;

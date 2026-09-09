@@ -608,6 +608,7 @@ export const mspStaffCustomerScopesTable = pgTable("msp_staff_customer_scopes", 
   index("msp_staff_customer_scopes_staff_user_id_idx").on(t.staffUserId),
   index("msp_staff_customer_scopes_customer_id_idx").on(t.customerId),
   index("msp_staff_customer_scopes_msp_id_idx").on(t.mspId),
+  index("msp_staff_customer_scopes_created_by_user_id_idx").on(t.createdByUserId),
 ]);
 
 export const insertMspStaffCustomerScopeSchema = createInsertSchema(mspStaffCustomerScopesTable).omit({ id: true, createdAt: true });
@@ -652,6 +653,7 @@ export const mspInvitesTable = pgTable("msp_invites", {
 }, (t) => [
   index("msp_invites_msp_id_idx").on(t.mspId),
   index("msp_invites_expires_at_idx").on(t.expiresAt),
+  index("msp_invites_invited_by_user_id_idx").on(t.invitedByUserId),
 ]);
 
 export type MspInvite = typeof mspInvitesTable.$inferSelect;
@@ -1139,6 +1141,7 @@ export const outboundWebhooksTable = pgTable("outbound_webhooks", {
 }, (t) => [
   index("outbound_webhooks_msp_id_idx").on(t.mspId),
   index("outbound_webhooks_customer_id_idx").on(t.customerId),
+  index("outbound_webhooks_disabled_by_msp_user_id_idx").on(t.disabledByMspUserId),
 ]);
 
 export type OutboundWebhook = typeof outboundWebhooksTable.$inferSelect;
@@ -8809,7 +8812,9 @@ export const customerAlertSettingsTable = pgTable("customer_alert_settings", {
   quietBreakForCritical: boolean("quiet_break_for_critical").notNull().default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedByUserId: integer("updated_by_user_id").references(() => usersTable.id),
-});
+}, (t) => [
+  index("customer_alert_settings_updated_by_user_id_idx").on(t.updatedByUserId),
+]);
 
 export type CustomerAlertSettings = typeof customerAlertSettingsTable.$inferSelect;
 export type InsertCustomerAlertSettings = typeof customerAlertSettingsTable.$inferInsert;

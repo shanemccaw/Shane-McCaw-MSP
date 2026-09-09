@@ -161,6 +161,7 @@ export const mspUserRolesTable = pgTable("msp_user_roles", {
 }, (t) => [
   primaryKey({ columns: [t.userId, t.roleId] }),
   index("msp_user_roles_role_id_idx").on(t.roleId),
+  index("msp_user_roles_granted_by_user_id_idx").on(t.grantedByUserId),
 ]);
 
 export type MspUserRoleRow = typeof mspUserRolesTable.$inferSelect;
@@ -235,6 +236,7 @@ export const customerUserRolesTable = pgTable("customer_user_roles", {
 }, (t) => [
   primaryKey({ columns: [t.userId, t.roleId] }),
   index("customer_user_roles_role_id_idx").on(t.roleId),
+  index("customer_user_roles_granted_by_user_id_idx").on(t.grantedByUserId),
 ]);
 
 export type CustomerUserRoleRow = typeof customerUserRolesTable.$inferSelect;

@@ -92,14 +92,14 @@ describe.skipIf(!process.env.DATABASE_URL)("#2999 — a reinstatement request ra
     if (userId) await db.delete(usersTable).where(eq(usersTable.id, userId));
     if (tenants.length) await db.delete(tenantsTable).where(inArray(tenantsTable.id, tenants));
     if (mspId) await db.delete(mspsTable).where(eq(mspsTable.id, mspId));
-    // 60s, not the config's global 20s hook timeout, and for a real measured reason: this
-    // is the only live-db test in the retention set that creates a `users` row, and a
-    // single `DELETE FROM users` costs ~1.4s warm / ~5.4s cold on the local dev database.
-    // 53 of the foreign-key columns referencing `users` carry no index, so every delete
-    // sequentially scans all 53 referencing tables to enforce them (measured 2026-09-07;
-    // filed separately). The cleanup is correct, just slow — this raises the ceiling
-    // rather than skipping the cleanup and leaving scratch rows behind.
-  }, 60_000);
+    // This hook used to carry an explicit 60s override, because the `DELETE FROM users`
+    // above cost ~1.4s warm / ~5.4s cold and blew the config's global 20s hookTimeout:
+    // the foreign-key columns referencing `users` carried no index, so every delete
+    // sequentially scanned every referencing table to enforce them (#3099). Those indexes
+    // now exist (`lib/db/migrations/manual/2026-09-09-index-users-fk-columns-3099.sql`),
+    // a single `DELETE FROM users` measures ~12-15ms warm / ~220ms in a fresh backend, and
+    // the override is gone — this hook runs under the ordinary global timeout again.
+  });
 
   /** Every queued Desk-ticket job raised for one customer. */
   async function ticketJobsFor(customerId: number) {
