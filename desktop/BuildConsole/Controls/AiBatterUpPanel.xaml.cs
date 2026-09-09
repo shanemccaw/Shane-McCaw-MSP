@@ -66,23 +66,22 @@ namespace BuildConsole.Controls
             DetailPane.ShowChatInsteadOfActions = true;
 
             // Git #3253 — Shane's own architectural redirect: react to the mirror's own
-            // SyncCompleted event instead of a second polling timer. Subscribed only while this
-            // document tab is actually open (Loaded/Unloaded — same lifecycle idiom
-            // DispatchPanel's countdown timer already uses, and BatterUpPanel's sibling wiring),
-            // so a closed tab's instance doesn't keep repainting off-screen and a static event
-            // never outlives the view.
-            Loaded += AiBatterUpPanel_Loaded;
-            Unloaded += AiBatterUpPanel_Unloaded;
-        }
-
-        private void AiBatterUpPanel_Loaded(object sender, RoutedEventArgs e)
-        {
+            // SyncCompleted event instead of a second polling timer.
+            //
+            // Git #3335 — subscribe HERE, in the constructor, and never unsubscribe — NOT in
+            // Loaded/Unloaded (same fix as BatterUpPanel's sibling wiring). This instance is an
+            // app-lifetime singleton (MainWindow builds it once as a field per
+            // MainWindow.BatterUpTabs.cs and never destroys it), whose whole job is to keep the
+            // always-visible top-bar count badge (TopAiBatterUpCount) fresh via CountChanged.
+            // The old Loaded/Unloaded wiring only ever fired when the document tab was attached
+            // to the visual tree — but Shane never opens the tab, he only watches the badge, so
+            // Loaded never fired, the SyncCompleted subscription was never established, and the
+            // 5-min auto-update never reached the badge at all (the exact bug #3335 traces).
+            // #3253's original concerns ("a closed tab keeps repainting off-screen" / "a static
+            // event outlives the view") don't apply to an app-lifetime singleton: the view IS
+            // the singleton, so the event can't outlive it, and the cheap off-screen RowsList
+            // render is precisely what keeps the visible badge current.
             Services.GitHubIssueMirror.SyncCompleted += OnMirrorSyncCompleted;
-        }
-
-        private void AiBatterUpPanel_Unloaded(object sender, RoutedEventArgs e)
-        {
-            Services.GitHubIssueMirror.SyncCompleted -= OnMirrorSyncCompleted;
         }
 
         /// <summary>Git #3253 — fired from whatever background context the mirror sync runs on
