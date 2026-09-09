@@ -356,9 +356,13 @@ export async function roomsForToday(userId, { allDates, tonight, groceries, runI
  * resolveNextKind()'s "dinner" case both already apply.
  */
 export async function computeLaterMoments(userId, { allDates, tonight, pendingCaptures }) {
-  const [headingOut, rentalJob] = await Promise.all([
+  const [headingOut, rentalJob, headingTo] = await Promise.all([
     lists.getHeadingOutSignal(userId),
     contacts.getOpenRentalJob(userId),
+    // Git #3325: same 12h staleness window heading_to_place's own capture-grammar rule and
+    // GET /api/capture-tray already apply -- a "heading to" fact from yesterday is no longer a
+    // real trip in progress, so the card must not linger claiming one.
+    locationState.getHeadingTo(userId, { staleAfterMs: 12 * 60 * 60 * 1000 }),
   ]);
 
   // "Coming up -- a date within 14 days (line = first two 'title + when')". Overdue rows
@@ -369,12 +373,37 @@ export async function computeLaterMoments(userId, { allDates, tonight, pendingCa
     .slice(0, 2)
     .map((d) => ({ title: d.title, dueInDays: d.due_in_days, atDate: d.at_date instanceof Date ? d.at_date.toISOString().slice(0, 10) : d.at_date }));
 
+  // Git #3325 ("Trip" arrival-confirmation card): the same real `heading_to` fact
+  // heading_to_place already sets, finally surfaced as its own card instead of only read back
+  // internally. `line` mirrors the real per-destination copy that capture-grammar rule's own
+  // confirmation message already uses -- the real Heading Out list's undone count for the
+  // Rental, the real to-home take-checklist's undone count for home, no count for work (nothing
+  // to bring to NASA).
+  let trip = null;
+  if (headingTo) {
+    const house = headingTo.house;
+    let line;
+    if (house === "work") {
+      line = "Next switches to your work list when you get there.";
+    } else if (house === "rental") {
+      const n = headingOut ? headingOut.names.length : 0;
+      line = n > 0 ? `${n} on the Heading Out list.` : "Nothing queued on the Heading Out list yet.";
+    } else {
+      const checklist = await things.listTakeChecklist(userId);
+      const homeGroup = checklist.find((g) => /^home$/i.test(g.house));
+      const undone = homeGroup ? homeGroup.items.filter((i) => !i.take_done).length : 0;
+      line = undone > 0 ? `${undone} to bring on the to-home list.` : "Nothing queued on the to-home list.";
+    }
+    trip = { house, at: headingTo.at, line };
+  }
+
   return {
     headingOut: headingOut ? { names: headingOut.names } : null,
     comingUp: comingUp.length > 0 ? comingUp : null,
     dinner: Boolean(tonight) ? { dishText: tonight.dishText } : null,
     rental: rentalJob ? { did: rentalJob.did, name: rentalJob.name } : null,
     idle: pendingCaptures > 0 ? { count: pendingCaptures } : null,
+    trip,
   };
 }
 
@@ -3309,6 +3338,31 @@ export function buildApiRouter() {
       },
       meds,
     });
+  });
+
+  /**
+   * Git #3325: confirm or cancel the real "heading to X" trip in progress -- the Today tray's
+   * own Trip act row (tripActRow in app.js). Confirm clears the location-transition fact the
+   * same way genuinely arriving would; Cancel clears it without ever having been "arrival" (Shane
+   * said it by mistake, or plans changed) -- neither this app nor the design draws a distinction
+   * between the two beyond the toast copy, since there's no separate confirmed-arrival state to
+   * write (see location-state.mjs's own header). Both are idempotent no-ops when there's no trip
+   * on file -- a double-tap, or a card the client hadn't yet re-rendered away, must never 500.
+   */
+  router.post("/api/trip/confirm", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const trip = await locationState.getHeadingTo(user.id, { staleAfterMs: 12 * 60 * 60 * 1000 });
+    await locationState.clearHeadingTo(user.id);
+    await audit.record({ userId: user.id, actor: "web", action: "trip.confirm", detail: { house: trip?.house || null } });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  router.post("/api/trip/cancel", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const trip = await locationState.getHeadingTo(user.id, { staleAfterMs: 12 * 60 * 60 * 1000 });
+    await locationState.clearHeadingTo(user.id);
+    await audit.record({ userId: user.id, actor: "web", action: "trip.cancel", detail: { house: trip?.house || null } });
+    return sendJson(res, 200, { ok: true });
   });
 
   /** Git #3216: the main app's own real "Heading home?" tap action (the widget's version is the

@@ -154,6 +154,55 @@ function timerActRow(t) {
   return row;
 }
 
+// Real per-destination title/confirm-button copy, off the design's own `trip` chip (First Slice
+// Prototype.dc.html ~line 2819: `tripTo === 'home' ? 'Heading home' : tripTo === 'rental' ?
+// 'Heading to the Rental' : 'Off to NASA'`, and its own `a1` confirm labels).
+const TRIP_TITLE = { work: "Off to NASA", rental: "Heading to the Rental", home: "Heading home" };
+const TRIP_CONFIRM_LABEL = { work: "At work", rental: "I’m here", home: "I’m home" };
+
+/**
+ * Git #3325: the Today tray's own Trip act row -- the real, persisted `heading_to` /
+ * `heading_to_at` location-transition fact (Git #3320, location-state.mjs) finally surfaced as
+ * its own card instead of only read back internally. Same real "act row" pattern timerActRow
+ * above already established for the design's own `d.acts` chip stack -- icon + title + sub line
+ * + real buttons -- rather than inventing a second card shape for this. Confirm (destination-
+ * specific copy) and Cancel both hit the real new POST /api/trip/confirm / /api/trip/cancel
+ * routes, which clear the real `heading_to` fact server-side; either one just re-renders Today
+ * afterward so the row is simply gone the moment the fact is, same "gone from the DOM, not
+ * hidden" discipline the timer row above uses.
+ */
+function tripActRow(trip) {
+  const title = TRIP_TITLE[trip.house] || "Heading out";
+  const confirmLabel = TRIP_CONFIRM_LABEL[trip.house] || "Here";
+
+  const runTripAction = async (path, e) => {
+    const row = e.currentTarget.closest(".today-act-row");
+    row.querySelectorAll(".today-act-btn").forEach((b) => (b.style.pointerEvents = "none"));
+    try {
+      await api(path, { method: "POST" });
+    } catch (err) {
+      showQuickToast(err.message);
+    } finally {
+      render();
+    }
+  };
+
+  return el("div", { class: "today-act-row" }, [
+    el("div", { class: "today-act-icon" }, [
+      lineIcon(
+        '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle>',
+        { size: 20 },
+      ),
+    ]),
+    el("div", { class: "today-act-body" }, [
+      el("div", { class: "today-act-title", text: title }),
+      el("div", { class: "today-act-sub", text: trip.line }),
+    ]),
+    el("span", { class: "today-act-btn", text: confirmLabel, onClick: (e) => runTripAction("/api/trip/confirm", e) }),
+    el("span", { class: "today-act-btn", text: "Cancel", onClick: (e) => runTripAction("/api/trip/cancel", e) }),
+  ]);
+}
+
 function mealTotalMinutes(dishes) {
   return Math.max(...dishes.map((d) => d.minutes));
 }
@@ -2064,6 +2113,10 @@ async function viewToday(view) {
   // plain "Timers" list section this used to be its own thing below. Server-side rows
   // (data.timers, /api/today), not client state -- see core/timers.mjs.
   for (const t of data.timers || []) next.append(timerActRow(t));
+  // Git #3325: the real "heading to X" trip in progress, if any -- same real act-row slot as the
+  // timers above (design's own `d.acts` order: timer, car, trunk, then trip -- this app has no
+  // car-preconditioning/trunk act rows yet, so trip simply follows the timers that do exist).
+  if (data.later?.trip) next.append(tripActRow(data.later.trip));
   next.append(renderNextCardV3(data, nextKind));
   view.append(next);
 

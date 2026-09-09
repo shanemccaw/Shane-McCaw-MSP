@@ -727,17 +727,44 @@ location fact. `tesla_warm_preconditioning` also grew a real "cool it down" phra
 underlying Tesla command, opposite direction) so the tray's own climate chip resolves correctly on
 a hot day.
 
-**Not built here, a real, explicit scope cut**: the design's own two-stage `trip` (in-transit) vs
-`where` (confirmed-arrived) model, and the Today "Trip" moment card with Cancel/I'm-home/At-work
-buttons that goes with it. `heading_to`/`heading_to_at` is real, persisted, honest state --
-genuinely useful today (it's what makes the "fromWork" toast phrasing and the tray's own
-`quickHead` line real, not guessed) -- but nothing surfaces it as its own Today card yet. Filed as
-its own real finding under #3220 rather than built in scope-creep here.
+**Not built here at the time, a real, explicit scope cut, closed by Git #3325**: the design's own
+two-stage `trip` (in-transit) vs `where` (confirmed-arrived) model, and the Today "Trip" moment
+card with Cancel/I'm-home/At-work buttons that goes with it. `heading_to`/`heading_to_at` was
+real, persisted, honest state at the time -- genuinely useful (it's what makes the "fromWork"
+toast phrasing and the tray's own `quickHead` line real, not guessed) -- but nothing surfaced it
+as its own Today card yet. See "Trip act row (#3325)" below for how it's now surfaced.
 
 **Also real, additive, and easy to miss in a diff**: the Pantry critter pair (slot `1y`,
 `c-pantry`/`c-pantry2`) the design's own `CRIT.pantry` already drew but this app's real
 `critters-sprite.svg`/`critters.js` had never ported -- needed for the tray's own "Out of…" chip,
 ported verbatim the same way every other slot in that sprite was.
+
+## Trip act row (#3325)
+
+The scope cut left at the end of #3320 above: the real `heading_to`/`heading_to_at` fact
+(`location-state.mjs`) is now surfaced as its own Today card instead of only being read back
+internally. `computeLaterMoments` (`src/routes/api.mjs`) reads `locationState.getHeadingTo` (same
+12h staleness window `heading_to_place` and `GET /api/capture-tray` already apply) and returns a
+`trip: { house, at, line }` field -- `line` is the real per-destination copy `heading_to_place`'s
+own confirmation message already used: the Heading Out list's real undone count for the Rental,
+the to-home take-checklist's real undone count for home, "Next switches to your work list..." for
+work (nothing to bring to NASA).
+
+The client renders it as `tripActRow` (`public/app.js`), reusing the exact real "act row" pattern
+`timerActRow` already established for the design's own `d.acts` chip stack (First Slice
+Prototype.dc.html ~line 2819) rather than inventing a second card shape: icon + title
+("Off to NASA" / "Heading to the Rental" / "Heading home") + the real line + two real buttons --
+a destination-specific confirm ("At work" / "I'm here" / "I'm home", the design's own per-house
+copy) and Cancel. Both hit real new POST routes (`/api/trip/confirm`, `/api/trip/cancel`) that
+call `locationState.clearHeadingTo` -- idempotent, so a double-tap or a stale card the client
+hadn't yet re-rendered away never fails. Sits at the top of Today's "Next" section, right after
+any standalone timer act rows, matching the design's own `acts` stacking order (this app has no
+car-preconditioning/trunk act rows yet, so trip simply follows the timers that exist).
+
+Deliberately unchanged from #3320's real scope: confirming a trip does not reset the Heading
+Out list or the to-home take-checklist -- those already have their own real, separate
+"run complete" actions (`clearTakeRun`/`things.mjs`, the Things room's "All set" button; a
+matching action for the Heading Out list itself remains real, unbuilt follow-up scope).
 
 ## Which rooms are real today
 

@@ -2,11 +2,13 @@
 //
 // One current fact per user, not a log -- the command tray's "heading to X" capture-grammar rule
 // (capture-grammar.mjs) sets this the instant the phrase is captured, same "trust stated facts
-// immediately" discipline (contract Section 8) the rest of this app already applies; there is
-// deliberately no separate "confirmed arrival" state here (the design prototype's own `st.where`
-// vs `st.trip` two-stage model) -- that's real, unbuilt follow-up scope, not something this module
-// fakes. Read by the new rule itself (to phrase "fromWork" correctly) and by the command tray's
-// own GET /api/capture-tray (for the "you said you're heading to X" quickHead line).
+// immediately" discipline (contract Section 8) the rest of this app already applies. Read by the
+// rule itself (to phrase "fromWork" correctly), by the command tray's own GET /api/capture-tray
+// (for the "you said you're heading to X" quickHead line), and -- since Git #3325 -- by
+// computeLaterMoments (api.mjs) for the Today tray's own Trip act row, which is what actually
+// clears this fact on arrival/cancel via clearHeadingTo below (the design prototype's own
+// `st.where` vs `st.trip` two-stage model, `st.trip` half). There is still no separate history of
+// past transitions -- one current fact, overwritten or cleared, never logged.
 
 import { one, query } from "../db.mjs";
 
@@ -39,4 +41,12 @@ export async function setHeadingTo(userId, house) {
   if (!h) throw new Error(`setHeadingTo: "${house}" is not a real destination (work | rental | home)`);
   await query("UPDATE users SET heading_to = $2, heading_to_at = now() WHERE id = $1", [userId, h]);
   return { house: h };
+}
+
+/** Clear the real "heading to" fact -- arrival confirmed, or the trip was cancelled/mistaken
+ *  (Git #3325, the Today tray's own Trip card). Idempotent: clearing when nothing is on file is
+ *  a no-op, not an error -- a double-tap on Confirm/Cancel, or a card the client hadn't yet
+ *  re-rendered away, must never fail here. */
+export async function clearHeadingTo(userId) {
+  await query("UPDATE users SET heading_to = NULL, heading_to_at = NULL WHERE id = $1", [userId]);
 }
