@@ -100,5 +100,12 @@ export interface DashboardResponseWire {
   customerStatus: string | null;
   customerName: string | null;
   mspId: number | null;
+  /**
+   * #3344 — false when `resolveTenantScope(customerId)` came back null: the
+   * six `tenantScope`-scoped fields in `overviewCounts` (everything but
+   * `raciPendingAcceptance`) are a real `0`, not an absence of anything due.
+   * Design's own `no_tenant_scope` state (Overview.dc.html state legend).
+   */
+  tenantScopeResolved: boolean;
   overviewCounts: OverviewCountsWire;
 }

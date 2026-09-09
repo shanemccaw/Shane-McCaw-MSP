@@ -76,6 +76,10 @@ export default function OverviewPage() {
   const hasSnapshots = d ? d.results.summary.compositeScore !== null : false;
   const isOnboarding = d?.telemetryStatus === "in_progress";
   const isUnpaidTier = d ? Object.values(d.results.pillars).some((p) => p.findingsCount !== undefined) : false;
+  // #3344 — Design's own `no_tenant_scope` state: resolveTenantScope(customerId)
+  // came back null server-side, so the six tenantScope-scoped overviewCounts
+  // fields read as a real 0 rather than an absence of anything due.
+  const noTenantScope = d ? !d.tenantScopeResolved : false;
 
   let stateLine = "MONITORED";
   let stateColor = GRN;
@@ -84,6 +88,9 @@ export default function OverviewPage() {
     stateColor = AMB;
   } else if (!hasSnapshots) {
     stateLine = "NEVER SCANNED";
+    stateColor = AMB;
+  } else if (noTenantScope) {
+    stateLine = "SCOPE UNRESOLVED";
     stateColor = AMB;
   } else if (isUnpaidTier) {
     stateLine = "TEXT WITHHELD";
@@ -284,7 +291,9 @@ export default function OverviewPage() {
             <Panel>
               <PanelLabel trailing={comingRows.length ? `next ${comingRows.length}` : undefined}>COMING UP</PanelLabel>
               {comingRows.length === 0 ? (
-                <span className="text-xs text-[#94a3b8]">Nothing scheduled.</span>
+                <span className="text-xs text-[#94a3b8]">
+                  {noTenantScope ? "No resolvable tenant identifier to schedule against." : "Nothing scheduled."}
+                </span>
               ) : (
                 <div className="flex flex-col">
                   {comingRows.map((c, i) => (
@@ -383,16 +392,23 @@ export default function OverviewPage() {
             <Panel>
               <PanelLabel>PORTAL COUNTS</PanelLabel>
               {!d ? null : (
-                <div className="grid gap-x-[14px] gap-y-[11px]" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(94px, 1fr))" }}>
-                  {portalCounts.map((c, i) => (
-                    <a key={i} href={c.href} className="flex flex-col gap-[2px]">
-                      <span className="text-[19px] font-extrabold leading-none" style={{ color: c.value === 0 ? "#475569" : c.ink, letterSpacing: "-.02em" }}>
-                        {c.value}
-                      </span>
-                      <span className="text-[10.5px] leading-[1.35] text-[#94a3b8]">{c.label}</span>
-                    </a>
-                  ))}
-                </div>
+                <>
+                  <div className="grid gap-x-[14px] gap-y-[11px]" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(94px, 1fr))" }}>
+                    {portalCounts.map((c, i) => (
+                      <a key={i} href={c.href} className="flex flex-col gap-[2px]">
+                        <span className="text-[19px] font-extrabold leading-none" style={{ color: c.value === 0 ? "#475569" : c.ink, letterSpacing: "-.02em" }}>
+                          {c.value}
+                        </span>
+                        <span className="text-[10.5px] leading-[1.35] text-[#94a3b8]">{c.label}</span>
+                      </a>
+                    ))}
+                  </div>
+                  {noTenantScope ? (
+                    <span className="text-[10.5px]" style={{ color: AMB }}>
+                      Tenant identifier unresolvable — six counts are a real 0. RACI roles are scoped to your account, not the tenant, so that one still reads.
+                    </span>
+                  ) : null}
+                </>
               )}
             </Panel>
 

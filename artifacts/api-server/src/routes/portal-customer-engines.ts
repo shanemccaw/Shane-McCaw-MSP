@@ -888,6 +888,14 @@ router.get(
         customerStatus: customer?.status ?? null,
         customerName: customer?.customerName ?? null,
         mspId: req.user!.mspId ?? null,
+        // #3344 — the one real signal the frontend needs to tell "six counts
+        // are a true 0 because nothing is due" apart from "six counts are a
+        // true 0 because resolveTenantScope(customerId) came back null"
+        // (Design's own `no_tenant_scope` state, added to Overview.dc.html
+        // after this page was already wired). No such field existed before
+        // this — the six counts alone can't disambiguate a real quiet week
+        // from an unresolvable tenant identifier.
+        tenantScopeResolved: tenantScope !== null,
         // #2922 — real cross-Feature roll-up counts, see the block above.
         // raciPendingAcceptance is #3049's addition to the same object.
         overviewCounts: {

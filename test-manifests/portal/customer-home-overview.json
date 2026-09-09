@@ -13,7 +13,9 @@
 
     "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use).",
 
-    "#3049 sessionTag run (2026-09-06): shaneapp://runTest with onlyTag=3049-raci-pending-acceptance returned 'no steps matched session tag' against the live dev api-server — expected and honest, not a defect: this manifest edit and the backend field it tests ship on branch agent/3049-q1813, not yet merged into the dev-server checkout runTest resolves manifests/code from (the same shaneapp-runtest-hits-deployed-build-not-worktree gap prior sessions have hit). Re-run this tag once the branch lands on main and the dev server picks it up."
+    "#3049 sessionTag run (2026-09-06): shaneapp://runTest with onlyTag=3049-raci-pending-acceptance returned 'no steps matched session tag' against the live dev api-server — expected and honest, not a defect: this manifest edit and the backend field it tests ship on branch agent/3049-q1813, not yet merged into the dev-server checkout runTest resolves manifests/code from (the same shaneapp-runtest-hits-deployed-build-not-worktree gap prior sessions have hit). Re-run this tag once the branch lands on main and the dev server picks it up.",
+
+    "#3344 addition (2026-09-09): wired the real no_tenant_scope state into index.tsx (SCOPE UNRESOLVED state badge, 'No resolvable tenant identifier to schedule against.' Coming Up copy, and the Portal Counts note line — all matching Overview.dc.html's own state legend/copy verbatim). No reliable frontend signal existed for this before this build; overviewCounts alone can't disambiguate a real quiet week from resolveTenantScope(customerId) returning null, so the route now also emits tenantScopeResolved: boolean (see DASHBOARD-TENANTSCOPE apiTests step, sessionTag 3344-no-tenant-scope)."
   ],
 
   "apiTests": [
@@ -52,6 +54,14 @@
       "path": "/api/portal/dashboard",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.overviewCounts.raciPendingAcceptance", "exists": true }
+    },
+    {
+      "sessionTag": "3344-no-tenant-scope",
+      "name": "DASHBOARD-TENANTSCOPE - tenantScopeResolved (#3344) is a real boolean field the frontend uses to distinguish 'six counts are a true 0, nothing due' from 'six counts are a true 0, tenant identifier unresolvable' (Design's own no_tenant_scope state, Overview.dc.html)",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.tenantScopeResolved", "exists": true }
     },
     {
       "name": "DASHBOARD-PROJECTS - projects is a real array (possibly empty), never a fixture substitution",
