@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
+using System.Windows;
 using System.Windows.Input;
 using SuperShopper.Models;
 
@@ -198,6 +200,7 @@ namespace SuperShopper.ViewModels
         public ICommand AddBookmarkCommand { get; }
         public ICommand OpenExternalBrowserCommand { get; }
         public ICommand AddDealToShoppingListCommand { get; }
+        public ICommand ClearExtractedDealsCommand { get; }
 
         public MainViewModel()
         {
@@ -319,9 +322,16 @@ namespace SuperShopper.ViewModels
                 }
             });
 
+            ClearExtractedDealsCommand = new RelayCommand(_ =>
+            {
+                ExtractedDeals.Clear();
+                FilteredExtractedDeals.Clear();
+                OnPropertyChanged(nameof(ExtractedDealsCount));
+                StatusMessage = "Cleared extracted deals";
+            });
+
             InitializeStoreBookmarks();
             InitializeSampleShoppingList();
-            InitializeSampleExtractedDeals();
         }
 
         private void InitializeStoreBookmarks()
@@ -397,66 +407,18 @@ namespace SuperShopper.ViewModels
             ShoppingList.Add(new ShoppingItemModel { Title = "Avocados (Bag of 5)", StoreName = "ALDI", PriceInfo = "$1.99 / bag", IsCompleted = true });
         }
 
-        private void InitializeSampleExtractedDeals()
-        {
-            AddExtractedDeal(new ExtractedDealModel
-            {
-                Title = "Publix Premium Ice Cream",
-                DealType = "Buy 1 Get 1 Free",
-                PriceInfo = "Save up to $6.49",
-                Category = "Frozen Foods",
-                ValidDates = "Valid 9/8 - 9/14",
-                StoreName = "Publix",
-                Description = "Half Gallon, Assorted Varieties"
-            });
-
-            AddExtractedDeal(new ExtractedDealModel
-            {
-                Title = "Boneless Skinless Chicken Breasts",
-                DealType = "Buy 1 Get 1 Free",
-                PriceInfo = "Save up to $7.19/lb",
-                Category = "Meat & Seafood",
-                ValidDates = "Valid 9/8 - 9/14",
-                StoreName = "Publix",
-                Description = "USDA Choice, Fresh Never Frozen"
-            });
-
-            AddExtractedDeal(new ExtractedDealModel
-            {
-                Title = "Lay's Potato Chips or Poppables",
-                DealType = "2 for $6.00",
-                PriceInfo = "$3.00 ea when you buy 2",
-                Category = "Snacks",
-                ValidDates = "Valid 9/8 - 9/14",
-                StoreName = "Publix",
-                Description = "4.75 - 8 oz bag, Selected Varieties"
-            });
-
-            AddExtractedDeal(new ExtractedDealModel
-            {
-                Title = "Strawberries or Blackberries",
-                DealType = "Buy 1 Get 1 Free",
-                PriceInfo = "Save up to $4.99",
-                Category = "Produce",
-                ValidDates = "Valid 9/8 - 9/14",
-                StoreName = "Publix",
-                Description = "1-lb container Strawberries or 6-oz Blackberries"
-            });
-
-            AddExtractedDeal(new ExtractedDealModel
-            {
-                Title = "Coca-Cola Products (12 pk 12 oz cans)",
-                DealType = "Buy 2 Get 2 Free",
-                PriceInfo = "Save up to $19.98 on 4",
-                Category = "Beverages",
-                ValidDates = "Valid 9/8 - 9/14",
-                StoreName = "Publix",
-                Description = "Assorted Varieties"
-            });
-        }
-
         public void AddExtractedDeal(ExtractedDealModel deal)
         {
+            if (string.IsNullOrWhiteSpace(deal.Title) || deal.Title.Length < 3) return;
+
+            // Thread-safe dispatch to UI thread
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.InvokeAsync(() => AddExtractedDeal(deal));
+                return;
+            }
+
             if (!ExtractedDeals.Any(d => d.Title.Equals(deal.Title, StringComparison.OrdinalIgnoreCase)))
             {
                 ExtractedDeals.Add(deal);
@@ -465,8 +427,15 @@ namespace SuperShopper.ViewModels
             }
         }
 
-        private void FilterDeals(string query)
+        public void FilterDeals(string query)
         {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.InvokeAsync(() => FilterDeals(query));
+                return;
+            }
+
             FilteredExtractedDeals.Clear();
             var matches = string.IsNullOrWhiteSpace(query)
                 ? ExtractedDeals
@@ -480,74 +449,102 @@ namespace SuperShopper.ViewModels
             }
         }
 
+        /// <summary>
+        /// Deep Recursive JSON Parser that searches any arbitrary JSON payload for deals/products.
+        /// </summary>
         public void ProcessExtractedJson(string jsonString)
         {
-            try
-            {
-                using var doc = JsonDocument.Parse(jsonString);
-                var root = doc.RootElement;
+            if (string.IsNullOrWhiteSpace(jsonString)) return;
 
-                // Handle array of deals or nested items object
-                if (root.ValueKind == JsonValueKind.Array)
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
                 {
-                    foreach (var elem in root.EnumerateArray())
+                    using var doc = JsonDocument.Parse(jsonString);
+                    var dealsList = new List<ExtractedDealModel>();
+                    TraverseJsonElement(doc.RootElement, dealsList);
+
+                    foreach (var deal in dealsList)
                     {
-                        ParseJsonDealElement(elem);
+                        AddExtractedDeal(deal);
                     }
                 }
-                else if (root.ValueKind == JsonValueKind.Object)
+                catch (Exception ex)
                 {
-                    if (root.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var elem in items.EnumerateArray()) ParseJsonDealElement(elem);
-                    }
-                    else if (root.TryGetProperty("deals", out var deals) && deals.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var elem in deals.EnumerateArray()) ParseJsonDealElement(elem);
-                    }
-                    else
-                    {
-                        ParseJsonDealElement(root);
-                    }
+                    Debug.WriteLine($"Deep JSON parse error: {ex.Message}");
+                }
+            });
+        }
+
+        private void TraverseJsonElement(JsonElement elem, List<ExtractedDealModel> dealsList)
+        {
+            if (elem.ValueKind == JsonValueKind.Object)
+            {
+                // Check if this object looks like a deal / product
+                var deal = TryExtractDealFromObject(elem);
+                if (deal != null)
+                {
+                    dealsList.Add(deal);
+                }
+
+                foreach (var prop in elem.EnumerateObject())
+                {
+                    TraverseJsonElement(prop.Value, dealsList);
                 }
             }
-            catch (Exception ex)
+            else if (elem.ValueKind == JsonValueKind.Array)
             {
-                Debug.WriteLine($"JSON parse error: {ex.Message}");
+                foreach (var item in elem.EnumerateArray())
+                {
+                    TraverseJsonElement(item, dealsList);
+                }
             }
         }
 
-        private void ParseJsonDealElement(JsonElement elem)
+        private ExtractedDealModel? TryExtractDealFromObject(JsonElement obj)
         {
-            string title = GetStringProp(elem, "title", "name", "headline") ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(title)) return;
+            string? title = GetStringProp(obj, "title", "name", "headline", "productName", "itemName", "description");
+            if (string.IsNullOrWhiteSpace(title) || title.Length < 3 || title.Length > 120) return null;
 
-            string dealType = GetStringProp(elem, "dealType", "promotionType", "badge") ?? "Weekly Sale";
-            string price = GetStringProp(elem, "price", "savings", "priceInfo") ?? "Special Price";
-            string category = GetStringProp(elem, "category", "department") ?? "Grocery";
-            string validDates = GetStringProp(elem, "validDates", "validity") ?? "Weekly Ad";
+            // Reject generic non-product JSON titles like "metadata", "success", "settings"
+            if (title.Equals("Success", StringComparison.OrdinalIgnoreCase) || 
+                title.Equals("Home", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("javascript", StringComparison.OrdinalIgnoreCase)) return null;
 
-            App.Current.Dispatcher.Invoke(() =>
+            string dealType = GetStringProp(obj, "dealType", "promotionType", "badge", "savingsText", "badgeText", "offerType", "deal_type") ?? "Weekly Sale";
+            string price = GetStringProp(obj, "price", "savings", "priceInfo", "salePrice", "originalPrice", "priceString", "formattedPrice") ?? "See Circular";
+            string category = GetStringProp(obj, "category", "department", "departmentName", "categoryName") ?? "Groceries";
+            string validDates = GetStringProp(obj, "validDates", "validity", "validFrom", "dateRange") ?? "Weekly Ad";
+
+            // Infer BOGO if text mentions BOGO or buy 1 get 1
+            if (title.Contains("BOGO", StringComparison.OrdinalIgnoreCase) || 
+                dealType.Contains("BOGO", StringComparison.OrdinalIgnoreCase) ||
+                dealType.Contains("Buy 1 Get 1", StringComparison.OrdinalIgnoreCase))
             {
-                AddExtractedDeal(new ExtractedDealModel
-                {
-                    Title = title,
-                    DealType = dealType,
-                    PriceInfo = price,
-                    Category = category,
-                    ValidDates = validDates,
-                    StoreName = ActiveStoreName
-                });
-            });
+                dealType = "Buy 1 Get 1 Free";
+            }
+
+            return new ExtractedDealModel
+            {
+                Title = title.Trim(),
+                DealType = dealType.Trim(),
+                PriceInfo = price.Trim(),
+                Category = category.Trim(),
+                ValidDates = validDates.Trim(),
+                StoreName = ActiveStoreName
+            };
         }
 
         private string? GetStringProp(JsonElement elem, params string[] propNames)
         {
             foreach (var name in propNames)
             {
-                if (elem.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String)
+                if (elem.TryGetProperty(name, out var prop))
                 {
-                    return prop.GetString();
+                    if (prop.ValueKind == JsonValueKind.String)
+                        return prop.GetString();
+                    else if (prop.ValueKind == JsonValueKind.Number)
+                        return prop.ToString();
                 }
             }
             return null;

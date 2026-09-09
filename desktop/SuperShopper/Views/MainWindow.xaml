@@ -398,57 +398,62 @@
                                                      BorderThickness="0" Background="Transparent" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="11" Padding="4,0"/>
                                         </Grid>
                                     </Border>
-
-                                    <Button Grid.Column="2" Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconCloseSmall}" 
-                                            HorizontalAlignment="Right" Width="24" Height="24" Command="{Binding TogglePanelCommand}"/>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Clear" Style="{StaticResource TitleBarButtonStyle}" Width="45" Height="22" FontSize="11" Margin="0,0,6,0"
+                                                Command="{Binding ClearExtractedDealsCommand}"/>
+                                        <Button Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconCloseSmall}" 
+                                                Width="24" Height="24" Command="{Binding TogglePanelCommand}"/>
+                                    </StackPanel>
                                 </Grid>
                             </Border>
 
-                            <!-- Extracted Deals Data Items Grid -->
-                            <ListBox Grid.Row="1" ItemsSource="{Binding FilteredExtractedDeals}" Background="Transparent" BorderThickness="0" Margin="6">
-                                <ListBox.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel Orientation="Horizontal"/>
-                                    </ItemsPanelTemplate>
-                                </ListBox.ItemsPanel>
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type models:ExtractedDealModel}">
-                                        <Border Background="#252526" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" 
-                                                CornerRadius="4" Width="290" Padding="8" Margin="4">
-                                            <Grid>
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="Auto"/>
-                                                    <RowDefinition Height="Auto"/>
-                                                    <RowDefinition Height="Auto"/>
-                                                    <RowDefinition Height="Auto"/>
-                                                </Grid.RowDefinitions>
-                                                <Grid Grid.Row="0">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{Binding Title}" Foreground="{StaticResource ForegroundBrightBrush}" 
-                                                               FontWeight="Bold" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                                                    <Border Grid.Column="1" Background="#007ACC" Padding="4,1" CornerRadius="2" Margin="4,0,0,0">
-                                                        <TextBlock Text="{Binding DealType}" Foreground="#FFFFFF" FontSize="9" FontWeight="Bold"/>
-                                                    </Border>
+                            <!-- Extracted Deals Data Items Scrollable Grid -->
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="6">
+                                <ItemsControl ItemsSource="{Binding FilteredExtractedDeals}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type models:ExtractedDealModel}">
+                                            <Border Background="#252526" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" 
+                                                    CornerRadius="4" Width="290" Padding="8" Margin="4">
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                    </Grid.RowDefinitions>
+                                                    <Grid Grid.Row="0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Title}" Foreground="{StaticResource ForegroundBrightBrush}" 
+                                                                   FontWeight="Bold" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                                        <Border Grid.Column="1" Background="#007ACC" Padding="4,1" CornerRadius="2" Margin="4,0,0,0">
+                                                            <TextBlock Text="{Binding DealType}" Foreground="#FFFFFF" FontSize="9" FontWeight="Bold"/>
+                                                        </Border>
+                                                    </Grid>
+
+                                                    <TextBlock Grid.Row="1" Text="{Binding PriceInfo}" Foreground="#4EC9B0" FontSize="11" FontWeight="SemiBold" Margin="0,4,0,0"/>
+
+                                                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,4,0,6">
+                                                        <TextBlock Text="{Binding Category}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" Margin="0,0,8,0"/>
+                                                        <TextBlock Text="{Binding ValidDates}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10"/>
+                                                    </StackPanel>
+
+                                                    <Button Grid.Row="3" Content="+ Add to Shopping List" HorizontalAlignment="Right" Height="22" FontSize="10"
+                                                            Command="{Binding DataContext.AddDealToShoppingListCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CommandParameter="{Binding}"/>
                                                 </Grid>
-
-                                                <TextBlock Grid.Row="1" Text="{Binding PriceInfo}" Foreground="#4EC9B0" FontSize="11" FontWeight="SemiBold" Margin="0,4,0,0"/>
-
-                                                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,4,0,6">
-                                                    <TextBlock Text="{Binding Category}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" Margin="0,0,8,0"/>
-                                                    <TextBlock Text="{Binding ValidDates}" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10"/>
-                                                </StackPanel>
-
-                                                <Button Grid.Row="3" Content="+ Add to Shopping List" HorizontalAlignment="Right" Height="22" FontSize="10"
-                                                        Command="{Binding DataContext.AddDealToShoppingListCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                        CommandParameter="{Binding}"/>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
                         </Grid>
                     </Border>
                 </Grid>

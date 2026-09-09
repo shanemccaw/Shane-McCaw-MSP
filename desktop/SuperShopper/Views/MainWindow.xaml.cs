@@ -124,37 +124,42 @@ namespace SuperShopper.Views
             }
         }
 
-        private async void CoreWebView2_WebResourceResponseReceived(object? sender, CoreWebView2WebResourceResponseReceivedEventArgs e)
+        private void CoreWebView2_WebResourceResponseReceived(object? sender, CoreWebView2WebResourceResponseReceivedEventArgs e)
         {
-            try
+            // Thread-safe background execution so network response reading never blocks WebView2 or UI thread
+            var requestUri = e.Request.Uri.ToLowerInvariant();
+            var response = e.Response;
+
+            if (requestUri.Contains("publix.com") || requestUri.Contains("weeklyad") || requestUri.Contains("savings") || requestUri.Contains("promotion") || requestUri.Contains("deals") || requestUri.Contains("flipp") || requestUri.Contains("api"))
             {
-                var uri = e.Request.Uri.ToLowerInvariant();
-                // Check if response is from Publix or store API endpoints
-                if (uri.Contains("publix.com") || uri.Contains("weeklyad") || uri.Contains("savings") || uri.Contains("promotion") || uri.Contains("deals") || uri.Contains("api"))
+                Task.Run(async () =>
                 {
-                    var headers = e.Response.Headers;
-                    if (headers.Contains("content-type"))
+                    try
                     {
-                        var contentType = headers.GetHeader("content-type");
-                        if (contentType != null && contentType.Contains("application/json"))
+                        var headers = response.Headers;
+                        if (headers.Contains("content-type"))
                         {
-                            using var stream = await e.Response.GetContentAsync();
-                            if (stream != null)
+                            var contentType = headers.GetHeader("content-type");
+                            if (contentType != null && (contentType.Contains("application/json") || contentType.Contains("text/plain")))
                             {
-                                using var reader = new StreamReader(stream);
-                                string json = await reader.ReadToEndAsync();
-                                if (DataContext is MainViewModel vm && !string.IsNullOrWhiteSpace(json))
+                                using var stream = await response.GetContentAsync();
+                                if (stream != null)
                                 {
-                                    vm.ProcessExtractedJson(json);
+                                    using var reader = new StreamReader(stream);
+                                    string json = await reader.ReadToEndAsync();
+                                    if (DataContext is MainViewModel vm && !string.IsNullOrWhiteSpace(json))
+                                    {
+                                        vm.ProcessExtractedJson(json);
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            }
-            catch
-            {
-                // Silently swallow background stream reading exceptions
+                    catch
+                    {
+                        // Background stream read timeout or cancellation swallow
+                    }
+                });
             }
         }
 
@@ -165,44 +170,85 @@ namespace SuperShopper.Views
             if (DataContext is MainViewModel vm)
             {
                 vm.IsExtractingDeals = true;
-                vm.StatusMessage = "Extracting deals from page...";
+                vm.StatusMessage = "Scanning page for all weekly ad deals...";
             }
 
             try
             {
-                // Execute JavaScript extraction on current page DOM & Next.js state
+                // Comprehensive JavaScript Scraper for Publix & Supermarkets
                 string script = @"(function() {
                     let deals = [];
+                    let titlesSeen = new Set();
+
+                    // Helper to add deal
+                    function addDeal(title, dealType, price, category) {
+                        if (!title || title.length < 3 || title.length > 120) return;
+                        let cleanTitle = title.trim();
+                        if (!titlesSeen.has(cleanTitle.toLowerCase())) {
+                            titlesSeen.add(cleanTitle.toLowerCase());
+                            deals.push({
+                                title: cleanTitle,
+                                dealType: dealType || 'Weekly Sale',
+                                price: price || 'See Circular',
+                                category: category || 'Groceries'
+                            });
+                        }
+                    }
+
                     try {
-                        // 1. Try Next.js __NEXT_DATA__
+                        // 1. Inspect Next.js __NEXT_DATA__
                         if (window.__NEXT_DATA__ && window.__NEXT_DATA__.props) {
                             let jsonStr = JSON.stringify(window.__NEXT_DATA__.props);
-                            return jsonStr;
+                            if (jsonStr.length > 50) return jsonStr;
                         }
                     } catch(e){}
 
-                    // 2. Query DOM for product deal tiles
-                    let cards = document.querySelectorAll('[data-testid*=""deal""], [class*=""deal""], [class*=""card""], article');
-                    cards.forEach(card => {
-                        let titleEl = card.querySelector('h2, h3, h4, p, [class*=""title""], [class*=""name""]');
-                        let dealEl = card.querySelector('[class*=""badge""], [class*=""savings""], [class*=""promo""]');
-                        let priceEl = card.querySelector('[class*=""price""]');
-                        if (titleEl && titleEl.innerText && titleEl.innerText.length > 3 && titleEl.innerText.length < 80) {
-                            deals.push({
-                                title: titleEl.innerText.trim(),
-                                dealType: dealEl ? dealEl.innerText.trim() : 'Weekly Sale',
-                                price: priceEl ? priceEl.innerText.trim() : 'See Weekly Circular',
-                                category: 'Weekly Ad'
-                            });
+                    try {
+                        // 2. Inspect JSON-LD scripts
+                        let ldScripts = document.querySelectorAll('script[type=""application/ld+json""]');
+                        ldScripts.forEach(s => {
+                            try {
+                                let data = JSON.parse(s.innerText);
+                                if (data.name) addDeal(data.name, 'Weekly Deal', data.price || 'Sale', 'Groceries');
+                                if (Array.isArray(data.itemListElement)) {
+                                    data.itemListElement.forEach(item => {
+                                        if (item.name) addDeal(item.name, 'Weekly Deal', 'Sale', 'Groceries');
+                                    });
+                                }
+                            } catch(e){}
+                        });
+                    } catch(e){}
+
+                    // 3. Scan DOM for Publix & Supermarket Cards/Tiles
+                    let selectors = [
+                        '[data-qa*=""tile""]', '[data-qa*=""card""]', '[data-testid*=""deal""]', 
+                        '.p-tile', '.p-card', 'article', '[class*=""tile""]', '[class*=""card""]', 
+                        'a[href*=""weekly-ad""]', 'li[class*=""item""]'
+                    ];
+
+                    let elements = document.querySelectorAll(selectors.join(', '));
+                    elements.forEach(el => {
+                        let titleEl = el.querySelector('h2, h3, h4, p, [class*=""title""], [class*=""name""], [data-qa*=""title""]');
+                        let dealEl = el.querySelector('[class*=""badge""], [class*=""savings""], [class*=""promo""], [data-qa*=""badge""]');
+                        let priceEl = el.querySelector('[class*=""price""], [data-qa*=""price""]');
+                        let catEl = el.querySelector('[class*=""category""], [class*=""department""]');
+
+                        if (titleEl && titleEl.innerText) {
+                            addDeal(
+                                titleEl.innerText,
+                                dealEl ? dealEl.innerText : 'Weekly Sale',
+                                priceEl ? priceEl.innerText : 'See Weekly Circular',
+                                catEl ? catEl.innerText : 'Groceries'
+                            );
                         }
                     });
+
                     return JSON.stringify(deals);
                 })();";
 
                 string resultJson = await webView.ExecuteScriptAsync(script);
                 if (DataContext is MainViewModel mainVm && !string.IsNullOrWhiteSpace(resultJson) && resultJson != "null")
                 {
-                    // Unescape string returned by ExecuteScriptAsync
                     string rawJson = JsonSerializer.Deserialize<string>(resultJson) ?? resultJson;
                     mainVm.ProcessExtractedJson(rawJson);
                 }
@@ -219,7 +265,7 @@ namespace SuperShopper.Views
                 if (DataContext is MainViewModel mainVm)
                 {
                     mainVm.IsExtractingDeals = false;
-                    mainVm.StatusMessage = $"Extracted {mainVm.ExtractedDealsCount} deals!";
+                    mainVm.StatusMessage = $"Scan completed: {mainVm.ExtractedDealsCount} deals found!";
                 }
             }
         }
