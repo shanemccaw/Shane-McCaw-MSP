@@ -1549,11 +1549,12 @@ namespace BuildConsole.Controls
         {
             List<QueueItem> statusFiltered = _filter switch
             {
-                // Git #1829 — split from the old combined "Active" filter. "Running" = a build
-                // that's actively executing or wrapping up: real running work plus "verifying"
-                // (session done, real GitHub issue not yet closed — Git #1469 — stays visible
-                // here, not archived into Done, since it's still visually "in motion" work).
-                "Running"  => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "running" or BuildQueuePostgresClient.VerifyingStatus)).ToList(),
+                // Git #3340 — Shane's real, explicit override of #1829's original combined-status
+                // design: at real volume (8 running + 15 verifying at once) folding VerifyingStatus
+                // into "Running" made it hard to quickly find genuinely-running builds. He already
+                // has a standalone Verifying filter (#1927) for that case, so "Running" now means
+                // exactly status == "running", full stop, no exceptions.
+                "Running"  => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && i.Status is "running").ToList(),
                 // Git #1829 — "Queued" = genuinely not executing right now: real queued rows plus
                 // limit-paused (Git #1600 — same practical meaning as queued even though the DB
                 // status string differs, waiting to resume later rather than in flight).
