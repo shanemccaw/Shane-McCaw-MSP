@@ -154,6 +154,14 @@ check("matchRule: Tesla warm / trunk / heading home / commute / reads", () => {
   assert.equal(matchRule("is the car warming up").rule, "tesla_climate_status");
 });
 
+check("matchRule: Tesla home electricity rate (Git #3318)", () => {
+  assert.equal(matchRule("home electricity is 14 cents").rule, "tesla_home_electricity_rate");
+  assert.equal(matchRule("home electricity is 14 cents").groups.ratePerKwh, 0.14);
+  assert.equal(matchRule("home electricity costs 0.145 dollars").groups.ratePerKwh, 0.145);
+  assert.equal(matchRule("home electricity is $0.14").groups.ratePerKwh, 0.14);
+  assert.equal(matchRule("home electricity is 14 cents a kWh").rule, "tesla_home_electricity_rate");
+});
+
 check("matchRule: money what-if / give / put / move / smoke", () => {
   assert.equal(matchRule("what if I spend 60").rule, "money_what_if");
   assert.equal(matchRule("what if I spend 60").groups.amount, 60);

@@ -88,15 +88,21 @@ function cleanCourseFields({ courseStartDate, courseActiveDays, courseCycleDays 
   };
 }
 
+/** True once all three course fields are set -- an ordinary daily/as-needed medication always
+ *  has all three null (see cleanCourseFields' own all-or-none contract above). */
+function isCourseMed(med) {
+  return med.course_start_date != null && med.course_active_days != null && med.course_cycle_days != null;
+}
+
 /**
- * Whether a course medication is inside its real active window today. Non-course medications
- * (any of the three fields null) are always considered active -- this only ever narrows a real
- * course medication's batch appearance, never affects an ordinary one.
+ * A real course medication's status today (Git #3267, real detail surfaced per Git #3318 /
+ * README "Drawn in the same pass" item 6: the Today-tray course row's own "Day N of 15" / "pauses
+ * <date>" while active, and the dashed "resting, day N of 15 off" note while dormant). Returns
+ * null for a non-course medication, or one whose course hasn't started yet (today's tray simply
+ * has nothing to say about either case).
  */
-function isCourseActiveToday(med, today = todayDateString()) {
-  if (med.course_start_date == null || med.course_active_days == null || med.course_cycle_days == null) {
-    return true;
-  }
+function courseStatus(med, today = todayDateString()) {
+  if (!isCourseMed(med)) return null;
   // pg returns a DATE column as a JS Date already (local-midnight), not a string -- normalize to
   // YYYY-MM-DD first so this always compares real UTC calendar days regardless of which shape
   // came back (raw driver row vs. an already-.toISOString()'d value elsewhere).
@@ -107,9 +113,24 @@ function isCourseActiveToday(med, today = todayDateString()) {
   const start = new Date(`${startStr}T00:00:00Z`);
   const now = new Date(`${today}T00:00:00Z`);
   const daysSinceStart = Math.floor((now - start) / 86_400_000);
-  if (daysSinceStart < 0) return false; // course hasn't started yet
-  const dayInCycle = daysSinceStart % med.course_cycle_days;
-  return dayInCycle < med.course_active_days;
+  if (daysSinceStart < 0) return null; // course hasn't started yet
+
+  const activeDays = med.course_active_days;
+  const cycleDays = med.course_cycle_days;
+  const dayInCycle = daysSinceStart % cycleDays;
+  const cycleStart = new Date(now.getTime() - dayInCycle * 86_400_000);
+
+  if (dayInCycle < activeDays) {
+    const pausesOn = new Date(cycleStart.getTime() + activeDays * 86_400_000);
+    return { active: true, dayOfCourse: dayInCycle + 1, activeDays, pausesOn: pausesOn.toISOString().slice(0, 10) };
+  }
+  const resumeOn = new Date(cycleStart.getTime() + cycleDays * 86_400_000);
+  return {
+    active: false,
+    dayOff: dayInCycle - activeDays + 1,
+    offDays: cycleDays - activeDays,
+    resumeOn: resumeOn.toISOString().slice(0, 10),
+  };
 }
 
 /**
@@ -306,13 +327,32 @@ export async function getMedsToday(userId) {
 
   const batchOrder = [];
   const byBatch = new Map();
+  // Git #3318 ("Drawn in the same pass" item 6): a dormant course med leaves its batch entirely
+  // (see below), but Today still owes it a real dashed note under that batch -- "Terbinafine is
+  // resting, day 3 of 15 off. Back in the morning batch Sep 29." One real row per dormant course
+  // med, never fabricated for a medication that isn't actually a course.
+  const courseRest = [];
   for (const med of meds) {
     // Git #3267: a real cyclical course medication (e.g. Terbinafine, 15 days on then dormant
     // for a repeating cycle) only ever appears in its assigned batch DURING its real active
     // window -- outside it, it simply doesn't appear here (no separate paused UI for v1). This
     // never touches an ordinary daily/as-needed medication, whose course fields are all null and
-    // isCourseActiveToday always treats as active.
-    if (!isCourseActiveToday(med, today)) continue;
+    // courseStatus always returns null for it (isCourseMed false), so `status` stays null and the
+    // med falls straight through to the ordinary push below.
+    const status = isCourseMed(med) ? courseStatus(med, today) : null;
+    if (isCourseMed(med) && (!status || !status.active)) {
+      if (status) {
+        courseRest.push({
+          medId: med.id,
+          name: med.name,
+          batch: med.batch,
+          dayOff: status.dayOff,
+          offDays: status.offDays,
+          resumeOn: status.resumeOn,
+        });
+      }
+      continue;
+    }
     if (!byBatch.has(med.batch)) {
       byBatch.set(med.batch, []);
       batchOrder.push(med.batch);
@@ -322,6 +362,10 @@ export async function getMedsToday(userId) {
       name: med.name,
       doseNote: med.dose_note,
       refillTier: med.refill_tier,
+      // Git #3318: the course row's own real "Day N of 15" / "pauses <date>" detail -- present
+      // only for the one real active course med, undefined (and so dropped by JSON.stringify)
+      // for every ordinary medication and pet-care item.
+      ...(status ? { isCourse: true, courseDayLabel: `Day ${status.dayOfCourse} of ${status.activeDays}`, coursePausesOn: status.pausesOn } : {}),
     });
   }
   for (const care of petCare) {
@@ -363,7 +407,7 @@ export async function getMedsToday(userId) {
     .filter((m) => m.refill_tier === "auto")
     .map((m) => ({ id: m.id, name: m.name, nextRefillOn: m.next_refill_on }));
 
-  return { batches, refills: { needsYou, handled } };
+  return { batches, refills: { needsYou, handled }, courseRest };
 }
 
 /**

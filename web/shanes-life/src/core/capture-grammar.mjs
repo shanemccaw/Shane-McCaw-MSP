@@ -470,6 +470,33 @@ const RULES = [
     },
   },
 
+  // 9b. Tesla home electricity rate (Git #3318, README "Drawn in the same pass" item 6's own
+  //     literal example: "home electricity is 14 cents" -> charge_cost_per_kwh). Every home
+  //     charging session's cost estimate (the Charging card's own real per-session row) is null
+  //     -- "rate not set" -- until this real rate is stated; same read-existing-first discipline
+  //     as commute miles above, so this never wipes the Supercharger rate or the commute nudge's
+  //     other real settings.
+  {
+    name: "tesla_home_electricity_rate",
+    match(text) {
+      const m = text.match(/\bhome electricity (?:is|costs?)\s+\$?(\d+(?:\.\d+)?)\s*(cents?|¢|dollars?)?\b/i);
+      if (!m) return null;
+      const amount = Number(m[1]);
+      const ratePerKwh = /cents?|¢/i.test(m[2] || "") ? amount / 100 : amount;
+      return { ratePerKwh };
+    },
+    async run(userId, { ratePerKwh }) {
+      try {
+        const existing = (await tesla.getCommuteSettings(userId)) || {};
+        await tesla.updateCommuteSettings(userId, { ...existing, chargeCostPerKwh: ratePerKwh });
+        return { message: `Home electricity set to $${ratePerKwh.toFixed(2)}/kWh. Every home charging session gets a real estimate now.` };
+      } catch (err) {
+        if (err instanceof TeslaError) return { message: err.message };
+        throw err;
+      }
+    },
+  },
+
   // 10. Money what-if (README §119/154: "what if I spend 60" -> Money what-if). Pure read-only
   //     arithmetic, so its own returned `.text` is always a real, direct answer either way.
   {

@@ -96,6 +96,64 @@ function mmss(ms) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/**
+ * Git #3318 ("Drawn in the same pass" item 6): the Today-tray timer chip -- a real, blue-tinted
+ * action row at the top of Next (prototype's own `d.acts` chip for a live timer, First Slice
+ * Prototype.dc.html lines 308-315/2816): "{label} · {mm:ss}", "Rings from the server, phone
+ * asleep or not", real +1 min / Stop actions (44px tap areas). The countdown ticks against the
+ * server's own real `fires_at` (never a client-only guess), and self-clears the same way
+ * vaultReveal's own tick does -- checking `row.isConnected` rather than hooking the router, since
+ * the whole row is simply gone from the DOM the moment Today re-renders without this timer.
+ */
+function timerActRow(t) {
+  const label = t.label || "Timer";
+  const countdown = el("div", { class: "today-act-title", text: `${label} · ${mmss(new Date(t.fires_at) - Date.now())}` });
+  const row = el("div", { class: "today-act-row" }, [
+    el("div", { class: "today-act-icon" }, [
+      lineIcon('<circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>', { size: 20 }),
+    ]),
+    el("div", { class: "today-act-body" }, [
+      countdown,
+      el("div", { class: "today-act-sub", text: "Rings from the server, phone asleep or not" }),
+    ]),
+    el("span", {
+      class: "today-act-btn",
+      text: "+1 min",
+      onClick: async () => {
+        try {
+          const updated = await api(`/api/timers/${t.id}/extend`, { method: "POST", body: JSON.stringify({ seconds: 60 }) });
+          t.fires_at = updated.fires_at;
+        } catch (err) {
+          showQuickToast(err.message);
+        }
+      },
+    }),
+    el("span", {
+      class: "today-act-btn",
+      text: "Stop",
+      onClick: async () => {
+        try {
+          await api(`/api/timers/${t.id}`, { method: "DELETE" });
+        } catch (err) {
+          showQuickToast(err.message);
+        } finally {
+          render();
+        }
+      },
+    }),
+  ]);
+
+  const tick = setInterval(() => {
+    if (!row.isConnected) {
+      clearInterval(tick);
+      return;
+    }
+    countdown.textContent = `${label} · ${mmss(new Date(t.fires_at) - Date.now())}`;
+  }, 1000);
+
+  return row;
+}
+
 function mealTotalMinutes(dishes) {
   return Math.max(...dishes.map((d) => d.minutes));
 }
@@ -1834,44 +1892,19 @@ async function viewToday(view) {
     view.append(meals);
   }
 
-  // Standalone timers (Git #3307) -- "a way to see/cancel an active standalone timer," Today
-  // tray being "the natural real home, matching how other live states already surface there."
-  // Server-side rows (data.timers, /api/today), not client state -- see core/timers.mjs.
-  if ((data.timers || []).length > 0) {
-    const timersSection = el("section", { class: "section" }, [el("h2", { text: "Timers" })]);
-    for (const t of data.timers) {
-      timersSection.append(
-        el("div", { class: "card row spread", style: "align-items:center" }, [
-          el("div", {}, [
-            el("div", { class: "title", text: t.label ? `Timer -- ${t.label}` : "Timer" }),
-            el("div", { class: "meta", text: `Fires ${inShort(t.fires_at)}` }),
-          ]),
-          el("button", {
-            class: "ghost small",
-            text: "Cancel",
-            onClick: async (event) => {
-              event.currentTarget.disabled = true;
-              try {
-                await api(`/api/timers/${t.id}`, { method: "DELETE" });
-                render();
-              } catch (err) {
-                showQuickToast(err.message);
-                event.currentTarget.disabled = false;
-              }
-            },
-          }),
-        ]),
-      );
-    }
-    view.append(timersSection);
-  }
-
   // The label sits in its own row, separate from the card list below it -- attachPeeker turns
   // this row (and only this row) into the spec's "position:relative; display:flex;
   // align-items:flex-end" label row; the cards stay in normal block flow beneath it.
   const nextLabel = el("h2", { text: "Next" });
   const nextLabelRow = el("div", { class: "section-label-row" }, [nextLabel]);
-  const next = el("section", { class: "section" }, [nextLabelRow, renderNextCardV3(data, nextKind)]);
+  const next = el("section", { class: "section" }, [nextLabelRow]);
+  // Standalone timers (Git #3307, real chip drawn per Git #3318 / README "Drawn in the same
+  // pass" item 6) -- a real blue-tinted action row at the TOP of Next (prototype's own `d.acts`
+  // chip for a live timer, First Slice Prototype.dc.html lines 308-315/2816), replacing the old
+  // plain "Timers" list section this used to be its own thing below. Server-side rows
+  // (data.timers, /api/today), not client state -- see core/timers.mjs.
+  for (const t of data.timers || []) next.append(timerActRow(t));
+  next.append(renderNextCardV3(data, nextKind));
   view.append(next);
 
   // Peeker (Git #3119): "Next" is the one tray section label this app actually has today, so it
@@ -3345,6 +3378,34 @@ function medBatchUntakenSummary(items) {
   return parts.length > 0 ? parts.join(", ") : medBatchNamesSummary(items);
 }
 
+/** Git #3318: the one real detail row a course med carries on top of the compact batch summary --
+ *  "{doseNote} · a course, pauses {date}" left, "Day N of {activeDays}" right. First Slice
+ *  Prototype.dc.html line 744. */
+function medCourseRow(item) {
+  const sub = `${item.doseNote ? `${item.doseNote} · ` : ""}a course, pauses ${whenDate(item.coursePausesOn)}`;
+  return el("div", { class: "med-course-row" }, [
+    el("div", { class: "med-course-icon" }, [
+      lineIcon('<path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"></path><path d="m8.5 8.5 7 7"></path>', { size: 16 }),
+    ]),
+    el("div", { style: "flex:1;min-width:0" }, [
+      el("div", { text: item.name }),
+      el("div", { class: "med-course-sub", text: sub }),
+    ]),
+    el("span", { class: "med-course-day", text: item.courseDayLabel }),
+  ]);
+}
+
+/** Git #3318: a dormant course med's own real dashed, muted note -- placed right after whichever
+ *  batch card it would otherwise have appeared in. "{name} is resting, day N of {offDays} off.
+ *  Back in the {batch} batch {date}. Nothing to do." First Slice Prototype.dc.html line 758. */
+function medCourseRestRow(rest) {
+  const text = `${rest.name} is resting, day ${rest.dayOff} of ${rest.offDays} off. Back in the ${rest.batch} batch ${whenDate(rest.resumeOn)}. Nothing to do.`;
+  return el("div", { class: "med-course-rest" }, [
+    lineIcon('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>', { size: 16 }),
+    el("span", { style: "flex:1", text }),
+  ]);
+}
+
 /**
  * Git #3282: every batch, taken or not, is always ONE compact line -- Shane's own direct,
  * explicit correction over #3269's "itemized while active" treatment, sourced from the newer
@@ -3400,6 +3461,14 @@ function medBatchCard(batchState, { later = false } = {}) {
       ]),
     ]),
   ]);
+
+  // Git #3318 ("Drawn in the same pass" item 6): the one real course med in this batch (if any)
+  // still gets its own real detail row -- doseNote + "a course, pauses <date>" left, "Day N of
+  // 15" right -- real information #3282's compact-summary collapse above doesn't carry, on top of
+  // (not instead of) that summary line. First Slice Prototype.dc.html line 744's own `d.courseSub`
+  // / `d.courseLine`.
+  const courseItem = items.find((item) => item.isCourse);
+  if (courseItem) card.append(medCourseRow(courseItem));
 
   // "Later" batches keep #3269's real dimmed, swipe-less state -- you can't take a batch that
   // isn't due yet. Every other untaken batch (the one real "current" timed batch, or any
@@ -3522,11 +3591,11 @@ function medsHeader() {
 }
 
 async function viewMeds(view) {
-  const { batches, refills } = await api("/api/medications");
+  const { batches, refills, courseRest } = await api("/api/medications");
 
   view.append(medsHeader());
 
-  if (batches.length === 0) {
+  if (batches.length === 0 && (!courseRest || courseRest.length === 0)) {
     view.append(
       empty(
         "No medications on file yet.",
@@ -3534,6 +3603,13 @@ async function viewMeds(view) {
         "meds",
       ),
     );
+  } else if (batches.length === 0) {
+    // A real, if unusual, edge case: every medication on file is a course med and today is a
+    // dormant day for all of them -- there's genuinely no batch card to render, but the dashed
+    // rest note(s) are still real information, not nothing.
+    const list = el("section", { class: "section" });
+    for (const rest of courseRest) list.append(medCourseRestRow(rest));
+    view.append(list);
   } else {
     // Git #3269: chronological order (morning -> midday -> evening/night -> untimed). Git #3282,
     // Shane's own direct correction: every batch is now the same real compact-line card
@@ -3551,9 +3627,25 @@ async function viewMeds(view) {
     const current = ordered.find((b) => b.rank < 3 && !b.batchState.takenToday);
 
     const list = el("section", { class: "section" });
+    // Git #3318: a dormant course med's own real dashed note goes right under whichever batch
+    // it would otherwise have appeared in (First Slice Prototype.dc.html line 758's own
+    // placement, between the Morning card and Before bed). `renderedRestFor` tracks by medId,
+    // not batch, in case two different course meds are ever dormant in the same batch at once.
+    const renderedRestFor = new Set();
     for (const { batchState, rank } of ordered) {
       const later = rank < 3 && !batchState.takenToday && batchState !== current?.batchState;
       list.append(medBatchCard(batchState, { later }));
+      for (const rest of courseRest || []) {
+        if (rest.batch !== batchState.batch) continue;
+        list.append(medCourseRestRow(rest));
+        renderedRestFor.add(rest.medId);
+      }
+    }
+    // A dormant course med whose batch has no other real items today never got a card above to
+    // follow -- its real note still belongs on this screen, just appended at the end rather than
+    // inventing a position for a batch that doesn't otherwise exist right now.
+    for (const rest of courseRest || []) {
+      if (!renderedRestFor.has(rest.medId)) list.append(medCourseRestRow(rest));
     }
     view.append(list);
 
@@ -9435,6 +9527,9 @@ async function viewTesla(view) {
   onItsOwn.append(await renderTeslaCommuteSettings());
   room.append(onItsOwn);
 
+  // Git #3318: the real "Charging · last 30 days" card, right under the toggles above.
+  room.append(await renderTeslaChargingCard());
+
   // -- Cars link: real Tesla<->Money bridge status (Git #3270 gap #2). --
   const carsCard = el("div", { class: "card" }, [el("div", { class: "title small", text: "Cars" }) ]);
   try {
@@ -9664,6 +9759,96 @@ async function renderTeslaSettings(view) {
     ]),
   );
   view.append(section);
+}
+
+/** 1 decimal max, no trailing ".0" -- "112 kWh" when the real sum lands whole, "111.9 kWh" when
+ *  it doesn't (real per-session kWh readings rarely sum to a clean number). */
+function formatKwh(n) {
+  const rounded = Math.round(n * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+/**
+ * Git #3318 ("Drawn in the same pass" item 6): the Tesla room's own real "Charging · last 30
+ * days" card -- one row per real synced session (Git #3217/#3287's own listChargingSessions),
+ * the "Two rates, kept apart" explainer, and the real synced odometer row. Every number here is
+ * real: energy/timestamp/location come straight off Tesla, cost is Shane's own stated rate x
+ * that real kWh (never a Tesla-sourced number -- see vehicles.mjs's own header on why), and
+ * "rate not set" is the honest answer until Shane states one, never a fabricated home rate.
+ */
+async function renderTeslaChargingCard() {
+  const [{ sessions }, settings, { odometer }] = await Promise.all([
+    api("/api/tesla/charging-sessions"),
+    api("/api/tesla/commute-settings"),
+    api("/api/tesla/odometer"),
+  ]);
+
+  const headerRow = el("div", { class: "row spread small muted" }, [el("span", { text: "CHARGING · last 30 days" })]);
+  const card = el("div", { class: "card tesla-charging-card" }, [headerRow]);
+
+  if (sessions.length === 0) {
+    card.append(el("p", { class: "muted small", style: "margin-top:.5rem", text: "No real charging sessions synced yet." }));
+  } else {
+    const totalKwh = sessions.reduce((sum, s) => sum + (s.energyAddedKwh ?? 0), 0);
+    const known = sessions.filter((s) => s.costEstimate !== null);
+    const totalLabel =
+      known.length === 0
+        ? `${formatKwh(totalKwh)} kWh`
+        : `${formatKwh(totalKwh)} kWh · ${dollars(known.reduce((sum, s) => sum + s.costEstimate, 0))} ${known.length === sessions.length ? "all in" : "known"}`;
+    headerRow.append(el("span", { class: "small muted", text: totalLabel }));
+
+    for (const s of sessions) {
+      const isSupercharger = s.rateSource === "supercharger";
+      card.append(
+        el("div", { class: "tesla-charge-row" }, [
+          el("div", { style: "flex:1;min-width:0" }, [
+            el("div", { text: s.location || "Charging session" }),
+            el("div", {
+              class: "small muted",
+              text: `${s.startedAt ? whenDate(s.startedAt) : "unknown date"}${s.energyAddedKwh !== null ? ` · ${s.energyAddedKwh} kWh` : ""}`,
+            }),
+          ]),
+          el("span", { class: `tesla-rate-chip${isSupercharger ? " supercharger" : ""}`, text: isSupercharger ? "Supercharger" : "home" }),
+          el("span", { class: "tesla-charge-cost", text: s.costEstimate !== null ? dollars(s.costEstimate) : "rate not set" }),
+        ]),
+      );
+    }
+  }
+
+  // "Two rates, kept apart" (Git #3287): home and Supercharger are genuinely different real
+  // rates -- this line explains why a session might read "rate not set" while the other kind
+  // doesn't, and is the one place the real capture-grammar phrase gets said back to Shane.
+  const homeRate = settings.chargeCostPerKwh;
+  const superRate = settings.superchargeCostPerKwh;
+  const ratesSub =
+    homeRate != null
+      ? `Home $${homeRate.toFixed(2)}/kWh · Supercharger ${superRate != null ? `$${superRate.toFixed(2)}/kWh` : "rate not set"}, as you said. Both are estimates off the car's own kWh; Tesla publishes no cost.`
+      : `${superRate != null ? `Supercharger $${superRate.toFixed(2)}/kWh, as you said.` : "Supercharger rate not set either."} Home rate not set yet: say "home electricity is 14 cents" and every home session gets a real estimate.`;
+  card.append(
+    el("div", { class: "tesla-charge-footer-row" }, [
+      el("div", { style: "flex:1;min-width:0" }, [
+        el("div", { style: "font-size:15px;font-weight:600", text: "Two rates, kept apart" }),
+        el("div", { class: "small muted", text: ratesSub }),
+      ]),
+    ]),
+  );
+
+  if (odometer) {
+    card.append(
+      el("div", { class: "tesla-charge-footer-row" }, [
+        el("div", { style: "flex:1;min-width:0" }, [
+          el("div", { style: "font-size:15px;font-weight:600", text: `Odometer ${odometer.currentMileage.toLocaleString()} mi` }),
+          el("div", {
+            class: "small muted",
+            text: `Synced from the car ${agoShort(odometer.syncedAt)} · Cars uses it for the next oil change and the all-in cost per mile`,
+          }),
+        ]),
+        el("span", { class: "tesla-odo-dot" }),
+      ]),
+    );
+  }
+
+  return card;
 }
 
 // Tesla battery/charging-aware Money nudge settings (Git #3238). Every input here is real,

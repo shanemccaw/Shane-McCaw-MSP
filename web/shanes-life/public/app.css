@@ -1164,6 +1164,40 @@ pre.token {
    for anything yet. */
 .med-batch-collapsed { opacity: 0.7; }
 
+/* Git #3318 ("Drawn in the same pass" item 6): the one real course med in a batch still gets its
+   own detail row on top of #3282's compact summary line -- First Slice Prototype.dc.html line
+   744's own icon-tile + name + sub + right-aligned day count. */
+.med-course-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; font-size: 15px; }
+.med-course-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: rgba(96,165,250,.14);
+  color: #60a5fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.med-course-sub { font-size: 12px; color: hsl(var(--muted-foreground)); }
+.med-course-day { font-size: 13px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+
+/* A dormant course med's own real dashed, muted note (First Slice Prototype.dc.html line 758) --
+   same dashed-border language as the Lists room's own "new list" card, different real content. */
+.med-course-rest {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px dashed rgba(255,255,255,.16);
+  border-radius: 18px;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.med-course-rest svg { flex-shrink: 0; }
+
 .slide-track {
   position: relative;
   height: 52px;
@@ -1437,6 +1471,46 @@ pre.token {
    deliberately carry no viewBox attribute at all). */
 .today-fox-hat { position: absolute; left: 0; top: -23.5px; overflow: visible; animation: czBreathe 4s ease-in-out infinite; transform-origin: 50% 100%; pointer-events: none; }
 .peeker-hat { position: absolute; bottom: -18px; overflow: visible; pointer-events: none; }
+
+/* Today-tray real action chip (Git #3318, README "Drawn in the same pass" item 6): a live timer's
+   own blue-tinted row at the top of Next -- First Slice Prototype.dc.html lines 308-315/2816.
+   Reused as-is for any future real `acts` chip (e.g. a car preconditioning/heading-home row); the
+   Timer chip (timerActRow() in app.js) is the one real consumer this pass. */
+.today-act-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 6px 10px 12px;
+  border-radius: 18px;
+  background: rgba(96,165,250,.14);
+  border: 1px solid rgba(96,165,250,.35);
+  color: hsl(var(--foreground));
+}
+.today-act-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 45% 55% 48% 52% / 55% 45% 55% 45%;
+  background: rgba(96,165,250,.18);
+  color: #60a5fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.today-act-body { flex: 1; min-width: 0; }
+.today-act-title { font-size: 15px; font-weight: var(--weight-bold); font-variant-numeric: tabular-nums; line-height: 1.25; }
+.today-act-sub { font-size: 12px; color: hsl(var(--muted-foreground)); line-height: 1.35; margin-top: 1px; }
+.today-act-btn {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: var(--weight-semibold);
+  padding: 0 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: #93c5fd;
+}
 
 /* Meds pill (design handoff "Meds pill"): fully rounded row, blob pebble, status right. */
 .meds-pill { display: flex; align-items: center; gap: 12px; border-radius: 999px; padding: 8px 18px 8px 8px; min-height: 64px; }
@@ -2320,3 +2394,37 @@ pre.token {
 .recipe-header-sub { font-size: 12px; color: hsl(var(--muted-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recipe-header-spacer { min-width: 76px; height: 40px; }
 .recipe-header-bar { height: 3px; border-radius: var(--radius-full); background: linear-gradient(90deg, #0078d4, #00b4d8); margin: 2px 0 4px; }
+
+/* Tesla room's own real "Charging · last 30 days" card (Git #3318, README "Drawn in the same
+   pass" item 6): one row per real synced session, a rate chip, cost right -- First Slice
+   Prototype.dc.html lines 999-1006. */
+.tesla-charging-card { overflow: hidden; }
+.tesla-charge-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid hsl(var(--card-border) / .6);
+  font-size: 15px;
+  margin-top: 9px;
+}
+.tesla-rate-chip {
+  font-size: 11px;
+  font-weight: var(--weight-semibold);
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: rgba(255,255,255,.08);
+  color: hsl(var(--muted-foreground));
+}
+.tesla-rate-chip.supercharger { background: rgba(34,211,238,.14); color: #22d3ee; }
+.tesla-charge-cost { min-width: 64px; text-align: right; font-size: 14px; font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tesla-charge-footer-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 10px;
+  margin-top: 9px;
+  border-top: 1px solid hsl(var(--card-border) / .6);
+}
+.tesla-odo-dot { width: 8px; height: 8px; border-radius: 999px; background: hsl(var(--success)); flex-shrink: 0; }

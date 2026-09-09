@@ -566,6 +566,22 @@ export async function syncOdometerFromTesla(userId) {
   return { synced: true, vehicleId: vehicle.id, currentMileage: state.odometerMiles, previousMileage: vehicle.current_mileage };
 }
 
+/**
+ * The one Tesla-synced vehicle's real odometer reading (Git #3318, README "Drawn in the same
+ * pass" item 6: the Tesla room's own "Charging" card real closing "Odometer 48,212 mi" row) --
+ * deliberately independent of mileageStatus() above, which only ever returns a number once a real
+ * maintenance interval AND a real logged entry both exist too. The Tesla room shows this reading
+ * on its own regardless of whether Cars has either of those set up yet.
+ */
+export async function getSyncedOdometer(userId) {
+  const vehicle = await one(
+    "SELECT current_mileage, mileage_synced_at FROM vehicles WHERE user_id = $1 AND tesla_synced = true",
+    [userId],
+  );
+  if (!vehicle || vehicle.current_mileage === null) return null;
+  return { currentMileage: vehicle.current_mileage, syncedAt: vehicle.mileage_synced_at };
+}
+
 /** Every real synced charging session for this user, newest first -- the Cars detail page's own
  *  Charging section. costEstimateCents is always Shane's own rate x real kWh (home or
  *  Supercharger, per rateSource -- Git #3287), see tesla.mjs's getChargingHistory header for why

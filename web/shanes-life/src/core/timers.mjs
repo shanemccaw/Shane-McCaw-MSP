@@ -51,6 +51,24 @@ export async function listActive(userId) {
   );
 }
 
+/** Real "+1 min" (Git #3318, README "Drawn in the same pass" item 6: the Today-tray timer chip's
+ *  own real `+1 min` button, `d.timerPlus` in the prototype) -- pushes `fires_at` out by the given
+ *  real number of seconds (default 60) server-side, same "the countdown is the server's, not the
+ *  phone's" discipline the whole timer entity exists for (see this file's own header). Same
+ *  not-found-or-already-fired shape as cancelTimer above. */
+export async function extendTimer(userId, id, seconds = 60) {
+  const n = Number(seconds);
+  if (!Number.isFinite(n) || n <= 0) throw badRequest("seconds must be a real positive number");
+  const row = await one(
+    `UPDATE timers SET fires_at = fires_at + make_interval(secs => $3)
+      WHERE id = $1 AND user_id = $2 AND canceled_at IS NULL AND fired_at IS NULL
+      RETURNING *`,
+    [id, userId, Math.round(n)],
+  );
+  if (!row) throw notFound("Timer not found, or it already fired.");
+  return row;
+}
+
 /** Real cancel -- a no-op turned honest error once a timer has already fired or was already
  *  canceled, same "not found, or it already ran" shape `tesla.cancelScheduledCommand` uses. */
 export async function cancelTimer(userId, id) {

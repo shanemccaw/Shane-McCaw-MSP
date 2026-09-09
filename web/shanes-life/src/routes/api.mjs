@@ -2032,6 +2032,15 @@ export function buildApiRouter() {
     return sendJson(res, 200, { canceled: true });
   });
 
+  // Git #3318: the Today-tray timer chip's own real "+1 min" action (prototype `d.timerPlus`).
+  router.post("/api/timers/:id/extend", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await timers.extendTimer(user.id, params.id, body.seconds ?? 60);
+    await audit.record({ userId: user.id, actor: "web", action: "timer.extended", detail: { timerId: row.id, seconds: body.seconds ?? 60 } });
+    return sendJson(res, 200, row);
+  });
+
   // -- Money -> Home-tab decision tools (Git #3171) -------------------------------------
   //
   // Period Review, Skip Suggestions, Distribute Paycheck, Transfer Instructions -- see
@@ -2867,6 +2876,13 @@ export function buildApiRouter() {
   router.get("/api/tesla/charging-sessions", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
     return sendJson(res, 200, { sessions: await vehicles.listChargingSessions(user.id) });
+  });
+
+  // Git #3318: the Tesla room's own "Charging" card closing odometer row -- see
+  // vehicles.getSyncedOdometer's own header for why this is independent of Cars' mileageStatus.
+  router.get("/api/tesla/odometer", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { odometer: await vehicles.getSyncedOdometer(user.id) });
   });
 
   // -- Wins (Git #3151) -----------------------------------------------------
