@@ -99,6 +99,7 @@ import {
   runAuthMethodResolutionConvergence,
   type MfaReregistrationVerificationPolicy,
   type AuthMethodResolutionPolicy,
+  classifyRemoveAuthMethodDeleteResult,
 } from "./mfa-reregistration";
 import { runWithRequestContext } from "./request-context.ts";
 import { evaluateRules as runAlertRuleEvaluation } from "./alert-engine";
@@ -910,6 +911,23 @@ async function runForceMfaReregistrationAgainstTenant(
  * attacker enrol it. The read now runs through `runAuthMethodResolutionConvergence` in
  * ./mfa-reregistration — the same module, same evidence, same bounded backoff — so a 404
  * must survive delayed re-reads before it is believed.
+ *
+ * #3100: the type-resolving read above and the DELETE below used to disagree, undocumented,
+ * with `runMfaReregistrationConvergence`'s own delete loop about what a 404 means — that
+ * loop treats a DELETE 404 as "already gone, resolved" because its ids come from Graph's own
+ * enumeration, while this DELETE (line below) used to pass a 404 straight through as an
+ * outright failure with no distinction at all. The resolving distinction is not "operator-
+ * supplied vs Graph-enumerated" — it's whether THIS id's presence was already confirmed by a
+ * real Graph read in this same execution. `runAuthMethodResolutionConvergence` returning
+ * `resolution: "found"` (the type-resolving GET below) IS that confirmation — a real 200 on
+ * this exact method, which Graph cannot serve for a method that doesn't exist — so by the
+ * time the DELETE below runs, this id carries the same trust an enumeration-sourced id does.
+ * A 404 on this DELETE therefore means the method was removed between that GET and this
+ * DELETE (a concurrent operator action, the user's own self-service, or the same replica
+ * lag `runMfaReregistrationConvergence` already treats as authoritative in that direction) —
+ * not that the operator's id was wrong, since a wrong id would have already failed as
+ * `resolution: "absent"` above and never reached here. See
+ * `classifyRemoveAuthMethodDeleteResult` in ./mfa-reregistration for the shared verdict.
  */
 const REMOVE_AUTH_METHOD_TEMPLATE_ID = "action.remove-auth-method";
 
@@ -929,6 +947,13 @@ async function runRemoveAuthMethodAgainstTenant(
   absentReads: number;
   /** Set when success=false because the read never corroborated presence OR absence. */
   unresolvedReason?: string;
+  /**
+   * #3100 — true when success=true because the DELETE 404'd on a method this same execution
+   * had just confirmed present, not because it actually deleted anything. Kept distinct from
+   * a confirmed 2xx delete for the same reason the fan-out's `alreadyAbsentIds` is kept
+   * separate from `deletedIds`: the audit trail should never overstate what this run did.
+   */
+  alreadyAbsent?: boolean;
 }> {
   const { graphReadForTenantWithWriteToken, graphWriteForTenant, isGraphWriteTokenReadNotFound } =
     await import("./graph");
@@ -1018,10 +1043,25 @@ async function runRemoveAuthMethodAgainstTenant(
   const deleteEndpoint = `/users/${userId}/authentication/${collection}/${methodId}`;
   const result = await graphWriteForTenant(tenantId, customerId, deleteEndpoint, "DELETE", {}, [200, 204]);
 
+  // #3100 — this id's presence was just confirmed by a real Graph GET above
+  // (`outcome.resolution === "found"`), so it carries the same trust an enumeration-sourced
+  // id does. A 404 here means "already gone", the same verdict runMfaReregistrationConvergence's
+  // own delete loop reaches for the same reason — see classifyRemoveAuthMethodDeleteResult's
+  // doc for the full corroboration chain.
+  const verdict = classifyRemoveAuthMethodDeleteResult(result);
+  if (verdict.alreadyAbsent) {
+    log.info(
+      { tenantId, userId, methodId, collection },
+      "runRemoveAuthMethodAgainstTenant: method already absent (404 on DELETE after confirmed presence) — treating as resolved (#3100)",
+    );
+  }
+
   return {
-    success: result.success, status: result.status, data: result.data, errorType: result.errorType,
+    success: verdict.success, status: result.status, data: result.data,
+    errorType: verdict.success ? undefined : result.errorType,
     endpoint: deleteEndpoint, method: "DELETE", label,
     methodType: method["@odata.type"],
+    alreadyAbsent: verdict.alreadyAbsent,
     ...trail,
   };
 }
@@ -1125,6 +1165,10 @@ export async function runBaselineTemplateAgainstTenant(
           resolutionWaitedMs: removeResult.resolutionWaitedMs,
           absentReads: removeResult.absentReads,
           unresolvedReason: removeResult.unresolvedReason ?? null,
+          // #3100 — true when this "executed" row deleted nothing because the method was
+          // already gone by the time the DELETE ran (confirmed-present id, 404 on delete).
+          // Never conflated with a real delete, mirroring the fan-out's alreadyAbsentIds.
+          alreadyAbsent: removeResult.alreadyAbsent ?? false,
           ...(source !== undefined ? { source } : {}),
         },
       }).returning({ id: baselineActionTemplateAuditLogTable.id });

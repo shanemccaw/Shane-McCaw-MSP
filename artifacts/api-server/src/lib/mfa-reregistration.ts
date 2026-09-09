@@ -399,13 +399,30 @@ export async function runMfaReregistrationConvergence(
  * backoff when a read is required"), same bounded budget, same honest-failure discipline —
  * it just corroborates ABSENCE instead of corroborating an empty list.
  *
- * Deliberately NOT changed here: a corroborated-absent method still reports a FAILED step
- * rather than a success. The fan-out treats a 404 as "already gone, resolved" because its
- * ids came from Graph's own enumeration, so absence there unambiguously means the method
- * was present and now is not. Here the id is operator-supplied and can simply be wrong, and
- * turning that into a success would manufacture exactly the false-success class #2981
- * existed to kill. What this fixes is the reliability gap: the failure is now corroborated
- * instead of being one unlucky sample.
+ * Deliberately NOT changed here: a corroborated-absent method (no read, at any point,
+ * ever returned it) still reports a FAILED step rather than a success. The id is
+ * operator-supplied and can simply be wrong, and turning "we never saw it" into a success
+ * would manufacture exactly the false-success class #2981 existed to kill. What this fixes
+ * is the reliability gap: the failure is now corroborated instead of being one unlucky
+ * sample.
+ *
+ * #3100 resolves the *other* half of this module's own #3075 doc comment — what a 404 on
+ * the DELETE itself (not this pre-delete GET) means — which is a genuinely different
+ * question from the one directly above, not the same question asked twice. The fan-out
+ * (`runMfaReregistrationConvergence`, above) trusts a DELETE 404 as "already gone" because
+ * its ids came from Graph's own enumeration. This resolution loop's whole job is to turn an
+ * operator-supplied id into exactly that same kind of Graph-confirmed id BEFORE any DELETE
+ * is attempted: `resolution: "found"` means a real Graph GET returned this method's own body
+ * with a 200, which is direct positive proof of existence at that moment (unlike a 404,
+ * Graph cannot falsely serve a resource it doesn't have). Once that has happened, the
+ * "operator-supplied and might just be wrong" risk this file's caller worries about is
+ * already retired for this id, in this execution — it is no longer meaningfully different
+ * from a fan-out id, and a 404 on the DELETE that immediately follows means the method was
+ * deleted out from under this run (a concurrent operator action, the user's own
+ * self-service, or the same replica-converging-late fact `runMfaReregistrationConvergence`
+ * already treats as authoritative) rather than that the id never existed. See
+ * `classifyRemoveAuthMethodDeleteResult` below and its call site in workflow-executor.ts's
+ * `runRemoveAuthMethodAgainstTenant` for the DELETE-side handling this enables.
  */
 export interface AuthMethodResolutionPolicy {
   /**
@@ -573,4 +590,38 @@ export async function runAuthMethodResolutionConvergence(
     unresolvedReason,
     ...(lastReadError !== undefined ? { readError: lastReadError } : {}),
   };
+}
+
+// ── #3100 — what the DELETE's own 404 means, once presence was already confirmed ──
+
+/**
+ * The trust verdict for a DELETE 404 on the specific method `runAuthMethodResolutionConvergence`
+ * just returned `resolution: "found"` for. See that function's doc (the `#3100 resolves...`
+ * paragraph) for the full reasoning: a `"found"` resolution is a real Graph 200 on this exact
+ * method, which is direct positive proof of existence, so this id carries the same trust a
+ * fan-out-enumerated id does by the time the DELETE runs. A 404 here is therefore read the
+ * same way `runMfaReregistrationConvergence` reads a 404 on ITS delete loop — "already gone",
+ * not "never existed" — and is resolved rather than failed.
+ *
+ * Deliberately NOT reused for a DELETE that was not preceded by a `"found"` resolution in this
+ * same execution: without that immediately-prior positive read, a 404 is just a bare Graph
+ * refusal with no corroboration behind it, exactly the case this module still fails outright.
+ */
+export interface RemoveAuthMethodDeleteOutcome {
+  /** True on a confirmed 2xx DELETE, or a 404 immediately following a `"found"` resolution. */
+  success: boolean;
+  /** True when `success` is true because of the 404 case, not a confirmed 2xx. */
+  alreadyAbsent: boolean;
+}
+
+export function classifyRemoveAuthMethodDeleteResult(
+  deleteResult: AuthMethodDeleteResult,
+): RemoveAuthMethodDeleteOutcome {
+  if (deleteResult.success) {
+    return { success: true, alreadyAbsent: false };
+  }
+  if (deleteResult.status === 404) {
+    return { success: true, alreadyAbsent: true };
+  }
+  return { success: false, alreadyAbsent: false };
 }

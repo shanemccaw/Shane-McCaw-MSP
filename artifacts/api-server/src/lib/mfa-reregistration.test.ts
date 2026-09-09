@@ -22,6 +22,7 @@ vi.mock("./logger", () => {
 import {
   runMfaReregistrationConvergence,
   runAuthMethodResolutionConvergence,
+  classifyRemoveAuthMethodDeleteResult,
   DEFAULT_MFA_REREGISTRATION_VERIFICATION,
   DEFAULT_AUTH_METHOD_RESOLUTION,
   DELETABLE_AUTH_METHOD_COLLECTIONS,
@@ -491,5 +492,41 @@ describe("runAuthMethodResolutionConvergence — #3075 stale-404 regression", ()
       if (outcome.resolution !== "found") throw new Error("unreachable");
       expect(DELETABLE_AUTH_METHOD_COLLECTIONS[outcome.method["@odata.type"] ?? ""]).toBeTruthy();
     }
+  });
+});
+
+// #3100 — the DELETE-side verdict runRemoveAuthMethodAgainstTenant applies to the DELETE
+// that immediately follows a "found" resolution above. Pure classification, no Graph/db.
+describe("classifyRemoveAuthMethodDeleteResult (#3100)", () => {
+  it("treats a confirmed 2xx delete as a real success, not alreadyAbsent", () => {
+    const outcome = classifyRemoveAuthMethodDeleteResult({ success: true, status: 204 });
+    expect(outcome).toEqual({ success: true, alreadyAbsent: false });
+  });
+
+  it("treats a DELETE 404 as resolved (success, alreadyAbsent) — same verdict the fan-out's own delete loop reaches", () => {
+    const outcome = classifyRemoveAuthMethodDeleteResult({
+      success: false,
+      status: 404,
+      errorType: "bad_request",
+    });
+    expect(outcome).toEqual({ success: true, alreadyAbsent: true });
+  });
+
+  it("still fails outright on a real refusal — 403 insufficient privilege is not absence", () => {
+    const outcome = classifyRemoveAuthMethodDeleteResult({
+      success: false,
+      status: 403,
+      errorType: "insufficient_privilege",
+    });
+    expect(outcome).toEqual({ success: false, alreadyAbsent: false });
+  });
+
+  it("still fails outright on a real refusal — 409 conflict (e.g. default MFA method) is not absence", () => {
+    const outcome = classifyRemoveAuthMethodDeleteResult({
+      success: false,
+      status: 409,
+      errorType: "conflict",
+    });
+    expect(outcome).toEqual({ success: false, alreadyAbsent: false });
   });
 });
