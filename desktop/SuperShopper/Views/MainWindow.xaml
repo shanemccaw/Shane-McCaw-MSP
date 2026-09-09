@@ -97,7 +97,7 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- ==================== LEFT NAVIGATION DRAWER ==================== -->
-                <Border Grid.Column="0" Background="#10141D" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="12">
+                <Border Grid.Column="0" Background="#080C14" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="14,16">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -106,118 +106,134 @@
                         </Grid.RowDefinitions>
 
                         <!-- Drawer Brand Header -->
-                        <Border Grid.Row="0" Background="#141A26" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,16">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Border Background="#0084FF" CornerRadius="6" Width="32" Height="32" Margin="0,0,10,0">
-                                    <Path Data="{StaticResource IconSearch}" Fill="#FFFFFF" Width="16" Height="16" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                    <TextBlock Text="Deal Finder" Foreground="{StaticResource ForegroundBrightBrush}" FontWeight="Bold" FontSize="13"/>
-                                    <TextBlock Text="Weekly ads • 7 stores" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10"/>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
+                        <Grid Grid.Row="0" Margin="0,0,0,24">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Background="#0084FF" CornerRadius="10" Width="38" Height="38" Margin="0,0,12,0">
+                                <Path Data="{StaticResource IconCart}" Fill="#FFFFFF" Width="18" Height="18" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Deal Finder" Foreground="#FFFFFF" FontWeight="Bold" FontSize="16"/>
+                                <TextBlock Text="Weekly ads • 7 stores" Foreground="#94A3B8" FontSize="11" Margin="0,1,0,0"/>
+                            </StackPanel>
+                        </Grid>
 
                         <!-- Navigation Menu Sections -->
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                             <StackPanel>
                                 <!-- Section 1: RENTAL -->
-                                <TextBlock Text="RENTAL" Foreground="#475569" FontSize="10" FontWeight="Bold" Margin="8,0,0,6"/>
-                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,2" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Search}">
+                                <TextBlock FontSize="11" FontWeight="Bold" Margin="6,0,0,8">
+                                    <Run Text="• " Foreground="#8B5CF6"/>
+                                    <Run Text="RENTAL" Foreground="#818CF8"/>
+                                </TextBlock>
+
+                                <!-- Shopping list (RENTAL) -->
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,4" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Search}">
                                     <Grid Width="190">
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                            <Path Data="{StaticResource IconFolder}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
-                                            <TextBlock Text="Shopping list" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                            <Path Data="{StaticResource IconCart}" Fill="#94A3B8" Width="15" Height="15" Stretch="Uniform" Margin="0,0,12,0"/>
+                                            <TextBlock Text="Shopping list" Foreground="#E2E8F0" FontSize="13" FontWeight="SemiBold"/>
                                         </StackPanel>
-                                        <Border Background="#1E293B" Padding="6,1" CornerRadius="10" HorizontalAlignment="Right">
-                                            <TextBlock Text="15" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" FontWeight="Bold"/>
+                                        <Border Background="#1E293B" Padding="8,2" CornerRadius="8" HorizontalAlignment="Right">
+                                            <TextBlock Text="15" Foreground="#94A3B8" FontSize="11" FontWeight="Bold"/>
                                         </Border>
                                     </Grid>
                                 </Button>
 
-                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,2">
+                                <!-- Best deals (RENTAL) -->
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,4">
                                     <StackPanel Orientation="Horizontal">
-                                        <Path Data="{StaticResource IconHeart}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
-                                        <TextBlock Text="Best deals" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                        <Path Data="{StaticResource IconTag}" Fill="#94A3B8" Width="15" Height="15" Stretch="Uniform" Margin="0,0,12,0"/>
+                                        <TextBlock Text="Best deals" Foreground="#E2E8F0" FontSize="13" FontWeight="SemiBold"/>
                                     </StackPanel>
                                 </Button>
 
-                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,14" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Pantry}">
+                                <!-- Pantry (RENTAL) -->
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,18" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Pantry}">
                                     <StackPanel Orientation="Horizontal">
-                                        <Path Data="{StaticResource IconPantry}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
-                                        <TextBlock Text="Pantry" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                        <Path Data="{StaticResource IconBox}" Fill="#94A3B8" Width="15" Height="15" Stretch="Uniform" Margin="0,0,12,0"/>
+                                        <TextBlock Text="Pantry" Foreground="#E2E8F0" FontSize="13" FontWeight="SemiBold"/>
                                     </StackPanel>
                                 </Button>
 
                                 <!-- Section 2: HOME -->
-                                <TextBlock Text="HOME" Foreground="#475569" FontSize="10" FontWeight="Bold" Margin="8,0,0,6"/>
-                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,2" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Search}">
+                                <TextBlock FontSize="11" FontWeight="Bold" Margin="6,0,0,8">
+                                    <Run Text="• " Foreground="#06B6D4"/>
+                                    <Run Text="HOME" Foreground="#38BDF8"/>
+                                </TextBlock>
+
+                                <!-- Shopping list (HOME - Active Blue State) -->
+                                <Border Background="#0084FF" CornerRadius="10" Padding="10,8" Margin="0,0,0,4">
                                     <Grid Width="190">
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                            <Path Data="{StaticResource IconFolder}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
-                                            <TextBlock Text="Shopping list" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                            <Path Data="{StaticResource IconCart}" Fill="#FFFFFF" Width="15" Height="15" Stretch="Uniform" Margin="0,0,12,0"/>
+                                            <TextBlock Text="Shopping list" Foreground="#FFFFFF" FontSize="13" FontWeight="Bold"/>
                                         </StackPanel>
-                                        <Border Background="#1E293B" Padding="6,1" CornerRadius="10" HorizontalAlignment="Right">
-                                            <TextBlock Text="19" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" FontWeight="Bold"/>
+                                        <Border Background="#3B9EFF" Padding="8,2" CornerRadius="8" HorizontalAlignment="Right">
+                                            <TextBlock Text="19" Foreground="#FFFFFF" FontSize="11" FontWeight="Bold"/>
                                         </Border>
                                     </Grid>
-                                </Button>
+                                </Border>
 
-                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,2">
+                                <!-- Best deals (HOME) -->
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,4">
                                     <StackPanel Orientation="Horizontal">
-                                        <Path Data="{StaticResource IconHeart}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
-                                        <TextBlock Text="Best deals" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                        <Path Data="{StaticResource IconTag}" Fill="#94A3B8" Width="15" Height="15" Stretch="Uniform" Margin="0,0,12,0"/>
+                                        <TextBlock Text="Best deals" Foreground="#E2E8F0" FontSize="13" FontWeight="SemiBold"/>
                                     </StackPanel>
                                 </Button>
 
-                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,14" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Pantry}">
+                                <!-- Pantry (HOME) -->
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,18" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Pantry}">
                                     <StackPanel Orientation="Horizontal">
-                                        <Path Data="{StaticResource IconPantry}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
-                                        <TextBlock Text="Pantry" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                        <Path Data="{StaticResource IconBox}" Fill="#94A3B8" Width="15" Height="15" Stretch="Uniform" Margin="0,0,12,0"/>
+                                        <TextBlock Text="Pantry" Foreground="#E2E8F0" FontSize="13" FontWeight="SemiBold"/>
                                     </StackPanel>
                                 </Button>
 
                                 <!-- Section 3: WEEKLY ADS -->
-                                <TextBlock Text="WEEKLY ADS" Foreground="#475569" FontSize="10" FontWeight="Bold" Margin="8,0,0,6"/>
-                                <Border Background="#0084FF" CornerRadius="8" Padding="10,8" Margin="0,0,0,2">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Path Data="{StaticResource IconExplorer}" Fill="#FFFFFF" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
-                                        <TextBlock Text="Ad viewer" Foreground="#FFFFFF" FontWeight="Bold" FontSize="12"/>
-                                    </StackPanel>
-                                </Border>
+                                <TextBlock Text="WEEKLY ADS" Foreground="#64748B" FontSize="11" FontWeight="Bold" Margin="6,0,0,8"/>
 
-                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,2">
+                                <!-- Ad viewer -->
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,4" Command="{Binding SelectViewCommand}" CommandParameter="{x:Static vm:ActiveViewMode.Explorer}">
                                     <StackPanel Orientation="Horizontal">
-                                        <Path Data="{StaticResource IconSettings}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
-                                        <TextBlock Text="Stores &amp; scraping" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                        <Path Data="{StaticResource IconAdViewer}" Fill="#94A3B8" Width="15" Height="15" Stretch="Uniform" Margin="0,0,12,0"/>
+                                        <TextBlock Text="Ad viewer" Foreground="#E2E8F0" FontSize="13" FontWeight="SemiBold"/>
                                     </StackPanel>
                                 </Button>
 
-                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,2">
+                                <!-- Stores & scraping -->
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,4">
                                     <StackPanel Orientation="Horizontal">
-                                        <Path Data="{StaticResource IconGitBranch}" Fill="{StaticResource ForegroundMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,10,0"/>
-                                        <TextBlock Text="Savings history" Foreground="{StaticResource ForegroundBrush}" FontSize="12"/>
+                                        <Path Data="{StaticResource IconSettings}" Fill="#94A3B8" Width="15" Height="15" Stretch="Uniform" Margin="0,0,12,0"/>
+                                        <TextBlock Text="Stores &amp; scraping" Foreground="#E2E8F0" FontSize="13" FontWeight="SemiBold"/>
+                                    </StackPanel>
+                                </Button>
+
+                                <!-- Savings history -->
+                                <Button Style="{StaticResource VSCodePanelTabButtonStyle}" HorizontalContentAlignment="Left" Padding="10,8" Margin="0,0,0,4">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconTrendingUp}" Fill="#94A3B8" Width="15" Height="15" Stretch="Uniform" Margin="0,0,12,0"/>
+                                        <TextBlock Text="Savings history" Foreground="#E2E8F0" FontSize="13" FontWeight="SemiBold"/>
                                     </StackPanel>
                                 </Button>
                             </StackPanel>
                         </ScrollViewer>
 
-                        <!-- Drawer Footer Scraping Schedule Status -->
-                        <Border Grid.Row="2" Background="#141A26" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,12,0,0">
+                        <!-- Drawer Footer Status -->
+                        <Border Grid.Row="2" BorderBrush="#1E293B" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
                             <StackPanel>
                                 <Grid Margin="0,0,0,4">
-                                    <TextBlock Text="Ads for week of Sep 6" Foreground="{StaticResource ForegroundBrightBrush}" FontSize="11" FontWeight="Bold"/>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                        <Ellipse Width="6" Height="6" Fill="#10B981" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                        <TextBlock Text="Live" Foreground="#10B981" FontSize="10" FontWeight="Bold"/>
-                                    </StackPanel>
+                                    <TextBlock Text="Ads for week of Sep 6" Foreground="#FFFFFF" FontSize="12" FontWeight="Bold"/>
+                                    <TextBlock HorizontalAlignment="Right" FontSize="12" FontWeight="Bold">
+                                        <Run Text="• " Foreground="#10B981"/>
+                                        <Run Text="Live" Foreground="#10B981"/>
+                                    </TextBlock>
                                 </Grid>
-                                <TextBlock Text="Last scrape today 6:56 AM" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10" Margin="0,0,0,2"/>
-                                <TextBlock Text="Next run Wed 6:00 AM" Foreground="{StaticResource ForegroundMutedBrush}" FontSize="10"/>
+                                <TextBlock Text="Last scrape today 6:56 AM" Foreground="#94A3B8" FontSize="11" Margin="0,0,0,2"/>
+                                <TextBlock Text="Next run Wed 6:00 AM" Foreground="#94A3B8" FontSize="11"/>
                             </StackPanel>
                         </Border>
                     </Grid>
