@@ -407,7 +407,11 @@ export async function getMedsToday(userId) {
     .filter((m) => m.refill_tier === "auto")
     .map((m) => ({ id: m.id, name: m.name, nextRefillOn: m.next_refill_on }));
 
-  return { batches, refills: { needsYou, handled }, courseRest };
+  // Git #3321: real recent as-needed usage, surfaced on the same tray -- no new dedicated room
+  // (the issue's own scope item 5).
+  const asNeededUsage = await listRecentMedicationUsage(userId, { limit: 15 });
+
+  return { batches, refills: { needsYou, handled }, courseRest, asNeededUsage };
 }
 
 /**
@@ -436,4 +440,141 @@ export async function unmarkBatchTaken(userId, batch, { takenOn } = {}) {
     [userId, cleanBatchName, day],
   );
   if (rowCount === 0) throw notFound("That batch was not marked taken today");
+}
+
+// ---------------------------------------------------------------------------------------------
+// As-needed dose logging (Git #3321). A real, individual dose EVENT -- distinct from
+// med_batch_log above, which is one row per (user, batch, day) for a SCHEDULED batch swipe.
+// "I hit my inhaler 2x" is not a batch completion: it can happen more than once a day, it has a
+// real stated quantity, and it belongs to exactly one real medication, not a whole batch. See
+// migrations/073_medication_usage_log.sql for the real table this reads/writes.
+// ---------------------------------------------------------------------------------------------
+
+const AS_NEEDED_BATCH_RE = /as[- ]?needed|\bprn\b/i;
+
+/** Real, honest position validity check -- same rule captures.mjs's own normalisePosition
+ *  applies to a geo-tagged capture: a lone valid half is a broken reading, not a usable one, so
+ *  an invalid half drops both rather than keeping the other. Never fatal to the log itself. */
+function normaliseCoordinate(latitude, longitude) {
+  if (latitude === undefined || latitude === null || longitude === undefined || longitude === null) {
+    return { lat: null, lng: null };
+  }
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  const valid = Number.isFinite(lat) && lat >= -90 && lat <= 90 && Number.isFinite(lng) && lng >= -180 && lng <= 180;
+  return valid ? { lat, lng } : { lat: null, lng: null };
+}
+
+/** Every real, non-archived medication whose batch reads as "as needed"/"prn" -- confirmed real
+ *  data on file uses the literal free-text batch "as needed" (Albuterol, Alprazolam, ...; see
+ *  migration 030's own "batch is free text" rule). `dose_note` is included because it is real,
+ *  useful search text too -- Albuterol's own real dose_note is "90 mcg HFA inhaler", which is
+ *  exactly the word Shane says instead of the drug name (resolveAsNeededMedication below). */
+export async function listAsNeededMedications(userId) {
+  const meds = await many(
+    `SELECT id, name, dose_note, batch FROM medications
+      WHERE user_id = $1 AND archived_at IS NULL
+      ORDER BY name`,
+    [userId],
+  );
+  return meds.filter((m) => AS_NEEDED_BATCH_RE.test(m.batch));
+}
+
+const NAME_MATCH_STOPWORDS = new Set(["my", "the", "a", "an", "of", "some"]);
+
+/** Every real stated word except a small stopword list -- "the inhaler" needs to become just
+ *  ["inhaler"] before it can be checked against a medication's own real name + dose_note text. */
+function nameMatchTokens(text) {
+  return String(text || "")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w && !NAME_MATCH_STOPWORDS.has(w));
+}
+
+/**
+ * Fuzzy-resolves stated text (e.g. "the inhaler", "albuterol") against Shane's real as-needed
+ * medications, matching both the medication's own name AND its dose_note -- "inhaler" doesn't
+ * appear in "Albuterol" but does appear in its real dose_note "90 mcg HFA inhaler", and that's
+ * exactly the word Shane actually says. Every stated (non-stopword) token has to appear
+ * somewhere in a medication's real name+dose_note text for it to count as a match.
+ *
+ * Real, honest ambiguity handling (#3321's own scope item 4): more than one real match, or none
+ * at all, both come back `ok: false` -- the caller must never guess and log against the wrong
+ * medication. This never touches the database beyond the one real read above.
+ */
+export async function resolveAsNeededMedication(userId, nameText) {
+  const tokens = nameMatchTokens(nameText);
+  if (tokens.length === 0) return { ok: false, reason: "empty" };
+
+  const meds = await listAsNeededMedications(userId);
+  const matches = meds.filter((m) => {
+    const have = `${m.name} ${m.dose_note || ""}`.toLowerCase();
+    return tokens.every((t) => have.includes(t));
+  });
+  if (matches.length === 1) return { ok: true, match: matches[0] };
+  if (matches.length > 1) return { ok: false, reason: "ambiguous", candidates: matches };
+  return { ok: false, reason: "not_found" };
+}
+
+/**
+ * Logs one real as-needed dose event. `quantity` defaults to 1 (README's own default when no
+ * count is stated); `usedAt` is never accepted from the caller -- `used_at` is the DB's own
+ * `DEFAULT now()`, the real automatic capture-time timestamp #3321 asks for, same as
+ * med_batch_log.taken_at. `latitude`/`longitude` carry forward the capture's own already-present
+ * geo-tagged position (migration 040) -- this never estimates or looks one up.
+ */
+export async function logMedicationUsage(
+  userId,
+  { medicationId, quantity = 1, latitude = null, longitude = null, note = null, source = "web" } = {},
+) {
+  const owned = await getOwnedMedication(userId, medicationId);
+  if (!owned) throw notFound("Medication not found");
+
+  const qty = Math.max(1, Math.trunc(Number(quantity)) || 1);
+  const { lat, lng } = normaliseCoordinate(latitude, longitude);
+
+  const row = await one(
+    `INSERT INTO medication_usage_log (user_id, medication_id, quantity, latitude, longitude, note, source)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     RETURNING id, medication_id, quantity, used_at, latitude, longitude, note, source`,
+    [
+      userId,
+      medicationId,
+      qty,
+      lat,
+      lng,
+      note ? String(note).trim().slice(0, MAX_NOTE_LEN) : null,
+      source === "mcp" ? "mcp" : "web",
+    ],
+  );
+  return { ...row, medicationName: owned.name };
+}
+
+/** Real, simple recent-usage read (#3321's own scope item 5) -- timestamp + location shown
+ *  plainly on the medication's own name, no adherence history or streak math, matching this
+ *  module's existing "today's real state" philosophy. Used by getMedsToday below (surfaced in
+ *  the Meds room) and by get_medications' own MCP tool. */
+export async function listRecentMedicationUsage(userId, { limit = 15 } = {}) {
+  const rows = await many(
+    `SELECT u.id, u.medication_id, m.name AS medication_name, u.quantity, u.used_at,
+            u.latitude, u.longitude, u.note
+       FROM medication_usage_log u
+       JOIN medications m ON m.id = u.medication_id
+      WHERE u.user_id = $1
+      ORDER BY u.used_at DESC
+      LIMIT $2`,
+    [userId, Math.min(Number(limit) || 15, 100)],
+  );
+  // camelCase to match getMedsToday's own already-mapped shape (doseNote, refillTier, ...) --
+  // this is embedded straight into that same return object below.
+  return rows.map((r) => ({
+    id: r.id,
+    medicationId: r.medication_id,
+    medicationName: r.medication_name,
+    quantity: r.quantity,
+    usedAt: r.used_at,
+    latitude: r.latitude,
+    longitude: r.longitude,
+    note: r.note,
+  }));
 }

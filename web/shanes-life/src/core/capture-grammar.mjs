@@ -1242,6 +1242,65 @@ const RULES = [
       };
     },
   },
+
+  // 37. As-needed medication dose (Git #3321: "I hit my inhaler 2x" / "used the albuterol" /
+  //     "took 2 puffs of the inhaler" -> a real medication_usage_log row). Deliberately checked
+  //     LAST: its trigger verbs (hit/used/took/take) are broad on purpose -- rule 32 (queue_take,
+  //     "take X to Y") and rule 35 (pantry_out, "used the last of X") both start with the exact
+  //     same words but are real, narrower, already-established phrasings, and must keep winning
+  //     first. Being last means this only ever sees text nothing more specific already claimed.
+  //
+  //     A stated quantity is parsed either as a leading "N puffs/doses/pills/tablets of X", a
+  //     trailing "X Nx"/"X N times", or a bare leading "N X" -- default 1 when none is stated
+  //     (README's own default). Name resolution is medications.resolveAsNeededMedication's own
+  //     real fuzzy match against as-needed medications' name + dose_note (so "the inhaler"
+  //     resolves to Albuterol via its real dose_note "90 mcg HFA inhaler", not a name it doesn't
+  //     literally contain) -- genuinely ambiguous or unmatched text is a real, honest fallback to
+  //     the inbox (#3321's own scope item 4), never a guess.
+  {
+    name: "meds_usage_log",
+    match(text) {
+      const m = text.match(/^(?:i\s+)?(?:hit|used?|took|take)\s+(.+)$/i);
+      if (!m) return null;
+      let rest = m[1].trim();
+      let quantity = null;
+
+      const leading = rest.match(/^(\d+)\s*(?:x\s+)?(?:puffs?|doses?|pills?|tablets?)\s+of\s+(.+)$/i);
+      if (leading) {
+        quantity = Number(leading[1]);
+        rest = leading[2].trim();
+      } else {
+        const trailing = rest.match(/^(.+?)\s+(\d+)\s*(?:x|times?)$/i);
+        if (trailing) {
+          rest = trailing[1].trim();
+          quantity = Number(trailing[2]);
+        } else {
+          const bare = rest.match(/^(\d+)\s+(.+)$/);
+          if (bare) {
+            quantity = Number(bare[1]);
+            rest = bare[2].trim();
+          }
+        }
+      }
+
+      rest = rest.trim();
+      if (!rest) return null;
+      return { name: rest, quantity };
+    },
+    async run(userId, { name, quantity }, _rawText, { latitude, longitude } = {}) {
+      const resolved = await medications.resolveAsNeededMedication(userId, name);
+      if (!resolved.ok) return FALLBACK;
+      const row = await medications.logMedicationUsage(userId, {
+        medicationId: resolved.match.id,
+        quantity: quantity || 1,
+        latitude,
+        longitude,
+        source: "web",
+      });
+      const qtyNote = row.quantity > 1 ? `${row.quantity}x ` : "";
+      return { message: `${qtyNote}${resolved.match.name} logged.`, medicationId: resolved.match.id };
+    },
+  },
 ];
 
 const RULES_BY_NAME = new Map(RULES.map((r) => [r.name, r]));
@@ -1283,14 +1342,17 @@ export function matchRule(text) {
  * (the same as no match at all), so a bug here can never be the reason a real capture goes
  * missing -- worst case, this module behaves as if it doesn't exist yet.
  */
-export async function runCaptureGrammar({ userId, text }) {
+export async function runCaptureGrammar({ userId, text, latitude = null, longitude = null }) {
   const raw = String(text ?? "").trim();
   const found = matchRule(raw);
   if (!found) return { matched: false };
 
   const rule = RULES_BY_NAME.get(found.rule);
   try {
-    const outcome = await rule.run(userId, found.groups, raw);
+    // Git #3321: the capture's own real geo-tagged position (migration 040), passed through as a
+    // 4th arg every rule can optionally read -- only meds_usage_log does today. Every other
+    // existing rule's `run(userId, groups, raw)` simply ignores the extra argument.
+    const outcome = await rule.run(userId, found.groups, raw, { latitude, longitude });
     if (!outcome || outcome.fallback) return { matched: false };
     await record({
       userId,

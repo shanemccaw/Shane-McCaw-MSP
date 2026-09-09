@@ -3750,6 +3750,38 @@ function refillsSection(refills) {
   return section;
 }
 
+// Git #3321: real, simple recent as-needed dose display -- real timestamp + real location shown
+// plainly, no adherence history or streak math (this is a distinct real ask from the "no
+// adherence history" design decision above, which is about the SCHEDULED batches, not
+// individually-logged as-needed doses). No new room -- this rides in the existing Meds room,
+// right under Refills, per the issue's own scope item 5.
+function medUsageRow(entry) {
+  const qtyLabel = entry.quantity > 1 ? `${entry.quantity}x ` : "";
+  const hasPosition = entry.latitude != null && entry.longitude != null;
+  return el("div", { class: "card", style: "padding:10px 14px" }, [
+    el("div", { class: "spread" }, [
+      el("div", { text: `${qtyLabel}${entry.medicationName}` }),
+      el("div", { class: "muted small", text: when(entry.usedAt) }),
+    ]),
+    hasPosition
+      ? el("a", {
+          class: "muted small",
+          href: `https://maps.google.com/?q=${entry.latitude},${entry.longitude}`,
+          target: "_blank",
+          rel: "noopener",
+          text: "View location",
+        })
+      : null,
+  ]);
+}
+
+function asNeededUsageSection(usage) {
+  if (!usage || usage.length === 0) return null;
+  const section = el("section", { class: "section" }, [el("h2", { text: "Recent as-needed doses" })]);
+  for (const entry of usage) section.append(medUsageRow(entry));
+  return section;
+}
+
 // Git #3191: Meds' own native header -- back "Today" / centered title / spacer, same real
 // shape Today (#3174) and Shopping (#3178) already use, replacing the generic app-header this
 // room used to fall back on (see render()'s hasOwnHeader).
@@ -3762,7 +3794,7 @@ function medsHeader() {
 }
 
 async function viewMeds(view) {
-  const { batches, refills, courseRest } = await api("/api/medications");
+  const { batches, refills, courseRest, asNeededUsage } = await api("/api/medications");
 
   view.append(medsHeader());
 
@@ -3840,6 +3872,9 @@ async function viewMeds(view) {
   }
 
   view.append(refillsSection(refills));
+
+  const usageSection = asNeededUsageSection(asNeededUsage);
+  if (usageSection) view.append(usageSection);
 
   // Git #3183: no dedicated "Add medication" form -- a new medication is a capture, same
   // as everything else (contract pack Section 8). Say "started lisinopril 10mg every

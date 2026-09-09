@@ -440,4 +440,42 @@ check("matchRule: pantry_have requires a real number and unit word before 'of' -
   assert.equal(matchRule("I have a headache") == null, true);
 });
 
+// ---------------------------------------------------------------------------------------------
+// meds_usage_log (Git #3321) -- real, individual as-needed dose events, distinct from
+// meds_batch_taken above. Real classification only here (no DB) -- resolveAsNeededMedication's
+// own fuzzy match against real medications is exercised live via `npm run check`.
+// ---------------------------------------------------------------------------------------------
+
+check("matchRule: meds_usage_log -- 'I hit my inhaler 2x' (trailing Nx quantity)", () => {
+  const m = matchRule("I hit my inhaler 2x");
+  assert.equal(m.rule, "meds_usage_log");
+  assert.deepEqual(m.groups, { name: "my inhaler", quantity: 2 });
+});
+
+check("matchRule: meds_usage_log -- 'used the albuterol' (no stated quantity)", () => {
+  const m = matchRule("used the albuterol");
+  assert.equal(m.rule, "meds_usage_log");
+  assert.deepEqual(m.groups, { name: "the albuterol", quantity: null });
+});
+
+check("matchRule: meds_usage_log -- 'took 2 puffs of the inhaler' (leading 'N puffs of')", () => {
+  const m = matchRule("took 2 puffs of the inhaler");
+  assert.equal(m.rule, "meds_usage_log");
+  assert.deepEqual(m.groups, { name: "the inhaler", quantity: 2 });
+});
+
+check("matchRule: meds_usage_log -- bare leading count, 'took 2 albuterol'", () => {
+  const m = matchRule("took 2 albuterol");
+  assert.equal(m.rule, "meds_usage_log");
+  assert.deepEqual(m.groups, { name: "albuterol", quantity: 2 });
+});
+
+check("matchRule: meds_usage_log is checked LAST -- queue_take's 'take X to Y' and pantry_out's 'used the last of X' both keep winning first (Git #3321's own real regression risk: this new rule's trigger verbs are broad on purpose)", () => {
+  assert.equal(matchRule("take the trash to the curb").rule, "queue_take");
+  assert.equal(matchRule("used the last of the rosemary").rule, "pantry_out");
+  // "took my morning meds" still resolves to the whole-batch rule, not the per-dose one -- the
+  // literal "meds" word means meds_batch_taken (checked much earlier) wins first.
+  assert.equal(matchRule("took my morning meds").rule, "meds_batch_taken");
+});
+
 console.log(`\n${passed}/${passed} passed`);

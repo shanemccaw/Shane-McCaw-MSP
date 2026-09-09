@@ -735,7 +735,15 @@ export function buildApiRouter() {
     // safely resolve -- falls through to the exact same pending-capture path as before. See
     // capture-grammar.mjs's own header for the full fail-safe contract.
     if (kind === "text" && body.text && String(body.text).trim()) {
-      const grammar = await runCaptureGrammar({ userId: user.id, text: body.text });
+      // Git #3321: the same real geo-tagged position the pending-capture row below would have
+      // carried (latitude/longitude, Git #3159) -- threaded through so a rule like
+      // meds_usage_log can log a real automatic location, not just an automatic timestamp.
+      const grammar = await runCaptureGrammar({
+        userId: user.id,
+        text: body.text,
+        latitude: body.latitude ?? null,
+        longitude: body.longitude ?? null,
+      });
       if (grammar.matched) {
         return sendJson(res, 200, { matched: true, rule: grammar.rule, message: grammar.message });
       }

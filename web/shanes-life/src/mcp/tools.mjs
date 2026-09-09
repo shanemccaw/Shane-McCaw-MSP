@@ -1197,6 +1197,65 @@ export const TOOLS = [
     },
   },
 
+  // Git #3321: the real MCP entry point that mirrors capture-grammar's own meds_usage_log rule
+  // (src/core/capture-grammar.mjs) -- same resolveAsNeededMedication fuzzy match, same
+  // logMedicationUsage write, same real automatic used_at timestamp (the DB's own DEFAULT now(),
+  // never a passed-in value). latitude/longitude are optional and, same real discipline as
+  // push_place, MUST come from a real geo-tagged capture (list_captures/get_capture) -- never
+  // estimated or guessed by Claude.
+  {
+    name: "log_medication_usage",
+    title: "Log a real as-needed medication dose",
+    description:
+      "The real capture-grammar entry point for 'I hit my inhaler 2x' / 'used the albuterol' / 'took 2 puffs of the inhaler' said in conversation instead of captured. Logs ONE real dose event for an as-needed medication -- distinct from mark_med_batch_taken, which completes a whole SCHEDULED batch, not an individual as-needed dose. Pass either medicationId (from get_medications) or name (fuzzy-matched against real as-needed medications' name + doseNote, e.g. 'inhaler' resolves to Albuterol via its own real doseNote '90 mcg HFA inhaler') -- if name matches more than one real medication or none at all, this throws rather than guessing; call get_medications and pass medicationId instead. quantity defaults to 1. latitude/longitude MUST come from a real geo-tagged capture (list_captures/get_capture) -- never estimate them.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        medicationId: { type: "string", description: "An existing as-needed medication's real id (see get_medications). Preferred over name when already known." },
+        name: { type: "string", description: "What Shane called it, e.g. 'the inhaler', 'albuterol' -- fuzzy-matched against real as-needed medications only. Omit if medicationId is passed." },
+        quantity: { type: "number", description: "How many doses/puffs/pills, e.g. 2 for '2x'. Defaults to 1." },
+        latitude: { type: "number", description: "Real latitude from the geo-tagged capture this came from, if any." },
+        longitude: { type: "number", description: "Real longitude from the geo-tagged capture this came from, if any." },
+        note: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      let medicationId = args.medicationId;
+      let medicationName;
+      if (!medicationId) {
+        if (!args.name) throw badRequest("Pass either medicationId or name");
+        const resolved = await medications.resolveAsNeededMedication(ctx.user.id, args.name);
+        if (!resolved.ok) {
+          throw new Error(
+            resolved.reason === "ambiguous"
+              ? `"${args.name}" matches more than one real as-needed medication (${resolved.candidates.map((c) => c.name).join(", ")}) -- call get_medications and pass medicationId instead.`
+              : `No real as-needed medication matches "${args.name}". Call get_medications to see what's on file.`,
+          );
+        }
+        medicationId = resolved.match.id;
+        medicationName = resolved.match.name;
+      }
+      const row = await medications.logMedicationUsage(ctx.user.id, {
+        medicationId,
+        quantity: args.quantity,
+        latitude: args.latitude,
+        longitude: args.longitude,
+        note: args.note,
+        source: "mcp",
+      });
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "medication.usage_logged",
+        entityId: medicationId,
+        detail: { quantity: row.quantity, medicationName: medicationName || row.medicationName },
+      });
+      return row;
+    },
+  },
+
   // -- pets (Git #3141) -------------------------------------------------------------------
   // Contract pack Section 6: real per-pet identity + vaccine tracking live here. Vet visits go
   // through push_date/list_dates instead (subjectType: 'pet', subjectId: this pet's id) --
