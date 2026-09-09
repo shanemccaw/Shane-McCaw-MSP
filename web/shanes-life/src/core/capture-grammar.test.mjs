@@ -11,6 +11,8 @@ import {
   extractDateTokens,
   extractRecurrenceDays,
   extractTime,
+  extractTimerDuration,
+  formatDuration,
   matchRule,
   resolveDateTokenToISO,
   resolveNextDayOfMonthISO,
@@ -299,6 +301,52 @@ check("matchRule: queue for the next run (Git #3300)", () => {
   assert.equal(m.groups.name, "drill");
   assert.equal(m.groups.takeForHouse, "rental");
   assert.equal(matchRule("bring HVAC filter to Rental").rule, "queue_take");
+});
+
+check("extractTimerDuration: duration before the word 'timer' (README §112-123 item 3)", () => {
+  const t = extractTimerDuration("8 min timer for pasta");
+  assert.equal(t.seconds, 480);
+  assert.equal(t.label, "pasta");
+});
+
+check("extractTimerDuration: 'timer for <duration>' (Shane's own decision-comment example)", () => {
+  const t = extractTimerDuration("set a timer for 5 minutes");
+  assert.equal(t.seconds, 300);
+  assert.equal(t.label, null);
+});
+
+check("extractTimerDuration: 'timer for <duration> for <label>'", () => {
+  const t = extractTimerDuration("set a timer for 8 minutes for the rice");
+  assert.equal(t.seconds, 480);
+  assert.equal(t.label, "the rice");
+});
+
+check("extractTimerDuration: hours and seconds units", () => {
+  assert.equal(extractTimerDuration("1 hour timer").seconds, 3600);
+  assert.equal(extractTimerDuration("set a timer for 45 seconds").seconds, 45);
+});
+
+check("extractTimerDuration: no real duration stated returns null", () => {
+  assert.equal(extractTimerDuration("set a timer"), null);
+  assert.equal(extractTimerDuration("check the timer"), null);
+});
+
+check("formatDuration: real display shapes", () => {
+  assert.equal(formatDuration(480), "8 min");
+  assert.equal(formatDuration(45), "45 sec");
+  assert.equal(formatDuration(3600), "1 hr");
+  assert.equal(formatDuration(5430), "1 hr 30 min");
+});
+
+check("matchRule: standalone timer (Git #3307)", () => {
+  const m = matchRule("8 min timer for pasta");
+  assert.equal(m.rule, "timer_set");
+  assert.equal(m.groups.seconds, 480);
+  assert.equal(m.groups.label, "pasta");
+  assert.equal(matchRule("set a timer for 2 minutes").rule, "timer_set");
+  // "timer" with no real duration is a genuine parse miss, same as any other rule -- falls
+  // through to the pending inbox untouched.
+  assert.equal(matchRule("check the timer"), null);
 });
 
 check("matchRule: genuinely ambiguous / unrecognised text matches nothing", () => {

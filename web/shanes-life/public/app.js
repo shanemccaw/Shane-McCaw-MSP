@@ -1834,6 +1834,38 @@ async function viewToday(view) {
     view.append(meals);
   }
 
+  // Standalone timers (Git #3307) -- "a way to see/cancel an active standalone timer," Today
+  // tray being "the natural real home, matching how other live states already surface there."
+  // Server-side rows (data.timers, /api/today), not client state -- see core/timers.mjs.
+  if ((data.timers || []).length > 0) {
+    const timersSection = el("section", { class: "section" }, [el("h2", { text: "Timers" })]);
+    for (const t of data.timers) {
+      timersSection.append(
+        el("div", { class: "card row spread", style: "align-items:center" }, [
+          el("div", {}, [
+            el("div", { class: "title", text: t.label ? `Timer -- ${t.label}` : "Timer" }),
+            el("div", { class: "meta", text: `Fires ${inShort(t.fires_at)}` }),
+          ]),
+          el("button", {
+            class: "ghost small",
+            text: "Cancel",
+            onClick: async (event) => {
+              event.currentTarget.disabled = true;
+              try {
+                await api(`/api/timers/${t.id}`, { method: "DELETE" });
+                render();
+              } catch (err) {
+                showQuickToast(err.message);
+                event.currentTarget.disabled = false;
+              }
+            },
+          }),
+        ]),
+      );
+    }
+    view.append(timersSection);
+  }
+
   // The label sits in its own row, separate from the card list below it -- attachPeeker turns
   // this row (and only this row) into the spec's "position:relative; display:flex;
   // align-items:flex-end" label row; the cards stay in normal block flow beneath it.

@@ -61,6 +61,7 @@ import * as storeAisles from "../core/store-aisles.mjs";
 import * as vault from "../core/vault.mjs";
 import * as webpush from "../push/webpush.mjs";
 import * as things from "../core/things.mjs";
+import * as timers from "../core/timers.mjs";
 import * as wins from "../core/wins.mjs";
 import { orderItems } from "../core/shopping-order.mjs";
 import * as vehicles from "../core/vehicles.mjs";
@@ -1986,6 +1987,36 @@ export function buildApiRouter() {
     return sendJson(res, 200, { canceled: true });
   });
 
+  // -- Standalone timers (Git #3307) -----------------------------------------------------
+  //
+  // Server-side entity, real web push -- see src/core/timers.mjs's own header and
+  // server.mjs's runTimerSweep for the "why not client-side state" reasoning. Capture grammar
+  // (`timer_set` in capture-grammar.mjs) is the primary real entry point; these routes back the
+  // Today tray's "see/cancel an active standalone timer" real scope item and let the UI set one
+  // directly too, without needing to type through the capture box.
+
+  router.get("/api/timers", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { timers: await timers.listActive(user.id) });
+  });
+
+  router.post("/api/timers", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await timers.createTimer(user.id, { label: body.label ?? null, durationSeconds: body.durationSeconds });
+    // timers.id is bigserial, not the uuid activity_log.entity_id expects (Git #3161-class trap,
+    // caught live -- see nudges' own `nudgeId`-in-detail convention for the same real reason).
+    await audit.record({ userId: user.id, actor: "web", action: "timer.create", detail: { timerId: row.id, label: row.label, durationSeconds: row.duration_seconds } });
+    return sendJson(res, 201, row);
+  });
+
+  router.delete("/api/timers/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await timers.cancelTimer(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "owner", action: "timer.canceled", detail: { timerId: params.id } });
+    return sendJson(res, 200, { canceled: true });
+  });
+
   // -- Money -> Home-tab decision tools (Git #3171) -------------------------------------
   //
   // Period Review, Skip Suggestions, Distribute Paycheck, Transfer Instructions -- see
@@ -3121,6 +3152,9 @@ export function buildApiRouter() {
       groceries,
       headingHome,
       meds: medsToday,
+      // Standalone timers (Git #3307) -- Today tray's "see/cancel an active timer" real scope
+      // item; server-side rows so this list is honest across a reload/redeploy, not client state.
+      timers: await timers.listActive(user.id),
       rooms: await roomsForToday(user.id, { allDates, tonight, groceries, meds: medsToday, pendingCaptures }),
       roomOrder: await roomOrder.getRoomOrder(user.id),
       later: await computeLaterMoments(user.id, { allDates, tonight, pendingCaptures }),

@@ -42,7 +42,9 @@ export function actionsForKind(kind) {
 
 /**
  * Queue a real nudge for today, respecting the real per-day cap. `countsToCap: false` (meds
- * batches, per the non-negotiables) never consumes a cap slot and is always sent. Over cap, the
+ * batches, per the non-negotiables; also a standalone timer, Git #3307 -- Shane directly asked
+ * for that specific alert, so holding it for the cap would break the "replaces Siri" requirement
+ * the issue's own decision names) never consumes a cap slot and is always sent. Over cap, the
  * row is still written -- with `held_at` set instead of `sent_at` -- so "N of up to 3 nudges
  * today" and the held state are both answerable from the database, never silently dropped.
  *
@@ -127,6 +129,9 @@ function pushUrlForNudge(row) {
   // same real route the Heading Out balloon above already lands on, since Lists has no per-list
   // deep link of its own.
   if (row.kind === "deal_match") return "/#/lists";
+  // Standalone timer (Git #3307): no dedicated room -- Today tray is where it's set and shown,
+  // same real "the natural home" reasoning as the issue's own decision comment.
+  if (row.kind === "timer") return "/";
   return "/";
 }
 

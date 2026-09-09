@@ -26,6 +26,7 @@ import { findDueDayBeforeReminders } from "./core/dates.mjs";
 import { needsMonthlyRefresh, refreshFederalHolidays } from "./core/federal-holidays.mjs";
 import { findDueVaccineReminders } from "./core/pets.mjs";
 import { queueNudge, redeliverSnoozedNudges } from "./core/nudges.mjs";
+import * as timers from "./core/timers.mjs";
 import { listUsers } from "./core/users.mjs";
 import { detectMoneyWins } from "./core/wins.mjs";
 import { captureBillCycleSnapshots, findDueBillReminders, findDueDebtReminders, formatMoney } from "./core/money.mjs";
@@ -317,6 +318,19 @@ async function main() {
   );
   teslaCommandCheck.unref();
 
+  // Standalone timers (Git #3307): a real "8 min timer for pasta" needs to fire close to on
+  // time -- much tighter than even the 5-minute sweeps above, since a real timer can genuinely
+  // be "2 minutes" (the issue's own stated verification test). 20 seconds costs nothing extra
+  // (one indexed WHERE fires_at <= now() read) and keeps the real, worst-case lateness small.
+  const timerCheck = setInterval(
+    async () => {
+      const fired = await runTimerSweep();
+      if (fired > 0) log(`[timers] fired ${fired} timer(s)`);
+    },
+    20 * 1000,
+  );
+  timerCheck.unref();
+
   // Run once at boot too -- a 6-hour interval alone would leave a genuinely due day-before
   // reminder or a stale federal-holiday list waiting up to 6 hours after every redeploy.
   await runDayBeforeReminders();
@@ -328,6 +342,7 @@ async function main() {
   await runPlaidItemMaintenance();
   await runTeslaLowBatteryChecks();
   await runTeslaOdometerAndChargingSync();
+  await runTimerSweep();
 }
 
 /**
@@ -379,6 +394,39 @@ async function runVaccineLeadReminders() {
   } catch (err) {
     log("[reminders] failed:", err.message);
   }
+}
+
+/**
+ * Standalone timers (Git #3307) -- fires every real due, unfired, uncanceled timer as a real OS
+ * notification, through the existing nudge/web-push path (`countsToCap: false`: a timer Shane
+ * directly asked for must always fire, never held for the 1-3/day cap -- see nudges.mjs's own
+ * header for the same exception already made for meds batches). Marked fired BEFORE the push
+ * attempt, not after: a push failure must not cause the same timer to re-fire (and re-notify)
+ * every 20 seconds until someone notices -- the row is the one real source of truth for "did
+ * this already happen," same as nudges.mjs's own "the nudge_events row is already committed
+ * regardless" reasoning for pushNudge.
+ */
+async function runTimerSweep() {
+  let fired = 0;
+  try {
+    const due = await timers.findDue();
+    for (const row of due) {
+      await timers.markFired(row.id);
+      const label = row.label ? ` -- ${row.label}` : "";
+      await queueNudge({
+        userId: row.user_id,
+        kind: "timer",
+        title: `Timer's up${label}`,
+        body: null,
+        payload: { timerId: row.id },
+        countsToCap: false,
+      });
+      fired += 1;
+    }
+  } catch (err) {
+    log("[timers] sweep failed:", err.message);
+  }
+  return fired;
 }
 
 /**

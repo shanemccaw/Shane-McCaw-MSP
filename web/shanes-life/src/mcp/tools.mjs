@@ -36,6 +36,7 @@ import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
 import * as tesla from "../core/tesla.mjs";
 import * as things from "../core/things.mjs";
+import * as timers from "../core/timers.mjs";
 import * as vehicles from "../core/vehicles.mjs";
 import * as wins from "../core/wins.mjs";
 import { badRequest, notFound } from "../http.mjs";
@@ -2229,6 +2230,56 @@ export const TOOLS = [
     async handler(args, ctx) {
       const row = await things.queueForTake(ctx.user.id, args);
       await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "thing.take.queue", entityId: row.id, detail: { name: row.name, take_for_house: row.take_for_house, quantity: row.quantity } });
+      return row;
+    },
+  },
+
+  {
+    name: "set_timer",
+    title: "Set a real standalone timer (\"8 min timer for pasta\")",
+    description:
+      "The capture grammar's real entry point for 'set a timer for 5 minutes' / '8 min timer for pasta' (Git #3307) -- a real, server-side timer entity, independent of any live Cook/Tonight session. Fires as a real OS push notification through the app's existing web-push path when durationSeconds elapses, whether or not the app is open ('replaces dumb Siri and manual clocks', Shane's own real decision on this issue). 24 hours is the real ceiling -- this is an ad-hoc timer, not a scheduler; a real future appointment belongs in Dates instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        durationSeconds: { type: "integer", description: "How long until it fires, in real seconds. Required, 1-86400." },
+        label: { type: "string", description: "What it's for, e.g. 'pasta'. Optional." },
+      },
+      required: ["durationSeconds"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await timers.createTimer(ctx.user.id, args);
+      // timers.id is bigserial, not the uuid activity_log.entity_id expects -- same real trap the
+      // web route above hit live; the id lives in detail instead (nudges' own convention).
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "timer.create", detail: { timerId: row.id, label: row.label, duration_seconds: row.duration_seconds } });
+      return row;
+    },
+  },
+
+  {
+    name: "list_timers",
+    title: "List real active standalone timers",
+    description: "Every real timer this user has running right now (not fired, not canceled) -- Git #3307.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      return { timers: await timers.listActive(ctx.user.id) };
+    },
+  },
+
+  {
+    name: "cancel_timer",
+    title: "Cancel a real active standalone timer",
+    description: "Real cancel -- errors honestly if the timer already fired or was already canceled (Git #3307).",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "integer", description: "The real timer id, from set_timer or list_timers." } },
+      required: ["id"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await timers.cancelTimer(ctx.user.id, args.id);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "timer.canceled", detail: { timerId: row.id } });
       return row;
     },
   },

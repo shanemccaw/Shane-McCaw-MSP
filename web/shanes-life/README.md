@@ -655,6 +655,37 @@ car looks like.
 resolution) with no database required; the DB-backed execution half was verified live against
 the real local database with disposable accounts, same discipline `bin/check.mjs` already uses.
 
+## Standalone timers (#3307)
+
+The design contract's own Capture grammar list (§112-123, item 3) names "8 min timer for pasta"
+as a real capture-grammar example, but there was no data model, table, or route for an ad-hoc
+timer created from the general capture box outside a live `#/cook/<id>`/`#/tonight` session --
+`mealTickTimer`/`mealBeepTimer` in `public/app.js` are client-only state scoped to that one live
+session, reset the moment Shane leaves the view. Real, direct decision from Shane on this issue
+(2026-09-09), resolving the open design question the issue itself raised: "the cooking is only
+good if the timer replaces dumb Siri and manual clocks" -- a purely client-side timer wouldn't
+survive backgrounding/reload reliably, so this is a real server-side timer entity (migration
+069, `timers`), built on the existing real web-push/nudge infrastructure so the alert fires as a
+genuine OS notification whether or not the app is open.
+
+- **Capture grammar**: `"8 min timer for pasta"` (duration before "timer") and `"set a timer for
+  5 minutes[, for the rice]"` (duration after it) both resolve instantly -- `timer_set` in
+  `capture-grammar.mjs`, `extractTimerDuration`/`formatDuration` are the real, unit-tested parse.
+- **Delivery**: `server.mjs`'s `runTimerSweep` polls `timers.findDue()` every 20 seconds (much
+  tighter than the existing 5-minute snooze/Tesla sweeps -- a real timer can genuinely be "2
+  minutes," the issue's own stated verification test) and fires through the existing
+  `queueNudge`/`notifyUser` web-push path, with `countsToCap: false` -- a timer Shane directly
+  asked for must always fire, the same real cap exception already documented for meds batches,
+  never held for the 1-3/day nudge cap.
+- **Honest permission handling**: a matched timer capture checks `push-subscriptions.mjs`'s new
+  `hasAnySubscription` and appends a plain "Turn on notifications in Settings so this can
+  actually alert you" warning to the real confirmation message when there's genuinely no device
+  to push to -- never a silent later failure.
+- **See/cancel**: `GET /api/timers`, `POST /api/timers`, `DELETE /api/timers/:id`; `/api/today`
+  carries the real active list (`timers`), and the Today tray renders a "Timers" card with a real
+  Cancel button per row -- the natural home, matching how other live states already surface
+  there.
+
 ## Which rooms are real today
 
 This section was written during #3107, when Shopping was the only real room and every table
@@ -671,6 +702,7 @@ a live route, not a placeholder:
 | `wins` | `/api/money/wins` | #3151 |
 | `smoke_log`, `catches` | `/api/money/catches`, `money.mjs` habit tracking | #3153, #3154 |
 | `nudges`, `nudge_events` | `/api/nudges*` | (Nudges Feature) |
+| `timers` | `/api/timers*` | #3307 |
 | Money generally | `/api/money/*` | #3137, #3147, #3148 |
 
 Web push is also live end to end, not just scaffolded: `/api/push/subscribe` /
