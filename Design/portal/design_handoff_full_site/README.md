@@ -1,120 +1,110 @@
-# Handoff: Shane McCaw Consulting — Customer Portal (full site)
+# Handoff: Customer Portal — last set of updates (2026-09-06 → 2026-09-09)
 
 ## Overview
 
-This package covers the **entire authenticated customer portal** for Shane McCaw Consulting, an M365 governance SaaS: the app shell/chrome plus every module screen inside it, and the six pre-auth screens that sit in front of it. 24 screens in total, listed below.
+This is an **incremental** package, not the whole portal. It carries the six customer-portal screens that changed in the last two sync rounds against the source repository (`shanemccaw/Shane-McCaw-MSP`, branch `main`), plus the contract packs and the sync record behind those changes.
+
+If you need the complete portal (24 screens, shell chrome, shared tokens and patterns), use `design_handoff_full_site/` — this package assumes that one has already landed and only describes what moved since.
+
+| # | Screen | File | Screenshot | Contract pack |
+|---|---|---|---|---|
+| 01 | Overview | `screens/Overview.dc.html` | `screenshots/01-overview.png` | `docs/customer-home-and-timeline-contract-pack.md` |
+| 02 | Change Control | `screens/Change Control.dc.html` | `screenshots/02-change-control.png` | `docs/change-control-contract-pack.md` |
+| 03 | Policy Decisions | `screens/Policy Decisions.dc.html` | `screenshots/03-policy-decisions.png` | `docs/policy-decisions-contract-pack.md` |
+| 04 | Remediation Tracking | `screens/Remediation Tracking.dc.html` | `screenshots/04-remediation-tracking.png` | `docs/remediation-tracking-contract-pack.md` |
+| 05 | Ownership / RACI | `screens/Ownership RACI.dc.html` | `screenshots/05-ownership-raci.png` | `docs/ownership-raci-contract-pack.md` |
+| 06 | Security Plan | `screens/Security Plan.dc.html` | `screenshots/06-security-plan.png` | `docs/security-plan-contract-pack.md` |
+
+Security Plan is included for reference only — its design did not change this round; one route behind it did (see the update log).
 
 ## About the design files
 
-Everything under `screens/` is a **design reference written in HTML** — a working prototype of intended look and behavior, not production code to copy directly. The real product is **React + Vite + Tailwind CSS v4 + shadcn/ui ("new-york" style) + Lucide icons**. Your task is to **recreate these designs in that stack** (or the target codebase's existing environment, if different), using its established components and patterns — not to ship the HTML files as-is.
+Everything under `screens/` is a **design reference written in HTML** — a working prototype of intended look and behavior, not production code to copy. The real product is **React + Vite + Tailwind CSS v4 + shadcn/ui ("new-york") + Lucide icons**. Recreate these designs in that stack using its existing components and patterns; do not ship the HTML.
 
-Each reference file loads a design-system bundle from a relative `_ds/...` path and some load `support.js`. Those only resolve inside the design tool; ignore them and build from the token values and component notes below and in each screen's contract pack.
+The reference files load a design-system bundle from a relative `_ds/...` path and `support.js`. Those resolve only inside the design tool — ignore them and build from the token values below, the screenshots, and each screen's contract pack.
 
-Several screens include a **"real response state" switcher** at the top (visible in some of the screenshots, e.g. Auth Sign-In's `401 invalid credentials` / `423 account locked` / `200 mfaRequired` pills). These are not decorative — they enumerate every real state the backend can actually return for that screen, extracted from source. Build the UI to handle every state shown, not just the default.
+Several screens carry a **state switcher** at the top. It is documentation-in-the-design: it enumerates every real state the underlying route can return. Every state it shows must be a state your implementation actually handles.
 
 ## Fidelity
 
-**High fidelity.** Colors, type, spacing, and states are exact values taken from the reference files and from the contract packs in `docs/`. Recreate them precisely using the codebase's existing primitives (shadcn `Button`, `Card`, `Badge`, `Input`, etc.) where they can carry these values.
-
-## How this package is organized
-
-- **`screens/`** — the 24 `.dc.html` design files, one per screen, plus `support.js` (the runtime they need to render inside the design tool — not something you build).
-- **`screenshots/`** — one PNG per screen, numbered to match the table below.
-- **`docs/`** — contract-pack markdown files. These are backend-extraction documents: for most modules, a pack traces every field and state shown on that screen back to the real API route and database schema (file:line citations). They are the single most reliable source for exact data shapes, validation rules, error states, and "what's real vs. not built yet." Read the relevant pack before implementing a screen.
+**High fidelity.** Colors, type, spacing, and states are exact values from the reference files and the contract packs.
 
 ## Update log
 
-- **Security Plan** (`screens/Security Plan.dc.html`) — added the real customer-facing review + sign action: a sealed-but-unsigned version now shows a "Review and sign this version" CTA opening a typed full-name (+ optional title) panel. Signing never edits plan content, only attaches a signature to the already-sealed version. Backed by `docs/security-plan-contract-pack.md`.
-- **Configuration State** (`screens/Configuration State.dc.html`) — refreshed to the latest real snapshot numbers and workload roll-up, and added a new change-attribution panel: a verdict roll-up (attributed / accepted risk / contested / unattributed / ignored) on the changes-since-last-snapshot card, with the honest all-unattributed state explained in place rather than read as a defect. Backed by `docs/configuration-state-contract-pack.md`.
+### Overview
+- `overviewCounts` gained `raciPendingAcceptance` (#3049). The RACI count is now a real backend field scoped by `customerId`, so it still reads when `tenantScope` is null — previously it could not be answered.
+- The no-scope state now zeroes six of seven counts (the RACI count survives it). Draw `no_tenant_scope` and an unentitled `change_control` add-on as first-class real-zero states, not as errors.
+- Counts render as linked tiles into the owning module. No score bars anywhere — the registers do not share a scale.
 
-## Screen inventory
+### Change Control
+Rebuilt against the regenerated contract pack (#2989 — the pack deleted upstream on 2026-09-03 is back and re-extracted: 2 → 14 customer routes plus a 3-route settings surface). What the screen now draws:
+- **Maintenance windows** with the raise-time containment check, collision refusal, and blocked-by / blocks dependencies (#1504), drawn on a real CR-2026-116 → CR-2026-118 edge.
+- **Attachments** with the four real kinds (#1503).
+- **Change metrics** under the "unavailable is never zero" rule (#1506).
+- **Customer settings surface**: policy switches, a live-computed approver list, and seven fixed notification rules. The per-gate switches (`gated: Record<gateKey, boolean>`) are deliberately omitted — the gate-key catalogue is not in the pack.
+- **Fail-closed split**: register GETs answer empty, actions answer 409. Risk discharge happens at capture time.
+- Three known upstream gaps are drawn where they bite: **#3044** (catalogue execute skips freeze/window/collision checks), **#3045** (metrics ignore PIR close codes), **#3046** (approval SLA breach is computed but never escalated).
+- Stated as MSP-side only: rollback, CAB, PIR, execution. Moving a booked change has no route at all — do not build a reschedule affordance.
 
-| # | Screen | File | Contract pack | Notes |
-|---|---|---|---|---|
-| 01 | App shell | `Shell.dc.html` | — | Top bar, six-pillar tab strip, sidebar nav, Tenant Status card + live scan, popovers, right-slide panel, ShaneBot dock, Settings container. Every other screen mounts inside its content slot. |
-| 02 | Overview | `Overview.dc.html` | `customer-home-and-timeline-contract-pack.md` | Home dashboard: engine scores, priority items, activity timeline, cross-module roll-up counts. |
-| 03 | Microsoft Changes | `Microsoft Changes.dc.html` | — | Message-center change feed (built from a design brief, not a contract pack — see `github.md` history). |
-| 04 | Change Control | `Change Control.dc.html` | `change-control-contract-pack.md` (stale — see caveat below) | Change requests, approvals, freeze calendar, standard-change catalogue. |
-| 05 | Risk Register | `Risk Register.dc.html` | `risk-register-contract-pack.md` | Risk lifecycle, likelihood/impact heat map, role-gated acceptance signatures. |
-| 06 | Remediation Tracking | `Remediation Tracking.dc.html` | `remediation-tracking-contract-pack.md` | Findings checklist + 28-step programme + verification/acceptance flows. |
-| 07 | SOPs | `SOPs.dc.html` | `sops-contract-pack.md` | SOP library, per-tenant custom steps, run queue and history. |
-| 08 | Ownership / RACI | `Ownership RACI.dc.html` | `ownership-raci-contract-pack.md` | Role assignment matrix, decline flow, per-cell history. |
-| 09 | Policy Decisions | `Policy Decisions.dc.html` | `policy-decisions-contract-pack.md` | Signed policy register, review cadences, typed authorities. |
-| 10 | Configuration State | `Configuration State.dc.html` | `configuration-state-contract-pack.md` | Tenant configuration snapshot; also defines the Settings-as-container pattern used by the shell. |
-| 11 | Security Plan | `Security Plan.dc.html` | `security-plan-contract-pack.md` | Assembled/versioned/signed security plan, drift against last signed version. |
-| 12 | Pillar pages | `Pillar Pages.dc.html` | — | The six pillar landing pages (Governance, Security, Compliance, Licensing, Adoption, Health) reached from the shell's tab strip. |
-| 13 | Account Security | `Account Security.dc.html` | `account-security-contract-pack.md` | Password/MFA/sessions for the signed-in user, plus tenant-wide Graph security readings. |
-| 14 | Billing | `Billing.dc.html` | `billing-contract-pack.md` | Receipts, plan state, Stripe billing-portal handoff. |
-| 15 | Webhooks | `Webhooks.dc.html` | `webhooks-contract-pack.md` | Outbound webhook endpoints, delivery log, secret rotation. |
-| 16 | Notification Preferences | `Notification Preferences.dc.html` | `notification-preferences-contract-pack.md` | 15-category in-app/email preference matrix. |
-| 17 | Portal Alerts | `Portal Alerts.dc.html` | — | Alerts dropdown + the alert-preferences settings pane. |
-| 18 | ShaneBot | `ShaneBot.dc.html` | `shanebot-contract-pack.md` | Full-page support chat surface with real "Active Card" renderers (invoice, subscription, score, data-answer). |
-| 19 | Auth: Sign in | `Auth Sign-In.dc.html` | `auth-core-contract-pack.md` | |
-| 20 | Auth: MFA challenge | `Auth MFA Challenge.dc.html` | `auth-core-contract-pack.md` | TOTP + emergency bypass; SMS/passkey are real backend routes with no UI wired yet (stated in the pack). |
-| 21 | Auth: Forgot password | `Auth Forgot Password.dc.html` | `auth-core-contract-pack.md` | Always responds 200 regardless of whether the email exists (enumeration resistance) — reflect this, don't add a "email not found" state. |
-| 22 | Auth: Reset password | `Auth Reset Password.dc.html` | `auth-core-contract-pack.md` | Issues no session on success. |
-| 23 | Auth: Account setup | `Auth Account Setup.dc.html` | `auth-core-contract-pack.md` | First-password flow for a new purchase; double entitlement gate. |
-| 24 | Auth: Sign-in help | `Auth Sign-In Help.dc.html` | `auth-core-contract-pack.md` | Locked-out ticket flow; only ever attaches real sign-in history, never fabricated rows. |
+### Policy Decisions
+Reconciled with the #1722 regeneration (which replaces the 2026-08-29 pack wholesale):
+- **#1168 tier-gated read state** added — reading positions back is bundled from a higher Monitoring tier; *creating* one is never gated, and is drawn that way.
+- An unresolvable tenant is drawn as a true empty, not a failure.
+- Catalogue corrected to the real 8 seeded rows; PCI DSS and ISO 27001 A.5.18 are typed as certifications (ISO added).
+- The customer's own authorities (insurance schedule, records schedule) are demoted to **text citations** — no route anywhere can create a tenant-authored catalogue row. Still true as of this sync: the new MSP-side `msp-policy-decisions.ts` adds no obligation-create either.
+- The pack's §9 open question is answered on the page as **pick-one**: this page holds freestanding positions; risk-derived positions live on Risk Register. Nothing is merged. Treat that as this design's proposal, not a settled product decision.
+- Standing policies stay off this page — they are MSP-console-operated and carry no customer authority.
 
-## A note on "contract packs"
+### Remediation Tracking
+- **#2827 closed upstream** — the checklist PUT now refuses `accepted_risk`.
+- **#2869 built** — the findings checklist gained its own signed decline-to-risk action, mirroring the programme's (a repeat answers 409).
+- The known-limits ledger is corrected down to one cosmetic rough edge (an export status label).
 
-Most of the `docs/*-contract-pack.md` files are not design specs written for this handoff — they're extraction documents built by reading the actual backend (routes, schema, live queries) and citing file:line for every field and state claim. Treat them as the ground truth for:
+### Ownership / RACI
+- **#1168 tier-not-included state** — Premier-only visibility. Writes are untouched and nothing is removed from the matrix; the state is stated in place.
+- The **#1518/#1524 delegation decision** (keep as-is) is stated on the page. Decline still stops at the assigner (**#2527** — it cannot climb a management chain).
+- Surfaces A and B only; C/D are not drawn.
 
+### Security Plan (no design change)
+`portal-security-plan-document.ts` gained `GET /api/portal/security-plan/drift` at **#3027** — the customer-scoped reuse of the same `computeSecurityPlanDrift` the MSP console already served. Section 7 of the screen ("Changes since signing") already drew exactly that comparison, including `hasLastSignedVersion: false` as its own never-signed state, so the route backs the section rather than changing it. **The security-plan contract pack is stale on #3027** — its route table lists only the MSP-side `/drift`. Build the customer route; trust the source over the pack here.
+
+## Contract packs
+
+The `docs/*-contract-pack.md` files are not design specs — they are extraction documents built by reading the actual backend (routes, schema, live queries) with file:line citations for every field and state claim. Treat them as ground truth for:
 - exact request/response shapes
-- every real error/edge state (not just the happy path)
-- which capabilities are genuinely live vs. stubbed vs. not built
-- "honest-empty" contracts — cases where the correct UI is an explicit empty/can't-read state rather than a zero or a guess
+- every real error/edge state, not just the happy path
+- which capabilities are live vs. stubbed vs. not built
+- **honest-empty contracts** — where the correct UI is an explicit empty or cannot-read state rather than a zero or a guess
 
-Two packs are flagged as stale in `github.md`: `change-control-contract-pack.md` (the pack was deleted upstream after the underlying code grew past it — the screen was left as-is and should be re-verified against source before a rebuild) and `microsoft-changes` (no pack exists; the screen was built from a design brief).
+`sync-record.md` (a copy of the project's `github.md`) records which repo files each screen was built from, the full sync history, and the open gaps carried on each screen.
 
-## Shared design tokens
+## Design tokens (unchanged this round)
 
-These apply across all 24 screens (the shell defines the chrome every module sits inside).
+**Colors** — canvas `#020617`; panel surfaces `rgba(255,255,255,.02)`; hairlines `rgba(255,255,255,.06–.10)`; hover overlay `rgba(255,255,255,.04)`; active `rgba(255,255,255,.06)`. Brand: Deep Navy `#0A2540`, Electric Blue `#0078D4` (pressed `#005A9E`), Bright Teal `#00B4D8`. Text: `#f8fafc` / `#cbd5e1` / `#94a3b8` / `#64748b` / `#475569` / `#334155`. Semantic: success `#34d399`, caution `#c2a63d` and `#fbbf24`, danger `#f87171` (soft `#fca5a5`), info `#60a5fa` (soft `#93c5fd`).
 
-**Colors**
-- Canvas `#020617`; panel surfaces `rgba(255,255,255,.02)`; hairlines `rgba(255,255,255,.06–.10)`; hover overlay `rgba(255,255,255,.04)`; active overlay `rgba(255,255,255,.06)`.
-- Brand: Deep Navy `#0A2540`, Electric Blue `#0078D4` (pressed `#005A9E`), Bright Teal `#00B4D8`.
-- Text: primary `#f8fafc`, secondary `#cbd5e1`, tertiary `#94a3b8`, muted `#64748b`, faint `#475569`, faintest `#334155`.
-- Semantic: success `#34d399`, caution `#c2a63d` / `#fbbf24`, danger `#f87171` (soft `#fca5a5`), info `#60a5fa` (soft `#93c5fd`).
-- Pillar colors: Governance `#3B82F6`, Security `#8B5CF6`, Compliance `#F3F4F6`, Licensing `#14B8A6`, Adoption `#F97316`, Health `#22C55E`.
+**Type** — Inter 400–800, tight tracking on headings, tabular numerals on every number. Menlo monospace only for codes, reference IDs, and JSON.
 
-**Type** — Inter throughout, weights 400–800, tight tracking on headings, tabular numerals on every number. Scale runs from 30/800 (score display) down to 9.5/700 (pill labels); see `screens/Shell.dc.html` region comments for the full ramp. Menlo monospace only for codes/JSON.
+**Spacing** — 4px base. Card padding 13–20px; row padding 6–9px vertical; section gaps 8–16px.
 
-**Spacing** — 4px base unit. Card padding 13–20px; row padding 6–9px vertical; section gaps 8–16px.
+**Radii** — 6px controls, 8–9px menu rows, 12–14px cards and popovers, 999px pills and dots.
 
-**Radii** — 6px controls/nav rows, 8–9px menu rows, 12–14px cards/popovers, 999px pills/dots/bars.
+**Elevation** — borders separate, not shadows. Only popovers and slide-in panels carry a shadow.
 
-**Elevation** — borders do the separation work, not shadows. Popovers and slide-in panels carry one soft dark shadow; nothing else does.
+**Motion** — color transitions 150–300ms; progress fills 400ms ease; panel slide-ins ~260ms `cubic-bezier(.4,0,.2,1)`. No bounce, no parallax.
 
-**Motion** — color/background transitions 150–300ms; progress-bar fills 400ms ease; panel slide-ins ~260ms `cubic-bezier(.4,0,.2,1)`; ambient severity washes ~1800ms. No bounce, no parallax.
+## Patterns to preserve
 
-## Shared UI patterns
-
-- **Right-slide detail panel** — one shared panel design used across the shell for every contextual detail (scan logs, export requests, etc). Desktop: fixed-width panel sliding from the right edge. Below ~760px viewport width it becomes a bottom sheet.
-- **Real-response-state switcher** — several screens (all six Auth screens, and others) expose a control that switches between every real state the underlying endpoint can return. This is documentation-in-the-design, not a feature to ship — but every state it shows must be a state your implementation actually handles.
-- **Honest-empty states** — a recurring, deliberate pattern: when data genuinely can't be read or doesn't exist yet, screens say so explicitly rather than showing a fabricated zero, blank chart, or generic error. Contract packs call this out per-field; preserve it.
-- **Settings as a shared container** — Settings is shell-owned, not a module page. Each module contributes its own nav group + item to one settings shell (see `Configuration State.dc.html` and `Shell.dc.html`).
-
-## Interactions & behavior (shell-level, applies everywhere)
-
-- One popover/panel open at a time; a click-catching overlay closes it.
-- Selecting a pillar tab or sidebar item switches the content slot and closes any open popover.
-- Every popover trigger, nav row, and panel control is a real focusable element with a visible `#0078D4` focus ring.
-- Below 760px viewport width, side panels become bottom sheets and the pillar tab strip scrolls horizontally instead of wrapping.
+- **Honest-empty states** — when data genuinely cannot be read or does not exist yet, say so explicitly. Never a fabricated zero, blank chart, or generic error. This is the single most load-bearing convention in these screens.
+- **Real-zero vs. cannot-read vs. not-entitled** are three different states with three different treatments. The packs distinguish them per field.
+- **Known-limits ledger** — most screens end with a short table of what the screen deliberately does not do, each row citing its pack section. Keep it; it is how the product states its own boundaries to the customer.
+- **Signed actions are write-once** — signatures carry no expiry and no renewal, and a repeat attempt answers 409.
 
 ## Assets
 
-No external image assets — the design uses Lucide icons (stroke style, 2px weight) throughout, and a text-based "SM" brand mark (gradient tile, Electric Blue → Bright Teal). No custom illustration or photography.
-
-## Files in this package
-
-- `screens/*.dc.html` — the 24 design references (see inventory above).
-- `screens/support.js` — runtime dependency for the reference files inside the design tool. Not something to port.
-- `screenshots/*.png` — one representative screenshot per screen, numbered to match the inventory table.
-- `docs/*-contract-pack.md` — backend-grounded extraction packs, one per module (see note above).
+No image assets. Lucide icons (stroke, 2px) throughout; the "SM" brand mark is a text tile with an Electric Blue → Bright Teal gradient.
 
 ## Out of scope
 
-- The MSP-side console (internal ops tool) — a separate, unbuilt surface referenced in some contract packs.
-- Any module named in `docs/` without a matching screen here has no design yet.
-- Marketing website — a separate, dark-themed public site, not part of this authenticated-portal package.
+- The MSP-side console (`msp-*` routes, incl. the new `msp-policy-decisions.ts` and `msp-standing-policies.ts`) — internal ops surface, no design here.
+- The 18 other screens of the portal — see `design_handoff_full_site/`.
+- The public marketing site.

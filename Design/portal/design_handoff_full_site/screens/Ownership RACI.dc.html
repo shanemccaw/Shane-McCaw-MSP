@@ -93,6 +93,31 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
       </div>
     </sc-if>
 
+    <sc-if value="{{tierGated}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(194,166,61,.3);border-radius:14px;background:rgba(194,166,61,.05);padding:22px 24px 24px;display:flex;flex-direction:column;gap:12px;max-width:760px">
+        <span style="font-size:15px;font-weight:700;color:#f8fafc;text-wrap:pretty">Ownership is not part of your Monitoring tier</span>
+        <span style="font-size:12.5px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">The matrix is included from the Premier tier. Your plan does not bundle it, so the register cannot be read back on this page. Nothing has been removed: any owners already recorded for your organisation are kept exactly as written, and your MSP can still act on them. Only reading is gated.</span>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+          <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.07em;color:#c2a63d">WHAT IS GATED</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.5">Reading the matrix and any cell's history.</span>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.07em;color:#34d399">WHAT IS NOT</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.5">Recorded owners, declines and handovers. They stay on file and stay enforceable.</span>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.07em;color:#94a3b8">UNRELATED</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.5">Change Control's add-on is a separate purchase and is not affected either way.</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <a href="Billing.dc.html" style="font-size:11.5px;font-weight:700;color:#93c5fd;border:1px solid rgba(0,120,212,.5);background:rgba(0,120,212,.12);border-radius:7px;padding:7px 12px;text-decoration:none">See your plan</a>
+          <span style="font-size:10.5px;color:#64748b">Tier changes are made with your MSP, not from this page.</span>
+        </div>
+      </div>
+    </sc-if>
+
     <sc-if value="{{isLive}}" hint-placeholder-val="{{ true }}">
       <div style="display:flex;flex-direction:column;gap:15px">
 
@@ -356,7 +381,7 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
 </div>
 
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:940},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;no-m365-tenant&quot;,&quot;loading&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;gateMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;loose&quot;,&quot;strict&quot;],&quot;default&quot;:&quot;loose&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:940},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;no-m365-tenant&quot;,&quot;tier-not-included&quot;,&quot;loading&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;gateMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;loose&quot;,&quot;strict&quot;],&quot;default&quot;:&quot;loose&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;}}">
 const GRN = "#34d399", GOLD = "#c2a63d", RED = "#f87171", BLU = "#60a5fa", TEAL = "#00B4D8", SLT = "#64748b", GREY = "#8494ab";
 
 class Component extends DCLogic {
@@ -374,6 +399,8 @@ class Component extends DCLogic {
     const ds = this.props.dataState ?? "live";
     const isLoading = ds === "loading";
     const noTenant = ds === "no-m365-tenant";
+    // #1168: requireTierFeature("ownership") on both READ routes — Premier only. Writes are untouched.
+    const tierGated = ds === "tier-not-included";
     const isLive = ds === "live" || noTenant;
     const strict = this.props.gateMode === "strict";
     const TENANT = "Contoso Ltd";
@@ -676,13 +703,13 @@ class Component extends DCLogic {
 
     return {
       rootH: this.props.embedded ? "100%" : "100vh",
-      isLoading, noTenant, isLive,
+      isLoading, noTenant, isLive, tierGated,
       skeletons: [{ w1: "38%", w2: "64%" }, { w1: "52%", w2: "44%" }, { w1: "30%", w2: "70%" }, { w1: "46%", w2: "58%" }],
-      stateLine: isLoading ? "LOADING" : noTenant ? "PARTLY SERVED" : TENANT.toUpperCase(),
-      stateInk: isLoading ? SLT : noTenant ? GOLD : GRN,
-      stateDot: isLoading ? SLT : noTenant ? GOLD : GRN,
-      stateBd: noTenant ? "rgba(194,166,61,.4)" : "rgba(52,211,153,.36)",
-      stateBg: noTenant ? "rgba(194,166,61,.07)" : "rgba(52,211,153,.07)",
+      stateLine: isLoading ? "LOADING" : tierGated ? "NOT IN YOUR TIER" : noTenant ? "PARTLY SERVED" : TENANT.toUpperCase(),
+      stateInk: isLoading ? SLT : (noTenant || tierGated) ? GOLD : GRN,
+      stateDot: isLoading ? SLT : (noTenant || tierGated) ? GOLD : GRN,
+      stateBd: (noTenant || tierGated) ? "rgba(194,166,61,.4)" : "rgba(52,211,153,.36)",
+      stateBg: (noTenant || tierGated) ? "rgba(194,166,61,.07)" : "rgba(52,211,153,.07)",
       gateLine: strict ? "A cell counts once accepted" : "A cell counts as soon as it is placed",
 
       heads: ["r", "a", "c", "i"].map(rk => ({
@@ -791,6 +818,8 @@ class Component extends DCLogic {
         { head: strict ? "You have asked for acceptance first" : "Acceptance is asked for, not required", body: strict ? "A named holder does not count as the owner until they accept. The same rule applies to your MSP's staff." : "Switching this to strict makes an unaccepted cell read as unowned. The setting is yours and applies to both sides." },
         { head: "Untracking is not suppression", body: "It removes the owner and nothing else. Scans and alerts keep running, and the missing owner becomes a finding while the service stays enabled." },
         { head: "A decline reaches whoever assigned it", body: "It does not travel further up a management line, because nothing here records who reports to whom." },
+        { head: "A handover is your statement, kept and enforced", body: "Naming a stand-in for a period is recorded and honoured until it ends, then kept as history. It is not out-of-office tracking, and it does not replace having more than one Accountable holder — the two work together." },
+        { head: "Seeing the matrix depends on your tier", body: "Ownership is bundled from Premier. On a lower tier the page cannot read the register back, but nothing recorded is removed or stops applying." },
       ],
     };
   }

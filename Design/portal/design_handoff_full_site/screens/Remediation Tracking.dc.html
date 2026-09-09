@@ -113,6 +113,16 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
                       <div onClick="{{c.primaryClick}}" style="display:flex;align-items:center;gap:7px;border:1px solid {{c.primaryBorder}};border-radius:6px;background:{{c.primaryBg}};padding:6px 11px;cursor:pointer" style-hover="border-color:rgba(0,120,212,.55)">
                         <span style="font-size:11.5px;font-weight:600;color:{{c.primaryInk}}">{{c.primaryLabel}}</span>
                       </div>
+                      <sc-if value="{{c.canDecline}}" hint-placeholder-val="{{ false }}">
+                        <div onClick="{{c.declineClick}}" style="display:flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.12);border-radius:6px;background:rgba(255,255,255,.02);padding:6px 11px;cursor:pointer" style-hover="border-color:rgba(167,139,250,.55)">
+                          <span style="font-size:11.5px;font-weight:600;color:#cbd5e1">Decline and accept the risk</span>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{c.isDeclined}}" hint-placeholder-val="{{ false }}">
+                        <div onClick="{{c.declineClick}}" style="display:flex;align-items:center;gap:7px;border:1px solid rgba(167,139,250,.42);border-radius:6px;background:rgba(167,139,250,.07);padding:6px 11px;cursor:pointer">
+                          <span style="font-size:11.5px;font-weight:600;color:#a78bfa">Signed acceptance</span>
+                        </div>
+                      </sc-if>
                       <div onClick="{{c.raiseClick}}" style="display:flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.12);border-radius:6px;background:rgba(255,255,255,.02);padding:6px 11px;cursor:pointer" style-hover="border-color:rgba(0,120,212,.5)">
                         <span style="font-size:11.5px;font-weight:600;color:#cbd5e1">Raise a change request</span>
                       </div>
@@ -120,7 +130,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
                   </div>
                 </div>
               </sc-for>
-              <span style="font-size:10.5px;color:#475569;line-height:1.6;text-wrap:pretty">Every row is a real adverse finding — critical or warning — from your latest scan, keyed by check. Titles and descriptions come from the finding itself, so they are yours, not a fixed catalogue. Marking one here writes the same claim the 28-step programme reads.</span>
+              <span style="font-size:10.5px;color:#475569;line-height:1.6;text-wrap:pretty">Every row is a real adverse finding — critical or warning — from your latest scan, keyed by check. Titles and descriptions come from the finding itself, so they are yours, not a fixed catalogue. Marking one here writes the same claim the 28-step programme reads. Accepting one as a risk takes a signature, here exactly as in the programme: a plain status change to accepted-as-risk is refused.</span>
             </div>
           </sc-if>
 
@@ -506,7 +516,9 @@ class Component extends DCLogic {
     CL.forEach((c) => { routeCounts[c[5]] += 1; });
 
     const clItems = CL.map((c) => {
-      const [key, sev, title, desc, ceiling, route, pack, kb, status, verification, reveal] = c;
+      const [key, sev, title, desc, ceiling, route, pack, kb, rawStatus, verification, reveal] = c;
+      const declined = !!this.state.declined[key];
+      const status = declined ? "accepted_risk" : rawStatus;
       const R = ROUTE[route], SV = SEV[sev], ST = STATUS[status], V = VSTATE[verification];
       const capped = ceiling !== route;
       const revealSheet = () => this.openSheet({ kind: "reveal", key, title, reveal, kb });
@@ -527,6 +539,13 @@ class Component extends DCLogic {
         primaryBorder: route === "admin_center_only" ? "rgba(255,255,255,.12)" : "transparent",
         primaryClick,
         raiseClick: () => this.openSheet({ kind: "raise", key, title, sev }),
+        // #2869: the checklist's own signed exit to accepted_risk. Offered only while the
+        // item is still outstanding; a repeat decline is refused server-side (409).
+        canDecline: !declined && verification !== "verified",
+        isDeclined: declined,
+        declineClick: declined
+          ? () => this.openSheet({ kind: "accepted", id: key, title, source: "checklist" })
+          : () => this.openSheet({ kind: "decline", id: key, title, source: "checklist" }),
       };
     });
 
@@ -855,20 +874,25 @@ class Component extends DCLogic {
           { k: "What will never happen", v: "A scan confirming it. It will not appear in the evidence pack, because the pack carries only what a re-scan verified." },
         ];
       } else if (sh.kind === "decline") {
+        const fromChecklist = sh.source === "checklist";
         shTitle = "Accept the risk on " + sh.id;
         shSub = sh.title;
         if (S.sheet.done) {
           shBanner = ["SIGNED", "#a78bfa", "rgba(167,139,250,.42)", "rgba(167,139,250,.08)",
-            "Recorded as RBD-2026-0117 on your risk register, signed in your name. The step now reads as accepted rather than outstanding."];
+            "Recorded as RBD-2026-0117 on your risk register, signed in your name. " + (fromChecklist ? "The finding now reads as accepted rather than outstanding." : "The step now reads as accepted rather than outstanding.")];
           shRows = [
             { k: "Where it lives now", v: "Your risk register, as its own line with a review date. It is not a note on this page." },
             { k: "Review", v: "It comes back for review on a real clock. Accepting is not the same as closing." },
             { k: "Permanence", v: "The signature has no expiry and cannot be deleted. A later decision supersedes it; nothing erases it." },
           ];
+          if (fromChecklist) shRows.push({ k: "Declining again", v: "Refused. One signed acceptance exists per finding; a second request is answered with the first." });
           shNote = "No monetary exposure and no technical detail are attached to this record — neither is known, so neither is invented.";
         } else {
           shForm = true;
-          shRows = [
+          shRows = fromChecklist ? [
+            { k: "What this does", v: "Closes this finding without fixing it, by putting a signed acceptance on your risk register in its place. It is the same signed route the 28-step programme uses." },
+            { k: "What it counts as", v: "A terminal decision. The finding stops being outstanding. It stays on your scan results until a re-scan clears it — acceptance is a decision about the risk, not about the reading." },
+          ] : [
             { k: "What this does", v: "Closes the step without fixing it, by putting a signed acceptance on your risk register in its place." },
             { k: "What it counts as", v: "A terminal decision. The step stops being outstanding, and its phase can price down." },
           ];
@@ -887,7 +911,7 @@ class Component extends DCLogic {
         shTitle = "Signed acceptance on " + sh.id;
         shSub = sh.title;
         shBanner = ["RBD-2026-0117", "#a78bfa", "rgba(167,139,250,.42)", "rgba(167,139,250,.08)",
-          "Signed and active on your risk register. This step reads as accepted, not fixed."];
+          sh.source === "checklist" ? "Signed and active on your risk register. This finding reads as accepted, not fixed. Declining it again is refused." : "Signed and active on your risk register. This step reads as accepted, not fixed."];
         shRows = [
           { k: "Signed by", v: "Elaine Whitcombe, Operations Director · 2 Sep 2026" },
           { k: "Their reasoning", v: "\u201CThe four accounts are named individuals in the legal team and their access is reviewed at each matter close. We are accepting this until the eDiscovery role model is redesigned in Q4.\u201D" },
@@ -1018,12 +1042,12 @@ class Component extends DCLogic {
       bpItems: bpShown, bpHasItems: bpShown.length > 0, bpEmpty: bpShown.length === 0,
 
       ledger: [
-        { t: "It never sets a step to accepted-as-risk from a plain status change. That value only exists behind a signed acceptance with a name and a reason." },
+        { t: "It never sets a step or a finding to accepted-as-risk from a plain status change. Both the programme and your findings list refuse that value outright; the only way in is a signed acceptance with a name and a reason." },
         { t: "It never releases a tenant-changing script without an approved change request, and a pending request counts as no request." },
         { t: "It never names a person as the subject of a risk. Unapproved changes are recorded against a change, not against an individual." },
         { t: "It never treats a tick as evidence. The evidence pack carries only what a re-scan confirmed, and signed acceptances are excluded from it." },
         { t: "It never invents a pillar score, a checklist item or a correlation. An empty result is shown as an empty result." },
-        { t: "Two rough edges we know about: an item marked from your own findings list can currently be set to accepted-as-risk without a signature behind it, and an accepted step prints its raw status value in the CSV and PDF exports. Both are filed." },
+        { t: "One cosmetic rough edge we know about: an accepted step prints its raw status value in the CSV and PDF exports, because no display label exists for it yet. Noted, below the filing threshold." },
       ],
 
       lpOpen: !!lp,

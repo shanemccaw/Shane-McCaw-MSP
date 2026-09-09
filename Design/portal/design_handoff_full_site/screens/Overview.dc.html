@@ -620,10 +620,9 @@ class Component extends DCLogic {
         alt: "Remediation", altHref: "Remediation Tracking.dc.html",
       });
     }
-    if (!noScope) {
-      // Ownership acceptances. No field on the dashboard payload carries these yet —
-      // they need a seventh overviewCounts entry plus a pending-acceptance read.
-      NEEDS.push({
+    // Ownership acceptances: overviewCounts.raciPendingAcceptance (#3049) — this login's own
+    // pending r/a cells, scoped by customerId alone, so it reads even when tenantScope is null.
+    NEEDS.push({
         tag: "ACCEPT OR DECLINE", accent: VIO, meta: "accountable · SharePoint",
         title: "You have been named accountable for SharePoint and OneDrive", ink: "#f8fafc",
         action: "Accept or decline", href: "Ownership RACI.dc.html",
@@ -635,6 +634,7 @@ class Component extends DCLogic {
         action: "Accept or decline", href: "Ownership RACI.dc.html",
         alt: "Who owns what", altHref: "Ownership RACI.dc.html",
       });
+    if (!noScope) {
       NEEDS.push({
         tag: "SIGNATURE", accent: AMB, meta: "2 risk decisions",
         title: "Risk acceptances waiting for your signature", ink: "#f8fafc",
@@ -678,14 +678,16 @@ class Component extends DCLogic {
     const feed = this.state.page > 1 ? EVENTS.concat(OLDER) : EVENTS;
     const eventRows = feed.map(([day, time, dot, title, desc]) => ({ day, time, dot, title, desc }));
 
+    // [value, label, href, ink, zeroedWhenTenantScopeNull] — the seven overviewCounts fields.
+    // raciPendingAcceptance (#3049) is the one count scoped by customerId, not (mspId, tenantId).
     const COUNTS = [
-      [2, "RACI roles awaiting you", "Ownership RACI.dc.html", VIO],
-      [2, "Risk decisions waiting", "Risk Register.dc.html", AMB],
-      [7, "Risk acceptances active", "Risk Register.dc.html", "#e2e8f0"],
-      [4, "MS changes this week", "Microsoft Changes.dc.html", BLU],
-      [entitled ? 1 : 0, "Change windows this week", "Change Control.dc.html", BLU],
-      [9, "Remediation outstanding", "Remediation Tracking.dc.html", RED],
-      [3, "Policies due for review", "Policy Decisions.dc.html", AMB],
+      [2, "RACI roles awaiting you", "Ownership RACI.dc.html", VIO, false],
+      [2, "Risk decisions waiting", "Risk Register.dc.html", AMB, true],
+      [7, "Risk acceptances active", "Risk Register.dc.html", "#e2e8f0", true],
+      [4, "MS changes this week", "Microsoft Changes.dc.html", BLU, true],
+      [entitled ? 1 : 0, "Change windows this week", "Change Control.dc.html", BLU, true],
+      [9, "Remediation outstanding", "Remediation Tracking.dc.html", RED, true],
+      [3, "Policies due for review", "Policy Decisions.dc.html", AMB, true],
     ];
 
     return {
@@ -697,7 +699,7 @@ class Component extends DCLogic {
         ["live_unpaid", "Unpaid", "Finding text withheld server-side, scores not"],
         ["never_scanned", "No scan", "Zero engine snapshots and no diagnostic run"],
         ["onboarding", "Onboarding", "tenants.status = onboarding"],
-        ["no_tenant_scope", "No scope", "#2922 — resolveTenantScope null, all six counts a true 0"],
+        ["no_tenant_scope", "No scope", "#2922 — resolveTenantScope null, six counts a true 0; RACI (#3049) still reads by customerId"],
         ["error", "500", "Either endpoint failed"],
       ].map(([k, label, hint]) => ({
         label, hint,
@@ -781,12 +783,12 @@ class Component extends DCLogic {
         { title: "Guest access remediation", steps: "—/14", stepInk: "#64748b", pct: "0%", barInk: "#475569", step: "No task in progress" },
       ],
 
-      countRows: COUNTS.map(([value, label, href, ink]) => ({
-        value: noScope ? "0" : String(value),
-        label, href, ink: noScope || value === 0 ? "#475569" : ink,
-      })),
+      countRows: COUNTS.map(([value, label, href, ink, scoped]) => {
+        const v = noScope && scoped ? 0 : value;
+        return { value: String(v), label, href, ink: v === 0 ? "#475569" : ink };
+      }),
       countsNote: noScope || !entitled,
-      countsNoteLine: noScope ? "Tenant identifier unresolvable — every count is a real 0." : "Change windows: no change_control entitlement.",
+      countsNoteLine: noScope ? "Tenant identifier unresolvable — six counts are a real 0. RACI roles are scoped to your account, not the tenant, so that one still reads." : "Change windows: no change_control entitlement.",
 
       hasReports: true,
       noReports: false,

@@ -63,10 +63,22 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
       </div>
     </sc-if>
 
+    <sc-if value="{{tierGated}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(194,166,61,.3);border-radius:14px;background:rgba(194,166,61,.05);padding:22px 24px 24px;display:flex;flex-direction:column;gap:12px;max-width:760px">
+        <span style="font-size:15px;font-weight:700;color:#f8fafc;text-wrap:pretty">Policy decisions are not part of your Monitoring tier</span>
+        <span style="font-size:12.5px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">Reading your register back is bundled from a higher tier than the one you hold. Nothing has been removed: any position already signed for your organisation is kept, its review clock keeps running, and a new position can still be recorded and signed below. Only reading is gated.</span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <a href="Billing.dc.html" style="font-size:11.5px;font-weight:700;color:#93c5fd;border:1px solid rgba(0,120,212,.5);background:rgba(0,120,212,.12);border-radius:7px;padding:7px 12px;text-decoration:none">See your plan</a>
+          <div onClick="{{toggleForm}}" style="border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:7px 12px;cursor:pointer"><span style="font-size:11.5px;font-weight:600;color:#cbd5e1">{{formCta}}</span></div>
+          <span style="font-size:10.5px;color:#64748b">Tier changes are made with your MSP, not from this page.</span>
+        </div>
+      </div>
+    </sc-if>
+
     <sc-if value="{{isEmpty}}" hint-placeholder-val="{{ false }}">
       <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:30px 26px;display:flex;flex-direction:column;gap:9px;align-items:flex-start">
         <span style="font-size:17px;font-weight:700;color:#f8fafc">Nothing has been decided yet</span>
-        <span style="font-size:12.5px;color:#94a3b8;line-height:1.65;max-width:660px">Your register read cleanly and holds no signed positions. Until one is recorded, every rule below applies to you as written.</span>
+        <span style="font-size:12.5px;color:#94a3b8;line-height:1.65;max-width:660px">{{emptyBody}}</span>
         <div onClick="{{toggleForm}}" style="margin-top:6px;border:1px solid rgba(0,120,212,.5);border-radius:7px;background:rgba(0,120,212,.12);padding:8px 14px;cursor:pointer">
           <span style="font-size:11.5px;font-weight:700;color:#93c5fd">Record your first decision</span>
         </div>
@@ -278,7 +290,7 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
 </div>
 
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:1000},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;live-empty&quot;,&quot;loading&quot;,&quot;read-failed&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:1000},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;live-empty&quot;,&quot;no-tenant&quot;,&quot;tier-not-included&quot;,&quot;loading&quot;,&quot;read-failed&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;}}">
 const GRN = "#34d399", GOLD = "#c2a63d", BLU = "#60a5fa", TEAL = "#00B4D8", RED = "#f87171", SLT = "#64748b";
 
 class Component extends DCLogic {
@@ -289,7 +301,10 @@ class Component extends DCLogic {
     const ds = this.props.dataState ?? "live";
     const isLoading = ds === "loading";
     const isFail = ds === "read-failed";
-    const isEmpty = ds === "live-empty";
+    const noTenant = ds === "no-tenant";
+    // #1168: requireTierFeature(policyDecisions) gates both READ routes; POST create is ungated.
+    const tierGated = ds === "tier-not-included";
+    const isEmpty = ds === "live-empty" || noTenant;
     const isLive = ds === "live";
 
     const REVIEW = {
@@ -324,7 +339,7 @@ class Component extends DCLogic {
         id: "38", title: "Two service accounts are exempt from multi-factor authentication",
         requirement: "Multi-factor authentication is required on all interactive accounts, without exception.",
         position: "Two unattended service accounts sign in without MFA. Every other account is covered.",
-        obligation: "Cyber insurance schedule §3", obligationId: "12", obligationType: "insurance",
+        obligation: "Cyber insurance schedule §3", obligationId: null, obligationType: null,
         pillar: "Security", owner: "Jordan Reid", signedBy: "Jordan Reid", signedAt: "2026-05-02T09:10:00Z",
         statement: "Both accounts run integrations that cannot complete an interactive challenge. Replacing them with managed identities is scheduled, not done.",
         control: "Sign-in is restricted to named IP ranges, passwords rotate every 30 days, and any interactive sign-in on either account raises an alert.",
@@ -394,7 +409,7 @@ class Component extends DCLogic {
           { k: "STATE", v: cleared ? "Confirmed" : "Not yet", ink: cleared ? GRN : "#94a3b8", hasNote: true,
             note: "A decision waiting on a condition has no review date. A date here would be a deadline nobody set." },
           { k: "AUTHORITY", v: d.obligation, ink: "#cbd5e1", hasNote: !d.obligationId,
-            note: "Cited as text — this one is not in the catalogue, so it is kept as written." },
+            note: "Cited as text — your own authorities cannot be entered into the catalogue yet, so this one is kept exactly as written." },
           { k: "OWNER", v: d.owner + " · " + d.pillar, ink: "#cbd5e1", hasNote: false, note: "" },
         ]
         : [
@@ -402,7 +417,7 @@ class Component extends DCLogic {
           { k: "NEXT REVIEW", v: fmtDay(d.dueAt), ink: d.reviewState === "overdue" ? GOLD : "#cbd5e1", hasNote: true,
             note: d.reviewState === "overdue" ? "That date has passed. The position still stands — only its review has lapsed." : "On track." },
           { k: "AUTHORITY", v: d.obligation, ink: "#cbd5e1", hasNote: !d.obligationId,
-            note: "Cited as text — this one is not in the catalogue, so it is kept as written." },
+            note: "Cited as text — your own authorities cannot be entered into the catalogue yet, so this one is kept exactly as written." },
           { k: "OWNER", v: d.owner + " · " + d.pillar, ink: "#cbd5e1", hasNote: false, note: "" },
         ];
 
@@ -433,7 +448,7 @@ class Component extends DCLogic {
         detail,
         actions: [
           act("Confirm the condition is met", canResolve, "",
-            canResolve ? "Records how the condition was confirmed and clears the decision."
+            canResolve ? "Records how the condition was confirmed and clears the decision. Anyone on your side can record it — this is an observed fact, not a policy position — and it can be recorded once."
               : dependency ? (cleared ? "Already confirmed." : "This one clears on its own when the licences arrive.")
                 : "This decision runs on a review cadence, not a condition.",
             () => this.setState(s => ({ resolved: Object.assign({}, s.resolved, { [d.id]: 1 }) }))),
@@ -457,37 +472,44 @@ class Component extends DCLogic {
       pick: () => this.setState({ open: d.id }),
     })));
 
+    // The real catalogue: 8 obligations across 6 frameworks, all platform-seeded. Your own
+    // authorities (insurance schedule, records schedule) are cited as text on a decision only —
+    // no route exists yet, for you or your MSP, to enter one here.
     const OBL = [
-      ["Cyber insurance schedule §3", "Multi-factor authentication on all interactive accounts.", "insurance", "One position taken", "required", "Your own policy schedule"],
-      ["Internal records schedule §4.2", "External and guest access reviewed on a defined cadence.", "internal_schedule", "One position taken", "required", "Written by you"],
       ["GDPR Art. 5(1)(e) · Art. 32", "Personal data kept no longer than necessary, held securely.", "regulation", "One position taken", "required", "You process EU personal data"],
       ["GDPR Art. 15 · subject access", "A subject access request answered within one month.", "regulation", "Followed as written", "required", "You process EU personal data"],
       ["GDPR Art. 30 · records of processing", "A maintained record of processing activities.", "regulation", "Followed as written", "required", "You process EU personal data"],
       ["SOX §802 · 17 CFR 210.2-06", "Audit and review records retained seven years.", "regulation", "One position taken", "practice", "Scope never confirmed"],
       ["SEC 17a-4(f) · FINRA 4511", "Records kept in a non-rewriteable, non-erasable format.", "regulation", "Followed as written", "practice", "Scope never confirmed"],
       ["HIPAA §164.316(b)(2)(i)", "Documentation retained six years from creation or last effect.", "regulation", "Followed as written", "practice", "Scope never confirmed"],
-      ["PCI DSS v4.0", "Cardholder data protected in storage and in transit.", "regulation", "Followed as written", "practice", "Scope never confirmed"],
+      ["PCI DSS v4.0", "Cardholder data protected in storage and in transit.", "certification", "Followed as written", "practice", "Scope never confirmed"],
+      ["ISO 27001 A.5.18", "Access rights provisioned, reviewed and removed on a defined basis.", "certification", "Followed as written", "practice", "Scope never confirmed"],
     ];
+    const OWN_AUTHORITIES = ["Cyber insurance schedule §3", "Internal records schedule §4.2"];
 
     return {
       rootH: this.props.embedded ? "100%" : "100vh",
-      isLoading, isFail, isEmpty,
+      isLoading, isFail, isEmpty, tierGated,
       hasRows: isLive,
-      showObligations: !isLoading && !isFail,
+      emptyBody: noTenant
+        ? "Your account has no resolvable Microsoft 365 tenant, so there is nothing to read positions against. That is a true empty answer, not a permission failure — and a position can still be recorded."
+        : "Your register read cleanly and holds no signed positions. Until one is recorded, every rule below applies to you as written.",
+      showObligations: !isLoading && !isFail && !tierGated,
       showHow: !isLoading && !isFail,
       skeletons: [{ w1: "44%", w2: "66%" }, { w1: "36%", w2: "58%" }, { w1: "52%", w2: "48%" }],
 
       headline: isFail ? "Your positions are unavailable"
+        : tierGated ? "Your positions"
         : isEmpty ? "No positions on record"
           : "Four places where you have chosen to do something different",
-      subhead: isFail ? ""
+      subhead: isFail || tierGated ? ""
         : isEmpty ? ""
           : "Each one departs from a rule you are bound by or a security baseline you follow, taken deliberately and signed by the person who answers for it. Nothing here is an oversight.",
-      stateLine: isLoading ? "LOADING" : isFail ? "UNAVAILABLE" : isEmpty ? "NONE ON RECORD" : DEC.length + " SIGNED",
-      stateInk: isLoading ? SLT : isFail ? RED : isEmpty ? BLU : GRN,
-      stateDot: isLoading ? SLT : isFail ? RED : isEmpty ? BLU : GRN,
-      stateBd: isFail ? "rgba(248,113,113,.4)" : isEmpty ? "rgba(96,165,250,.4)" : "rgba(52,211,153,.36)",
-      stateBg: isFail ? "rgba(248,113,113,.07)" : isEmpty ? "rgba(96,165,250,.07)" : "rgba(52,211,153,.07)",
+      stateLine: isLoading ? "LOADING" : isFail ? "UNAVAILABLE" : tierGated ? "NOT IN YOUR TIER" : isEmpty ? "NONE ON RECORD" : DEC.length + " SIGNED",
+      stateInk: isLoading ? SLT : isFail ? RED : tierGated ? GOLD : isEmpty ? BLU : GRN,
+      stateDot: isLoading ? SLT : isFail ? RED : tierGated ? GOLD : isEmpty ? BLU : GRN,
+      stateBd: isFail ? "rgba(248,113,113,.4)" : tierGated ? "rgba(194,166,61,.4)" : isEmpty ? "rgba(96,165,250,.4)" : "rgba(52,211,153,.36)",
+      stateBg: isFail ? "rgba(248,113,113,.07)" : tierGated ? "rgba(194,166,61,.07)" : isEmpty ? "rgba(96,165,250,.07)" : "rgba(52,211,153,.07)",
 
       attnShow: attnItems.length > 0,
       attnItems,
@@ -505,7 +527,7 @@ class Component extends DCLogic {
       toggleForm: () => this.setState(s => ({ form: !s.form })),
       fields: [
         { label: "What you have decided", req: "required", ph: "Teams chat is kept for one year", hint: "the position, in a sentence", h: "auto", reqInk: GOLD },
-        { label: "The rule it departs from", req: "required", ph: "GDPR Art. 5(1)(e) · Art. 32", hint: "pick from the catalogue, or write it in", h: "auto", reqInk: GOLD },
+        { label: "The rule it departs from", req: "required", ph: "GDPR Art. 5(1)(e) · Art. 32", hint: "pick from the catalogue, or write it in — a catalogue pick that fails to match is kept as the text you wrote", h: "auto", reqInk: GOLD },
         { label: "Who answers for it", req: "required", ph: "Anna Novak", hint: "a named person, not a team", h: "auto", reqInk: GOLD },
         { label: "Area", req: "optional", ph: "Compliance", hint: "", h: "auto", reqInk: SLT },
         { label: "Revisit on a cadence", req: "one of two", ph: "Monthly · Quarterly · Semi-annual · Annual · Biennial", hint: "counted from the day you sign", h: "auto", reqInk: TEAL },
@@ -515,8 +537,8 @@ class Component extends DCLogic {
       ],
 
       obligationMeta: OBL.filter(o => o[4] === "required").length + " apply to you · "
-        + OBL.filter(o => o[4] === "practice").length + " followed as good practice",
-      obligationNote: "Whether a regime binds you is its own decision, and none has been recorded for your tenant. The four below sit here as security baselines your MSP measures you against — not as rules you are subject to.",
+        + OBL.filter(o => o[4] === "practice").length + " followed as good practice · " + OWN_AUTHORITIES.length + " of your own authorities cited as text",
+      obligationNote: "Whether a regime binds you is its own decision, and none has been recorded for your tenant. The five below sit here as security baselines your MSP measures you against — not as rules you are subject to. Two of your positions cite authorities of your own, " + OWN_AUTHORITIES.join(" and ") + ": they are kept exactly as written on the decision, because your own schedules cannot be entered into this catalogue yet, by you or by your MSP.",
       obligationGroups: [
         { label: "APPLIES TO YOU", accent: GOLD, key: "required" },
         { label: "FOLLOWED AS GOOD PRACTICE", accent: "#7dd3fc", key: "practice" },
@@ -543,8 +565,10 @@ class Component extends DCLogic {
         { head: "A position is signed the moment it is recorded", body: "There is no draft and no separate approval step. The name, the reasoning and the confirmation are captured together, and the time is set on the server." },
         { head: "Every position names who answers for it", body: "One person, not a team. That name travels with the decision and appears on your security plan when it is sealed." },
         { head: "Each one is revisited, or waits on something", body: "A fixed cadence, or a single condition that clears it. Never both. A licence arriving can be watched for you; anything else needs someone to confirm it." },
-        { head: "A lapsed review does not undo the decision", body: "Overdue describes the review, not the position. The signature stays true; it just has not been looked at when it was meant to be." },
+        { head: "A lapsed review does not undo the decision", body: "Overdue describes the review, not the position. The signature stays true; it just has not been looked at when it was meant to be. An overdue review, and a watched licence arriving, each raise an alert to you." },
         { head: "Restating a position means signing a new one", body: "Positions cannot be edited or withdrawn, because the record is the signature. To change one, record the position you hold now." },
+        { head: "A position taken on an accepted risk lives on the risk register", body: "When you accept a risk and record a policy position against it, that decision stays with the risk it answers. This page holds positions you start from — the two are not merged, so nothing appears twice." },
+        { head: "Seeing this register depends on your tier", body: "Reading positions back is bundled from a higher Monitoring tier. Recording one never is: a signed position is kept whatever your tier, and its review clock runs regardless." },
         { head: "Standing policies are separate and not shown here", body: "Target settings your MSP holds for you — mailbox sizes, VIP handling — are operated on their console. They carry no authority and no signature, so they are not positions." },
       ],
     };
