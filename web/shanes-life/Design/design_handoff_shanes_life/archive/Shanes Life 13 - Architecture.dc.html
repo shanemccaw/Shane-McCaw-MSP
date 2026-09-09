@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<!-- SUPERSEDED (Sep 8, 2026): exploration history, not the design. Every screen here was redesigned in ../Shanes Life - First Slice Prototype.dc.html, the only file to build from. See ../README.md, "Source of truth". -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="../_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#1e293b!important;font-family:'Inter',system-ui,sans-serif;color:#EEF2F8;-webkit-font-smoothing:antialiased}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(255,255,255,.08);scroll-margin-top:16px;background:#1e293b;min-width:max-content}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#EEF2F8;color:#0A2540;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 'Inter',system-ui,sans-serif;color:#EEF2F8}
+.dv-grp{display:flex;flex-direction:column;gap:4px;margin:44px 0 16px;padding-top:26px;border-top:1px dashed rgba(255,255,255,.18);scroll-margin-top:16px}
+.dv-gname{font:700 16px/1.2 'Inter',system-ui,sans-serif;color:#EEF2F8;letter-spacing:-.01em;margin:0}
+.dv-gnote{font:400 12.5px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.62);max-width:760px;margin:0}
+.dv-opts{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px;max-width:100%}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(255,255,255,.12);color:#EEF2F8;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.62)}
+.dv-olabel b{font-weight:600;color:#EEF2F8}
+.dv-card{max-width:100%;display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+.dv-opt:target .dv-oid{background:#1A8CFF;color:#fff}
+.dv-next{margin:26px 0 0;font:12px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.55)}
+.dv-note{font:400 12px/1.5 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.68);max-width:402px;margin:0}
+.dv-note b{font-weight:600;color:#EEF2F8}
+.dv-intro{background:#0D1F35;border:1px solid #22364F;border-radius:12px;padding:24px 28px;max-width:980px;font:400 13px/1.55 'Inter',system-ui,sans-serif;color:#EEF2F8;display:grid;grid-template-columns:1fr 1fr;gap:4px 36px}
+.dv-intro h2{margin:0 0 4px;font:700 20px/1.2 'Inter',system-ui,sans-serif;letter-spacing:-.015em;grid-column:1/-1}
+.dv-intro p{margin:0 0 6px;grid-column:1/-1}
+.dv-intro h3{margin:14px 0 4px;font:600 10.5px/1 'Inter',system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:rgba(238,242,248,.55)}
+.dv-intro ul{margin:0;padding-left:18px}
+.dv-intro li{margin:3px 0}
+.dv-ph{width:402px;height:200px;border:1px dashed rgba(255,255,255,.25);border-radius:16px;display:flex;align-items:center;justify-content:center;font:500 12px 'Inter',system-ui,sans-serif;color:rgba(238,242,248,.45)}
+</style>
+</helmet>
+<div style="position:relative;z-index:99999;margin:0 0 18px;padding:14px 20px;background:#7F1D1D;border-bottom:2px solid #FCA5A5;color:#FFFFFF;font:600 14px/1.5 Inter,-apple-system,system-ui,sans-serif;text-align:center;text-wrap:pretty">SUPERSEDED · exploration history, not the design. Every screen on this page was redesigned in <a href="../Shanes%20Life%20-%20First%20Slice%20Prototype.dc.html" style="color:#FDE68A">Shanes Life - First Slice Prototype.dc.html</a>, the only file to build from. See <span style="color:#FDE68A">../README.md → “Source of truth”</span>.</div>
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Shane's Life · contract v2 · one system with ShanesSurvival · <a href="Shanes%20Life%2000%20-%20Design%20Pack.dc.html" style="font-weight:500">all groups</a></span></div>
+<div class="dv-grp" id="g-unified" style="margin-top:0;padding-top:0;border-top:0"><h4 class="dv-gname">One app, one login, one database</h4><p class="dv-gnote">Supersedes <a class="dv-oid" href="#1w">1w</a> on one point: the hosted app is no longer a second app beside ShanesSurvival. It is ShanesSurvival's cloud half. Money's real tables (accounts with roles, bills, debts, income, expected events, the GATE math) are the foundation; every room in the pack is layered on the same Postgres. The WPF app stays as a local automation tool.</p></div>
+<div class="dv-opts">
+<div class="dv-opt" id="2a"><div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a><b>Four lanes into one database, and where the AI is allowed to be</b></div>
+<div class="dv-card">
+<div class="dark" style="width:1200px;box-sizing:border-box;background:hsl(var(--background));border:1px solid hsl(var(--card-border));border-radius:16px;padding:32px 36px;color:hsl(var(--foreground));font-family:var(--font-sans);-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;gap:22px">
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px">
+<div><div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground))">Architecture v2, one page</div><div style="font-size:26px;font-weight:800;letter-spacing:-.02em;margin-top:6px">Shane's Life is ShanesSurvival, hosted.</div></div>
+<div style="font-size:13px;color:hsl(var(--muted-foreground));max-width:460px;text-align:right;line-height:1.5">Still no model call inside the hosted app. Claude thinks on the subscription and writes over MCP. Two more writers join it: the WPF app (ads, coupons, Plaid) and real-world triggers (Tesla, BuildConsole, location).</div>
+</div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:16px">
+<div style="background:hsl(var(--card));border:1px solid rgba(129,140,248,.35);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#a5b4fc">Claude · desktop or mobile</div>
+<div style="font-size:16px;font-weight:700;letter-spacing:-.01em">Thinks, classifies, generates</div>
+<div style="font-size:13px;line-height:1.5;color:hsl(var(--muted-foreground))">Reads the Inbox, routes captures, invents a category when nothing fits, talks it through, scopes a build. Generates lists and recipes with the heart-healthy note applied. Answers "what if I spend $60" from the phone.</div>
+<div style="display:flex;flex-direction:column;gap:5px;font-family:var(--font-mono);font-size:11px;color:hsl(var(--foreground))"><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">pull_inbox · route · new_category</div><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">push_list · push_recipes · push_deals</div><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">push_date · attach_ask · attach_visit</div><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">get_gate_status · what_if · simulate_transfer</div><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">log_win · log_smoke · scope_build</div></div>
+</div>
+<div style="background:hsl(var(--card));border:1px solid rgba(251,146,60,.35);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#fb923c">WPF app · local automation</div>
+<div style="font-size:16px;font-weight:700;letter-spacing:-.01em">Fetches what needs a real browser</div>
+<div style="font-size:13px;line-height:1.5;color:hsl(var(--muted-foreground))">Narrowed role. WebView2 pulls weekly ads and coupons for Aldi, Walmart and Publix, and runs the Plaid sync it already owns. Writes to the same database. No longer the place Shane looks at his life.</div>
+<div style="display:flex;flex-direction:column;gap:5px;font-family:var(--font-mono);font-size:11px;color:hsl(var(--foreground))"><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">push_ads(store, week) · push_coupons</div><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">plaid_sync → accounts.current_balance</div><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">opm_holidays(year) · monthly</div></div>
+</div>
+<div style="background:hsl(var(--card));border:1px solid rgba(45,212,191,.35);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#2dd4bf">Real-world triggers · webhooks</div>
+<div style="font-size:16px;font-weight:700;letter-spacing:-.01em">Moments, not clock times</div>
+<div style="font-size:13px;line-height:1.5;color:hsl(var(--muted-foreground))">Tesla preconditioning opens Heading Out. BuildConsole queue depth (15–20 builds) proposes a physical task; outbound webhook capability still unverified. Phone location surfaces the Walmart list at Walmart, work items at NASA. Every one of these spends one of the day's three nudges.</div>
+<div style="display:flex;flex-direction:column;gap:5px;font-family:var(--font-mono);font-size:11px;color:hsl(var(--foreground))"><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">POST /hooks/tesla · /hooks/buildconsole</div><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">POST /hooks/location {place}</div><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">nudge_budget: 3/day, held not stacked</div></div>
+</div>
+<div style="background:hsl(var(--card));border:1px solid rgba(96,165,250,.45);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa">Hosted app · Replit</div>
+<div style="font-size:16px;font-weight:700;letter-spacing:-.01em">Stores, shows, shares, checks off</div>
+<div style="font-size:13px;line-height:1.5;color:hsl(var(--muted-foreground))">One Postgres, the ShanesSurvival schema extended: accounts (role, is_gate, target_amount), debts (is_critical), income_sources (next_pay_date, pay_frequency_days), expected_one_time_events, plus dates, pets, lists, things, notes, wins, vault. Passkey auth for everything; share tokens for lists only.</div>
+<div style="display:flex;flex-direction:column;gap:5px;font-family:var(--font-mono);font-size:11px;color:hsl(var(--foreground))"><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">top_line = gate + reserve − Σ max(0, target − balance)</div><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">vault: AES-256 at rest · passkey per reveal · 20 s</div><div style="padding:5px 9px;background:rgba(255,255,255,.05);border-radius:6px">/l/:token · no login · lists only</div></div>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;font-size:13px;line-height:1.5">
+<div style="padding:14px 16px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid hsl(var(--card-border))"><div style="font-weight:700;margin-bottom:4px">Open categories</div><div style="color:hsl(var(--muted-foreground))">Items carry <span style="font-family:var(--font-mono);font-size:11.5px;color:hsl(var(--foreground))">category TEXT</span>, not an enum. "Mom's coming the 12th–18th" becomes <b>Visits</b> with a date, a lead time and an icon, no deploy. A capture that fits nowhere opens a talk-it-through sheet: hold for Claude, make a category, or scope a build.</div></div>
+<div style="padding:14px 16px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid hsl(var(--card-border))"><div style="font-weight:700;margin-bottom:4px">One interval engine</div><div style="color:hsl(var(--muted-foreground))">Appointments every 6 weeks or 2 months, rabies every 3 years, registration yearly, birthdays yearly: one <span style="font-family:var(--font-mono);font-size:11.5px;color:hsl(var(--foreground))">interval_days</span> plus a per-kind <span style="font-family:var(--font-mono);font-size:11.5px;color:hsl(var(--foreground))">lead_days</span> (1, 10, 14, 7, 30, 21). Holidays come in from OPM with no entry.</div></div>
+<div style="padding:14px 16px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid hsl(var(--card-border))"><div style="font-weight:700;margin-bottom:4px">Two deliberate exceptions</div><div style="color:hsl(var(--muted-foreground))">Day-before appointment reminders are clock-anchored on purpose. The smoking line is the one place the app is allowed to confront: actual spend against actual shortfall, no streak, no reset. Both are Shane's calls, scoped to one feature each.</div></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="Shanes%20Life%2000%20-%20Design%20Pack.dc.html">1</a><span class="dv-tname">Shane's Life · Claude → MCP → app boundary · <a href="Shanes%20Life%2000%20-%20Design%20Pack.dc.html" style="font-weight:500">all groups</a></span></div>
+<div class="dv-grp" id="g-mcp"><h4 class="dv-gname">Claude → MCP → app boundary</h4><p class="dv-gnote">One diagram. Where AI happens (Claude, on the subscription) versus what the hosted app does (store, show, share, check off), plus the mixed access model.</p></div>
+<div class="dv-opts">
+<div class="dv-opt" id="1w"><div class="dv-olabel"><a class="dv-oid" href="#1w">1w</a><b>Where AI happens, where it doesn't, and who can see what</b></div>
+<div class="dv-card">
+<div class="dark" style="width:1200px;box-sizing:border-box;background:hsl(var(--background));border:1px solid hsl(var(--card-border));border-radius:16px;padding:32px 36px;color:hsl(var(--foreground));font-family:var(--font-sans);-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;gap:24px">
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px">
+<div><div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground))">Architecture, one page</div><div style="font-size:26px;font-weight:800;letter-spacing:-.02em;margin-top:6px">Claude thinks. The app remembers.</div></div>
+<div style="font-size:13px;color:hsl(var(--muted-foreground));max-width:420px;text-align:right;line-height:1.5">The hosted app never calls a model. All generation and parsing happens inside a Claude conversation, on the subscription, and arrives over MCP.</div>
+</div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 44px minmax(0,.85fr) 44px minmax(0,1.25fr);align-items:stretch">
+<div style="background:hsl(var(--card));border:1px solid rgba(129,140,248,.35);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;align-items:center;gap:12px"><div style="width:40px;height:40px;border-radius:12px;background:rgba(129,140,248,.14);border:1px solid rgba(129,140,248,.25);color:#818cf8;display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg></div><div><div style="font-size:16px;font-weight:700">Claude conversation</div><div style="font-size:12px;color:hsl(var(--muted-foreground))">any project, any chat · on the subscription</div></div></div>
+<div style="display:flex;flex-direction:column;gap:8px;font-size:13px;line-height:1.45">
+<div style="align-self:flex-end;max-width:92%;background:hsl(var(--primary));color:#fff;border-radius:14px 14px 4px 14px;padding:9px 12px">Make my Aldi list for the week, the usual plus alfredo stuff.</div>
+<div style="max-width:92%;background:rgba(255,255,255,.06);border-radius:14px 14px 14px 4px;padding:9px 12px;color:hsl(var(--foreground))">Drafted 15 items from your usual run. Pushing it to Shane's Life and sharing a link.</div>
+</div>
+<div style="font-family:var(--font-mono);font-size:11.5px;line-height:1.6;background:rgba(0,0,0,.35);border:1px solid hsl(var(--card-border));border-radius:8px;padding:10px 12px;color:#a5b4fc;white-space:pre-wrap">shanes_life.push_list({
+  name: "Aldi run",
+  items: [15 items],
+  share: true
+})</div>
+<div style="font-size:12px;line-height:1.5;color:hsl(var(--muted-foreground))">Also from here: <span style="color:hsl(var(--foreground))">pull_inbox()</span> reads raw captures the app couldn't route, Claude decides, then <span style="color:hsl(var(--foreground))">route()</span> files them. Weekly ads and coupons work the same way: <span style="color:hsl(var(--foreground))">fetch_weekly_ad</span> (headless browser) returns structured deals, Claude does the fuzzy match against the list (ground chuck ≈ ground beef), then <span style="color:hsl(var(--foreground))">push_deals</span> annotates each item: "Aldi wins", "Publix BOGO", "no deal". The app never matches anything itself.</div>
+</div>
+<div style="display:flex;align-items:center;justify-content:center;color:hsl(var(--muted-foreground))"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;align-items:center;gap:12px"><div style="width:40px;height:40px;border-radius:12px;background:rgba(96,165,250,.14);border:1px solid rgba(96,165,250,.25);color:#60a5fa;display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M6 21V9a9 9 0 0 0 9 9"></path></svg></div><div><div style="font-size:16px;font-weight:700">MCP server</div><div style="font-size:12px;color:hsl(var(--muted-foreground))">thin · no model, no logic</div></div></div>
+<div style="font-size:13px;line-height:1.5;color:hsl(var(--muted-foreground))">Checks the token, validates the shape, writes to the same database the app reads, returns the share link.</div>
+<div style="display:flex;flex-direction:column;gap:6px;font-family:var(--font-mono);font-size:11.5px;color:hsl(var(--foreground))">
+<div style="padding:6px 10px;background:rgba(255,255,255,.05);border-radius:6px">push_list · push_checklist</div>
+<div style="padding:6px 10px;background:rgba(255,255,255,.05);border-radius:6px">pull_inbox · route</div>
+<div style="padding:6px 10px;background:rgba(255,255,255,.05);border-radius:6px">get_prices · get_store_map</div>
+<div style="padding:6px 10px;background:rgba(255,255,255,.05);border-radius:6px">fetch_weekly_ad(store, zip) · push_deals</div>
+<div style="padding:6px 10px;background:rgba(255,255,255,.05);border-radius:6px">push_coupons</div>
+<div style="padding:6px 10px;background:rgba(255,255,255,.05);border-radius:6px">add_note (People)</div>
+<div style="padding:6px 10px;background:rgba(255,255,255,.05);border-radius:6px">set_watcher (Money)</div>
+</div>
+</div>
+<div style="display:flex;align-items:center;justify-content:center;color:hsl(var(--muted-foreground))"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;align-items:center;gap:12px"><x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Logo" size="md" show-text="{{ false }}" hint-size="40px,40px"></x-import><div><div style="font-size:16px;font-weight:700">Shane's Life · hosted on Replit</div><div style="font-size:12px;color:hsl(var(--muted-foreground))">stores · shows · shares · checks off</div></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+<div style="border:1px solid hsl(var(--card-border));border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--muted-foreground))"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Private · passkey</div>
+<div style="font-size:13px;line-height:1.6">Tray · Capture · Shopping · Recipes · Review · Meds · Money · Things · People</div>
+</div>
+<div style="border:1px solid rgba(45,212,191,.35);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#2dd4bf"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>Public by link</div>
+<div style="font-size:13px;line-height:1.6"><span style="font-family:var(--font-mono);font-size:12px">/l/:token</span> · full Shopping mode, phone only · check off, add, scan prices, save aisle spots · no account, revocable per link</div>
+</div>
+</div>
+<div style="border-top:1px solid hsl(var(--card-border) / .6);padding-top:12px;font-size:12px;line-height:1.55;color:hsl(var(--muted-foreground))"><span style="color:hsl(var(--foreground));font-weight:600">In-app capture without a model:</span> plain rules route the obvious ("eggs, milk" → Aldi run; "the drill is under the sink" → Things; "Dana: …" → People). Everything else lands in the Inbox, untouched, until Claude pulls it.</div>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 44px minmax(0,.85fr) 44px minmax(0,1.25fr);align-items:center">
+<div style="height:1px;border-top:2px dashed rgba(129,140,248,.5)"></div><div></div><div style="text-align:center;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#818cf8">AI boundary</div><div></div><div style="height:1px;border-top:2px dashed hsl(var(--card-border))"></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:32px;height:32px;border-radius:9px;background:rgba(96,165,250,.14);color:#60a5fa;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"></path><circle cx="7" cy="17" r="2"></circle><path d="M9 17h6"></path><circle cx="17" cy="17" r="2"></circle></svg></div><div style="font-size:13px;line-height:1.5"><span style="font-weight:600">Tesla webhook</span> → climate preconditioning opens Heading Out. Hits the app directly; no AI.</div></div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:32px;height:32px;border-radius:9px;background:rgba(45,212,191,.14);color:#2dd4bf;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle></svg></div><div style="font-size:13px;line-height:1.5"><span style="font-weight:600">Sale webhook</span> → price watcher fires the Money proposal. Rules, not a model.</div></div>
+<div style="background:hsl(var(--card));border:1px solid hsl(var(--card-border));border-radius:12px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.08);color:hsl(var(--foreground));display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg></div><div style="font-size:13px;line-height:1.5"><span style="font-weight:600">Nudge budget</span> lives in the app: 1–3 a day, whichever source they come from. Claude can push a list; it can't push a nudge.</div></div>
+</div>
+</div>
+</div>
+<p class="dv-note" style="max-width:720px"><b>Why:</b> keeps §6 honest. The dashed line is the only place a model runs. The public/private split is a property of each list (a revocable token), not a second app. The nudge cap sits inside the app so nothing upstream, including Claude, can flood the tray.</p>
+</div>
+</div>
+<p class="dv-next"><a href="Shanes%20Life%2012%20-%20Shared%20list.dc.html">← Shared list (no login)</a> · <a href="Shanes%20Life%2000%20-%20Design%20Pack.dc.html">All groups</a></p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return { dw: 1100, dh: 700, dwS: 1000, dhS: 640, dwL: 1200, dhL: 620 };
+  }
+}
+</script>
+</body>
+</html>
