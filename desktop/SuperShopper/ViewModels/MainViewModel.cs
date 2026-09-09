@@ -4,9 +4,11 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Windows;
 using System.Windows.Input;
 using SuperShopper.Models;
+using SuperShopper.Services;
 
 namespace SuperShopper.ViewModels
 {
@@ -168,6 +170,7 @@ namespace SuperShopper.ViewModels
         }
 
         public int ExtractedDealsCount => ExtractedDeals.Count;
+        public string DbTargetEnv => PostgresService.ActiveTargetEnv.ToUpper();
 
         public bool IsExplorerActive => ActiveView == ActiveViewMode.Explorer;
         public bool IsSearchActive => ActiveView == ActiveViewMode.Search;
@@ -201,6 +204,7 @@ namespace SuperShopper.ViewModels
         public ICommand OpenExternalBrowserCommand { get; }
         public ICommand AddDealToShoppingListCommand { get; }
         public ICommand ClearExtractedDealsCommand { get; }
+        public ICommand SyncDealsToPostgresCommand { get; }
 
         public MainViewModel()
         {
@@ -330,6 +334,26 @@ namespace SuperShopper.ViewModels
                 StatusMessage = "Cleared extracted deals";
             });
 
+            SyncDealsToPostgresCommand = new RelayCommand(async _ =>
+            {
+                if (!ExtractedDeals.Any())
+                {
+                    StatusMessage = "No extracted deals available to sync to PostgreSQL";
+                    return;
+                }
+
+                try
+                {
+                    StatusMessage = $"Syncing {ExtractedDeals.Count} deals to PostgreSQL ({DbTargetEnv})...";
+                    int saved = await PostgresService.SaveDealsAsync(ExtractedDeals);
+                    StatusMessage = $"Successfully synced {saved} deals to PostgreSQL ({DbTargetEnv})!";
+                }
+                catch (Exception ex)
+                {
+                    StatusMessage = $"PostgreSQL Sync Notice: {ex.Message}";
+                }
+            });
+
             InitializeStoreBookmarks();
             InitializeSampleShoppingList();
         }
@@ -418,7 +442,6 @@ namespace SuperShopper.ViewModels
                 return;
             }
 
-            // Standardize title and check duplicates
             string cleanTitle = deal.Title.Trim();
             if (!ExtractedDeals.Any(d => d.Title.Equals(cleanTitle, StringComparison.OrdinalIgnoreCase)))
             {

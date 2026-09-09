@@ -399,6 +399,9 @@
                                         </Grid>
                                     </Border>
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Sync DB 🗄️" Style="{StaticResource TitleBarButtonStyle}" Width="75" Height="22" FontSize="11" Margin="0,0,6,0"
+                                                ToolTip="Sync deals to PostgreSQL (Configured via .env)"
+                                                Command="{Binding SyncDealsToPostgresCommand}"/>
                                         <Button Content="Clear" Style="{StaticResource TitleBarButtonStyle}" Width="45" Height="22" FontSize="11" Margin="0,0,6,0"
                                                 Command="{Binding ClearExtractedDealsCommand}"/>
                                         <Button Style="{StaticResource TitleBarButtonStyle}" Content="{StaticResource IconCloseSmall}" 
