@@ -1116,10 +1116,18 @@ $("#capture").addEventListener("submit", async (event) => {
     // coordinates without a dedicated location field anywhere in this UI.
     const position = await getRealPosition();
     const linesToFile = lines.length ? lines : [""];
+    // Git #3292: each line runs through the real, deterministic capture grammar server-side
+    // (routes/api.mjs's POST /api/captures) before it's ever filed to the pending inbox -- a
+    // recognized, clean pattern ("the drill is at home", "warm it up", "what's my car's charge
+    // at") comes back `matched:true` with a real immediate answer and no pending capture at all;
+    // anything else comes back the ordinary filed-capture shape. `results` collects each line's
+    // own real status, same real per-line pattern submitShoppingCapture/submitVaultCapture above
+    // already use.
+    const results = [];
     for (let i = 0; i < linesToFile.length; i++) {
       // The attachment (if any) rides only on the first line -- a multi-line capture with a
       // photo/voice note attached shouldn't re-attach the same media to every filed line.
-      await api("/api/captures", {
+      const res = await api("/api/captures", {
         method: "POST",
         body: JSON.stringify({
           text: linesToFile[i] || null,
@@ -1129,12 +1137,14 @@ $("#capture").addEventListener("submit", async (event) => {
           longitude: position?.longitude ?? null,
         }),
       });
+      // Trust stated facts immediately (Section 8) -- it is saved, no confirmation dialog. A
+      // matched line gets its own real answer instead of the generic "Got it."
+      results.push(res?.matched ? res.message : "Got it.");
     }
     captureText.value = "";
     captureText.style.height = "auto";
     setAttachment(null);
-    // Trust stated facts immediately (Section 8) -- it is saved, no confirmation dialog.
-    captureStatus.textContent = lines.length > 1 ? `${lines.length} lines, each filed on its own.` : "Got it.";
+    captureStatus.textContent = lines.length > 1 ? `${lines.length} lines, each filed on its own.` : results[0] || "Got it.";
     setTimeout(() => (captureStatus.textContent = ""), 1800);
     await loadMe();
     if (state.route === "inbox" || state.route === "today") render();

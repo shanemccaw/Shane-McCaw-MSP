@@ -23,7 +23,8 @@
     "generate-vapid-keys": "node bin/generate-vapid-keys.mjs",
     "selftest-webpush": "node bin/selftest-webpush.mjs",
     "selftest-plaid-webhook": "node bin/selftest-plaid-webhook.mjs",
-    "selftest-image-resize": "node bin/selftest-image-resize.mjs"
+    "selftest-image-resize": "node bin/selftest-image-resize.mjs",
+    "selftest-capture-grammar": "node src/core/capture-grammar.test.mjs"
   },
   "dependencies": {
     "pg": "^8.20.0",

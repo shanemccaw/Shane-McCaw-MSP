@@ -27,6 +27,7 @@ import * as audit from "../core/audit.mjs";
 import * as teslaCore from "../core/tesla.mjs";
 import { TeslaError } from "../core/tesla.mjs";
 import * as captures from "../core/captures.mjs";
+import { runCaptureGrammar } from "../core/capture-grammar.mjs";
 import * as catches from "../core/catches.mjs";
 import * as categories from "../core/categories.mjs";
 import * as contacts from "../core/contacts.mjs";
@@ -695,6 +696,22 @@ export function buildApiRouter() {
     const user = requireUser(ctx);
     const body = await readJson(req);
     const kind = body.mediaId && !body.kind ? "photo" : body.kind || "text";
+
+    // Git #3292: real-time deterministic pattern detection, BEFORE anything is filed to the
+    // pending inbox -- same real principle BuildConsole's own Ctrl+K command center uses (Epic
+    // #2017). Only ever runs against real typed text (a photo/voice capture has nothing to match
+    // against yet -- those still need Claude regardless). A recognized, cleanly-resolved pattern
+    // calls the matching real core function directly and returns a real, immediate confirmation
+    // with no capture row ever created; anything that doesn't match -- or matches but can't
+    // safely resolve -- falls through to the exact same pending-capture path as before. See
+    // capture-grammar.mjs's own header for the full fail-safe contract.
+    if (kind === "text" && body.text && String(body.text).trim()) {
+      const grammar = await runCaptureGrammar({ userId: user.id, text: body.text });
+      if (grammar.matched) {
+        return sendJson(res, 200, { matched: true, rule: grammar.rule, message: grammar.message });
+      }
+    }
+
     // latitude/longitude (Git #3159): the browser's own native geolocation permission, attached
     // silently when it's already there -- never a new form field. See captures.mjs's own header.
     const row = await captures.createCapture({
@@ -707,7 +724,7 @@ export function buildApiRouter() {
       longitude: body.longitude ?? null,
     });
     await audit.record({ userId: user.id, actor: "web", action: "capture.create", detail: { captureId: row.id, kind } });
-    return sendJson(res, 201, row);
+    return sendJson(res, 201, { ...row, matched: false });
   });
 
   router.get("/api/captures", async (req, res, _params, ctx) => {

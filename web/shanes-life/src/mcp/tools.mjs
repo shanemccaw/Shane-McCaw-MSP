@@ -1732,6 +1732,17 @@ export const TOOLS = [
   },
 
   {
+    name: "get_car_charge_status",
+    title: "Real, on-demand Tesla charge read",
+    description:
+      "The real, current battery level/range/charging state of Shane's connected Tesla (Git #3292 -- 'what's my car's charge at', 'how's the battery') -- distinct from get_car_climate_status, which only ever answers climate. On-demand only, never auto-polled, same real discipline as climate (waking the vehicle to answer costs real 12V battery and Tesla's own Fleet API rate-limits reads). Honest about the one real case that isn't an error: a sleeping vehicle answers HTTP 408, so this returns `{waking:true, message}` instead of a bare timeout/error -- ask again in a moment rather than treating that as a failure. Throws a real, descriptive error for every other real problem (Tesla not connected, no vehicle selected yet) -- point Shane at Settings -> Tesla rather than guessing.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async handler(_args, ctx) {
+      return tesla.getChargeStateOrWaking(ctx.user.id);
+    },
+  },
+
+  {
     name: "log_car_maintenance",
     title: "Log real maintenance actually done on a vehicle",
     description:
