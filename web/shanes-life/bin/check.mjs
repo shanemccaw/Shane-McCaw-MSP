@@ -773,6 +773,113 @@ async function main() {
   const aisleActivity = await http("/api/activity");
   check("the aisle-memory writes are in the audit trail", aisleActivity.json?.activity?.some((a) => a.actor === "mcp" && a.action === "store_aisle.record"));
 
+  // 6d-2. Pantry (Git #3327 -- bin/check.mjs had zero live coverage for #3308/#3316's real Pantry
+  // room; the #3316 build itself was verified directly against pantry.mjs/capture-grammar.mjs via
+  // a scratch script against the local DB, never through this file's own real HTTP+auth path, and
+  // that script was deleted per this repo's own working-tree-clean rule). Covers, per the issue's
+  // "Real fix" list: GET /api/pantry's real zone/low_at per item, POST /api/pantry/:id/adjust,
+  // the shopping-checkoff restock integration (PATCH .../items/:itemId), all three pantry
+  // capture-grammar rules resolving end-to-end through the real /api/captures path (not just
+  // capture-grammar.test.mjs's pure matchRule unit tests, which never touch the DB-backed run()
+  // half), and GET /api/today's own rooms.pantry block.
+  cookie = savedCookie;
+
+  // pantry_have (rule 33): a fresh, absolute real quantity, through the real capture box.
+  const chickenCapture = await http("/api/captures", { method: "POST", body: { text: "I have 2 lbs of chicken breasts at home" } });
+  check(
+    "pantry_have resolves through /api/captures with a real, immediate confirmation, not a pending inbox row",
+    chickenCapture.status === 200 && chickenCapture.json?.matched === true && chickenCapture.json?.rule === "pantry_have",
+    JSON.stringify(chickenCapture.json),
+  );
+
+  const pantryAfterHave = await http("/api/pantry");
+  const chickenRow = pantryAfterHave.json?.items?.find((i) => i.name === "chicken breasts");
+  check(
+    "GET /api/pantry returns the new row with a real, derived zone and a real low_at default",
+    chickenRow?.quantity === 2 && chickenRow?.unit === "lbs" && chickenRow?.house === "Home" && chickenRow?.zone === "Freezer" && chickenRow?.low_at === 0,
+    JSON.stringify(chickenRow),
+  );
+
+  const dbChicken = await one("SELECT quantity::float8 AS quantity, house FROM pantry_items WHERE id = $1", [chickenRow.id]);
+  check("the pantry_have write is really a row in pantry_items, not just the response", dbChicken?.quantity === 2 && dbChicken?.house === "Home", JSON.stringify(dbChicken));
+
+  // POST /api/pantry/:id/adjust -- the Zone screen's own real -/+ write, direct by id, no capture
+  // involved. Two real decrements bring it to exactly 0 ("out"), the state the rooms.pantry check
+  // below depends on.
+  const chickenDown1 = await http(`/api/pantry/${chickenRow.id}/adjust`, { method: "POST", body: { direction: -1 } });
+  check("POST .../adjust decrements by exactly 1", chickenDown1.status === 200 && chickenDown1.json?.quantity === 1, JSON.stringify(chickenDown1.json));
+  const chickenDown2 = await http(`/api/pantry/${chickenRow.id}/adjust`, { method: "POST", body: { direction: -1 } });
+  check("a second decrement reaches 0, floored, never negative", chickenDown2.status === 200 && chickenDown2.json?.quantity === 0, JSON.stringify(chickenDown2.json));
+
+  const badDirection = await http(`/api/pantry/${chickenRow.id}/adjust`, { method: "POST", body: { direction: 2 } });
+  check("adjust rejects a direction that isn't 1 or -1", badDirection.status === 400, `status ${badDirection.status}`);
+
+  // pantry_bought (rule 34): additive, and creates the row on first mention -- a real, different
+  // write shape from pantry_have above ("I have" is a fresh count, "bought" is a delta).
+  const tomatoesCapture = await http("/api/captures", { method: "POST", body: { text: "bought 3 cans of diced tomatoes at home" } });
+  check(
+    "pantry_bought resolves through /api/captures",
+    tomatoesCapture.status === 200 && tomatoesCapture.json?.matched === true && tomatoesCapture.json?.rule === "pantry_bought",
+    JSON.stringify(tomatoesCapture.json),
+  );
+  const pantryAfterBought = await http("/api/pantry");
+  const tomatoesRow = pantryAfterBought.json?.items?.find((i) => i.name === "diced tomatoes");
+  check("pantry_bought created a new real row at the stated quantity, with a real derived zone", tomatoesRow?.quantity === 3 && tomatoesRow?.zone === "Cans & jars", JSON.stringify(tomatoesRow));
+
+  // pantry_out (rule 35), the existing-item branch: depletes an already-tracked real item AND
+  // joins the real shopping run in the same action -- a real "we're out" statement is also a real
+  // "put it on the list" statement (#3316 scope item 5). No house suffix on either statement here
+  // so the second capture's tieredFind lookup lands in the exact same "no house stated" bucket the
+  // first capture wrote to.
+  await http("/api/captures", { method: "POST", body: { text: "I have 1 jar of rosemary" } });
+  const rosemaryOutCapture = await http("/api/captures", { method: "POST", body: { text: "used the last of the rosemary" } });
+  check(
+    "pantry_out resolves through /api/captures and reports joining the run",
+    rosemaryOutCapture.status === 200 && rosemaryOutCapture.json?.matched === true && rosemaryOutCapture.json?.rule === "pantry_out" && /added to the run/i.test(rosemaryOutCapture.json?.message || ""),
+    JSON.stringify(rosemaryOutCapture.json),
+  );
+  const pantryAfterOut = await http("/api/pantry");
+  const rosemaryRow = pantryAfterOut.json?.items?.find((i) => i.name === "rosemary");
+  check("pantry_out zeroed the real row rather than deleting it", rosemaryRow?.quantity === 0, JSON.stringify(rosemaryRow));
+
+  const shoppingAfterRosemary = await http(`/api/lists/${shoppingId}`);
+  check(
+    "pantry_out really added the item to the real shopping run, not just a message",
+    shoppingAfterRosemary.json?.items?.some((i) => i.text === "rosemary" && !i.done),
+    JSON.stringify(shoppingAfterRosemary.json?.items?.map((i) => i.text)),
+  );
+
+  // PATCH /api/lists/:id/items/:itemId -- checking a real Shopping run item off restocks the
+  // matching real Home pantry row, and unchecking it reverses that same restock (#3316 scope item
+  // 6). Starts from a real, already-out Home item (0 on hand) via pantry_have, the design's own
+  // "out at 0, restocked by a real checkoff" flow.
+  await http("/api/captures", { method: "POST", body: { text: "I have 0 dozen of eggs at home" } });
+  const eggsAdd = await http(`/api/lists/${shoppingId}/items`, { method: "POST", body: { items: ["eggs"] } });
+  const eggsRunItem = eggsAdd.json?.items?.find((i) => i.text === "eggs");
+
+  const eggsChecked = await http(`/api/lists/${shoppingId}/items/${eggsRunItem.id}`, { method: "PATCH", body: { checked: true } });
+  check("checking off a Shopping item restocks the matching real Home pantry row", eggsChecked.status === 200 && eggsChecked.json?.done === true, JSON.stringify(eggsChecked.json));
+  const pantryAfterRestock = await http("/api/pantry");
+  const eggsRowRestocked = pantryAfterRestock.json?.items?.find((i) => i.name === "eggs");
+  check("the restock is really a +1 on the real pantry row", eggsRowRestocked?.quantity === 1, JSON.stringify(eggsRowRestocked));
+
+  const eggsUnchecked = await http(`/api/lists/${shoppingId}/items/${eggsRunItem.id}`, { method: "PATCH", body: { checked: false } });
+  check("unchecking the same item reverses the restock", eggsUnchecked.status === 200 && eggsUnchecked.json?.done === false, JSON.stringify(eggsUnchecked.json));
+  const pantryAfterUnrestock = await http("/api/pantry");
+  const eggsRowReversed = pantryAfterUnrestock.json?.items?.find((i) => i.name === "eggs");
+  check("the reversal is really a -1 on the real pantry row, back to out", eggsRowReversed?.quantity === 0, JSON.stringify(eggsRowReversed));
+
+  // GET /api/today's own rooms.pantry block -- the real "something out and not on the run" lit
+  // rule (README "Room row"). The chicken breasts row above is the one real item on file that is
+  // both 0 AND not on the run (rosemary and eggs both are, by construction above), so this is a
+  // real, deterministic single-item assertion, not a loose >=1 count.
+  const todayForPantry = await http("/api/today");
+  check(
+    "GET /api/today's rooms.pantry reflects a real out-and-not-on-the-run item",
+    todayForPantry.json?.rooms?.pantry?.lit === true && todayForPantry.json?.rooms?.pantry?.subtitle === "chicken breasts out at Home",
+    JSON.stringify(todayForPantry.json?.rooms?.pantry),
+  );
+
   // 6e. Things -- hub/spoke item-location memory + "Who fixed what" (Git #3156).
   cookie = savedCookie;
   const drillName = `Check Drill ${stamp}`;
