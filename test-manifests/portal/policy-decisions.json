@@ -1,0 +1,88 @@
+{
+  "issue": 1724,
+  "feature": "Policy Decisions -- own-table register (#1724, Feature #1490) -- the real customer-facing Policy Decisions page in artifacts/portal (/policy-decisions), wired to GET/POST /api/portal/policy-register, PATCH /api/portal/policy-register/:id/clearance/resolve, and GET /api/portal/compliance-obligations -- see docs/policy-decisions-contract-pack.md. No fixture module: every row on screen comes from these endpoints. This is a DIFFERENT register from the risk-derived GET /api/portal/policy-decisions view already covered by test-manifests/portal/risk-register.json's A2/UI6 (PolicyDecisionsCard on the Risk Register page) -- the two are never merged, per contract pack §0/§9.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING_COMMIT",
+
+  "notes": [
+    "WHAT THIS COVERS: the real live-empty read (policy_decisions holds 0 rows for the testbed tenant, verified by direct SELECT this session -- {decisions: []} is a true empty, not a read failure), the real obligations catalogue read (8 real seeded compliance_obligations rows, verified by direct SELECT), the 400 validation guard on an invalid create body, and the 404 on a clearance-resolve for a decision that does not exist.",
+    "WHY NO HAPPY-PATH CREATE IS DRIVEN HERE: a signed policy decision has no delete route -- POST /api/portal/policy-register creates a permanent, signed row (same 'no unsigned intermediate state' design as Risk Register's accept). A step that successfully creates one would leave real fixture-looking rows in the live register on every run of this manifest, which is exactly the invented-data outcome this project forbids. If a real create needs proving end-to-end, do it the same way risk-register.json's A3/A4 notes describe: seed + a manual one-off session, then reset the DB -- never as a repeatable manifest step.",
+    "WHY THE UI DOES NOT ASSERT A REAL ROW ON THE REGISTER: the testbed tenant's own-table register is genuinely empty (0 rows) -- there is no real row to assert into the DOM the way risk-register.json's UI2 does. UI2 below instead asserts the real obligations catalogue's first row (8 real seeded rows, stable, not user-writable) reached the DOM -- the same 'endpoint's first real value shows up under its own testid' proof, on the one real dataset this page can show without writing anything.",
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated testbed portal account; extract the bearer.",
+      "sessionTag": "setup",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- the own-table register answers 200 with an array (genuinely empty for the testbed tenant, verified live -- not a failure).",
+      "method": "GET",
+      "path": "/api/portal/policy-register",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.decisions", "isArray": true }
+    },
+    {
+      "name": "A2 -- the obligations catalogue answers 200 with the real 8-row seeded set.",
+      "method": "GET",
+      "path": "/api/portal/compliance-obligations",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.obligations", "isArray": true }
+    },
+    {
+      "name": "A2b -- take the first real obligation's id, the value UI2 below proves reached the DOM.",
+      "method": "GET",
+      "path": "/api/portal/compliance-obligations",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.obligations", "isArray": true },
+      "extract": { "as": "firstObligationId", "jsonPath": "$.obligations[0].id" }
+    },
+    {
+      "name": "A2c -- ...and its real citation text.",
+      "method": "GET",
+      "path": "/api/portal/compliance-obligations",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.obligations", "isArray": true },
+      "extract": { "as": "firstObligationCitation", "jsonPath": "$.obligations[0].framework" }
+    },
+    {
+      "name": "A3 -- an invalid create body (missing every required field) is refused 400, not silently accepted or 500.",
+      "method": "POST",
+      "path": "/api/portal/policy-register",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": {},
+      "expect": { "status": 400, "jsonPath": "$.error.code", "equals": "VALIDATION_ERROR" }
+    },
+    {
+      "name": "A4 -- resolving the clearance of a decision id that does not exist 404s, idempotently re-runnable (no state written on a 404).",
+      "method": "PATCH",
+      "path": "/api/portal/policy-register/999999999/clearance/resolve",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "note": "should 404" },
+      "expect": { "status": 404, "jsonPath": "$.error.code", "equals": "NOT_FOUND" }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "goto the real login URL.", "sessionTag": "setup", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate before typing.", "sessionTag": "setup", "action": "expect", "selector": "#email", "state": "visible" },
+    { "sessionTag": "setup", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "sessionTag": "setup", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login -- every assertion below needs a real session.", "sessionTag": "setup", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the real Policy Decisions page.", "sessionTag": "setup", "action": "goto", "target": "/portal/policy-decisions" },
+    { "name": "UI1 -- the page renders.", "action": "expect", "selector": "[data-testid='policy-decisions-page-title']", "textContains": "Policy decisions", "critical": true },
+    { "name": "UI2 -- THE REAL-DATA ASSERTION. The obligation the ENDPOINT returned first is on screen, under its own real citation. A page falling back to fixture/placeholder text has no element with this id at all.", "action": "expect", "selector": "[data-testid='policy-obligation-row-{{firstObligationId}}']", "textContains": "{{firstObligationCitation}}", "critical": true },
+    { "name": "UI3 -- the register's real live-empty state renders (0 rows for the testbed tenant), not a fabricated row.", "action": "expect", "selector": "body", "textContains": "Nothing has been decided yet" },
+    { "name": "UI4 -- the record-a-decision action is present even though the register is empty -- creation is never gated, per #1168.", "action": "expect", "selector": "[data-testid='policy-decisions-record-open']", "state": "visible" },
+    { "name": "UI5 -- opening the record form renders the real create fields.", "action": "click", "selector": "[data-testid='policy-decisions-record-open']" },
+    { "name": "UI6 -- the obligation picker is populated from the real catalogue (same citation UI2 proved).", "action": "expect", "selector": "[data-testid='policy-decision-obligation-select']", "textContains": "{{firstObligationCitation}}" }
+  ]
+}

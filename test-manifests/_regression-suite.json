@@ -13,6 +13,7 @@
     "portal/customer-requests.json",
     "portal/scan-status-progress.json",
     "portal/risk-register.json",
+    "portal/policy-decisions.json",
     "portal/ownership.json",
     "portal/security-plan.json",
     "chat/support-chat-active-cards.json",

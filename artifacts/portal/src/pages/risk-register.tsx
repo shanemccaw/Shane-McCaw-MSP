@@ -4,7 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "wouter";
-import { comingSoonHref } from "@/components/shell/moduleNav";
 import { PolicyDecisionsCard } from "@/components/risk-register/PolicyDecisionsCard";
 import { RiskHeatMap } from "@/components/risk-register/RiskHeatMap";
 import { RiskRow } from "@/components/risk-register/RiskRow";
@@ -76,7 +75,8 @@ const LEDGER: { gap: string; where: string; link?: { label: string; href: string
   {
     gap: 'Two separate registers use the name "policy decisions". This page shows only the risk-derived ones.',
     where: "§0.1",
-    link: { label: "Open the standing Policy Decisions register", href: comingSoonHref("Policy Decisions", "module") },
+    // #1724 wired the real own-table page — no longer a coming-soon destination.
+    link: { label: "Open the standing Policy Decisions register", href: "/policy-decisions" },
   },
   {
     gap: "Whether a risk's own Expired state should still be a product concept is unsettled — if your MSP has used it, it renders like any other status here rather than being hidden.",

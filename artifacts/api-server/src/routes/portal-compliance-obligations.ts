@@ -52,6 +52,15 @@
  * `Assessment` — same floor as `/portal/pillars`/`useLivePillarHero`, since this
  * page carries no liability dollar figure (unlike risk-register's `CustomerUser`
  * floor).
+ *
+ * ── `id` / `type` added for #1724 ───────────────────────────────────────────
+ * The wire previously omitted `compliance_obligations.id` and the joined
+ * `authority_type`, even though both were already selected/joinable here. The
+ * Policy Decisions page (#1724) needs `id` to let a customer cite a real
+ * catalog row as `obligationId` on `POST /portal/policy-register` (#1525),
+ * and `type` for the same authority-type badge
+ * `portal-policy-decisions.ts`'s `loadObligationTypes` already resolves for a
+ * signed decision. Both are additive fields — no schema change.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -75,11 +84,20 @@ type ObligationTone = (typeof OBLIGATION_TONES)[number];
 
 /** One row, in the shape the Obligations drill-down consumes. */
 interface WireObligation {
+  /** `compliance_obligations.id`, stringified — added for #1724 so the Policy
+   * Decisions "record a decision" form can cite a real catalog row as
+   * `obligationId` (#1525) rather than free text only. Not previously served
+   * on this wire; this route already selects the underlying column. */
+  readonly id: string;
   readonly framework: string;
   readonly scope: "In scope" | "Marked out of scope";
   readonly requires: string;
   readonly state: string;
   readonly tone: ObligationTone;
+  /** `compliance_frameworks.authority_type` (AUTHORITY_TYPES) — added for
+   * #1724's "AUTHORITY" badge, the same field `portal-policy-decisions.ts`'s
+   * `loadObligationTypes` already joins for a signed decision's own citation. */
+  readonly type: string;
 }
 
 function normalizeKey(value: string): string {
@@ -111,6 +129,7 @@ router.get(
           obligationId: complianceObligationsTable.id,
           citation: complianceObligationsTable.citation,
           requires: complianceObligationsTable.requires,
+          authorityType: complianceFrameworksTable.authorityType,
         })
         .from(complianceObligationsTable)
         .innerJoin(complianceFrameworksTable, eq(complianceObligationsTable.frameworkId, complianceFrameworksTable.id))
@@ -181,32 +200,38 @@ router.get(
 
         if (!inScope) {
           return {
+            id: String(o.obligationId),
             framework: o.citation,
             scope: "Marked out of scope",
             requires: o.requires,
             state: "You marked this out of scope in onboarding. Tell us if that changed and every check re-evaluates.",
             tone: "slate",
+            type: o.authorityType,
           };
         }
 
         const open = openByObligation.get(normalizeKey(o.citation));
         if (!open || open.count === 0) {
           return {
+            id: String(o.obligationId),
             framework: o.citation,
             scope: "In scope",
             requires: o.requires,
             state: "No open findings against this obligation.",
             tone: "green",
+            type: o.authorityType,
           };
         }
 
         const descriptor = open.titles.slice(0, 2).join(", ");
         return {
+          id: String(o.obligationId),
           framework: o.citation,
           scope: "In scope",
           requires: o.requires,
           state: `${open.count} finding${open.count === 1 ? "" : "s"} open${descriptor ? ` — ${descriptor}` : ""}`,
           tone: open.hasHigh ? "red" : "amber",
+          type: o.authorityType,
         };
       });
 

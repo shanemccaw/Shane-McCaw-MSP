@@ -21,6 +21,7 @@ import NotificationPreferencesPage from "@/pages/notification-preferences";
 import SopsPage from "@/pages/sops";
 import RunbooksPage from "@/pages/runbooks";
 import RiskRegisterPage from "@/pages/risk-register";
+import PolicyDecisionsPage from "@/pages/policy-decisions";
 import OwnershipPage from "@/pages/ownership";
 import SecurityPlanPage from "@/pages/security-plan";
 import RemediationTrackingPage from "@/pages/remediation-tracking";
@@ -86,6 +87,7 @@ function ProtectedRoutes() {
           <Route path="/sops" component={SopsPage} />
           <Route path="/runbooks" component={RunbooksPage} />
           <Route path="/risk-register" component={RiskRegisterPage} />
+          <Route path="/policy-decisions" component={PolicyDecisionsPage} />
           <Route path="/ownership" component={OwnershipPage} />
           <Route path="/security-plan" component={SecurityPlanPage} />
           <Route path="/remediation-tracking" component={RemediationTrackingPage} />
