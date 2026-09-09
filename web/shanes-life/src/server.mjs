@@ -17,6 +17,7 @@ import { buildPublicRouter } from "./routes/public.mjs";
 import { buildWidgetRouter } from "./routes/widget.mjs";
 import { handlePlaidWebhook } from "./routes/plaid-webhook.mjs";
 import { handleTeslaHook, serveTeslaPublicKey } from "./routes/tesla.mjs";
+import { handleHealthMetricHook } from "./routes/health-metrics.mjs";
 import { dispatchDueCommands as dispatchDueTeslaCommands, runLowBatteryCheckForUser } from "./core/tesla.mjs";
 import { syncOdometerFromTesla, syncChargingSessionsFromTesla } from "./core/vehicles.mjs";
 import * as plaid from "./core/plaid.mjs";
@@ -113,6 +114,18 @@ async function handle(req, res) {
     }
     const token = decodeURIComponent(pathname.slice("/hooks/tesla/".length));
     return handleTeslaHook(req, res, token, { log: (m) => log(m) });
+  }
+
+  // ---- Apple Health bridge webhook (Git #3322): authenticated by its own bearer token in the
+  // path, never by the session cookie -- a real Apple Shortcuts automation posting a HealthKit
+  // sample is not a browser and holds no session. Same shape as /hooks/tesla/:token.
+  if (pathname.startsWith("/hooks/health-metrics/")) {
+    if (method !== "POST") {
+      res.writeHead(405, { allow: "POST" });
+      return res.end();
+    }
+    const token = decodeURIComponent(pathname.slice("/hooks/health-metrics/".length));
+    return handleHealthMetricHook(req, res, token, { log: (m) => log(m) });
   }
 
   // ---- Tesla's real vehicle-pairing well-known public key: public by definition, no auth at

@@ -9699,6 +9699,92 @@ async function viewSettings(view) {
     );
     view.append(widget);
 
+    // Apple Health bridge via Shortcuts (Git #3322) -- HealthKit is native-iOS-only, so a real
+    // Shortcuts automation reads a sample and POSTs it to this app's own token-authed webhook.
+    // No correlation view here yet (deferred, issue's own item 5) -- just the real token
+    // management and the real readings that have actually arrived.
+    const { tokens: healthTokenList } = await api("/api/health-metrics/hook-tokens");
+    const { readings: healthReadings } = await api("/api/health-metrics");
+    const health = el("section", { class: "section" }, [
+      el("h2", { text: "Apple Health" }),
+      el("p", {
+        class: "muted small",
+        text: "HealthKit can't be read from a web app -- so a real Apple Shortcuts automation reads oxygen/heart-rate samples and posts them here. Create a link below, then use it as the URL in a Shortcuts “Get Contents of URL” action.",
+      }),
+    ]);
+
+    for (const token of healthTokenList.filter((t) => !t.revoked_at)) {
+      health.append(
+        el("div", { class: "card" }, [
+          el("div", { class: "spread" }, [
+            el("div", {}, [
+              el("div", { class: "title", text: token.label }),
+              el("div", { class: "meta", text: token.last_used_at ? `last used ${agoShort(token.last_used_at)}` : "never used" }),
+            ]),
+            el("button", {
+              class: "ghost small danger",
+              text: "Revoke",
+              onClick: async (event) => {
+                event.target.disabled = true;
+                await api(`/api/health-metrics/hook-tokens/${token.id}`, { method: "DELETE" });
+                render();
+              },
+            }),
+          ]),
+        ]),
+      );
+    }
+
+    const healthNameInput = el("input", { placeholder: "Name this Shortcut, e.g. Pulse Ox reading", "aria-label": "Health metrics link label" });
+    const healthIssued = el("div");
+    health.append(
+      el("div", { class: "card" }, [
+        healthNameInput,
+        el("div", { class: "row", style: "margin-top:.6rem" }, [
+          el("button", {
+            class: "primary small",
+            text: "Create Shortcuts link",
+            onClick: async (event) => {
+              event.target.disabled = true;
+              try {
+                const token = await api("/api/health-metrics/hook-tokens", {
+                  method: "POST",
+                  body: JSON.stringify({ label: healthNameInput.value.trim() }),
+                });
+                healthIssued.replaceChildren(
+                  el("p", { class: "small ok", text: "Shown once. Copy it now." }),
+                  el("pre", { class: "token", text: token.hookUrl }),
+                  el("p", { class: "small muted", text: 'POST JSON: { "metric": "spo2" | "heart_rate", "value": <number>, "recordedAt": "<ISO 8601, optional>" }' }),
+                );
+                healthNameInput.value = "";
+              } catch (err) {
+                healthIssued.replaceChildren(el("p", { class: "small error", text: err.message }));
+              } finally {
+                event.target.disabled = false;
+              }
+            },
+          }),
+        ]),
+        healthIssued,
+      ]),
+    );
+
+    if (healthReadings.length === 0) {
+      health.append(el("p", { class: "muted small", text: "No readings yet." }));
+    } else {
+      const metricLabel = { spo2: "SpO2", heart_rate: "Heart rate" };
+      const metricUnit = { spo2: "%", heart_rate: " bpm" };
+      for (const reading of healthReadings.slice(0, 10)) {
+        health.append(
+          el("div", { class: "tile" }, [
+            el("div", { class: "meta small", text: agoShort(reading.recorded_at) }),
+            el("div", { class: "title small", text: `${metricLabel[reading.metric_type] || reading.metric_type}: ${reading.value}${metricUnit[reading.metric_type] || ""}` }),
+          ]),
+        );
+      }
+    }
+    view.append(health);
+
     await renderTeslaSettings(view);
     return;
   }

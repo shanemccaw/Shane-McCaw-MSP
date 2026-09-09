@@ -44,6 +44,7 @@ import * as money from "../core/money.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
 import * as pantry from "../core/pantry.mjs";
 import * as widgetTokens from "../core/widget-tokens.mjs";
+import * as healthMetrics from "../core/health-metrics.mjs";
 import { computeNextCard, renderWidgetPage } from "../core/widget.mjs";
 import { headingHomeAvailability, triggerHeadingHome } from "../core/heading-home.mjs";
 import * as medications from "../core/medications.mjs";
@@ -3430,6 +3431,43 @@ export function buildApiRouter() {
     await widgetTokens.revokeWidgetToken(user.id, params.id);
     await audit.record({ userId: user.id, actor: "web", action: "widget_token.revoke", detail: { tokenId: params.id } });
     return sendJson(res, 200, { ok: true });
+  });
+
+  // -- Apple Health bridge (Git #3322) -------------------------------------
+
+  router.get("/api/health-metrics/hook-tokens", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { tokens: await healthMetrics.listHookTokens(user.id) });
+  });
+
+  /** The real token value is returned exactly once, here -- same discipline as MCP/widget/Tesla
+   *  hook tokens: only its SHA-256 is ever stored, so this is the one moment it can be shown. */
+  router.post("/api/health-metrics/hook-tokens", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    if (!body.label || !String(body.label).trim()) {
+      throw badRequest("label is required -- name the Shortcut so it can be revoked later.");
+    }
+    const issued = await healthMetrics.issueHookToken(user.id, body.label);
+    await audit.record({ userId: user.id, actor: "web", action: "health_metric_hook_token.issue", detail: { tokenId: issued.id, label: issued.label } });
+    return sendJson(res, 201, {
+      ...issued,
+      hookUrl: `${config.publicOrigin}/hooks/health-metrics/${issued.token}`,
+    });
+  });
+
+  router.delete("/api/health-metrics/hook-tokens/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await healthMetrics.revokeHookToken(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "web", action: "health_metric_hook_token.revoke", detail: { tokenId: params.id } });
+    return sendJson(res, 200, { ok: true });
+  });
+
+  // Settings -> Connected's recent-readings list (real data only -- every row here came from a
+  // real Shortcuts POST, never invented).
+  router.get("/api/health-metrics", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { readings: await healthMetrics.listRecent(user.id) });
   });
 
   // "Preview the widget page ->" (Git #3214) -- the exact same real HTML /widget/t/:token
