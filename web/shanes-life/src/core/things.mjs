@@ -71,6 +71,94 @@ export async function listThings(userId, { house = null, limit = 200 } = {}) {
   );
 }
 
+/**
+ * "Next [house] run · Take" checklist (Git #3300). `take_for_house` is the queue: a thing on
+ * file for one house (the design's "supplies default to Home") that needs to ride along on the
+ * next real run to another house. Grouped by destination house, since more than one run could
+ * theoretically be queued at once; the design itself only ever shows one live group, so the UI
+ * treats the first (only real) group as "the" next run.
+ */
+export async function listTakeChecklist(userId) {
+  const rows = await many(
+    `SELECT id, name, place, house, note, quantity, take_for_house, take_done, is_grocery, updated_at
+       FROM things
+      WHERE user_id = $1 AND take_for_house IS NOT NULL
+      ORDER BY take_for_house ASC, take_done ASC, is_grocery ASC, lower(name) ASC`,
+    [userId],
+  );
+  const byHouse = new Map();
+  for (const row of rows) {
+    if (!byHouse.has(row.take_for_house)) byHouse.set(row.take_for_house, []);
+    byHouse.get(row.take_for_house).push(row);
+  }
+  return Array.from(byHouse, ([house, items]) => ({ house, items }));
+}
+
+/** Queue (or re-queue) a real thing on file for the next run to `takeForHouse`. Upsert-by-name
+ *  like recordThing -- saying "take the drill to the rental" again just re-queues the same row.
+ *  A thing genuinely not on file yet is created with `house` (its current home, default "Home")
+ *  as its place -- "supplies default to Home" (Shanes Life 09 - Things.dc.html's own "Why"). */
+export async function queueForTake(userId, { name, takeForHouse, quantity, isGrocery, house }) {
+  const n = normaliseName(name);
+  const destHouse = normaliseHouse(takeForHouse);
+  if (!destHouse) throw badRequest("takeForHouse is required");
+  const qty = quantity === undefined || quantity === null || quantity === "" ? null : Math.max(1, Math.trunc(Number(quantity)) || 1);
+  const grocery = Boolean(isGrocery);
+  const fallbackHouse = normaliseHouse(house) || "Home";
+
+  const existing = await one(
+    `SELECT id FROM things WHERE user_id = $1 AND lower(name) = lower($2)`,
+    [userId, n],
+  );
+  if (existing) {
+    return one(
+      `UPDATE things
+          SET take_for_house = $1, take_done = false,
+              quantity = COALESCE($2, quantity), is_grocery = $3 OR is_grocery, updated_at = now()
+        WHERE id = $4 AND user_id = $5
+        RETURNING id, name, place, house, note, quantity, take_for_house, take_done, is_grocery, updated_at`,
+      [destHouse, qty, grocery, existing.id, userId],
+    );
+  }
+  return one(
+    `INSERT INTO things (user_id, name, place, house, quantity, take_for_house, is_grocery)
+     VALUES ($1, $2, $3, $3, $4, $5, $6)
+     RETURNING id, name, place, house, note, quantity, take_for_house, take_done, is_grocery, updated_at`,
+    [userId, n, fallbackHouse, qty, destHouse, grocery],
+  );
+}
+
+/** Check (or uncheck) one take-checklist row for this run -- mirrors list_items.done, checked
+ *  but not yet cleared. Ownership-checked like every other per-row thing mutation here. */
+export async function setTakeDone(userId, thingId, done) {
+  const row = await one(
+    `UPDATE things SET take_done = $1, updated_at = now()
+      WHERE id = $2 AND user_id = $3 AND take_for_house IS NOT NULL
+      RETURNING id, name, place, house, note, quantity, take_for_house, take_done, is_grocery, updated_at`,
+    [Boolean(done), thingId, userId],
+  );
+  if (!row) throw badRequest("Thing not found, or not queued for a run");
+  return row;
+}
+
+/** The run actually happened: every checked-off item for `house` now really lives there --
+ *  `house` moves to the destination and the queue clears, the same real-state-change the design's
+ *  own Heading Out "All set" applies to that separate list (#3158). Unchecked items stay queued
+ *  for next time, since they were never actually taken. Returns how many rows moved. */
+export async function clearTakeRun(userId, house) {
+  const h = normaliseHouse(house);
+  if (!h) throw badRequest("house is required");
+  const rows = await many(
+    `UPDATE things
+        SET house = take_for_house, take_for_house = NULL, take_done = false,
+            quantity = NULL, is_grocery = false, updated_at = now()
+      WHERE user_id = $1 AND take_for_house = $2 AND take_done = true
+      RETURNING id`,
+    [userId, h],
+  );
+  return rows.length;
+}
+
 /** Every distinct house a thing is on file for, so the "Lives at <house>" grouping doesn't
  *  guess at a fixed list of houses. */
 export async function listHouses(userId) {

@@ -24,7 +24,9 @@ import * as mealPlan from "../core/meal-plan.mjs";
 import * as media from "../core/media.mjs";
 import * as medications from "../core/medications.mjs";
 import * as money from "../core/money.mjs";
+import * as nudges from "../core/nudges.mjs";
 import * as nutrition from "../core/nutrition.mjs";
+import * as pantry from "../core/pantry.mjs";
 import * as people from "../core/people.mjs";
 import * as pets from "../core/pets.mjs";
 import * as places from "../core/places.mjs";
@@ -61,6 +63,38 @@ function categoryMeta(args) {
     itemNoun: args.categoryItemNoun,
     description: args.categoryDescription,
   };
+}
+
+/**
+ * Git #3311's real "proactive surfacing" half: check the rows push_deals/push_coupons just wrote
+ * against Shane's "What I Like" occasional-purchase list (prices.mjs's matchOccasionalListAgainst
+ * -- reuses the same real substring match attachWeeklyAdVerdicts already uses for Shopping), and
+ * queue a real Today's-tray nudge for any match. Same real push-notification mechanism
+ * (core/nudges.mjs) every other proactive surface in this app already uses
+ * (appointment/vaccine/tesla/bank) -- not a third, invented mechanism. A nudge failure (e.g. no
+ * push subscription registered yet) must never fail the push_deals/push_coupons call it rides in
+ * on, same real guard plaid-webhook.mjs's own nudgeItemNeedsAttention uses.
+ */
+async function notifyOccasionalMatches(userId, pushedRows) {
+  const matches = await prices.matchOccasionalListAgainst(userId, pushedRows);
+  if (matches.length === 0) return matches;
+  try {
+    const title = matches.length === 1
+      ? `${matches[0].listItemText} is on sale`
+      : `${matches.length} things on your "What I Like" list are on sale`;
+    const body = matches
+      .map((m) => {
+        const price = m.priceCents != null ? ` $${(m.priceCents / 100).toFixed(2)}` : "";
+        const where = m.store ? ` at ${m.store}` : "";
+        const deal = m.description ? ` -- ${m.description}` : "";
+        return `${m.listItemText}${price}${where}${deal}`;
+      })
+      .join(" · ");
+    await nudges.queueNudge({ userId, kind: "deal_match", title, body, payload: { matches } });
+  } catch (err) {
+    console.error(`[occasional-list] could not queue deal-match nudge: ${err.message}`);
+  }
+  return matches;
 }
 
 const ITEMS_SCHEMA = {
@@ -737,7 +771,7 @@ export const TOOLS = [
     name: "push_deals",
     title: "Push weekly-ad prices",
     description:
-      "Store real per-store prices you just read off a weekly ad flyer (Git #3110), so Shopping can show a real cross-store verdict on matching list items -- 'Walmart $2.99', cheapest store wins. Lands in the same real price history get_prices reads, tagged as this week's ad rather than a one-off observation. Call get_prices first to check what's already on file for an item before re-pushing the same flyer twice.",
+      "Store real per-store prices you just read off a weekly ad flyer (Git #3110), so Shopping can show a real cross-store verdict on matching list items -- 'Walmart $2.99', cheapest store wins. Lands in the same real price history get_prices reads, tagged as this week's ad rather than a one-off observation. Call get_prices first to check what's already on file for an item before re-pushing the same flyer twice. Also checked against Shane's 'What I Like' occasional-purchase list (Git #3311) -- a real match queues a real Today's-tray nudge automatically, no separate call needed.",
     inputSchema: {
       type: "object",
       properties: {
@@ -752,6 +786,10 @@ export const TOOLS = [
               priceCents: { type: "integer", description: "Price in cents, e.g. 299 for $2.99." },
               unit: { type: "string", description: "'each', 'lb', '12oz', etc. -- whatever the flyer prints." },
               validOn: { type: "string", description: "ISO date this price is good on, if the flyer states one. Defaults to today." },
+              validTo: { type: "string", description: "ISO date this sale price ends, if the flyer states one." },
+              category: { type: "string", description: "Product category, e.g. 'Snacks', 'Dairy', 'Produce', if the flyer groups by one." },
+              imageUrl: { type: "string", description: "Product thumbnail image URL, if one is available." },
+              dealType: { type: "string", description: "Free-form deal type, e.g. 'sale', 'bogo', 'digital_coupon', 'multi_buy' -- whatever best describes it." },
             },
             required: ["item", "priceCents"],
           },
@@ -763,7 +801,8 @@ export const TOOLS = [
     async handler(args, ctx) {
       const rows = await prices.pushDeals(ctx.user.id, args);
       await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "prices.deals.push", detail: { store: args.store, count: rows.length } });
-      return { pushed: rows.length, prices: rows };
+      const occasionalMatches = await notifyOccasionalMatches(ctx.user.id, rows);
+      return { pushed: rows.length, prices: rows, occasionalMatches };
     },
   },
 
@@ -771,7 +810,7 @@ export const TOOLS = [
     name: "push_coupons",
     title: "Push coupons and multi-buy deals",
     description:
-      "Store real coupons, multi-buy counts ('2 for $5') and discounts you just read off a weekly ad flyer or a coupon (Git #3110), so Shopping can surface them on matching list items.",
+      "Store real coupons, multi-buy counts ('2 for $5') and discounts you just read off a weekly ad flyer or a coupon (Git #3110), so Shopping can surface them on matching list items. Also checked against Shane's 'What I Like' occasional-purchase list (Git #3311) -- a real match queues a real Today's-tray nudge automatically, no separate call needed.",
     inputSchema: {
       type: "object",
       properties: {
@@ -789,6 +828,9 @@ export const TOOLS = [
               discountCents: { type: "integer", description: "A flat cents-off discount, if this isn't a multi-buy." },
               validFrom: { type: "string", description: "ISO date the coupon starts, if stated." },
               validTo: { type: "string", description: "ISO date the coupon expires, if stated." },
+              category: { type: "string", description: "Product category, e.g. 'Snacks', 'Dairy', 'Produce', if the flyer groups by one." },
+              imageUrl: { type: "string", description: "Product thumbnail image URL, if one is available." },
+              dealType: { type: "string", description: "Free-form deal type, e.g. 'sale', 'bogo', 'digital_coupon', 'multi_buy' -- whatever best describes it." },
             },
             required: ["item", "description"],
           },
@@ -800,7 +842,8 @@ export const TOOLS = [
     async handler(args, ctx) {
       const rows = await prices.pushCoupons(ctx.user.id, args);
       await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "prices.coupons.push", detail: { store: args.store ?? null, count: rows.length } });
-      return { pushed: rows.length, coupons: rows };
+      const occasionalMatches = await notifyOccasionalMatches(ctx.user.id, rows);
+      return { pushed: rows.length, coupons: rows, occasionalMatches };
     },
   },
 
@@ -2111,6 +2154,82 @@ export const TOOLS = [
     },
     async handler(args, ctx) {
       return { items: await things.listThings(ctx.user.id, { house: args.house }), houses: await things.listHouses(ctx.user.id) };
+    },
+  },
+
+  // -- pantry (Git #3308) ------------------------------------------------------
+  //
+  // Real reversal of the earlier "that's not even my area" cut -- contract.md Section 5's
+  // 2026-09-09 real, further superseding update. The capture grammar's real entry points for "I
+  // have 2 lbs of chicken breasts" (absolute), "bought 3 cans of diced tomatoes" (additive), and
+  // "used the last of the rosemary" (depleting) -- see capture-grammar.mjs's pantry_have /
+  // pantry_bought / pantry_used_last rules, which call these same three core/pantry.mjs
+  // functions. No separate write path exists for any of the three.
+
+  {
+    name: "set_pantry_item",
+    title: "State a real pantry quantity (absolute or additive)",
+    description:
+      "The capture grammar's real entry point for 'I have 2 lbs of chicken breasts' (mode 'set', an absolute real count) and 'bought 3 cans of diced tomatoes' (mode 'add', a real delta on top of whatever's already on file). Saying an absolute quantity again CORRECTS it in place (upsert on name+house) rather than creating a duplicate -- no confirmation needed, per contract Section 8's 'trust stated facts immediately.' Pass house for a real household that tracks its own pantry separately (H1 / H2 / the rental / ...); omit it for a pantry item with no house distinction. unit is real, free text as Shane states it ('lbs', 'cans', 'jar', 'bunch') -- not a locked enum. category defaults to the same fixed grocery-category set (Produce/Meat/Snacks/Bakery/Pantry/Frozen/Dairy/Other) Shopping already groups by, auto-assigned from name when not stated.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "e.g. 'chicken breasts', 'rosemary'." },
+        quantity: { type: "number", description: "The real number -- an absolute count in mode 'set', or a real delta to add in mode 'add'." },
+        mode: { type: "string", enum: ["set", "add"], description: "'set' (default) states an absolute real quantity; 'add' adds this quantity on top of whatever's already on file." },
+        unit: { type: "string", description: "e.g. 'lbs', 'cans', 'jar', 'bunch'. Real, free text -- not a locked enum." },
+        category: { type: "string", description: "Optional override; defaults to the fixed Shopping grocery-category set, auto-assigned from name." },
+        house: { type: "string", description: "The hub/spoke label, e.g. 'Home', 'Rental'. Optional." },
+      },
+      required: ["name", "quantity"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row =
+        args.mode === "add"
+          ? await pantry.adjustPantryQuantity(ctx.user.id, { name: args.name, delta: args.quantity, unit: args.unit, category: args.category, house: args.house })
+          : await pantry.setPantryQuantity(ctx.user.id, { name: args.name, quantity: args.quantity, unit: args.unit, category: args.category, house: args.house });
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "pantry_item.record", entityId: row.id, detail: { name: row.name, quantity: row.quantity, unit: row.unit, house: row.house } });
+      return row;
+    },
+  },
+
+  {
+    name: "get_pantry",
+    title: "Read real pantry inventory",
+    description:
+      "Every real pantry item on file, newest-updated first -- what's actually at home right now, and real quantities. Pass house to see just what's on hand at one real hub/spoke. Call this before generating a shopping list or recipe so 'canMake'-style suggestions can account for what's already in the pantry, not just what's freshly on the Shopping run.",
+    inputSchema: {
+      type: "object",
+      properties: { house: { type: "string" } },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      return { items: await pantry.listPantryItems(ctx.user.id, { house: args.house }), houses: await pantry.listPantryHouses(ctx.user.id) };
+    },
+  },
+
+  {
+    name: "queue_take",
+    title: "Queue a thing for the next run to a house (\"Next [house] run · Take\")",
+    description:
+      "The capture grammar's real entry point for 'take the drill to the rental' / 'bring the HVAC filter to the rental' (Git #3300) -- queues a real thing already on file (or files a new one, defaulting its home to 'Home') for the Things room's own 'Next [house] run · Take' checklist. Distinct from the Tesla-triggered Heading Out list (#3158): this is what to bring, decided ahead of the run, not the live departure list. Saying it again just re-queues the same row (upsert on name), same as set_thing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "e.g. 'Printer paper', 'HVAC filter'." },
+        takeForHouse: { type: "string", description: "The destination house, e.g. 'Rental'. Required." },
+        quantity: { type: "integer", description: "e.g. 2 for 'Printer paper x2'. Optional." },
+        isGrocery: { type: "boolean", description: "True for an item split off a shopping run at capture time (the design's teal 'groceries' badge)." },
+        house: { type: "string", description: "Where this thing lives today, if it isn't on file yet. Defaults to 'Home' -- 'supplies default to Home' per the design." },
+      },
+      required: ["name", "takeForHouse"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await things.queueForTake(ctx.user.id, args);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "thing.take.queue", entityId: row.id, detail: { name: row.name, take_for_house: row.take_for_house, quantity: row.quantity } });
+      return row;
     },
   },
 

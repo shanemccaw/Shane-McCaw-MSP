@@ -108,6 +108,7 @@ public sealed class ShanesLifeMcpClient
                 priceCents = i.PriceCents,
                 unit = i.Unit,
                 validOn = i.ValidOn,
+                imageUrl = i.ImageUrl,
             }),
         });
         return result.ValueKind == JsonValueKind.Object && result.TryGetProperty("pushed", out var pushed)
@@ -129,6 +130,7 @@ public sealed class ShanesLifeMcpClient
                 multiBuyCount = i.MultiBuyCount,
                 multiBuyPriceCents = i.MultiBuyPriceCents,
                 discountCents = i.DiscountCents,
+                imageUrl = i.ImageUrl,
             }),
         });
         return result.ValueKind == JsonValueKind.Object && result.TryGetProperty("pushed", out var pushed)

@@ -41,6 +41,7 @@ import * as media from "../core/media.mjs";
 import * as incomeRules from "../core/income-rules.mjs";
 import * as money from "../core/money.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
+import * as pantry from "../core/pantry.mjs";
 import * as widgetTokens from "../core/widget-tokens.mjs";
 import { computeNextCard, renderWidgetPage } from "../core/widget.mjs";
 import { headingHomeAvailability, triggerHeadingHome } from "../core/heading-home.mjs";
@@ -198,7 +199,7 @@ export async function roomsForToday(userId, { allDates, tonight, groceries, meds
       : "Nothing on the lists yet",
   };
   const peopleRoom = {
-    subtitle: allPeople.length > 0 ? `${allPeople.length} people · your journal` : "No one on file yet",
+    subtitle: allPeople.length > 0 ? `${allPeople.length} ${allPeople.length === 1 ? "person" : "people"} · your journal` : "No one on file yet",
   };
   const petsRoom = {
     subtitle: allPets.length > 0 ? allPets.map((p) => p.name).join(", ") : "No pets yet",
@@ -937,8 +938,42 @@ export function buildApiRouter() {
     const house = ctx.url.searchParams.get("house");
     const q = ctx.url.searchParams.get("q");
     if (q) return sendJson(res, 200, { items: await things.searchThings(user.id, q) });
-    const [items, houses] = await Promise.all([things.listThings(user.id, { house }), things.listHouses(user.id)]);
-    return sendJson(res, 200, { items, houses });
+    const [items, houses, take] = await Promise.all([
+      things.listThings(user.id, { house }),
+      things.listHouses(user.id),
+      things.listTakeChecklist(user.id),
+    ]);
+    return sendJson(res, 200, { items, houses, take });
+  });
+
+  // "Next [house] run · Take" checklist (Git #3300): queue a real thing on file for the next
+  // real run to a house, distinct from the Tesla-triggered "Heading Out" list (#3158).
+  router.post("/api/things/take", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await things.queueForTake(user.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "thing.take.queue", entityId: row.id, detail: { name: row.name, take_for_house: row.take_for_house, quantity: row.quantity } });
+    return sendJson(res, 200, row);
+  });
+
+  // Check/uncheck one queued item for this run.
+  router.patch("/api/things/:id/take", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    if (body.done === undefined) throw badRequest("done is required");
+    const row = await things.setTakeDone(user.id, params.id, body.done);
+    await audit.record({ userId: user.id, actor: "web", action: "thing.take.check", entityId: row.id, detail: { done: row.take_done } });
+    return sendJson(res, 200, row);
+  });
+
+  // The run actually happened: every checked-off item for this house now really lives there,
+  // and the queue clears -- same real-state-change Heading Out's own "All set" applies to that
+  // separate list.
+  router.post("/api/things/take/:house/clear", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const moved = await things.clearTakeRun(user.id, params.house);
+    await audit.record({ userId: user.id, actor: "web", action: "thing.take.clear", detail: { house: params.house, moved } });
+    return sendJson(res, 200, { ok: true, moved });
   });
 
   // "where's the drill?" -- the app's own real, deterministic search (no AI call, per contract
@@ -949,6 +984,17 @@ export function buildApiRouter() {
     const q = ctx.url.searchParams.get("q");
     if (!q) throw badRequest("q is required");
     return sendJson(res, 200, { thing: await things.findThing(user.id, q) });
+  });
+
+  // Real pantry inventory (Git #3308) -- what's actually at home, and real quantities. Reads
+  // only: same "no forms, anywhere, ever" idiom the Things room already uses (Git #3181) --
+  // writes only ever happen via a real capture (capture-grammar.mjs's pantry_have/pantry_bought/
+  // pantry_used_last rules) or Claude over MCP (set_pantry_item), never a dedicated add/edit form.
+  router.get("/api/pantry", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const house = ctx.url.searchParams.get("house");
+    const [items, houses] = await Promise.all([pantry.listPantryItems(user.id, { house }), pantry.listPantryHouses(user.id)]);
+    return sendJson(res, 200, { items, groups: pantry.groupPantryByCategory(items), houses });
   });
 
   // "Who fixed what" -- real service-provider contact log (Git #3156). Each capture is a new

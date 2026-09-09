@@ -1081,7 +1081,13 @@ $("#capture").addEventListener("submit", async (event) => {
     // to the run and saves a stated "<item> aisle <n> <note>" directly onto that item's aisle
     // memory, rather than the generic /api/captures triage a bare statement gets everywhere
     // else (which only ever surfaces on Inbox/Today, not live in the room that said it).
-    if (state.route === "shopping" && lines.length && !state.attachment) {
+    //
+    // Git #3308: gated to the Shopping LIST tab specifically, not the Pantry tab that now shares
+    // this same route -- without this, "I have 2 lbs of chicken breasts" typed while on Pantry
+    // would get treated as a literal shopping-list item ("I have 2 lbs of chicken breasts") added
+    // verbatim to the run, instead of reaching the real deterministic pantry_have/pantry_bought/
+    // pantry_used_last capture-grammar rules via the generic /api/captures path below.
+    if (state.route === "shopping" && (state.shoppingTab || "list") === "list" && lines.length && !state.attachment) {
       for (const line of lines) await submitShoppingCapture(line);
       captureText.value = "";
       captureText.style.height = "auto";
@@ -2004,8 +2010,55 @@ function contactRow(c) {
 // room-tint table, "Things".
 const THINGS_TINT = "251,146,60";
 
+function thingTakeRow(house, item) {
+  const box = el("div", {
+    class: `shop-check${item.take_done ? " done" : ""}`,
+    role: "checkbox",
+    tabindex: "0",
+    "aria-checked": item.take_done ? "true" : "false",
+    "aria-label": item.name,
+    html: item.take_done ? SHOP_CHECK_ICON : "",
+  });
+  const nameText = item.quantity && item.quantity > 1 ? `${item.name} ×${item.quantity}` : item.name;
+  const nameEl = el("div", { class: `shop-item-name${item.take_done ? " done" : ""}`, text: nameText });
+  const subLine = [item.house, item.place].filter(Boolean).join(" · ") || null;
+  const subEl = subLine ? el("div", { class: "shop-item-sub", text: subLine }) : null;
+  const groceryBadge = item.is_grocery ? el("span", { class: "chip teal", text: "groceries" }) : null;
+
+  const toggleDone = async () => {
+    if (box.classList.contains("pending")) return;
+    box.classList.add("pending");
+    try {
+      const updated = await api(`/api/things/${item.id}/take`, {
+        method: "PATCH",
+        body: JSON.stringify({ done: !item.take_done }),
+      });
+      item.take_done = updated.take_done;
+      box.classList.toggle("done", item.take_done);
+      box.innerHTML = item.take_done ? SHOP_CHECK_ICON : "";
+      box.setAttribute("aria-checked", item.take_done ? "true" : "false");
+      nameEl.classList.toggle("done", item.take_done);
+    } finally {
+      box.classList.remove("pending");
+    }
+  };
+  box.addEventListener("click", toggleDone);
+  box.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleDone();
+    }
+  });
+  nameEl.addEventListener("click", toggleDone);
+
+  return el("div", { class: "date-row" }, [
+    box,
+    el("div", { class: "body" }, [nameEl, subEl].filter(Boolean).concat(groceryBadge ? [groceryBadge] : [])),
+  ]);
+}
+
 async function viewThings(view) {
-  const [{ items: things, houses }, { items: contacts }, { entities }, { categories }] = await Promise.all([
+  const [{ items: things, houses, take }, { items: contacts }, { entities }, { categories }] = await Promise.all([
     api("/api/things"),
     api("/api/contacts"),
     api("/api/entities?limit=200"),
@@ -2040,6 +2093,32 @@ async function viewThings(view) {
     for (const t of things.slice(0, 8)) recentSection.append(thingRow(t));
   }
   view.append(recentSection);
+
+  // "Next [house] run · Take" (Git #3300) -- a real checklist of things queued for the next run
+  // to a house, distinct from the "Lives at <house>" chips below and from the Tesla-triggered
+  // Heading Out list (#3158). `take` groups real things.mjs rows by destination house; only the
+  // first real group renders, matching the design's own single-run widget. "All set" mirrors
+  // Heading Out's own real run-complete action: checked items really move to that house.
+  if (take.length > 0) {
+    const run = take[0];
+    const takeSection = el("section", { class: "section" }, [el("h2", { text: `Next ${run.house} run · Take` })]);
+    for (const item of run.items) takeSection.append(thingTakeRow(run.house, item));
+    if (run.items.some((i) => i.take_done)) {
+      takeSection.append(
+        el("button", {
+          type: "button",
+          class: "ghost small",
+          text: "All set",
+          onClick: async (event) => {
+            event.currentTarget.disabled = true;
+            await api(`/api/things/take/${encodeURIComponent(run.house)}/clear`, { method: "POST" });
+            render();
+          },
+        }),
+      );
+    }
+    view.append(takeSection);
+  }
 
   if (houses.length > 0) {
     const grouped = el("section", { class: "section" }, [el("h2", { text: "By house" })]);
@@ -2315,26 +2394,52 @@ async function viewPersonDetail(view, personId) {
   attachRoomWatermark(view, "people");
 }
 
-// Lists (Git #3155) -- the real, deliberately light-touch case Section 3 calls out: movies/shows
-// to watch, recommended books, and anything else Claude files on the fly via `push_list`'s
-// generic `category` path. Same real typed shape as Shopping (core/lists.mjs), just every list
-// except the Shopping singleton, which keeps its own dedicated room. No bespoke design needed
-// per the contract pack -- one simple check-circle row per item, same as the design's own
-// "sensible list treatment" line.
-// Lists (Git #3155, Round 2 visual rebuild Git #3194) -- the real, deliberately light-touch
-// case Section 3 calls out: movies/shows to watch, recommended books, and anything else Claude
-// files on the fly via `push_list`'s generic `category` path. Same real typed shape as Shopping
-// (core/lists.mjs), just every list except the Shopping singleton, which keeps its own dedicated
-// room. Real design source is the First Slice Prototype's own `showLists` block (`d.listGroups`),
-// confirmed live by screenshots/07-lists.png -- NOT "Shanes Life 12 - Shared list.dc.html", which
-// #3184 already built against for the separate no-login share page (public/share.js). Native
-// chrome reuses the generic roomHeader() Dates/Pets already established (#3192/#3193), extended
-// here with its optional right-side icon for the design's own critter blob pebble; the rows
-// reuse Shopping's already-shipped .shop-list/.shop-check/.shop-item-row (Git #3178) rather than
-// a parallel set of near-identical CSS.
+// Lists (Git #3155, shelf rebuild Git #3305) -- the real, deliberately light-touch case Section 3
+// calls out: movies/shows to watch, recommended books, and anything else Claude files on the fly
+// via `push_list`'s generic `category` path. Same real typed shape as Shopping (core/lists.mjs),
+// just every list except the Shopping singleton, which keeps its own dedicated room.
+//
+// Real design source, per README "What changed... the Lists room" (Sep 8 night pass): "Lists is
+// a shelf of lists, not one long page" -- a 2-column grid of hue-tinted list cards (the First
+// Slice Prototype's own `d.showLists`/`d.listCards`), each opening its own real screen
+// (`d.showList`/`d.lOpen`/`d.lDone`) with open items on top and a collapsed "Done · {n}" section
+// underneath. This supersedes Git #3194's one-long-page rebuild -- that pass is what #3305
+// replaces, not what it extends.
 const LISTS_TINT = "165,180,252"; // ROOMS' own real tint for "lists", matching the design's glow.
 
-function listsItemRow(listId, item) {
+// README §1: five named hues, plus a hash fallback for anything else -- the real FNV-1a hash and
+// 7-hue palette the prototype's own `LIST_HUES`/`HUES`/`fnv` use verbatim (`listHue()` in
+// `Shanes Life - First Slice Prototype.dc.html`), so an arbitrary list name always lands on the
+// same hue across reloads instead of a color picked at random each render.
+const LIST_HUES = {
+  Watch: "165,180,252",
+  Books: "251,191,36",
+  Gifts: "244,114,182",
+  "House projects": "45,212,191",
+  Someday: "167,139,250",
+  Visits: "134,239,172",
+};
+const LIST_HUE_PALETTE = ["165,180,252", "45,212,191", "244,114,182", "251,191,36", "52,211,153", "167,139,250", "251,146,60"];
+function fnv1a(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function listHue(name) {
+  return LIST_HUES[name] || LIST_HUE_PALETTE[fnv1a(name) % LIST_HUE_PALETTE.length];
+}
+
+const LIST_BACK_CHEVRON_ICON =
+  '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>';
+
+/** One check-circle row on a list's own detail screen (README §2: open items on top, tap to
+ *  check off; Done items underneath, tap to un-do). Reuses Shopping's already-shipped
+ *  .shop-list/.shop-check row skin (Git #3178) -- no per-row expand/remove chevron here, unlike
+ *  Shopping's own row: the design never draws one on this screen. */
+function listDetailItemRow(listId, item) {
   const box = el("div", {
     class: `shop-check${item.done ? " done" : ""}`,
     role: "checkbox",
@@ -2344,21 +2449,16 @@ function listsItemRow(listId, item) {
     html: item.done ? SHOP_CHECK_ICON : "",
   });
   const nameEl = el("div", { class: `shop-item-name${item.done ? " done" : ""}`, text: item.text });
-  const subEl = item.note ? el("div", { class: "shop-item-sub", text: item.note }) : null;
 
   const toggleDone = async () => {
     if (box.classList.contains("pending")) return;
     box.classList.add("pending");
     try {
-      const updated = await api(`/api/lists/${listId}/items/${item.id}`, {
+      await api(`/api/lists/${listId}/items/${item.id}`, {
         method: "PATCH",
         body: JSON.stringify({ checked: !item.done }),
       });
-      item.done = updated.done;
-      box.classList.toggle("done", item.done);
-      box.innerHTML = item.done ? SHOP_CHECK_ICON : "";
-      box.setAttribute("aria-checked", item.done ? "true" : "false");
-      nameEl.classList.toggle("done", item.done);
+      render();
     } finally {
       box.classList.remove("pending");
     }
@@ -2372,102 +2472,222 @@ function listsItemRow(listId, item) {
   });
   nameEl.addEventListener("click", toggleDone);
 
-  // Remove lives behind the same trailing-chevron detail panel Shopping's own row uses (Git
-  // #3178) rather than a permanent ghost button on the row -- the design never shows one
-  // permanently either.
-  const expandBtn = el("button", {
-    type: "button",
-    class: "shop-item-more",
-    "aria-label": `More actions for ${item.text}`,
-    "aria-expanded": "false",
-    html: SHOP_CHEVRON_RIGHT_ICON,
-  });
-  const detail = el("div", { class: "shop-item-detail" });
-  detail.hidden = true;
-  expandBtn.addEventListener("click", (event) => {
-    event.stopPropagation();
-    const opening = detail.hidden;
-    detail.hidden = !opening;
-    expandBtn.classList.toggle("open", opening);
-    expandBtn.setAttribute("aria-expanded", opening ? "true" : "false");
-    if (opening) {
-      detail.replaceChildren(
-        el("div", { class: "shop-item-detail-inner" }, [
-          el("div", { class: "row" }, [
-            el("button", {
-              class: "ghost small danger",
-              text: "Remove",
-              onClick: async (removeEvent) => {
-                removeEvent.currentTarget.disabled = true;
-                await api(`/api/lists/${listId}/items/${item.id}`, { method: "DELETE" });
-                render();
-              },
-            }),
-          ]),
-        ]),
-      );
-    }
-  });
-
   return el("li", { class: "shop-item-row" }, [
-    el("div", { class: "shop-item-main" }, [box, el("div", { class: "shop-item-text" }, [nameEl, subEl]), expandBtn]),
-    detail,
+    el("div", { class: "shop-item-main" }, [box, el("div", { class: "shop-item-text" }, [nameEl])]),
   ]);
 }
 
-/** One list = one design "group": an uppercase "{{name}} · N left" label (plus the same
- *  "New category" chip Dates already surfaces for an on-the-fly kind) over a rounded card of
- *  check-circle rows. */
-function listsGroupCard(list) {
-  const remaining = Math.max(0, (list.item_count ?? 0) - (list.done_count ?? 0));
-  const label = el("span", {
-    class: "shop-group-label",
-    text: `${list.category_label || list.category || "List"} · ${remaining} left`,
-  });
-  const newBadge = list.created_by === "claude" ? el("span", { class: "chip", text: "New category" }) : null;
+/** One shelf card (README §1): hue-tinted background/border, name, a real pill ("{n} left" /
+ *  "all done" / "empty"), up to three open items inline, "+N more", a "{n} done" footer, and a
+ *  small "new" tag -- the same real signal Dates' own "New category" chip and this room's prior
+ *  round already used (`created_by === "claude"`, i.e. filed on the fly rather than by Shane
+ *  himself typing "new list: …"). Opens the list's own screen on tap. */
+function listCardEl(list) {
+  const openCount = Math.max(0, (list.item_count ?? 0) - (list.done_count ?? 0));
+  const doneCount = list.done_count ?? 0;
+  const hue = listHue(list.name);
+  const pillText = openCount > 0 ? `${openCount} left` : (list.item_count ?? 0) > 0 ? "all done" : "empty";
+  const footText = doneCount > 0 ? `${doneCount} done` : (list.item_count ?? 0) > 0 ? "nothing done yet" : "just made";
 
-  // Git #3183: no dedicated "Add {noun}" form -- adding to a list is a capture, same as
-  // starting one (see viewLists below). Say "watch The Bear" or "add The Bear to Watch" in the
-  // universal capture box and Claude files it onto the right list.
-  const ul = el("ul", { class: "shop-list" });
-  api(`/api/lists/${list.id}`)
-    .then((detail) => {
-      ul.replaceChildren();
-      if (detail.items.length === 0) {
-        ul.append(el("li", { class: "muted small", style: "padding:12px 16px", text: "Nothing on this list yet." }));
-      } else {
-        for (const item of detail.items) ul.append(listsItemRow(list.id, item));
-      }
-    })
-    .catch(() => {
-      ul.replaceChildren(el("li", { class: "error small", style: "padding:12px 16px", text: "Couldn't load items." }));
-    });
-  return el("div", { style: "display:flex;flex-direction:column;gap:8px" }, [
-    el("div", { class: "row", style: "align-items:center;gap:8px" }, [label, newBadge]),
-    ul,
-  ]);
+  const preview = el("div", { class: "list-card-preview" });
+  const card = el(
+    "a",
+    { class: "list-card", href: `#/list/${list.id}`, style: `background:rgba(${hue},.10);border-color:rgba(${hue},.28)` },
+    [
+      el("div", { class: "list-card-head" }, [
+        el("span", { class: "list-card-name", text: list.name }),
+        el("span", { class: "list-card-pill", text: pillText }),
+      ]),
+      preview,
+      el("div", { class: "list-card-foot" }, [
+        el("span", { text: footText }),
+        list.created_by === "claude" ? el("span", { class: "list-card-new", style: `color:rgb(${hue})`, text: "new" }) : null,
+      ]),
+    ],
+  );
+
+  // /api/lists only carries item/done counts, not the items themselves -- fetch this one card's
+  // real open items to draw its up-to-three preview (same real per-card fetch the prior round's
+  // listsGroupCard already did; it's not a new N+1, just the same one now feeding a preview
+  // instead of a full expanded row list).
+  if (openCount === 0) {
+    preview.append(el("div", { class: "list-card-empty-hint", text: "Nothing open. Say it and it lands here." }));
+  } else {
+    api(`/api/lists/${list.id}`)
+      .then((detail) => {
+        preview.replaceChildren();
+        const open = detail.items.filter((i) => !i.done);
+        for (const item of open.slice(0, 3)) {
+          preview.append(
+            el("div", { class: "list-card-row" }, [
+              el("span", { class: "list-card-dot", style: `border-color:rgb(${hue})` }),
+              el("span", { class: "list-card-row-text", text: item.text }),
+            ]),
+          );
+        }
+        if (open.length > 3) preview.append(el("div", { class: "list-card-more", text: `+${open.length - 3} more` }));
+      })
+      .catch(() => {});
+  }
+
+  return card;
 }
 
-// The design's own real, locked line (First Slice Prototype's showLists footer) -- shown under
-// the lists whether or not any exist yet, per screenshots/07-lists.png. Copy is final.
-const LISTS_HINT = 'Say "watch …" or "read …" and it lands here. A new kind of list shows up on its own the first time you need one. No form, ever.';
+/** The dashed "+" card (README §1: 'Say "new list: Gifts" and it appears here') -- pre-fills the
+ *  universal capture box rather than opening a form, the same "no form, ever" discipline Git
+ *  #3183 already established for adding to an existing list. */
+function newListCardEl() {
+  return el(
+    "button",
+    {
+      type: "button",
+      class: "list-card-new-list",
+      onClick: () => {
+        captureText.value = "new list: ";
+        captureText.dispatchEvent(new Event("input"));
+        captureText.focus();
+      },
+    },
+    [
+      el("span", { class: "list-card-plus", "aria-hidden": "true", text: "+" }),
+      el("span", { text: 'Say "new list: Gifts" and it appears here' }),
+    ],
+  );
+}
+
+// The design's own real, locked line (First Slice Prototype's showLists footer). Copy is final.
+const LISTS_HINT =
+  'Any list, any name: "gifts list: speaker for DJ", "add batteries to the House projects list", "watch Severance". Open a list to check things off; done items drop below so a long list stays short.';
 
 async function viewLists(view) {
   const { lists } = await api("/api/lists");
+  const openTotal = lists.reduce((sum, l) => sum + Math.max(0, (l.item_count ?? 0) - (l.done_count ?? 0)), 0);
+  const sub = lists.length ? `${lists.length} ${lists.length === 1 ? "list" : "lists"} · ${openTotal} open` : null;
 
-  roomHeader(view, LISTS_TINT, "Lists", { icon: critterIcon("lists", { size: 36 }) });
+  roomHeader(view, LISTS_TINT, "Lists", { icon: critterIcon("lists", { size: 36 }), sub });
 
-  if (lists.length === 0) {
-    view.append(empty("No lists yet.", LISTS_HINT, "notfound"));
-  } else {
-    const section = el("section", { class: "section" });
-    for (const list of lists) section.append(listsGroupCard(list));
-    view.append(section);
-    view.append(el("p", { class: "lists-footer-hint", text: LISTS_HINT }));
-  }
+  const shelf = el("div", { class: "list-shelf" });
+  for (const list of lists) shelf.append(listCardEl(list));
+  shelf.append(newListCardEl());
+  view.append(shelf);
+  view.append(el("p", { class: "lists-footer-hint", text: LISTS_HINT }));
 
   // Room watermark (Git #3119): "lists" (1j) is the critter slot the spec already carries for
   // this room.
+  attachRoomWatermark(view, "lists");
+}
+
+// One list's own screen (Git #3305, README §2) -- back link to Lists (not Today, unlike every
+// other roomHeader() caller), glowed and pebbled in this list's own real hue.
+function listDetailHeader(view, hue, title, sub) {
+  view.append(
+    el("div", { class: "room-scene" }, [
+      el("div", { class: "room-glow", style: `background: radial-gradient(120% 70% at 50% -20%, rgba(${hue},.22), transparent 70%)` }),
+      el("div", { class: "room-header" }, [
+        el("a", { href: "#/lists", class: "room-header-back" }, [el("span", { html: LIST_BACK_CHEVRON_ICON }), el("span", { text: "Lists" })]),
+        el("div", { class: "room-header-title with-icon", text: title }),
+        el("div", { class: "room-header-icon", style: `background:rgba(${hue},.16)` }, [critterIcon("lists", { size: 36 })]),
+      ]),
+      el("div", { class: "room-header-subline", text: sub }),
+    ]),
+  );
+}
+
+// Transient, per-list UI state (Find query + Done-section expanded) -- deliberately not
+// persisted, same "one real screen in front of Shane right now" model `cookSession` above
+// already uses. Reset whenever navigation lands on a different list.
+let listDetailUi = { listId: null, query: "", showDone: false };
+
+async function viewListDetail(view, listId) {
+  if (listDetailUi.listId !== listId) listDetailUi = { listId, query: "", showDone: false };
+  const list = await api(`/api/lists/${listId}`);
+  const hue = listHue(list.name);
+  const openItems = list.items.filter((i) => !i.done);
+  const doneItems = list.items.filter((i) => i.done);
+
+  listDetailHeader(view, hue, list.name, `${openItems.length} left · ${doneItems.length} done`);
+
+  // README §2: "Lists over 10 items get a 'Find in {list}' pill that filters both sections." A
+  // real input, not a fixed pill, since the design's own `d.lQuery` is a real search box, not a
+  // toggle. Mounted once outside drawBody() so retyping doesn't lose focus/cursor position on
+  // every keystroke -- only the filtered results below it redraw.
+  if (list.items.length > 10) {
+    view.append(
+      el("input", {
+        type: "text",
+        class: "list-find-input",
+        placeholder: `Find in ${list.name}`,
+        value: listDetailUi.query,
+        onInput: (event) => {
+          listDetailUi.query = event.target.value;
+          drawBody();
+        },
+      }),
+    );
+  }
+
+  const body = el("div", { class: "list-detail-body" });
+  view.append(body);
+
+  function drawBody() {
+    body.replaceChildren();
+    const q = listDetailUi.query.trim().toLowerCase();
+    const filteredOpen = openItems.filter((i) => !q || i.text.toLowerCase().includes(q));
+
+    if (filteredOpen.length > 0) {
+      const ul = el("ul", { class: "shop-list" });
+      for (const item of filteredOpen) ul.append(listDetailItemRow(listId, item));
+      body.append(ul);
+    } else {
+      const text = q
+        ? `Nothing open matches "${listDetailUi.query.trim()}".`
+        : list.items.length
+          ? "Everything here is checked off. Say something and it lands on top."
+          : `Empty so far. Say "add … to the ${list.name} list".`;
+      body.append(el("div", { class: "card", style: "padding:16px;font-size:15px;line-height:1.45", text }));
+    }
+
+    if (doneItems.length > 0) {
+      const filteredDone = doneItems.filter((i) => !q || i.text.toLowerCase().includes(q));
+      const chevron = el("span", { class: `list-done-chevron${listDetailUi.showDone ? " open" : ""}`, html: SHOP_CHEVRON_RIGHT_ICON });
+      const clearBtn = el("button", {
+        type: "button",
+        class: "list-done-clear",
+        text: "Clear",
+        onClick: async (event) => {
+          event.stopPropagation();
+          await api(`/api/lists/${listId}/clear-checked`, { method: "POST" });
+          render();
+        },
+      });
+      const head = el("div", { class: "list-done-head" }, [
+        el("span", { class: "list-done-label", text: `Done · ${doneItems.length}` }),
+        clearBtn,
+        chevron,
+      ]);
+      head.addEventListener("click", (event) => {
+        if (clearBtn.contains(event.target)) return;
+        listDetailUi.showDone = !listDetailUi.showDone;
+        drawBody();
+      });
+      const doneCard = el("div", { class: "list-done-card" }, [head]);
+      if (listDetailUi.showDone) {
+        const doneUl = el("ul", { class: "shop-list" });
+        for (const item of filteredDone) doneUl.append(listDetailItemRow(listId, item));
+        doneCard.append(doneUl);
+      }
+      body.append(doneCard);
+    }
+
+    // README §2's own real, locked footer line, per list -- Watch/Books keep their real named
+    // examples, any other list gets the generic "add … to the {list} list" form.
+    const footHint =
+      `Say "${list.name === "Watch" ? "watch Severance" : list.name === "Books" ? "read Project Hail Mary" : `add … to the ${list.name} list`}"` +
+      ` from anywhere. Tap a row to check it off; it drops under Done so the list stays short.`;
+    body.append(el("p", { class: "lists-footer-hint", text: footHint }));
+  }
+
+  drawBody();
   attachRoomWatermark(view, "lists");
 }
 
@@ -5232,7 +5452,7 @@ function deviceTrustRow(device, { onForgotten }) {
  *  which is every real deployment today, since #3276 (the extension's own trust ceremony) is
  *  what will ever populate this table; no fixture row stands in for it here. */
 function vaultAddonCard(devices, onChanged) {
-  const card = el("div", { class: "vault-card" }, [
+  const card = el("div", { class: "card vault-card" }, [
     el("h3", { class: "vault-add-title", text: "Browser add-on" }),
     el("p", { class: "small muted", style: "padding:0 16px 10px; margin:0", text: "Vault Autofill for Chrome fills a login right on the page. Trust a browser once with Face ID and it fills without asking again for 30 days." }),
   ]);
@@ -5457,7 +5677,7 @@ async function viewVault(view) {
 
     const sections = [];
     if (vaultRoomFilter === "all" || vaultRoomFilter === "login") {
-      const card = el("div", { class: "vault-card" }, [el("h3", { class: "vault-add-title", text: "Logins" })]);
+      const card = el("div", { class: "card vault-card" }, [el("h3", { class: "vault-add-title", text: "Logins" })]);
       if (logins.length === 0) {
         card.append(el("p", { class: "small muted", style: "padding:0 16px 14px", text: q ? "No logins match." : "Nothing here yet." }));
       } else {
@@ -5466,7 +5686,7 @@ async function viewVault(view) {
       sections.push(card);
     }
     if (vaultRoomFilter === "all" || vaultRoomFilter === "bill_reference") {
-      const card = el("div", { class: "vault-card" }, [el("h3", { class: "vault-add-title", text: "Bill refs" })]);
+      const card = el("div", { class: "card vault-card" }, [el("h3", { class: "vault-add-title", text: "Bill refs" })]);
       if (billRefs.length === 0) {
         card.append(el("p", { class: "small muted", style: "padding:0 16px 14px", text: q ? "No bill refs match." : "Nothing here yet." }));
       } else {
@@ -5475,7 +5695,7 @@ async function viewVault(view) {
       sections.push(card);
     }
     if (vaultRoomFilter === "all" || vaultRoomFilter === "document") {
-      const card = el("div", { class: "vault-card" }, [el("h3", { class: "vault-add-title", text: "Documents" })]);
+      const card = el("div", { class: "card vault-card" }, [el("h3", { class: "vault-add-title", text: "Documents" })]);
       if (documentsShown.length === 0) {
         card.append(el("p", { class: "small muted", style: "padding:0 16px 14px", text: q ? "No documents match." : "Nothing here yet." }));
       } else {
@@ -5810,7 +6030,10 @@ function moneyWinRow(win) {
   return el("div", { class: "money-bucket-row" }, [
     el("div", { class: "money-bucket-name" }, [
       el("div", { text: win.text }),
-      el("div", { class: "money-bucket-meta", text: win.happened_on }),
+      el("div", {
+        class: "money-bucket-meta",
+        text: new Date(win.happened_on).toLocaleDateString([], { month: "short", day: "numeric" }),
+      }),
     ]),
     win.source === "debt_paid_off" ? sticker("green", "automatic") : null,
   ]);
@@ -7308,10 +7531,13 @@ function shoppingItemRow(listId, item, { store } = {}) {
 
 // Weekly-ad cross-store verdict, coupon and multi-buy count (Git #3110) -- null until Claude has
 // pushed a matching price/coupon over MCP (push_deals/push_coupons); most items show nothing
-// here, same as every other "real data or nothing" surface in this app.
+// here, same as every other "real data or nothing" surface in this app. `category`/`imageUrl`
+// (Git #3310) are real, optional fields on the same push -- shown only when actually present,
+// never a placeholder or invented default.
 function verdictBadge(verdict) {
   if (!verdict) return null;
   const parts = [];
+  if (verdict.category) parts.push(verdict.category);
   if (verdict.priceCents != null) {
     const dollars = money(verdict.priceCents);
     parts.push(verdict.store ? `${verdict.store} ${dollars}${verdict.unit ? `/${verdict.unit}` : ""}` : dollars);
@@ -7326,8 +7552,12 @@ function verdictBadge(verdict) {
       parts.push(c.description);
     }
   }
-  if (parts.length === 0) return null;
-  return el("span", { class: "chip verdict", text: parts.join(" · ") });
+  if (parts.length === 0 && !verdict.imageUrl) return null;
+  const thumb = verdict.imageUrl
+    ? el("img", { class: "shop-item-verdict-thumb", src: verdict.imageUrl, alt: "", loading: "lazy" })
+    : null;
+  const chip = parts.length > 0 ? el("span", { class: "chip verdict", text: parts.join(" · ") }) : null;
+  return el("span", { class: "shop-item-verdict" }, [thumb, chip]);
 }
 
 // @zxing/browser is loaded on demand, never in index.html -- same reasoning as loadPlaidLink()
@@ -7817,6 +8047,7 @@ async function submitShoppingCapture(text) {
 
 async function viewShopping(view) {
   const order = state.shoppingOrder || "flat";
+  const roomTabKey = state.shoppingTab || "list";
   const [list, storesResult] = await Promise.all([api(`/api/shopping?order=${order}`), api("/api/stores")]);
   const remaining = list.items.filter((i) => !i.done).length;
   state.shoppingList = list; // read by the universal capture bar's shopping-room dispatch below.
@@ -7845,6 +8076,30 @@ async function viewShopping(view) {
     ]),
   );
   view.append(el("div", { class: "shop-header-bar" }));
+
+  // Shopping list / Pantry (Git #3308) -- real, distinct data sources sharing this one room.
+  // #3308's own scope item 5 asked to "decide and state which fits better" between a new
+  // top-level room and a tab within Shopping or Recipes: this is a tab within Shopping -- a new
+  // ROOM_DEFS room needs its own real critter/furniture SVG assets this build has no way to
+  // produce, and Pantry shares the exact same real grocery-category vocabulary (CAT_ORDER) and
+  // everyday "what do I still need to buy vs. what do I already have" adjacency Shopping already
+  // owns, more directly than Recipes does.
+  const roomTab = (key, label) =>
+    el("button", {
+      type: "button",
+      class: `shop-segment-btn${roomTabKey === key ? " active" : ""}`,
+      text: label,
+      onClick: () => {
+        state.shoppingTab = key;
+        render();
+      },
+    });
+  view.append(el("div", { class: "shop-segment" }, [roomTab("list", "Shopping list"), roomTab("pantry", "Pantry")]));
+
+  if (roomTabKey === "pantry") {
+    await renderPantryTab(view);
+    return;
+  }
 
   // Flat / Category / Best path (Git #3108) -- the design's own real segmented control.
   const segment = (mode, label) =>
@@ -7977,6 +8232,83 @@ async function viewShopping(view) {
 
   // Room watermark (Git #3119): "Shopping and the shared link -> shop pair" per the critter spec.
   attachRoomWatermark(view, "shop");
+}
+
+// Pantry tab within the Shopping room (Git #3308) -- real inventory Shane actually has at home,
+// grouped by the same CAT_ORDER grocery categories Shopping's own Category view already groups
+// by (core/pantry.mjs's groupPantryByCategory, computed server-side so this file doesn't need
+// its own duplicate copy of that fixed real category order). No dedicated add/edit/delete form --
+// same "no forms, anywhere, ever" idiom Things already established (Git #3181): say "I have 2 lbs
+// of chicken breasts" / "bought 3 cans of diced tomatoes" / "used the last of the rosemary" in
+// the universal capture box, or Claude files it via set_pantry_item over MCP.
+async function renderPantryTab(view) {
+  const pantryResult = await api("/api/pantry");
+  state.pantryItems = pantryResult.items; // read by the universal capture bar, same shape as state.shoppingList above.
+
+  if (pantryResult.items.length === 0) {
+    view.append(
+      empty("Nothing in the pantry yet.", "Say \"I have 2 lbs of chicken breasts\" in the capture box and Claude files it here.", "shop"),
+    );
+    return;
+  }
+
+  for (const group of pantryResult.groups) {
+    view.append(
+      el("section", { class: "section" }, [
+        el("div", { class: "shop-group-label", text: group.category }),
+        el(
+          "ul",
+          { class: "shop-list" },
+          group.items.map((item) => pantryItemRow(item)),
+        ),
+      ]),
+    );
+  }
+
+  // "By house" (Git #3216's own real hub/spoke pattern, same grouping shape Things gives its
+  // own multi-house items) -- only shown once a real house has actually been stated on something,
+  // same conditional as viewThings' own "By house" section.
+  if (pantryResult.houses.length > 0) {
+    const grouped = el("section", { class: "section" }, [el("h2", { text: "By house" })]);
+    for (const h of pantryResult.houses) {
+      const atHouse = pantryResult.items.filter((i) => i.house === h.house);
+      grouped.append(
+        el("div", { style: "margin-bottom:.6rem" }, [
+          el("div", { class: "small muted", text: `${h.house} · ${h.item_count}` }),
+          el(
+            "div",
+            { class: "row" },
+            atHouse.map((i) => el("span", { class: "chip", text: `${i.name} · ${pantryQtyText(i)}` })),
+          ),
+        ]),
+      );
+    }
+    view.append(grouped);
+  }
+}
+
+/** "2 lbs", "3 cans" -- or "out" once a real "used the last of" capture has zeroed it (the row
+ *  survives at quantity 0 rather than being deleted, so a later restock corrects the same real
+ *  row -- see core/pantry.mjs's depletePantryItem). */
+function pantryQtyText(item) {
+  return item.quantity > 0 ? `${item.quantity}${item.unit ? ` ${item.unit}` : ""}` : "out";
+}
+
+/** One real pantry row -- name, real quantity + unit chip, real house (when stated). Reuses
+ *  Shopping's already-shipped .shop-item-row/.shop-item-text/.shop-item-side CSS (Git #3178)
+ *  rather than a parallel set of near-identical styles, same idiom the Lists room already
+ *  established for reusing this same CSS elsewhere -- no checkbox, no expand chevron: a pantry
+ *  row is a real fact on file, not a checkable task. */
+function pantryItemRow(item) {
+  const nameEl = el("div", { class: `shop-item-name${item.quantity === 0 ? " done" : ""}`, text: item.name });
+  const subEl = item.house ? el("div", { class: "shop-item-sub", text: item.house }) : null;
+  const qtyChip = el("span", { class: "chip", text: pantryQtyText(item) });
+  return el("li", { class: "shop-item-row" }, [
+    el("div", { class: "shop-item-main" }, [
+      el("div", { class: "shop-item-text" }, [nameEl, subEl]),
+      el("div", { class: "shop-item-side" }, [qtyChip]),
+    ]),
+  ]);
 }
 
 function itemRow(entityId, item) {
@@ -9378,7 +9710,10 @@ const DATES_TINT = "244,114,182"; // README's own room-tint table, "Dates".
  *  (`d.cr.lists`) -- when passed, the title centers between the two, mirroring the same
  *  back/center/right symmetry Shopping's own header (#3178) already uses. Omitted, this is
  *  Dates/Pets' original plain back-link + left-flowing title, unchanged. */
-function roomHeader(view, tintRgb, title, { icon } = {}) {
+// `sub` (Git #3305) is optional and additive -- a centered subtitle line under the title, for a
+// room whose own design names one (Lists' own `d.listsSub`, "{n} lists · {m} open"). Every
+// existing caller that never passes it keeps rendering exactly as before.
+function roomHeader(view, tintRgb, title, { icon, sub } = {}) {
   view.append(
     el("div", { class: "room-scene" }, [
       el("div", { class: "room-glow", style: `background: radial-gradient(120% 70% at 50% -20%, rgba(${tintRgb},.22), transparent 70%)` }),
@@ -9387,6 +9722,7 @@ function roomHeader(view, tintRgb, title, { icon } = {}) {
         el("div", { class: `room-header-title${icon ? " with-icon" : ""}`, text: title }),
         icon ? el("div", { class: "room-header-icon", style: `background:rgba(${tintRgb},.16)` }, [icon]) : null,
       ]),
+      sub ? el("div", { class: "room-header-subline", text: sub }) : null,
     ]),
   );
 }
@@ -9405,6 +9741,42 @@ const KIND_TINT = {
 
 function kindTint(kind) {
   return KIND_TINT[kind] || "#94a3b8"; // slate, for a genuinely on-the-fly kind
+}
+
+// Month calendar day-cell fill (Git #3304, "a calendar in Dates" README pass, Sep 8 2026
+// night) -- same kinds/colors as KIND_TINT above, at the design's own .14/.16 tint for a cell
+// background instead of a solid tile. rgba(148,163,184,.14) is #94a3b8 (KIND_TINT's own
+// on-the-fly slate) at the same opacity, so an unknown kind's cell and tile agree.
+const KIND_BG = {
+  appointment: "rgba(96,165,250,.14)",
+  vet: "rgba(45,212,191,.14)",
+  vaccine: "rgba(45,212,191,.14)",
+  birthday: "rgba(244,114,182,.14)",
+  event: "rgba(251,191,36,.14)",
+  holiday: "rgba(167,139,250,.16)",
+  visit: "rgba(52,211,153,.14)",
+  renewal: "rgba(251,146,60,.14)",
+};
+
+function kindBg(kind) {
+  return KIND_BG[kind] || "rgba(148,163,184,.14)";
+}
+
+// Calendar legend's own lowercase labels (prototype's KIND_LABEL, lowercased) -- "want to go"
+// for `event`, not the title-cased kindLabel() the list rows use for an on-the-fly category.
+const KIND_LEGEND_LABEL = {
+  appointment: "appointment",
+  vet: "vet",
+  vaccine: "vaccine",
+  birthday: "birthday",
+  event: "want to go",
+  holiday: "federal holiday",
+  visit: "visit",
+  renewal: "renewal",
+};
+
+function kindLegendLabel(kind) {
+  return KIND_LEGEND_LABEL[kind] || kindLabel(kind).toLowerCase();
 }
 
 function dateTileEl(atDateISO, kind) {
@@ -9470,11 +9842,199 @@ function dateRow(item) {
   return el("a", { class: "tile", href: `#/date/${item.id}` }, [row]);
 }
 
+// Month calendar transient state (Git #3304, "a calendar in Dates" README pass, Sep 8 2026
+// night) -- `calMonth` is the offset from the real current month (clamped -1..12, one back /
+// twelve ahead per the design), `calDay` is the "<monthIndex>-<day>" key of the day card
+// currently expanded. Same idiom as moneyTab/vaultRoomQuery above: transient client-only state,
+// not persisted server-side or to localStorage, reset only by a real page reload.
+let datesCalMonth = 0;
+let datesCalDay = null;
+
+/** The `‹ September 2026 ›` card: nav, S-S weekday letters, 7-col day grid, and the kind
+ *  legend -- exactly the First Slice Prototype's own `calCells`/`calLegend` computation
+ *  (`d.showDates`, `calMonth`/`calDay` in the logic class), against the same `/api/dates` rows
+ *  the grouped list below already uses. Returns the card element plus the events for whatever
+ *  day is currently selected, so the caller can build the day-detail card from the same data
+ *  without re-walking `items`. */
+function datesCalendarCard(items) {
+  const today = new Date();
+  const base = new Date(today.getFullYear(), today.getMonth() + datesCalMonth, 1);
+  const calY = base.getFullYear();
+  const calM = base.getMonth();
+  const firstWeekday = base.getDay();
+  const daysInMonth = new Date(calY, calM + 1, 0).getDate();
+  const rows = Math.ceil((firstWeekday + daysInMonth) / 7);
+  const isCurrentMonth = calY === today.getFullYear() && calM === today.getMonth();
+
+  const evByDay = new Map();
+  for (const item of items) {
+    const d = new Date(`${String(item.at_date).slice(0, 10)}T00:00:00`);
+    if (d.getFullYear() !== calY || d.getMonth() !== calM) continue;
+    const day = d.getDate();
+    if (!evByDay.has(day)) evByDay.set(day, []);
+    evByDay.get(day).push(item);
+  }
+
+  const cellEls = [];
+  const kindsPresent = [];
+  for (let i = 0; i < rows * 7; i++) {
+    const dayNum = i - firstWeekday + 1;
+    if (dayNum < 1 || dayNum > daysInMonth) {
+      cellEls.push(el("div", { class: "dates-cal-cell", style: "visibility:hidden" }));
+      continue;
+    }
+    const evs = evByDay.get(dayNum) || [];
+    for (const e of evs) if (!kindsPresent.includes(e.kind)) kindsPresent.push(e.kind);
+    const isToday = isCurrentMonth && dayNum === today.getDate();
+    const key = `${calM}-${dayNum}`;
+    const selected = datesCalDay === key;
+    const isPast = new Date(calY, calM, dayNum) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const bg = evs.length ? kindBg(evs[0].kind) : selected ? "rgba(255,255,255,.06)" : "transparent";
+    const fg = evs.length ? kindTint(evs[0].kind) : isPast ? "hsl(var(--muted-foreground))" : "hsl(var(--foreground))";
+    const ring = isToday ? "#fff" : selected ? "hsl(var(--primary))" : "transparent";
+    const bold = isToday || evs.length > 0;
+    const opacity = isPast && !isToday && evs.length === 0 ? ".45" : "1";
+    cellEls.push(
+      el(
+        "div",
+        {
+          class: "dates-cal-cell pickable",
+          style: `background:${bg};border-color:${ring};opacity:${opacity}`,
+          onClick: () => {
+            datesCalDay = selected ? null : key;
+            render();
+          },
+        },
+        [
+          el("span", { class: "day-num", style: `color:${fg};font-weight:${bold ? 700 : 500}`, text: String(dayNum) }),
+          el("div", { class: "dots" }, evs.slice(0, 3).map((e) => el("span", { style: `background:${kindTint(e.kind)}` }))),
+        ],
+      ),
+    );
+  }
+
+  const away = datesCalMonth !== 0 || datesCalDay !== null;
+  const navRow = el("div", { class: "dates-cal-nav" }, [
+    el(
+      "button",
+      {
+        type: "button",
+        class: "dates-cal-nav-btn",
+        "aria-label": "Previous month",
+        onClick: () => {
+          datesCalMonth = Math.max(-1, datesCalMonth - 1);
+          datesCalDay = null;
+          render();
+        },
+      },
+      [chevron("left")],
+    ),
+    el("div", { class: "dates-cal-title" }, [
+      el("span", { class: "month-year", text: base.toLocaleDateString([], { month: "long", year: "numeric" }) }),
+      away
+        ? el("button", {
+            type: "button",
+            class: "dates-cal-today-link",
+            text: "Today",
+            onClick: () => {
+              datesCalMonth = 0;
+              datesCalDay = null;
+              render();
+            },
+          })
+        : null,
+    ]),
+    el(
+      "button",
+      {
+        type: "button",
+        class: "dates-cal-nav-btn",
+        "aria-label": "Next month",
+        onClick: () => {
+          datesCalMonth = Math.min(12, datesCalMonth + 1);
+          datesCalDay = null;
+          render();
+        },
+      },
+      [chevron("right")],
+    ),
+  ]);
+
+  const weekdayRow = el(
+    "div",
+    { class: "dates-cal-weekdays" },
+    ["S", "M", "T", "W", "T", "F", "S"].map((l) => el("span", { text: l })),
+  );
+
+  const legend = el("div", { class: "dates-cal-legend" }, [
+    el("span", { class: "dates-cal-legend-item" }, [
+      el("span", { class: "dates-cal-legend-today" }),
+      el("span", { text: "today" }),
+    ]),
+    ...kindsPresent.map((k) =>
+      el("span", { class: "dates-cal-legend-item" }, [
+        el("span", { class: "dates-cal-legend-swatch", style: `background:${kindTint(k)}` }),
+        el("span", { text: kindLegendLabel(k) }),
+      ]),
+    ),
+  ]);
+
+  const card = el("div", { class: "card dates-cal-card" }, [
+    navRow,
+    weekdayRow,
+    el("div", { class: "dates-cal-grid" }, cellEls),
+    legend,
+  ]);
+
+  const selDayNum = datesCalDay !== null ? Number(datesCalDay.split("-")[1]) : null;
+  const selEvents = selDayNum !== null ? evByDay.get(selDayNum) || [] : [];
+  const selDate = selDayNum !== null ? new Date(calY, calM, selDayNum) : null;
+
+  return { card, selDate, selEvents };
+}
+
+/** The day-detail card between the calendar and the grouped list ("Tuesday, Sep 15", tap-again
+ *  or Clear to dismiss) -- same real tile+title+line rows as the list below, via dateRow(). */
+function datesCalendarDayCard(selDate, selEvents) {
+  const header = el("div", { class: "dates-cal-day-header" }, [
+    el("span", { class: "dates-cal-day-label", text: selDate.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }) }),
+    el("button", {
+      type: "button",
+      class: "dates-cal-clear",
+      text: "Clear",
+      onClick: () => {
+        datesCalDay = null;
+        render();
+      },
+    }),
+  ]);
+
+  let body;
+  if (selEvents.length > 0) {
+    // Same real .tile rows the grouped list below uses (each is its own card, `.tile + .tile`
+    // margin already stacks them) -- not a second card wrapper around them.
+    body = el("div", { class: "dates-cal-day-rows" }, selEvents.map((item) => dateRow(item)));
+  } else {
+    const monthAbbr = selDate.toLocaleDateString([], { month: "short" });
+    const day = selDate.getDate();
+    body = el("div", {
+      class: "card dates-cal-empty",
+      text: `Nothing on ${monthAbbr} ${day}. Say “appointment ${monthAbbr.toLowerCase()} ${day} 2pm dr fonji” and it lands here.`,
+    });
+  }
+
+  return el("div", { class: "dates-cal-day-card" }, [header, body]);
+}
+
 async function viewDates(view) {
   const { dates: items } = await api("/api/dates");
 
   roomHeader(view, DATES_TINT, "Dates");
   const room = el("div", { class: "dates-room" });
+
+  const { card: calCard, selDate, selEvents } = datesCalendarCard(items);
+  room.append(calCard);
+  if (selDate) room.append(datesCalendarDayCard(selDate, selEvents));
 
   const groups = [
     { label: "This week", items: items.filter((i) => i.due_in_days <= 6) },
@@ -9833,7 +10393,7 @@ async function viewPetDetail(view, petId) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", wins: "Wins", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", things: "Things", people: "People", person: "", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight", tesla: "Tesla" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", wins: "Wins", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", list: "", things: "Things", people: "People", person: "", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight", tesla: "Tesla" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -9846,6 +10406,7 @@ function parseRoute() {
   state.petId = state.route === "pet" ? rest[0] : null;
   state.carId = state.route === "car" ? rest[0] : null;
   state.personId = state.route === "person" ? rest[0] : null;
+  state.listId = state.route === "list" ? rest[0] : null;
 }
 
 async function render() {
@@ -9878,14 +10439,17 @@ async function render() {
   // Every real ROOM_DEFS room now has its own header. #app-view.no-header lets .view collapse
   // its top padding to just the native status-bar safe area instead of assuming a header row
   // sits above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox" || state.route === "tesla" || state.route === "vault" || state.route === "settings";
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "list" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox" || state.route === "tesla" || state.route === "vault" || state.route === "settings";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 
   // Git #3178: the universal capture box is the SAME single bar in Shopping, not a second one --
   // the real design (First Slice Prototype's own submitCapture) just swaps its placeholder and,
-  // in Shopping, its dispatch (see the #capture submit handler below).
-  captureText.placeholder = state.route === "shopping" ? "Add, or say where you found it" : "Say anything…";
+  // in Shopping, its dispatch (see the #capture submit handler below). Git #3308: the Pantry tab
+  // shares this same route but not this shortcut (see the dispatch gate above) -- its placeholder
+  // stays the generic one, since a pantry statement goes through the real capture grammar, not a
+  // literal "add this text to the run" shortcut.
+  captureText.placeholder = state.route === "shopping" && (state.shoppingTab || "list") === "list" ? "Add, or say where you found it" : "Say anything…";
 
   // A wake lock (Git #3125) is only ever held for cook mode itself -- release it the moment
   // navigation moves anywhere else, rather than waiting on the tab losing visibility.
@@ -9907,6 +10471,7 @@ async function render() {
     else if (state.route === "pet") await viewPetDetail(view, state.petId);
     else if (state.route === "car") await viewCarDetail(view, state.carId);
     else if (state.route === "lists") await viewLists(view);
+    else if (state.route === "list") await viewListDetail(view, state.listId);
     else if (state.route === "tesla") await viewTesla(view);
     else if (state.route === "things") await viewThings(view);
     else if (state.route === "people") await viewPeople(view);

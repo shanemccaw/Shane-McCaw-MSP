@@ -214,6 +214,54 @@ check("matchRule: watch/read lists", () => {
   assert.equal(matchRule("read Project Hail Mary").rule, "watch_or_read_list");
 });
 
+check("matchRule: new list, explicit (Git #3305)", () => {
+  const m1 = matchRule("new list: Camping");
+  assert.equal(m1.rule, "new_list");
+  assert.equal(m1.groups.name, "Camping");
+  assert.equal(m1.groups.firstItem, null);
+
+  const m2 = matchRule("new list: Camping: headlamp");
+  assert.equal(m2.rule, "new_list");
+  assert.equal(m2.groups.name, "Camping");
+  assert.equal(m2.groups.firstItem, "headlamp");
+});
+
+check("matchRule: named list add, both real phrasings (Git #3305)", () => {
+  const m1 = matchRule("gifts list: speaker for DJ");
+  assert.equal(m1.rule, "named_list_add");
+  assert.equal(m1.groups.rawName, "gifts");
+  assert.equal(m1.groups.item, "speaker for DJ");
+
+  const m2 = matchRule("add tent stakes to the camping list");
+  assert.equal(m2.rule, "named_list_add");
+  assert.equal(m2.groups.rawName, "camping");
+  assert.equal(m2.groups.item, "tent stakes");
+});
+
+check("matchRule: 'new list:' and named-list-add do not collide with person_note (Git #3305)", () => {
+  assert.equal(matchRule("new list: Camping").rule, "new_list");
+  assert.equal(matchRule("gifts list: speaker for DJ").rule, "named_list_add");
+  // A real person note still works exactly as before.
+  assert.equal(matchRule("dana: had a rough day about the lease").rule, "person_note");
+});
+
+check("matchRule: occasional-purchase 'What I Like' list, both real phrasings (Git #3311)", () => {
+  const m1 = matchRule("I sometimes get almond butter");
+  assert.equal(m1.rule, "occasional_purchase_add");
+  assert.equal(m1.groups.item, "almond butter");
+
+  const m2 = matchRule("add cast iron skillet to what I like");
+  assert.equal(m2.rule, "occasional_purchase_add");
+  assert.equal(m2.groups.item, "cast iron skillet");
+});
+
+check("matchRule: 'add X to what I like' does not collide with named_list_add (Git #3311)", () => {
+  // No trailing "list" word -- named_list_add's own regexes both require one, so this must
+  // resolve to the dedicated occasional-purchase rule, not fall through to named_list_add.
+  assert.equal(matchRule("add tent stakes to the camping list").rule, "named_list_add");
+  assert.equal(matchRule("add cast iron skillet to what I like").rule, "occasional_purchase_add");
+});
+
 check("matchRule: where is X", () => {
   assert.equal(matchRule("where's the drill?").rule, "where_is_thing");
   assert.equal(matchRule("where is my passport").rule, "where_is_thing");
@@ -245,10 +293,47 @@ check("matchRule: grocery add, gated behind an explicit shopping verb", () => {
   assert.equal(matchRule("add milk to the list") == null, true);
 });
 
+check("matchRule: queue for the next run (Git #3300)", () => {
+  const m = matchRule("take the drill to the rental");
+  assert.equal(m.rule, "queue_take");
+  assert.equal(m.groups.name, "drill");
+  assert.equal(m.groups.takeForHouse, "rental");
+  assert.equal(matchRule("bring HVAC filter to Rental").rule, "queue_take");
+});
+
 check("matchRule: genuinely ambiguous / unrecognised text matches nothing", () => {
   assert.equal(matchRule("call mom about the thing tomorrow maybe"), null);
   assert.equal(matchRule(""), null);
   assert.equal(matchRule("   "), null);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Real pantry tracking (Git #3308) -- absolute "I have", additive "bought", depleting "used
+// the last of".
+// ---------------------------------------------------------------------------------------------
+
+check("matchRule: pantry_have, an absolute real quantity", () => {
+  const m = matchRule("I have 2 lbs of chicken breasts");
+  assert.equal(m.rule, "pantry_have");
+  assert.deepEqual(m.groups, { quantity: 2, unit: "lbs", name: "chicken breasts" });
+});
+
+check("matchRule: pantry_bought, an additive real restock", () => {
+  const m = matchRule("bought 3 cans of diced tomatoes");
+  assert.equal(m.rule, "pantry_bought");
+  assert.deepEqual(m.groups, { quantity: 3, unit: "cans", name: "diced tomatoes" });
+});
+
+check("matchRule: pantry_used_last, real depletion", () => {
+  assert.equal(matchRule("used the last of the rosemary").rule, "pantry_used_last");
+  assert.deepEqual(matchRule("used the last of the rosemary").groups, { name: "rosemary" });
+  // "the"/"my" are both optional -- "used the last of rosemary" (no article) still resolves.
+  assert.deepEqual(matchRule("used the last of rosemary").groups, { name: "rosemary" });
+});
+
+check("matchRule: pantry_have requires a real number and unit word before 'of' -- a bare 'I have X' is NOT claimed here (false-positive guard: 'I have 2 hours'/'I have 2 kids' fall through untouched)", () => {
+  assert.equal(matchRule("I have 2 hours") == null, true);
+  assert.equal(matchRule("I have a headache") == null, true);
 });
 
 console.log(`\n${passed}/${passed} passed`);

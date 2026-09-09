@@ -27,6 +27,7 @@ import { mintEnrollment } from "../src/core/credentials.mjs";
 import { issueMcpToken } from "../src/core/mcp-tokens.mjs";
 import { matchesRule } from "../src/core/income-rules.mjs";
 import { relyingPartyId } from "../src/auth/webauthn.mjs";
+import * as plaid from "../src/core/plaid.mjs";
 import { SoftAuthenticator } from "./soft-authenticator.mjs";
 
 const BASE = (process.env.SL_CHECK_URL || "http://localhost:5000").replace(/\/+$/, "");
@@ -82,9 +83,21 @@ async function rpc(token, method, params) {
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
+// A successful tool call's content[0].text is always JSON.stringify(result) -- the protocol
+// handler (src/mcp/protocol.mjs) guarantees that. A FAILED call's content[0].text is real,
+// readable prose ("<tool> failed: <message>"), never JSON -- blindly JSON.parse-ing it used to
+// throw and crash the whole check run instead of failing just the one assertion that hit it.
+// Tolerate both real shapes: on the plain-text error path, hand back the error text itself
+// rather than pretending it parsed.
 function toolResult(reply) {
   const raw = reply.body?.result?.content?.[0]?.text;
-  return raw ? JSON.parse(raw) : null;
+  if (!raw) return null;
+  if (reply.body?.result?.isError) return { isError: true, text: raw };
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { isError: true, text: raw };
+  }
 }
 
 const stamp = Date.now();
@@ -967,7 +980,18 @@ async function main() {
     `api ${gate.json?.totalShortfall} vs sql ${expectedShortfall}`,
   );
   check("reserve total matches the real role='reserve' balances", gate.json?.reserveTotal === expectedReserve, `api ${gate.json?.reserveTotal} vs sql ${expectedReserve}`);
-  check("the Income Gate is the real named account, not a guess", gate.json?.gate?.name === sums.gate_name, `api ${gate.json?.gate?.name} vs sql ${sums.gate_name}`);
+  // No account carrying role='income_gate' is a real, legitimate state (Shane's own screenshot
+  // showed exactly this before he assigned one) -- a real branch for it rather than a single
+  // comparison that only happens to hold by null === null coincidence.
+  if (sums.gate_name === null) {
+    check(
+      "the Income Gate reports its real unconfigured state rather than a guessed name",
+      gate.json?.gate?.name === null,
+      `api ${JSON.stringify(gate.json?.gate)} -- sql: no account has role='income_gate'`,
+    );
+  } else {
+    check("the Income Gate is the real named account, not a guess", gate.json?.gate?.name === sums.gate_name, `api ${gate.json?.gate?.name} vs sql ${sums.gate_name}`);
+  }
   check(
     "available to spend = Income Gate + reserves - shortfall, exactly",
     gate.json?.availableToSpend === expectedTop,
@@ -1118,10 +1142,14 @@ async function main() {
     (banks.json?.items ?? []).every((i) => allowedHealth.includes(i.health)),
     (banks.json?.items ?? []).map((i) => i.health).join(","),
   );
+  // Compared against plaid.webhookUrl() itself, not re-derived from BASE -- BASE is only how
+  // THIS checker reaches the server (localhost), while the server's real webhook URL is built
+  // off its own configured PUBLIC_ORIGIN (e.g. a real *.replit.dev host in that environment).
+  // Re-deriving from BASE made this a real, spurious mismatch anywhere the two differ.
   check(
-    "the webhook URL is derived from this server's own origin",
-    banks.json?.webhookUrl === `${BASE}/api/plaid/webhook`,
-    String(banks.json?.webhookUrl),
+    "the webhook URL is derived from this server's own configured PUBLIC_ORIGIN",
+    banks.json?.webhookUrl === plaid.webhookUrl(),
+    `api ${banks.json?.webhookUrl} vs config ${plaid.webhookUrl()}`,
   );
   check(
     "a localhost origin is reported as undeliverable rather than implying live webhooks",

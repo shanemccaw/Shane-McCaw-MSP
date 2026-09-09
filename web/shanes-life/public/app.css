@@ -398,6 +398,23 @@ button:disabled { opacity: 0.5; cursor: default; }
   width: fit-content;
 }
 
+/* Real product thumbnail (Git #3310) -- only rendered when a push actually carried an
+   imageUrl; sits inline with the verdict chip, never reflowing the row when absent. */
+.shop-item-verdict {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+.shop-item-verdict-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm, 4px);
+  object-fit: cover;
+  border: 1px solid hsl(var(--border));
+  flex: none;
+}
+
 .checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
 
 .checklist li {
@@ -562,6 +579,65 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
 .dates-room button.small { border-radius: 999px; }
 .dates-room .date-tile { border-radius: 58% 42% 55% 45% / 48% 56% 44% 52%; }
 
+/* Dates month calendar (Git #3304, "a calendar in Dates" README pass, Sep 8 2026 night) --
+   the `‹ September 2026 ›` card above the existing grouped list. Own classes, not
+   .date-tile/.date-row: the day grid is square cells (aspect-ratio 1), not the 46px tile the
+   list rows and the day-detail card below still reuse verbatim. */
+.dates-cal-card { padding: 10px; display: grid; gap: 0; }
+.dates-cal-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 8px; }
+.dates-cal-nav-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #60a5fa;
+  border: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.dates-cal-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.dates-cal-title .month-year { font-size: 15px; font-weight: var(--weight-bold); letter-spacing: -0.01em; white-space: nowrap; }
+.dates-cal-today-link { font-size: 12px; font-weight: 600; color: #60a5fa; cursor: pointer; white-space: nowrap; background: none; border: 0; padding: 0; }
+.dates-cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: hsl(var(--muted-foreground));
+  padding-bottom: 4px;
+}
+.dates-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.dates-cal-cell {
+  aspect-ratio: 1;
+  border-radius: 11px;
+  border: 2px solid transparent;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+.dates-cal-cell.pickable { cursor: pointer; }
+.dates-cal-cell .day-num { font-size: 13px; line-height: 1; }
+.dates-cal-cell .dots { display: flex; gap: 3px; height: 4px; }
+.dates-cal-cell .dots span { width: 4px; height: 4px; border-radius: 999px; }
+.dates-cal-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 10px 4px 0; font-size: 11px; color: hsl(var(--muted-foreground)); }
+.dates-cal-legend-item { display: flex; align-items: center; gap: 5px; }
+.dates-cal-legend-swatch { width: 8px; height: 8px; border-radius: 999px; }
+.dates-cal-legend-today { width: 12px; height: 12px; border-radius: 4px; border: 2px solid #fff; box-sizing: border-box; }
+.dates-cal-day-card { display: grid; gap: 8px; }
+.dates-cal-day-header { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; }
+.dates-cal-day-label { font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
+.dates-cal-clear { font-size: 12px; font-weight: 600; color: #60a5fa; cursor: pointer; background: none; border: 0; padding: 0; }
+.dates-cal-empty { font-size: 14px; line-height: 1.45; color: hsl(var(--muted-foreground)); }
+
 /* Pets Round 2 (Git #3193): same real scoped-conversion shape as .dates-room above -- no
    dedicated "Shanes Life NN - Pets.dc.html" export exists (#3183's own audit confirmed it),
    so this scopes the established Round 2 card system to this room alone via roomHeader()'s
@@ -575,6 +651,98 @@ dialog.sheet::backdrop { background: rgba(5, 12, 24, 0.72); }
    the only new rule this room needs is its own persistent footer hint (First Slice Prototype's
    own real, locked "showLists" line, shown whether or not any lists exist yet). */
 .lists-footer-hint { font-size: 12px; line-height: 1.5; color: hsl(var(--muted-foreground)); padding: 0 4px; }
+
+/* roomHeader()'s optional subtitle line (Git #3305) -- Lists is the first real caller (design's
+   own `d.listsSub`, "{n} lists · {m} open"), sitting centered under the already-centered title. */
+.room-header-subline { position: relative; z-index: 1; text-align: center; font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
+
+/* Lists shelf (Git #3305): the real 2-column grid of hue-tinted list cards -- README "the Lists
+   room" §1: "2-column grid of list cards ... each card is tinted with the list's own hue".
+   listHue() in app.js supplies the real rgb triplet (five named hues + an FNV-1a hash fallback,
+   the prototype's own LIST_HUES/HUES/fnv constants verbatim) as an inline style, since it's
+   per-list data, not something a static class can carry. */
+.list-shelf { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.list-card {
+  box-sizing: border-box;
+  border: 1px solid;
+  border-radius: 18px;
+  padding: 12px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 124px;
+  min-width: 0;
+  text-decoration: none;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+}
+.list-card-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.list-card-name { font-size: 15px; font-weight: var(--weight-bold); letter-spacing: -0.01em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-card-pill { font-size: 11px; font-weight: var(--weight-semibold); padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); white-space: nowrap; flex-shrink: 0; }
+.list-card-preview { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.list-card-row { display: flex; align-items: center; gap: 7px; font-size: 12.5px; line-height: 1.3; min-width: 0; }
+.list-card-dot { width: 7px; height: 7px; border-radius: 999px; border: 1.5px solid; box-sizing: border-box; flex-shrink: 0; }
+.list-card-row-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-card-more { font-size: 12px; color: hsl(var(--muted-foreground)); padding-left: 14px; }
+.list-card-empty-hint { font-size: 12.5px; line-height: 1.3; color: hsl(var(--muted-foreground)); }
+.list-card-foot { display: flex; align-items: center; gap: 6px; font-size: 11px; color: hsl(var(--muted-foreground)); }
+.list-card-new { font-size: 10px; font-weight: var(--weight-semibold); letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* The dashed "+" card (README §1: 'Say "new list: Gifts" and it appears here') -- pre-fills the
+   capture box instead of opening a form, same "no form, ever" discipline every other room here
+   already follows. */
+.list-card-new-list {
+  box-sizing: border-box;
+  border: 1.5px dashed hsl(var(--border));
+  border-radius: 18px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+  min-height: 124px;
+  background: transparent;
+}
+.list-card-plus {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1.5px dashed hsl(var(--border));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* One list's own screen (Git #3305, README §2): hue-glowed the same as its shelf card via
+   listDetailHeader() in app.js, open items on top (.shop-list/.shop-check reused verbatim), a
+   collapsed Done section underneath, and a "Find in {list}" pill for a list over 10 items. */
+.list-detail-body { display: flex; flex-direction: column; gap: 14px; }
+.list-find-input {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  border: 1px solid hsl(var(--card-border));
+  border-radius: 999px;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font-size: 15px;
+  outline: none;
+}
+.list-done-card { background: hsl(var(--card)); border: 1px solid hsl(var(--card-border)); border-radius: 22px; overflow: hidden; }
+.list-done-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; }
+.list-done-label { flex: 1; font-size: 11px; font-weight: var(--weight-semibold); letter-spacing: 0.1em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
+.list-done-clear { background: none; border: 0; padding: 2px 0; font-size: 13px; font-weight: var(--weight-semibold); color: #60a5fa; cursor: pointer; white-space: nowrap; }
+.list-done-chevron { display: flex; flex-shrink: 0; color: hsl(var(--muted-foreground)); transition: transform 0.2s; }
+.list-done-chevron.open { transform: rotate(180deg); }
 
 /* Pets (design contract Section 6 + README "Screens" #10): 44px initial-letter avatar, same
    real convention as .person-avatar (Section 7) -- one fixed room tint, not a per-pet hash. */
@@ -1468,8 +1636,16 @@ pre.token {
      getBoundingClientRect is now fully within the 402px viewport. (This was never the #3264
      capture-bar bug itself -- `.view`'s own overflow-x:hidden, commit 298bd12c5, already contains
      that regardless of tab count -- this is a real, separate reachability bug on the same
-     element, fixed in the same pass rather than left for later.) */
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+     element, fixed in the same pass rather than left for later.)
+
+     Git #3298: MONEY_TABS (app.js) dropped back to 5 real entries (Now/Bills/Accounts/
+     Bankruptcy/Cars) once Banks moved to Settings (#3273) and Vault/Documents became their own
+     room (#3271), but this column count was never brought back down from 8 to match -- the exact
+     same stale-count bug as above, just inverted (over-provisioned now instead of under-
+     provisioned then). With only 5 real `.money-tab` buttons in an 8-column grid, each tab
+     rendered at ~1/8 the container width instead of ~1/5, and the longer labels visibly
+     collided/overlapped at a real 420px mobile viewport. Back to 5, tied to MONEY_TABS.length. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 3px;
   padding: 3px;
   background: hsl(var(--muted));

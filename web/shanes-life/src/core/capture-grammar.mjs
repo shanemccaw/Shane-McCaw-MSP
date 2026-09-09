@@ -58,10 +58,12 @@
 
 import { record } from "./audit.mjs";
 import * as contacts from "./contacts.mjs";
+import { slugify } from "./categories.mjs";
 import * as dates from "./dates.mjs";
 import * as lists from "./lists.mjs";
 import * as medications from "./medications.mjs";
 import * as money from "./money.mjs";
+import * as pantry from "./pantry.mjs";
 import * as people from "./people.mjs";
 import * as pets from "./pets.mjs";
 import * as places from "./places.mjs";
@@ -192,6 +194,27 @@ export function tieredMatch(candidates, needle, nameOf = (c) => c.name) {
   return { ok: false, reason: "not_found" };
 }
 
+/** Title-cases a stated phrase for a new list name -- "house projects" -> "House Projects".
+ *  Unlike categories.mjs's own titleCase (which expands a slug), this works on the raw stated
+ *  words directly, since a list's own display name (not a category slug) is what Shane typed. */
+function titleCasePhrase(phrase) {
+  return String(phrase || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/** Capitalizes just the first letter -- an item's own stated text ("tent stakes", "headlamp")
+ *  keeps its own casing otherwise, unlike a list's own name above. Mirrors the prototype's own
+ *  `cap1` used for exactly this in `nlst`/`atl`/`li` (Git #3305). */
+function cap1(s) {
+  const str = String(s || "");
+  return str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
+}
+
 const KNOWN_VEHICLE_MAKES =
   "tesla|kia|ford|toyota|honda|chevrolet|chevy|nissan|jeep|ram|gmc|hyundai|subaru|mazda|bmw|audi|" +
   "mercedes|volkswagen|vw|dodge|chrysler|buick|cadillac|lincoln|volvo|lexus|acura|infiniti|mitsubishi|porsche";
@@ -208,11 +231,16 @@ const RULES = [
   //    ordinary prose ("Note: buy milk"). Real gate: only fires when the name before the colon
   //    already matches a real, existing person. No match there -> FALLBACK, exactly as if this
   //    rule did not exist -- the raw text still reaches the inbox.
+  //
+  //    Excludes a name ending in "list" (real person is never named that) so "gifts list: …" /
+  //    "new list: …" fall through to the Lists room's own rules below instead of being claimed
+  //    here first and lost to FALLBACK -- a real person is never named "… list" (Git #3305).
   {
     name: "person_note",
     match(text) {
       const m = text.match(/^([A-Za-z][A-Za-z .'-]{0,40}):\s*(.+)$/);
       if (!m) return null;
+      if (/\blist$/i.test(m[1].trim())) return null;
       return { name: m[1].trim(), note: m[2].trim() };
     },
     async run(userId, { name, note }) {
@@ -667,7 +695,90 @@ const RULES = [
     },
   },
 
-  // 24. Watch/read lists (issue #3292's own named example: "push_list for Watch/Books";
+  // 24. New list, explicit (Git #3305, the Lists room's own "What changed... the Lists room"
+  //     §3: "new list: Camping" / "new list: Camping: headlamp"). Creates an empty list, or one
+  //     with a real first item already on it when a second colon/segment is stated. An existing
+  //     list of the same name is not recreated -- it just opens, same as the shelf's own dashed
+  //     "+" card behavior.
+  {
+    name: "new_list",
+    match(text) {
+      const m = text.match(/^(?:new list|make a list|start a list)(?:\s+called|\s+named)?[:\s]+([^:]+?)(?:[:\s]+(.+))?$/i);
+      if (!m) return null;
+      const name = m[1].trim();
+      if (!name) return null;
+      return { name, firstItem: m[2] ? m[2].trim() : null };
+    },
+    async run(userId, { name, firstItem }) {
+      const title = titleCasePhrase(name);
+      const all = await lists.listAllListNames(userId);
+      const isNew = !all.some((l) => l.name.toLowerCase() === title.toLowerCase());
+      const list = await lists.getOrCreateListByName(userId, {
+        name: title,
+        category: slugify(title),
+        categoryMeta: {
+          label: title,
+          icon: "list-checks",
+          color: "indigo",
+          itemNoun: "item",
+          description: `${title} -- a list Shane started.`,
+        },
+      });
+      const item = firstItem ? cap1(firstItem) : null;
+      if (item) await lists.addListItems(userId, list.id, [item]);
+      return {
+        message: isNew
+          ? `New list: ${title}.${item ? ` ${item} is the first thing on it.` : ""}`
+          : `${title} already exists.${item ? ` Added ${item}.` : ""}`,
+      };
+    },
+  },
+
+  // 25. Add to a named list, prefix-matched, create on miss (Git #3305, same "the Lists room"
+  //     §3: "gifts list: speaker for DJ", "add tent stakes to the camping list" -- list names
+  //     match by prefix, create on miss). Two real phrasings the design names explicitly: "<list>
+  //     list: <item>" and "add/put <item> to/on/in the <list> list". `listAllListNames` includes
+  //     Shopping so "shopping list: milk" still finds the real run rather than spawning a shadow
+  //     list.
+  {
+    name: "named_list_add",
+    match(text) {
+      // Real, named list only -- "add milk to the list" (no list actually named) is genuinely
+      // ambiguous and must fall through untouched, not resolve to a nonsense list called "the".
+      const isGenericName = (n) => !n || /^(?:the|my|a|an|it|that|this|list)$/i.test(n);
+      let m = text.match(/^(?:add|put)\s+(.+?)\s+(?:to|on|in)\s+(?:the\s+|my\s+)?(.+?)\s+list[.!]*$/i);
+      if (m && !isGenericName(m[2].trim())) return { item: m[1].trim(), rawName: m[2].trim() };
+      m = text.match(/^([a-z][a-z ]{1,40}?)\s+list[:\s]+(.+)$/i);
+      if (m && !isGenericName(m[1].trim())) return { item: m[2].trim(), rawName: m[1].trim() };
+      return null;
+    },
+    async run(userId, { item: rawItem, rawName }) {
+      if (!rawItem || !rawName) return FALLBACK;
+      const item = cap1(rawItem);
+      const all = await lists.listAllListNames(userId);
+      const resolved = tieredMatch(all, rawName);
+      if (!resolved.ok && resolved.reason === "ambiguous") return FALLBACK;
+      const name = resolved.ok ? resolved.match.name : titleCasePhrase(rawName);
+      const isNew = !resolved.ok;
+      const list = await lists.getOrCreateListByName(userId, {
+        name,
+        category: slugify(name),
+        categoryMeta: {
+          label: name,
+          icon: "list-checks",
+          color: "indigo",
+          itemNoun: "item",
+          description: `${name} -- a list Shane started.`,
+        },
+      });
+      await lists.addListItems(userId, list.id, [item]);
+      return {
+        message: isNew ? `New list: ${name}. ${item} is the first thing on it.` : `Added to ${name}: ${item}.`,
+      };
+    },
+  },
+
+  // 26. Watch/read lists (issue #3292's own named example: "push_list for Watch/Books";
   //     README §120: "watch …" / "read …" -> Lists, list created if missing).
   {
     name: "watch_or_read_list",
@@ -693,7 +804,39 @@ const RULES = [
     },
   },
 
-  // 25. "Where's X" (README §121: "where's the drill?" -> answers in a toast). Pure read -- a
+  // 27. Occasional-purchase "What I Like" list (Git #3311, sub-issue of #3229/#3305's own real
+  //     Lists capture-grammar pattern): "I sometimes get X" / "add X to what I like" -- the
+  //     literal phrasings the issue names. Resolves to the SAME conventionally-named list
+  //     (lists.OCCASIONAL_LIST_NAME) prices.mjs's real deal-match check looks up by name, same
+  //     real "no dedicated table" shape as Watch/Books/Heading Out above.
+  {
+    name: "occasional_purchase_add",
+    match(text) {
+      let m = text.match(/^i\s+sometimes\s+get\s+(.+)$/i);
+      if (m) return { item: m[1].trim() };
+      m = text.match(/^add\s+(.+?)\s+to\s+what\s+i\s+like$/i);
+      if (m) return { item: m[1].trim() };
+      return null;
+    },
+    async run(userId, { item }) {
+      if (!item) return FALLBACK;
+      const list = await lists.getOrCreateListByName(userId, {
+        name: lists.OCCASIONAL_LIST_NAME,
+        category: lists.OCCASIONAL_LIST_CATEGORY,
+        categoryMeta: {
+          label: lists.OCCASIONAL_LIST_NAME,
+          icon: "heart",
+          color: "rose",
+          itemNoun: "item",
+          description: "Occasional-purchase items Shane buys sometimes, not routinely -- worth a nudge if a real weekly-ad deal or coupon matches one (Git #3311).",
+        },
+      });
+      await lists.addListItems(userId, list.id, [item]);
+      return { message: `Added "${item}" to ${lists.OCCASIONAL_LIST_NAME}.` };
+    },
+  },
+
+  // 28. "Where's X" (README §121: "where's the drill?" -> answers in a toast). Pure read -- a
   //     genuine no-match still gets a real, honest answer rather than a fallback, since nothing
   //     Shane said risks being lost by answering rather than filing it.
   {
@@ -711,7 +854,7 @@ const RULES = [
     },
   },
 
-  // 26. Thing location (README §122: "X is in the garage" -> Things, requires a place word;
+  // 29. Thing location (README §122: "X is in the garage" -> Things, requires a place word;
   //     issue #3292's own confirmed-live example "Drill is at home" -- "the" is optional there,
   //     so this accepts both).
   {
@@ -727,7 +870,7 @@ const RULES = [
     },
   },
 
-  // 27. Aisle memory (README §122: "pasta aisle 12 end cap" -> aisle memory). No store is stated
+  // 30. Aisle memory (README §122: "pasta aisle 12 end cap" -> aisle memory). No store is stated
   //     in the design's own example -- resolves against the current Shopping run's real stated
   //     store (#3108). A run with no store set yet is a genuine data-bearing statement Claude can
   //     still recover -> fallback, not a blocking message.
@@ -750,7 +893,7 @@ const RULES = [
     },
   },
 
-  // 28. Real price stated (log_price's own MCP description's literal examples: "chicken breasts
+  // 31. Real price stated (log_price's own MCP description's literal examples: "chicken breasts
   //     are $3.49 now", "paid $12 for the detergent at Aldi"). Store falls back to the current
   //     Shopping run's stated store when not said explicitly; still unresolved -> fallback (a
   //     real price is worth keeping for Claude to ask about, not worth losing).
@@ -783,7 +926,7 @@ const RULES = [
     },
   },
 
-  // 29. Grocery add (README §122: "grocery words -> the run"; issue #3292's own real MCP
+  // 32. Grocery add (README §122: "grocery words -> the run"; issue #3292's own real MCP
   //     precedent, push_list). Deliberately gated behind an explicit shopping verb ("add" is
   //     already claimed by vehicle_add above, and a bare noun phrase is too broad to trust).
   {
@@ -802,6 +945,74 @@ const RULES = [
       const list = await lists.getOrCreateShoppingList(userId);
       await lists.addListItems(userId, list.id, items);
       return { message: `Added ${items.join(", ")} to the run.` };
+    },
+  },
+
+  // 32. Queue for the next run (Git #3300: "Next [house] run · take" -- the Things room's own
+  //     checklist of what to bring, distinct from thing_location above and from the
+  //     Tesla-triggered Heading Out list, #3158). "take/bring X to <house>" queues a real thing
+  //     already on file (or files a new one, defaulting its home to "Home" per the design's own
+  //     "supplies default to Home").
+  {
+    name: "queue_take",
+    match(text) {
+      const m = text.match(/^(?:take|bring)\s+(?:the\s+)?(.+?)\s+to\s+(?:the\s+)?(.+)$/i);
+      return m ? { name: m[1].trim(), takeForHouse: m[2].trim() } : null;
+    },
+    async run(userId, { name, takeForHouse }) {
+      if (!name || !takeForHouse) return FALLBACK;
+      const row = await things.queueForTake(userId, { name, takeForHouse });
+      return { message: `${row.name} queued for the next ${row.take_for_house} run.`, thingId: row.id };
+    },
+  },
+
+  // 33. Real pantry quantity stated (#3308's own literal example: "I have 2 lbs of chicken
+  //     breasts") -- an absolute real quantity, not additive. Requires a real number and a real
+  //     unit word before "of" (the app's own real spoken shape for this) rather than a bare "I
+  //     have X" -- that broader form risks false positives ("I have 2 hours", "I have 2 kids")
+  //     nowhere near a real pantry statement, so it's deliberately left unmatched here (falls
+  //     through to the inbox, same as any other genuinely ambiguous capture).
+  {
+    name: "pantry_have",
+    match(text) {
+      const m = text.match(/^i have\s+(\d+(?:\.\d+)?)\s+([a-z]+)\s+of\s+(.+)$/i);
+      return m ? { quantity: Number(m[1]), unit: m[2].trim(), name: m[3].trim() } : null;
+    },
+    async run(userId, { quantity, unit, name }) {
+      const row = await pantry.setPantryQuantity(userId, { name, quantity, unit });
+      return { message: `${row.name}: ${row.quantity}${row.unit ? ` ${row.unit}` : ""} on hand.`, pantryItemId: row.id };
+    },
+  },
+
+  // 34. Real pantry restock (#3308's own literal example: "bought 3 cans of diced tomatoes") --
+  //     adds a real delta on top of whatever's already on file, rather than replacing it (the
+  //     real distinction from pantry_have above: "bought" is additive, "I have" is a fresh count).
+  {
+    name: "pantry_bought",
+    match(text) {
+      const m = text.match(/^bought\s+(\d+(?:\.\d+)?)\s+([a-z]+)\s+of\s+(.+)$/i);
+      return m ? { quantity: Number(m[1]), unit: m[2].trim(), name: m[3].trim() } : null;
+    },
+    async run(userId, { quantity, unit, name }) {
+      const row = await pantry.adjustPantryQuantity(userId, { name, delta: quantity, unit });
+      return { message: `${row.name}: ${row.quantity}${row.unit ? ` ${row.unit}` : ""} now on hand.`, pantryItemId: row.id };
+    },
+  },
+
+  // 35. Real pantry depletion (#3308's own literal example: "used the last of the rosemary") --
+  //     zeroes an already-known real item. Genuinely nothing on file for this name is a real
+  //     fallback, not silently discarded -- "used the last of X" naming something never tracked
+  //     is still worth Claude seeing in the inbox (it may be a genuinely new real item to file).
+  {
+    name: "pantry_used_last",
+    match(text) {
+      const m = text.match(/^used\s+the\s+last\s+of\s+(?:the\s+|my\s+)?(.+)$/i);
+      return m ? { name: m[1].trim() } : null;
+    },
+    async run(userId, { name }) {
+      const row = await pantry.depletePantryItem(userId, name, null);
+      if (!row) return FALLBACK;
+      return { message: `${row.name} marked used up.`, pantryItemId: row.id };
     },
   },
 ];
