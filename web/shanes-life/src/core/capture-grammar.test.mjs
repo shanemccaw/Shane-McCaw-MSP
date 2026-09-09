@@ -214,6 +214,37 @@ check("matchRule: watch/read lists", () => {
   assert.equal(matchRule("read Project Hail Mary").rule, "watch_or_read_list");
 });
 
+check("matchRule: new list, explicit (Git #3305)", () => {
+  const m1 = matchRule("new list: Camping");
+  assert.equal(m1.rule, "new_list");
+  assert.equal(m1.groups.name, "Camping");
+  assert.equal(m1.groups.firstItem, null);
+
+  const m2 = matchRule("new list: Camping: headlamp");
+  assert.equal(m2.rule, "new_list");
+  assert.equal(m2.groups.name, "Camping");
+  assert.equal(m2.groups.firstItem, "headlamp");
+});
+
+check("matchRule: named list add, both real phrasings (Git #3305)", () => {
+  const m1 = matchRule("gifts list: speaker for DJ");
+  assert.equal(m1.rule, "named_list_add");
+  assert.equal(m1.groups.rawName, "gifts");
+  assert.equal(m1.groups.item, "speaker for DJ");
+
+  const m2 = matchRule("add tent stakes to the camping list");
+  assert.equal(m2.rule, "named_list_add");
+  assert.equal(m2.groups.rawName, "camping");
+  assert.equal(m2.groups.item, "tent stakes");
+});
+
+check("matchRule: 'new list:' and named-list-add do not collide with person_note (Git #3305)", () => {
+  assert.equal(matchRule("new list: Camping").rule, "new_list");
+  assert.equal(matchRule("gifts list: speaker for DJ").rule, "named_list_add");
+  // A real person note still works exactly as before.
+  assert.equal(matchRule("dana: had a rough day about the lease").rule, "person_note");
+});
+
 check("matchRule: where is X", () => {
   assert.equal(matchRule("where's the drill?").rule, "where_is_thing");
   assert.equal(matchRule("where is my passport").rule, "where_is_thing");

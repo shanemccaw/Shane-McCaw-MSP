@@ -58,6 +58,7 @@
 
 import { record } from "./audit.mjs";
 import * as contacts from "./contacts.mjs";
+import { slugify } from "./categories.mjs";
 import * as dates from "./dates.mjs";
 import * as lists from "./lists.mjs";
 import * as medications from "./medications.mjs";
@@ -192,6 +193,19 @@ export function tieredMatch(candidates, needle, nameOf = (c) => c.name) {
   return { ok: false, reason: "not_found" };
 }
 
+/** Title-cases a stated phrase for a new list name -- "house projects" -> "House Projects".
+ *  Unlike categories.mjs's own titleCase (which expands a slug), this works on the raw stated
+ *  words directly, since a list's own display name (not a category slug) is what Shane typed. */
+function titleCasePhrase(phrase) {
+  return String(phrase || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
 const KNOWN_VEHICLE_MAKES =
   "tesla|kia|ford|toyota|honda|chevrolet|chevy|nissan|jeep|ram|gmc|hyundai|subaru|mazda|bmw|audi|" +
   "mercedes|volkswagen|vw|dodge|chrysler|buick|cadillac|lincoln|volvo|lexus|acura|infiniti|mitsubishi|porsche";
@@ -208,11 +222,16 @@ const RULES = [
   //    ordinary prose ("Note: buy milk"). Real gate: only fires when the name before the colon
   //    already matches a real, existing person. No match there -> FALLBACK, exactly as if this
   //    rule did not exist -- the raw text still reaches the inbox.
+  //
+  //    Excludes a name ending in "list" (real person is never named that) so "gifts list: …" /
+  //    "new list: …" fall through to the Lists room's own rules below instead of being claimed
+  //    here first and lost to FALLBACK -- a real person is never named "… list" (Git #3305).
   {
     name: "person_note",
     match(text) {
       const m = text.match(/^([A-Za-z][A-Za-z .'-]{0,40}):\s*(.+)$/);
       if (!m) return null;
+      if (/\blist$/i.test(m[1].trim())) return null;
       return { name: m[1].trim(), note: m[2].trim() };
     },
     async run(userId, { name, note }) {
@@ -667,7 +686,88 @@ const RULES = [
     },
   },
 
-  // 24. Watch/read lists (issue #3292's own named example: "push_list for Watch/Books";
+  // 24. New list, explicit (Git #3305, the Lists room's own "What changed... the Lists room"
+  //     §3: "new list: Camping" / "new list: Camping: headlamp"). Creates an empty list, or one
+  //     with a real first item already on it when a second colon/segment is stated. An existing
+  //     list of the same name is not recreated -- it just opens, same as the shelf's own dashed
+  //     "+" card behavior.
+  {
+    name: "new_list",
+    match(text) {
+      const m = text.match(/^(?:new list|make a list|start a list)(?:\s+called|\s+named)?[:\s]+([^:]+?)(?:[:\s]+(.+))?$/i);
+      if (!m) return null;
+      const name = m[1].trim();
+      if (!name) return null;
+      return { name, firstItem: m[2] ? m[2].trim() : null };
+    },
+    async run(userId, { name, firstItem }) {
+      const title = titleCasePhrase(name);
+      const all = await lists.listAllListNames(userId);
+      const isNew = !all.some((l) => l.name.toLowerCase() === title.toLowerCase());
+      const list = await lists.getOrCreateListByName(userId, {
+        name: title,
+        category: slugify(title),
+        categoryMeta: {
+          label: title,
+          icon: "list-checks",
+          color: "indigo",
+          itemNoun: "item",
+          description: `${title} -- a list Shane started.`,
+        },
+      });
+      if (firstItem) await lists.addListItems(userId, list.id, [firstItem]);
+      return {
+        message: isNew
+          ? `New list: ${title}.${firstItem ? ` ${firstItem} is the first thing on it.` : ""}`
+          : `${title} already exists.${firstItem ? ` Added ${firstItem}.` : ""}`,
+      };
+    },
+  },
+
+  // 25. Add to a named list, prefix-matched, create on miss (Git #3305, same "the Lists room"
+  //     §3: "gifts list: speaker for DJ", "add tent stakes to the camping list" -- list names
+  //     match by prefix, create on miss). Two real phrasings the design names explicitly: "<list>
+  //     list: <item>" and "add/put <item> to/on/in the <list> list". `listAllListNames` includes
+  //     Shopping so "shopping list: milk" still finds the real run rather than spawning a shadow
+  //     list.
+  {
+    name: "named_list_add",
+    match(text) {
+      // Real, named list only -- "add milk to the list" (no list actually named) is genuinely
+      // ambiguous and must fall through untouched, not resolve to a nonsense list called "the".
+      const isGenericName = (n) => !n || /^(?:the|my|a|an|it|that|this|list)$/i.test(n);
+      let m = text.match(/^(?:add|put)\s+(.+?)\s+(?:to|on|in)\s+(?:the\s+|my\s+)?(.+?)\s+list[.!]*$/i);
+      if (m && !isGenericName(m[2].trim())) return { item: m[1].trim(), rawName: m[2].trim() };
+      m = text.match(/^([a-z][a-z ]{1,40}?)\s+list[:\s]+(.+)$/i);
+      if (m && !isGenericName(m[1].trim())) return { item: m[2].trim(), rawName: m[1].trim() };
+      return null;
+    },
+    async run(userId, { item, rawName }) {
+      if (!item || !rawName) return FALLBACK;
+      const all = await lists.listAllListNames(userId);
+      const resolved = tieredMatch(all, rawName);
+      if (!resolved.ok && resolved.reason === "ambiguous") return FALLBACK;
+      const name = resolved.ok ? resolved.match.name : titleCasePhrase(rawName);
+      const isNew = !resolved.ok;
+      const list = await lists.getOrCreateListByName(userId, {
+        name,
+        category: slugify(name),
+        categoryMeta: {
+          label: name,
+          icon: "list-checks",
+          color: "indigo",
+          itemNoun: "item",
+          description: `${name} -- a list Shane started.`,
+        },
+      });
+      await lists.addListItems(userId, list.id, [item]);
+      return {
+        message: isNew ? `New list: ${name}. ${item} is the first thing on it.` : `Added to ${name}: ${item}.`,
+      };
+    },
+  },
+
+  // 26. Watch/read lists (issue #3292's own named example: "push_list for Watch/Books";
   //     README §120: "watch …" / "read …" -> Lists, list created if missing).
   {
     name: "watch_or_read_list",
@@ -693,7 +793,7 @@ const RULES = [
     },
   },
 
-  // 25. "Where's X" (README §121: "where's the drill?" -> answers in a toast). Pure read -- a
+  // 27. "Where's X" (README §121: "where's the drill?" -> answers in a toast). Pure read -- a
   //     genuine no-match still gets a real, honest answer rather than a fallback, since nothing
   //     Shane said risks being lost by answering rather than filing it.
   {
@@ -711,7 +811,7 @@ const RULES = [
     },
   },
 
-  // 26. Thing location (README §122: "X is in the garage" -> Things, requires a place word;
+  // 28. Thing location (README §122: "X is in the garage" -> Things, requires a place word;
   //     issue #3292's own confirmed-live example "Drill is at home" -- "the" is optional there,
   //     so this accepts both).
   {
@@ -727,7 +827,7 @@ const RULES = [
     },
   },
 
-  // 27. Aisle memory (README §122: "pasta aisle 12 end cap" -> aisle memory). No store is stated
+  // 29. Aisle memory (README §122: "pasta aisle 12 end cap" -> aisle memory). No store is stated
   //     in the design's own example -- resolves against the current Shopping run's real stated
   //     store (#3108). A run with no store set yet is a genuine data-bearing statement Claude can
   //     still recover -> fallback, not a blocking message.
@@ -750,7 +850,7 @@ const RULES = [
     },
   },
 
-  // 28. Real price stated (log_price's own MCP description's literal examples: "chicken breasts
+  // 30. Real price stated (log_price's own MCP description's literal examples: "chicken breasts
   //     are $3.49 now", "paid $12 for the detergent at Aldi"). Store falls back to the current
   //     Shopping run's stated store when not said explicitly; still unresolved -> fallback (a
   //     real price is worth keeping for Claude to ask about, not worth losing).
@@ -783,7 +883,7 @@ const RULES = [
     },
   },
 
-  // 29. Grocery add (README §122: "grocery words -> the run"; issue #3292's own real MCP
+  // 31. Grocery add (README §122: "grocery words -> the run"; issue #3292's own real MCP
   //     precedent, push_list). Deliberately gated behind an explicit shopping verb ("add" is
   //     already claimed by vehicle_add above, and a bare noun phrase is too broad to trust).
   {

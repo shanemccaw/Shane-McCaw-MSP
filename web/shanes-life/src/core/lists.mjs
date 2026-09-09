@@ -140,6 +140,22 @@ export async function listListsForUser(userId) {
 }
 
 /**
+ * Every real list's own name, Shopping included -- the prefix-match candidate set the Lists
+ * room's own capture grammar needs ("gifts list: …" / "add tent stakes to the camping list",
+ * README "the Lists room" §3: "list names match by prefix, create on miss") but
+ * `listListsForUser` deliberately doesn't provide, since that one excludes the Shopping singleton
+ * for its own real reason (Shopping already has its own room). Capture grammar has no such
+ * reason to exclude it -- typing "shopping list: …" should still find the real run, not spawn a
+ * second, shadow "Shopping" list.
+ */
+export async function listAllListNames(userId) {
+  return many(
+    `SELECT id, name FROM lists WHERE user_id = $1 AND archived_at IS NULL ORDER BY created_at ASC`,
+    [userId],
+  );
+}
+
+/**
  * Find-or-create a named, categorised list -- generalises getOrCreateShoppingList to any future
  * room built on this same typed shape. `push_list` (MCP) routes here for anything other than the
  * default 'shopping' category.
