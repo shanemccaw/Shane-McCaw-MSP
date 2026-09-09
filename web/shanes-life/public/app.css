@@ -1039,9 +1039,23 @@ pre.token {
    matching negative margins so the sky/weather backdrop reaches the true top and both true
    side edges of the screen; only .today-scene-content stays inset, reclaiming that same
    safe-area top allowance for itself since .view no longer supplies it here. */
+/* Git #3303: `.today-scene`'s box used to be sized ONLY to its own content (meta row + fox
+   bubble, ~130-160px) -- the night-sky SVG (`NIGHT_LAYER_HTML`, `viewBox="0 0 402 300"`,
+   `preserveAspectRatio="xMidYMin slice"`) and the day/weather-sky art (`weatherSkyHtml()`,
+   sun rays/clouds/storm bolts positioned at fixed offsets up to ~320px down) both scale/clip
+   to fit that box exactly, so Saturn (drawn at y=164 of the 300-unit viewBox, ~55% down)
+   got cut whenever the header's real content came in shorter than the scene needs -- which
+   it always did. The real Prototype (`Shanes Life - First Slice Prototype.dc.html`, the
+   `showTray` section) never scopes this to the header's own content height: its sky wash
+   layer is a flat, fixed 320px regardless of what the header itself renders, so the scene
+   reads as one continuous backdrop the header content merely sits on top of, not a card
+   bounded to its own text. `min-height` (not `height`) here so a real header that legitimately
+   needs more room (long fox-bubble copy, larger accessibility text) still grows the box
+   instead of clipping its own content. */
 .today-scene {
   position: relative;
   overflow: hidden;
+  min-height: 320px;
   margin: calc(-1 * max(0.9rem, env(safe-area-inset-top))) -16px 0;
 }
 .today-sky, .today-night, .today-wx-sky {

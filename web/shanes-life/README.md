@@ -20,6 +20,7 @@ Every decision below traces to a section of it, and the section is cited in the 
 |---|---|
 | Passkey-only sign-in, no password screen (§9) | `src/auth/webauthn.mjs`, `src/core/credentials.mjs`, `POST /api/auth/passkey/*` |
 | Universal capture box, text/voice/photo (§3) | `public/index.html` (the fixed bottom bar), `src/core/captures.mjs`, `src/core/media.mjs` |
+| Deterministic instant capture grammar -- real-time pattern detection on submit, instant execution for a recognized pattern, no pending-inbox row; Claude as fallback only for genuinely ambiguous text (§3, §10) | `src/core/capture-grammar.mjs` (29 real rules), wired into `POST /api/captures` in `src/routes/api.mjs` before any pending-capture row is written, `public/app.js`'s generic capture-bar handler shows the real per-line result (#3292) |
 | Genuinely open classification, no fixed enum (§3) | `src/core/categories.mjs`, `entities.category` + `entities.data jsonb` |
 | Shareable links with no login (§9) | `src/core/shares.mjs`, `src/routes/public.mjs`, `public/share.html` |
 | MCP write plane reachable from any Claude conversation (§9, §10) | `src/mcp/`, `src/routes/mcp.mjs` |
@@ -601,6 +602,58 @@ disposable `zz-selftest-3168` row and deletes it in a `finally`. What it deliber
 claim to cover: that Plaid's own servers can reach a deployed URL, and that a key fetched from
 `/webhook_verification_key/get` verifies a genuinely Plaid-signed body — both need a real public
 HTTPS deployment and live credentials.
+
+## Deterministic instant capture grammar (#3292)
+
+Real, confirmed gap this closes, from Shane's own direct instruction: the SAME "Ctrl+K command
+center" principle he already spec'd for BuildConsole (Epic #2017) -- one unified input surface,
+real-time pattern detection on what's typed, instant deterministic execution for recognized
+patterns, falling back to Claude only when nothing matches. Before this, every capture-grammar
+phrase documented anywhere in this app's own design docs or MCP tool descriptions had always
+described what CLAUDE recognises when reading the pending inbox, never something the raw Node
+backend matched on its own -- every capture, however clear-cut, sat in the pending inbox until an
+actual Claude conversation processed it (confirmed live: "Drill is at home", "Add Tesla" and "add
+the movie X to my list" all sat unprocessed for hours).
+
+`src/core/capture-grammar.mjs` is the real, testable, priority-ordered matcher -- 29 rules,
+compiled from the design contract's own "Capture grammar" section
+(`Design/design_handoff_shanes_life/README.md` §112-123, plus the Tesla-room grammar at §52 and
+the Money-room grammar at §65/136) and the literal capture-grammar phrases already written into
+this codebase's own real MCP tool descriptions ("add my Kia Forte", "did an oil change on the
+Kia, $45", "pepper rabies due february 2027", "plumber is Ray 321-555-0142", ...). Wired into
+`POST /api/captures` (`src/routes/api.mjs`) BEFORE a pending-capture row is ever written: a
+recognized, cleanly-resolved pattern calls the matching real core function directly (`setThing`,
+`createVehicle`, `markBatchTaken`, `simulateTransfer`, ...) and returns a real, immediate
+confirmation with no pending-inbox entry created at all; only a capture that matches nothing --
+or matches a real trigger phrase but can't safely resolve (an unrecognised vehicle/pet/store, an
+"X:" prefix that isn't an existing person's name) -- reaches the pending inbox, exactly as before.
+`public/app.js`'s generic capture-bar submit handler shows each line's own real result instead of
+the previous unconditional "Got it."
+
+This is explicitly NOT an AI/NLP layer (issue #3292's own words) -- the same category of
+deterministic pattern matching as BuildConsole's own paste-detection. Genuinely ambiguous
+phrasing still falls through to Claude untouched: "add my new couch" isn't make-allowlisted so it
+doesn't fire the vehicle-add rule, and a plain "Note: buy milk" doesn't fabricate a People entry
+just because it looks like "name: text" -- the person-note rule only fires when the name before
+the colon already matches a real, existing person. See the module's own header comment for the
+full fail-safe contract (a rule's `run()` either resolves cleanly, reports `{fallback: true}` to
+be treated exactly like no match at all, or throws -- caught centrally, same fallback) and each
+rule's own comment for which real design/tool-description line it implements.
+
+Also closed here, per the issue's own explicit scope item 6: **the real Tesla charge-status
+gap** -- "what's my car's charge at" had no dedicated MCP-reachable path (only climate existed),
+and a sleeping vehicle could time out rather than saying so honestly. `tesla.mjs`'s
+`getChargeStateOrWaking()` is the one real, shared fix: Tesla's own Fleet API answers a sleeping
+vehicle with HTTP 408 ("vehicle unavailable"), which `fleetGetRaw` now tags `code:
+"VEHICLE_ASLEEP"`, and this wrapper turns that into a real, honest `{waking: true, message}`
+instead of a bare error. The new `get_car_charge_status` MCP tool and the capture-grammar's own
+`tesla_charge_status` rule both call it, so there is exactly one place that knows what a sleeping
+car looks like.
+
+`src/core/capture-grammar.test.mjs` (`npm run selftest-capture-grammar`) covers the pure half
+(classification and every parsing helper -- date/time/recurrence extraction, tiered name
+resolution) with no database required; the DB-backed execution half was verified live against
+the real local database with disposable accounts, same discipline `bin/check.mjs` already uses.
 
 ## Which rooms are real today
 

@@ -62,6 +62,6 @@
         </Border>
 
         <TextBlock Grid.Row="5" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" VerticalAlignment="Top"
-                   Text="The MCP server is a separate, later dispatch — see README.md."/>
+                   Text="MCP server (Claude Desktop) is live — see README.md."/>
     </Grid>
 </Window>

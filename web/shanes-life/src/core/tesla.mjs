@@ -342,7 +342,15 @@ async function fleetGetRaw(userId, path) {
     throw new TeslaError(`Tesla's Fleet API returned a non-JSON response (HTTP ${res.status}).`, { status: res.status });
   }
   if (!res.ok) {
-    throw new TeslaError(json?.error || `Tesla's Fleet API returned HTTP ${res.status}.`, { status: res.status });
+    // Git #3292: Tesla answers a real vehicle_data read against a sleeping car with HTTP 408
+    // ("vehicle unavailable") -- a real, expected, recoverable state (the car needs to wake up
+    // first), not a network failure. Tagging it with a real `code` here is what lets a caller
+    // (getChargeStateOrWaking below, the capture-grammar's own Tesla read rules) tell that apart
+    // from every other real TeslaError without re-parsing Tesla's own free-text error message.
+    throw new TeslaError(json?.error || `Tesla's Fleet API returned HTTP ${res.status}.`, {
+      status: res.status,
+      code: res.status === 408 ? "VEHICLE_ASLEEP" : null,
+    });
   }
   return json;
 }
@@ -496,6 +504,33 @@ export async function getChargeState(userId) {
     batteryRangeMiles,
     chargingState,
   };
+}
+
+/**
+ * Same real, on-demand charge read as getChargeState above, but never throws for the one real,
+ * expected "the car is asleep" case (Git #3292's own real, confirmed gap: "what's my car's
+ * charge at" had no dedicated path, and the only existing one -- climate -- could time out
+ * waking a sleeping vehicle rather than saying so honestly). Tesla answers vehicle_data against
+ * a sleeping car with HTTP 408 ("vehicle unavailable"), which fleetGetRaw above now tags
+ * `code: "VEHICLE_ASLEEP"` -- that is the one real case this wraps into an honest, real waking
+ * state instead of a bare error. Every other TeslaError (not connected, no vehicle selected, a
+ * genuine network failure) still throws, because those are real problems "try again" cannot fix.
+ * The real MCP tool (get_car_charge_status) and the capture-grammar's own Tesla charge-read rule
+ * both call this rather than getChargeState directly, so there is exactly one place that knows
+ * what a sleeping car looks like.
+ */
+export async function getChargeStateOrWaking(userId) {
+  try {
+    return { waking: false, ...(await getChargeState(userId)) };
+  } catch (err) {
+    if (err instanceof TeslaError && err.code === "VEHICLE_ASLEEP") {
+      return {
+        waking: true,
+        message: "The car is asleep and needs to wake up first -- this can take up to a minute. Try again shortly.",
+      };
+    }
+    throw err;
+  }
 }
 
 /** Real, on-demand odometer read (Git #3217) -- `vehicle_state.odometer` is Tesla's own
