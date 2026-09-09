@@ -1401,6 +1401,13 @@ export function buildApiRouter() {
     return sendJson(res, 200, { ok: true });
   });
 
+  // Git #3323: real hour-of-day usage breakdown for one real medication -- read-only, no audit
+  // row, same as the plain GET /api/medications above.
+  router.get("/api/medications/:id/usage-timing", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, await medications.getMedicationUsageTiming(user.id, params.id));
+  });
+
   // -- meal plan (Git #3127, blocked_by #3124 and #3132) -------------------
   //
   // Section 5's real Sunday ritual: "no manual meal-planning calendar" holds here too -- this is

@@ -3782,6 +3782,88 @@ function asNeededUsageSection(usage) {
   return section;
 }
 
+// Git #3323: real, deterministic per-medication timing breakdown -- Shane's own direct ask
+// ("record my habits, what time I'm doing things, and surface them"), after noticing his own
+// asthma symptoms cluster closer to bedtime. This app's own standing principle ("Claude does all
+// thinking... it never calls a model") means this can never claim to have "found a pattern" --
+// it's plain hour-of-day counts, real bars, real numbers, so Shane (or Claude, reading the same
+// real numbers conversationally) draws the actual conclusion.
+//
+// Mirrors medications.mjs's own USAGE_TIMING_MIN_DOSES -- below this many real logged doses, a
+// bar chart would be more confident-looking than honest, so this says so plainly instead.
+const USAGE_TIMING_MIN_DOSES = 5;
+const USAGE_TIMING_MAX_ROWS_LABEL = "500"; // mirrors medications.mjs's own USAGE_TIMING_MAX_ROWS bound
+
+// 8 real 3-hour buckets covering the full day, in each dose's own real browser-local hour -- the
+// same real convention when()/agoShort() already use for every other timestamp in this app. This
+// app has never configured a server-process timezone anywhere, so bucketing by hour-of-day here,
+// client-side, is a fact (the browser's own clock), not a guess.
+function usageTimingBucketLabel(startHour) {
+  const fmt = (h) => {
+    const period = h < 12 ? "am" : "pm";
+    const hour12 = h % 12 === 0 ? 12 : h % 12;
+    return `${hour12}${period}`;
+  };
+  return `${fmt(startHour)}–${fmt((startHour + 3) % 24)}`;
+}
+
+function usageTimingBuckets(usedAtList) {
+  const buckets = new Array(8).fill(0);
+  for (const iso of usedAtList) {
+    const hour = new Date(iso).getHours();
+    buckets[Math.floor(hour / 3)] += 1;
+  }
+  return buckets;
+}
+
+function usageTimingCard(timing) {
+  const { medicationName, totalDoses, usedAt } = timing;
+  if (totalDoses === 0) return null;
+
+  const card = el("div", { class: "card", style: "padding:10px 14px" }, [
+    el("div", { class: "med-timing-name", text: medicationName }),
+  ]);
+
+  if (totalDoses < USAGE_TIMING_MIN_DOSES) {
+    card.append(
+      el("div", {
+        class: "muted small",
+        text: `Only ${totalDoses} real dose${totalDoses === 1 ? "" : "s"} logged so far -- not enough yet to honestly show a timing pattern.`,
+      }),
+    );
+    return card;
+  }
+
+  const buckets = usageTimingBuckets(usedAt);
+  const max = Math.max(...buckets, 1);
+  for (let i = 0; i < buckets.length; i++) {
+    const count = buckets[i];
+    const pct = Math.round((count / max) * 100);
+    card.append(
+      el("div", { class: "med-timing-row" }, [
+        el("div", { class: "med-timing-label", text: usageTimingBucketLabel(i * 3) }),
+        el("div", { class: "med-timing-track" }, [el("div", { class: "med-timing-fill", style: `width:${pct}%` })]),
+        el("div", { class: "med-timing-count", text: String(count) }),
+      ]),
+    );
+  }
+  card.append(
+    el("div", {
+      class: "muted small med-timing-footnote",
+      text: `${totalDoses} real logged dose${totalDoses === 1 ? "" : "s"}, most recent ${USAGE_TIMING_MAX_ROWS_LABEL}.`,
+    }),
+  );
+  return card;
+}
+
+function usageTimingSection(timings) {
+  const cards = (timings || []).map(usageTimingCard).filter(Boolean);
+  if (cards.length === 0) return null;
+  const section = el("section", { class: "section" }, [el("h2", { text: "Usage timing" })]);
+  for (const c of cards) section.append(c);
+  return section;
+}
+
 // Git #3191: Meds' own native header -- back "Today" / centered title / spacer, same real
 // shape Today (#3174) and Shopping (#3178) already use, replacing the generic app-header this
 // room used to fall back on (see render()'s hasOwnHeader).
@@ -3875,6 +3957,16 @@ async function viewMeds(view) {
 
   const usageSection = asNeededUsageSection(asNeededUsage);
   if (usageSection) view.append(usageSection);
+
+  // Git #3323: real per-medication timing breakdown for every real medication with any real
+  // as-needed history -- distinct medication ids drawn straight off the same real asNeededUsage
+  // list just rendered above, not a separate guess at which medications are "as needed".
+  const timingMedIds = [...new Set((asNeededUsage || []).map((u) => u.medicationId))];
+  if (timingMedIds.length > 0) {
+    const timings = await Promise.all(timingMedIds.map((id) => api(`/api/medications/${id}/usage-timing`)));
+    const timingSection = usageTimingSection(timings);
+    if (timingSection) view.append(timingSection);
+  }
 
   // Git #3183: no dedicated "Add medication" form -- a new medication is a capture, same
   // as everything else (contract pack Section 8). Say "started lisinopril 10mg every

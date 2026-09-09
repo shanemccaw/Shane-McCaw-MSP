@@ -1393,6 +1393,16 @@ pre.token {
    for anything yet. */
 .med-batch-collapsed { opacity: 0.7; }
 
+/* Git #3323: real hour-of-day usage-timing bars for one real as-needed medication -- plain
+   counts, no claimed "pattern", so Shane draws his own conclusion from the real bar heights. */
+.med-timing-name { font-weight: var(--weight-semibold); }
+.med-timing-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 12px; }
+.med-timing-label { width: 60px; flex-shrink: 0; color: hsl(var(--muted-foreground)); }
+.med-timing-track { flex: 1; height: 8px; border-radius: 4px; background: hsl(var(--muted)); overflow: hidden; }
+.med-timing-fill { height: 100%; border-radius: 4px; background: #60a5fa; }
+.med-timing-count { width: 22px; flex-shrink: 0; text-align: right; color: hsl(var(--muted-foreground)); }
+.med-timing-footnote { margin-top: 6px; }
+
 /* Git #3318 ("Drawn in the same pass" item 6): the one real course med in a batch still gets its
    own detail row on top of #3282's compact summary line -- First Slice Prototype.dc.html line
    744's own icon-tile + name + sub + right-aligned day count. */

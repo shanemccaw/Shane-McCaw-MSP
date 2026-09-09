@@ -578,3 +578,48 @@ export async function listRecentMedicationUsage(userId, { limit = 15 } = {}) {
     note: r.note,
   }));
 }
+
+// A real minimum before showing a breakdown as if it means anything -- with 1-4 real doses
+// logged, "3 uses between 9pm-midnight" is real but not honestly a "pattern" yet. Below this,
+// the caller (public/app.js's usageTimingCard) says so plainly instead of drawing bars. Mirrored
+// as USAGE_TIMING_MIN_DOSES client-side since it's the client that renders the honesty message.
+export const USAGE_TIMING_MIN_DOSES = 5;
+
+// Real, bounded window -- the most recent 500 real dose events is already far more than enough
+// to see an honest hour-of-day shape, and keeps this a fast, fixed-cost read regardless of how
+// long a medication has been logged for.
+const USAGE_TIMING_MAX_ROWS = 500;
+
+/**
+ * Real, deterministic hour-of-day aggregation for ONE real medication (Git #3323, sub-issue of
+ * #3226 Meds Feature -- Shane's own direct ask: "record my habits, what time I'm doing things,
+ * and surface them" after noticing his own asthma symptoms cluster closer to bedtime).
+ *
+ * This app's own standing principle -- "Claude does all thinking... it never calls a model" --
+ * means this can never claim to have "found a pattern"; it only returns the real, raw `usedAt`
+ * timestamps for every real logged dose of this medication (bounded above), so Shane (or Claude,
+ * reading the real numbers) draws the actual conclusion. Bucketing by hour-of-day happens
+ * client-side in public/app.js, using the browser's own local time -- the same real convention
+ * when()/agoShort() already use for every other timestamp in this app; this module has never
+ * configured a server-process timezone anywhere, so grouping in SQL by server/session tz would
+ * be a guess, not a fact.
+ */
+export async function getMedicationUsageTiming(userId, medicationId) {
+  const owned = await getOwnedMedication(userId, medicationId);
+  if (!owned) throw notFound("Medication not found");
+
+  const rows = await many(
+    `SELECT used_at FROM medication_usage_log
+      WHERE user_id = $1 AND medication_id = $2
+      ORDER BY used_at DESC
+      LIMIT $3`,
+    [userId, medicationId, USAGE_TIMING_MAX_ROWS],
+  );
+
+  return {
+    medicationId,
+    medicationName: owned.name,
+    totalDoses: rows.length,
+    usedAt: rows.map((r) => r.used_at),
+  };
+}
