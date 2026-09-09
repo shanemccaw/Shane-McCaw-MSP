@@ -198,7 +198,7 @@ export async function roomsForToday(userId, { allDates, tonight, groceries, meds
       : "Nothing on the lists yet",
   };
   const peopleRoom = {
-    subtitle: allPeople.length > 0 ? `${allPeople.length} people · your journal` : "No one on file yet",
+    subtitle: allPeople.length > 0 ? `${allPeople.length} ${allPeople.length === 1 ? "person" : "people"} · your journal` : "No one on file yet",
   };
   const petsRoom = {
     subtitle: allPets.length > 0 ? allPets.map((p) => p.name).join(", ") : "No pets yet",
