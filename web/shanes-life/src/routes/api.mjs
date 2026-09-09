@@ -61,6 +61,7 @@ import * as storeAisles from "../core/store-aisles.mjs";
 import * as vault from "../core/vault.mjs";
 import * as webpush from "../push/webpush.mjs";
 import * as things from "../core/things.mjs";
+import * as timers from "../core/timers.mjs";
 import * as wins from "../core/wins.mjs";
 import { orderItems } from "../core/shopping-order.mjs";
 import * as vehicles from "../core/vehicles.mjs";
@@ -995,6 +996,21 @@ export function buildApiRouter() {
     const house = ctx.url.searchParams.get("house");
     const [items, houses] = await Promise.all([pantry.listPantryItems(user.id, { house }), pantry.listPantryHouses(user.id)]);
     return sendJson(res, 200, { items, groups: pantry.groupPantryByCategory(items), houses });
+  });
+
+  // Real Cook-mode ingredient-checkoff depletion (Git #3312) -- the one real write this room's
+  // "no forms, anywhere, ever" comment above doesn't cover, because it isn't a form: Cook mode's
+  // own checkbox tick fires this directly, same as capture-grammar and MCP already write pantry
+  // rows without a form. Silent, no confirmation (Shane's own real decision on #3308); does
+  // nothing (no fabricated row, no error) when the ingredient text doesn't unambiguously match a
+  // real pantry row -- see pantry.depleteForCookCheckoff's own doc comment.
+  router.post("/api/pantry/deplete-checkoff", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const text = String(body?.text || "").trim();
+    if (!text) throw badRequest("text is required");
+    const item = await pantry.depleteForCookCheckoff(user.id, text);
+    return sendJson(res, 200, { item });
   });
 
   // "Who fixed what" -- real service-provider contact log (Git #3156). Each capture is a new
@@ -1983,6 +1999,36 @@ export function buildApiRouter() {
     const user = requireUser(ctx);
     await teslaCore.cancelScheduledCommand(user.id, params.id);
     await audit.record({ userId: user.id, actor: "owner", action: "tesla.scheduled-command-canceled", entityId: params.id });
+    return sendJson(res, 200, { canceled: true });
+  });
+
+  // -- Standalone timers (Git #3307) -----------------------------------------------------
+  //
+  // Server-side entity, real web push -- see src/core/timers.mjs's own header and
+  // server.mjs's runTimerSweep for the "why not client-side state" reasoning. Capture grammar
+  // (`timer_set` in capture-grammar.mjs) is the primary real entry point; these routes back the
+  // Today tray's "see/cancel an active standalone timer" real scope item and let the UI set one
+  // directly too, without needing to type through the capture box.
+
+  router.get("/api/timers", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    return sendJson(res, 200, { timers: await timers.listActive(user.id) });
+  });
+
+  router.post("/api/timers", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await timers.createTimer(user.id, { label: body.label ?? null, durationSeconds: body.durationSeconds });
+    // timers.id is bigserial, not the uuid activity_log.entity_id expects (Git #3161-class trap,
+    // caught live -- see nudges' own `nudgeId`-in-detail convention for the same real reason).
+    await audit.record({ userId: user.id, actor: "web", action: "timer.create", detail: { timerId: row.id, label: row.label, durationSeconds: row.duration_seconds } });
+    return sendJson(res, 201, row);
+  });
+
+  router.delete("/api/timers/:id", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    await timers.cancelTimer(user.id, params.id);
+    await audit.record({ userId: user.id, actor: "owner", action: "timer.canceled", detail: { timerId: params.id } });
     return sendJson(res, 200, { canceled: true });
   });
 
@@ -3121,6 +3167,9 @@ export function buildApiRouter() {
       groceries,
       headingHome,
       meds: medsToday,
+      // Standalone timers (Git #3307) -- Today tray's "see/cancel an active timer" real scope
+      // item; server-side rows so this list is honest across a reload/redeploy, not client state.
+      timers: await timers.listActive(user.id),
       rooms: await roomsForToday(user.id, { allDates, tonight, groceries, meds: medsToday, pendingCaptures }),
       roomOrder: await roomOrder.getRoomOrder(user.id),
       later: await computeLaterMoments(user.id, { allDates, tonight, pendingCaptures }),

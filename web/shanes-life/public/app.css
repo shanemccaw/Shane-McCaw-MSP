@@ -175,6 +175,21 @@ a { color: inherit; }
    room content eases back to rest instead of snapping. */
 .view.ptr-settling { transition: transform 0.2s ease; }
 
+/* Git #3313: room-to-room navigation crossfade. render() (app.js) re-applies this class to
+   #view right after view.replaceChildren() swaps in the new room's real content -- no stated
+   transition preference exists in the design handoff (checked: README + First Slice Prototype),
+   so this is the issue's own suggested default, a plain ~180ms opacity fade-in. It only ever
+   touches `opacity`, never `transform` -- pull-to-refresh's own property, directly above -- so
+   the two never fight over the same #view element even when a pull-to-refresh release re-runs
+   render() mid-settle. It also never delays real interactivity: every element is already in the
+   DOM and tappable/typeable the instant it's appended; this purely animates how the swap looks. */
+@keyframes room-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.view.room-fade-in { animation: room-fade-in 180ms ease-out; }
+
 /* Shared room chrome (design handoff README, "Screens"): 62px top padding, 16px side
    padding, 14px gaps between sections. */
 .view {

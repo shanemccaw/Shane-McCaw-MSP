@@ -1834,6 +1834,38 @@ async function viewToday(view) {
     view.append(meals);
   }
 
+  // Standalone timers (Git #3307) -- "a way to see/cancel an active standalone timer," Today
+  // tray being "the natural real home, matching how other live states already surface there."
+  // Server-side rows (data.timers, /api/today), not client state -- see core/timers.mjs.
+  if ((data.timers || []).length > 0) {
+    const timersSection = el("section", { class: "section" }, [el("h2", { text: "Timers" })]);
+    for (const t of data.timers) {
+      timersSection.append(
+        el("div", { class: "card row spread", style: "align-items:center" }, [
+          el("div", {}, [
+            el("div", { class: "title", text: t.label ? `Timer -- ${t.label}` : "Timer" }),
+            el("div", { class: "meta", text: `Fires ${inShort(t.fires_at)}` }),
+          ]),
+          el("button", {
+            class: "ghost small",
+            text: "Cancel",
+            onClick: async (event) => {
+              event.currentTarget.disabled = true;
+              try {
+                await api(`/api/timers/${t.id}`, { method: "DELETE" });
+                render();
+              } catch (err) {
+                showQuickToast(err.message);
+                event.currentTarget.disabled = false;
+              }
+            },
+          }),
+        ]),
+      );
+    }
+    view.append(timersSection);
+  }
+
   // The label sits in its own row, separate from the card list below it -- attachPeeker turns
   // this row (and only this row) into the spec's "position:relative; display:flex;
   // align-items:flex-end" label row; the cards stay in normal block flow beneath it.
@@ -2938,7 +2970,14 @@ async function viewCook(view, recipeId) {
             const box = el("input", { type: "checkbox", ...(done ? { checked: true } : {}) });
             const label = el("span", { class: done ? "done" : "", text: ing });
             box.addEventListener("change", () => {
+              const wasChecked = !!cookSession.checks[key];
               cookSession.checks[key] = box.checked;
+              // Real pantry depletion (Git #3312): silent, no confirmation -- only on the real
+              // unchecked->checked transition, never on uncheck (a misclick shouldn't hand
+              // quantity back; Shane can always correct with a plain "I have X" capture after).
+              if (box.checked && !wasChecked) {
+                api("/api/pantry/deplete-checkoff", { method: "POST", body: JSON.stringify({ text: ing }) }).catch(() => {});
+              }
               render();
             });
             return el("li", {}, [box, label]);
@@ -10483,6 +10522,17 @@ async function render() {
     if (err.status === 401) return showLogin();
     view.replaceChildren(el("div", { class: "card" }, [el("p", { class: "error", text: err.message })]));
   }
+
+  // Git #3313: room-to-room navigation was an instant hard cut (replaceChildren() above has no
+  // transition of its own). A plain opacity crossfade, per the issue's own stated default (no
+  // transition preference found in the design handoff). Re-triggered on every render(), including
+  // pull-to-refresh's own re-render of the same room (#3268) -- remove-then-reflow-then-add
+  // restarts the CSS animation even when the class is already present from the previous run.
+  // Purely visual: the new content is already live in the DOM and fully interactive the instant
+  // it's appended above, this only animates how it looks arriving.
+  view.classList.remove("room-fade-in");
+  void view.offsetWidth;
+  view.classList.add("room-fade-in");
 }
 
 window.addEventListener("hashchange", render);

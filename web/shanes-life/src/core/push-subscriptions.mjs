@@ -33,6 +33,14 @@ async function subscriptionsFor(userId) {
   return many("SELECT * FROM push_subscriptions WHERE user_id = $1", [userId]);
 }
 
+/** Real, honest check for "would a push actually reach a device right now" -- Git #3307's own
+ *  scope item 4: a capture that sets something up to alert later (a timer) must say so plainly
+ *  when there's genuinely nothing to deliver to, rather than silently failing to alert. */
+export async function hasAnySubscription(userId) {
+  const rows = await many("SELECT 1 FROM push_subscriptions WHERE user_id = $1 LIMIT 1", [userId]);
+  return rows.length > 0;
+}
+
 /**
  * Sends `payload` as a real web push to every one of a user's real subscriptions. Silently a
  * no-op (not an error) if VAPID keys aren't configured -- the in-app tray is still the real

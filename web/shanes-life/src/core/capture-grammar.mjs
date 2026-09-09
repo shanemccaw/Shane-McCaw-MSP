@@ -68,10 +68,12 @@ import * as people from "./people.mjs";
 import * as pets from "./pets.mjs";
 import * as places from "./places.mjs";
 import * as prices from "./prices.mjs";
+import * as pushSubscriptions from "./push-subscriptions.mjs";
 import * as storeAisles from "./store-aisles.mjs";
 import * as tesla from "./tesla.mjs";
 import { TeslaError } from "./tesla.mjs";
 import * as things from "./things.mjs";
+import * as timers from "./timers.mjs";
 import * as vehicles from "./vehicles.mjs";
 import * as wins from "./wins.mjs";
 
@@ -137,6 +139,57 @@ export function extractRecurrenceDays(text) {
   if (unit.startsWith("day")) return n;
   if (unit.startsWith("week")) return n * 7;
   return n * 30;
+}
+
+const DURATION_UNIT_RE = "hours?|hrs?|hr|minutes?|mins?|seconds?|secs?|sec";
+
+function durationUnitToSeconds(unit) {
+  const u = unit.toLowerCase();
+  if (u.startsWith("h")) return 3600;
+  if (u.startsWith("s")) return 1;
+  return 60; // every minute-family spelling (minute, minutes, min, mins)
+}
+
+function cleanTimerLabel(raw) {
+  const l = String(raw ?? "").trim().replace(/[.!?]+$/, "").trim();
+  return l ? l.slice(0, 200) : null;
+}
+
+/** Git #3307's real capture-grammar timer parse -- "8 min timer for pasta" (duration before the
+ *  word "timer") and "set a timer for 5 minutes[, for the rice]" (duration after it) are both
+ *  real, named examples from Shane's own decision comment. Returns null when "timer" is present
+ *  but no real duration is stated -- a genuine parse miss, same fallback discipline every other
+ *  helper here uses. */
+export function extractTimerDuration(text) {
+  const before = text.match(
+    new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${DURATION_UNIT_RE})\\s+timer\\b(?:\\s+for\\s+(.+))?`, "i"),
+  );
+  if (before) {
+    const seconds = Math.round(Number(before[1]) * durationUnitToSeconds(before[2]));
+    if (seconds > 0) return { seconds, label: cleanTimerLabel(before[3]) };
+  }
+  const after = text.match(
+    new RegExp(`\\btimer\\b.*?\\bfor\\s+(\\d+(?:\\.\\d+)?)\\s*(${DURATION_UNIT_RE})\\b(?:\\s+for\\s+(.+))?`, "i"),
+  );
+  if (after) {
+    const seconds = Math.round(Number(after[1]) * durationUnitToSeconds(after[2]));
+    if (seconds > 0) return { seconds, label: cleanTimerLabel(after[3]) };
+  }
+  return null;
+}
+
+/** "495" -> "8 min", "90" -> "1 min 30 sec", "45" -> "45 sec" -- the real confirmation text a
+ *  matched timer capture returns, and the Today tray card's own display. */
+export function formatDuration(totalSeconds) {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const hours = Math.floor(s / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const seconds = s % 60;
+  const parts = [];
+  if (hours > 0) parts.push(`${hours} hr`);
+  if (minutes > 0) parts.push(`${minutes} min`);
+  if (seconds > 0 && hours === 0) parts.push(`${seconds} sec`);
+  return parts.length > 0 ? parts.join(" ") : "0 sec";
 }
 
 function isoFromParts(year, monthIndex, day) {
@@ -1013,6 +1066,30 @@ const RULES = [
       const row = await pantry.depletePantryItem(userId, name, null);
       if (!row) return FALLBACK;
       return { message: `${row.name} marked used up.`, pantryItemId: row.id };
+    },
+  },
+
+  // 36. Standalone timer (Git #3307, README §112-123 item 3: "8 min timer for pasta"; Shane's
+  //     own decision comment adds "set a timer for 5 minutes"). A pure command with no stated
+  //     fact to lose, so a "timer" with no real duration falls straight through to the inbox
+  //     rather than a fallback -- there's nothing here worth Claude re-reading either, but the
+  //     fail-safe contract only distinguishes fallback vs. no-match for a DATA-bearing capture,
+  //     and this one just isn't. Server-side entity + real web push, not client-only state -- see
+  //     timers.mjs and server.mjs's runTimerSweep for why.
+  {
+    name: "timer_set",
+    match(text) {
+      if (!/\btimer\b/i.test(text)) return null;
+      return extractTimerDuration(text);
+    },
+    async run(userId, { seconds, label }) {
+      const row = await timers.createTimer(userId, { label, durationSeconds: seconds });
+      const ready = pushSubscriptions.isConfigured() && (await pushSubscriptions.hasAnySubscription(userId));
+      const warning = ready ? "" : " Turn on notifications in Settings so this can actually alert you.";
+      return {
+        message: `Timer set for ${formatDuration(seconds)}${label ? ` -- ${label}` : ""}.${warning}`,
+        timerId: row.id,
+      };
     },
   },
 ];
