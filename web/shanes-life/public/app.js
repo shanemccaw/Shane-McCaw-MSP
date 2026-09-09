@@ -6848,6 +6848,34 @@ async function viewCarDetail(view, vehicleId) {
   // folded into Maintenance/Details above -- it's a genuinely separate real concern (a live sync
   // relationship, not a stated number), and only ever meaningful for whichever one vehicle is
   // actually the connected Tesla.
+  //
+  // Git #3286: "Sync now" used to discard the real `{ odometer, charging }` result and silently
+  // re-render -- a real failure (not connected, no odometer data yet, a real Tesla API error)
+  // looked identical to success. These two helpers turn that real response into a real, visible
+  // message instead.
+  const TESLA_SYNC_REASONS = {
+    no_tesla_synced_vehicle: "This vehicle isn't linked to the connected Tesla.",
+    no_odometer_data: "Tesla hasn't reported an odometer reading yet.",
+  };
+  function syncFullySucceeded(result) {
+    return result?.odometer?.synced === true && result?.charging?.synced === true;
+  }
+  function syncResultText(result) {
+    const parts = [];
+    if (result?.odometer?.synced) {
+      parts.push(`Odometer synced: ${result.odometer.currentMileage.toLocaleString()} mi`);
+    } else {
+      const reason = result?.odometer?.reason;
+      parts.push(`Odometer not synced -- ${result?.odometer?.message || TESLA_SYNC_REASONS[reason] || reason || "unknown reason"}`);
+    }
+    if (result?.charging?.synced) {
+      parts.push(`${result.charging.count} charging session${result.charging.count === 1 ? "" : "s"} synced`);
+    } else {
+      const reason = result?.charging?.reason;
+      parts.push(`Charging not synced -- ${result?.charging?.message || TESLA_SYNC_REASONS[reason] || reason || "unknown reason"}`);
+    }
+    return parts.join(" · ");
+  }
   const tesla = el("section", { class: "section" }, [el("h2", { text: "Tesla" })]);
   const tCard = el("div", { class: "card" });
   if (!vehicle.tesla.synced) {
@@ -6877,8 +6905,15 @@ async function viewCarDetail(view, vehicleId) {
           text: "Sync now",
           onClick: async (event) => {
             event.target.disabled = true;
-            await api("/api/tesla/sync", { method: "POST" });
-            render();
+            tCard.querySelectorAll(".sync-result").forEach((n) => n.remove());
+            try {
+              const result = await api("/api/tesla/sync", { method: "POST" });
+              tCard.append(el("p", { class: `small sync-result${syncFullySucceeded(result) ? "" : " error"}`, text: syncResultText(result) }));
+            } catch (err) {
+              tCard.append(el("p", { class: "small error sync-result", text: err.message }));
+            } finally {
+              event.target.disabled = false;
+            }
           },
         }),
         el("button", {
