@@ -1557,6 +1557,21 @@ namespace BuildConsole.Services
         /// chunk is one HTTP request regardless of how many aliases it carries.</summary>
         private const int ClosedSweepMutateChunkSize = 20;
 
+        /// <summary>Git #3350 — aliased `issue(number:)` lookups per GraphQL READ in
+        /// <see cref="BatchGetRecentIssueCommentsAsync"/>. Smaller than
+        /// <see cref="ClosedSweepLookupChunkSize"/> because each alias pulls up to
+        /// <see cref="RecentCommentsPerIssue"/> full comment BODIES (a `BUILD:` prompt can be long), so
+        /// the response payload — not the node count — is the real limit to keep modest.</summary>
+        private const int CommentBatchLookupChunkSize = 15;
+
+        /// <summary>Git #3350 — how many of the MOST RECENT comments per issue the batched BUILD-comment
+        /// resolve pulls. A Batter Up / AI Batter Up item's `BUILD:` dispatch comment is effectively
+        /// always among its most recent comments (it's the dispatch that put/kept it on the board), so
+        /// this window catches it in the batched call; the rare item with a deeper history and no recent
+        /// `BUILD:` comment is detected via `totalCount` and resolved by a per-item full fetch fallback,
+        /// so correctness never depends on this window being large.</summary>
+        private const int RecentCommentsPerIssue = 20;
+
         /// <summary>
         /// Git #3347 — the batched, by-issue-NUMBER equivalent of <see cref="GetIssueBoardStatusAsync"/>:
         /// resolves MANY issue numbers to their current ProjectV2Item node id + LIVE Status option id
@@ -1716,6 +1731,87 @@ namespace BuildConsole.Services
             }
 
             return moved;
+        }
+
+        /// <summary>
+        /// Git #3350 — the batched equivalent of <see cref="GetIssueCommentsAsync"/> for the Batter Up /
+        /// AI Batter Up open-item refresh: fetches the most-recent <paramref name="lastPerIssue"/>
+        /// comment bodies for MANY issue numbers in a small, bounded number of GraphQL reads (aliased
+        /// <c>issue(number:).comments(last:)</c> sub-queries, <see cref="CommentBatchLookupChunkSize"/>
+        /// per call) rather than one REST call per item — the same de-burst #3347 applied to the
+        /// closed-sweep's per-item resolve, now for the open-item BUILD-comment resolve. For each number
+        /// found it returns that issue's recent comment bodies in GitHub's own chronological order (so a
+        /// caller scanning newest-first finds the freshest `BUILD:` comment, exactly as the REST path's
+        /// reverse loop does) plus the real <c>totalCount</c>, so the caller can tell when a `BUILD:`
+        /// comment might be older than this window and fall back to a per-item full fetch for just those
+        /// (rare) issues. Each chunk is one HTTP request through the shared rate-limit circuit; a
+        /// rate-limited/short-circuited chunk throws so the caller can stop rather than firing the rest.
+        /// </summary>
+        public async Task<Dictionary<int, (List<string> Bodies, int TotalCount)>> BatchGetRecentIssueCommentsAsync(
+            IReadOnlyList<int> issueNumbers, int lastPerIssue)
+        {
+            var result = new Dictionary<int, (List<string>, int)>();
+            if (issueNumbers == null || issueNumbers.Count == 0) return result;
+            int last = lastPerIssue <= 0 ? RecentCommentsPerIssue : lastPerIssue;
+
+            var distinct = issueNumbers.Where(n => n > 0).Distinct().ToList();
+
+            for (int offset = 0; offset < distinct.Count; offset += CommentBatchLookupChunkSize)
+            {
+                var chunk = distinct.Skip(offset).Take(CommentBatchLookupChunkSize).ToList();
+                var sb = new StringBuilder();
+                sb.Append("query { ");
+                sb.Append($"repository(owner: \"{Owner}\", name: \"{Repo}\") {{ ");
+                for (int i = 0; i < chunk.Count; i++)
+                    sb.Append($"a{i}: issue(number: {chunk[i]}) {{ comments(last: {last}) {{ totalCount nodes {{ body }} }} }} ");
+                sb.Append("} }");
+
+                using var req = new HttpRequestMessage(HttpMethod.Post, "graphql")
+                {
+                    Content = JsonContent.Create(new { query = sb.ToString() }),
+                };
+                var res = await _http.SendAsync(req);
+                LogIfUnauthorized(res, "graphql (open-item batch BUILD-comment lookup)");
+                res.EnsureSuccessStatusCode();
+
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("errors", out var errs) && errs.ValueKind == JsonValueKind.Array && errs.GetArrayLength() > 0)
+                {
+                    var msg = string.Join("; ", errs.EnumerateArray()
+                        .Select(e => e.TryGetProperty("message", out var m) ? m.GetString() : null)
+                        .Where(s => !string.IsNullOrEmpty(s)));
+                    // A rate-limit error stops the whole resolve (don't fire the rest of the chunks);
+                    // any other field-level error is logged but we still parse the partial data.
+                    if (GitHubRateLimitCircuit.LooksLikeRateLimit(msg) || GitHubRateLimitCircuit.IsCircuitOpenMessage(msg))
+                        throw new Exception("GitHub GraphQL: " + msg);
+                    ActivityLog.Log("git-board.data",
+                        $"open-item batch BUILD-comment lookup — partial GraphQL error(s), continuing with returned data: {msg}");
+                }
+
+                if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object) continue;
+                if (!data.TryGetProperty("repository", out var repo) || repo.ValueKind != JsonValueKind.Object) continue;
+
+                for (int i = 0; i < chunk.Count; i++)
+                {
+                    if (!repo.TryGetProperty($"a{i}", out var issueEl) || issueEl.ValueKind != JsonValueKind.Object) continue;
+                    if (!issueEl.TryGetProperty("comments", out var comments) || comments.ValueKind != JsonValueKind.Object) continue;
+
+                    int totalCount = comments.TryGetProperty("totalCount", out var tc) && tc.ValueKind == JsonValueKind.Number
+                        ? tc.GetInt32() : 0;
+
+                    var bodies = new List<string>();
+                    if (comments.TryGetProperty("nodes", out var nodes) && nodes.ValueKind == JsonValueKind.Array)
+                        foreach (var node in nodes.EnumerateArray())
+                            if (node.ValueKind == JsonValueKind.Object && node.TryGetProperty("body", out var b))
+                                bodies.Add(b.GetString() ?? "");
+
+                    result[chunk[i]] = (bodies, totalCount);
+                }
+            }
+
+            return result;
         }
 
         private class ProjectItemLookupResponse

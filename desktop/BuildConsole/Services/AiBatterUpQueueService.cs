@@ -55,9 +55,18 @@ namespace BuildConsole.Services
             var boardItems = await GetAiBatterUpBoardItemsAsync(gh);
             var rows = new List<AiBatterUpRow>();
 
+            // Git #3350 — resolve every open item's BUILD: comment in a handful of batched GraphQL
+            // reads instead of one live REST call per item (the same de-burst as the Batter Up panel;
+            // most AI Batter Up items are raw findings with no BUILD: comment, so this is pure win). A
+            // missing entry (circuit open / batch failed) just means "no BUILD: comment resolved this
+            // pass", the same HasBuildComment=false outcome a null parse already produced.
+            var buildComments = await BatterUpQueueService.ResolveBuildCommentsAsync(
+                gh, boardItems.Select(b => b.Number).ToList(),
+                s => ActivityLog.Log("ai-batter-up", s));
+
             foreach (var item in boardItems)
             {
-                var (_, parsed) = await BatterUpQueueService.FindBuildCommentAsync(gh, item.Number);
+                var parsed = buildComments.TryGetValue(item.Number, out var bc) ? bc.Parsed : null;
 
                 rows.Add(new AiBatterUpRow
                 {

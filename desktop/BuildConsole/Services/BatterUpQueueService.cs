@@ -147,12 +147,102 @@ namespace BuildConsole.Services
             FindBuildCommentAsync(GitHubApiClient gh, int issueNumber)
         {
             var comments = await gh.GetIssueCommentsAsync(issueNumber);
-            for (int i = comments.Count - 1; i >= 0; i--)
+            var found = FindBuildCommentInBodies(comments.Select(c => c.Body).ToList());
+            return found ?? (null, null);
+        }
+
+        /// <summary>
+        /// Git #3350 — scans a set of comment BODIES in GitHub's own chronological (oldest→newest)
+        /// order and returns the NEWEST one that parses as a `BUILD:` comment (so an updated `BUILD:`
+        /// comment wins over an older one), exactly as <see cref="FindBuildCommentAsync"/>'s reverse
+        /// REST loop did. Returns null when none of the provided bodies parse — the caller decides
+        /// whether that's a definitive "no BUILD comment" (whole thread present) or "look deeper"
+        /// (only a recent window was fetched and older comments remain).
+        /// </summary>
+        private static (string? RawComment, (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? Parsed)?
+            FindBuildCommentInBodies(IReadOnlyList<string> bodiesChronological)
+        {
+            for (int i = bodiesChronological.Count - 1; i >= 0; i--)
             {
-                var parsed = ParseBuildComment(comments[i].Body);
-                if (parsed.HasValue) return (comments[i].Body, parsed);
+                var parsed = ParseBuildComment(bodiesChronological[i]);
+                if (parsed.HasValue) return (bodiesChronological[i], parsed);
             }
-            return (null, null);
+            return null;
+        }
+
+        /// <summary>
+        /// Git #3350 — resolves the `BUILD:` comment for MANY open board items in a handful of batched
+        /// GraphQL reads instead of one live REST call per item (the open-item counterpart of #3347's
+        /// closed-sweep de-burst). Shared by BOTH panels — the same cross-service reuse
+        /// <see cref="AiBatterUpQueueService"/> already makes of <see cref="FindBuildCommentAsync"/>.
+        /// <list type="number">
+        /// <item>Short-circuits entirely if the shared rate-limit circuit is already open (never pile
+        /// onto an open breaker — the #3022 / #3347 stance). Returns an empty map; the caller treats a
+        /// missing entry as "unresolved this pass", which resolves on a later refresh — never worse than
+        /// a per-item burst that would just trip the breaker harder.</item>
+        /// <item>Pulls each item's most-recent <see cref="GitHubApiClient.RecentCommentsPerIssue"/>
+        /// comment bodies via <see cref="GitHubApiClient.BatchGetRecentIssueCommentsAsync"/> and finds
+        /// the newest parseable `BUILD:` comment (<see cref="FindBuildCommentInBodies"/>).</item>
+        /// <item>Falls back to a per-item full <see cref="FindBuildCommentAsync"/> ONLY for an item whose
+        /// recent window held no `BUILD:` comment AND whose real <c>totalCount</c> shows older comments
+        /// exist — so a `BUILD:` comment buried under a deep later thread is never missed, while the
+        /// common case costs zero extra calls. An item definitively without any `BUILD:` comment (whole
+        /// thread seen, none parsed) is recorded as <c>(null, null)</c> with no extra call.</item>
+        /// </list>
+        /// A per-item fallback that throws is logged and left unresolved (absent from the map) rather
+        /// than aborting the whole resolve.
+        /// </summary>
+        public static async Task<Dictionary<int, (string? RawComment, (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? Parsed)>>
+            ResolveBuildCommentsAsync(GitHubApiClient gh, IReadOnlyList<int> issueNumbers, Action<string> log)
+        {
+            var result = new Dictionary<int, (string?, (string?, string?, string?, DateTime?, string)?)>();
+            if (issueNumbers == null || issueNumbers.Count == 0) return result;
+            var distinct = issueNumbers.Where(n => n > 0).Distinct().ToList();
+            if (distinct.Count == 0) return result;
+
+            if (GitHubRateLimitCircuit.IsOpen)
+            {
+                log($"BUILD-comment resolve skipped — GitHub rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); " +
+                    $"{distinct.Count} item(s) resolve their BUILD: comment on a later refresh (Git #3350).");
+                return result;
+            }
+
+            Dictionary<int, (List<string> Bodies, int TotalCount)> batch;
+            try
+            {
+                batch = await gh.BatchGetRecentIssueCommentsAsync(distinct, 0);
+            }
+            catch (Exception ex)
+            {
+                log($"BUILD-comment resolve — batched comment lookup failed ({ex.Message}); items resolve on a later refresh (Git #3350).");
+                return result;
+            }
+
+            var needFullFetch = new List<int>();
+            foreach (var n in distinct)
+            {
+                if (batch.TryGetValue(n, out var c))
+                {
+                    var found = FindBuildCommentInBodies(c.Bodies);
+                    if (found.HasValue) { result[n] = found.Value; continue; }
+                    // No BUILD: comment in the recent window. If the real thread is deeper than the
+                    // window we fetched, one could still be older — resolve just that item live.
+                    if (c.TotalCount > c.Bodies.Count) needFullFetch.Add(n);
+                    else result[n] = (null, null); // whole thread seen — definitively no BUILD: comment
+                }
+                else needFullFetch.Add(n); // GraphQL returned nothing for this number — resolve live
+            }
+
+            if (needFullFetch.Count > 0)
+                log($"BUILD-comment resolve — {distinct.Count} item(s) via batched GraphQL; {needFullFetch.Count} need a per-item deep fetch (deeper comment history than the batched window) (Git #3350).");
+
+            foreach (var n in needFullFetch)
+            {
+                try { result[n] = await FindBuildCommentAsync(gh, n); }
+                catch (Exception ex) { log($"BUILD-comment resolve — per-item deep fetch for #{n} failed ({ex.Message}); left unresolved this pass (Git #3350)."); }
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -178,24 +268,98 @@ namespace BuildConsole.Services
             // it's being swept off of.
             await SweepClosedIssuesAsync(gh, log);
 
-            var boardItems = await GetBatterUpBoardItemsAsync(gh, log);
+            var (boardItems, fromMirror, mirrorRows) = await GetBatterUpBoardItemsAsync(gh, log);
             var rows = new List<BatterUpRow>();
             // Git #1997 — count of items genuinely hidden this pass because they hold a LIVE (or
             // already-landed) queue row. Surfaced in the panel header so "nothing in this lane" and
             // "everything in this lane is hidden" are distinguishable at a glance.
             int suppressedCount = 0;
 
+            // Git #3350 — resolve every open item's BUILD: comment in a handful of batched GraphQL
+            // reads up front, instead of one live REST call per item inside the loop below. Empty when
+            // the rate-limit circuit is open or the batch failed — a missing entry just means "resolve
+            // it next refresh", the same non-queueable-this-pass outcome a null comment already had.
+            var buildComments = await ResolveBuildCommentsAsync(gh, boardItems.Select(b => b.Number).ToList(), log);
+
+            // Git #3350 — resolve blocked-by from the local mirror rather than one live
+            // `GetBlockedByAsync` REST call per item (the exact per-item burst this issue removes; the
+            // fail-closed #1600 launch gate still re-checks every stored blocker's state LIVE at launch,
+            // so this refresh-time read only needs to be mirror-fresh). `blockedByByNumber` holds each
+            // item's declared blocker set; `blockerStateByNumber` holds each blocker's open/closed state
+            // (one batched mirror read), so the open/closed split below costs zero GitHub calls on the
+            // common mirror-sourced path. On the degraded live-walk fallback (mirror not usable) these
+            // stay empty and the loop keeps today's per-item live `GetBlockedByAsync`.
+            var blockedByByNumber = new Dictionary<int, List<int>>();
+            var blockerStateByNumber = new Dictionary<int, bool>(); // number -> isClosed
+            if (fromMirror)
+            {
+                foreach (var m in mirrorRows)
+                {
+                    var declared = m.BlockedByNumbers ?? new List<int>();
+                    // Fresh-edge safety net: a `blocked`-labeled item whose mirror row hasn't captured
+                    // its edge yet (the mirror only fetches blocked_by for blocked-labeled issues, and
+                    // an edge added since the last sync may not be in yet) is resolved live for JUST
+                    // that item — vanishingly rare in practice, and never a per-item burst for the
+                    // common case (an unblocked item's declared set is genuinely empty).
+                    if (declared.Count == 0 && m.Labels.Any(l => string.Equals(l, "blocked", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        try
+                        {
+                            var liveBlockers = await gh.GetBlockedByAsync(m.Number);
+                            declared = liveBlockers.Select(b => b.Number).Where(n => n > 0).Distinct().ToList();
+                            foreach (var b in liveBlockers) blockerStateByNumber[b.Number] = b.IsClosed;
+                            log($"Batter Up #{m.Number} — carries the 'blocked' label but the mirror had no blocked_by edge yet; resolved {declared.Count} blocker(s) live (Git #3350 fresh-edge safety net).");
+                        }
+                        catch (Exception ex)
+                        {
+                            log($"Batter Up #{m.Number} — live blocked_by safety-net fetch failed ({ex.Message}); treating as no declared blockers this pass (Git #3350).");
+                        }
+                    }
+                    blockedByByNumber[m.Number] = declared;
+                }
+
+                // One batched mirror read for the open/closed state of every distinct blocker number.
+                var allBlockerNums = blockedByByNumber.Values.SelectMany(v => v).Distinct().Where(n => n > 0).ToList();
+                if (allBlockerNums.Count > 0)
+                {
+                    var blockerMirror = await GitHubIssueMirror.GetManyAsync(allBlockerNums);
+                    foreach (var num in allBlockerNums)
+                        // Present in the mirror → use its real state. Absent → treat as OPEN (conservative:
+                        // over-reporting a blocker as still-open is fail-closed-safe for display, and the
+                        // #1600 launch gate re-checks live regardless).
+                        if (!blockerStateByNumber.ContainsKey(num))
+                            blockerStateByNumber[num] = blockerMirror.TryGetValue(num, out var bm) && bm.IsClosed;
+                }
+            }
+
             foreach (var item in boardItems)
             {
-                var (rawComment, parsed) = await FindBuildCommentAsync(gh, item.Number);
-                var blockers = await gh.GetBlockedByAsync(item.Number);
-                var blockedByNumbers = blockers.Select(b => b.Number).ToList();
-                var openBlockedByNumbers = blockers.Where(b => !b.IsClosed).Select(b => b.Number).ToList();
+                string? rawComment = null;
+                (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? parsed = null;
+                if (buildComments.TryGetValue(item.Number, out var bc)) { rawComment = bc.RawComment; parsed = bc.Parsed; }
+
+                List<int> blockedByNumbers;
+                List<int> openBlockedByNumbers;
+                if (fromMirror)
+                {
+                    blockedByNumbers = blockedByByNumber.TryGetValue(item.Number, out var bb) ? bb : new List<int>();
+                    openBlockedByNumbers = blockedByNumbers
+                        .Where(n => !(blockerStateByNumber.TryGetValue(n, out var closed) && closed))
+                        .ToList();
+                }
+                else
+                {
+                    // Degraded fallback (mirror not usable this pass) — keep the pre-#3350 per-item live
+                    // read; rare, and this pass already did a live project-page walk to list the items.
+                    var blockers = await gh.GetBlockedByAsync(item.Number);
+                    blockedByNumbers = blockers.Select(b => b.Number).ToList();
+                    openBlockedByNumbers = blockers.Where(b => !b.IsClosed).Select(b => b.Number).ToList();
+                }
                 // Git #2225 — an open blocker can still be safe to build on when a real DONE bookend
                 // for it is on origin/main with a git-verified ancestor commit. Split the open set into
                 // "satisfied anyway" vs "genuinely still blocking" so the card badge matches the live
                 // #1600 launch gate rather than over-reporting BLOCKED on something that will auto-launch.
-                // OpenBlockedByNumbers is preserved as the honest raw GitHub open/closed signal.
+                // OpenBlockedByNumbers is preserved as the honest raw open/closed signal.
                 var satisfiedByBookend = openBlockedByNumbers.Count > 0
                     ? await DoneBookendVerifier.GetSatisfiedAsync(openBlockedByNumbers)
                     : new HashSet<int>();
@@ -285,16 +449,20 @@ namespace BuildConsole.Services
         /// when the mirror has no usable data yet (never synced) or errored — the same fail-to-live
         /// pattern every #3113 mirror read uses, so this can never be worse than the old behaviour.
         /// </summary>
-        private static async Task<List<BatterUpBoardIssue>> GetBatterUpBoardItemsAsync(GitHubApiClient gh, Action<string> log)
+        private static async Task<(List<BatterUpBoardIssue> Items, bool FromMirror, List<GitHubIssueMirror.MirrorIssue> MirrorRows)>
+            GetBatterUpBoardItemsAsync(GitHubApiClient gh, Action<string> log)
         {
             var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.BatterUpPromoteOptionId, "open");
             if (mirror != null)
             {
                 log($"Batter Up board read from local mirror (Git #3134) — {mirror.Count} open item(s), no live project-page walk.");
-                return mirror.Select(m => new BatterUpBoardIssue { Number = m.Number, Title = m.Title, HtmlUrl = m.HtmlUrl }).ToList();
+                // Git #3350 — carry the mirror rows themselves (labels + blocked_by_numbers) so the
+                // refresh can resolve blocked-by from the mirror instead of one live REST call per item.
+                var items = mirror.Select(m => new BatterUpBoardIssue { Number = m.Number, Title = m.Title, HtmlUrl = m.HtmlUrl }).ToList();
+                return (items, true, mirror);
             }
             log("Batter Up board — mirror not usable yet; falling back to a live project-page walk this pass.");
-            return await gh.GetBatterUpIssuesAsync();
+            return (await gh.GetBatterUpIssuesAsync(), false, new List<GitHubIssueMirror.MirrorIssue>());
         }
 
         /// <summary>
