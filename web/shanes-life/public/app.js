@@ -5232,7 +5232,7 @@ function deviceTrustRow(device, { onForgotten }) {
  *  which is every real deployment today, since #3276 (the extension's own trust ceremony) is
  *  what will ever populate this table; no fixture row stands in for it here. */
 function vaultAddonCard(devices, onChanged) {
-  const card = el("div", { class: "vault-card" }, [
+  const card = el("div", { class: "card vault-card" }, [
     el("h3", { class: "vault-add-title", text: "Browser add-on" }),
     el("p", { class: "small muted", style: "padding:0 16px 10px; margin:0", text: "Vault Autofill for Chrome fills a login right on the page. Trust a browser once with Face ID and it fills without asking again for 30 days." }),
   ]);
@@ -5457,7 +5457,7 @@ async function viewVault(view) {
 
     const sections = [];
     if (vaultRoomFilter === "all" || vaultRoomFilter === "login") {
-      const card = el("div", { class: "vault-card" }, [el("h3", { class: "vault-add-title", text: "Logins" })]);
+      const card = el("div", { class: "card vault-card" }, [el("h3", { class: "vault-add-title", text: "Logins" })]);
       if (logins.length === 0) {
         card.append(el("p", { class: "small muted", style: "padding:0 16px 14px", text: q ? "No logins match." : "Nothing here yet." }));
       } else {
@@ -5466,7 +5466,7 @@ async function viewVault(view) {
       sections.push(card);
     }
     if (vaultRoomFilter === "all" || vaultRoomFilter === "bill_reference") {
-      const card = el("div", { class: "vault-card" }, [el("h3", { class: "vault-add-title", text: "Bill refs" })]);
+      const card = el("div", { class: "card vault-card" }, [el("h3", { class: "vault-add-title", text: "Bill refs" })]);
       if (billRefs.length === 0) {
         card.append(el("p", { class: "small muted", style: "padding:0 16px 14px", text: q ? "No bill refs match." : "Nothing here yet." }));
       } else {
@@ -5475,7 +5475,7 @@ async function viewVault(view) {
       sections.push(card);
     }
     if (vaultRoomFilter === "all" || vaultRoomFilter === "document") {
-      const card = el("div", { class: "vault-card" }, [el("h3", { class: "vault-add-title", text: "Documents" })]);
+      const card = el("div", { class: "card vault-card" }, [el("h3", { class: "vault-add-title", text: "Documents" })]);
       if (documentsShown.length === 0) {
         card.append(el("p", { class: "small muted", style: "padding:0 16px 14px", text: q ? "No documents match." : "Nothing here yet." }));
       } else {
