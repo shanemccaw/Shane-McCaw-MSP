@@ -8687,26 +8687,35 @@ async function viewTesla(view) {
   const checkBtn = el("button", { class: "ghost small", text: "Check now" });
   let lastClimate = null;
 
+  // Git #3284: paints the "Right now" card from a real climate+charge reading, whichever real
+  // source it came from -- a live runCheckNow() read, or the last-persisted read GET
+  // /api/tesla/status now carries (migration 064) so a render()/pull-to-refresh rebuild of this
+  // view (#3268) doesn't wipe it back to "not read yet". `readAgoText` is computed by the
+  // caller so a stale persisted read honestly still reads as stale, not silently as current.
+  function paintRightNow({ climate, charge, readAgoText }) {
+    lastClimate = climate;
+    rangeLine.textContent = charge.batteryRangeMiles !== null ? `${charge.batteryRangeMiles} mi` : "—";
+    battLine.textContent = [
+      charge.batteryLevel !== null ? `${charge.batteryLevel}%` : null,
+      charge.chargingState || null,
+    ].filter(Boolean).join(" · ") || "No charge data yet.";
+    climateLine.textContent = climate.isPreconditioning
+      ? "Warming up"
+      : climate.isClimateOn
+        ? "Climate on"
+        : "Climate off";
+    if (climate.insideTempC != null) climateLine.textContent += ` · inside ${cToF(climate.insideTempC)}°`;
+    if (climate.outsideTempC != null) climateLine.textContent += ` · outside ${cToF(climate.outsideTempC)}°`;
+    rightNowHead.querySelector("#tesla-read-ago").textContent = readAgoText;
+    warmBtn.textContent = lastClimate.isPreconditioning || lastClimate.isClimateOn ? "Stop" : "Start";
+  }
+
   async function runCheckNow() {
     checkBtn.disabled = true;
     checkBtn.textContent = "Waking…";
     try {
       const [climate, charge] = await Promise.all([api("/api/tesla/climate"), api("/api/tesla/charge")]);
-      lastClimate = climate;
-      rangeLine.textContent = charge.batteryRangeMiles !== null ? `${charge.batteryRangeMiles} mi` : "—";
-      battLine.textContent = [
-        charge.batteryLevel !== null ? `${charge.batteryLevel}%` : null,
-        charge.chargingState || null,
-      ].filter(Boolean).join(" · ") || "No charge data yet.";
-      climateLine.textContent = climate.isPreconditioning
-        ? "Warming up"
-        : climate.isClimateOn
-          ? "Climate on"
-          : "Climate off";
-      if (climate.insideTempC != null) climateLine.textContent += ` · inside ${cToF(climate.insideTempC)}°`;
-      if (climate.outsideTempC != null) climateLine.textContent += ` · outside ${cToF(climate.outsideTempC)}°`;
-      rightNowHead.querySelector("#tesla-read-ago").textContent = "read just now";
-      warmBtn.textContent = lastClimate.isPreconditioning || lastClimate.isClimateOn ? "Stop" : "Start";
+      paintRightNow({ climate, charge, readAgoText: "read just now" });
     } catch (err) {
       climateLine.textContent = err.message;
     } finally {
@@ -8803,6 +8812,28 @@ async function viewTesla(view) {
       warmBtn,
     ]),
   );
+
+  // Git #3284: real last-read snapshot from the server (migration 064) -- pre-populate the card
+  // now that warmBtn exists, instead of always starting blank. isPreconditioning isn't persisted
+  // (it's transient vehicle state, not part of the stored snapshot), so a pre-populated card only
+  // ever shows "Climate on"/"Climate off", never "Warming up" -- that distinction only ever comes
+  // from a live read.
+  if (status.lastRead) {
+    paintRightNow({
+      climate: {
+        isClimateOn: status.lastRead.isClimateOn,
+        isPreconditioning: false,
+        insideTempC: status.lastRead.insideTempC,
+        outsideTempC: status.lastRead.outsideTempC,
+      },
+      charge: {
+        batteryRangeMiles: status.lastRead.batteryRangeMiles,
+        batteryLevel: status.lastRead.batteryLevel,
+        chargingState: status.lastRead.chargingState,
+      },
+      readAgoText: `read ${agoShort(status.lastRead.readAt)}`,
+    });
+  }
 
   // Open the trunk -- real two-tap confirm (design: "tap, then confirm within 4 seconds").
   let trunkConfirmTimer = null;

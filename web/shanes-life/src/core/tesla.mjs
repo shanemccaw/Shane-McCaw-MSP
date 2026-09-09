@@ -229,7 +229,9 @@ async function ownedAccount(userId) {
     `SELECT id, user_id, tesla_user_id, access_ciphertext, access_iv, access_auth_tag,
             refresh_ciphertext, refresh_iv, refresh_auth_tag, key_id, scope, token_expires_at,
             vehicle_id, vehicle_vin, vehicle_display_name, connected_at, last_refreshed_at,
-            auto_trunk_on_checkout
+            auto_trunk_on_checkout,
+            last_battery_range, last_battery_level, last_charging_state,
+            last_inside_temp, last_outside_temp, last_climate_on, last_read_at
        FROM tesla_accounts WHERE user_id = $1`,
     [userId],
   );
@@ -264,7 +266,12 @@ export async function getValidAccessToken(userId) {
 }
 
 /** Real connection status for the Settings -> Tesla section. Never throws for "not connected" --
- *  that is a real, ordinary state, not an error. */
+ *  that is a real, ordinary state, not an error.
+ *
+ *  Git #3284: also carries the real last-read snapshot (last_battery_range/level/charging_state/
+ *  inside_temp/outside_temp/climate_on/read_at, migration 064) so viewTesla()'s "Right now" card
+ *  can pre-populate from server-side state on load instead of always starting blank -- see
+ *  getVehicleClimateState/getChargeState below for where these columns are actually written. */
 export async function connectionStatus(userId) {
   if (!teslaConfigured()) return { configured: false, connected: false };
   const row = await ownedAccount(userId);
@@ -280,6 +287,20 @@ export async function connectionStatus(userId) {
     lastRefreshedAt: row.last_refreshed_at,
     commandsConfigured: teslaCommandsConfigured(),
     autoTrunkOnCheckout: row.auto_trunk_on_checkout,
+    lastRead: row.last_read_at
+      ? {
+          // node-postgres returns NUMERIC columns as strings to avoid float precision surprises
+          // -- cast back to a real number here so the wire payload matches getChargeState()'s own
+          // live-read shape (batteryRangeMiles is a number there too).
+          batteryRangeMiles: row.last_battery_range !== null ? Number(row.last_battery_range) : null,
+          batteryLevel: row.last_battery_level,
+          chargingState: row.last_charging_state,
+          insideTempC: row.last_inside_temp !== null ? Number(row.last_inside_temp) : null,
+          outsideTempC: row.last_outside_temp !== null ? Number(row.last_outside_temp) : null,
+          isClimateOn: row.last_climate_on,
+          readAt: row.last_read_at,
+        }
+      : null,
   };
 }
 
@@ -416,12 +437,25 @@ export async function getVehicleClimateState(userId) {
     `/api/1/vehicles/${encodeURIComponent(account.vehicle_id)}/vehicle_data?endpoints=climate_state`,
   );
   const climate = data?.climate_state || {};
+  const isClimateOn = Boolean(climate.is_climate_on);
+  const insideTempC = climate.inside_temp ?? null;
+  const outsideTempC = climate.outside_temp ?? null;
+
+  // Git #3284: persist this real read so it survives the next render()/pull-to-refresh instead
+  // of vanishing back to "not read yet" -- see connectionStatus() above for where it's read back.
+  await query(
+    `UPDATE tesla_accounts
+        SET last_climate_on = $2, last_inside_temp = $3, last_outside_temp = $4, last_read_at = now()
+      WHERE user_id = $1`,
+    [userId, isClimateOn, insideTempC, outsideTempC],
+  );
+
   return {
     vehicleDisplayName: account.vehicle_display_name,
-    isClimateOn: Boolean(climate.is_climate_on),
+    isClimateOn,
     isPreconditioning: Boolean(climate.is_preconditioning),
-    insideTempC: climate.inside_temp ?? null,
-    outsideTempC: climate.outside_temp ?? null,
+    insideTempC,
+    outsideTempC,
   };
 }
 
@@ -443,11 +477,24 @@ export async function getChargeState(userId) {
     `/api/1/vehicles/${encodeURIComponent(account.vehicle_id)}/vehicle_data?endpoints=charge_state`,
   );
   const charge = data?.charge_state || {};
+  const batteryLevel = charge.battery_level ?? null;
+  const batteryRangeMiles = charge.battery_range ?? null;
+  const chargingState = charge.charging_state ?? null;
+
+  // Git #3284: same real persistence as getVehicleClimateState above, for the charge half of the
+  // "Right now" card.
+  await query(
+    `UPDATE tesla_accounts
+        SET last_battery_range = $2, last_battery_level = $3, last_charging_state = $4, last_read_at = now()
+      WHERE user_id = $1`,
+    [userId, batteryRangeMiles, batteryLevel, chargingState],
+  );
+
   return {
     vehicleDisplayName: account.vehicle_display_name,
-    batteryLevel: charge.battery_level ?? null,
-    batteryRangeMiles: charge.battery_range ?? null,
-    chargingState: charge.charging_state ?? null,
+    batteryLevel,
+    batteryRangeMiles,
+    chargingState,
   };
 }
 
