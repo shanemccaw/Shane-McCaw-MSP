@@ -70,7 +70,8 @@ public static class PublixAdParser
                     priceText.Trim(),
                     MultiBuyCount: int.Parse(multiBuy.Groups["count"].Value),
                     MultiBuyPriceCents: multiBuyCents,
-                    DiscountCents: null));
+                    DiscountCents: null,
+                    ImageUrl: card.ImageUrl));
                 foundCoupon = true;
             }
             else
@@ -82,7 +83,7 @@ public static class PublixAdParser
                 var plain = PlainPriceRegex.Match(withoutDollarsOff);
                 if (plain.Success && TryParseCents(plain.Groups["price"].Value, out var priceCents))
                 {
-                    deals.Add(new ScrapedDealItem(title, priceCents, Unit: null, ValidOn: validOnText));
+                    deals.Add(new ScrapedDealItem(title, priceCents, Unit: null, ValidOn: validOnText, ImageUrl: card.ImageUrl));
                     foundDeal = true;
                 }
             }
@@ -93,7 +94,7 @@ public static class PublixAdParser
                 var dollarsOff = DollarsOffRegex.Match(badgeText);
                 if (dollarsOff.Success && TryParseCents(dollarsOff.Groups["price"].Value, out var discountCents))
                 {
-                    coupons.Add(new ScrapedCouponItem(title, badgeText.Trim(), null, null, discountCents));
+                    coupons.Add(new ScrapedCouponItem(title, badgeText.Trim(), null, null, discountCents, card.ImageUrl));
                     foundCoupon = true;
                 }
                 else if (BogoRegex.IsMatch(badgeText))
@@ -102,7 +103,7 @@ public static class PublixAdParser
                     // free", which push_coupons has no dedicated field for. Recorded as a plain
                     // description-only coupon rather than guessing at a multiBuy shape it doesn't
                     // actually have.
-                    coupons.Add(new ScrapedCouponItem(title, badgeText.Trim(), null, null, null));
+                    coupons.Add(new ScrapedCouponItem(title, badgeText.Trim(), null, null, null, card.ImageUrl));
                     foundCoupon = true;
                 }
             }

@@ -67,7 +67,22 @@ export async function listStores(userId) {
  * identifies the store; a name that has never been seen before creates it, same as a list
  * (#3088) gets created the first time it's needed.
  */
-export async function recordPrice(userId, { storeId, storeName, itemText, priceCents, observedOn, note, source = "shane" }) {
+export async function recordPrice(
+  userId,
+  {
+    storeId,
+    storeName,
+    itemText,
+    priceCents,
+    observedOn,
+    note,
+    source = "shane",
+    category = null,
+    imageUrl = null,
+    dealType = null,
+    validTo = null,
+  },
+) {
   const label = String(itemText || "").trim().slice(0, 500);
   if (!label) throw badRequest("itemText is required");
   const cents = Number(priceCents);
@@ -86,10 +101,23 @@ export async function recordPrice(userId, { storeId, storeName, itemText, priceC
   const normalisedText = normaliseItemText(label);
   const roundedCents = Math.round(cents);
   const row = await one(
-    `INSERT INTO item_prices (user_id, store_id, item_text, item_label, price_cents, observed_on, note, source)
-     VALUES ($1, $2, $3, $4, $5, COALESCE($6, current_date), $7, $8)
-     RETURNING id, store_id, item_text, item_label, price_cents, observed_on, note, source, created_at`,
-    [userId, store.id, normalisedText, label, roundedCents, observedOn || null, note ? String(note).slice(0, 2000) : null, source],
+    `INSERT INTO item_prices (user_id, store_id, item_text, item_label, price_cents, observed_on, note, source, category, image_url, deal_type, valid_to)
+     VALUES ($1, $2, $3, $4, $5, COALESCE($6, current_date), $7, $8, $9, $10, $11, $12)
+     RETURNING id, store_id, item_text, item_label, price_cents, observed_on, note, source, category, image_url, deal_type, valid_to, created_at`,
+    [
+      userId,
+      store.id,
+      normalisedText,
+      label,
+      roundedCents,
+      observedOn || null,
+      note ? String(note).slice(0, 2000) : null,
+      source,
+      category ? String(category).trim().slice(0, 200) || null : null,
+      imageUrl ? String(imageUrl).trim().slice(0, 2000) || null : null,
+      dealType ? String(dealType).trim().slice(0, 100) || null : null,
+      validTo || null,
+    ],
   );
 
   // Git #3203: a real, Shane-stated price ("chicken breasts are $3.49 now" -- typed into the
@@ -195,6 +223,10 @@ function normaliseDealItems(items) {
       priceCents: Math.round(priceCents),
       unit: raw.unit ? String(raw.unit).slice(0, 40) : null,
       validOn: normaliseDate(raw.validOn, `items[${i}].validOn`),
+      validTo: normaliseDate(raw.validTo, `items[${i}].validTo`),
+      category: raw.category ? String(raw.category).trim().slice(0, 200) : null,
+      imageUrl: raw.imageUrl ? String(raw.imageUrl).trim().slice(0, 2000) : null,
+      dealType: raw.dealType ? String(raw.dealType).trim().slice(0, 100) : null,
     };
   });
 }
@@ -219,6 +251,9 @@ function normaliseCouponItems(items) {
       discountCents: raw.discountCents != null ? Math.round(Number(raw.discountCents)) : null,
       validFrom: normaliseDate(raw.validFrom, `items[${i}].validFrom`),
       validTo: normaliseDate(raw.validTo, `items[${i}].validTo`),
+      category: raw.category ? String(raw.category).trim().slice(0, 200) : null,
+      imageUrl: raw.imageUrl ? String(raw.imageUrl).trim().slice(0, 2000) : null,
+      dealType: raw.dealType ? String(raw.dealType).trim().slice(0, 100) : null,
     };
   });
 }
@@ -237,6 +272,10 @@ export async function pushDeals(userId, { store, items }) {
       priceCents: item.priceCents,
       observedOn: item.validOn,
       source: "weekly_ad",
+      category: item.category,
+      imageUrl: item.imageUrl,
+      dealType: item.dealType,
+      validTo: item.validTo,
     });
     if (item.unit) {
       await one(`UPDATE item_prices SET unit = $2 WHERE id = $1 RETURNING id`, [row.id, item.unit]);
@@ -256,9 +295,9 @@ export async function pushCoupons(userId, { store, items }) {
   for (const item of normalised) {
     rows.push(
       await one(
-        `INSERT INTO coupons (user_id, store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents, valid_from, valid_to)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-         RETURNING id, store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents, valid_from, valid_to, created_at`,
+        `INSERT INTO coupons (user_id, store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents, valid_from, valid_to, category, image_url, deal_type)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         RETURNING id, store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents, valid_from, valid_to, category, image_url, deal_type, created_at`,
         [
           userId,
           cleanStore,
@@ -269,6 +308,9 @@ export async function pushCoupons(userId, { store, items }) {
           item.discountCents,
           item.validFrom,
           item.validTo,
+          item.category,
+          item.imageUrl,
+          item.dealType,
         ],
       ),
     );
@@ -284,7 +326,8 @@ export async function fetchWeeklyAd(userId, { store, zip }) {
   const cleanStore = String(store ?? "").trim();
   if (!cleanStore) throw badRequest("store is required");
   const prices = await many(
-    `SELECT ip.id, ip.item_text, ip.item_label, ip.price_cents, ip.unit, ip.observed_on, ip.created_at
+    `SELECT ip.id, ip.item_text, ip.item_label, ip.price_cents, ip.unit, ip.observed_on, ip.valid_to,
+            ip.category, ip.image_url, ip.deal_type, ip.created_at
        FROM item_prices ip JOIN stores s ON s.id = ip.store_id
       WHERE ip.user_id = $1 AND ip.source = 'weekly_ad' AND lower(s.name) = lower($2)
         AND ip.observed_on >= current_date - interval '${WEEKLY_AD_FRESHNESS_DAYS} days'
@@ -292,7 +335,8 @@ export async function fetchWeeklyAd(userId, { store, zip }) {
     [userId, cleanStore],
   );
   const coupons = await many(
-    `SELECT id, store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents, valid_from, valid_to, created_at
+    `SELECT id, store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents, valid_from, valid_to,
+            category, image_url, deal_type, created_at
        FROM coupons WHERE user_id = $1 AND lower(store) = lower($2)
         AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
       ORDER BY created_at DESC`,
@@ -321,7 +365,7 @@ export async function attachWeeklyAdVerdicts(userId, items) {
   if (uniqueNorm.length === 0) return items;
 
   const priceRows = await many(
-    `SELECT ip.item_text, ip.price_cents, ip.unit, s.name AS store_name
+    `SELECT ip.item_text, ip.price_cents, ip.unit, ip.category, ip.image_url, ip.deal_type, s.name AS store_name
        FROM item_prices ip JOIN stores s ON s.id = ip.store_id
       WHERE ip.user_id = $1 AND ip.source = 'weekly_ad'
         AND ip.observed_on >= current_date - interval '${WEEKLY_AD_FRESHNESS_DAYS} days'
@@ -329,7 +373,7 @@ export async function attachWeeklyAdVerdicts(userId, items) {
     [userId],
   );
   const couponRows = await many(
-    `SELECT store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents FROM coupons
+    `SELECT store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents, category, image_url, deal_type FROM coupons
       WHERE user_id = $1 AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
       ORDER BY created_at DESC`,
     [userId],
@@ -345,6 +389,11 @@ export async function attachWeeklyAdVerdicts(userId, items) {
         store: matchedPrice?.store_name ?? matchedCoupon?.store ?? null,
         priceCents: matchedPrice?.price_cents ?? null,
         unit: matchedPrice?.unit ?? null,
+        // Real, per-item -- prefer the price row's own category/image/dealType (the actual sale
+        // item) and fall back to the matched coupon's, never invent one when neither has it.
+        category: matchedPrice?.category ?? matchedCoupon?.category ?? null,
+        imageUrl: matchedPrice?.image_url ?? matchedCoupon?.image_url ?? null,
+        dealType: matchedPrice?.deal_type ?? matchedCoupon?.deal_type ?? null,
         coupon: matchedCoupon
           ? {
               description: matchedCoupon.description,

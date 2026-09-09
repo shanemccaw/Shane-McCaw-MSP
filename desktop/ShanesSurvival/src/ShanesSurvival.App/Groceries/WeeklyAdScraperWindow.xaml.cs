@@ -238,6 +238,11 @@ public partial class WeeklyAdScraperWindow : Window
             var badgeText = badgeEl ? badgeEl.innerText.trim() : null;
             var imgEl = el.querySelector('img[alt]');
             var title = imgEl ? imgEl.getAttribute('alt') : null;
+            // Real product thumbnail (Git #3310) -- the same <img> element the title already
+            // comes from. `src` over `currentSrc`/srcset: the plain attribute is what a lazy-load
+            // placeholder swaps into once the real image has actually loaded, which is the same
+            // moment this card's real text content is present too.
+            var imageUrl = imgEl ? imgEl.getAttribute('src') : null;
             if (!title) {
               var heading = el.querySelector('h1,h2,h3,h4,h5,h6,[class*="title" i],[class*="name" i]');
               title = heading ? heading.innerText.trim() : null;
@@ -247,7 +252,7 @@ public partial class WeeklyAdScraperWindow : Window
               var lines = fullText.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
               title = lines.length ? lines[0] : null;
             }
-            return { title: title, priceText: fullText, badgeText: badgeText };
+            return { title: title, priceText: fullText, badgeText: badgeText, imageUrl: imageUrl };
           });
           return JSON.stringify({ ready: true, cards: results });
         })()

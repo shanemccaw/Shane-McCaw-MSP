@@ -7308,10 +7308,13 @@ function shoppingItemRow(listId, item, { store } = {}) {
 
 // Weekly-ad cross-store verdict, coupon and multi-buy count (Git #3110) -- null until Claude has
 // pushed a matching price/coupon over MCP (push_deals/push_coupons); most items show nothing
-// here, same as every other "real data or nothing" surface in this app.
+// here, same as every other "real data or nothing" surface in this app. `category`/`imageUrl`
+// (Git #3310) are real, optional fields on the same push -- shown only when actually present,
+// never a placeholder or invented default.
 function verdictBadge(verdict) {
   if (!verdict) return null;
   const parts = [];
+  if (verdict.category) parts.push(verdict.category);
   if (verdict.priceCents != null) {
     const dollars = money(verdict.priceCents);
     parts.push(verdict.store ? `${verdict.store} ${dollars}${verdict.unit ? `/${verdict.unit}` : ""}` : dollars);
@@ -7326,8 +7329,12 @@ function verdictBadge(verdict) {
       parts.push(c.description);
     }
   }
-  if (parts.length === 0) return null;
-  return el("span", { class: "chip verdict", text: parts.join(" · ") });
+  if (parts.length === 0 && !verdict.imageUrl) return null;
+  const thumb = verdict.imageUrl
+    ? el("img", { class: "shop-item-verdict-thumb", src: verdict.imageUrl, alt: "", loading: "lazy" })
+    : null;
+  const chip = parts.length > 0 ? el("span", { class: "chip verdict", text: parts.join(" · ") }) : null;
+  return el("span", { class: "shop-item-verdict" }, [thumb, chip]);
 }
 
 // @zxing/browser is loaded on demand, never in index.html -- same reasoning as loadPlaidLink()

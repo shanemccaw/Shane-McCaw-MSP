@@ -336,6 +336,16 @@ occasional upkeep, not a defect to chase to zero — `PublixAdParser` reports ev
 couldn't parse by name rather than silently dropping or guessing at it, so a layout change shows
 up as a real, visible "skipped N card(s)" in the status line instead of a quiet gap.
 
+**Category/ImageUrl (Git #3310):** `push_deals`/`push_coupons` now accept a real `category`,
+`imageUrl` and free-form `dealType`, and `item_prices` now carries a `valid_to` alongside its
+existing `observed_on`, matching `coupons`' own `valid_from`/`valid_to` pair. The Publix scraper
+wires only `imageUrl` through — the same `img[alt]` element `ExtractionScript` already reads the
+card's title from also carries a real `src`, so pulling it needed no new selector. No per-card
+category grouping was found in Publix's real rendered DOM in this pass (not live-verified — no
+interactive WebView2/browser session was available in that headless build); `category`/`dealType`
+exist on the pipeline for Claude's own conversational flyer reads and any future store whose ad
+page does expose one, not populated by the Publix scraper today.
+
 **What was and wasn't live-verified:** `PublixAdParser`'s real parsing logic (plain price,
 "N for $X" multi-buy, "$X off" discount vs. a sale price that happens to contain the same digits,
 BOGO, and an unparseable card correctly reported as skipped rather than guessed) was run for real
