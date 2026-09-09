@@ -27,11 +27,15 @@ export default defineConfig({
     // Postgres instance and other processes this suite genuinely talks to)
     // is the actual fix, at the cost of a somewhat longer full-suite wall
     // clock.
-    poolOptions: {
-      threads: {
-        maxThreads: Math.max(1, Math.floor(cpus().length / 2)),
-      },
-    },
+    //
+    // #3101 — Vitest 4 removed `test.poolOptions`; these are now top-level
+    // `test` options (see the migration guide:
+    // https://vitest.dev/guide/migration#pool-rework). Nested under the
+    // removed key this cap was silently inert — every invocation printed
+    // vitest's own DEPRECATED warning for `poolOptions`, and the full suite
+    // ran at vitest's default parallelism instead of #3066's intended
+    // cpus/2 cap. Lifted to top level, same value, same reasoning.
+    maxThreads: Math.max(1, Math.floor(cpus().length / 2)),
     // #3047 — this used to be an explicit ~326-entry allowlist array, not a
     // glob: a real test file simply not named here never ran, silently (no
     // warning from the aggregate `pnpm test` run — "No test files found" only
