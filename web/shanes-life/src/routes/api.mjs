@@ -36,6 +36,7 @@ import * as documents from "../core/documents.mjs";
 import * as entities from "../core/entities.mjs";
 import * as federalHolidays from "../core/federal-holidays.mjs";
 import * as lists from "../core/lists.mjs";
+import * as locationState from "../core/location-state.mjs";
 import * as mealPlan from "../core/meal-plan.mjs";
 import * as media from "../core/media.mjs";
 import * as incomeRules from "../core/income-rules.mjs";
@@ -3190,6 +3191,47 @@ export function buildApiRouter() {
       roomOrder: await roomOrder.getRoomOrder(user.id),
       later: await computeLaterMoments(user.id, { allDates, tonight, pendingCaptures }),
       banksNeedReconnect,
+    });
+  });
+
+  /**
+   * Git #3320: the real command tray's own aggregate read -- everything its Quick grid needs to
+   * render live-state-aware chip labels, in one call, rather than the tray reaching into
+   * `/api/today`'s much larger payload (loaded once at app boot, not necessarily fresh) or
+   * fetching Tesla/meds separately every time the capture box is focused. Deliberately narrow:
+   * a real, cached (`teslaCore.connectionStatus`'s own `lastRead`) climate/outside-temp read, not
+   * a live Fleet API call on every focus -- same "never wake the car just to paint a label"
+   * discipline `getTodaysBatteryShortfall`'s own header comment already states.
+   */
+  router.get("/api/capture-tray", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const [headingTo, teslaStatus, medsToday] = await Promise.all([
+      locationState.getHeadingTo(user.id, { staleAfterMs: 12 * 60 * 60 * 1000 }),
+      teslaCore.connectionStatus(user.id),
+      medications.getMedsToday(user.id),
+    ]);
+
+    // Same real "took my <batch> meds" phrasing meds_batch_taken (capture-grammar.mjs) already
+    // matches unambiguously by naming the batch -- never the ambiguous bare "took my meds" this
+    // rule only resolves when exactly one batch is untaken (see its own match() comment).
+    const untaken = medsToday.batches.filter((b) => !b.takenToday);
+    const meds =
+      untaken.length === 0
+        ? { label: "Meds all taken", phrase: "took my meds" }
+        : {
+            label: `${untaken[0].batch[0].toUpperCase()}${untaken[0].batch.slice(1)} meds`,
+            phrase: `took my ${untaken[0].batch} meds`,
+          };
+
+    return sendJson(res, 200, {
+      headingTo,
+      tesla: {
+        connected: teslaStatus.connected,
+        vehicleDisplayName: teslaStatus.vehicleDisplayName || null,
+        climateOn: teslaStatus.lastRead ? Boolean(teslaStatus.lastRead.isClimateOn) : false,
+        outsideTempC: teslaStatus.lastRead ? teslaStatus.lastRead.outsideTempC : null,
+      },
+      meds,
     });
   });
 

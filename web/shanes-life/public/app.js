@@ -1021,6 +1021,13 @@ const captureText = $("#capture-text");
 const captureStatus = $("#capture-status");
 const captureSend = $("#capture-send");
 
+// Git #3320: the real command tray -- element refs used by openCaptureTray/closeCaptureTray/
+// renderCaptureTray below (wired after the capture-bar submit handler, once captureText/
+// captureSend/api/el/critterIcon are all already defined).
+const captureTray = $("#capture-tray");
+const trayQuickHead = $("#tray-quick-head");
+const trayQuickGrid = $("#tray-quick-grid");
+
 // Git #3275: 5 lines at 15px/1.35 line-height + the textarea's own 10px*2 vertical padding --
 // kept in sync with app.css's `.capture textarea { max-height: 122px }`.
 const CAPTURE_TEXTAREA_MAX_HEIGHT = 122;
@@ -1042,8 +1049,13 @@ captureText.addEventListener("input", () => {
 
 // Enter inserts a newline (the textarea's own default behavior -- this used to preventDefault
 // and submit on a bare Enter, which is exactly the friction README's "Capture bar redrawn"
-// pass calls out). Only Send or ⌘/Ctrl+Enter submits.
+// pass calls out). Only Send or ⌘/Ctrl+Enter submits. Git #3320: Escape closes the real command
+// tray (design's own onCaptureKey), same as tapping its X.
 captureText.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeCaptureTray();
+    return;
+  }
   if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.isComposing) {
     event.preventDefault();
     $("#capture").requestSubmit();
@@ -1088,6 +1100,7 @@ let recorder = null;
 let recordedChunks = [];
 
 $("#capture-voice").addEventListener("click", async () => {
+  closeCaptureTray(); // Git #3320: the design's own bar-level mic tap closes the tray too.
   const button = $("#capture-voice");
   if (recorder && recorder.state === "recording") {
     recorder.stop();
@@ -1125,6 +1138,7 @@ $("#capture-voice").addEventListener("click", async () => {
 
 $("#capture").addEventListener("submit", async (event) => {
   event.preventDefault();
+  closeCaptureTray(); // Git #3320: any real submit closes the tray (design's own submitCapture).
   // Git #3275: a multi-line capture (the textarea now auto-grows to 5 lines instead of
   // submitting on Enter) is filed ONE LINE AT A TIME, each through the normal capture
   // grammar independently, then a single "N lines, each filed on its own" toast.
@@ -1216,6 +1230,147 @@ $("#capture").addEventListener("submit", async (event) => {
     captureStatus.textContent = err.message;
   } finally {
     send.disabled = false;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// the real command tray (Git #3320, Feature #3220) -- Shane's own long-standing "Ctrl+K command
+// center" concept, same real precedent as BuildConsole's own Epic #2017, realized for this app's
+// universal capture box. Design source: Design/design_handoff_shanes_life/
+// "Shanes Life - First Slice Prototype.dc.html", `d.trayOn` (~line 1805) -- structure ported 1:1
+// (mode toggle, Quick grid, footer copy verbatim); every chip label/highlight is real, live data
+// from GET /api/capture-tray, never a static guess. Direct-action chips and the mode Talk/Scan
+// buttons all reuse the SAME real entry points a hand-typed capture already uses (the deterministic
+// capture grammar via #capture's own submit handler, #capture-voice's own recorder, Shopping's own
+// openScanSheet) -- nothing here duplicates that logic.
+// ---------------------------------------------------------------------------
+
+let trayOpen = false;
+let trayLoadToken = 0; // guards against a slow fetch resolving after the tray was re-opened/closed
+
+function closeCaptureTray() {
+  if (!trayOpen) return;
+  trayOpen = false;
+  captureTray.classList.remove("open");
+}
+
+async function openCaptureTray() {
+  if (trayOpen) return; // already open (e.g. the Type mode button refocusing the textarea)
+  trayOpen = true;
+  captureTray.classList.add("open");
+  const token = ++trayLoadToken;
+  let data;
+  try {
+    data = await api("/api/capture-tray");
+  } catch (err) {
+    if (token !== trayLoadToken) return;
+    trayQuickHead.textContent = "";
+    trayQuickGrid.replaceChildren(el("div", { class: "meta", text: `Couldn't load quick actions: ${err.message}` }));
+    return;
+  }
+  if (token !== trayLoadToken) return; // tray was closed/reopened while this was in flight
+  renderCaptureTray(data);
+}
+
+const TRAY_DESTINATION_LABEL = { work: "work", rental: "the Rental", home: "home" };
+
+/** Fill the capture box with `phrase` (never appending to whatever Shane already typed -- same
+ *  real override the design's own quick-chip `run()` uses) and focus it, cursor at the end. */
+function fillCaptureBox(phrase) {
+  captureText.value = phrase;
+  captureText.dispatchEvent(new Event("input")); // reuse the real auto-grow + send-button state
+  captureText.focus();
+  try {
+    captureText.setSelectionRange(phrase.length, phrase.length);
+  } catch {
+    // setSelectionRange can throw on some input types; harmless to skip the cursor placement.
+  }
+}
+
+/** Submit `phrase` through the SAME real dispatch #capture's own submit handler already uses
+ *  (Shopping/Vault room gating, the deterministic capture grammar, the real per-line result) --
+ *  never a second, duplicated write path. Overrides whatever was already typed, matching the
+ *  design's own direct-run chips. */
+function submitCapturePhrase(phrase) {
+  captureText.value = phrase;
+  $("#capture").requestSubmit();
+}
+
+/** The real, live Quick grid -- 8 chips, same order as the design (`d.quick`). `place` is which
+ *  real destination a chip represents (for the "here" highlight against `data.headingTo`), or
+ *  null for a chip that isn't a destination. `fill` chips (phrase ends in a trailing space, same
+ *  real convention the design itself uses) pre-fill the box instead of submitting immediately. */
+function captureTrayQuickChips(data) {
+  const tesla = data.tesla || { connected: false, climateOn: false, outsideTempC: null, vehicleDisplayName: null };
+  const climateOn = tesla.connected && tesla.climateOn;
+  const outsideHot = tesla.outsideTempC != null && tesla.outsideTempC * 1.8 + 32 >= 72;
+  const climateLabel = climateOn ? "Climate off" : `${outsideHot ? "Cool down" : "Warm up"} the car`;
+  const climatePhrase = climateOn ? "turn off the climate" : outsideHot ? "cool it down" : "warm it up";
+  const meds = data.meds || { label: "Took my meds", phrase: "took my meds" };
+
+  return [
+    // Straight apostrophes here on purpose, not a typo -- capture-grammar.mjs's own
+    // `heading_to_place` rule (Git #3320) matches `i'?m` literally; a curly one wouldn't match
+    // and this "direct-run" chip would silently miss its own real action.
+    { place: "work", label: "I'm going to work", phrase: "I'm going to work", critterSlot: "nasa" },
+    { place: "rental", label: "Heading to the Rental", phrase: "heading to the rental", critterSlot: "home" },
+    { place: "home", label: "I'm going home", phrase: "I'm going home", critterSlot: "home" },
+    { place: null, label: climateLabel, phrase: climatePhrase, critterSlot: "heading" },
+    { place: null, label: "Open the trunk", phrase: "open the trunk", critterSlot: "heading" },
+    { place: null, label: meds.label, phrase: meds.phrase, critterSlot: "meds" },
+    { place: null, label: "Timer for…", phrase: "8 min timer for ", critterSlot: "timer" },
+    { place: null, label: "Out of…", phrase: "out of ", critterSlot: "pantry" },
+  ];
+}
+
+function renderCaptureTray(data) {
+  const headingTo = data.headingTo; // { house, at } | null -- location-state.mjs's own real shape
+  trayQuickHead.textContent = headingTo ? `you said you’re heading to ${TRAY_DESTINATION_LABEL[headingTo.house] || headingTo.house}` : "";
+
+  const chips = captureTrayQuickChips(data).map((q) => {
+    const fill = /\s$/.test(q.phrase);
+    const here = q.place && headingTo && headingTo.house === q.place;
+    return el(
+      "button",
+      {
+        type: "button",
+        class: `capture-tray-chip${here ? " here" : ""}`,
+        onClick: () => {
+          if (fill) {
+            closeCaptureTray();
+            fillCaptureBox(q.phrase);
+            return;
+          }
+          closeCaptureTray();
+          submitCapturePhrase(q.phrase);
+        },
+      },
+      [critterIcon(q.critterSlot, { size: 26 }), el("span", { text: q.label })],
+    );
+  });
+  trayQuickGrid.replaceChildren(...chips);
+}
+
+captureText.addEventListener("focus", () => openCaptureTray());
+
+$("#tray-close").addEventListener("click", () => closeCaptureTray());
+
+// Type: the tray is already open (that's how a capture box gets focused in the first place) --
+// this just returns focus to the textarea, same real no-op-but-for-focus the design's own
+// modeType does.
+$("#tray-mode-type").addEventListener("click", () => captureText.focus());
+
+$("#tray-mode-talk").addEventListener("click", () => {
+  closeCaptureTray();
+  $("#capture-voice").click();
+});
+
+$("#tray-mode-scan").addEventListener("click", () => {
+  closeCaptureTray();
+  if (state.route === "shopping" && (state.shoppingTab || "list") === "list" && state.shoppingList) {
+    openScanSheet(state.shoppingList);
+  } else {
+    showQuickToast("Barcodes scan from Shopping; receipts and labels come in as attachments here.");
   }
 });
 

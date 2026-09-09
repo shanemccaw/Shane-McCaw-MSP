@@ -144,6 +144,11 @@ check("matchRule: Tesla stop wins over warm when both phrases present", () => {
 check("matchRule: Tesla warm / trunk / heading home / commute / reads", () => {
   assert.equal(matchRule("warm it up").rule, "tesla_warm_preconditioning");
   assert.equal(matchRule("precondition the tesla").rule, "tesla_warm_preconditioning");
+  // Git #3320: the command tray's own climate quick-chip fires "cool it down" on a hot day
+  // (design's condVerb/condPhrase) -- same real rule/command, opposite direction.
+  assert.equal(matchRule("cool it down").rule, "tesla_warm_preconditioning");
+  assert.equal(matchRule("cool it down").groups.cooling, true);
+  assert.equal(matchRule("warm it up").groups.cooling, false);
   assert.equal(matchRule("open the trunk").rule, "tesla_open_trunk");
   assert.equal(matchRule("heading home").rule, "tesla_heading_home");
   assert.equal(matchRule("take me home").rule, "tesla_heading_home");
@@ -160,6 +165,29 @@ check("matchRule: Tesla home electricity rate (Git #3318)", () => {
   assert.equal(matchRule("home electricity costs 0.145 dollars").groups.ratePerKwh, 0.145);
   assert.equal(matchRule("home electricity is $0.14").groups.ratePerKwh, 0.14);
   assert.equal(matchRule("home electricity is 14 cents a kWh").rule, "tesla_home_electricity_rate");
+});
+
+// Git #3320: the command tray's own "heading to X" quick chips + the same phrase typed by hand
+// (issue #3320's own regex, ported verbatim into capture-grammar.mjs's `heading_to_place` rule).
+check("matchRule: heading to X (Git #3320) -- work/nasa/ksc/rental/home, real verb variety", () => {
+  assert.equal(matchRule("I'm going to work").rule, "heading_to_place");
+  assert.equal(matchRule("I'm going to work").groups.house, "work");
+  assert.equal(matchRule("off to NASA").groups.house, "work");
+  assert.equal(matchRule("heading to KSC").groups.house, "work");
+  assert.equal(matchRule("Heading to the Rental").groups.house, "rental");
+  assert.equal(matchRule("driving to the rental").groups.house, "rental");
+  assert.equal(matchRule("I'm going home").groups.house, "home");
+  // NOT "we're heading home" -- that phrase's own literal "heading home" substring still matches
+  // the narrower tesla_heading_home rule first (array order), same as the bare phrase below.
+  assert.equal(matchRule("we're driving home").groups.house, "home");
+  assert.equal(matchRule("headed back home").groups.house, "home");
+  assert.equal(matchRule("on my way home").groups.house, "home");
+  assert.equal(matchRule("leaving for the rental").groups.house, "rental");
+  // "heading home" / "take me home" stay owned by the real, narrower tesla_heading_home rule
+  // (checked first, array order) -- same real place-lookup + Tesla trigger either way, but this
+  // is what keeps the existing "heading home" -> tesla_heading_home assertion above true.
+  assert.equal(matchRule("heading home").rule, "tesla_heading_home");
+  assert.equal(matchRule("take me home").rule, "tesla_heading_home");
 });
 
 check("matchRule: money what-if / give / put / move / smoke", () => {

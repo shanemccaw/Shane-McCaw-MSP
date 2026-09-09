@@ -44,6 +44,11 @@ const SLOTS = {
   moneyhdr: { id: "1u", name: "Money header", variants: ["c-bear", "c-bear2"] },
   alarm: { id: "1v", name: "Alarm, shared-link waiting", variants: ["c-bird"] }, // fixed, never rolled
   notfound: { id: "1w", name: "Nothing found", variants: ["c-cat", "c-cat2"] },
+  // Git #3320: ported from the design's own CRIT.pantry (see critters-sprite.svg's own comment
+  // for the real porting note) -- the command tray's "Out of..." quick chip is the first real
+  // consumer; README's Pantry room row and #3308's future Pantry-room migration land on this
+  // same slot once they're built.
+  pantry: { id: "1y", name: "Pantry", variants: ["c-pantry", "c-pantry2"] },
 };
 
 // Declared order matters: the peek roll below picks four consecutive entries starting at `b`.

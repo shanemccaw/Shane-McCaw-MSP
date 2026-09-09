@@ -368,6 +368,107 @@ button:disabled { opacity: 0.5; cursor: default; }
 .capture-status { margin: 0.35rem auto 0; max-width: 720px; font-size: 0.8rem; color: hsl(var(--muted-foreground)); min-height: 1.1em; }
 .attachment { max-width: 720px; margin: 0 auto 0.5rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.85rem; color: hsl(var(--muted-foreground)); }
 
+/* ---------- capture tray (Git #3320) ----------
+   Ported 1:1 from the design's own `d.trayOn` block (Shanes Life - First Slice Prototype.dc.html,
+   ~line 1805): slides up above the capture pill on focus, hidden (not unmounted) the rest of the
+   time so the slide transition has something to animate from/to -- app.js toggles `.open`, never
+   `hidden`, once the tray has real content to show (see renderCaptureTray). */
+.capture-tray {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(100% - 2px);
+  z-index: 3;
+  max-width: 720px;
+  margin: 0 auto;
+  transform: translateY(18px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.22s;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--card-border));
+  border-radius: 22px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.capture-tray.open { transform: translateY(0); opacity: 1; pointer-events: auto; }
+
+.capture-tray-top { display: flex; align-items: center; gap: 6px; }
+.capture-tray-modes {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.capture-tray-mode {
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+}
+.capture-tray-mode svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* Type is the resting mode -- focusing the textarea is what opened the tray in the first place. */
+.capture-tray-mode.active { background: hsl(var(--card)); color: hsl(var(--foreground)); }
+.capture-tray-close {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+}
+.capture-tray-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+.capture-tray-quick-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px; }
+.capture-tray-quick-label { font-size: 11px; font-weight: var(--weight-semibold); letter-spacing: 0.1em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
+.capture-tray-quick-context { font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+.capture-tray-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.capture-tray-chip {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 8px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid hsl(var(--card-border));
+  font-size: 13px;
+  font-weight: var(--weight-semibold);
+  line-height: 1.25;
+  cursor: pointer;
+  min-width: 0;
+  color: hsl(var(--foreground));
+  text-align: left;
+}
+.capture-tray-chip svg { flex-shrink: 0; }
+.capture-tray-chip span { flex: 1; min-width: 0; }
+/* "here" -- this chip's own destination matches the last real place Shane said he was heading
+   to (location-state.mjs's real heading_to, not a guess) -- same real blue highlight the design
+   itself uses for `here`. */
+.capture-tray-chip.here { background: rgba(96, 165, 250, 0.14); border-color: rgba(96, 165, 250, 0.4); color: #93c5fd; }
+
+.capture-tray-footer { font-size: 11px; color: hsl(var(--muted-foreground)); padding: 0 4px; line-height: 1.4; margin: 0; }
+
 /* ---------- lists ---------- */
 
 /* Room list rows (design handoff README, "Screens"): row min-height 54-60px, 16px

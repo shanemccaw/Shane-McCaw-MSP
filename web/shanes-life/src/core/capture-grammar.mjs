@@ -61,6 +61,7 @@ import * as contacts from "./contacts.mjs";
 import { slugify } from "./categories.mjs";
 import * as dates from "./dates.mjs";
 import * as lists from "./lists.mjs";
+import * as locationState from "./location-state.mjs";
 import * as medications from "./medications.mjs";
 import * as money from "./money.mjs";
 import * as pantry from "./pantry.mjs";
@@ -401,17 +402,21 @@ const RULES = [
   // 6. Tesla warm (README §52: "warm it up" / "precondition" / "start the car" -> preconditioning).
   //    Requires a real object word ("it"/"the car"/"the tesla") before "up", and "precondition"
   //    only as a bare imperative -- not "-ing", which the read rule above already claimed.
+  //    Git #3320: "cool it down"/"cool the car down" is the SAME real Tesla command
+  //    (startPreconditioning just targets cabin comfort either direction) -- the command tray's
+  //    own climate quick-chip phrases this as "cool it down" on a hot day (design's own condVerb/
+  //    condPhrase), so that phrase needs to resolve here too, not fall through to the inbox.
   {
     name: "tesla_warm_preconditioning",
     match(text) {
-      return /\b(warm(?:ing)?\s+(?:it|the car|the tesla)\s*up|^precondition\b|\bprecondition the (car|tesla)\b|start the car)\b/i.test(
+      const cooling = /\bcool(?:ing)?\s+(?:it|the car|the tesla)\s*down\b/i.test(text);
+      const warming = /\b(warm(?:ing)?\s+(?:it|the car|the tesla)\s*up|^precondition\b|\bprecondition the (car|tesla)\b|start the car)\b/i.test(
         text,
-      )
-        ? {}
-        : null;
+      );
+      return cooling || warming ? { cooling } : null;
     },
-    async run(userId) {
-      return teslaCommandMessage(() => tesla.startPreconditioning(userId), "Warming it up.");
+    async run(userId, { cooling }) {
+      return teslaCommandMessage(() => tesla.startPreconditioning(userId), cooling ? "Cooling it down." : "Warming it up.");
     },
   },
 
@@ -430,12 +435,19 @@ const RULES = [
   // 8. Tesla heading home (README §52: "heading home" / "take me home" -> Heading home to the
   //    recommended house). A pure command with no fact of its own to lose, so a missing "Home"
   //    place is a direct, real message -- not a fallback to the inbox, which can't drive a car.
+  //    Checked BEFORE rule 8.5 below on purpose (array order = priority) so its own two narrower
+  //    phrasings ("take me home", bare "head home") that rule 8.5's own regex doesn't cover keep
+  //    working, and so capture-grammar.test.mjs's existing "heading home" -> tesla_heading_home
+  //    assertion stays true. Git #3320: now also records the same real location-transition state
+  //    rule 8.5 does (setHeadingTo), so that state is consistent regardless of which of the two
+  //    real "heading home" phrasings Shane actually used.
   {
     name: "tesla_heading_home",
     match(text) {
       return /\b(heading home|head(?:ing)? home|take me home)\b/i.test(text) ? {} : null;
     },
     async run(userId) {
+      await locationState.setHeadingTo(userId, "home").catch(() => {});
       const saved = await places.listPlaces(userId);
       const home = saved.find((p) => /^home$/i.test(p.label) || /^h1$/i.test(p.house ?? ""));
       if (!home) {
@@ -445,6 +457,81 @@ const RULES = [
         () => tesla.sendHeadingHomeCommands(userId, { latitude: home.latitude, longitude: home.longitude, label: home.label }),
         `Heading home to ${home.label}.`,
       );
+    },
+  },
+
+  // 8.5. "Heading to X" (Git #3320, the command tray's own "I'm going to work" / "Heading to the
+  //      Rental" / "I'm going home" quick chips, and the same real phrase typed by hand). The
+  //      exact regex is the issue's own -- covers work/nasa/ksc (-> 'work'), rental, and home,
+  //      with a real verb-phrase prefix rule 8 above doesn't require ("going"/"headed"/"driving"/
+  //      "off"/"on my way"/"leaving for", not just "heading"). Sets the same real
+  //      location-transition state (location-state.mjs) rule 8 does, and references the correct
+  //      real checklist per destination -- the Heading Out list for the Rental (lists.mjs, the
+  //      same real signal Today's own "Later, by moment" balloon reads), the to-home take
+  //      checklist for home (things.mjs's real take_for_house queue), no checklist for work (the
+  //      design's own line: "Next switches to your work list when you get there"). A pure
+  //      location-transition statement, not a data-bearing fact that could be lost, so this
+  //      always resolves with a real message -- never a fallback to the inbox.
+  {
+    name: "heading_to_place",
+    match(text) {
+      const m = text.match(
+        /^(?:i'?m|i am|im|we're|we are)?\s*(?:going|heading|headed|driving|off|on my way|leaving for)\s+(?:back\s+)?(?:to\s+)?(?:the\s+)?(work|nasa|ksc|rental|home)\b/i,
+      );
+      if (!m) return null;
+      const word = m[1].toLowerCase();
+      const house = word === "rental" ? "rental" : word === "home" ? "home" : "work";
+      return { house };
+    },
+    async run(userId, { house }) {
+      const previous = await locationState.getHeadingTo(userId, { staleAfterMs: 12 * 60 * 60 * 1000 });
+      await locationState.setHeadingTo(userId, house);
+
+      if (house === "work") {
+        return { message: "Off to NASA. Next switches to your work list when you get there." };
+      }
+
+      if (house === "rental") {
+        const signal = await lists.getHeadingOutSignal(userId);
+        const bring = signal
+          ? `${signal.names.length} on the Heading Out list -- check them off as they go in the car.`
+          : "Nothing queued on the Heading Out list yet.";
+        return { message: `Heading to the Rental. ${bring}` };
+      }
+
+      // house === "home"
+      const fromWork = previous?.house === "work";
+      let bring;
+      if (fromWork) {
+        bring = "Nothing to bring from NASA.";
+      } else {
+        const checklist = await things.listTakeChecklist(userId);
+        const homeGroup = checklist.find((g) => /^home$/i.test(g.house));
+        const undone = homeGroup ? homeGroup.items.filter((i) => !i.take_done).length : 0;
+        bring = undone > 0 ? `${undone} to bring on the to-home list.` : "Nothing queued on the to-home list.";
+      }
+
+      // The real Tesla climate pre-heat (README §52's own preconditioning command), mentioned
+      // and actually triggered only when Tesla is genuinely connected with a real "Home" place
+      // on file -- same real lookup rule 8 above uses. A TeslaError here (not connected, no
+      // vehicle, command proxy unset) is not a reason to lose the location-transition fact or
+      // the checklist note; it's silently omitted, same as the design's own "(car ? ... : '')".
+      let teslaNote = "";
+      try {
+        const status = await tesla.connectionStatus(userId);
+        if (status.connected) {
+          const saved = await places.listPlaces(userId);
+          const home = saved.find((p) => /^home$/i.test(p.label) || /^h1$/i.test(p.house ?? ""));
+          if (home) {
+            await tesla.sendHeadingHomeCommands(userId, { latitude: home.latitude, longitude: home.longitude, label: home.label });
+            teslaNote = ` The ${status.vehicleDisplayName || "car"} gets the route and the cabin heads for 72°.`;
+          }
+        }
+      } catch (err) {
+        if (!(err instanceof TeslaError)) throw err;
+      }
+
+      return { message: `Heading home. ${bring}${teslaNote}` };
     },
   },
 

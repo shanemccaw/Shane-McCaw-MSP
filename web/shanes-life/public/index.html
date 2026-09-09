@@ -130,6 +130,44 @@
            contract pack Section 3 makes this the single entry point, and Section 2 names capture
            friction as the core enemy. It is never a category-specific form. -->
       <form id="capture" class="capture">
+        <!-- Git #3320: the real command tray -- Shane's own long-standing "Ctrl+K command
+             center" concept (same real precedent as BuildConsole's own Epic #2017), realized for
+             this app's capture bar. Slides up above the bar on capture-box focus (see app.js's
+             own "the real command tray" section), closes on Escape/X/after any action runs.
+             Design source:
+             Design/design_handoff_shanes_life/Shanes Life - First Slice Prototype.dc.html,
+             `d.trayOn` (~line 1805) -- structure ported 1:1, chip content is real and live
+             (renderCaptureTray in app.js), never static. -->
+        <div id="capture-tray" class="capture-tray">
+          <div class="capture-tray-top">
+            <div class="capture-tray-modes">
+              <!-- Talk/Scan both close the tray the instant they're tapped (same real design
+                   behavior modeTalk/modeScan already have), so Type -- the mode that's already
+                   true whenever this tray is visible at all -- is the only one ever shown active. -->
+              <button type="button" id="tray-mode-type" class="capture-tray-mode active" aria-label="Type">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M8 13h.01M12 13h.01M16 13h.01M7 17h10"/></svg>
+                <span>Type</span>
+              </button>
+              <button type="button" id="tray-mode-talk" class="capture-tray-mode" aria-label="Talk">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                <span>Talk</span>
+              </button>
+              <button type="button" id="tray-mode-scan" class="capture-tray-mode" aria-label="Scan">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M8 7v10M12 7v10M17 7v10"/></svg>
+                <span>Scan</span>
+              </button>
+            </div>
+            <button type="button" id="tray-close" class="capture-tray-close" aria-label="Close">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+          </div>
+          <div class="capture-tray-quick-head">
+            <span class="capture-tray-quick-label">Quick</span>
+            <span id="tray-quick-head" class="capture-tray-quick-context"></span>
+          </div>
+          <div id="tray-quick-grid" class="capture-tray-grid" aria-live="polite"></div>
+          <p class="capture-tray-footer">Each of these is a phrase you could have said. Tap it and it runs the same way; the ones with … fill the box for you to finish.</p>
+        </div>
         <div id="capture-attachment" class="attachment" hidden>
           <span id="capture-attachment-label"></span>
           <button type="button" id="capture-attachment-clear" class="ghost small">Remove</button>

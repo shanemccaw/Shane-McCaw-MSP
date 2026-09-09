@@ -686,6 +686,58 @@ genuine OS notification whether or not the app is open.
   Cancel button per row -- the natural home, matching how other live states already surface
   there.
 
+## Real command tray on capture-box focus (#3320)
+
+Shane's own long-standing "Ctrl+K command center" concept -- same real precedent as
+BuildConsole's own Epic #2017 -- realized for this app's universal capture box. Design source:
+`Design/design_handoff_shanes_life/Shanes Life - First Slice Prototype.dc.html`, `d.trayOn`
+(~line 1805); structure ported 1:1 (mode toggle, Quick grid, footer copy verbatim) into
+`public/index.html`'s `#capture-tray` + `public/app.css`'s `.capture-tray*` rules +
+`public/app.js`'s `openCaptureTray`/`renderCaptureTray`/`closeCaptureTray`.
+
+Slides up above the capture pill the instant the textarea is focused, closes on Escape, the X, or
+after any real action runs (a direct-run chip, Talk, Scan, or the bar's own Send/mic). **Top row**:
+a real 3-way Type/Talk/Scan toggle -- Talk/Scan reuse the bar's own real `#capture-voice` click and
+Shopping's own `openScanSheet`, never a duplicated mic/camera path. **Quick grid**: 8 real,
+live-state-aware chips from `GET /api/capture-tray` (a real, cached read -- Tesla's own
+`connectionStatus().lastRead`, never a live Fleet API wake-the-car call just to paint a label) --
+work/rental/home destination chips, a climate on/off toggle (live outside-temp-aware Warm
+up/Cool down), Open the trunk, a real meds-batch-aware toggle, and two "fill" chips (Timer for…,
+Out of…) that pre-fill the box instead of submitting. Every direct-run chip submits its real phrase
+through the exact same `#capture` submit handler (and therefore the same deterministic capture
+grammar, #3292) a hand-typed capture already uses -- no duplicated dispatch logic anywhere in this
+feature.
+
+**The new "heading to X" capture-grammar rule** (`heading_to_place` in `capture-grammar.mjs`,
+issue #3320's own regex, ported verbatim) recognizes "I'm going to work" / "heading to the rental"
+/ "off to NASA" / "on my way home" (work, nasa and ksc all normalise to the same 'work'
+destination) and records a real, current location-transition fact (`users.heading_to` /
+`heading_to_at`, migration 071, `src/core/location-state.mjs`) -- a real one-fact-per-user record,
+not a log, same "trust stated facts immediately" discipline (contract Section 8) the rest of this
+app already applies. The confirmation message references the real checklist per destination: the
+Heading Out list's own real undone count for the Rental (`lists.getHeadingOutSignal`, the same
+signal Today's own "Later, by moment" balloon reads), the real to-home take-checklist's own undone
+count for home (`things.listTakeChecklist`) -- "Nothing to bring from NASA" instead when the
+previous real `heading_to` fact was 'work' -- and, for home specifically, the real Tesla
+preconditioning command actually fires (not just gets mentioned) when Tesla is genuinely connected
+with a "Home" place on file, same real lookup the existing `tesla_heading_home` rule (README §52,
+"heading home"/"take me home") already uses; a `TeslaError` there is silently omitted, never a lost
+location fact. `tesla_warm_preconditioning` also grew a real "cool it down" phrasing (same
+underlying Tesla command, opposite direction) so the tray's own climate chip resolves correctly on
+a hot day.
+
+**Not built here, a real, explicit scope cut**: the design's own two-stage `trip` (in-transit) vs
+`where` (confirmed-arrived) model, and the Today "Trip" moment card with Cancel/I'm-home/At-work
+buttons that goes with it. `heading_to`/`heading_to_at` is real, persisted, honest state --
+genuinely useful today (it's what makes the "fromWork" toast phrasing and the tray's own
+`quickHead` line real, not guessed) -- but nothing surfaces it as its own Today card yet. Filed as
+its own real finding under #3220 rather than built in scope-creep here.
+
+**Also real, additive, and easy to miss in a diff**: the Pantry critter pair (slot `1y`,
+`c-pantry`/`c-pantry2`) the design's own `CRIT.pantry` already drew but this app's real
+`critters-sprite.svg`/`critters.js` had never ported -- needed for the tray's own "Out of…" chip,
+ported verbatim the same way every other slot in that sprite was.
+
 ## Which rooms are real today
 
 This section was written during #3107, when Shopping was the only real room and every table
