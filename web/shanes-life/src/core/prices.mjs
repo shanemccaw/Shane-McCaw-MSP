@@ -366,7 +366,7 @@ export async function attachWeeklyAdVerdicts(userId, items) {
   if (uniqueNorm.length === 0) return items;
 
   const priceRows = await many(
-    `SELECT ip.item_text, ip.price_cents, ip.unit, ip.category, ip.image_url, ip.deal_type, s.name AS store_name
+    `SELECT ip.item_text, ip.price_cents, ip.unit, ip.category, ip.image_url, ip.deal_type, ip.valid_to, s.name AS store_name
        FROM item_prices ip JOIN stores s ON s.id = ip.store_id
       WHERE ip.user_id = $1 AND ip.source = 'weekly_ad'
         AND ip.observed_on >= current_date - interval '${WEEKLY_AD_FRESHNESS_DAYS} days'
@@ -374,7 +374,7 @@ export async function attachWeeklyAdVerdicts(userId, items) {
     [userId],
   );
   const couponRows = await many(
-    `SELECT store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents, category, image_url, deal_type FROM coupons
+    `SELECT store, item_text, description, multi_buy_count, multi_buy_price_cents, discount_cents, category, image_url, deal_type, valid_to FROM coupons
       WHERE user_id = $1 AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
       ORDER BY created_at DESC`,
     [userId],
@@ -395,6 +395,7 @@ export async function attachWeeklyAdVerdicts(userId, items) {
         category: matchedPrice?.category ?? matchedCoupon?.category ?? null,
         imageUrl: matchedPrice?.image_url ?? matchedCoupon?.image_url ?? null,
         dealType: matchedPrice?.deal_type ?? matchedCoupon?.deal_type ?? null,
+        validTo: matchedPrice?.valid_to ?? matchedCoupon?.valid_to ?? null,
         coupon: matchedCoupon
           ? {
               description: matchedCoupon.description,

@@ -7568,11 +7568,22 @@ function shoppingItemRow(listId, item, { store } = {}) {
   ]);
 }
 
+// "Wed" from a valid_to date, same local-midnight-safe pattern as dueLabel() above -- a DATE
+// column round-trips through JSON as a UTC-midnight ISO string, so this reconstructs it at
+// local midnight rather than handing the raw string to `new Date()` (which can read a day
+// early west of UTC).
+function throughLabel(validTo) {
+  if (!validTo) return null;
+  const d = new Date(`${String(validTo).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString([], { weekday: "short" });
+}
+
 // Weekly-ad cross-store verdict, coupon and multi-buy count (Git #3110) -- null until Claude has
 // pushed a matching price/coupon over MCP (push_deals/push_coupons); most items show nothing
-// here, same as every other "real data or nothing" surface in this app. `category`/`imageUrl`
-// (Git #3310) are real, optional fields on the same push -- shown only when actually present,
-// never a placeholder or invented default.
+// here, same as every other "real data or nothing" surface in this app. `category`/`imageUrl`/
+// `dealType`/`validTo` (Git #3310) are real, optional fields on the same push -- shown only when
+// actually present, never a placeholder or invented default.
 function verdictBadge(verdict) {
   if (!verdict) return null;
   const parts = [];
@@ -7591,12 +7602,29 @@ function verdictBadge(verdict) {
       parts.push(c.description);
     }
   }
-  if (parts.length === 0 && !verdict.imageUrl) return null;
+  const through = throughLabel(verdict.validTo);
+  if (through) parts.push(`through ${through}`);
+  if (parts.length === 0 && !verdict.imageUrl && !verdict.dealType) return null;
+  // Kind chip (Git #3319) -- BOGO / Sale / Rollback / Digital coupon / Multi-buy, free text
+  // upstream, drawn as the generic uppercase .chip (not .chip.verdict), before the pill.
+  const kindChip = verdict.dealType ? el("span", { class: "chip", text: verdict.dealType }) : null;
+  // Ad thumbnail slot (Git #3310/#3319): only drawn when the source actually carried an image.
+  // The store's initial fills the slot immediately; the real image sits on top and fades in
+  // once it loads, so the row never waits on a slow ad image before it can render.
   const thumb = verdict.imageUrl
-    ? el("img", { class: "shop-item-verdict-thumb", src: verdict.imageUrl, alt: "", loading: "lazy" })
+    ? el("div", { class: "shop-item-verdict-thumb-wrap" }, [
+        el("div", { class: "shop-item-verdict-thumb-fallback", text: (verdict.store || "?").trim().slice(0, 1).toUpperCase() }),
+        el("img", {
+          class: "shop-item-verdict-thumb",
+          src: verdict.imageUrl,
+          alt: "",
+          loading: "lazy",
+          onLoad: (e) => e.target.classList.add("loaded"),
+        }),
+      ])
     : null;
   const chip = parts.length > 0 ? el("span", { class: "chip verdict", text: parts.join(" · ") }) : null;
-  return el("span", { class: "shop-item-verdict" }, [thumb, chip]);
+  return el("span", { class: "shop-item-verdict" }, [thumb, kindChip, chip]);
 }
 
 // @zxing/browser is loaded on demand, never in index.html -- same reasoning as loadPlaidLink()
