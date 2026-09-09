@@ -313,10 +313,15 @@ database Shane manages by hand.
 - No separate recipe-authoring UI, no manual meal-planning calendar — the generation
   happens in a Claude conversation, the app's job is to host, display, and let Shane check
   items off, same division of labor as the rest of this app (see Section 10).
-- **The original cut still stands for what it was actually about**: no automatic inventory/
-  expiration tracking, no recipe-from-pantry-contents generation. Those remain out of
-  scope — this update is about *how* Shopping/Recipes get populated (Claude + MCP, on
-  request), not about resurrecting pantry-management features Shane already ruled out.
+- **Real, further superseding update (2026-09-09): the pantry cut is reversed.** Shane
+  directly, explicitly confirmed a genuine change of mind, not a lighter-weight
+  reinterpretation: real pantry tracking is now wanted — what he actually has at home
+  (spices, vegetables, meats, etc.) and real quantities. See the dedicated real Pantry
+  feature (Epic #3086) for scope. The original reasoning ("that's not even my area") no
+  longer applies as stated by Shane himself.
+- No automatic *expiration* tracking is still out of scope unless Shane says otherwise —
+  the reversal above covers real quantity tracking specifically, not shelf-life/expiry
+  dates, which were never separately requested.
 - **The Money-feeder use case still applies, separately**: when Ronnie/DJ mention something
   they need, that's still real budget-awareness information feeding the Money triage view,
   distinct from Shane actively generating his own shopping/recipe lists via Claude.

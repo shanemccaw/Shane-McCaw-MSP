@@ -63,6 +63,7 @@ import * as dates from "./dates.mjs";
 import * as lists from "./lists.mjs";
 import * as medications from "./medications.mjs";
 import * as money from "./money.mjs";
+import * as pantry from "./pantry.mjs";
 import * as people from "./people.mjs";
 import * as pets from "./pets.mjs";
 import * as places from "./places.mjs";
@@ -915,7 +916,7 @@ const RULES = [
     },
   },
 
-  // 30. Queue for the next run (Git #3300: "Next [house] run · take" -- the Things room's own
+  // 32. Queue for the next run (Git #3300: "Next [house] run · take" -- the Things room's own
   //     checklist of what to bring, distinct from thing_location above and from the
   //     Tesla-triggered Heading Out list, #3158). "take/bring X to <house>" queues a real thing
   //     already on file (or files a new one, defaulting its home to "Home" per the design's own
@@ -930,6 +931,56 @@ const RULES = [
       if (!name || !takeForHouse) return FALLBACK;
       const row = await things.queueForTake(userId, { name, takeForHouse });
       return { message: `${row.name} queued for the next ${row.take_for_house} run.`, thingId: row.id };
+    },
+  },
+
+  // 33. Real pantry quantity stated (#3308's own literal example: "I have 2 lbs of chicken
+  //     breasts") -- an absolute real quantity, not additive. Requires a real number and a real
+  //     unit word before "of" (the app's own real spoken shape for this) rather than a bare "I
+  //     have X" -- that broader form risks false positives ("I have 2 hours", "I have 2 kids")
+  //     nowhere near a real pantry statement, so it's deliberately left unmatched here (falls
+  //     through to the inbox, same as any other genuinely ambiguous capture).
+  {
+    name: "pantry_have",
+    match(text) {
+      const m = text.match(/^i have\s+(\d+(?:\.\d+)?)\s+([a-z]+)\s+of\s+(.+)$/i);
+      return m ? { quantity: Number(m[1]), unit: m[2].trim(), name: m[3].trim() } : null;
+    },
+    async run(userId, { quantity, unit, name }) {
+      const row = await pantry.setPantryQuantity(userId, { name, quantity, unit });
+      return { message: `${row.name}: ${row.quantity}${row.unit ? ` ${row.unit}` : ""} on hand.`, pantryItemId: row.id };
+    },
+  },
+
+  // 34. Real pantry restock (#3308's own literal example: "bought 3 cans of diced tomatoes") --
+  //     adds a real delta on top of whatever's already on file, rather than replacing it (the
+  //     real distinction from pantry_have above: "bought" is additive, "I have" is a fresh count).
+  {
+    name: "pantry_bought",
+    match(text) {
+      const m = text.match(/^bought\s+(\d+(?:\.\d+)?)\s+([a-z]+)\s+of\s+(.+)$/i);
+      return m ? { quantity: Number(m[1]), unit: m[2].trim(), name: m[3].trim() } : null;
+    },
+    async run(userId, { quantity, unit, name }) {
+      const row = await pantry.adjustPantryQuantity(userId, { name, delta: quantity, unit });
+      return { message: `${row.name}: ${row.quantity}${row.unit ? ` ${row.unit}` : ""} now on hand.`, pantryItemId: row.id };
+    },
+  },
+
+  // 35. Real pantry depletion (#3308's own literal example: "used the last of the rosemary") --
+  //     zeroes an already-known real item. Genuinely nothing on file for this name is a real
+  //     fallback, not silently discarded -- "used the last of X" naming something never tracked
+  //     is still worth Claude seeing in the inbox (it may be a genuinely new real item to file).
+  {
+    name: "pantry_used_last",
+    match(text) {
+      const m = text.match(/^used\s+the\s+last\s+of\s+(?:the\s+|my\s+)?(.+)$/i);
+      return m ? { name: m[1].trim() } : null;
+    },
+    async run(userId, { name }) {
+      const row = await pantry.depletePantryItem(userId, name, null);
+      if (!row) return FALLBACK;
+      return { message: `${row.name} marked used up.`, pantryItemId: row.id };
     },
   },
 ];

@@ -41,6 +41,7 @@ import * as media from "../core/media.mjs";
 import * as incomeRules from "../core/income-rules.mjs";
 import * as money from "../core/money.mjs";
 import * as mcpTokens from "../core/mcp-tokens.mjs";
+import * as pantry from "../core/pantry.mjs";
 import * as widgetTokens from "../core/widget-tokens.mjs";
 import { computeNextCard, renderWidgetPage } from "../core/widget.mjs";
 import { headingHomeAvailability, triggerHeadingHome } from "../core/heading-home.mjs";
@@ -983,6 +984,17 @@ export function buildApiRouter() {
     const q = ctx.url.searchParams.get("q");
     if (!q) throw badRequest("q is required");
     return sendJson(res, 200, { thing: await things.findThing(user.id, q) });
+  });
+
+  // Real pantry inventory (Git #3308) -- what's actually at home, and real quantities. Reads
+  // only: same "no forms, anywhere, ever" idiom the Things room already uses (Git #3181) --
+  // writes only ever happen via a real capture (capture-grammar.mjs's pantry_have/pantry_bought/
+  // pantry_used_last rules) or Claude over MCP (set_pantry_item), never a dedicated add/edit form.
+  router.get("/api/pantry", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const house = ctx.url.searchParams.get("house");
+    const [items, houses] = await Promise.all([pantry.listPantryItems(user.id, { house }), pantry.listPantryHouses(user.id)]);
+    return sendJson(res, 200, { items, groups: pantry.groupPantryByCategory(items), houses });
   });
 
   // "Who fixed what" -- real service-provider contact log (Git #3156). Each capture is a new

@@ -1081,7 +1081,13 @@ $("#capture").addEventListener("submit", async (event) => {
     // to the run and saves a stated "<item> aisle <n> <note>" directly onto that item's aisle
     // memory, rather than the generic /api/captures triage a bare statement gets everywhere
     // else (which only ever surfaces on Inbox/Today, not live in the room that said it).
-    if (state.route === "shopping" && lines.length && !state.attachment) {
+    //
+    // Git #3308: gated to the Shopping LIST tab specifically, not the Pantry tab that now shares
+    // this same route -- without this, "I have 2 lbs of chicken breasts" typed while on Pantry
+    // would get treated as a literal shopping-list item ("I have 2 lbs of chicken breasts") added
+    // verbatim to the run, instead of reaching the real deterministic pantry_have/pantry_bought/
+    // pantry_used_last capture-grammar rules via the generic /api/captures path below.
+    if (state.route === "shopping" && (state.shoppingTab || "list") === "list" && lines.length && !state.attachment) {
       for (const line of lines) await submitShoppingCapture(line);
       captureText.value = "";
       captureText.style.height = "auto";
@@ -8041,6 +8047,7 @@ async function submitShoppingCapture(text) {
 
 async function viewShopping(view) {
   const order = state.shoppingOrder || "flat";
+  const roomTabKey = state.shoppingTab || "list";
   const [list, storesResult] = await Promise.all([api(`/api/shopping?order=${order}`), api("/api/stores")]);
   const remaining = list.items.filter((i) => !i.done).length;
   state.shoppingList = list; // read by the universal capture bar's shopping-room dispatch below.
@@ -8069,6 +8076,30 @@ async function viewShopping(view) {
     ]),
   );
   view.append(el("div", { class: "shop-header-bar" }));
+
+  // Shopping list / Pantry (Git #3308) -- real, distinct data sources sharing this one room.
+  // #3308's own scope item 5 asked to "decide and state which fits better" between a new
+  // top-level room and a tab within Shopping or Recipes: this is a tab within Shopping -- a new
+  // ROOM_DEFS room needs its own real critter/furniture SVG assets this build has no way to
+  // produce, and Pantry shares the exact same real grocery-category vocabulary (CAT_ORDER) and
+  // everyday "what do I still need to buy vs. what do I already have" adjacency Shopping already
+  // owns, more directly than Recipes does.
+  const roomTab = (key, label) =>
+    el("button", {
+      type: "button",
+      class: `shop-segment-btn${roomTabKey === key ? " active" : ""}`,
+      text: label,
+      onClick: () => {
+        state.shoppingTab = key;
+        render();
+      },
+    });
+  view.append(el("div", { class: "shop-segment" }, [roomTab("list", "Shopping list"), roomTab("pantry", "Pantry")]));
+
+  if (roomTabKey === "pantry") {
+    await renderPantryTab(view);
+    return;
+  }
 
   // Flat / Category / Best path (Git #3108) -- the design's own real segmented control.
   const segment = (mode, label) =>
@@ -8201,6 +8232,83 @@ async function viewShopping(view) {
 
   // Room watermark (Git #3119): "Shopping and the shared link -> shop pair" per the critter spec.
   attachRoomWatermark(view, "shop");
+}
+
+// Pantry tab within the Shopping room (Git #3308) -- real inventory Shane actually has at home,
+// grouped by the same CAT_ORDER grocery categories Shopping's own Category view already groups
+// by (core/pantry.mjs's groupPantryByCategory, computed server-side so this file doesn't need
+// its own duplicate copy of that fixed real category order). No dedicated add/edit/delete form --
+// same "no forms, anywhere, ever" idiom Things already established (Git #3181): say "I have 2 lbs
+// of chicken breasts" / "bought 3 cans of diced tomatoes" / "used the last of the rosemary" in
+// the universal capture box, or Claude files it via set_pantry_item over MCP.
+async function renderPantryTab(view) {
+  const pantryResult = await api("/api/pantry");
+  state.pantryItems = pantryResult.items; // read by the universal capture bar, same shape as state.shoppingList above.
+
+  if (pantryResult.items.length === 0) {
+    view.append(
+      empty("Nothing in the pantry yet.", "Say \"I have 2 lbs of chicken breasts\" in the capture box and Claude files it here.", "shop"),
+    );
+    return;
+  }
+
+  for (const group of pantryResult.groups) {
+    view.append(
+      el("section", { class: "section" }, [
+        el("div", { class: "shop-group-label", text: group.category }),
+        el(
+          "ul",
+          { class: "shop-list" },
+          group.items.map((item) => pantryItemRow(item)),
+        ),
+      ]),
+    );
+  }
+
+  // "By house" (Git #3216's own real hub/spoke pattern, same grouping shape Things gives its
+  // own multi-house items) -- only shown once a real house has actually been stated on something,
+  // same conditional as viewThings' own "By house" section.
+  if (pantryResult.houses.length > 0) {
+    const grouped = el("section", { class: "section" }, [el("h2", { text: "By house" })]);
+    for (const h of pantryResult.houses) {
+      const atHouse = pantryResult.items.filter((i) => i.house === h.house);
+      grouped.append(
+        el("div", { style: "margin-bottom:.6rem" }, [
+          el("div", { class: "small muted", text: `${h.house} · ${h.item_count}` }),
+          el(
+            "div",
+            { class: "row" },
+            atHouse.map((i) => el("span", { class: "chip", text: `${i.name} · ${pantryQtyText(i)}` })),
+          ),
+        ]),
+      );
+    }
+    view.append(grouped);
+  }
+}
+
+/** "2 lbs", "3 cans" -- or "out" once a real "used the last of" capture has zeroed it (the row
+ *  survives at quantity 0 rather than being deleted, so a later restock corrects the same real
+ *  row -- see core/pantry.mjs's depletePantryItem). */
+function pantryQtyText(item) {
+  return item.quantity > 0 ? `${item.quantity}${item.unit ? ` ${item.unit}` : ""}` : "out";
+}
+
+/** One real pantry row -- name, real quantity + unit chip, real house (when stated). Reuses
+ *  Shopping's already-shipped .shop-item-row/.shop-item-text/.shop-item-side CSS (Git #3178)
+ *  rather than a parallel set of near-identical styles, same idiom the Lists room already
+ *  established for reusing this same CSS elsewhere -- no checkbox, no expand chevron: a pantry
+ *  row is a real fact on file, not a checkable task. */
+function pantryItemRow(item) {
+  const nameEl = el("div", { class: `shop-item-name${item.quantity === 0 ? " done" : ""}`, text: item.name });
+  const subEl = item.house ? el("div", { class: "shop-item-sub", text: item.house }) : null;
+  const qtyChip = el("span", { class: "chip", text: pantryQtyText(item) });
+  return el("li", { class: "shop-item-row" }, [
+    el("div", { class: "shop-item-main" }, [
+      el("div", { class: "shop-item-text" }, [nameEl, subEl]),
+      el("div", { class: "shop-item-side" }, [qtyChip]),
+    ]),
+  ]);
 }
 
 function itemRow(entityId, item) {
@@ -10337,8 +10445,11 @@ async function render() {
 
   // Git #3178: the universal capture box is the SAME single bar in Shopping, not a second one --
   // the real design (First Slice Prototype's own submitCapture) just swaps its placeholder and,
-  // in Shopping, its dispatch (see the #capture submit handler below).
-  captureText.placeholder = state.route === "shopping" ? "Add, or say where you found it" : "Say anything…";
+  // in Shopping, its dispatch (see the #capture submit handler below). Git #3308: the Pantry tab
+  // shares this same route but not this shortcut (see the dispatch gate above) -- its placeholder
+  // stays the generic one, since a pantry statement goes through the real capture grammar, not a
+  // literal "add this text to the run" shortcut.
+  captureText.placeholder = state.route === "shopping" && (state.shoppingTab || "list") === "list" ? "Add, or say where you found it" : "Say anything…";
 
   // A wake lock (Git #3125) is only ever held for cook mode itself -- release it the moment
   // navigation moves anywhere else, rather than waiting on the tab losing visibility.

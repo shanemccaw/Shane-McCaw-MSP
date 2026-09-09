@@ -22,6 +22,7 @@
 import { many, one, query } from "../db.mjs";
 import { badRequest, notFound } from "../http.mjs";
 import { getOrCreateShoppingList, addListItems, getListDetail } from "./lists.mjs";
+import { listPantryItems } from "./pantry.mjs";
 
 const MAX_RECIPES_PER_CALL = 100;
 const MAX_NEEDS_PER_RECIPE = 60;
@@ -165,10 +166,32 @@ export async function archiveRecipe(userId, recipeId) {
 }
 
 /**
+ * Real "do we already have this" check, shared by listRecipesWithMatch and addMissingIngredients
+ * below (#3308's own scope item 3): a need counts as had when it's either on the current
+ * Shopping run OR sitting in real pantry inventory at a real quantity > 0 -- the pantry cut is
+ * reversed (contract.md Section 5's 2026-09-09 update), so canMake must actually reflect what's
+ * already at home, not just what's freshly on the list. Same case-insensitive, both-ways
+ * substring match() either source already uses (Git #3110), so "chicken" on a pantry row named
+ * "chicken breasts" still counts, same as it already does against a Shopping run item.
+ */
+async function buildHaveChecker(userId) {
+  const shoppingList = await getOrCreateShoppingList(userId);
+  const detail = await getListDetail(userId, shoppingList.id);
+  const onRun = detail.items.map((i) => normalise(i.text));
+  const pantryItems = await listPantryItems(userId);
+  const inPantry = pantryItems.filter((p) => p.quantity > 0).map((p) => normalise(p.name));
+  const have = (need) => {
+    const n = normalise(need);
+    return onRun.some((text) => matches(text, n)) || inPantry.some((text) => matches(text, n));
+  };
+  return { have, shoppingList, detail };
+}
+
+/**
  * The real list, each recipe decorated with its real can-make status against what's currently on
- * the Shopping run -- the design's own `recipes.map(r => { missing = r.needs.filter(n =>
- * !have(n)) ... })` logic (the prototype's exact shape), against the real database instead of
- * client-side mock state.
+ * the Shopping run OR already in real pantry inventory -- the design's own `recipes.map(r => {
+ * missing = r.needs.filter(n => !have(n)) ... })` logic (the prototype's exact shape), against
+ * the real database instead of client-side mock state.
  */
 export async function listRecipesWithMatch(userId) {
   const recipes = await many(
@@ -177,10 +200,7 @@ export async function listRecipesWithMatch(userId) {
     [userId],
   );
 
-  const shoppingList = await getOrCreateShoppingList(userId);
-  const detail = await getListDetail(userId, shoppingList.id);
-  const onRun = detail.items.map((i) => normalise(i.text));
-  const have = (need) => onRun.some((text) => matches(text, normalise(need)));
+  const { have, shoppingList } = await buildHaveChecker(userId);
 
   return recipes.map((r) => {
     const missing = (r.needs || []).filter((n) => !have(n));
@@ -205,17 +225,15 @@ export async function listRecipesWithMatch(userId) {
 /**
  * "Add missing" (#3124's real scope item 3) -- the recipe's real currently-missing ingredients,
  * pushed straight onto the real Shopping run, same run push_list/the Shopping screen already
- * write to. Recomputes missing against the run at call time rather than trusting a client-held
- * snapshot, so a concurrent edit to the run can't add something already sitting on it.
+ * write to. Recomputes missing against the run (and, per #3308, real pantry inventory) at call
+ * time rather than trusting a client-held snapshot, so a concurrent edit -- or something already
+ * sitting in the pantry -- can't get pushed onto the run a second time.
  */
 export async function addMissingIngredients(userId, recipeId) {
   const recipe = await getOwnedRecipe(userId, recipeId);
   if (!recipe) throw notFound("Recipe not found");
 
-  const shoppingList = await getOrCreateShoppingList(userId);
-  const detail = await getListDetail(userId, shoppingList.id);
-  const onRun = detail.items.map((i) => normalise(i.text));
-  const have = (need) => onRun.some((text) => matches(text, normalise(need)));
+  const { have, shoppingList, detail } = await buildHaveChecker(userId);
   const missing = (recipe.needs || []).filter((n) => !have(n));
 
   if (missing.length === 0) return { added: [], list: detail };

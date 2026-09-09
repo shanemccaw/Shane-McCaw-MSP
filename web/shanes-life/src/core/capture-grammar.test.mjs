@@ -290,4 +290,33 @@ check("matchRule: genuinely ambiguous / unrecognised text matches nothing", () =
   assert.equal(matchRule("   "), null);
 });
 
+// ---------------------------------------------------------------------------------------------
+// Real pantry tracking (Git #3308) -- absolute "I have", additive "bought", depleting "used
+// the last of".
+// ---------------------------------------------------------------------------------------------
+
+check("matchRule: pantry_have, an absolute real quantity", () => {
+  const m = matchRule("I have 2 lbs of chicken breasts");
+  assert.equal(m.rule, "pantry_have");
+  assert.deepEqual(m.groups, { quantity: 2, unit: "lbs", name: "chicken breasts" });
+});
+
+check("matchRule: pantry_bought, an additive real restock", () => {
+  const m = matchRule("bought 3 cans of diced tomatoes");
+  assert.equal(m.rule, "pantry_bought");
+  assert.deepEqual(m.groups, { quantity: 3, unit: "cans", name: "diced tomatoes" });
+});
+
+check("matchRule: pantry_used_last, real depletion", () => {
+  assert.equal(matchRule("used the last of the rosemary").rule, "pantry_used_last");
+  assert.deepEqual(matchRule("used the last of the rosemary").groups, { name: "rosemary" });
+  // "the"/"my" are both optional -- "used the last of rosemary" (no article) still resolves.
+  assert.deepEqual(matchRule("used the last of rosemary").groups, { name: "rosemary" });
+});
+
+check("matchRule: pantry_have requires a real number and unit word before 'of' -- a bare 'I have X' is NOT claimed here (false-positive guard: 'I have 2 hours'/'I have 2 kids' fall through untouched)", () => {
+  assert.equal(matchRule("I have 2 hours") == null, true);
+  assert.equal(matchRule("I have a headache") == null, true);
+});
+
 console.log(`\n${passed}/${passed} passed`);
