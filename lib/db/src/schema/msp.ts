@@ -8831,7 +8831,7 @@ export const customerAlertSettingsTable = pgTable("customer_alert_settings", {
   quietHoursTo: text("quiet_hours_to").notNull().default("07:30"),
   quietBreakForCritical: boolean("quiet_break_for_critical").notNull().default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedByUserId: integer("updated_by_user_id").references(() => usersTable.id),
+  updatedByUserId: integer("updated_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
 }, (t) => [
   index("customer_alert_settings_updated_by_user_id_idx").on(t.updatedByUserId),
 ]);

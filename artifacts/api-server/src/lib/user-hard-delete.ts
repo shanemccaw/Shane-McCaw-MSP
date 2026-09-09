@@ -65,13 +65,7 @@
  *                                  only in the route's post-commit Phase B meant it could
  *                                  never unblock the users DELETE that ran before it.)
  *
- *    …plus one that is NOT a delete. `customer_alert_settings.updated_by_user_id` is a
- *    nullable ATTRIBUTION column on a row keyed to the TENANT, so deleting the row
- *    because of who last edited it would destroy a settings row that is not this user's.
- *    It is NULLED instead — the same call section C makes, made in code because this one
- *    FK is NO ACTION where every sibling attribution column in the schema is SET NULL.
- *
- *     20. client_services       (clientUserId; + projectId → projects — before projects)
+ *    20. client_services       (clientUserId; + projectId → projects — before projects)
  *     21. projects              (clientUserId, signedOffBy — after every project child above)
  *
  *    Original AD-era list (Issue #69). Five of these now carry onDelete: "cascade" on
@@ -562,10 +556,9 @@ export async function hardDeleteUserWithinTx(
         { name: "sales_offer_events.actor_user_id", table: salesOfferEventsTable, where: eq(salesOfferEventsTable.actorUserId, userId) },
         { name: "user_entitlement_overrides.granted_by_user_id", table: userEntitlementOverridesTable, where: eq(userEntitlementOverridesTable.grantedByUserId, userId) },
         { name: "msp_staff_customer_scopes.created_by_user_id", table: mspStaffCustomerScopesTable, where: eq(mspStaffCustomerScopesTable.createdByUserId, userId) },
-        // Blanked by this function rather than by the DB — its FK is NO ACTION where
-        // every sibling attribution column above is SET NULL (#2984 finding). Censused
-        // here because the OUTCOME is identical: the tenant's settings row survives,
-        // unattributed.
+        // #2984 found this FK as NO ACTION where every sibling attribution column is
+        // SET NULL; #3105 fixed the constraint itself. The DB now blanks it same as
+        // every other row in this section — censused here only.
         { name: "customer_alert_settings.updated_by_user_id", table: customerAlertSettingsTable, where: eq(customerAlertSettingsTable.updatedByUserId, userId) },
       ];
 
@@ -613,14 +606,6 @@ export async function hardDeleteUserWithinTx(
       for (const entry of explicitDeletes) {
         if (entry.where) await tx.delete(entry.table).where(entry.where);
       }
-
-      // The one attribution the DB will NOT blank for us — see section A's closing note
-      // and section C. Runs before the users DELETE, which would otherwise fail on this
-      // NO ACTION constraint, and leaves the tenant's own settings row in place.
-      await tx
-        .update(customerAlertSettingsTable)
-        .set({ updatedByUserId: null })
-        .where(eq(customerAlertSettingsTable.updatedByUserId, userId));
 
       // Last: the account row itself. The DB cascades section B and nulls
       // section C as part of this statement.
