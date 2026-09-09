@@ -4773,3 +4773,5 @@ export * from "./config-diffs";
 export * from "./config-attribution";
 
 export * from "./retention";
+
+export * from "./rbac";
