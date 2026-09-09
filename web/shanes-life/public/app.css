@@ -2218,27 +2218,33 @@ pre.token {
    bills into Protected, so only Bills (which lists every account together) needs this. */
 .chip.gate { color: #60a5fa; border-color: rgba(96, 165, 250, 0.4); background: rgba(96, 165, 250, 0.12); }
 
-/* Barcode scan Open Food Facts enrichment (Git #3260) -- product image + real per-100g
-   nutrition facts + "genuinely high" flags, per the issue's heart-healthy framing. */
-.chip.warn {
-  text-transform: none;
-  letter-spacing: normal;
-  color: hsl(var(--warning));
-  border-color: hsl(var(--warning) / 0.4);
-  background: hsl(var(--warning) / 0.12);
-  margin-left: 0.4rem;
-}
-.scan-enrichment { margin-bottom: 0.75rem; }
-.scan-product-image {
+/* Barcode scan Open Food Facts enrichment (Git #3260 data, Git #3317 sheet) -- a real 36px
+   product thumbnail in the tile header, and a per-100g nutrition strip whose metric VALUES turn
+   amber individually (sodium/sat fat/sugars each against their own cutoff), matching the
+   prototype's own `scanNut`/`scanNutNote` logic. */
+.scan-tile-header { align-items: center; margin-bottom: 0.75rem; }
+.scan-tile-text { flex: 1; min-width: 0; }
+.scan-product-thumb {
   display: block;
-  width: 100%;
-  max-height: 160px;
-  object-fit: contain;
-  border-radius: var(--radius);
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  object-fit: cover;
   background: hsl(var(--muted));
-  margin-bottom: 0.5rem;
 }
-.scan-nutrition .row { justify-content: space-between; padding: 0.15rem 0; }
+.scan-nutrition { margin-bottom: 0.75rem; }
+.scan-nutrition-row { display: flex; align-items: flex-start; gap: 0.5rem; }
+.scan-nutrition-metric { flex: 1; min-width: 0; text-align: center; }
+.scan-nutrition-label {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+.scan-nutrition-value { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.scan-nutrition-value.warn { color: hsl(var(--warning)); }
+.scan-nutrition-note { padding-top: 0.4rem; }
 
 /* People & Patterns (Git #3157, design contract Section 7) -- the person tint throughout the
    design handoff (rgba 167,139,250, "violet") for the initial-letter avatar and the room's own

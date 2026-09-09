@@ -7769,35 +7769,54 @@ async function openScanSheet(list) {
 }
 
 /** Renders one of the three real match states (exact / near / unknown) plus the price form. */
-/** Real Open Food Facts enrichment (Git #3260) -- product image + per-100g nutrition facts +
- *  "genuinely high" flags, common to all three match states. `null` fields render nothing, the
- *  honest degrade for a barcode OFF has no data for. */
-function renderOffEnrichment(result) {
-  if (!result.productImage && !result.nutrition) return null;
-  const parts = [];
-  if (result.productImage) {
-    parts.push(el("img", { src: result.productImage, alt: result.productName || "Product photo", class: "scan-product-image" }));
-  }
-  if (result.nutrition) {
-    const n = result.nutrition;
-    const flags = result.nutritionFlags || {};
-    const row = (label, value, unit, isHigh) => {
-      if (value == null) return null;
-      const chips = [el("span", { class: "small", text: `${label} ${value}${unit}/100g` })];
-      if (isHigh) chips.push(el("span", { class: "chip warn", text: "High" }));
-      return el("div", { class: "row" }, chips);
-    };
-    const rows = [
-      row("Sodium", n.sodiumG100g, "g", flags.highSodium),
-      row("Saturated fat", n.saturatedFatG100g, "g", flags.highSaturatedFat),
-      row("Sugars", n.sugarsG100g, "g", flags.highSugar),
-      row("Fiber", n.fiberG100g, "g", false),
-    ].filter(Boolean);
-    if (rows.length > 0) {
-      parts.push(el("div", { class: "card scan-nutrition" }, [el("div", { class: "small muted", text: "Per 100g" }), ...rows]));
-    }
-  }
-  return parts.length > 0 ? el("div", { class: "scan-enrichment" }, parts) : null;
+
+// The heart-plan "genuinely high" cutoffs for THIS sheet (Git #3317, README's Shopping-scan item
+// 5 + the prototype's own `scanNut`/`scanNutNote` logic -- the specification, per this repo's
+// design-handoff convention). Deliberately separate from nutrition.mjs's `nutritionFlags` (UK FSA
+// 0.6g/5g/22.5g), which back a different feature (Recipes/Money's heartHealthy tagging via
+// getNutritionForItem) -- this sheet's own thresholds are per-issue, not the FSA's.
+const SCAN_HIGH_SODIUM_G_100G = 0.4;
+const SCAN_HIGH_SATURATED_FAT_G_100G = 5;
+const SCAN_HIGH_SUGARS_G_100G = 15;
+
+/** Real product thumbnail (Git #3317 scope item 3), 36px, from `image_url` when Open Food Facts
+ *  has one -- not drawn in the design, added here per the README's own instruction. `null` for a
+ *  barcode OFF has no image for, the honest degrade. */
+function productThumbEl(result) {
+  if (!result.productImage) return null;
+  return el("img", { src: result.productImage, alt: result.productName || "Product photo", class: "scan-product-thumb" });
+}
+
+/** Real per-100g Open Food Facts nutrition strip (Git #3260 data, Git #3317 sheet), common to all
+ *  three match states. `null` when OFF has no nutrition data for this barcode, the honest degrade.
+ *  Per the prototype's own `scanNut`/`scanNutNote` logic: each metric's VALUE (not a separate
+ *  chip) turns amber when it individually crosses its own cutoff, and the exact copy "sodium runs
+ *  high for the heart plan" is appended to the note only when sodium is the one that's high. */
+function renderNutritionStrip(result) {
+  const n = result.nutrition;
+  if (!n) return null;
+
+  const metric = (label, value, isHigh) => {
+    if (value == null) return null;
+    return el("div", { class: "scan-nutrition-metric" }, [
+      el("div", { class: "scan-nutrition-label", text: label }),
+      el("div", { class: isHigh ? "scan-nutrition-value warn" : "scan-nutrition-value", text: `${value} g` }),
+    ]);
+  };
+  const sodiumHigh = n.sodiumG100g != null && n.sodiumG100g >= SCAN_HIGH_SODIUM_G_100G;
+  const metrics = [
+    metric("Sodium", n.sodiumG100g, sodiumHigh),
+    metric("Sat fat", n.saturatedFatG100g, n.saturatedFatG100g != null && n.saturatedFatG100g >= SCAN_HIGH_SATURATED_FAT_G_100G),
+    metric("Sugars", n.sugarsG100g, n.sugarsG100g != null && n.sugarsG100g >= SCAN_HIGH_SUGARS_G_100G),
+    metric("Fiber", n.fiberG100g, false),
+  ].filter(Boolean);
+  if (metrics.length === 0) return null;
+
+  const note = "Per 100 g · Open Food Facts" + (sodiumHigh ? " · sodium runs high for the heart plan" : "");
+  return el("div", { class: "card scan-nutrition" }, [
+    el("div", { class: "scan-nutrition-row" }, metrics),
+    el("div", { class: "small muted scan-nutrition-note", text: note }),
+  ]);
 }
 
 function renderScanResult(list, dialog, result) {
@@ -7806,21 +7825,20 @@ function renderScanResult(list, dialog, result) {
   let chosenItemId = null;
   let chosenText = null;
 
-  const enrichment = renderOffEnrichment(result);
-  if (enrichment) wrap.append(enrichment);
+  const thumb = productThumbEl(result);
 
   if (result.match === "exact") {
-    wrap.append(
-      el("div", { class: "card" }, [
-        el("div", { class: "title", text: result.productName }),
-        el("div", { class: "meta", text: result.lastPriceCents != null ? `On your list · last time ${formatPriceCents(result.lastPriceCents)}` : "On your list" }),
-      ]),
-    );
+    const textStack = el("div", { class: "scan-tile-text" }, [
+      el("div", { class: "title", text: result.productName }),
+      el("div", { class: "meta", text: result.lastPriceCents != null ? `On your list · last time ${formatPriceCents(result.lastPriceCents)}` : "On your list" }),
+    ]);
+    wrap.append(el("div", { class: thumb ? "card row scan-tile-header" : "card" }, thumb ? [thumb, textStack] : [textStack]));
     chosenItemId = result.itemId;
     chosenText = result.itemId ? null : result.productName;
     if (result.lastPriceCents != null) priceInput.value = (result.lastPriceCents / 100).toFixed(2);
   } else if (result.match === "near") {
-    wrap.append(el("p", { class: "small", text: `"${result.productName}" — is this one of these?` }));
+    const intro = el("p", { class: "small scan-tile-text", text: `"${result.productName}" — is this one of these?` });
+    wrap.append(thumb ? el("div", { class: "row scan-tile-header" }, [thumb, intro]) : intro);
     for (const c of result.candidates) {
       wrap.append(
         el("button", {
@@ -7848,9 +7866,8 @@ function renderScanResult(list, dialog, result) {
       }),
     );
   } else {
-    wrap.append(
-      el("p", { class: "small", text: result.productName ? `"${result.productName}" isn't on your list.` : "Barcode not recognised." }),
-    );
+    const intro = el("p", { class: "small scan-tile-text", text: result.productName ? `"${result.productName}" isn't on your list.` : "Barcode not recognised." });
+    wrap.append(thumb ? el("div", { class: "row scan-tile-header" }, [thumb, intro]) : intro);
     wrap.append(
       el("button", {
         class: "tile",
@@ -7879,6 +7896,9 @@ function renderScanResult(list, dialog, result) {
       );
     }
   }
+
+  const nutritionStrip = renderNutritionStrip(result);
+  if (nutritionStrip) wrap.append(nutritionStrip);
 
   const saveError = el("p", { class: "small error" });
   const saveBtn = el("button", {
