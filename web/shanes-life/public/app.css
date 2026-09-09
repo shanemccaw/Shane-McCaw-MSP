@@ -926,29 +926,34 @@ pre.token {
 .meds-header-title { flex: 1; min-width: 0; text-align: center; font-size: 17px; font-weight: var(--weight-bold); }
 .meds-header-spacer { min-width: 88px; height: 40px; }
 
-/* The batch card's own header ("Morning" · "3 items") is a bigger role than a plain row title
-   -- the design's own literal 17/700, distinct from the general `.title` 15/600 base above. */
+/* The batch card's own header ("Morning" · "3 for you, 2 for the pets") is a bigger role than a
+   plain row title -- the design's own literal 17/700, distinct from the general `.title` 15/600
+   base above. */
 .med-batch-title { font-size: 17px; font-weight: var(--weight-bold); }
 
-.med-item-row { display: flex; align-items: center; gap: 0.6rem; font-size: 15px; }
-.med-item-row .med-dose { font-size: 0.8rem; color: hsl(var(--muted-foreground)); margin-left: auto; }
-
-/* Collapsed "later" batch card (Git #3269, design's own Evening treatment): no items, no
-   swipe -- just the batch name + a truncated summary line. opacity:.7 matches the design's own
-   literal value for a card that isn't asking for anything yet. */
-.med-batch-collapsed { opacity: 0.7; }
-.med-batch-summary { font-size: 13px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
-.med-item-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  background: rgba(96, 165, 250, 0.14);
-  color: #60a5fa;
+/* Git #3282, Shane's own direct correction (supersedes #3269): every batch is always ONE
+   compact line -- real organic-blob avatar (First Slice Prototype.dc.html's own literal blob
+   radius) + title + one summary line, never a full itemized breakdown. */
+.med-batch-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 58% 42% 55% 45% / 48% 56% 44% 52%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
+.med-batch-summary { font-size: 13px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
+/* The real "taken H:MM · items" line (Git #3282 item 4, applied uniformly to every batch now
+   instead of only the non-collapsed one) reads in the same success green the old itemized
+   card's slide-track/Undo pairing already used. */
+.med-batch-summary-done { color: hsl(var(--success)); }
+
+/* "Later" batch card (Git #3269, design's own Evening treatment; Git #3282 keeps this dimmed,
+   swipe-less state but drops the itemized rows it used to gate): just the compact avatar + one
+   summary line. opacity:.7 matches the design's own literal value for a card that isn't asking
+   for anything yet. */
+.med-batch-collapsed { opacity: 0.7; }
 
 .slide-track {
   position: relative;

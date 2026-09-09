@@ -2956,6 +2956,14 @@ function medsCritterSlot(batch) {
   return MEDS_CRITTER_SLOT[batch] || "meds";
 }
 
+// Git #3282: the per-batch avatar's own blob tint -- amber for a morning-ish batch (matches the
+// design's "Morning"/header icon rgba(251,191,36,.16)), periwinkle for a bedtime-ish one (matches
+// "Before bed"'s own rgba(165,180,252,.16)), amber as the general fallback tint too.
+const MEDS_AVATAR_TINT = { morning: "rgba(251,191,36,.16)", bedtime: "rgba(165,180,252,.16)", meds: "rgba(251,191,36,.16)" };
+function medsAvatarTint(batch) {
+  return MEDS_AVATAR_TINT[medsCritterSlot(batch)] || MEDS_AVATAR_TINT.meds;
+}
+
 // el("svg", ...) would call document.createElement, which builds an unnamespaced element that
 // cannot render SVG children -- these two icons need the real SVG namespace.
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -3027,9 +3035,6 @@ function attachSlideToTake(track, knob, onComplete) {
   knob.addEventListener("pointercancel", release);
 }
 
-// The pill icon (lucide "Pill") the design puts in a tinted circle on every real item row.
-const PILL_ICON_PATH = '<path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"></path><path d="m8.5 8.5 7 7"></path>';
-
 // Git #3269: which "part of the day" a batch's own free-text name reads as. Claude names
 // batches from natural language ("started X every morning"), so this matches by keyword rather
 // than a fixed enum of exact batch names -- real, confirmed necessary since Shane's own real
@@ -3044,59 +3049,61 @@ function medsDaypartRank(batchName) {
   return 3;
 }
 
-function medBatchCard(batchState, { collapsed = false } = {}) {
+// Git #3282, Shane's own direct correction (supersedes #3269's itemized-when-active
+// treatment): a batch's real item names, comma-truncated to at most 3 with a "+N more" tail --
+// the taken-state summary line ("Taken 7:12a · Morning Rx, Vitamin D3, Omega-3 · +1 more") and
+// the "later" collapsed summary both use this same real-data truncation, never inventing a name.
+function medBatchNamesSummary(items) {
+  const MAX_NAMES = 3;
+  const names = items.map((item) => item.name);
+  return names.length > MAX_NAMES
+    ? `${names.slice(0, MAX_NAMES).join(", ")}, +${names.length - MAX_NAMES} more`
+    : names.join(", ");
+}
+
+// The untaken-state summary ("3 for you, 2 for the pets" / "2 for you, Pepper's care item" --
+// First Slice Prototype.dc.html lines 712/731): real counts of Shane's own items vs. real
+// pet_care items (per-item `isPetCare` flag, set by getMedsToday()'s own pet_care merge). A
+// single pet item is named outright rather than counted -- "1 for the pets" reads worse than
+// just saying what it is when there's only one.
+function medBatchUntakenSummary(items) {
+  const yours = items.filter((item) => !item.isPetCare);
+  const pets = items.filter((item) => item.isPetCare);
+  const parts = [];
+  if (yours.length > 0) parts.push(`${yours.length} for you`);
+  if (pets.length === 1) parts.push(pets[0].name);
+  else if (pets.length > 1) parts.push(`${pets.length} for the pets`);
+  return parts.length > 0 ? parts.join(", ") : medBatchNamesSummary(items);
+}
+
+/**
+ * Git #3282: every batch, taken or not, is always ONE compact line -- Shane's own direct,
+ * explicit correction over #3269's "itemized while active" treatment, sourced from the newer
+ * `Shanes Life - First Slice Prototype.dc.html` (lines 726/731/734/2623), not the older
+ * `Shanes Life 07 - Meds.dc.html` #3269 built against. `later` (an untaken timed batch that
+ * isn't the one real "current" batch yet, or the always-itemized-never treatment retired
+ * entirely) keeps the same dimmed, swipe-less state as before -- only the itemized item rows
+ * are gone, replaced everywhere by the same compact line + real avatar this function now always
+ * returns.
+ */
+function medBatchCard(batchState, { later = false } = {}) {
   const { batch, items, takenToday, takenAt } = batchState;
   const label = batch.charAt(0).toUpperCase() + batch.slice(1);
-
-  if (collapsed) {
-    // Git #3269, design's real "later" treatment (Shanes Life 07 - Meds.dc.html's Evening
-    // card): a single summary line instead of a full itemized list, for any timed batch that
-    // isn't the one real "current" batch yet -- no items, no swipe, opacity .7 like the design's
-    // own literal value. Names truncate rather than trying to fit Shane's real up-to-6-item
-    // batches onto the design's own 1-2-item example line.
-    const MAX_NAMES = 3;
-    const names = items.map((item) => item.name);
-    const summary =
-      names.length > MAX_NAMES
-        ? `${names.slice(0, MAX_NAMES).join(" · ")} · +${names.length - MAX_NAMES} more`
-        : names.join(" · ");
-    return el("div", { class: "card med-batch-collapsed" }, [
-      el("div", { class: "spread" }, [
-        el("div", { class: "row" }, [
-          critterIcon(medsCritterSlot(batch), { size: 32 }),
-          el("div", {}, [
-            el("div", { class: "med-batch-title", text: label }),
-            el("div", { class: "med-batch-summary", text: summary }),
-          ]),
-        ]),
-        el("span", { class: "meta", text: "later" }),
-      ]),
-    ]);
-  }
-
-  const itemRows = items.map((item) =>
-    el("div", { class: "med-item-row" }, [
-      el("div", { class: "med-item-icon" }, [lineIcon(PILL_ICON_PATH, { size: 16 })]),
-      el("span", { style: "flex:1", text: item.name }),
-      item.doseNote ? el("span", { class: "med-dose", text: item.doseNote }) : null,
-    ]),
-  );
-
-  const card = el("div", { class: "card" }, [
-    el("div", { class: "spread" }, [
-      el("div", { class: "row" }, [critterIcon(medsCritterSlot(batch), { size: 32 }), el("span", { class: "med-batch-title", text: label })]),
-      el("span", { class: "meta", text: `${items.length} ${items.length === 1 ? "item" : "items"}` }),
-    ]),
-    ...itemRows,
+  const avatar = el("div", { class: "med-batch-avatar", style: `background:${medsAvatarTint(batch)}` }, [
+    critterIcon(medsCritterSlot(batch), { size: 32 }),
   ]);
 
   if (takenToday) {
-    card.append(
-      el("div", { class: "slide-track done" }, [
-        el("span", { text: `Taken ${when(takenAt)}` }),
-        el("div", { class: "slide-knob" }, [lineIcon('<path d="M20 6 9 17l-5-5"></path>')]),
-      ]),
-      el("div", { class: "row", style: "margin-top:.5rem" }, [
+    const summaryEl = el("div", {
+      class: "med-batch-summary med-batch-summary-done",
+      text: `Taken ${when(takenAt)} · ${medBatchNamesSummary(items)}`,
+    });
+    return el("div", { class: "card" }, [
+      el("div", { class: "spread" }, [
+        el("div", { class: "row" }, [
+          avatar,
+          el("div", { style: "min-width:0" }, [el("div", { class: "med-batch-title", text: label }), summaryEl]),
+        ]),
         el("button", {
           class: "ghost small",
           text: "Undo",
@@ -3111,9 +3118,25 @@ function medBatchCard(batchState, { collapsed = false } = {}) {
           },
         }),
       ]),
-    );
-    return card;
+    ]);
   }
+
+  const summary = medBatchUntakenSummary(items) + (later ? " · later" : "");
+  const card = el("div", { class: later ? "card med-batch-collapsed" : "card" }, [
+    el("div", { class: "row" }, [
+      avatar,
+      el("div", { style: "min-width:0" }, [
+        el("div", { class: "med-batch-title", text: label }),
+        el("div", { class: "med-batch-summary", text: summary }),
+      ]),
+    ]),
+  ]);
+
+  // "Later" batches keep #3269's real dimmed, swipe-less state -- you can't take a batch that
+  // isn't due yet. Every other untaken batch (the one real "current" timed batch, or any
+  // untimed/"as needed" batch, which has no "later" state to collapse into) keeps its real
+  // slide-to-take control, unchanged from before -- only the itemized rows above it are gone.
+  if (later) return card;
 
   const track = el("div", { class: "slide-track" }, [el("span", { text: "Slide when taken" })]);
   const knob = el("div", { class: "slide-knob" }, [
@@ -3243,13 +3266,16 @@ async function viewMeds(view) {
       ),
     );
   } else {
-    // Git #3269: chronological order (morning -> midday -> evening/night -> untimed), and only
-    // the one real "current" batch -- the earliest untaken timed batch -- gets the design's full
-    // itemized+swipe treatment. Every other untaken timed batch collapses to the design's
-    // one-line "later" summary; untimed batches (e.g. "as needed") have no "later" state to
-    // collapse into, so they always stay itemized. An already-taken batch keeps its existing
-    // itemized + Undo card regardless of rank -- the design shows no "later, but taken" state,
-    // and there's real value in seeing what was actually taken.
+    // Git #3269: chronological order (morning -> midday -> evening/night -> untimed). Git #3282,
+    // Shane's own direct correction: every batch is now the same real compact-line card
+    // (medBatchCard no longer itemizes the one real "current" batch) -- only whether the
+    // slide-to-take control shows still depends on rank/current the same way it always did. Only
+    // the one real "current" batch -- the earliest untaken timed batch -- (or an untimed batch,
+    // e.g. "as needed", which has no "later" state to collapse into) gets the real slide-to-take
+    // control; every other untaken timed batch stays dimmed with no swipe ("later"). An
+    // already-taken batch keeps its existing compact + Undo treatment regardless of rank -- the
+    // design shows no "later, but taken" state, and there's real value in seeing what was
+    // actually taken.
     const ordered = batches
       .map((batchState, i) => ({ batchState, rank: medsDaypartRank(batchState.batch), i }))
       .sort((a, b) => a.rank - b.rank || a.i - b.i);
@@ -3257,10 +3283,21 @@ async function viewMeds(view) {
 
     const list = el("section", { class: "section" });
     for (const { batchState, rank } of ordered) {
-      const collapsed = rank < 3 && !batchState.takenToday && batchState !== current?.batchState;
-      list.append(medBatchCard(batchState, { collapsed }));
+      const later = rank < 3 && !batchState.takenToday && batchState !== current?.batchState;
+      list.append(medBatchCard(batchState, { later }));
     }
     view.append(list);
+
+    // Git #3282: the design's own real footer copy, verbatim (First Slice Prototype.dc.html
+    // line 734) -- explains the real batching model (two notifications a day, never per-pill,
+    // pet care riding the same two batches, none of it counting against the 3 nudges).
+    view.append(
+      el("p", {
+        class: "muted small",
+        style: "padding:0 4px",
+        text: "Two notifications a day, one per batch: morning and before bed. Never one per pill. Feeding and pet meds ride the same two batches. None of it counts against the 3 nudges.",
+      }),
+    );
   }
 
   view.append(refillsSection(refills));
