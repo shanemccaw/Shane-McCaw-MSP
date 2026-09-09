@@ -276,6 +276,14 @@ check("matchRule: grocery add, gated behind an explicit shopping verb", () => {
   assert.equal(matchRule("add milk to the list") == null, true);
 });
 
+check("matchRule: queue for the next run (Git #3300)", () => {
+  const m = matchRule("take the drill to the rental");
+  assert.equal(m.rule, "queue_take");
+  assert.equal(m.groups.name, "drill");
+  assert.equal(m.groups.takeForHouse, "rental");
+  assert.equal(matchRule("bring HVAC filter to Rental").rule, "queue_take");
+});
+
 check("matchRule: genuinely ambiguous / unrecognised text matches nothing", () => {
   assert.equal(matchRule("call mom about the thing tomorrow maybe"), null);
   assert.equal(matchRule(""), null);

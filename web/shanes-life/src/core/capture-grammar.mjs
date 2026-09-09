@@ -904,6 +904,24 @@ const RULES = [
       return { message: `Added ${items.join(", ")} to the run.` };
     },
   },
+
+  // 30. Queue for the next run (Git #3300: "Next [house] run · take" -- the Things room's own
+  //     checklist of what to bring, distinct from thing_location above and from the
+  //     Tesla-triggered Heading Out list, #3158). "take/bring X to <house>" queues a real thing
+  //     already on file (or files a new one, defaulting its home to "Home" per the design's own
+  //     "supplies default to Home").
+  {
+    name: "queue_take",
+    match(text) {
+      const m = text.match(/^(?:take|bring)\s+(?:the\s+)?(.+?)\s+to\s+(?:the\s+)?(.+)$/i);
+      return m ? { name: m[1].trim(), takeForHouse: m[2].trim() } : null;
+    },
+    async run(userId, { name, takeForHouse }) {
+      if (!name || !takeForHouse) return FALLBACK;
+      const row = await things.queueForTake(userId, { name, takeForHouse });
+      return { message: `${row.name} queued for the next ${row.take_for_house} run.`, thingId: row.id };
+    },
+  },
 ];
 
 const RULES_BY_NAME = new Map(RULES.map((r) => [r.name, r]));

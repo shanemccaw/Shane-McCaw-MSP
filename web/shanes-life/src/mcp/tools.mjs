@@ -2122,6 +2122,30 @@ export const TOOLS = [
   },
 
   {
+    name: "queue_take",
+    title: "Queue a thing for the next run to a house (\"Next [house] run · Take\")",
+    description:
+      "The capture grammar's real entry point for 'take the drill to the rental' / 'bring the HVAC filter to the rental' (Git #3300) -- queues a real thing already on file (or files a new one, defaulting its home to 'Home') for the Things room's own 'Next [house] run · Take' checklist. Distinct from the Tesla-triggered Heading Out list (#3158): this is what to bring, decided ahead of the run, not the live departure list. Saying it again just re-queues the same row (upsert on name), same as set_thing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "e.g. 'Printer paper', 'HVAC filter'." },
+        takeForHouse: { type: "string", description: "The destination house, e.g. 'Rental'. Required." },
+        quantity: { type: "integer", description: "e.g. 2 for 'Printer paper x2'. Optional." },
+        isGrocery: { type: "boolean", description: "True for an item split off a shopping run at capture time (the design's teal 'groceries' badge)." },
+        house: { type: "string", description: "Where this thing lives today, if it isn't on file yet. Defaults to 'Home' -- 'supplies default to Home' per the design." },
+      },
+      required: ["name", "takeForHouse"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await things.queueForTake(ctx.user.id, args);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "thing.take.queue", entityId: row.id, detail: { name: row.name, take_for_house: row.take_for_house, quantity: row.quantity } });
+      return row;
+    },
+  },
+
+  {
     name: "set_contact",
     title: "Save a real 'who fixed what' entry",
     description:

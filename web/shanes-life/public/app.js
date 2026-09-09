@@ -2004,8 +2004,55 @@ function contactRow(c) {
 // room-tint table, "Things".
 const THINGS_TINT = "251,146,60";
 
+function thingTakeRow(house, item) {
+  const box = el("div", {
+    class: `shop-check${item.take_done ? " done" : ""}`,
+    role: "checkbox",
+    tabindex: "0",
+    "aria-checked": item.take_done ? "true" : "false",
+    "aria-label": item.name,
+    html: item.take_done ? SHOP_CHECK_ICON : "",
+  });
+  const nameText = item.quantity && item.quantity > 1 ? `${item.name} ×${item.quantity}` : item.name;
+  const nameEl = el("div", { class: `shop-item-name${item.take_done ? " done" : ""}`, text: nameText });
+  const subLine = [item.house, item.place].filter(Boolean).join(" · ") || null;
+  const subEl = subLine ? el("div", { class: "shop-item-sub", text: subLine }) : null;
+  const groceryBadge = item.is_grocery ? el("span", { class: "chip teal", text: "groceries" }) : null;
+
+  const toggleDone = async () => {
+    if (box.classList.contains("pending")) return;
+    box.classList.add("pending");
+    try {
+      const updated = await api(`/api/things/${item.id}/take`, {
+        method: "PATCH",
+        body: JSON.stringify({ done: !item.take_done }),
+      });
+      item.take_done = updated.take_done;
+      box.classList.toggle("done", item.take_done);
+      box.innerHTML = item.take_done ? SHOP_CHECK_ICON : "";
+      box.setAttribute("aria-checked", item.take_done ? "true" : "false");
+      nameEl.classList.toggle("done", item.take_done);
+    } finally {
+      box.classList.remove("pending");
+    }
+  };
+  box.addEventListener("click", toggleDone);
+  box.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleDone();
+    }
+  });
+  nameEl.addEventListener("click", toggleDone);
+
+  return el("div", { class: "date-row" }, [
+    box,
+    el("div", { class: "body" }, [nameEl, subEl].filter(Boolean).concat(groceryBadge ? [groceryBadge] : [])),
+  ]);
+}
+
 async function viewThings(view) {
-  const [{ items: things, houses }, { items: contacts }, { entities }, { categories }] = await Promise.all([
+  const [{ items: things, houses, take }, { items: contacts }, { entities }, { categories }] = await Promise.all([
     api("/api/things"),
     api("/api/contacts"),
     api("/api/entities?limit=200"),
@@ -2040,6 +2087,32 @@ async function viewThings(view) {
     for (const t of things.slice(0, 8)) recentSection.append(thingRow(t));
   }
   view.append(recentSection);
+
+  // "Next [house] run · Take" (Git #3300) -- a real checklist of things queued for the next run
+  // to a house, distinct from the "Lives at <house>" chips below and from the Tesla-triggered
+  // Heading Out list (#3158). `take` groups real things.mjs rows by destination house; only the
+  // first real group renders, matching the design's own single-run widget. "All set" mirrors
+  // Heading Out's own real run-complete action: checked items really move to that house.
+  if (take.length > 0) {
+    const run = take[0];
+    const takeSection = el("section", { class: "section" }, [el("h2", { text: `Next ${run.house} run · Take` })]);
+    for (const item of run.items) takeSection.append(thingTakeRow(run.house, item));
+    if (run.items.some((i) => i.take_done)) {
+      takeSection.append(
+        el("button", {
+          type: "button",
+          class: "ghost small",
+          text: "All set",
+          onClick: async (event) => {
+            event.currentTarget.disabled = true;
+            await api(`/api/things/take/${encodeURIComponent(run.house)}/clear`, { method: "POST" });
+            render();
+          },
+        }),
+      );
+    }
+    view.append(takeSection);
+  }
 
   if (houses.length > 0) {
     const grouped = el("section", { class: "section" }, [el("h2", { text: "By house" })]);

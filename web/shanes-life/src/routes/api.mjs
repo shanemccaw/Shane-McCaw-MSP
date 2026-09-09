@@ -937,8 +937,42 @@ export function buildApiRouter() {
     const house = ctx.url.searchParams.get("house");
     const q = ctx.url.searchParams.get("q");
     if (q) return sendJson(res, 200, { items: await things.searchThings(user.id, q) });
-    const [items, houses] = await Promise.all([things.listThings(user.id, { house }), things.listHouses(user.id)]);
-    return sendJson(res, 200, { items, houses });
+    const [items, houses, take] = await Promise.all([
+      things.listThings(user.id, { house }),
+      things.listHouses(user.id),
+      things.listTakeChecklist(user.id),
+    ]);
+    return sendJson(res, 200, { items, houses, take });
+  });
+
+  // "Next [house] run · Take" checklist (Git #3300): queue a real thing on file for the next
+  // real run to a house, distinct from the Tesla-triggered "Heading Out" list (#3158).
+  router.post("/api/things/take", async (req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await things.queueForTake(user.id, body);
+    await audit.record({ userId: user.id, actor: "web", action: "thing.take.queue", entityId: row.id, detail: { name: row.name, take_for_house: row.take_for_house, quantity: row.quantity } });
+    return sendJson(res, 200, row);
+  });
+
+  // Check/uncheck one queued item for this run.
+  router.patch("/api/things/:id/take", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    if (body.done === undefined) throw badRequest("done is required");
+    const row = await things.setTakeDone(user.id, params.id, body.done);
+    await audit.record({ userId: user.id, actor: "web", action: "thing.take.check", entityId: row.id, detail: { done: row.take_done } });
+    return sendJson(res, 200, row);
+  });
+
+  // The run actually happened: every checked-off item for this house now really lives there,
+  // and the queue clears -- same real-state-change Heading Out's own "All set" applies to that
+  // separate list.
+  router.post("/api/things/take/:house/clear", async (_req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const moved = await things.clearTakeRun(user.id, params.house);
+    await audit.record({ userId: user.id, actor: "web", action: "thing.take.clear", detail: { house: params.house, moved } });
+    return sendJson(res, 200, { ok: true, moved });
   });
 
   // "where's the drill?" -- the app's own real, deterministic search (no AI call, per contract
