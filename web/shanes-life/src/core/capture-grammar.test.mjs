@@ -392,27 +392,47 @@ check("matchRule: genuinely ambiguous / unrecognised text matches nothing", () =
 });
 
 // ---------------------------------------------------------------------------------------------
-// Real pantry tracking (Git #3308) -- absolute "I have", additive "bought", depleting "used
-// the last of".
+// Real pantry tracking (Git #3308) -- absolute "I have", additive "bought", depleting "out
+// of"/"no more"/"used the last of" (Git #3316 adds the latter two plus an optional real place
+// suffix on all three rules).
 // ---------------------------------------------------------------------------------------------
 
 check("matchRule: pantry_have, an absolute real quantity", () => {
   const m = matchRule("I have 2 lbs of chicken breasts");
   assert.equal(m.rule, "pantry_have");
-  assert.deepEqual(m.groups, { quantity: 2, unit: "lbs", name: "chicken breasts" });
+  assert.deepEqual(m.groups, { quantity: 2, unit: "lbs", name: "chicken breasts", house: null });
+});
+
+check("matchRule: pantry_have, a real place suffix sets house", () => {
+  const m = matchRule("I have 2 lbs of chicken breasts at the rental");
+  assert.equal(m.rule, "pantry_have");
+  assert.deepEqual(m.groups, { quantity: 2, unit: "lbs", name: "chicken breasts", house: "Rental" });
 });
 
 check("matchRule: pantry_bought, an additive real restock", () => {
   const m = matchRule("bought 3 cans of diced tomatoes");
   assert.equal(m.rule, "pantry_bought");
-  assert.deepEqual(m.groups, { quantity: 3, unit: "cans", name: "diced tomatoes" });
+  assert.deepEqual(m.groups, { quantity: 3, unit: "cans", name: "diced tomatoes", house: null });
 });
 
-check("matchRule: pantry_used_last, real depletion", () => {
-  assert.equal(matchRule("used the last of the rosemary").rule, "pantry_used_last");
-  assert.deepEqual(matchRule("used the last of the rosemary").groups, { name: "rosemary" });
+check("matchRule: pantry_bought, a real place suffix sets house", () => {
+  const m = matchRule("bought 3 cans of diced tomatoes at home");
+  assert.equal(m.rule, "pantry_bought");
+  assert.deepEqual(m.groups, { quantity: 3, unit: "cans", name: "diced tomatoes", house: "Home" });
+});
+
+check("matchRule: pantry_out, real depletion -- 'used the last of', 'out of', 'no more'", () => {
+  assert.equal(matchRule("used the last of the rosemary").rule, "pantry_out");
+  assert.deepEqual(matchRule("used the last of the rosemary").groups, { name: "rosemary", house: null });
   // "the"/"my" are both optional -- "used the last of rosemary" (no article) still resolves.
-  assert.deepEqual(matchRule("used the last of rosemary").groups, { name: "rosemary" });
+  assert.deepEqual(matchRule("used the last of rosemary").groups, { name: "rosemary", house: null });
+  assert.deepEqual(matchRule("out of milk").groups, { name: "milk", house: null });
+  assert.deepEqual(matchRule("no more paprika").groups, { name: "paprika", house: null });
+});
+
+check("matchRule: pantry_out, a real place suffix sets house", () => {
+  assert.deepEqual(matchRule("out of milk at the rental").groups, { name: "milk", house: "Rental" });
+  assert.deepEqual(matchRule("no more eggs at home").groups, { name: "eggs", house: "Home" });
 });
 
 check("matchRule: pantry_have requires a real number and unit word before 'of' -- a bare 'I have X' is NOT claimed here (false-positive guard: 'I have 2 hours'/'I have 2 kids' fall through untouched)", () => {

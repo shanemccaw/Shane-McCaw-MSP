@@ -2158,20 +2158,20 @@ export const TOOLS = [
     },
   },
 
-  // -- pantry (Git #3308) ------------------------------------------------------
+  // -- pantry (Git #3308, rebuilt as its own dedicated room by Git #3316) ------
   //
   // Real reversal of the earlier "that's not even my area" cut -- contract.md Section 5's
   // 2026-09-09 real, further superseding update. The capture grammar's real entry points for "I
   // have 2 lbs of chicken breasts" (absolute), "bought 3 cans of diced tomatoes" (additive), and
-  // "used the last of the rosemary" (depleting) -- see capture-grammar.mjs's pantry_have /
-  // pantry_bought / pantry_used_last rules, which call these same three core/pantry.mjs
-  // functions. No separate write path exists for any of the three.
+  // "out of the rosemary" / "used the last of the rosemary" (depleting, joins the run) -- see
+  // capture-grammar.mjs's pantry_have / pantry_bought / pantry_out rules, which call these same
+  // core/pantry.mjs functions. No separate write path exists for any of them.
 
   {
     name: "set_pantry_item",
     title: "State a real pantry quantity (absolute or additive)",
     description:
-      "The capture grammar's real entry point for 'I have 2 lbs of chicken breasts' (mode 'set', an absolute real count) and 'bought 3 cans of diced tomatoes' (mode 'add', a real delta on top of whatever's already on file). Saying an absolute quantity again CORRECTS it in place (upsert on name+house) rather than creating a duplicate -- no confirmation needed, per contract Section 8's 'trust stated facts immediately.' Pass house for a real household that tracks its own pantry separately (H1 / H2 / the rental / ...); omit it for a pantry item with no house distinction. unit is real, free text as Shane states it ('lbs', 'cans', 'jar', 'bunch') -- not a locked enum. category defaults to the same fixed grocery-category set (Produce/Meat/Snacks/Bakery/Pantry/Frozen/Dairy/Other) Shopping already groups by, auto-assigned from name when not stated.",
+      "The capture grammar's real entry point for 'I have 2 lbs of chicken breasts' (mode 'set', an absolute real count) and 'bought 3 cans of diced tomatoes' (mode 'add', a real delta on top of whatever's already on file). Saying an absolute quantity again CORRECTS it in place (upsert on name+house) rather than creating a duplicate -- no confirmation needed, per contract Section 8's 'trust stated facts immediately.' Pass house for a real household that tracks its own pantry separately (H1 / H2 / the rental / ...); omit it for a pantry item with no house distinction. unit is real, free text as Shane states it ('lbs', 'cans', 'jar', 'bunch') -- not a locked enum. category defaults to the same fixed grocery-category set (Produce/Meat/Snacks/Bakery/Pantry/Frozen/Dairy/Other) Shopping already groups by, auto-assigned from name when not stated. lowAt is a real, optional 'running low' override (the Pantry room's own real threshold defaults to 0 for a plain count, 1 for a level item -- pass this only when Shane states a different real one, e.g. 'let me know when we're down to 2 chicken breasts').",
     inputSchema: {
       type: "object",
       properties: {
@@ -2181,6 +2181,7 @@ export const TOOLS = [
         unit: { type: "string", description: "e.g. 'lbs', 'cans', 'jar', 'bunch'. Real, free text -- not a locked enum." },
         category: { type: "string", description: "Optional override; defaults to the fixed Shopping grocery-category set, auto-assigned from name." },
         house: { type: "string", description: "The hub/spoke label, e.g. 'Home', 'Rental'. Optional." },
+        lowAt: { type: "number", description: "Optional real 'running low' threshold override -- defaults to 0 for a plain count, 1 for a level ('lvl') item when omitted." },
       },
       required: ["name", "quantity"],
       additionalProperties: false,
@@ -2188,8 +2189,8 @@ export const TOOLS = [
     async handler(args, ctx) {
       const row =
         args.mode === "add"
-          ? await pantry.adjustPantryQuantity(ctx.user.id, { name: args.name, delta: args.quantity, unit: args.unit, category: args.category, house: args.house })
-          : await pantry.setPantryQuantity(ctx.user.id, { name: args.name, quantity: args.quantity, unit: args.unit, category: args.category, house: args.house });
+          ? await pantry.adjustPantryQuantity(ctx.user.id, { name: args.name, delta: args.quantity, unit: args.unit, category: args.category, house: args.house, lowAt: args.lowAt })
+          : await pantry.setPantryQuantity(ctx.user.id, { name: args.name, quantity: args.quantity, unit: args.unit, category: args.category, house: args.house, lowAt: args.lowAt });
       await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "pantry_item.record", entityId: row.id, detail: { name: row.name, quantity: row.quantity, unit: row.unit, house: row.house } });
       return row;
     },

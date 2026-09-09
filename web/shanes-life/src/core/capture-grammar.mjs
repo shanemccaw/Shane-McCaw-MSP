@@ -70,6 +70,7 @@ import * as pets from "./pets.mjs";
 import * as places from "./places.mjs";
 import * as prices from "./prices.mjs";
 import * as pushSubscriptions from "./push-subscriptions.mjs";
+import { categoryOf } from "./shopping-order.mjs";
 import * as storeAisles from "./store-aisles.mjs";
 import * as tesla from "./tesla.mjs";
 import { TeslaError } from "./tesla.mjs";
@@ -1138,48 +1139,83 @@ const RULES = [
   //     unit word before "of" (the app's own real spoken shape for this) rather than a bare "I
   //     have X" -- that broader form risks false positives ("I have 2 hours", "I have 2 kids")
   //     nowhere near a real pantry statement, so it's deliberately left unmatched here (falls
-  //     through to the inbox, same as any other genuinely ambiguous capture).
+  //     through to the inbox, same as any other genuinely ambiguous capture). #3316 adds an
+  //     optional trailing place suffix ("at the rental"/"at home") -- Room 14's own Home/Rental
+  //     split needs a real way to say which house a capture belongs to; omitted, house stays null
+  //     (the same "no house stated" bucket this always resolved to before).
   {
     name: "pantry_have",
     match(text) {
-      const m = text.match(/^i have\s+(\d+(?:\.\d+)?)\s+([a-z]+)\s+of\s+(.+)$/i);
-      return m ? { quantity: Number(m[1]), unit: m[2].trim(), name: m[3].trim() } : null;
+      const m = text.match(/^i have\s+(\d+(?:\.\d+)?)\s+([a-z]+)\s+of\s+(.+?)(?:\s+(?:at|in)\s+(?:the\s+)?(rental|home))?$/i);
+      return m ? { quantity: Number(m[1]), unit: m[2].trim(), name: m[3].trim(), house: m[4] ? cap1(m[4].toLowerCase()) : null } : null;
     },
-    async run(userId, { quantity, unit, name }) {
-      const row = await pantry.setPantryQuantity(userId, { name, quantity, unit });
-      return { message: `${row.name}: ${row.quantity}${row.unit ? ` ${row.unit}` : ""} on hand.`, pantryItemId: row.id };
+    async run(userId, { quantity, unit, name, house }) {
+      const row = await pantry.setPantryQuantity(userId, { name, quantity, unit, house });
+      const placeNote = row.house ? ` at ${pantry.placeName(row.house)}` : "";
+      return { message: `${row.name}: ${row.quantity}${row.unit ? ` ${row.unit}` : ""} on hand${placeNote}.`, pantryItemId: row.id };
     },
   },
 
   // 34. Real pantry restock (#3308's own literal example: "bought 3 cans of diced tomatoes") --
   //     adds a real delta on top of whatever's already on file, rather than replacing it (the
   //     real distinction from pantry_have above: "bought" is additive, "I have" is a fresh count).
+  //     Same #3316 place-suffix addition as pantry_have above.
   {
     name: "pantry_bought",
     match(text) {
-      const m = text.match(/^bought\s+(\d+(?:\.\d+)?)\s+([a-z]+)\s+of\s+(.+)$/i);
-      return m ? { quantity: Number(m[1]), unit: m[2].trim(), name: m[3].trim() } : null;
+      const m = text.match(/^bought\s+(\d+(?:\.\d+)?)\s+([a-z]+)\s+of\s+(.+?)(?:\s+(?:at|in)\s+(?:the\s+)?(rental|home))?$/i);
+      return m ? { quantity: Number(m[1]), unit: m[2].trim(), name: m[3].trim(), house: m[4] ? cap1(m[4].toLowerCase()) : null } : null;
     },
-    async run(userId, { quantity, unit, name }) {
-      const row = await pantry.adjustPantryQuantity(userId, { name, delta: quantity, unit });
-      return { message: `${row.name}: ${row.quantity}${row.unit ? ` ${row.unit}` : ""} now on hand.`, pantryItemId: row.id };
+    async run(userId, { quantity, unit, name, house }) {
+      const row = await pantry.adjustPantryQuantity(userId, { name, delta: quantity, unit, house });
+      const placeNote = row.house ? ` at ${pantry.placeName(row.house)}` : "";
+      return { message: `${row.name}: ${row.quantity}${row.unit ? ` ${row.unit}` : ""} now on hand${placeNote}.`, pantryItemId: row.id };
     },
   },
 
-  // 35. Real pantry depletion (#3308's own literal example: "used the last of the rosemary") --
-  //     zeroes an already-known real item. Genuinely nothing on file for this name is a real
-  //     fallback, not silently discarded -- "used the last of X" naming something never tracked
-  //     is still worth Claude seeing in the inbox (it may be a genuinely new real item to file).
+  // 35. Real pantry depletion (#3308's own literal example: "used the last of the rosemary";
+  //     #3316 scope item 5 adds "out of X" and "no more X" as the same real action, plus an
+  //     optional place suffix) -- zeroes an already-known real item AND joins the shopping run,
+  //     if it isn't already on it (design's own real behavior: a real "we're out" statement is
+  //     also a real "put it on the list" statement, not two separate captures). Genuinely nothing
+  //     on file for this name is no longer a bare fallback to the inbox (#3316's own stated fix
+  //     for the prior behavior) -- a grocery-shaped name still joins the run directly (the design's
+  //     own "unknown but grocery-ish names just join the run"); only a name categoryOf can't place
+  //     anywhere real falls through to the inbox, same as before.
   {
-    name: "pantry_used_last",
+    name: "pantry_out",
     match(text) {
-      const m = text.match(/^used\s+the\s+last\s+of\s+(?:the\s+|my\s+)?(.+)$/i);
-      return m ? { name: m[1].trim() } : null;
+      const m = text.match(/^(?:out of|no more|used\s+the\s+last\s+of)\s+(?:the\s+|my\s+|some\s+|any\s+)?(.+?)(?:\s+(?:at|in)\s+(?:the\s+)?(rental|home))?[.!]*$/i);
+      if (!m) return null;
+      const name = m[1].trim();
+      if (!name) return null;
+      return { name, house: m[2] ? cap1(m[2].toLowerCase()) : null };
     },
-    async run(userId, { name }) {
-      const row = await pantry.depletePantryItem(userId, name, null);
-      if (!row) return FALLBACK;
-      return { message: `${row.name} marked used up.`, pantryItemId: row.id };
+    async run(userId, { name, house }) {
+      const existing = await pantry.depletePantryItem(userId, name, house);
+      const list = await lists.getOrCreateShoppingList(userId);
+      const detail = await lists.getListDetail(userId, list.id);
+
+      if (existing) {
+        const already = pantry.isPantryItemOnRun(existing.name, detail.items);
+        if (!already) await lists.addListItems(userId, list.id, [existing.name]);
+        const placeNote = existing.house ? ` at ${pantry.placeName(existing.house)}` : "";
+        return {
+          message: `${existing.name}${placeNote} · out. ${already ? "Already on the run." : "Added to the run."}`,
+          pantryItemId: existing.id,
+        };
+      }
+
+      // Nothing on file for this name -- still worth a real "onto the run" action when the name
+      // itself is grocery-shaped (shopping-order.mjs's own categoryOf places it somewhere real),
+      // rather than silently losing a real "we're out of X" statement to the inbox.
+      const clean = name.replace(/^(the|some|any)\s+/i, "").trim();
+      if (!clean || categoryOf(clean) === "Other") return FALLBACK;
+      const already = pantry.isPantryItemOnRun(clean, detail.items);
+      if (!already) await lists.addListItems(userId, list.id, [clean]);
+      return {
+        message: `${cap1(clean)} · ${already ? "already on the run." : "on the run."} Not in the Pantry yet -- say how much when you buy it and it lands there.`,
+      };
     },
   },
 

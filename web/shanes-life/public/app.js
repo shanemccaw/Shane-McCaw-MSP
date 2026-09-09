@@ -1154,12 +1154,11 @@ $("#capture").addEventListener("submit", async (event) => {
     // memory, rather than the generic /api/captures triage a bare statement gets everywhere
     // else (which only ever surfaces on Inbox/Today, not live in the room that said it).
     //
-    // Git #3308: gated to the Shopping LIST tab specifically, not the Pantry tab that now shares
-    // this same route -- without this, "I have 2 lbs of chicken breasts" typed while on Pantry
-    // would get treated as a literal shopping-list item ("I have 2 lbs of chicken breasts") added
-    // verbatim to the run, instead of reaching the real deterministic pantry_have/pantry_bought/
-    // pantry_used_last capture-grammar rules via the generic /api/captures path below.
-    if (state.route === "shopping" && (state.shoppingTab || "list") === "list" && lines.length && !state.attachment) {
+    // Git #3316: Pantry is its own real room/route now (was a Shopping tab under #3308), so this
+    // gate is a plain route check again -- a statement typed on the Pantry room already reaches
+    // the generic /api/captures path below, and its own deterministic pantry_have/pantry_bought/
+    // pantry_out rules, without ever passing through this Shopping-only shortcut.
+    if (state.route === "shopping" && lines.length && !state.attachment) {
       for (const line of lines) await submitShoppingCapture(line);
       captureText.value = "";
       captureText.style.height = "auto";
@@ -1840,6 +1839,12 @@ const ROOM_DEFS = [
   // it -- distinct from every other room's warmer palette, same reasoning Vault's slate gets.
   { key: "tesla", route: "#/tesla", title: "Tesla", critterSlot: "heading", furniture: "r-tesla", tint: "34,211,238" },
   { key: "shopping", route: "#/shopping", title: "Shopping", critterSlot: "shop", furniture: "r-shop", tint: "96,165,250" },
+  // Git #3316: Pantry, rebuilt as its own dedicated 14th room -- corrects #3308's "tab inside
+  // Shopping" call (a real, reasonable call at the time, made because no critter/furniture assets
+  // existed for a standalone room; Shane's own stated direction was always a dedicated room, and
+  // the assets -- critter pair 1y, r-pantry furniture -- now exist). Lime tint per the design's
+  // own "Rooms -- the house" spec.
+  { key: "pantry", route: "#/pantry", title: "Pantry", critterSlot: "pantry", furniture: "r-pantry", tint: "163,230,53" },
   { key: "recipes", route: "#/recipes", title: "Recipes", critterSlot: "dinner", furniture: "r-recipes", tint: "45,212,191" },
   { key: "things", route: "#/things", title: "Things", critterSlot: "things", furniture: "r-things", tint: "251,146,60" },
   { key: "lists", route: "#/lists", title: "Lists", critterSlot: "lists", furniture: "r-lists", tint: "165,180,252" },
@@ -7627,6 +7632,8 @@ const SHOP_CHEVRON_RIGHT_ICON =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>';
 const SHOP_CHECK_ICON =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>';
+const PANTRY_SEARCH_ICON =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>';
 
 /**
  * Per-store price history (Git #3112): the item's real history, expanded inline rather than
@@ -8387,7 +8394,6 @@ async function submitShoppingCapture(text) {
 
 async function viewShopping(view) {
   const order = state.shoppingOrder || "flat";
-  const roomTabKey = state.shoppingTab || "list";
   const [list, storesResult] = await Promise.all([api(`/api/shopping?order=${order}`), api("/api/stores")]);
   const remaining = list.items.filter((i) => !i.done).length;
   state.shoppingList = list; // read by the universal capture bar's shopping-room dispatch below.
@@ -8416,30 +8422,6 @@ async function viewShopping(view) {
     ]),
   );
   view.append(el("div", { class: "shop-header-bar" }));
-
-  // Shopping list / Pantry (Git #3308) -- real, distinct data sources sharing this one room.
-  // #3308's own scope item 5 asked to "decide and state which fits better" between a new
-  // top-level room and a tab within Shopping or Recipes: this is a tab within Shopping -- a new
-  // ROOM_DEFS room needs its own real critter/furniture SVG assets this build has no way to
-  // produce, and Pantry shares the exact same real grocery-category vocabulary (CAT_ORDER) and
-  // everyday "what do I still need to buy vs. what do I already have" adjacency Shopping already
-  // owns, more directly than Recipes does.
-  const roomTab = (key, label) =>
-    el("button", {
-      type: "button",
-      class: `shop-segment-btn${roomTabKey === key ? " active" : ""}`,
-      text: label,
-      onClick: () => {
-        state.shoppingTab = key;
-        render();
-      },
-    });
-  view.append(el("div", { class: "shop-segment" }, [roomTab("list", "Shopping list"), roomTab("pantry", "Pantry")]));
-
-  if (roomTabKey === "pantry") {
-    await renderPantryTab(view);
-    return;
-  }
 
   // Flat / Category / Best path (Git #3108) -- the design's own real segmented control.
   const segment = (mode, label) =>
@@ -8574,81 +8556,437 @@ async function viewShopping(view) {
   attachRoomWatermark(view, "shop");
 }
 
-// Pantry tab within the Shopping room (Git #3308) -- real inventory Shane actually has at home,
-// grouped by the same CAT_ORDER grocery categories Shopping's own Category view already groups
-// by (core/pantry.mjs's groupPantryByCategory, computed server-side so this file doesn't need
-// its own duplicate copy of that fixed real category order). No dedicated add/edit/delete form --
-// same "no forms, anywhere, ever" idiom Things already established (Git #3181): say "I have 2 lbs
-// of chicken breasts" / "bought 3 cans of diced tomatoes" / "used the last of the rosemary" in
-// the universal capture box, or Claude files it via set_pantry_item over MCP.
-async function renderPantryTab(view) {
-  const pantryResult = await api("/api/pantry");
-  state.pantryItems = pantryResult.items; // read by the universal capture bar, same shape as state.shoppingList above.
+// ---------------------------------------------------------------------------
+// Pantry -- its own dedicated 14th room (Git #3316, corrects #3308's "tab inside Shopping" call:
+// a real, reasonable call at the time, made because no critter/furniture assets existed for a
+// standalone room; Shane's own stated direction was always a dedicated room, and the assets --
+// critter pair 1y, r-pantry furniture -- now exist). Real inventory Shane actually has at home,
+// split Home / the Rental, grouped into the design's own 8 real zones (core/pantry.mjs's zoneOf,
+// computed server-side per item -- this file doesn't duplicate that classifier, only the
+// presentation constants below). No dedicated add/edit form -- same "no forms, anywhere, ever"
+// idiom Things already established (Git #3181): say "I have 2 lbs of chicken breasts" / "bought
+// 3 cans of diced tomatoes" / "out of the rosemary" in the universal capture box, tap the Zone
+// screen's own real -/+ buttons (a direct write, not a form), or Claude files it via
+// set_pantry_item over MCP.
+// ---------------------------------------------------------------------------
 
-  if (pantryResult.items.length === 0) {
-    view.append(
-      empty("Nothing in the pantry yet.", "Say \"I have 2 lbs of chicken breasts\" in the capture box and Claude files it here.", "shop"),
+const PANTRY_TINT = "163,230,53"; // ROOM_DEFS' own real tint for pantry.
+
+// The design's own 8 real zones, in real display order, and their real hues -- ported verbatim
+// from core/pantry.mjs's own PANTRY_ZONES/PANTRY_ZONE_HUE (duplicated, not imported: this file
+// has no server/browser shared bundle, same reason room-order.mjs's own header documents for its
+// copy of ROOM_KEYS).
+const PANTRY_ZONES = ["Spices & seasonings", "Cans & jars", "Dry goods", "Oils & condiments", "Fridge", "Freezer", "Produce", "Snacks & drinks"];
+const PANTRY_ZONE_HUE = {
+  "Spices & seasonings": "251,146,60",
+  "Cans & jars": "148,163,184",
+  "Dry goods": "214,176,140",
+  "Oils & condiments": "250,204,21",
+  Fridge: "147,197,253",
+  Freezer: "165,243,252",
+  Produce: "134,239,172",
+  "Snacks & drinks": "249,168,212",
+};
+
+const PANTRY_ROOM_HINT =
+  'Say it as it happens: "used the last of the paprika", "bought 3 cans of black beans at the rental", "I have 2 lbs of chicken breasts", "do we have cumin". Whatever runs out can join the run in one tap.';
+const PANTRY_ZONE_HINT =
+  "− when you use one, + when you bring more. Spices and oils go Full, Half, Almost out. Anything at zero shows under Running low, one tap from the run.";
+
+// "3 boxes", "1 can", "Almost out" -- ported verbatim from the design's own qtyLabel.
+const PANTRY_PLURAL_UNIT = { box: "boxes", bunch: "bunches", loaf: "loaves" };
+const PANTRY_INVARIANT_UNIT = new Set(["lb", "gal", "oz", "dozen"]);
+function pantryQtyLabel(item) {
+  if (item.unit === "lvl") return ["Out", "Almost out", "Half", "Full"][Math.max(0, Math.min(3, item.quantity))];
+  if (item.quantity === 0) return "Out";
+  if (!item.unit) return String(item.quantity);
+  const word = item.quantity === 1 || PANTRY_INVARIANT_UNIT.has(item.unit) ? item.unit : PANTRY_PLURAL_UNIT[item.unit] || `${item.unit}s`;
+  return `${item.quantity} ${word}`;
+}
+
+function pantryStatusLabel(item) {
+  if (item.quantity === 0) return "Out";
+  if (item.unit === "lvl") return "Almost out";
+  return `${pantryQtyLabel(item)} left`;
+}
+
+// "Running low" -- quantity at or under the real per-item low_at threshold (core/pantry.mjs's own
+// read-time default: 0 for a plain count, 1 for a level item -- already resolved server-side, so
+// this is a plain comparison, not a second copy of that default logic).
+function pantryIsLow(item) {
+  return item.quantity <= item.low_at;
+}
+
+// "Home" -> "Home", anything else -> "the {house}" -- ported verbatim from core/pantry.mjs's own
+// placeName, so the room's own copy reads exactly like the server's own toast/subtitle strings.
+function pantryPlaceName(house) {
+  return house === "Home" ? "Home" : `the ${house}`;
+}
+
+// URL-safe zone slug for the "#/pzone/<slug>" route -- a small fixed 8-item mapping, reversible
+// via PANTRY_ZONES.find() rather than a second stored table.
+function pantryZoneSlug(zone) {
+  return zone.toLowerCase().replace(/&/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+// The same real "is this pantry item already on the shopping run" correspondence
+// core/pantry.mjs's own isPantryItemOnRun/pantryRunKey uses server-side (restockHomeFromRun, the
+// pantry_out capture rule) -- name before any comma, matched either-way ("Pasta" <-> a run item
+// logged as "Pasta, 3 boxes"). Duplicated here for the same no-shared-bundle reason as the
+// zone/hue constants above.
+function pantryRunKey(text) {
+  return String(text || "").toLowerCase().split(",")[0].replace(/\s*\(.*\)$/, "").trim();
+}
+function pantryRunKeysMatch(a, b) {
+  if (!a || !b) return false;
+  return a === b || a.startsWith(`${b} `) || b.startsWith(`${a} `);
+}
+function pantryIsOnRun(name, runItems) {
+  const key = pantryRunKey(name);
+  if (!key) return false;
+  return (runItems || []).some((it) => !it.done && pantryRunKeysMatch(pantryRunKey(it.text), key));
+}
+
+// Transient, room-level UI state (Home/Rental toggle, "Do we have…" query, the "already on the
+// run" collapsed-section toggle) -- deliberately not persisted, same "one real screen in front of
+// Shane right now" model listDetailUi/cookSession already use elsewhere in this file.
+let pantryUi = { house: "Home", query: "", showRun: false };
+
+/** Real "Add to run" -- reuses the exact same addItem capture path a capture-grammar rule would
+ *  (POST /api/lists/:id/items), per #3316 scope item 6. A no-op for any name already on the run
+ *  (same real pantryIsOnRun check the design's own Add to run button uses), so tapping it twice
+ *  never double-queues the same real item. */
+async function pantryAddToRun(shoppingList, names) {
+  const toAdd = names.filter((name) => !pantryIsOnRun(name, shoppingList.items));
+  if (toAdd.length === 0) return;
+  await api(`/api/lists/${shoppingList.id}/items`, { method: "POST", body: JSON.stringify({ items: toAdd }) });
+}
+
+/** Real, direct +/- one unit -- the Zone screen's own -/+ buttons (#3316 scope item 3), a direct
+ *  real-time write, not a form. */
+async function pantryAdjust(itemId, direction) {
+  await api(`/api/pantry/${itemId}/adjust`, { method: "POST", body: JSON.stringify({ direction }) });
+}
+
+async function viewPantry(view) {
+  const [pantryResult, shoppingList] = await Promise.all([api("/api/pantry"), api("/api/shopping")]);
+  const allItems = pantryResult.items;
+  const house = pantryUi.house;
+  const hereItems = allItems.filter((it) => it.house === house);
+  const homeCount = allItems.filter((it) => it.house === "Home").length;
+  const rentalCount = allItems.filter((it) => it.house === "Rental").length;
+  const lowHere = hereItems.filter(pantryIsLow);
+
+  roomHeader(view, PANTRY_TINT, "Pantry", {
+    icon: critterIcon("pantry", { size: 36 }),
+    sub: `${hereItems.length} at ${pantryPlaceName(house)} · ${lowHere.length ? `${lowHere.length} running low` : "all stocked"}`,
+  });
+
+  // Home / The Rental pill toggle (README: "a two-cell Home / The Rental pill toggle, each cell
+  // shows its count").
+  const toggle = (key, label, count) =>
+    el(
+      "div",
+      {
+        class: `pantry-toggle-btn${house === key ? " active" : ""}`,
+        onClick: () => {
+          pantryUi.house = key;
+          render();
+        },
+      },
+      [el("span", { text: label }), el("span", { class: "pantry-toggle-count", text: String(count) })],
     );
-    return;
+  view.append(el("div", { class: "pantry-toggle" }, [toggle("Home", "Home", homeCount), toggle("Rental", "The Rental", rentalCount)]));
+
+  // "Do we have…" -- real cross-place search (README: "matches name or zone across both places,
+  // current place first").
+  view.append(
+    el("div", { class: "pantry-search" }, [
+      el("span", { class: "pantry-search-icon", html: PANTRY_SEARCH_ICON }),
+      el("input", {
+        type: "text",
+        class: "pantry-search-input",
+        placeholder: "Do we have…",
+        value: pantryUi.query,
+        onInput: (event) => {
+          pantryUi.query = event.target.value;
+          drawBody();
+        },
+      }),
+    ]),
+  );
+
+  const resultsBody = el("div", { class: "pantry-search-results" });
+  const belowSearch = el("div", { class: "pantry-below-search" });
+  view.append(resultsBody);
+  view.append(belowSearch);
+
+  function drawBody() {
+    const q = pantryUi.query.trim().toLowerCase();
+    resultsBody.replaceChildren();
+    belowSearch.replaceChildren();
+
+    if (q) {
+      resultsBody.append(pantrySearchCard(q, allItems, house));
+      return;
+    }
+
+    if (lowHere.length > 0) belowSearch.append(pantryRunningLowSection(house, lowHere, shoppingList, drawBody));
+
+    const grid = el("div", { class: "pantry-zone-grid" });
+    for (const zone of PANTRY_ZONES) grid.append(pantryZoneTileEl(zone, hereItems));
+    belowSearch.append(grid);
+    belowSearch.append(el("p", { class: "pantry-footer-hint", text: PANTRY_ROOM_HINT }));
   }
 
-  for (const group of pantryResult.groups) {
-    view.append(
-      el("section", { class: "section" }, [
-        el("div", { class: "shop-group-label", text: group.category }),
-        el(
-          "ul",
-          { class: "shop-list" },
-          group.items.map((item) => pantryItemRow(item)),
-        ),
+  drawBody();
+
+  // Room watermark (Git #3119): the pantry pair (1y) per the critter spec.
+  attachRoomWatermark(view, "pantry");
+}
+
+/** "Do we have…" real search results -- both places, current place's own items sorted first. A
+ *  single "shop-list"-skinned card either way (rows, or the real "nothing by that name" message),
+ *  same reuse idiom every other room's own card list already follows. */
+function pantrySearchCard(query, allItems, house) {
+  const results = allItems
+    .filter((it) => `${it.name} ${it.zone}`.toLowerCase().includes(query))
+    .sort((a, b) => (a.house === house ? 0 : 1) - (b.house === house ? 0 : 1));
+
+  if (results.length === 0) {
+    return el("div", {
+      class: "shop-list pantry-search-empty",
+      text: `Nothing by that name at Home or the Rental. Say what you bought, like "2 jars of ${query}", and it lands here.`,
+    });
+  }
+
+  const ul = el("ul", { class: "shop-list" });
+  for (const it of results) {
+    const cls = it.quantity === 0 ? " out" : pantryIsLow(it) ? " low" : "";
+    ul.append(
+      el("li", { class: "pantry-search-row" }, [
+        el("div", { class: "pantry-search-text" }, [
+          el("div", { class: "pantry-search-name", text: it.name }),
+          el("div", { class: "pantry-search-where", text: `${pantryPlaceName(it.house)} · ${it.zone}` }),
+        ]),
+        el("span", { class: `pantry-search-qty${cls}`, text: pantryQtyLabel(it) }),
       ]),
     );
   }
+  return ul;
+}
 
-  // "By house" (Git #3216's own real hub/spoke pattern, same grouping shape Things gives its
-  // own multi-house items) -- only shown once a real house has actually been stated on something,
-  // same conditional as viewThings' own "By house" section.
-  if (pantryResult.houses.length > 0) {
-    const grouped = el("section", { class: "section" }, [el("h2", { text: "By house" })]);
-    for (const h of pantryResult.houses) {
-      const atHouse = pantryResult.items.filter((i) => i.house === h.house);
-      grouped.append(
-        el("div", { style: "margin-bottom:.6rem" }, [
-          el("div", { class: "small muted", text: `${h.house} · ${h.item_count}` }),
-          el(
-            "div",
-            { class: "row" },
-            atHouse.map((i) => el("span", { class: "chip", text: `${i.name} · ${pantryQtyText(i)}` })),
-          ),
+/** "Running low · {place}" -- Out/Almost-out status pills, a real "Add to run" per row, and a
+ *  collapsible "{n} already on the run" section underneath (README §Pantry screen). `redraw` is
+ *  the room's own local drawBody(), used only for the pure-UI showRun expand/collapse; any real
+ *  write (Add to run / Add all) re-renders the whole room via the global render() so counts stay
+ *  honest against the server, not a stale local copy. */
+function pantryRunningLowSection(house, lowHere, shoppingList, redraw) {
+  const needRows = lowHere.filter((it) => !pantryIsOnRun(it.name, shoppingList.items));
+  const onRunRows = lowHere.filter((it) => pantryIsOnRun(it.name, shoppingList.items));
+
+  const head = el("div", { class: "pantry-low-head" }, [
+    el("span", { class: "shop-group-label", text: `Running low · ${pantryPlaceName(house)}` }),
+    needRows.length > 0
+      ? el("span", {
+          class: "pantry-add-all",
+          text: `Add all ${needRows.length} to the run`,
+          onClick: async () => {
+            await pantryAddToRun(
+              shoppingList,
+              needRows.map((it) => it.name),
+            );
+            render();
+          },
+        })
+      : null,
+  ]);
+
+  const card = el("ul", { class: "shop-list pantry-low-card" });
+  for (const it of needRows) card.append(pantryNeedRow(it, shoppingList));
+  if (onRunRows.length > 0) {
+    const chevron = el("span", { class: `list-done-chevron${pantryUi.showRun ? " open" : ""}`, html: SHOP_CHEVRON_RIGHT_ICON });
+    const onRunHead = el("li", { class: "pantry-onrun-head" }, [
+      el("span", { class: "pantry-onrun-label", text: `${onRunRows.length} already on the run` }),
+      chevron,
+    ]);
+    onRunHead.addEventListener("click", () => {
+      pantryUi.showRun = !pantryUi.showRun;
+      redraw();
+    });
+    card.append(onRunHead);
+    if (pantryUi.showRun) for (const it of onRunRows) card.append(pantryOnRunRow(it));
+  }
+
+  return el("div", { class: "pantry-low-section" }, [head, card]);
+}
+
+function pantryNeedRow(item, shoppingList) {
+  const cls = item.quantity === 0 ? " out" : " low";
+  return el("li", { class: "pantry-need-row" }, [
+    el("div", { class: "pantry-need-text" }, [
+      el("div", { class: "pantry-need-name", text: item.name }),
+      el("div", { class: "pantry-need-zone", text: item.zone }),
+    ]),
+    el("span", { class: `pantry-status-pill${cls}`, text: pantryStatusLabel(item) }),
+    el("div", {
+      class: "pantry-add-link",
+      text: "Add to run",
+      onClick: async () => {
+        await pantryAddToRun(shoppingList, [item.name]);
+        render();
+      },
+    }),
+  ]);
+}
+
+function pantryOnRunRow(item) {
+  const cls = item.quantity === 0 ? " out" : " low";
+  return el("li", { class: "pantry-need-row pantry-onrun-row" }, [
+    el("div", { class: "pantry-need-text" }, [
+      el("div", { class: "pantry-need-name", text: item.name }),
+      el("div", { class: "pantry-need-zone", text: item.zone }),
+    ]),
+    el("span", { class: `pantry-status-pill${cls}`, text: pantryStatusLabel(item) }),
+    el("span", { class: "pantry-onrun-check" }, [el("span", { class: "pantry-onrun-check-icon", html: SHOP_CHECK_ICON }), el("span", { text: "On the run" })]),
+  ]);
+}
+
+/** One zone tile -- the Lists shelf pattern (README: "2 x minmax(0,1fr), gap 10, 18px radius,
+ *  rgba(hue,.10) fill + rgba(hue,.28) border, 124px min height"): name + count badge, up to three
+ *  preview rows (low items first, dot colored by status), "+n more", and a footer line. */
+function pantryZoneTileEl(zone, hereItems) {
+  const rows = hereItems.filter((it) => it.zone === zone);
+  const low = rows.filter(pantryIsLow);
+  const preview = low.concat(rows.filter((it) => !pantryIsLow(it))).slice(0, 3);
+  const hue = PANTRY_ZONE_HUE[zone];
+
+  const previewEl = el("div", { class: "pantry-zone-card-preview" });
+  if (rows.length === 0) {
+    previewEl.append(el("div", { class: "pantry-zone-card-empty", text: "Nothing here yet. Say it and it lands here." }));
+  } else {
+    for (const it of preview) {
+      previewEl.append(
+        el("div", { class: "pantry-zone-card-row" }, [
+          el("span", { class: "pantry-zone-card-dot", style: `background:${it.quantity === 0 ? "#f87171" : pantryIsLow(it) ? "#fbbf24" : "rgba(255,255,255,.28)"}` }),
+          el("span", { class: "pantry-zone-card-row-text", text: it.name }),
+          el("span", { class: "pantry-zone-card-row-qty", text: pantryQtyLabel(it) }),
         ]),
       );
     }
-    view.append(grouped);
+    if (rows.length > 3) previewEl.append(el("div", { class: "pantry-zone-card-more", text: `+${rows.length - 3} more` }));
   }
+
+  const footText = low.length ? `${low.length} running low` : rows.length ? "Stocked" : "Say it and it lands here";
+  return el(
+    "a",
+    { class: "pantry-zone-card", href: `#/pzone/${pantryZoneSlug(zone)}`, style: `background:rgba(${hue},.10);border-color:rgba(${hue},.28)` },
+    [
+      el("div", { class: "pantry-zone-card-head" }, [
+        el("span", { class: "pantry-zone-card-name", text: zone }),
+        el("span", { class: "pantry-zone-card-count", text: String(rows.length) }),
+      ]),
+      previewEl,
+      el("div", { class: `pantry-zone-card-foot${low.length ? " low" : ""}`, text: footText }),
+    ],
+  );
 }
 
-/** "2 lbs", "3 cans" -- or "out" once a real "used the last of" capture has zeroed it (the row
- *  survives at quantity 0 rather than being deleted, so a later restock corrects the same real
- *  row -- see core/pantry.mjs's depletePantryItem). */
-function pantryQtyText(item) {
-  return item.quantity > 0 ? `${item.quantity}${item.unit ? ` ${item.unit}` : ""}` : "out";
-}
+/** One zone's own real screen (#3316 scope item 3, README "Zone screen"): back to Pantry, rows
+ *  with real -/quantity/+ controls, 44px hit areas. `slug` is the URL-safe zone key
+ *  (pantryZoneSlug); an unrecognized one (a stale/hand-typed link) reads as "not found" rather
+ *  than guessing. */
+async function viewPantryZone(view, slug) {
+  const zone = PANTRY_ZONES.find((z) => pantryZoneSlug(z) === slug);
+  if (!zone) {
+    view.append(el("div", { class: "card", text: "That pantry zone doesn't exist." }));
+    view.append(el("a", { href: "#/pantry", class: "room-header-back", text: "‹ Pantry" }));
+    return;
+  }
 
-/** One real pantry row -- name, real quantity + unit chip, real house (when stated). Reuses
- *  Shopping's already-shipped .shop-item-row/.shop-item-text/.shop-item-side CSS (Git #3178)
- *  rather than a parallel set of near-identical styles, same idiom the Lists room already
- *  established for reusing this same CSS elsewhere -- no checkbox, no expand chevron: a pantry
- *  row is a real fact on file, not a checkable task. */
-function pantryItemRow(item) {
-  const nameEl = el("div", { class: `shop-item-name${item.quantity === 0 ? " done" : ""}`, text: item.name });
-  const subEl = item.house ? el("div", { class: "shop-item-sub", text: item.house }) : null;
-  const qtyChip = el("span", { class: "chip", text: pantryQtyText(item) });
-  return el("li", { class: "shop-item-row" }, [
-    el("div", { class: "shop-item-main" }, [
-      el("div", { class: "shop-item-text" }, [nameEl, subEl]),
-      el("div", { class: "shop-item-side" }, [qtyChip]),
+  const [pantryResult, shoppingList] = await Promise.all([api("/api/pantry"), api("/api/shopping")]);
+  const house = pantryUi.house;
+  const rows = pantryResult.items.filter((it) => it.house === house && it.zone === zone);
+  const low = rows.filter(pantryIsLow);
+  const hue = PANTRY_ZONE_HUE[zone];
+
+  view.append(
+    el("div", { class: "room-scene" }, [
+      el("div", { class: "room-glow", style: `background: radial-gradient(120% 70% at 50% -20%, rgba(${hue},.22), transparent 70%)` }),
+      el("div", { class: "room-header" }, [
+        el("a", { href: "#/pantry", class: "room-header-back" }, [el("span", { html: LIST_BACK_CHEVRON_ICON }), el("span", { text: "Pantry" })]),
+        el("div", { class: "room-header-title with-icon", text: zone }),
+        el("div", { class: "room-header-icon", style: `background:rgba(${hue},.16)` }, [critterIcon("pantry", { size: 36 })]),
+      ]),
+      el("div", {
+        class: "room-header-subline",
+        text: `${rows.length} at ${pantryPlaceName(house)}${low.length ? ` · ${low.length} running low` : " · all stocked"}`,
+      }),
     ]),
-  ]);
+  );
+
+  const body = el("div", { class: "list-detail-body" });
+  view.append(body);
+
+  if (rows.length === 0) {
+    body.append(
+      el("div", { class: "card pantry-zone-empty", text: `Nothing under ${zone} at ${pantryPlaceName(house)} yet. Say "2 cans of soup at the rental" and it lands here.` }),
+    );
+  } else {
+    const ul = el("ul", { class: "shop-list" });
+    for (const it of rows) ul.append(pantryZoneRow(it, shoppingList));
+    body.append(ul);
+  }
+  body.append(el("p", { class: "pantry-footer-hint", text: PANTRY_ZONE_HINT }));
+
+  attachRoomWatermark(view, "pantry");
+}
+
+/** One zone-screen row -- name (+ a real "Add to run"/"On the run" sub-line only while low), then
+ *  − (44px hit, 30px ring), the quantity pill, +. − takes one; + adds one, or resets a level item
+ *  to Full. A direct real-time write (POST /api/pantry/:id/adjust), never a form. */
+function pantryZoneRow(item, shoppingList) {
+  const low = pantryIsLow(item);
+  const onRun = pantryIsOnRun(item.name, shoppingList.items);
+  const out = item.quantity === 0;
+
+  const nameCol = el("div", { class: "pantry-zone-row-text" }, [el("div", { class: "pantry-zone-row-name", text: item.name })]);
+  if (low) {
+    nameCol.append(
+      el("div", {
+        class: `pantry-zone-row-sub${onRun ? "" : " link"}`,
+        text: onRun ? "On the run" : "Add to run",
+        onClick: onRun
+          ? () => {}
+          : async () => {
+              await pantryAddToRun(shoppingList, [item.name]);
+              render();
+            },
+      }),
+    );
+  }
+
+  const step = (label, direction, faded) => {
+    const btn = el(
+      "button",
+      { type: "button", class: `pantry-zone-btn${faded ? " faded" : ""}`, "aria-label": `${label === "−" ? "Take one" : "Add one"} ${item.name}` },
+      [el("span", { class: "pantry-zone-btn-ring", text: label })],
+    );
+    btn.addEventListener("click", async () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      try {
+        await pantryAdjust(item.id, direction);
+        render();
+      } finally {
+        btn.disabled = false;
+      }
+    });
+    return btn;
+  };
+
+  const qty = el("span", { class: `pantry-zone-qty${out ? " out" : low ? " low" : ""}`, text: pantryQtyLabel(item) });
+  return el("li", { class: "pantry-zone-row" }, [nameCol, step("−", -1, out), qty, step("+", 1, false)]);
 }
 
 function itemRow(entityId, item) {
@@ -10826,7 +11164,7 @@ async function viewPetDetail(view, petId) {
 // routing
 // ---------------------------------------------------------------------------
 
-const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", wins: "Wins", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", list: "", things: "Things", people: "People", person: "", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight", tesla: "Tesla" };
+const TITLES = { today: "Today", shopping: "Shopping", recipes: "Recipes", meds: "Meds", money: "Money", wins: "Wins", inbox: "Inbox", dates: "Dates", pets: "Pets", lists: "Lists", list: "", things: "Things", people: "People", person: "", settings: "Settings", entity: "", cook: "Cook", date: "", pet: "", car: "", tonight: "Tonight", tesla: "Tesla", pantry: "Pantry", pzone: "" };
 
 function parseRoute() {
   const hash = location.hash.replace(/^#\/?/, "");
@@ -10840,6 +11178,10 @@ function parseRoute() {
   state.carId = state.route === "car" ? rest[0] : null;
   state.personId = state.route === "person" ? rest[0] : null;
   state.listId = state.route === "list" ? rest[0] : null;
+  // Git #3316: the Pantry room's own Zone screen, "#/pzone/<slug>" -- same flat single-segment
+  // convention as list/date/pet/car/person above, named to match the design's own real `pzone`
+  // screen key (First Slice Prototype.dc.html).
+  state.pantryZoneSlug = state.route === "pzone" ? rest[0] : null;
 }
 
 async function render() {
@@ -10872,17 +11214,18 @@ async function render() {
   // Every real ROOM_DEFS room now has its own header. #app-view.no-header lets .view collapse
   // its top padding to just the native status-bar safe area instead of assuming a header row
   // sits above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "list" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox" || state.route === "tesla" || state.route === "vault" || state.route === "settings";
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "list" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox" || state.route === "tesla" || state.route === "vault" || state.route === "settings" || state.route === "pantry" || state.route === "pzone";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 
   // Git #3178: the universal capture box is the SAME single bar in Shopping, not a second one --
   // the real design (First Slice Prototype's own submitCapture) just swaps its placeholder and,
-  // in Shopping, its dispatch (see the #capture submit handler below). Git #3308: the Pantry tab
-  // shares this same route but not this shortcut (see the dispatch gate above) -- its placeholder
-  // stays the generic one, since a pantry statement goes through the real capture grammar, not a
-  // literal "add this text to the run" shortcut.
-  captureText.placeholder = state.route === "shopping" && (state.shoppingTab || "list") === "list" ? "Add, or say where you found it" : "Say anything…";
+  // in Shopping, its dispatch (see the #capture submit handler below). Git #3316: Pantry is its
+  // own real room now, not a Shopping tab -- it never shared this shortcut (the dispatch gate
+  // above is a plain route check), so its placeholder stays the generic one, since a pantry
+  // statement goes through the real capture grammar, not a literal "add this text to the run"
+  // shortcut.
+  captureText.placeholder = state.route === "shopping" ? "Add, or say where you found it" : "Say anything…";
 
   // A wake lock (Git #3125) is only ever held for cook mode itself -- release it the moment
   // navigation moves anywhere else, rather than waiting on the tab losing visibility.
@@ -10906,6 +11249,8 @@ async function render() {
     else if (state.route === "lists") await viewLists(view);
     else if (state.route === "list") await viewListDetail(view, state.listId);
     else if (state.route === "tesla") await viewTesla(view);
+    else if (state.route === "pantry") await viewPantry(view);
+    else if (state.route === "pzone") await viewPantryZone(view, state.pantryZoneSlug);
     else if (state.route === "things") await viewThings(view);
     else if (state.route === "people") await viewPeople(view);
     else if (state.route === "person") await viewPersonDetail(view, state.personId);

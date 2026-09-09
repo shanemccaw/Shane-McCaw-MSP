@@ -115,16 +115,16 @@ function fmtUsd(amount) {
  * the last two links on the flat `<nav class="tabs">` bar that #3165's house grid was supposed to
  * fully replace and never did; they're real rooms now, not a lingering flat bar sitting under it.
  *
- * Vault and Tesla (Git #3271) round the grid out to thirteen real rooms. Both real backend
- * modules (vault.mjs/documents.mjs, tesla.mjs) predate this issue; this just wires their real
- * stored state into the tile the same way every other room already does -- see the Vault and
- * Tesla blocks below for exactly which reads back each one's own real "lit" rule.
+ * Vault and Tesla (Git #3271) round the grid out to thirteen real rooms; Pantry (Git #3316) is
+ * the fourteenth -- see the Pantry block below for its own real "something at 0 that isn't on
+ * the run" lit rule.
  */
-export async function roomsForToday(userId, { allDates, tonight, groceries, meds, pendingCaptures }) {
+export async function roomsForToday(userId, { allDates, tonight, groceries, runItems, meds, pendingCaptures }) {
   const [
     thingsList, listsForUser, allPeople, allPets, recipeMatches, gate, recentWins,
     vaultCounts, documentList, vaultRevealOpen, documentRevealOpen,
     teslaStatus, teslaPrecondition, teslaScheduled, teslaShortfall,
+    pantryItems,
   ] = await Promise.all([
     things.listThings(userId),
     lists.listListsForUser(userId),
@@ -141,6 +141,7 @@ export async function roomsForToday(userId, { allDates, tonight, groceries, meds
     teslaCore.getPreconditioningStatus(userId),
     teslaCore.listScheduledCommands(userId),
     teslaCore.getTodaysBatteryShortfall(userId),
+    pantry.listPantryItems(userId),
   ]);
 
   // Shopping: "while items remain" -- the same openCount the Next card's own "home" case reads.
@@ -297,6 +298,29 @@ export async function roomsForToday(userId, { allDates, tonight, groceries, meds
     teslaRoom = { lit: false, subtitle: "Nothing needs you" };
   }
 
+  // Pantry (Git #3316, README "Room row": "Lit only while something is out and not yet on the
+  // run"). "Bananas out at the Rental" (one item) -> "{n} out, not on the run" (several) ->
+  // "{n} running low" (dark, nothing out) -> "{home} at Home · {rental} at the Rental" (dark,
+  // nothing low either) -- checked in that priority order, the same real fallthrough the design's
+  // own subtitle line describes. `runItems` is /api/today's own real shopping-list detail
+  // (lists.getListDetail's `items`), already fetched for `groceries` above -- reused here rather
+  // than queried twice.
+  const outNotOnRun = pantryItems.filter((it) => it.quantity === 0 && !pantry.isPantryItemOnRun(it.name, runItems));
+  const lowCount = pantryItems.filter((it) => it.quantity <= it.low_at).length;
+  const homeCount = pantryItems.filter((it) => it.house === "Home").length;
+  const rentalCount = pantryItems.filter((it) => it.house === "Rental").length;
+  let pantryRoom;
+  if (outNotOnRun.length === 1) {
+    const only = outNotOnRun[0];
+    pantryRoom = { lit: true, subtitle: `${only.name} out${only.house ? ` at ${pantry.placeName(only.house)}` : ""}` };
+  } else if (outNotOnRun.length > 1) {
+    pantryRoom = { lit: true, subtitle: `${outNotOnRun.length} out, not on the run` };
+  } else if (lowCount > 0) {
+    pantryRoom = { lit: false, subtitle: `${lowCount} running low` };
+  } else {
+    pantryRoom = { lit: false, subtitle: `${homeCount} at Home · ${rentalCount} at the Rental` };
+  }
+
   return {
     shopping,
     money: money_,
@@ -311,6 +335,7 @@ export async function roomsForToday(userId, { allDates, tonight, groceries, meds
     inbox: inboxRoom,
     vault: vaultRoom,
     tesla: teslaRoom,
+    pantry: pantryRoom,
   };
 }
 
@@ -988,15 +1013,34 @@ export function buildApiRouter() {
     return sendJson(res, 200, { thing: await things.findThing(user.id, q) });
   });
 
-  // Real pantry inventory (Git #3308) -- what's actually at home, and real quantities. Reads
-  // only: same "no forms, anywhere, ever" idiom the Things room already uses (Git #3181) --
-  // writes only ever happen via a real capture (capture-grammar.mjs's pantry_have/pantry_bought/
-  // pantry_used_last rules) or Claude over MCP (set_pantry_item), never a dedicated add/edit form.
+  // Real pantry inventory (Git #3308, rebuilt as its own dedicated room by Git #3316) -- what's
+  // actually at home, and real quantities. Reads only: same "no forms, anywhere, ever" idiom the
+  // Things room already uses (Git #3181) -- writes only ever happen via a real capture
+  // (capture-grammar.mjs's pantry_have/pantry_bought/pantry_out rules), the Zone screen's -/+
+  // buttons (a direct real-time write, not a form), or Claude over MCP (set_pantry_item).
+  //
+  // `house` is intentionally NOT passed by the Pantry room itself -- its own Home/Rental toggle,
+  // "Do we have…" cross-place search, and per-house tile counts all need every real house's items
+  // on hand at once, filtered client-side. Each item already carries its own real `zone`
+  // (pantry.mjs's own zoneOf, derived from category) for the zone grid/search sub-line.
   router.get("/api/pantry", async (_req, res, _params, ctx) => {
     const user = requireUser(ctx);
     const house = ctx.url.searchParams.get("house");
     const [items, houses] = await Promise.all([pantry.listPantryItems(user.id, { house }), pantry.listPantryHouses(user.id)]);
-    return sendJson(res, 200, { items, groups: pantry.groupPantryByCategory(items), houses });
+    return sendJson(res, 200, { items, houses });
+  });
+
+  // Real, direct +/- one unit -- the Pantry room's own Zone screen (#3316 scope item 3): 44px
+  // -/+ hit areas next to each row's real quantity pill. Also not a form -- a direct real-time
+  // write, the same "no forms, anywhere, ever" exception Cook-mode checkoff below already uses.
+  router.post("/api/pantry/:id/adjust", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const direction = Number(body?.direction);
+    if (direction !== 1 && direction !== -1) throw badRequest("direction must be 1 or -1");
+    const row = await pantry.adjustPantryItemById(user.id, params.id, direction);
+    await audit.record({ userId: user.id, actor: "web", action: "pantry_item.adjust", entityId: row.id, detail: { direction, quantity: row.quantity } });
+    return sendJson(res, 200, row);
   });
 
   // Real Cook-mode ingredient-checkoff depletion (Git #3312) -- the one real write this room's
@@ -1151,6 +1195,22 @@ export function buildApiRouter() {
     const item = await lists.setListItemChecked(params.id, params.itemId, body.checked, "owner");
     if (!item) throw notFound("Item not found");
     await audit.record({ userId: user.id, actor: "web", action: "list.item.check", entityId: params.id, detail: { itemId: item.id, checked: Boolean(body.checked), text: item.text } });
+
+    // Pantry <-> Shopping (Git #3316 scope item 6, design's own real `pantryRestock`): checking a
+    // real item off the SHOPPING run (never an arbitrary other list -- `category === 'shopping'`
+    // is the one real singleton lists.getOrCreateShoppingList itself creates) restocks the
+    // matching real Home pantry row; unchecking it reverses that same restock. Best-effort and
+    // non-fatal, same "never block the real result" pattern the Tesla trunk-schedule call below
+    // already uses -- a pantry item that isn't on file yet (or a genuinely ambiguous name) is not
+    // an error, it's just nothing to restock.
+    if (owned.category === "shopping") {
+      try {
+        await pantry.restockHomeFromRun(user.id, item.text, body.checked ? 1 : -1);
+      } catch (err) {
+        console.error(`[pantry] restock-from-run failed: ${err.message}`);
+      }
+    }
+
     // setListItemChecked returns the entity-shaped keys (checked_at/checked_by) the share layer
     // needs -- remapped here onto the same raw done/done_at shape every other owner-side list
     // endpoint (GET /api/shopping, POST items, clear-checked) already returns.
@@ -3187,7 +3247,7 @@ export function buildApiRouter() {
       // Standalone timers (Git #3307) -- Today tray's "see/cancel an active timer" real scope
       // item; server-side rows so this list is honest across a reload/redeploy, not client state.
       timers: await timers.listActive(user.id),
-      rooms: await roomsForToday(user.id, { allDates, tonight, groceries, meds: medsToday, pendingCaptures }),
+      rooms: await roomsForToday(user.id, { allDates, tonight, groceries, runItems: shoppingDetail.items, meds: medsToday, pendingCaptures }),
       roomOrder: await roomOrder.getRoomOrder(user.id),
       later: await computeLaterMoments(user.id, { allDates, tonight, pendingCaptures }),
       banksNeedReconnect,
