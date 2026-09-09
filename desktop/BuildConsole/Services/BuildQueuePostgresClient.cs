@@ -329,6 +329,25 @@ namespace BuildConsole.Services
             // exclusive set reaches a terminal state.
             var exclusiveSet = BuildSetExclusiveStore.ActiveSet;
 
+            // Git #3342 — self-heal a STALE exclusive hold, right here in the always-running dispatch
+            // path. The only other place the hold auto-clears is the UI panel's
+            // CheckExclusiveBuildSetCompletion, which runs solely while the Build Queue panel is
+            // refreshing AND (until this same fix) counted only done/failed/canceled as terminal — so an
+            // exclusive set whose last live member finished 'superseded' never cleared and silently
+            // starved the entire queue (every non-member held below, forever, across restarts because the
+            // hold is persisted). Confirmed live on 2026-09-09: build set "ShanesLife", all 189 members
+            // terminal (incl. 2 'superseded'), held #3338/#3340/#3342 with 0 active builds. The dispatch
+            // path runs on every watcher tick with a free slot, so it is the robust place to notice the
+            // set has no active rows left and lift the hold itself — no dependency on the panel being open.
+            if (exclusiveSet != null && !await BuildSetHasActiveRowsAsync(exclusiveSet, conn))
+            {
+                ActivityLog.Log("watcher",
+                    $"Git #3342: exclusive build set \"{exclusiveSet}\" has no active (non-terminal) rows left — " +
+                    "auto-clearing the stale \"Build Only This Set\" hold so the queue resumes normal dispatch.");
+                BuildSetExclusiveStore.Clear();
+                exclusiveSet = null;
+            }
+
             await using (var fetchCmd = new NpgsqlCommand(QueuedCandidateSql, conn))
             await using (var reader = await fetchCmd.ExecuteReaderAsync())
             {
@@ -469,6 +488,27 @@ namespace BuildConsole.Services
             return new CandidateSelection(ready, heldReasons);
         }
 
+        /// <summary>
+        /// Git #3342 — true when <paramref name="buildSet"/> still has at least one row in a non-terminal
+        /// state, i.e. real work an exclusive ("Build Only This Set") hold could ever actually let run.
+        /// "Terminal" is exactly <see cref="IsTerminalStatus"/> (done/failed/canceled/superseded); every
+        /// other status (queued/running/parked/verifying/limit-paused/capped/external) counts as active.
+        /// Runs on the caller's already-open connection — one cheap EXISTS, only ever evaluated when an
+        /// exclusive hold is actually active. Returns true (the safe, keep-holding direction) on any
+        /// unexpected shape, so a transient error never clears a legitimate hold.
+        /// </summary>
+        private static async Task<bool> BuildSetHasActiveRowsAsync(string buildSet, NpgsqlConnection conn)
+        {
+            await using var cmd = new NpgsqlCommand(
+                @"SELECT EXISTS(
+                      SELECT 1 FROM bt_build_queue
+                      WHERE build_set = @s
+                        AND status NOT IN ('done','failed','canceled','superseded'))", conn);
+            cmd.Parameters.AddWithValue("@s", buildSet);
+            var result = await cmd.ExecuteScalarAsync();
+            return result is not bool b || b;
+        }
+
         public async Task<List<QueueItem>> GetNextAsync(
             int limit, Func<Task<LiveOpenIssuesResult>>? liveOpenIssuesFetcher = null)
         {
@@ -573,8 +613,18 @@ namespace BuildConsole.Services
         /// <summary>Git #1638 — terminal states: the row already ran to a real conclusion. A duplicate
         /// Queue/Park click matching one of these must NOT silently reset it back to queued/parked (that
         /// would erase the fact it already ran) — the caller shows an explicit "run it again?" confirm and
-        /// only then re-queues via <paramref name="reuseRowId"/> on <see cref="QueueBuildAsync"/>.</summary>
-        public static bool IsTerminalStatus(string? status) => status is "done" or "failed" or "canceled";
+        /// only then re-queues via <paramref name="reuseRowId"/> on <see cref="QueueBuildAsync"/>.
+        ///
+        /// Git #3342 — <see cref="SupersededStatus"/> ("superseded") belongs here: a row that was
+        /// replaced by a continuation/reply (see <see cref="MarkSupersededByReplyAsync"/>) has reached a
+        /// real, permanent conclusion and will never run again, exactly like done/failed/canceled. It was
+        /// missing, so every consumer that asks "is this row finished?" (dedup re-queue, the Batter Up
+        /// dead-row check, and — the live bug this fixes — the "Build Only This Set" auto-clear that
+        /// requires ALL members terminal) treated a superseded row as still-active. A stale exclusive
+        /// hold on a set with a superseded member therefore never cleared and silently starved the whole
+        /// queue (every non-member held forever). It is deliberately NOT in <see cref="IsActiveStatus"/>
+        /// above for the same reason: superseded is finished, not pending.</summary>
+        public static bool IsTerminalStatus(string? status) => status is "done" or "failed" or "canceled" or SupersededStatus;
 
         /// <summary>
         /// Git #1638 — the generalized dedup lookup shared by Queue and Park (before either inserts a new

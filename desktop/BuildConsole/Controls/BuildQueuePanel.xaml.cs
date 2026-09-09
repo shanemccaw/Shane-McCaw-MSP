@@ -1002,8 +1002,12 @@ namespace BuildConsole.Controls
             }
         }
 
-        private static readonly HashSet<string> PriorityTerminalStatuses =
-            new(StringComparer.OrdinalIgnoreCase) { "done", "failed", "canceled" };
+        // Git #3342 — the local done/failed/canceled terminal-status set that used to live here was
+        // missing "superseded", which is exactly why the "Build Only This Set" auto-clear below never
+        // fired for a set with a superseded member (silently starving the whole queue). Both auto-clear
+        // checks now call the single canonical BuildQueuePostgresClient.IsTerminalStatus (which #3342
+        // corrected to include superseded), so this definition can never drift from the dispatch gate's
+        // again.
 
         /// <summary>
         /// Git #1636 — the moment every build currently belonging to a Priority-marked build set
@@ -1027,7 +1031,7 @@ namespace BuildConsole.Controls
             {
                 var members = items.Where(i => string.Equals((i.BuildSet ?? "").Trim(), setName, StringComparison.OrdinalIgnoreCase)).ToList();
                 if (members.Count == 0) continue; // nothing currently known under this name — nothing to declare finished
-                if (!members.All(i => PriorityTerminalStatuses.Contains(i.Status))) continue;
+                if (!members.All(i => Services.BuildQueuePostgresClient.IsTerminalStatus(i.Status))) continue;
 
                 // Clear BEFORE raising: AllPrioritySets is re-read on every RefreshAsync tick, so
                 // clearing first guarantees a concurrent/overlapping tick can't observe this set as
@@ -1055,7 +1059,7 @@ namespace BuildConsole.Controls
 
             var members = items.Where(i => string.Equals((i.BuildSet ?? "").Trim(), setName, StringComparison.OrdinalIgnoreCase)).ToList();
             if (members.Count == 0) return; // nothing currently known under this name — nothing to declare finished
-            if (!members.All(i => PriorityTerminalStatuses.Contains(i.Status))) return;
+            if (!members.All(i => Services.BuildQueuePostgresClient.IsTerminalStatus(i.Status))) return;
 
             Services.BuildSetExclusiveStore.Clear();
             ActivityLog.Log("build-queue-panel.exclusive",
