@@ -51,8 +51,13 @@ namespace BuildConsole.Services
     /// activity. There are now two independently-gated passes:
     ///   • <see cref="IncrementalSyncAsync"/> — cheap, runs every <see cref="IncrementalSyncInterval"/>.
     ///     Uses GitHub's real REST `since=` filter (<see cref="GitHubApiClient.ListIssuesUpdatedSinceAsync"/>)
-    ///     to fetch ONLY issues whose title/state/labels genuinely changed. Board status is
-    ///     deliberately NOT touched here — see the next bullet for why.
+    ///     to fetch ONLY issues whose title/state/labels genuinely changed. Git #3343 — it ALSO does a
+    ///     TARGETED board-status fetch for just that (tiny) changed set (an aliased per-issue
+    ///     <see cref="GitHubApiClient.BatchGetProjectItemStatusesAsync"/> lookup, NOT the whole-board
+    ///     sweep), so a new/just-moved item gets its real board status this pass rather than landing
+    ///     NULL until the next full walk. The WHOLE-board sweep still can't be done incrementally —
+    ///     see the next paragraph for why — so the full walk stays the authoritative reconciliation
+    ///     for board moves the changed-set filter never surfaces.
     ///   • <see cref="SyncAsync"/> — the original full walk, unchanged, now purely a periodic
     ///     reconciliation pass on the longer <see cref="FullSyncInterval"/>.
     /// Real, live investigation (2026-09-09) confirmed GitHub's Projects v2 GraphQL API has NO
@@ -64,8 +69,10 @@ namespace BuildConsole.Services
     /// came back `totalCount: 0` many minutes later) — and there is no `orderBy` by `updatedAt`
     /// either (`ProjectV2ItemOrderField` only offers `POSITION`). Shipping board-status diffing
     /// against that filter would silently stop picking up real board moves for as long as the
-    /// index lags, which is exactly what this issue required NOT doing. So board status stays
-    /// full-walk-only, same mechanism as before, just on a distinct interval from issue-level data.
+    /// index lags, which is exactly what this issue required NOT doing. So the whole-board sweep stays
+    /// full-walk-only, same mechanism as before, just on a distinct interval from issue-level data —
+    /// while Git #3343 covers the specific new/just-changed items the incremental pass already knows
+    /// about with a cheap targeted lookup, since those numbers don't need any bulk incremental signal.
     /// </summary>
     public static class GitHubIssueMirror
     {
@@ -336,10 +343,15 @@ namespace BuildConsole.Services
         /// the sweep captured the whole board, an empty result genuinely means "nothing in that
         /// column right now", not "unknown".
         ///
-        /// Freshness (the #3134 audit, updated for #3337): board status is only ever refreshed by the
-        /// full walk, so it is as fresh as <see cref="FullSyncInterval"/> allows (not the shorter
-        /// <see cref="IncrementalSyncInterval"/> — board status has no reliable incremental signal,
-        /// see the class doc comment). That is still sufficient for this use case — the pain point is
+        /// Freshness (the #3134 audit, updated for #3337 and #3343): the WHOLE-board sweep is only ever
+        /// refreshed by the full walk, so a board move the incremental pass never sees (an issue whose
+        /// only change was its Status, with no issue-level edit to surface it in the `since=` filter) is
+        /// as fresh as <see cref="FullSyncInterval"/> allows — board status has no reliable BULK
+        /// incremental signal (see the class doc comment). But as of #3343 a NEW or otherwise-changed
+        /// issue the incremental pass DOES surface gets a targeted board-status fetch that same pass, so
+        /// a just-created / just-moved Batter Up item is visible within <see cref="IncrementalSyncInterval"/>
+        /// rather than waiting up to a full walk (the real #3342/#3343 regression). That is still sufficient
+        /// for this use case — the pain point is
         /// Batter Up NEVER filling in (the big live walk fails under GitHub's secondary rate limit),
         /// so a reliably ≤<see cref="FullSyncInterval"/>-fresh local read is strictly better than a
         /// live walk that never completes. State (open/closed) itself is fresher, via the incremental
@@ -445,8 +457,11 @@ namespace BuildConsole.Services
             public bool Ok { get; set; }
             /// <summary>Git #3337 — true when this summary came from the cheap incremental pass
             /// (<see cref="IncrementalSyncAsync"/>) rather than the full walk (<see cref="SyncAsync"/>).
-            /// <see cref="BoardStatuses"/>/<see cref="MarkedClosed"/> are always 0 on an incremental
-            /// summary — board status and the mark-closed pass are full-walk-only.</summary>
+            /// <see cref="MarkedClosed"/> is always 0 on an incremental summary (the mark-closed pass is
+            /// full-walk-only). Git #3343 — <see cref="BoardStatuses"/> is NO LONGER always 0 here: the
+            /// incremental pass now targeted-fetches board status for just its changed set, so this is
+            /// the count of changed issues found on the board that pass (still not a whole-board sweep —
+            /// that stays full-walk-only).</summary>
             public bool Incremental { get; set; }
             /// <summary>On a full sync: every open issue walked. On an incremental sync: every
             /// CHANGED issue in the batch (open or closed) — the field is reused rather than adding a
@@ -592,10 +607,17 @@ namespace BuildConsole.Services
         ///   • blocked_by IS refreshed for any changed issue carrying the <c>blocked</c> label (or that
         ///     just lost it), mirroring <see cref="SyncAsync"/>'s own per-blocked-issue REST fetch —
         ///     cheap here because the batch is small.
-        ///   • board_status_option_id/board_status_name and blocking_numbers (the inverse blocked_by
-        ///     graph) are DELIBERATELY left untouched — board status has no reliable incremental
-        ///     signal, and blocking_numbers needs the WHOLE graph to recompute safely, not just this
-        ///     batch's slice. Both are only ever corrected by the next full sync.
+        ///   • board_status_option_id/board_status_name are TARGETED-FETCHED for just this changed set
+        ///     (Git #3343 — <see cref="GitHubApiClient.BatchGetProjectItemStatusesAsync"/>), so a
+        ///     new/just-moved item gets its real board status this pass instead of sitting NULL until
+        ///     the next full walk. This is NOT the whole-board sweep (that stays full-walk-only — see
+        ///     the class doc comment for why a bulk incremental board signal isn't reliable); it is an
+        ///     aliased per-issue lookup for only the tiny changed batch, and a miss/failure PRESERVES
+        ///     the existing value (never wipes), corrected by the next full sync for the rare
+        ///     off-board-move case.
+        ///   • blocking_numbers (the inverse blocked_by graph) is DELIBERATELY left untouched — it needs
+        ///     the WHOLE graph to recompute safely, not just this batch's slice; only ever corrected by
+        ///     the next full sync.
         /// If the changed set is large enough that <see cref="GitHubApiClient.ListIssuesUpdatedSinceAsync"/>
         /// reports it truncated (e.g. BuildConsole was closed for days), this escalates to a full
         /// <see cref="SyncAsync"/> for that pass instead of risking a silent partial miss.
@@ -643,6 +665,42 @@ namespace BuildConsole.Services
                 return summary;
             }
 
+            // Git #3343 — targeted board-status fetch, scoped to this small changed batch only. #3337
+            // deliberately left board status full-walk-only because Projects v2 has no reliable
+            // *bulk* incremental board signal — but that made every NEW issue the incremental pass
+            // INSERTs land with a NULL board status until the next 30-min full walk, so a
+            // just-created / just-moved-to-Batter-Up item was invisible to the Batter Up mirror read
+            // (TryGetByBoardStatusAsync) and to Free Flow for up to that whole window (the real #3342
+            // "never auto-pulled from Batter Up" symptom). The fix is NOT to walk the whole board here
+            // — it is a targeted `issue(number:).projectItems` lookup for ONLY the (normally tiny)
+            // changed set, via the same aliased, chunked, rate-limit-circuit-aware read the closed
+            // sweep already uses (GitHubApiClient.BatchGetProjectItemStatusesAsync). That keeps #3337's
+            // rate-limit win (no full walk, and it fires at most once per incremental pass, only when
+            // something actually changed), while filling board status for exactly the issues that just
+            // appeared or changed. Genuinely fail-safe: any failure (rate-limit circuit open / throw)
+            // leaves boardByNumber empty, which the CASE-guarded upsert below degrades to exactly the
+            // pre-#3343 behaviour (preserve existing rows' board status, NULL on a brand-new insert),
+            // corrected by the next full walk — never worse than today.
+            var boardByNumber = new Dictionary<int, GitHubApiClient.IssueBoardStatus>();
+            if (GitHubRateLimitCircuit.IsOpen)
+            {
+                ActivityLog.Log("issue-mirror",
+                    $"incremental sync: skipping targeted board-status fetch — GitHub rate-limit circuit open " +
+                    $"({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); {changed.Count} changed issue(s) keep their existing board status this pass (new ones stay NULL until the next full walk) (Git #3343).");
+            }
+            else
+            {
+                try
+                {
+                    boardByNumber = await gh.BatchGetProjectItemStatusesAsync(changed.Select(i => i.Number).Distinct().ToList());
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("issue-mirror",
+                        $"incremental sync: targeted board-status fetch failed ({ex.Message}) — changed issues keep their existing board status this pass, corrected by the next full walk (Git #3343).");
+                }
+            }
+
             // blocked_by refresh, scoped to this small changed batch only (mirrors SyncAsync's own logic).
             var blockedByMap = new Dictionary<int, List<int>>();
             var blockedNumbers = changed
@@ -688,16 +746,21 @@ namespace BuildConsole.Services
                          labels, blocked_by_numbers, blocking_numbers, html_url, created_at, closed_at,
                          last_synced_at, updated_at)
                     VALUES
-                        (@n, @title, @state, NULL, NULL,
+                        (@n, @title, @state, @boardOpt, @boardName,
                          @labels, @blockedBy, '{}', @url, @createdAt, @closedAt,
                          NOW(), NOW())
                     ON CONFLICT (issue_number) DO UPDATE SET
                         title  = EXCLUDED.title,
                         state  = EXCLUDED.state,
-                        -- Board status has no reliable incremental signal (see the class doc comment) —
-                        -- always preserved here; only the full walk (SyncAsync) ever changes it.
-                        board_status_option_id = bt_issue_mirror.board_status_option_id,
-                        board_status_name      = bt_issue_mirror.board_status_name,
+                        -- Git #3343 — board status is now filled from the targeted per-issue fetch
+                        -- above, but ONLY when that issue was actually found on the board this pass
+                        -- (@haveBoard). A miss (issue off-board, fetch skipped/failed, or rate-limit
+                        -- circuit open → empty boardByNumber) PRESERVES the existing row's board
+                        -- status rather than wiping it, so a transient fetch gap can never blank a
+                        -- real Batter Up item — the next full walk is still the authoritative
+                        -- reconciliation for the rarer moved-entirely-off-the-board case.
+                        board_status_option_id = CASE WHEN @haveBoard THEN EXCLUDED.board_status_option_id ELSE bt_issue_mirror.board_status_option_id END,
+                        board_status_name      = CASE WHEN @haveBoard THEN EXCLUDED.board_status_name      ELSE bt_issue_mirror.board_status_name      END,
                         labels = EXCLUDED.labels,
                         blocked_by_numbers = CASE WHEN @haveBlockedBy THEN EXCLUDED.blocked_by_numbers ELSE bt_issue_mirror.blocked_by_numbers END,
                         -- blocking_numbers (the inverse graph) needs the WHOLE blocked_by graph to
@@ -713,18 +776,28 @@ namespace BuildConsole.Services
                     var pN = cmd.Parameters.Add(new NpgsqlParameter("@n", NpgsqlDbType.Integer));
                     var pTitle = cmd.Parameters.Add(new NpgsqlParameter("@title", NpgsqlDbType.Text));
                     var pState = cmd.Parameters.Add(new NpgsqlParameter("@state", NpgsqlDbType.Text));
+                    var pBoardOpt = cmd.Parameters.Add(new NpgsqlParameter("@boardOpt", NpgsqlDbType.Text));
+                    var pBoardName = cmd.Parameters.Add(new NpgsqlParameter("@boardName", NpgsqlDbType.Text));
                     var pLabels = cmd.Parameters.Add(new NpgsqlParameter("@labels", NpgsqlDbType.Array | NpgsqlDbType.Text));
                     var pBlockedBy = cmd.Parameters.Add(new NpgsqlParameter("@blockedBy", NpgsqlDbType.Array | NpgsqlDbType.Integer));
                     var pUrl = cmd.Parameters.Add(new NpgsqlParameter("@url", NpgsqlDbType.Text));
                     var pCreated = cmd.Parameters.Add(new NpgsqlParameter("@createdAt", NpgsqlDbType.TimestampTz));
                     var pClosed = cmd.Parameters.Add(new NpgsqlParameter("@closedAt", NpgsqlDbType.TimestampTz));
                     var pHaveBlockedBy = cmd.Parameters.Add(new NpgsqlParameter("@haveBlockedBy", NpgsqlDbType.Boolean));
+                    var pHaveBoard = cmd.Parameters.Add(new NpgsqlParameter("@haveBoard", NpgsqlDbType.Boolean));
 
                     foreach (var issue in changed)
                     {
                         pN.Value = issue.Number;
                         pTitle.Value = issue.Title ?? "";
                         pState.Value = string.Equals(issue.State, "closed", StringComparison.OrdinalIgnoreCase) ? "closed" : "open";
+                        // Git #3343 — @haveBoard is true only when the targeted fetch actually located
+                        // this issue on the board this pass; a miss leaves board status untouched via the
+                        // CASE guard above (preserve on UPDATE, NULL on a fresh INSERT).
+                        bool haveBoard = boardByNumber.TryGetValue(issue.Number, out var bs);
+                        pBoardOpt.Value = haveBoard ? (object?)bs!.OptionId ?? DBNull.Value : DBNull.Value;
+                        pBoardName.Value = haveBoard ? (object?)bs!.StatusName ?? DBNull.Value : DBNull.Value;
+                        pHaveBoard.Value = haveBoard;
                         pLabels.Value = issue.Labels.Select(l => l.Name).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToArray();
                         bool haveBlockedBy = blockedByMap.TryGetValue(issue.Number, out var bb);
                         pBlockedBy.Value = haveBlockedBy ? bb!.ToArray() : Array.Empty<int>();
@@ -745,15 +818,16 @@ namespace BuildConsole.Services
                 ActivityLog.Log("issue-mirror", $"incremental sync upsert failed ({ex.Message}) — transaction rolled back.");
             }
 
+            summary.BoardStatuses = boardByNumber.Count;
             summary.ElapsedMs = sw.ElapsedMilliseconds;
             await RecordIncrementalSyncStateAsync(summary.Ok,
                 summary.Ok
-                    ? $"ok: {changed.Count} issue(s) changed since {sinceUtc:o}, {summary.BlockedByFetched} blocked_by refreshed, {summary.ElapsedMs}ms"
+                    ? $"ok: {changed.Count} issue(s) changed since {sinceUtc:o}, {summary.BoardStatuses} board status(es) targeted-fetched, {summary.BlockedByFetched} blocked_by refreshed, {summary.ElapsedMs}ms"
                     : summary.Error);
 
             ActivityLog.Log("issue-mirror",
                 summary.Ok
-                    ? $"incremental sync ok — {changed.Count} issue(s) changed since {sinceUtc:o} ({summary.BlockedByFetched} blocked_by refreshed), in {summary.ElapsedMs}ms. Board status untouched — needs the next full walk."
+                    ? $"incremental sync ok — {changed.Count} issue(s) changed since {sinceUtc:o} ({summary.BoardStatuses} board status(es) targeted-fetched, {summary.BlockedByFetched} blocked_by refreshed), in {summary.ElapsedMs}ms. New/changed items now get their real board status this pass (Git #3343); the full walk stays the reconciliation for off-board moves."
                     : $"incremental sync FAILED — {summary.Error} ({summary.ElapsedMs}ms).");
 
             if (summary.Ok)
