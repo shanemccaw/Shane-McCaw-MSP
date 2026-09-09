@@ -11,7 +11,7 @@
  *
  * Real read/write contract, extracted from the same 3 tables the portal routes
  * and the `break_glass_verification_gate` workflow node already use (see
- * `docs/break-glass-access-contract-pack.md`, #2443) — no new schema, no
+ * `docs/portal/break-glass-access-contract-pack.md`, #2443) — no new schema, no
  * fixture data:
  *
  *   GET  /api/msp/break-glass

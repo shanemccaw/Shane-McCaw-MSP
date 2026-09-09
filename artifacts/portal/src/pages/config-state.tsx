@@ -12,7 +12,7 @@ const RED = "#f87171";
  * `Design/portal/design_handoff_full_site/screens/Configuration State.dc.html`
  * per that package's own README ("recreate these designs... using this
  * codebase's existing... patterns, not ship the HTML files as-is") and wired
- * per `docs/configuration-state-contract-pack.md` §5 against the real
+ * per `docs/portal/configuration-state-contract-pack.md` §5 against the real
  * `/api/portal/config-state/*` endpoints (see `configStateLive.ts`).
  *
  * Every number here is a real read — no `configStateData.ts` fixture module

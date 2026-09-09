@@ -14,7 +14,7 @@ title = "Admin Portal Documentation"
 
 [[outputs]]
 id = "1W0K36USQX4rFWQVYOgYb"
-uri = "file://docs/marketing-command-center.md"
+uri = "file://docs/marketing/marketing-command-center.md"
 type = "text"
 title = "Marketing Command Center Specification"
 

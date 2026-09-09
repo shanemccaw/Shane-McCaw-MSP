@@ -25,7 +25,7 @@ const HAIRLINE = "rgba(255,255,255,.09)";
 /**
  * SOPs & Runbooks — Library / Queue / History (#2994, carried forward from
  * #1730/#1493). Design: `Design/portal/design_handoff_full_site/screens/SOPs.dc.html`
- * (`view: "sops"`), contract: `.../docs/sops-contract-pack.md`.
+ * (`view: "sops"`), contract: `.../docs/portal/sops-contract-pack.md`.
  *
  * Every row on this page comes from `GET /api/portal/sops` and
  * `GET /api/portal/sop-runs` (`useSops`) — both real, both previously

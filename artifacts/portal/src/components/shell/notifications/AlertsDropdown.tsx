@@ -78,7 +78,7 @@ function NotificationRow({ n, onOpen }: { n: PortalNotification; onOpen: (n: Por
  * Portal Shell: alerts dropdown (#1821). Real backend —
  * `artifacts/api-server/src/routes/notifications.ts`'s `/portal/notifications*`
  * routes, live via `/portal/notifications/stream` SSE — see `useNotifications.ts`
- * for the full endpoint map and `docs/alert_preferences.md` for the
+ * for the full endpoint map and `docs/portal/alert_preferences.md` for the
  * preferences surface this links out to (built under a separate issue; this
  * component only links there, per this issue's own scope).
  *

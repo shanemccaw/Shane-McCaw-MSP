@@ -2,7 +2,7 @@
  * React Query hooks for the customer-facing Security Plan (#3027, Feature #1495).
  *
  * Wired to the real, live endpoints documented in
- * `docs/security-plan-contract-pack.md`:
+ * `docs/portal/security-plan-contract-pack.md`:
  *   GET  /api/portal/security-plan                             — plan of record (last signed)
  *   GET  /api/portal/security-plan/versions                     — full seal chain
  *   GET  /api/portal/security-plan/versions/current              — current version, signed or not

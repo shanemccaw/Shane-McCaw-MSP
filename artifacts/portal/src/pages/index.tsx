@@ -43,7 +43,7 @@ function PanelLabel({ children, color = "#94a3b8", trailing }: { children: React
 
 /**
  * Customer Home / Overview (#2921) — wired to the two real endpoints traced
- * in `docs/customer-home-and-timeline-contract-pack.md`:
+ * in `docs/portal/customer-home-and-timeline-contract-pack.md`:
  *
  *   GET /api/portal/dashboard            (useOverviewDashboard)
  *   GET /api/portal/customer/timeline    (useOverviewTimeline)

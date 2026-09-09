@@ -1,7 +1,7 @@
 /**
  * change-control-types.ts — the wire shapes behind the real Change Control
  * customer-portal routes (#1717, Feature #1486), extracted from the routes'
- * own `Wire*` interfaces per `docs/change-control-contract-pack.md` (#2989).
+ * own `Wire*` interfaces per `docs/portal/change-control-contract-pack.md` (#2989).
  *
  * Pure types + normalizers, no React — fetching lives in
  * `change-control-api.ts`. Field names and nullability match the server's

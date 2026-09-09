@@ -336,7 +336,7 @@ const inFlightDrift = new Map<number, Promise<{ diffRowId: number }>>();
  * differ's cache key, so a narrowed and a full-tenant diff no longer collide), but as
  * a deliberate product choice (Git #2901): this endpoint's whole design principle is
  * "the tenant's real, whole-picture change report" (see
- * `docs/configuration-state-contract-pack.md` §4.6-§4.7), and a caller narrowing that
+ * `docs/portal/configuration-state-contract-pack.md` §4.6-§4.7), and a caller narrowing that
  * to a fragment of resources changes what "the comparison" means to the portal
  * customer viewing it. Exposing narrowing here is a real product decision, not a
  * mechanical follow-up to the #2032 fix — see the operator-side `POST /diffs` in

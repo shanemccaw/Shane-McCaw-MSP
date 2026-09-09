@@ -1,6 +1,6 @@
 /**
  * Wire types for the Customer Home / Overview page (#2921, contract pack
- * `docs/customer-home-and-timeline-contract-pack.md`). Minimal client-side
+ * `docs/portal/customer-home-and-timeline-contract-pack.md`). Minimal client-side
  * mirror of the two real endpoints this page reads — apps in this monorepo
  * don't share types across the `artifacts/*` boundary (see CLAUDE.md,
  * "Workspace / monorepo"), same convention `usePillarSummary.ts` already

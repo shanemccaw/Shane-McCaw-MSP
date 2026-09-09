@@ -3,7 +3,7 @@
  * (#1724, Feature #1490).
  *
  * Mirrored verbatim from the real routes' own interfaces — see
- * `docs/policy-decisions-contract-pack.md` §1/§3 and
+ * `docs/portal/policy-decisions-contract-pack.md` §1/§3 and
  * `artifacts/api-server/src/routes/portal-policy-decisions.ts` /
  * `portal-compliance-obligations.ts`. This app has no shared wire-types
  * package to import from (each `artifacts/*` app is its own independent

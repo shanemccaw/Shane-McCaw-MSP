@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
  * `Design/portal/design_handoff_full_site/screens/Ownership RACI.dc.html`
  * per that package's own README ("recreate these designs... using this
  * codebase's existing... patterns") and wired per
- * `docs/ownership-raci-contract-pack.md` against the real
+ * `docs/portal/ownership-raci-contract-pack.md` against the real
  * `/api/portal/ownership*` endpoints — the read surface (§1a) landed at
  * #3040; this pass (#3041) wires the write overlay (§1b): assign, accept,
  * decline and add-a-row, all real POSTs against the tables

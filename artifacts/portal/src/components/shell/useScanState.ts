@@ -86,7 +86,7 @@ const EMPTY: Omit<ScanState, "triggerScan" | "triggering" | "triggerError"> = {
 /**
  * The real, combined scan-status source for the Tenant Status card and the
  * scan log panel (Git #1824). Combines three real backends per
- * docs/scan-progress-sse-contract-pack.md §4's own rule — "the live stream
+ * docs/portal/scan-progress-sse-contract-pack.md §4's own rule — "the live stream
  * and the two polling endpoints work together, not as alternatives":
  *
  *   - poll /portal/scan-status (adaptive 3s/45s) supplies the runId to watch

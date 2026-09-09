@@ -2,7 +2,7 @@
  * Wire types for the customer-facing Risk Register (#2993, Feature #1487).
  *
  * Mirrored verbatim from the real route's own interfaces — see
- * `docs/risk-register-contract-pack.md` and
+ * `docs/portal/risk-register-contract-pack.md` and
  * `artifacts/api-server/src/routes/portal-risk-register.ts` /
  * `portal-rbd-document.ts`. This module has no shared wire-types package to
  * import from (each `artifacts/*` app is its own independent Vite/Node app),

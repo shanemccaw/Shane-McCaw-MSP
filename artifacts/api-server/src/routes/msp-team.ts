@@ -3,7 +3,7 @@
  *
  * MSP-operator counterpart to `portal-team.ts` (Git #2676, part of #2567 "Feature: Team
  * Management and Invitations (MSP Console)", derived from #1656's Portal contract, extracted
- * to `docs/team-management-and-invitations-contract-pack.md` per #2447).
+ * to `docs/portal/team-management-and-invitations-contract-pack.md` per #2447).
  *
  * The Portal file's 10 routes are all session-scoped (`req.user!.customerId`, gated by the
  * caller's own `canManageTeam` flag) — usable only by a customer-tier user managing their own

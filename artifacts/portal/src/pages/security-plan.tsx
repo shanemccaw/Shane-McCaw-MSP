@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
  * `Design/portal/design_handoff_full_site/screens/Security Plan.dc.html` per
  * that package's own README ("recreate these designs... using this
  * codebase's existing... patterns") and wired per
- * `docs/security-plan-contract-pack.md` against the real
+ * `docs/portal/security-plan-contract-pack.md` against the real
  * `/api/portal/security-plan*` endpoints.
  *
  * Deliberate divergence from the design reference — see the "what this page

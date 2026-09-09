@@ -2,7 +2,7 @@
  * Active Cards (#366) — client-side mirror of the four real card payload
  * shapes built server-side in `shanebot-engine.ts` (`InvoiceCardData`,
  * `SubscriptionCardData`, `ScoreCardData`, `DataAnswerCardData`) and extracted
- * verbatim in `docs/shanebot-contract-pack.md` §4. A card's `data` arrives as
+ * verbatim in `docs/portal/shanebot-contract-pack.md` §4. A card's `data` arrives as
  * `Record<string, unknown>` on the wire (contract pack §3 — `cardType` never
  * narrows the union at the routing layer), so each renderer below re-checks
  * its own shape defensively rather than trusting a cast.

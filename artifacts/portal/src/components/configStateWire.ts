@@ -11,7 +11,7 @@
  *
  * Shapes here are the subset of `config-state-views.ts` / `config-change-attribution.ts`'s
  * real response fields this page actually renders — see
- * `docs/configuration-state-contract-pack.md` §5 for the full contracts. Pure
+ * `docs/portal/configuration-state-contract-pack.md` §5 for the full contracts. Pure
  * functions only (no React), so they're unit-testable directly; the fetching lives in
  * `configStateLive.ts`.
  */

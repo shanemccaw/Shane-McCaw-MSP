@@ -42,7 +42,7 @@ function rgba(hex: string, alpha: number): string {
 /**
  * Active Runbooks (#2994, carried forward from #1730/#1488). Design:
  * `Design/portal/design_handoff_full_site/screens/SOPs.dc.html`
- * (`view: "runbooks"`), contract: `docs/runbooks-contract-pack.md`.
+ * (`view: "runbooks"`), contract: `docs/portal/runbooks-contract-pack.md`.
  *
  * Every row comes from `GET /api/portal/runbooks` via `useRunbooks` — real,
  * already correct, previously wired to zero pages (contract pack §0). This

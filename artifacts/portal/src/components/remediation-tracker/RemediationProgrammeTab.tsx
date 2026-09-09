@@ -1,6 +1,6 @@
 /**
  * The Remediation Tracker's "28-step programme" surface (#3037, Feature
- * #1489) — wires §1a of docs/remediation-tracking-contract-pack.md
+ * #1489) — wires §1a of docs/portal/remediation-tracking-contract-pack.md
  * (`portal-remediation-tracker.ts`: GET tracker + pricing, PUT step status,
  * POST verify, GET verification-guide, POST decline-to-risk) to the real
  * Design export

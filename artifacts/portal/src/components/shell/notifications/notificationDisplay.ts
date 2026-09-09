@@ -13,7 +13,7 @@ import { isToday, isYesterday, format } from "date-fns";
 import type { PortalNotificationSeverity } from "./types";
 
 /**
- * The seven customer-alert categories `docs/alert_preferences.md` documents
+ * The seven customer-alert categories `docs/portal/alert_preferences.md` documents
  * (`customer-alert-delivery.ts` `CUSTOMER_ALERT_BALANCED_DEFAULTS` keys) plus
  * a fallback for anything else `notificationsTable.category` carries (it's a
  * free-text column — other callers, e.g. `sales-offer-engine.ts`, use their

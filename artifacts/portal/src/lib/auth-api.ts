@@ -5,7 +5,7 @@
  * owns a content read a logged-out visitor can make.
  *
  * Note on GET /api/portal/branding (msp-custom-domain.ts:40): it's real and
- * listed in docs/auth-core-contract-pack.md §1, but deliberately unused by
+ * listed in docs/portal/auth-core-contract-pack.md §1, but deliberately unused by
  * all 6 screens here — every `Design/portal/design_handoff_full_site/screens/
  * Auth *.dc.html` header hardcodes "Shane McCaw Consulting" as literal copy,
  * not a template binding, and CLAUDE.md's copy-is-final rule forbids

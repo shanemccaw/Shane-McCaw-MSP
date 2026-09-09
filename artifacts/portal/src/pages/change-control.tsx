@@ -1,6 +1,6 @@
 /**
  * Change Control (#1717, Feature #1486) — wired against the real, regenerated
- * `docs/change-control-contract-pack.md` (#2989) and
+ * `docs/portal/change-control-contract-pack.md` (#2989) and
  * `Design/portal/design_handoff_full_site/screens/Change Control.dc.html`.
  *
  * Tri-state the design's own `dataState` enum maps onto real signals:

@@ -4,7 +4,7 @@
  * read (#1538/#1539/#1541/#1543, Feature #1489).
  *
  * Mirrored from the real routes' own interfaces — see
- * `docs/remediation-tracking-contract-pack.md` §1b-1e and
+ * `docs/portal/remediation-tracking-contract-pack.md` §1b-1e and
  * `artifacts/api-server/src/routes/portal-remediation-checklist.ts` /
  * `-fix-routes.ts` / `-reveal.ts` / `-bypass-resolutions.ts`. No shared
  * wire-types package exists between `artifacts/*` apps, so this is a local

@@ -6,7 +6,7 @@
 
   "notes": [
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these assertions only go green once this session's commit is deployed by the dev-server rebuild.",
-    "No known-password test account exists in the local DB for a real end-to-end 401/423/mfaRequired assertion here without writing one -- see auth/password-reset-guard.json for the forgot-password API coverage, which needs no credential. This manifest covers the real page load + form wiring; the credential-branch banners (invalid/locked/mfaRequired) were verified by direct route reading against docs/auth-core-contract-pack.md, not exercised end-to-end here.",
+    "No known-password test account exists in the local DB for a real end-to-end 401/423/mfaRequired assertion here without writing one -- see auth/password-reset-guard.json for the forgot-password API coverage, which needs no credential. This manifest covers the real page load + form wiring; the credential-branch banners (invalid/locked/mfaRequired) were verified by direct route reading against docs/portal/auth-core-contract-pack.md, not exercised end-to-end here.",
     "Route is /portal/login (this app mounts at /portal/, no slug prefix for the auth flow)."
   ],
 

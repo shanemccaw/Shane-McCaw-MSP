@@ -1,7 +1,7 @@
 /**
  * Display-only derivations for the Remediation Tracking checklist, fix-route
  * and bypass-resolutions surfaces — colour/label lookups for the real enum
- * vocabularies in `docs/remediation-tracking-contract-pack.md` §3. An
+ * vocabularies in `docs/portal/remediation-tracking-contract-pack.md` §3. An
  * unrecognised value renders as its own raw text in a neutral style rather
  * than being coerced into a bucket it does not belong in.
  */

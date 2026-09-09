@@ -14,7 +14,7 @@ const RED = "#f87171";
  * package's README ("recreate these designs... using this codebase's
  * existing... patterns, not ship the HTML files as-is").
  *
- * Wired this pass, per `docs/billing-contract-pack.md`: Receipts
+ * Wired this pass, per `docs/portal/billing-contract-pack.md`: Receipts
  * (`GET /api/portal/invoices`, Git #1237) and "Manage payment in Stripe"
  * (`POST /api/portal/billing/customer-portal`) via `billingLive.ts`.
  *

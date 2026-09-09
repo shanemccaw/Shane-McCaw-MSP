@@ -1,7 +1,7 @@
 /**
  * Display-only derivations for Ownership / RACI (#3040) — initials, side
  * colouring and acceptance swatches for the real vocabularies documented in
- * `docs/ownership-raci-contract-pack.md` §3. An unrecognised value renders
+ * `docs/portal/ownership-raci-contract-pack.md` §3. An unrecognised value renders
  * as its own raw text in a neutral style rather than being coerced into a
  * bucket it does not belong in, matching the Risk Register convention.
  */

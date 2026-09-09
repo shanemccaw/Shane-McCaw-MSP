@@ -49,7 +49,7 @@ const CATEGORY_INFO: Record<string, { label: string; description: string }> = {
 };
 
 // "What this page deliberately does not do" — real, contract-pack-derived
-// facts about this surface (docs/notification-preferences-contract-pack.md
+// facts about this surface (docs/portal/notification-preferences-contract-pack.md
 // §2/§3/§5/§6/§8/§10), not fetched data. Copy is final per CLAUDE.md.
 const LEDGER: { gap: string; where: string }[] = [
   { gap: "No record of what a muted category suppressed. A suppressed notification is never created, so there is nothing to look back at — only the absence of what would have appeared.", where: "§10" },
@@ -80,7 +80,7 @@ function pluralize(n: number, singular: string, plural: string): string {
  * NotificationSettingsContent from CustomerNotificationsPage.
  *
  * Wired to the real, already-built `GET`/`PATCH /api/portal/notification-
- * preferences` (docs/notification-preferences-contract-pack.md) — no
+ * preferences` (docs/portal/notification-preferences-contract-pack.md) — no
  * fixture data. Both endpoints are CustomerUser-reachable with no other
  * role/tenant scoping (contract pack §7), matching the archived page's own
  * usage.

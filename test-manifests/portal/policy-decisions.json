@@ -1,6 +1,6 @@
 {
   "issue": 1724,
-  "feature": "Policy Decisions -- own-table register (#1724, Feature #1490) -- the real customer-facing Policy Decisions page in artifacts/portal (/policy-decisions), wired to GET/POST /api/portal/policy-register, PATCH /api/portal/policy-register/:id/clearance/resolve, and GET /api/portal/compliance-obligations -- see docs/policy-decisions-contract-pack.md. No fixture module: every row on screen comes from these endpoints. This is a DIFFERENT register from the risk-derived GET /api/portal/policy-decisions view already covered by test-manifests/portal/risk-register.json's A2/UI6 (PolicyDecisionsCard on the Risk Register page) -- the two are never merged, per contract pack §0/§9.",
+  "feature": "Policy Decisions -- own-table register (#1724, Feature #1490) -- the real customer-facing Policy Decisions page in artifacts/portal (/policy-decisions), wired to GET/POST /api/portal/policy-register, PATCH /api/portal/policy-register/:id/clearance/resolve, and GET /api/portal/compliance-obligations -- see docs/portal/policy-decisions-contract-pack.md. No fixture module: every row on screen comes from these endpoints. This is a DIFFERENT register from the risk-derived GET /api/portal/policy-decisions view already covered by test-manifests/portal/risk-register.json's A2/UI6 (PolicyDecisionsCard on the Risk Register page) -- the two are never merged, per contract pack §0/§9.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "ea4192eb0",
 

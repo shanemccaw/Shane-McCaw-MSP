@@ -1,6 +1,6 @@
 {
   "issue": 1744,
-  "feature": "Microsoft Changes (#1485, screen 03; Feature #1494) — the real Microsoft Changes page in artifacts/portal, wired to the already-built GET /api/portal/message-center (docs/microsoft-changes-contract-pack.md §1a) and the decline write POST /api/portal/change-control/:code/decline (§1c). Real design landed in Design/portal/design_handoff_full_site/screens/Microsoft Changes.dc.html; page lives at artifacts/portal/src/pages/microsoft-changes.tsx, route /microsoft-changes. This build also added the `routing` field to the message-center wire (joining m365_change_routings + msp_change_requests) — the customer wire had no field connecting a post to its routed Change Request at all before this.",
+  "feature": "Microsoft Changes (#1485, screen 03; Feature #1494) — the real Microsoft Changes page in artifacts/portal, wired to the already-built GET /api/portal/message-center (docs/portal/microsoft-changes-contract-pack.md §1a) and the decline write POST /api/portal/change-control/:code/decline (§1c). Real design landed in Design/portal/design_handoff_full_site/screens/Microsoft Changes.dc.html; page lives at artifacts/portal/src/pages/microsoft-changes.tsx, route /microsoft-changes. This build also added the `routing` field to the message-center wire (joining m365_change_routings + msp_change_requests) — the customer wire had no field connecting a post to its routed Change Request at all before this.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "PENDING",
 

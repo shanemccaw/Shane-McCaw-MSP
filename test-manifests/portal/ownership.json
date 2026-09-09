@@ -1,6 +1,6 @@
 {
   "issue": 3040,
-  "feature": "Ownership / RACI -- the real customer-facing read surface in artifacts/portal (/ownership), wired to GET /api/portal/ownership -- see docs/ownership-raci-contract-pack.md §1a. No fixture module: every row, person and honest-empty state on screen comes from that one endpoint. This build is READ-ONLY by design: the five write routes (assign/reorder/accept/decline/delegations/rows, contract pack §1b) are sibling issue #3041's scope and are not exercised here.",
+  "feature": "Ownership / RACI -- the real customer-facing read surface in artifacts/portal (/ownership), wired to GET /api/portal/ownership -- see docs/portal/ownership-raci-contract-pack.md §1a. No fixture module: every row, person and honest-empty state on screen comes from that one endpoint. This build is READ-ONLY by design: the five write routes (assign/reorder/accept/decline/delegations/rows, contract pack §1b) are sibling issue #3041's scope and are not exercised here.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "TBD-fill-at-DONE",
 

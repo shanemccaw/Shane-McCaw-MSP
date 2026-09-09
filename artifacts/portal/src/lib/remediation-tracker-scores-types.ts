@@ -1,6 +1,6 @@
 /**
  * remediation-tracker-scores-types.ts — wire types for §1f of
- * `docs/remediation-tracking-contract-pack.md`:
+ * `docs/portal/remediation-tracking-contract-pack.md`:
  *
  *   GET /api/portal/remediation-tracker/pillar-scores
  *

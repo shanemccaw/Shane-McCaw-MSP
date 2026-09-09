@@ -131,7 +131,7 @@ The account was left clean again afterwards — only `passwordAuthenticationMeth
   the same code path with a different URL segment, but that is inference, not evidence.
 - **This account is not a portal user.** It has no row in the platform's `users` table and
   no licence, so it does not close the separate gap noted in
-  `docs/account-security-contract-pack.md` §8 (portal identities are personal
+  `docs/portal/account-security-contract-pack.md` §8 (portal identities are personal
   outlook.com/gmail.com addresses with no verified link to an M365 user object).
 
 ## Related

@@ -11,7 +11,7 @@ const LABELS: Record<RemediationExportKind, string> = {
 };
 
 /**
- * The three real export triggers (§1g, `docs/remediation-tracking-contract-pack.md`):
+ * The three real export triggers (§1g, `docs/portal/remediation-tracking-contract-pack.md`):
  * every catalogue step's claim as CSV/PDF, or a verification-only evidence
  * pack. Each is a real file streamed from `portal-remediation-tracker-export.ts`
  * — nothing generated client-side.

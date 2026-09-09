@@ -4,7 +4,7 @@
  * bypass-resolutions read (#1538/#1539/#1541/#1543, Feature #1489, #3038).
  *
  * Wired to the real, live endpoints documented in
- * `docs/remediation-tracking-contract-pack.md` §1b-1e:
+ * `docs/portal/remediation-tracking-contract-pack.md` §1b-1e:
  *   GET  /api/portal/remediation/checklist
  *   PUT  /api/portal/remediation/checklist/:checkKey
  *   POST /api/portal/remediation/checklist/:checkKey/raise-change

@@ -1,7 +1,7 @@
 /**
  * React Query hooks for the customer-facing Change Control module (#1717,
  * Feature #1486), wired to the real, live endpoints documented in
- * `docs/change-control-contract-pack.md` (#2989):
+ * `docs/portal/change-control-contract-pack.md` (#2989):
  *
  *   GET  /api/portal/change-control
  *   POST /api/portal/change-control

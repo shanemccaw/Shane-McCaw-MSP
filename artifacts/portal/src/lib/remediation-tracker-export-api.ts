@@ -1,6 +1,6 @@
 /**
  * Download triggers for the Remediation Tracker's export routes (§1g,
- * `docs/remediation-tracking-contract-pack.md`):
+ * `docs/portal/remediation-tracking-contract-pack.md`):
  *
  *   GET /portal/remediation-tracker/export.csv
  *   GET /portal/remediation-tracker/export.pdf

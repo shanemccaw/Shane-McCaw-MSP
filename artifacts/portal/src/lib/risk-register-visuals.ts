@@ -1,7 +1,7 @@
 /**
  * Display-only derivations for the Risk Register (#2993) — colour/label
  * lookups for the real enum vocabularies documented in
- * `docs/risk-register-contract-pack.md` §3. An unrecognised value renders as
+ * `docs/portal/risk-register-contract-pack.md` §3. An unrecognised value renders as
  * its own raw text in a neutral style rather than being coerced into a
  * bucket it does not belong in (the contract pack's own rule for this
  * module, §"severity vocabularies").

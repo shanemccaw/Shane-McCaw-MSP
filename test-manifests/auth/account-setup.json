@@ -1,6 +1,6 @@
 {
   "issue": 2991,
-  "feature": "Auth Core: Account setup (Feature #1648). New screen, no prior wire issue -- built against Design/portal/design_handoff_full_site/screens/Auth Account Setup.dc.html. Wired to GET /api/auth/setup-context (auth.ts:649-715) then POST /api/auth/setup-password (auth.ts:547-639), per docs/auth-core-contract-pack.md.",
+  "feature": "Auth Core: Account setup (Feature #1648). New screen, no prior wire issue -- built against Design/portal/design_handoff_full_site/screens/Auth Account Setup.dc.html. Wired to GET /api/auth/setup-context (auth.ts:649-715) then POST /api/auth/setup-password (auth.ts:547-639), per docs/portal/auth-core-contract-pack.md.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "PENDING",
   "notes": [

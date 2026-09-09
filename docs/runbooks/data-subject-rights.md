@@ -118,4 +118,4 @@ manual half of data-subject-rights work.
 - Shared deletion-request logic (both entry points): `artifacts/api-server/src/lib/data-rights.ts`
 - Customer self-service endpoints: `artifacts/api-server/src/routes/portal.ts` / `portal-privacy.ts`
 - MSP-admin-initiated endpoint + MSP-facing view of request history: `artifacts/api-server/src/routes/msp-data-rights.ts`
-- Wire contract detail: `docs/data-rights-and-privacy-contract-pack.md`
+- Wire contract detail: `docs/portal/data-rights-and-privacy-contract-pack.md`

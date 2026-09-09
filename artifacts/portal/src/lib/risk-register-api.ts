@@ -2,7 +2,7 @@
  * React Query hooks for the customer-facing Risk Register (#2993, #3058).
  *
  * Wired to the real, live endpoints documented in
- * `docs/risk-register-contract-pack.md`:
+ * `docs/portal/risk-register-contract-pack.md`:
  *   GET  /api/portal/risk-register
  *   GET  /api/portal/policy-decisions
  *   POST /api/portal/risk-register/:rbdId/accept

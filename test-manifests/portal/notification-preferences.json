@@ -1,6 +1,6 @@
 {
   "issue": 2992,
-  "feature": "Notification Preferences (#1485, screen 16) — the real Notification Preferences page in artifacts/portal, wired to the already-built GET/PATCH /api/portal/notification-preferences (docs/notification-preferences-contract-pack.md). Real design landed in Design/portal/design_handoff_full_site/screens/Notification Preferences.dc.html; page lives at artifacts/portal/src/pages/notification-preferences.tsx, route /notification-preferences.",
+  "feature": "Notification Preferences (#1485, screen 16) — the real Notification Preferences page in artifacts/portal, wired to the already-built GET/PATCH /api/portal/notification-preferences (docs/portal/notification-preferences-contract-pack.md). Real design landed in Design/portal/design_handoff_full_site/screens/Notification Preferences.dc.html; page lives at artifacts/portal/src/pages/notification-preferences.tsx, route /notification-preferences.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "PENDING",
 

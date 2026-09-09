@@ -1,6 +1,6 @@
 /**
  * React Query hook for the customer-facing Remediation Tracker's pillar
- * scores (§1f, `docs/remediation-tracking-contract-pack.md`):
+ * scores (§1f, `docs/portal/remediation-tracking-contract-pack.md`):
  *
  *   GET /api/portal/remediation-tracker/pillar-scores
  *

@@ -38,7 +38,7 @@
  * `/api/portal/webhooks/event-types` already serves, and flags each webhook's
  * subscribed events that are NOT in that list — e.g. `signal.fired`, which is
  * subscribable today but has no dispatch call site anywhere (see
- * docs/webhooks-contract-pack.md §4(A)) — so an operator can see a subscription that
+ * docs/portal/webhooks-contract-pack.md §4(A)) — so an operator can see a subscription that
  * will never fire without cross-referencing the catalog by hand.
  *
  * Routes (MSPOperator+):

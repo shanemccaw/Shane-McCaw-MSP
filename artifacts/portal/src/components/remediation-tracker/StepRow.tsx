@@ -1,6 +1,6 @@
 /**
  * One row of the Remediation Tracker's 28-step programme (#3037, §1a of
- * docs/remediation-tracking-contract-pack.md). Renders the step's real claim
+ * docs/portal/remediation-tracking-contract-pack.md). Renders the step's real claim
  * (`status`), real verification (`verificationState`), and derived
  * `terminalState` — three related but distinct facts, never collapsed (see
  * the contract pack §4b).

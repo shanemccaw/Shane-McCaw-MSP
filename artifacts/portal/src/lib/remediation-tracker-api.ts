@@ -1,7 +1,7 @@
 /**
  * React Query hooks for the customer-facing Remediation Tracker's s1-s30 core
  * surface (#3037, Feature #1489). Wired to the real, live endpoints documented
- * in `docs/remediation-tracking-contract-pack.md` §1a:
+ * in `docs/portal/remediation-tracking-contract-pack.md` §1a:
  *
  *   GET  /api/portal/remediation-tracker
  *   PUT  /api/portal/remediation-tracker/steps/:stepId

@@ -1,6 +1,6 @@
 {
   "issue": 2993,
-  "feature": "Risk Register (#2993, Feature #1487) -- the real customer-facing Risk Register page in the rebuilt artifacts/portal (/risk-register), wired to GET /api/portal/risk-register, GET /api/portal/policy-decisions, POST /api/portal/risk-register/:rbdId/accept, and GET /api/portal/risk-register/rbd/:rbdId/versions -- see docs/risk-register-contract-pack.md. No fixture module: every row on screen comes from these endpoints. #3058 wired the whole-document viewer + drawn-signature capture (GET .../versions/:versionUid/document, POST .../versions/:versionUid/sign) that this manifest's DOC steps below cover.",
+  "feature": "Risk Register (#2993, Feature #1487) -- the real customer-facing Risk Register page in the rebuilt artifacts/portal (/risk-register), wired to GET /api/portal/risk-register, GET /api/portal/policy-decisions, POST /api/portal/risk-register/:rbdId/accept, and GET /api/portal/risk-register/rbd/:rbdId/versions -- see docs/portal/risk-register-contract-pack.md. No fixture module: every row on screen comes from these endpoints. #3058 wired the whole-document viewer + drawn-signature capture (GET .../versions/:versionUid/document, POST .../versions/:versionUid/sign) that this manifest's DOC steps below cover.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "bbc47252e",
 

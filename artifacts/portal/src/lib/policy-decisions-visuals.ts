@@ -1,7 +1,7 @@
 /**
  * Display-only derivations for Policy Decisions (#1724) — colour/label
  * lookups for the real enum vocabularies documented in
- * `docs/policy-decisions-contract-pack.md` §5. An unrecognised value renders
+ * `docs/portal/policy-decisions-contract-pack.md` §5. An unrecognised value renders
  * as its own raw text in a neutral style rather than being coerced into a
  * bucket it does not belong in, matching Risk Register's own rule for this.
  */

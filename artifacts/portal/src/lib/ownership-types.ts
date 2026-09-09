@@ -3,7 +3,7 @@
  * Feature #1491).
  *
  * Mirrored verbatim from the real route's own interfaces — see
- * `docs/ownership-raci-contract-pack.md` §1a/§1b/§2/§3 and
+ * `docs/portal/ownership-raci-contract-pack.md` §1a/§1b/§2/§3 and
  * `artifacts/api-server/src/lib/portal-ownership.ts` /
  * `artifacts/api-server/src/routes/portal-ownership.ts`. This module has no
  * shared wire-types package to import from (each `artifacts/*` app is its own

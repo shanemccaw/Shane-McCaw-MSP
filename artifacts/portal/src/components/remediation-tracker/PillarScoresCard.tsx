@@ -39,7 +39,7 @@ function deltaClassName(delta: number | null): string {
 }
 
 /**
- * Pillar scores card + Copilot gate (§1f, `docs/remediation-tracking-contract-pack.md`).
+ * Pillar scores card + Copilot gate (§1f, `docs/portal/remediation-tracking-contract-pack.md`).
  * Wired to the real `GET /portal/remediation-tracker/pillar-scores` — a pillar
  * with no snapshot renders "no score at all", never a fabricated number
  * (route header, `portal-remediation-tracker-scores.ts:44-48`).

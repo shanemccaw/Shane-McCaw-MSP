@@ -19,7 +19,7 @@ interface Banner {
 
 /**
  * Auth — Sign in (#2991, Feature #1648). Wired to POST /api/auth/login
- * (auth.ts:321-418) per docs/auth-core-contract-pack.md §1. The MFA challenge
+ * (auth.ts:321-418) per docs/portal/auth-core-contract-pack.md §1. The MFA challenge
  * ("Auth MFA Challenge.dc.html") is rendered here as a second phase of this
  * same page rather than a separate route — it depends on the short-lived
  * mfaToken login() just returned, and the issue body itself treats the two

@@ -2,7 +2,7 @@
  * Wire types for the customer-facing Security Plan (#3027, Feature #1495).
  *
  * Mirrored verbatim from the real routes' own interfaces — see
- * `docs/security-plan-contract-pack.md` and
+ * `docs/portal/security-plan-contract-pack.md` and
  * `artifacts/api-server/src/routes/portal-security-plan.ts` /
  * `portal-security-plan-document.ts`. This module has no shared wire-types
  * package to import from (each `artifacts/*` app is its own independent

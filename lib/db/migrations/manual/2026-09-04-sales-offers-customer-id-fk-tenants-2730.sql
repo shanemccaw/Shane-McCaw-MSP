@@ -26,7 +26,7 @@
 -- Live data confirmed safe to repoint (2026-09-04): all 5 sales_offers rows have
 -- customer_id = 1, which is a real tenants.id (no orphans against tenants).
 --
--- Full writeup: docs/offers-and-sow-acceptance-msp-console-contract-pack.md section 6b.
+-- Full writeup: docs/msp-console/offers-and-sow-acceptance-msp-console-contract-pack.md section 6b.
 
 BEGIN;
 

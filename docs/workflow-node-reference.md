@@ -1,7 +1,7 @@
 # Workflow Node Reference
 
 > Standalone catalogue of all workflow node types available in the Admin Panel builder.  
-> For builder UX, BFS execution model, and API endpoints, see [admin-panel.md](./admin-panel.md).  
+> For builder UX, BFS execution model, and API endpoints, see [admin-panel.md](./admin-panel/admin-panel.md).  
 > **Last updated:** 2026-07-10
 
 ---
@@ -1361,7 +1361,7 @@ AI-generates a full landing page for a campaign including headline, subheadline,
 
 ## 9. Intelligence Engines
 
-> Added as part of the Tenant Signal Intelligence Engine epic. All 8 nodes below (1 signal-lookup node + 7 engine nodes) sit downstream of the [Tenant Signals](./admin-panel.md#9-tenant-signals) rule engine — they either surface the raw fired-signal set (`get_tenant_signals`) or run one of the seven scoring engines defined in `engine-registry.ts` (`calculate_priority`, `calculate_pricing_engine`, `calculate_health`, `calculate_drift`, `calculate_forecast`, `calculate_crm`, `calculate_msp`) against a live tenant. Each engine node is a thin executor wrapper around `getEngineDef(engineKey).runForTenant(clientId)` — the scoring logic itself lives in the corresponding `*-engine.ts` lib file and is not duplicated here.
+> Added as part of the Tenant Signal Intelligence Engine epic. All 8 nodes below (1 signal-lookup node + 7 engine nodes) sit downstream of the [Tenant Signals](./admin-panel/admin-panel.md#9-tenant-signals) rule engine — they either surface the raw fired-signal set (`get_tenant_signals`) or run one of the seven scoring engines defined in `engine-registry.ts` (`calculate_priority`, `calculate_pricing_engine`, `calculate_health`, `calculate_drift`, `calculate_forecast`, `calculate_crm`, `calculate_msp`) against a live tenant. Each engine node is a thin executor wrapper around `getEngineDef(engineKey).runForTenant(clientId)` — the scoring logic itself lives in the corresponding `*-engine.ts` lib file and is not duplicated here.
 
 ### `get_tenant_signals`
 

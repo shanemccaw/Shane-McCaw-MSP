@@ -1,7 +1,7 @@
 /**
  * Wire types for the customer-facing Remediation Tracker's s1-s30 core
  * surface (#3037, Feature #1489). Mirrored verbatim from the real route's own
- * interfaces — see `docs/remediation-tracking-contract-pack.md` §1a and
+ * interfaces — see `docs/portal/remediation-tracking-contract-pack.md` §1a and
  * `artifacts/api-server/src/routes/portal-remediation-tracker.ts` /
  * `artifacts/api-server/src/lib/remediation-tracker-pricing.ts`. No shared
  * wire-types package to import from (each `artifacts/*` app is its own

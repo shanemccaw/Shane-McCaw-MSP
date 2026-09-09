@@ -1,7 +1,7 @@
 /**
  * Wire types for the Tenant Status card / scan log panel (Git #1824).
  *
- * Three real backends, not one — see docs/scan-progress-sse-contract-pack.md (#2520):
+ * Three real backends, not one — see docs/portal/scan-progress-sse-contract-pack.md (#2520):
  *   1. GET /api/portal/scan-status   — polled snapshot of the customer's latest run
  *   2. GET /api/portal/scan-plan     — the ordered check-key plan for that run
  *   3. GET /api/msp/customers/:customerId/diagnostics/runs/:runId/sse — the live

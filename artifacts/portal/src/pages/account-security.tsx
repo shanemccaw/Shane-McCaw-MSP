@@ -31,7 +31,7 @@ function last4(phone: string | null): string {
  * codebase's existing... patterns, not ship the HTML files as-is").
  *
  * Wired this pass (all real, per
- * `docs/account-security-contract-pack.md` and the #2995 issue body's own
+ * `docs/portal/account-security-contract-pack.md` and the #2995 issue body's own
  * file:line citations into `artifacts/api-server/src/routes/mfa.ts`):
  * TOTP setup/verify-setup/DELETE, SMS setup/verify-setup/DELETE (admin
  * accounts rendered as unavailable, matching `mfa.ts`'s own `rejectIfAdmin`

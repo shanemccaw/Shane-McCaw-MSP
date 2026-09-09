@@ -25,7 +25,7 @@ const LEDGER: string[] = [
 /**
  * Remediation Tracking (#1489, Feature #1485) — real Design export
  * (`Design/portal/design_handoff_full_site/screens/Remediation Tracking.dc.html`)
- * wired against `docs/remediation-tracking-contract-pack.md`. Three real
+ * wired against `docs/portal/remediation-tracking-contract-pack.md`. Three real
  * functional units, dispatched as separate issues, compose on this one page:
  *
  *   - "28-step programme" (§1a) — #3037's `RemediationProgrammeTab`.

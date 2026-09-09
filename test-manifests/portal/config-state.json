@@ -1,6 +1,6 @@
 {
   "issue": 3004,
-  "feature": "Configuration State - the real artifacts/portal '/config-state' page (src/pages/config-state.tsx), part of #3002/#1485. Wires GET /api/portal/config-state/{snapshots,snapshots/current,snapshots/:id,changes,changes/:diffId} via configStateLive.ts, per docs/configuration-state-contract-pack.md and the landed 'Configuration State.dc.html' export (#3003). The design's own tenant-specific commentary (workload notes, group notes, history notes) is deliberately NOT copied verbatim - see config-state.tsx's own header comment for why - and is instead derived live from real per-request data (most-common unread reason, largest resource by volume, real notComparableReason breakdowns) via configStateWire.ts's pure helpers.",
+  "feature": "Configuration State - the real artifacts/portal '/config-state' page (src/pages/config-state.tsx), part of #3002/#1485. Wires GET /api/portal/config-state/{snapshots,snapshots/current,snapshots/:id,changes,changes/:diffId} via configStateLive.ts, per docs/portal/configuration-state-contract-pack.md and the landed 'Configuration State.dc.html' export (#3003). The design's own tenant-specific commentary (workload notes, group notes, history notes) is deliberately NOT copied verbatim - see config-state.tsx's own header comment for why - and is instead derived live from real per-request data (most-common unread reason, largest resource by volume, real notComparableReason breakdowns) via configStateWire.ts's pure helpers.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "PENDING",
 

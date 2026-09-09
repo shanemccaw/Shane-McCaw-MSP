@@ -6,7 +6,7 @@ import { toast } from "sonner";
 /**
  * Live data + write actions for the Account Security page (#2996, part of
  * #1595). Wire contracts cited against
- * `Design/portal/design_handoff_full_site/docs/account-security-contract-pack.md`.
+ * `Design/portal/design_handoff_full_site/docs/portal/account-security-contract-pack.md`.
  *
  * Scope note: this hook wires every read/action that is genuinely #2996's own
  * responsibility (identity, MFA-state read, sessions read + revoke,

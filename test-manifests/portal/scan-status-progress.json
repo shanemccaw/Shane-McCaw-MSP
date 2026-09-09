@@ -1,5 +1,5 @@
 {
-  "feature": "Portal Shell (Git #1824): the Tenant Status card / scan status and progress. Three real backends combined per docs/scan-progress-sse-contract-pack.md (#2520) -- GET /api/portal/scan-status (poll), GET /api/portal/scan-plan (the run's check-key plan), and the run-scoped SSE stream GET /api/msp/customers/:customerId/diagnostics/runs/:runId/sse -- feeding artifacts/portal/src/components/shell/useScanState.ts, rendered by TenantStatusCard.tsx (sidebar footer) and ScanLogPanel.tsx (the right-slide scan log, README 'Right-slide detail panel').",
+  "feature": "Portal Shell (Git #1824): the Tenant Status card / scan status and progress. Three real backends combined per docs/portal/scan-progress-sse-contract-pack.md (#2520) -- GET /api/portal/scan-status (poll), GET /api/portal/scan-plan (the run's check-key plan), and the run-scoped SSE stream GET /api/msp/customers/:customerId/diagnostics/runs/:runId/sse -- feeding artifacts/portal/src/components/shell/useScanState.ts, rendered by TenantStatusCard.tsx (sidebar footer) and ScanLogPanel.tsx (the right-slide scan log, README 'Right-slide detail panel').",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "PENDING_COMMIT",
   "notes": [

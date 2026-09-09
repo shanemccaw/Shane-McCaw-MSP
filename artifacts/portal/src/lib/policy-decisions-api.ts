@@ -3,7 +3,7 @@
  * register (#1724, Feature #1490).
  *
  * Wired to the real, live endpoints documented in
- * `docs/policy-decisions-contract-pack.md` §1/§3:
+ * `docs/portal/policy-decisions-contract-pack.md` §1/§3:
  *   GET   /api/portal/policy-register                        — this tenant's own-table decisions
  *   POST  /api/portal/policy-register                         — record + sign a new decision
  *   PATCH /api/portal/policy-register/:id/clearance/resolve   — manual dependency clearance

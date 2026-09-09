@@ -3,7 +3,7 @@
  * (#3040/#3041, Feature #1491).
  *
  * Wired to the real, live endpoints documented in
- * `docs/ownership-raci-contract-pack.md`:
+ * `docs/portal/ownership-raci-contract-pack.md`:
  *   GET  /api/portal/ownership              — matrix + saved overlay (§1a, #3040)
  *   POST /api/portal/ownership/assign        — set/clear one cell holder (§1b, #3041)
  *   POST /api/portal/ownership/accept        — mark a pending cell accepted
