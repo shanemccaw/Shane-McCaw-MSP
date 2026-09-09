@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, CreditCard, Loader2, Plus } from "lucide-react";
+import { Link } from "wouter";
+import { AlertTriangle, Loader2, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -150,14 +151,45 @@ export default function OwnershipPage() {
       )}
 
       {isError && tierBlocked && (
-        <div className="flex gap-2.5 rounded-xl border border-dashed border-status-blue/40 bg-status-blue/[.06] p-4">
-          <CreditCard className="mt-0.5 size-4 flex-none text-status-blue" />
-          <div className="flex flex-col gap-1">
-            <span className="text-[13px] font-semibold text-foreground">Not included in your current plan</span>
-            <span className="max-w-[620px] text-xs leading-relaxed text-muted-foreground">
-              Ownership / RACI is a Monitoring tier feature your active plan does not bundle. This is a plan
-              limit, not a failed read.
-            </span>
+        <div
+          className="flex max-w-[760px] flex-col gap-3 rounded-2xl border border-status-amber/30 bg-status-amber/[.05] p-5"
+          data-testid="ownership-tier-gated"
+        >
+          <span className="text-[15px] font-bold text-foreground">Ownership is not part of your Monitoring tier</span>
+          <span className="text-xs leading-relaxed text-muted-foreground">
+            The matrix is included from the Premier tier. Your plan does not bundle it, so the register cannot be
+            read back on this page. Nothing has been removed: any owners already recorded for your organisation
+            are kept exactly as written, and your MSP can still act on them. Only reading is gated.
+          </span>
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+            <div className="flex flex-col gap-1 rounded-lg border border-border/60 p-3">
+              <span className="text-[9.5px] font-bold tracking-wider text-status-amber">WHAT IS GATED</span>
+              <span className="text-[11.5px] leading-relaxed text-muted-foreground">
+                Reading the matrix and any cell's history.
+              </span>
+            </div>
+            <div className="flex flex-col gap-1 rounded-lg border border-border/60 p-3">
+              <span className="text-[9.5px] font-bold tracking-wider text-status-green">WHAT IS NOT</span>
+              <span className="text-[11.5px] leading-relaxed text-muted-foreground">
+                Recorded owners, declines and handovers. They stay on file and stay enforceable.
+              </span>
+            </div>
+            <div className="flex flex-col gap-1 rounded-lg border border-border/60 p-3">
+              <span className="text-[9.5px] font-bold tracking-wider text-muted-foreground">UNRELATED</span>
+              <span className="text-[11.5px] leading-relaxed text-muted-foreground">
+                Change Control's add-on is a separate purchase and is not affected either way.
+              </span>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Link
+              href="/billing"
+              className="rounded-md border border-status-blue/50 bg-status-blue/[.12] px-3 py-1.5 text-[11.5px] font-bold text-status-blue no-underline"
+              data-testid="ownership-tier-gated-billing-link"
+            >
+              See your plan
+            </Link>
+            <span className="text-[10.5px] text-muted-foreground">Tier changes are made with your MSP, not from this page.</span>
           </div>
         </div>
       )}
