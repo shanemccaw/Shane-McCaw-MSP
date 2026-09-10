@@ -465,53 +465,6 @@ function OutreachModal({ leadName, leadEmail, leadId, recommendedLeadId, templat
   );
 }
 
-// ─── Add-to-Task Modal ────────────────────────────────────────────────────────
-
-function AddTaskModal({ lead, onClose, fetchWithAuth }: {
-  lead: RecommendedLead; onClose: () => void;
-  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
-}) {
-  const [title, setTitle] = useState(`Outreach: ${lead.name} @ ${lead.company ?? "unknown"}`);
-  const [description, setDescription] = useState(lead.whyFit ?? "");
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      await fetchWithAuth(`${API}/admin/marketing/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, status: "ideas" }),
-      });
-      onClose();
-    } finally { setSaving(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-card border border-border rounded-xl w-full max-w-md p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-foreground font-semibold">Add to Marketing Tasks</h3>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
-        </div>
-        <div className="space-y-3">
-          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Task title…"
-            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
-          <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} placeholder="Description…"
-            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none" />
-        </div>
-        <div className="flex gap-2">
-          <button onClick={() => { void save(); }} disabled={saving || !title.trim()}
-            className="flex-1 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">
-            {saving ? "Adding…" : "Add Task"}
-          </button>
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-muted-foreground text-sm hover:text-foreground transition-colors">Cancel</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Add-to-Campaign Modal ────────────────────────────────────────────────────
 
 function AddToCampaignModal({ lead, campaigns, onClose, fetchWithAuth }: {
@@ -659,7 +612,7 @@ function LeadEmailHistoryModal({ lead, onClose, fetchWithAuth }: {
 
 // ─── Recommended Lead Slide-Over ──────────────────────────────────────────────
 
-function RecommendedLeadSlideOver({ lead, campaigns, generatedDrafts, fetchWithAuth, onClose, onConvert, onDismiss, onOutreach, onTask, onCampaign }: {
+function RecommendedLeadSlideOver({ lead, campaigns, generatedDrafts, fetchWithAuth, onClose, onConvert, onDismiss, onOutreach, onCampaign }: {
   lead: RecommendedLead;
   campaigns: Campaign[];
   generatedDrafts: Record<number, string>;
@@ -668,7 +621,6 @@ function RecommendedLeadSlideOver({ lead, campaigns, generatedDrafts, fetchWithA
   onConvert: (id: number) => void;
   onDismiss: (id: number) => void;
   onOutreach: (opts: { recommendedLeadId: number; leadName: string; leadEmail: string; type: string }) => void;
-  onTask: (lead: RecommendedLead) => void;
   onCampaign: (lead: RecommendedLead) => void;
 }) {
   return (
@@ -789,10 +741,6 @@ function RecommendedLeadSlideOver({ lead, campaigns, generatedDrafts, fetchWithA
               className="text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors font-medium">
               Follow-Up Seq.
             </button>
-            <button onClick={() => onTask(lead)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 transition-colors font-medium">
-              Add Task
-            </button>
             <button onClick={() => { onCampaign(lead); }}
               className="text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors font-medium">
               Add to Campaign
@@ -816,7 +764,6 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
   const [generating, setGenerating] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [outreachModal, setOutreachModal] = useState<{ recommendedLeadId: number; leadName: string; leadEmail: string; type: string } | null>(null);
-  const [taskModal, setTaskModal] = useState<RecommendedLead | null>(null);
   const [campaignModal, setCampaignModal] = useState<RecommendedLead | null>(null);
   const [generatedDrafts, setGeneratedDrafts] = useState<Record<number, string>>({});
   const [genError, setGenError] = useState<string | null>(null);
@@ -1007,7 +954,6 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
                 <button onClick={e => { e.stopPropagation(); setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "cold_email" }); }} className="text-[10px] px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">Email</button>
                 <button onClick={e => { e.stopPropagation(); setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "linkedin" }); }} className="text-[10px] px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">LinkedIn</button>
                 <button onClick={e => { e.stopPropagation(); setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "followup" }); }} className="text-[10px] px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">Follow-Up Seq.</button>
-                <button onClick={e => { e.stopPropagation(); setTaskModal(lead); }} className="text-[10px] px-2 py-1 rounded bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 transition-colors">Add Task</button>
                 <button onClick={e => { e.stopPropagation(); setCampaignModal(lead); }} className="text-[10px] px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors">Add to Campaign</button>
                 <button onClick={e => { e.stopPropagation(); void dismiss(lead.id); }} className="text-[10px] px-2 py-1 rounded bg-border text-muted-foreground hover:text-foreground transition-colors">Dismiss</button>
               </div>
@@ -1037,7 +983,6 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
           onConvert={(id) => { void convert(id); setSelectedLead(null); }}
           onDismiss={(id) => { dismiss(id); setSelectedLead(null); }}
           onOutreach={(opts) => { setOutreachModal(opts); setSelectedLead(null); }}
-          onTask={(lead) => { setTaskModal(lead); setSelectedLead(null); }}
           onCampaign={(lead) => { setCampaignModal(lead); setSelectedLead(null); }}
         />
       )}
@@ -1045,9 +990,6 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
         <OutreachModal recommendedLeadId={outreachModal.recommendedLeadId} leadName={outreachModal.leadName} leadEmail={outreachModal.leadEmail}
           templateType={outreachModal.type} onClose={() => setOutreachModal(null)} fetchWithAuth={fetchWithAuth}
           onGenerated={(content) => setGeneratedDrafts(prev => ({ ...prev, [outreachModal.recommendedLeadId]: content }))} />
-      )}
-      {taskModal && (
-        <AddTaskModal lead={taskModal} onClose={() => setTaskModal(null)} fetchWithAuth={fetchWithAuth} />
       )}
       {campaignModal && (
         <AddToCampaignModal lead={campaignModal} campaigns={campaigns} onClose={() => setCampaignModal(null)} fetchWithAuth={fetchWithAuth} />
@@ -4502,8 +4444,6 @@ function CampaignAdAssetsStep({
     landing_page: makeDefault("landing_page"),
   }));
 
-  const [addTaskModal, setAddTaskModal] = useState<{ title: string; description: string } | null>(null);
-  const [addTaskSaving, setAddTaskSaving] = useState(false);
   const [addContentSaving, setAddContentSaving] = useState<string | null>(null);
   const [outreachSaving, setOutreachSaving] = useState<string | null>(null);
   const [outreachSaved, setOutreachSaved] = useState<string | null>(null);
@@ -4561,18 +4501,6 @@ function CampaignAdAssetsStep({
         patchSection(type, { saving: false, error: d.error ?? "Save failed." });
       }
     } catch { patchSection(type, { saving: false, error: "Network error." }); }
-  };
-
-  const addToTask = async (title: string, description: string) => {
-    setAddTaskSaving(true);
-    try {
-      await fetchWithAuth(`${API}/admin/marketing/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, status: "ideas" }),
-      });
-      setAddTaskModal(null);
-    } finally { setAddTaskSaving(false); }
   };
 
   const addToContentHub = async (type: AdType, v: AdVariation) => {
@@ -4752,10 +4680,6 @@ function CampaignAdAssetsStep({
                               <div className="flex gap-1 flex-wrap justify-end">
                                 <CopyButton text={`${v.headline}\n${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}`} />
                                 <button
-                                  onClick={() => setAddTaskModal({ title: `Ad: ${v.headline}`, description: `${label} Ad\n\nHeadline: ${v.headline}\nDescription: ${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}` })}
-                                  className="text-[10px] px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors"
-                                >+ Task</button>
-                                <button
                                   onClick={() => { void addToContentHub(type, v); }}
                                   disabled={addContentSaving !== null}
                                   className="text-[10px] px-2 py-1 rounded bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 disabled:opacity-40 transition-colors"
@@ -4832,39 +4756,6 @@ function CampaignAdAssetsStep({
           );
         })}
       </div>
-
-      {/* Add Task Modal */}
-      {addTaskModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="bg-card border border-border rounded-xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-foreground font-semibold">Add to Marketing Tasks</h3>
-              <button onClick={() => setAddTaskModal(null)} className="text-muted-foreground hover:text-foreground">✕</button>
-            </div>
-            <div className="space-y-3">
-              <input
-                value={addTaskModal.title}
-                onChange={e => setAddTaskModal(prev => prev ? { ...prev, title: e.target.value } : prev)}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
-              />
-              <textarea
-                value={addTaskModal.description}
-                onChange={e => setAddTaskModal(prev => prev ? { ...prev, description: e.target.value } : prev)}
-                rows={4}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60 resize-none font-mono text-xs"
-              />
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => { void addToTask(addTaskModal.title, addTaskModal.description); }}
-                disabled={addTaskSaving || !addTaskModal.title.trim()}
-                className="flex-1 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors"
-              >{addTaskSaving ? "Adding…" : "Add Task"}</button>
-              <button onClick={() => setAddTaskModal(null)} className="px-4 py-2 rounded-lg border border-border text-muted-foreground text-sm hover:text-foreground transition-colors">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="flex gap-2 pt-2 border-t border-border">
         <button onClick={onNext}
