@@ -840,7 +840,32 @@ namespace BuildConsole.Services
                 // fail → reappear → auto-requeue → fail. Any live/landed row still short-circuits.
                 bool dead = BuildQueuePostgresClient.IsTerminalStatus(existing.Status)
                             && !string.Equals(existing.Status, "done", StringComparison.OrdinalIgnoreCase);
-                if (allowRequeueTerminal && dead)
+
+                // Git #3517 — the ONE free-flow exception to the #1997 no-auto-requeue guard. A
+                // SUPERVISORY cancel (status 'canceled' with exit_code == 0) is not a genuine build
+                // failure: the build ran and exited clean but landed no work because it was
+                // dispatched against a blocker that wasn't actually finished, so the false-done /
+                // board reconcile (MarkFalseDoneReconciledAsync / FalseDoneReconciler) reset it to
+                // 'canceled' while leaving its clean exit_code=0 intact. (A genuinely-failed build is
+                // 'failed'; a user-cancelled queued row is 'canceled' with exit_code NULL — it never
+                // ran — so neither matches this predicate.) When such a row is STILL genuinely blocked
+                // (row.IsBlocked — a live GitHub blocked_by dependency that is open AND not yet
+                // satisfied by a verified DONE bookend), free-flow re-queues it so it re-enters the
+                // queue automatically once its real blocker clears.
+                //
+                // Loop-safe: the re-queued row is written 'queued' (exit_code reset to NULL) and the
+                // #1600 fail-closed launch gate (GetNextAsync) holds it until its blocker genuinely
+                // closes, then launches it exactly once — it does NOT relaunch-and-recancel, so there
+                // is no fail→requeue→fail loop. On the next free-flow pass the dedup candidate is
+                // 'queued' (not terminal), so this branch no longer matches and it is left alone. If a
+                // relaunched build re-cancels with no work, its blocker has by then cleared, so
+                // row.IsBlocked is false and free-flow will not touch it again (manual-only, unchanged).
+                bool supervisoryCancelStillBlocked =
+                    string.Equals(existing.Status, "canceled", StringComparison.OrdinalIgnoreCase)
+                    && existing.ExitCode == 0
+                    && row.IsBlocked;
+
+                if ((allowRequeueTerminal && dead) || supervisoryCancelStillBlocked)
                 {
                     reuseRowId = existing.Id;
                 }
@@ -862,7 +887,14 @@ namespace BuildConsole.Services
                     blockedByNumbers: row.BlockedByNumbers,
                     buildSet: row.BuildSet,
                     reuseRowId: reuseRowId);
-                log($"Batter Up #{row.Number} \"{row.Title}\" — {(reuseRowId != null ? $"re-queued (reused dead row {reuseRowId})" : "auto-queued")} " +
+                string action = reuseRowId == null
+                    ? "auto-queued"
+                    : allowRequeueTerminal
+                        ? $"re-queued (reused dead row {reuseRowId})"
+                        // Git #3517 — free-flow re-queue of a supervisory cancel (exit 0) that is still
+                        // blocked; held 'queued' by the #1600 gate until its blocker clears, then launches once.
+                        : $"re-queued (supervisory cancel exit 0, still blocked — reused row {reuseRowId}, Git #3517)";
+                log($"Batter Up #{row.Number} \"{row.Title}\" — {action} " +
                     $"(model={row.Model ?? "default"}, effort={row.Effort ?? "default"}, buildSet={row.BuildSet ?? "none"}" +
                     (row.BlockedByNumbers.Count > 0 ? $", blocked-by={string.Join(",", row.BlockedByNumbers)}" : "") + ").");
                 return true;
@@ -908,8 +940,11 @@ namespace BuildConsole.Services
                 // Not queued (dedup already handled by RefreshAsync's own drop, or a queue
                 // failure that was logged, not thrown) — keep it visible, exactly as before.
                 // Git #1997 — a reappeared terminal row (TrackedTerminalStatus != null) also lands
-                // here: free-flow does NOT re-queue it (QueueRowAsync above passes no
+                // here: free-flow does NOT re-queue a genuine failure (QueueRowAsync above passes no
                 // allowRequeueTerminal), so it stays visible for a manual re-queue rather than looping.
+                // Git #3517 — the one exception QueueRowAsync itself makes is a supervisory cancel
+                // (canceled + exit 0) that is still blocked: that IS re-queued above (returned true and
+                // dropped from view), so only genuine failures / user-cancels / unblocked cancels reach here.
                 rows.Add(row);
             }
 
