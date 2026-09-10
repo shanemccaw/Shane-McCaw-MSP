@@ -321,6 +321,301 @@
                 </StackPanel>
             </Border>
 
+            <!-- ══ QUEUE header — Git #3552: pinned to the top of the Queue section
+                 (title, live stats border, issue-mirror sync countdown, status filter
+                 dropdown, search box) so it stays visible regardless of how tall the
+                 queue-item list below grows. Docked Top like BuildSetRollupSection
+                 above it, rather than living inside the big ScrollViewer's StackPanel
+                 where it used to scroll away with the rest of the panel once there was
+                 enough queue content to need scrolling — confirmed via screenshot, the
+                 controls were the first thing to disappear. Only the actual build-item
+                 list (QueueGraphContainer, moved into the ScrollViewer below) scrolls
+                 beneath it now; scrolling further still reaches Issues-in-epic/
+                 In-Flight/Sessions exactly as before. -->
+            <Border x:Name="QueueHeaderSection"
+                    DockPanel.Dock="Top"
+                    Padding="10,12,10,0">
+                <StackPanel>
+                    <TextBlock Text="QUEUE"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource Subtext1Brush}"
+                               Margin="0,0,0,6"/>
+
+                    <!-- Queue status counts (Git #1862) — replaces the old token/cost
+                         badge (it flipped between a context-window ESTIMATE and a real
+                         spend total under one label; see #1862 for why it was unfixable).
+                         Total (Git #3520) = In queue + Verifying, every row that is
+                         genuinely active/in-progress right now — without it, Shane read
+                         "In queue" as the total and it silently dropped Verifying (#3519
+                         found 31 real verifying rows the header's only summable figure
+                         omitted). In queue = queued + limit-paused; Blocked = queued rows
+                         a GitHub-open blocker holds; Up next = the real claim candidates
+                         (queued, all blockers closed, not paused); Verifying = rows at
+                         VerifyingStatus. The "(N active)" running readout on the right is
+                         unchanged. Clicking opens QueueNextPopup:
+                         the next five builds about to run, in genuine claim order (a
+                         read-only peek at GetNextAsync's own selection — claims nothing). -->
+                    <Border x:Name="QueueStatusBorder"
+                            Background="{StaticResource Surface0Brush}"
+                            BorderBrush="{StaticResource Surface1Brush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8,5"
+                            Margin="0,0,0,8"
+                            Cursor="Hand"
+                            ToolTip="Live queue status — click for the next builds to run, in real claim order."
+                            MouseLeftButtonUp="QueueStatusBorder_Click">
+                        <DockPanel LastChildFill="True">
+                            <TextBlock Text="&#xE70D;"
+                                       DockPanel.Dock="Right"
+                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontSize="9"
+                                       Margin="4,0,0,0"
+                                       Foreground="{StaticResource Subtext0Brush}"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock x:Name="QueueActiveSlotsText" Text=" (0 active)"
+                                       DockPanel.Dock="Right"
+                                       FontSize="10"
+                                       Foreground="{StaticResource Subtext0Brush}"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock x:Name="QueueStatusCountsText"
+                                       Text="Total: 0  ·  In queue: 0  ·  Blocked: 0  ·  Up next: 0  ·  Verifying: 0"
+                                       FontSize="10.5" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextBrush}"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Center"/>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Git #3254 — real, small, live-updating display of when the local
+                         issue-mirror's next automatic sync (#3113, bt_issue_mirror_sync_state;
+                         #3337 split this into GitHubIssueMirror.IncrementalSyncInterval = 5 min
+                         issue-level + FullSyncInterval = 30 min board-status reconciliation)
+                         will fire. Ticks on the same
+                         existing 5s local-refresh cadence used elsewhere in this panel
+                         (_localQueuePollTimer, Git #3074) rather than a new timer/poll —
+                         UpdateIssueMirrorSyncStatusAsync reads GitHubIssueMirror's cheap
+                         in-memory IsSyncing/LastAttemptUtc plus one trivial local Postgres
+                         read of the persisted sync-state row (already the kind of local query
+                         that tick does). Shows "Syncing…" / "Retrying in Xs" honestly during
+                         those real states instead of a misleading countdown. -->
+                    <TextBlock x:Name="IssueMirrorSyncText"
+                               Text=""
+                               FontSize="9.5"
+                               Foreground="{StaticResource Subtext0Brush}"
+                               Margin="2,-4,0,8"
+                               TextWrapping="Wrap"
+                               Visibility="Collapsed"/>
+
+                    <Popup x:Name="QueueNextPopup"
+                           PlacementTarget="{Binding ElementName=QueueStatusBorder}"
+                           Placement="Bottom"
+                           StaysOpen="False"
+                           AllowsTransparency="True">
+                        <Border Background="{StaticResource MantleBrush}"
+                                BorderBrush="{StaticResource Surface1Brush}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="12,10"
+                                MinWidth="280"
+                                MaxWidth="340">
+                            <Border.Effect>
+                                <DropShadowEffect Color="Black" BlurRadius="16" ShadowDepth="3" Opacity="0.4"/>
+                            </Border.Effect>
+                            <StackPanel>
+                                <TextBlock Text="NEXT TO RUN"
+                                           FontSize="10"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource Subtext1Brush}"
+                                           Margin="0,0,0,2"/>
+                                <TextBlock Text="Real claim order — a read-only peek, claims nothing."
+                                           FontSize="9.5"
+                                           Foreground="{StaticResource Subtext0Brush}"
+                                           Margin="0,0,0,8"/>
+                                <StackPanel x:Name="QueueNextHost"/>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+
+                    <!-- Crash/orphan bulk recovery banner — Shane's video-driver hard
+                         crash left multiple builds stuck 'running' from the dead
+                         instance; the per-item startup sweep (RecoverOrphanedRunningItemsAsync)
+                         already marks each one failed (exit -2) so nothing sits silently
+                         lost, but recovering N of them one right-click at a time is its
+                         own mess. This banner surfaces the count and recovers all of them
+                         in one click — Resume Session where a real session id got
+                         captured, plain Retry otherwise. Hidden (Collapsed) whenever there
+                         are none. Two rows (text, then a full-width button below) — a
+                         single DockPanel row ran the button off the panel's narrow width;
+                         right-click for "Mark All Recovered (Dismiss)" when Shane just
+                         wants the warning gone without re-queuing anything. -->
+                    <Border x:Name="OrphanRecoveryBanner"
+                            Background="#3A1E26"
+                            BorderBrush="{StaticResource StatusErrorBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8,6"
+                            Margin="0,0,0,8"
+                            Visibility="Collapsed"
+                            ToolTip="Right-click to mark all recovered (dismiss) without re-queuing">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem x:Name="MiDismissOrphans" Header="✓ Mark All Recovered (Dismiss)" Click="DismissAllOrphans_Click"/>
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <StackPanel>
+                            <TextBlock x:Name="OrphanRecoveryText"
+                                       Text="0 builds orphaned by a crash/restart"
+                                       FontSize="11"
+                                       Foreground="{StaticResource StatusErrorBrush}"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="Wrap"/>
+                            <Button x:Name="BtnRecoverOrphans"
+                                    Content="♻ Recover All"
+                                    Padding="8,3"
+                                    Margin="0,6,0,0"
+                                    HorizontalAlignment="Stretch"
+                                    FontSize="11"
+                                    FontWeight="SemiBold"
+                                    Click="BtnRecoverOrphans_Click"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Git #933 - Shane: "Mark the filtering pills be a drop down menu
+                         because they go off streen. Make All last, and make Queued &
+                         Running first and Default." The old ToggleButton pill row
+                         (real — see code-behind's ApplyFilter) had no wrap/scroll of its
+                         own, so on a narrow panel the later chips (Canceled/Tests) ran
+                         straight off the edge with no way to reach them. A ComboBox
+                         never overflows - it just shows whichever one's selected, and
+                         the dropdown list itself scrolls if it ever needs to. -->
+                    <ComboBox x:Name="QueueFilterCombo"
+                              Margin="0,0,0,8"
+                              SelectedIndex="0"
+                              SelectionChanged="QueueFilterCombo_SelectionChanged">
+                        <!-- Git #1829 — split from the old combined "Queued & Running"
+                             entry: Running = running + VerifyingStatus (still visually
+                             "in motion" work), Queued = queued + LimitPausedStatus
+                             (genuinely not executing right now, waiting to resume). -->
+                        <ComboBoxItem Content="Running" Tag="Running"/>
+                        <ComboBoxItem Content="Queued"  Tag="Queued"/>
+                        <!-- Git #1894 — Shane found himself switching back and forth
+                             between Running/Queued after #1829 split them; with #1834's
+                             per-buildSet filtering now available a combined view isn't
+                             as noisy as it was before #1829, so it's added back as a
+                             third choice alongside (not replacing) the two split ones.
+                             Reuses the exact pre-#1829 combined "Active" criteria. -->
+                        <ComboBoxItem Content="Running &amp; Queued" Tag="RunningAndQueued"/>
+                        <!-- Git #1927 — Shane needs a standalone "Verifying" entry
+                             distinct from "Running" above (which folds VerifyingStatus
+                             into the broader "in motion" bucket): filters to exactly
+                             status == VerifyingStatus, same single-status pattern as
+                             Crashed/Parked/Done/Canceled below. -->
+                        <ComboBoxItem Content="Verifying"    Tag="Verifying"/>
+                        <!-- Git #1638 — the Park staging area: never shown under
+                             Running/Queued (that's the whole point of a
+                             staging spot the watcher can't pick up), only here. -->
+                        <!-- Git #1877 — the orphaned-by-crash set, same criteria the
+                             existing recovery banner already uses (status=="failed" &&
+                             ExitCode==-2), just as a findable filtered view. -->
+                        <ComboBoxItem Content="Crashed"              Tag="Crashed"/>
+                        <ComboBoxItem Content="Parked"               Tag="Parked"/>
+                        <!-- Git #1989 — Conservation Cap: a build parked because it
+                             exceeded Sonnet High while the toggle was on. Deliberately
+                             its OWN filter, distinct from the #1638 "Parked" staging
+                             area above (a different concept — see AccountCapPolicy's
+                             CappedStatus doc comment) — must stay visible/findable, not
+                             buried, per Shane's own requirement on #1989. -->
+                        <ComboBoxItem Content="Capped"               Tag="Capped"/>
+                        <!-- Git #1638 — "Send to Builder" launches tracked purely
+                             for dedup/visibility/log-capture; never claimable by the
+                             watcher, never in the 8-slot Build Watch grid. -->
+                        <ComboBoxItem Content="External"             Tag="External"/>
+                        <ComboBoxItem Content="Done"                 Tag="Done"/>
+                        <ComboBoxItem Content="Canceled"             Tag="Canceled"/>
+                        <ComboBoxItem Content="Tests"                Tag="Tests"/>
+                        <ComboBoxItem Content="All"                  Tag="All"/>
+                    </ComboBox>
+
+                    <!-- Git #950 - Shane: "Add a search box so I can search direct
+                         Git numbers." Substring filter on GithubNumber; layers on top
+                         of the filter chip above, clears to the full sorted list when
+                         emptied. The grey placeholder is the standard WPF
+                         overlay-TextBlock trick (no native placeholder), shown only
+                         while the box is empty.
+                         Git #2028 — genuine submit-on-Enter only: TextChanged just
+                         tracks the raw text for the placeholder trigger below; the
+                         actual search (QueueSearchBox_KeyDown) fires exactly once,
+                         only on Enter — never mid-type, not even debounced. -->
+                    <Grid Margin="0,0,0,8">
+                        <TextBox x:Name="QueueSearchBox"
+                                 Style="{StaticResource SearchTextBox}"
+                                 Height="32"
+                                 Padding="6,4,24,4"
+                                 FontSize="{StaticResource BodyFontSize}"
+                                 VerticalContentAlignment="Center"
+                                 Background="{StaticResource Surface0Brush}"
+                                 TextChanged="QueueSearchBox_TextChanged"
+                                 KeyDown="QueueSearchBox_KeyDown"/>
+                        <TextBlock IsHitTestVisible="False"
+                                   Text="Search # (e.g. 94)"
+                                   FontSize="{StaticResource BodyFontSize}"
+                                   Margin="8,0,0,0"
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Left"
+                                   Foreground="{StaticResource Subtext1Brush}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=QueueSearchBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+
+                    <!-- Git #2058 — non-reflowing warning when a build is dispatched or a
+                         search is run while a Build Set filter (rollup row above) is still
+                         active: the new/matching item can genuinely exist but be hidden by
+                         the filter, and there was no signal telling Shane why. A Popup
+                         (same mechanism as QueueNextPopup above) renders in its own overlay
+                         layer entirely outside this StackPanel's layout pass, so it can
+                         never bump/reflow the rest of the panel — the explicit requirement
+                         from the issue. Shown via ShowBuildSetFilterWarning; auto-hides
+                         itself after a few seconds. Deliberately does NOT auto-clear the
+                         filter (considered and rejected in favor of this warning). -->
+                    <Popup x:Name="BuildSetFilterWarningPopup"
+                           PlacementTarget="{Binding ElementName=QueueSearchBox}"
+                           Placement="Bottom"
+                           StaysOpen="True"
+                           AllowsTransparency="True"
+                           IsOpen="False">
+                        <Border Background="#3A3200"
+                                BorderBrush="{StaticResource StatusWarningBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="8,6"
+                                MaxWidth="240"
+                                Margin="0,2,0,0">
+                            <Border.Effect>
+                                <DropShadowEffect Color="Black" BlurRadius="10" ShadowDepth="2" Opacity="0.35"/>
+                            </Border.Effect>
+                            <TextBlock x:Name="BuildSetFilterWarningText"
+                                       FontSize="10.5"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource StatusWarningBrush}"
+                                       TextWrapping="Wrap"/>
+                        </Border>
+                    </Popup>
+                </StackPanel>
+            </Border>
+
             <!-- ── Critter Lounge & Picnic/Party Ground ── -->
             <local:CritterLoungeControl DockPanel.Dock="Bottom" x:Name="CritterLounge" Margin="0"/>
 
@@ -334,295 +629,26 @@
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
 
-                    <!-- ══ 1. QUEUE — primary, always expanded, full visual weight ══ -->
-                    <Border Padding="10,12" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1">
+                    <!-- ══ 1. QUEUE — build-item list. Header (title, live stats, sync
+                         countdown, filter dropdown, search box) is now pinned above in
+                         QueueHeaderSection (Git #3552, DockPanel.Dock="Top", outside this
+                         ScrollViewer) so only this list scrolls once there's enough queue
+                         content to need it, while scrolling further still reaches Issues-
+                         in-epic/In-Flight/Sessions below exactly as before. ══ -->
+                    <Border Padding="10,0,10,12" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1">
                         <StackPanel>
-                            <TextBlock Text="QUEUE"
-                                       FontSize="11"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource Subtext1Brush}"
-                                       Margin="0,0,0,6"/>
-
-                            <!-- Queue status counts (Git #1862) — replaces the old token/cost
-                                 badge (it flipped between a context-window ESTIMATE and a real
-                                 spend total under one label; see #1862 for why it was unfixable).
-                                 Total (Git #3520) = In queue + Verifying, every row that is
-                                 genuinely active/in-progress right now — without it, Shane read
-                                 "In queue" as the total and it silently dropped Verifying (#3519
-                                 found 31 real verifying rows the header's only summable figure
-                                 omitted). In queue = queued + limit-paused; Blocked = queued rows
-                                 a GitHub-open blocker holds; Up next = the real claim candidates
-                                 (queued, all blockers closed, not paused); Verifying = rows at
-                                 VerifyingStatus. The "(N active)" running readout on the right is
-                                 unchanged. Clicking opens QueueNextPopup:
-                                 the next five builds about to run, in genuine claim order (a
-                                 read-only peek at GetNextAsync's own selection — claims nothing). -->
-                            <Border x:Name="QueueStatusBorder"
-                                    Background="{StaticResource Surface0Brush}"
-                                    BorderBrush="{StaticResource Surface1Brush}"
-                                    BorderThickness="1"
-                                    CornerRadius="4"
-                                    Padding="8,5"
-                                    Margin="0,0,0,8"
-                                    Cursor="Hand"
-                                    ToolTip="Live queue status — click for the next builds to run, in real claim order."
-                                    MouseLeftButtonUp="QueueStatusBorder_Click">
-                                <DockPanel LastChildFill="True">
-                                    <TextBlock Text="&#xE70D;"
-                                               DockPanel.Dock="Right"
-                                               FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
-                                               FontSize="9"
-                                               Margin="4,0,0,0"
-                                               Foreground="{StaticResource Subtext0Brush}"
-                                               HorizontalAlignment="Right"
-                                               VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="QueueActiveSlotsText" Text=" (0 active)"
-                                               DockPanel.Dock="Right"
-                                               FontSize="10"
-                                               Foreground="{StaticResource Subtext0Brush}"
-                                               HorizontalAlignment="Right"
-                                               VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="QueueStatusCountsText"
-                                               Text="Total: 0  ·  In queue: 0  ·  Blocked: 0  ·  Up next: 0  ·  Verifying: 0"
-                                               FontSize="10.5" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextBrush}"
-                                               TextWrapping="Wrap"
-                                               VerticalAlignment="Center"/>
-                                </DockPanel>
-                            </Border>
-
-                            <!-- Git #3254 — real, small, live-updating display of when the local
-                                 issue-mirror's next automatic sync (#3113, bt_issue_mirror_sync_state;
-                                 #3337 split this into GitHubIssueMirror.IncrementalSyncInterval = 5 min
-                                 issue-level + FullSyncInterval = 30 min board-status reconciliation)
-                                 will fire. Ticks on the same
-                                 existing 5s local-refresh cadence used elsewhere in this panel
-                                 (_localQueuePollTimer, Git #3074) rather than a new timer/poll —
-                                 UpdateIssueMirrorSyncStatusAsync reads GitHubIssueMirror's cheap
-                                 in-memory IsSyncing/LastAttemptUtc plus one trivial local Postgres
-                                 read of the persisted sync-state row (already the kind of local query
-                                 that tick does). Shows "Syncing…" / "Retrying in Xs" honestly during
-                                 those real states instead of a misleading countdown. -->
-                            <TextBlock x:Name="IssueMirrorSyncText"
-                                       Text=""
-                                       FontSize="9.5"
-                                       Foreground="{StaticResource Subtext0Brush}"
-                                       Margin="2,-4,0,8"
-                                       TextWrapping="Wrap"
-                                       Visibility="Collapsed"/>
-
-                            <Popup x:Name="QueueNextPopup"
-                                   PlacementTarget="{Binding ElementName=QueueStatusBorder}"
-                                   Placement="Bottom"
-                                   StaysOpen="False"
-                                   AllowsTransparency="True">
-                                <Border Background="{StaticResource MantleBrush}"
-                                        BorderBrush="{StaticResource Surface1Brush}"
-                                        BorderThickness="1"
-                                        CornerRadius="6"
-                                        Padding="12,10"
-                                        MinWidth="280"
-                                        MaxWidth="340">
-                                    <Border.Effect>
-                                        <DropShadowEffect Color="Black" BlurRadius="16" ShadowDepth="3" Opacity="0.4"/>
-                                    </Border.Effect>
-                                    <StackPanel>
-                                        <TextBlock Text="NEXT TO RUN"
-                                                   FontSize="10"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{StaticResource Subtext1Brush}"
-                                                   Margin="0,0,0,2"/>
-                                        <TextBlock Text="Real claim order — a read-only peek, claims nothing."
-                                                   FontSize="9.5"
-                                                   Foreground="{StaticResource Subtext0Brush}"
-                                                   Margin="0,0,0,8"/>
-                                        <StackPanel x:Name="QueueNextHost"/>
-                                    </StackPanel>
-                                </Border>
-                            </Popup>
-
-                            <!-- Crash/orphan bulk recovery banner — Shane's video-driver hard
-                                 crash left multiple builds stuck 'running' from the dead
-                                 instance; the per-item startup sweep (RecoverOrphanedRunningItemsAsync)
-                                 already marks each one failed (exit -2) so nothing sits silently
-                                 lost, but recovering N of them one right-click at a time is its
-                                 own mess. This banner surfaces the count and recovers all of them
-                                 in one click — Resume Session where a real session id got
-                                 captured, plain Retry otherwise. Hidden (Collapsed) whenever there
-                                 are none. Two rows (text, then a full-width button below) — a
-                                 single DockPanel row ran the button off the panel's narrow width;
-                                 right-click for "Mark All Recovered (Dismiss)" when Shane just
-                                 wants the warning gone without re-queuing anything. -->
-                            <Border x:Name="OrphanRecoveryBanner"
-                                    Background="#3A1E26"
-                                    BorderBrush="{StaticResource StatusErrorBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="4"
-                                    Padding="8,6"
-                                    Margin="0,0,0,8"
-                                    Visibility="Collapsed"
-                                    ToolTip="Right-click to mark all recovered (dismiss) without re-queuing">
-                                <Border.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem x:Name="MiDismissOrphans" Header="✓ Mark All Recovered (Dismiss)" Click="DismissAllOrphans_Click"/>
-                                    </ContextMenu>
-                                </Border.ContextMenu>
-                                <StackPanel>
-                                    <TextBlock x:Name="OrphanRecoveryText"
-                                               Text="0 builds orphaned by a crash/restart"
-                                               FontSize="11"
-                                               Foreground="{StaticResource StatusErrorBrush}"
-                                               VerticalAlignment="Center"
-                                               TextWrapping="Wrap"/>
-                                    <Button x:Name="BtnRecoverOrphans"
-                                            Content="♻ Recover All"
-                                            Padding="8,3"
-                                            Margin="0,6,0,0"
-                                            HorizontalAlignment="Stretch"
-                                            FontSize="11"
-                                            FontWeight="SemiBold"
-                                            Click="BtnRecoverOrphans_Click"/>
-                                </StackPanel>
-                            </Border>
-
-                            <!-- Git #933 - Shane: "Mark the filtering pills be a drop down menu
-                                 because they go off streen. Make All last, and make Queued &
-                                 Running first and Default." The old ToggleButton pill row
-                                 (real — see code-behind's ApplyFilter) had no wrap/scroll of its
-                                 own, so on a narrow panel the later chips (Canceled/Tests) ran
-                                 straight off the edge with no way to reach them. A ComboBox
-                                 never overflows - it just shows whichever one's selected, and
-                                 the dropdown list itself scrolls if it ever needs to. -->
-                            <ComboBox x:Name="QueueFilterCombo"
-                                      Margin="0,0,0,8"
-                                      SelectedIndex="0"
-                                      SelectionChanged="QueueFilterCombo_SelectionChanged">
-                                <!-- Git #1829 — split from the old combined "Queued & Running"
-                                     entry: Running = running + VerifyingStatus (still visually
-                                     "in motion" work), Queued = queued + LimitPausedStatus
-                                     (genuinely not executing right now, waiting to resume). -->
-                                <ComboBoxItem Content="Running" Tag="Running"/>
-                                <ComboBoxItem Content="Queued"  Tag="Queued"/>
-                                <!-- Git #1894 — Shane found himself switching back and forth
-                                     between Running/Queued after #1829 split them; with #1834's
-                                     per-buildSet filtering now available a combined view isn't
-                                     as noisy as it was before #1829, so it's added back as a
-                                     third choice alongside (not replacing) the two split ones.
-                                     Reuses the exact pre-#1829 combined "Active" criteria. -->
-                                <ComboBoxItem Content="Running &amp; Queued" Tag="RunningAndQueued"/>
-                                <!-- Git #1927 — Shane needs a standalone "Verifying" entry
-                                     distinct from "Running" above (which folds VerifyingStatus
-                                     into the broader "in motion" bucket): filters to exactly
-                                     status == VerifyingStatus, same single-status pattern as
-                                     Crashed/Parked/Done/Canceled below. -->
-                                <ComboBoxItem Content="Verifying"    Tag="Verifying"/>
-                                <!-- Git #1638 — the Park staging area: never shown under
-                                     Running/Queued (that's the whole point of a
-                                     staging spot the watcher can't pick up), only here. -->
-                                <!-- Git #1877 — the orphaned-by-crash set, same criteria the
-                                     existing recovery banner already uses (status=="failed" &&
-                                     ExitCode==-2), just as a findable filtered view. -->
-                                <ComboBoxItem Content="Crashed"              Tag="Crashed"/>
-                                <ComboBoxItem Content="Parked"               Tag="Parked"/>
-                                <!-- Git #1989 — Conservation Cap: a build parked because it
-                                     exceeded Sonnet High while the toggle was on. Deliberately
-                                     its OWN filter, distinct from the #1638 "Parked" staging
-                                     area above (a different concept — see AccountCapPolicy's
-                                     CappedStatus doc comment) — must stay visible/findable, not
-                                     buried, per Shane's own requirement on #1989. -->
-                                <ComboBoxItem Content="Capped"               Tag="Capped"/>
-                                <!-- Git #1638 — "Send to Builder" launches tracked purely
-                                     for dedup/visibility/log-capture; never claimable by the
-                                     watcher, never in the 8-slot Build Watch grid. -->
-                                <ComboBoxItem Content="External"             Tag="External"/>
-                                <ComboBoxItem Content="Done"                 Tag="Done"/>
-                                <ComboBoxItem Content="Canceled"             Tag="Canceled"/>
-                                <ComboBoxItem Content="Tests"                Tag="Tests"/>
-                                <ComboBoxItem Content="All"                  Tag="All"/>
-                            </ComboBox>
-
-                            <!-- Git #950 - Shane: "Add a search box so I can search direct
-                                 Git numbers." Substring filter on GithubNumber; layers on top
-                                 of the filter chip above, clears to the full sorted list when
-                                 emptied. The grey placeholder is the standard WPF
-                                 overlay-TextBlock trick (no native placeholder), shown only
-                                 while the box is empty.
-                                 Git #2028 — genuine submit-on-Enter only: TextChanged just
-                                 tracks the raw text for the placeholder trigger below; the
-                                 actual search (QueueSearchBox_KeyDown) fires exactly once,
-                                 only on Enter — never mid-type, not even debounced. -->
-                            <Grid Margin="0,0,0,8">
-                                <TextBox x:Name="QueueSearchBox"
-                                         Style="{StaticResource SearchTextBox}"
-                                         Height="32"
-                                         Padding="6,4,24,4"
-                                         FontSize="{StaticResource BodyFontSize}"
-                                         VerticalContentAlignment="Center"
-                                         Background="{StaticResource Surface0Brush}"
-                                         TextChanged="QueueSearchBox_TextChanged"
-                                         KeyDown="QueueSearchBox_KeyDown"/>
-                                <TextBlock IsHitTestVisible="False"
-                                           Text="Search # (e.g. 94)"
-                                           FontSize="{StaticResource BodyFontSize}"
-                                           Margin="8,0,0,0"
-                                           VerticalAlignment="Center"
-                                           HorizontalAlignment="Left"
-                                           Foreground="{StaticResource Subtext1Brush}">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Text, ElementName=QueueSearchBox}" Value="">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </Grid>
-
-                            <!-- Git #2058 — non-reflowing warning when a build is dispatched or a
-                                 search is run while a Build Set filter (rollup row above) is still
-                                 active: the new/matching item can genuinely exist but be hidden by
-                                 the filter, and there was no signal telling Shane why. A Popup
-                                 (same mechanism as QueueNextPopup above) renders in its own overlay
-                                 layer entirely outside this StackPanel's layout pass, so it can
-                                 never bump/reflow the rest of the panel — the explicit requirement
-                                 from the issue. Shown via ShowBuildSetFilterWarning; auto-hides
-                                 itself after a few seconds. Deliberately does NOT auto-clear the
-                                 filter (considered and rejected in favor of this warning). -->
-                            <Popup x:Name="BuildSetFilterWarningPopup"
-                                   PlacementTarget="{Binding ElementName=QueueSearchBox}"
-                                   Placement="Bottom"
-                                   StaysOpen="True"
-                                   AllowsTransparency="True"
-                                   IsOpen="False">
-                                <Border Background="#3A3200"
-                                        BorderBrush="{StaticResource StatusWarningBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="4"
-                                        Padding="8,6"
-                                        MaxWidth="240"
-                                        Margin="0,2,0,0">
-                                    <Border.Effect>
-                                        <DropShadowEffect Color="Black" BlurRadius="10" ShadowDepth="2" Opacity="0.35"/>
-                                    </Border.Effect>
-                                    <TextBlock x:Name="BuildSetFilterWarningText"
-                                               FontSize="10.5"
-                                               FontWeight="SemiBold"
-                                               Foreground="{StaticResource StatusWarningBrush}"
-                                               TextWrapping="Wrap"/>
-                                </Border>
-                            </Popup>
-
                             <!-- ── Visual Queue DAG with Canvas-based connector lines (#860) ──
-                                 Git #1634 — Shane: exactly one scrollbar for the whole panel, not
-                                 one here plus the outer one (~line 155). This card list used to
-                                 sit in its own capped ScrollViewer (MaxHeight="900") so a huge
-                                 queue scrolled independently; Shane is explicitly reversing that
-                                 now — no independent scroll region here, the list just grows to
-                                 its natural height and the outer ScrollViewer is the only surface
-                                 that scrolls. -->
+                                 Git #1634 — Shane originally asked for exactly one scrollbar for
+                                 the whole panel (this card list used to sit in its own capped
+                                 ScrollViewer, MaxHeight="900", scrolling independently). Git #3552
+                                 reverses that: with the QUEUE header (title/stats/filter/search)
+                                 now pinned above via QueueHeaderSection, letting this list grow to
+                                 unbounded natural height meant scrolling the outer ScrollViewer
+                                 still scrolled the header's own controls out of view along with it
+                                 — the confirmed #3552 bug. This list still has no independent
+                                 ScrollViewer of its own; it grows to its natural height and the
+                                 outer ScrollViewer (now starting below the pinned header) is the
+                                 only surface that scrolls it. -->
                             <Grid x:Name="QueueGraphContainer" Margin="0,2,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition x:Name="GraphColumn" Width="Auto"/>
