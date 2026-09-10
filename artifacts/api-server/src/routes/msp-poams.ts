@@ -15,6 +15,14 @@
  *   GET   /api/msp/poams/:poamId                       — one, with its milestones
  *   PATCH /api/msp/poams/:poamId                        — edit narrative/schedule/status
  *   PATCH /api/msp/poams/:poamId/cancel                 — mark cancelled
+ *   POST  /api/msp/poams/:poamId/convert-to-risk-acceptance — convert this
+ *         plan to an accepted risk (Git #3081, Phase 1b of #1935): the plan's
+ *         cost/factors turned out too high. Creates a new, signable
+ *         `msp_risk_decisions` row (same `pending_signature` → sign-on-portal
+ *         path a fresh RBD already goes through) and marks this plan
+ *         `converted_to_risk_acceptance`, pointed at it. `MSPAdmin`-gated —
+ *         same weight as cancel, since it both ends this record and creates a
+ *         new liability instrument.
  *   POST  /api/msp/poams/:poamId/milestones             — add a milestone
  *   PATCH /api/msp/poams/:poamId/milestones/:milestoneId — edit / mark complete
  *   DELETE /api/msp/poams/:poamId/milestones/:milestoneId — remove a milestone
@@ -29,13 +37,16 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspPoamsTable, mspPoamMilestonesTable, POAM_STATUSES, POAM_MILESTONE_STATUSES } from "@workspace/db";
+import { db, mspPoamsTable, mspPoamMilestonesTable, mspRiskDecisionsTable, mspAuditLogsTable, POAM_STATUSES, POAM_MILESTONE_STATUSES, type CompensatingControl, type MspAssessor, type ClientApprover } from "@workspace/db";
 import { eq, and, asc, desc, isNull } from "drizzle-orm";
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { randomPlaceholder, assignPoamId } from "../lib/poam-ref.ts";
+import { assignRegisterRef } from "../lib/risk-register-ref.ts";
+import { getRequestContext } from "../lib/request-context.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -285,6 +296,167 @@ router.patch(
       res.json({ poamId: existing.poamId, message: "POA&M cancelled successfully" });
     } catch (err: unknown) {
       log.error({ err }, "PATCH /api/msp/poams/:poamId/cancel failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+const convertToRiskAcceptanceSchema = z.object({
+  /** Real, required reasoning for why this plan is being abandoned in favour
+   * of accepting the risk instead — never inferred. Becomes both rows'
+   * `conversionReason` and the new risk decision's `rationale`. */
+  reason: z.string().min(1),
+  controlViolated: z.string().min(1),
+  framework: z.string().min(1),
+  rawRiskLevel: z.enum(["critical", "high", "medium"]),
+  residualRiskLevel: z.enum(["high", "medium", "low"]),
+  rawRiskScore: z.number().int(),
+  residualRiskScore: z.number().int(),
+  liabilityValueUsd: z.number().int(),
+  graphEndpoint: z.string().optional().default(""),
+  /** Optional — when omitted, this plan's own real, already-recorded
+   * `interimCompensatingControl` becomes the sole compensating control on the
+   * new risk decision, rather than inventing a fresh one. */
+  compensatingControls: z
+    .array(z.object({ type: z.enum(["technical", "administrative", "operational"]), description: z.string() }))
+    .optional(),
+  clientApprover: z.object({
+    name: z.string(),
+    title: z.string(),
+    email: z.string(),
+  }),
+  expirationDate: z.string().min(1),
+});
+
+// POST /api/msp/poams/:poamId/convert-to-risk-acceptance — Git #3081, Phase 1b of #1935.
+router.post(
+  "/msp/poams/:poamId/convert-to-risk-acceptance",
+  requireAuth,
+  requireCapability("ladder.msp-admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+
+      const existing = await loadOwnScoped(mspId, String(req.params.poamId));
+      if (!existing) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "POA&M not found");
+        return;
+      }
+      if (existing.status !== "active") {
+        apiError(res, 409, ApiErrorCode.CONFLICT, `POA&M must be active to convert — current status is ${existing.status}`);
+        return;
+      }
+
+      const parsed = convertToRiskAcceptanceSchema.safeParse(req.body);
+      if (!parsed.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid conversion data", parsed.error.flatten());
+        return;
+      }
+      const data = parsed.data;
+
+      const userEmail = req.user?.email || "unknown@mspplatform.com";
+      const userName = req.user?.name || "MSP Assessor";
+      const nowUtc = new Date().toISOString().substring(0, 19).replace("T", " ") + " UTC";
+      const mspAssessor: MspAssessor = { name: userName, upn: userEmail, timestamp: nowUtc };
+      const clientApprover: ClientApprover = {
+        name: data.clientApprover.name,
+        title: data.clientApprover.title,
+        email: data.clientApprover.email,
+        signedAt: null,
+        ipAddress: null,
+        signatureHash: null,
+      };
+      const compensatingControls: CompensatingControl[] =
+        data.compensatingControls && data.compensatingControls.length > 0
+          ? data.compensatingControls
+          : [{ type: "operational", description: existing.interimCompensatingControl }];
+
+      // Deterministic on the source POA&M — a repeat call reuses the same row
+      // via the (mspId, rbdId) unique constraint below rather than creating a
+      // second one.
+      const rbdId = `RBD-${existing.poamId}`;
+
+      const [inserted] = await db
+        .insert(mspRiskDecisionsTable)
+        .values({
+          mspId,
+          rbdId,
+          tenantId: existing.tenantId,
+          tenantName: existing.tenantName,
+          primaryDomain: existing.primaryDomain,
+          title: existing.title,
+          controlViolated: data.controlViolated,
+          framework: data.framework,
+          checkKey: existing.checkKey,
+          additionalCheckKeys: existing.additionalCheckKeys,
+          rawRiskLevel: data.rawRiskLevel,
+          residualRiskLevel: data.residualRiskLevel,
+          rawRiskScore: data.rawRiskScore,
+          residualRiskScore: data.residualRiskScore,
+          liabilityValueUsd: data.liabilityValueUsd,
+          hazardDescription: existing.weaknessDescription,
+          graphEndpoint: data.graphEndpoint,
+          compensatingControls,
+          mspAssessor,
+          clientApprover,
+          expirationDate: data.expirationDate,
+          status: "pending_signature",
+          rationale: data.reason,
+          // Accountability carries over — same workload/holders this plan
+          // already resolved, never re-derived.
+          authorizingWorkloadId: existing.authorizingWorkloadId,
+          authorizingWorkloadLabel: existing.authorizingWorkloadLabel,
+          authorizingHolderPersonIds: existing.authorizingHolderPersonIds,
+          spawnedByPoamId: existing.id,
+        })
+        .onConflictDoUpdate({
+          target: [mspRiskDecisionsTable.mspId, mspRiskDecisionsTable.rbdId],
+          set: { updatedAt: new Date() },
+        })
+        .returning({ id: mspRiskDecisionsTable.id });
+
+      const registerRef = await assignRegisterRef(inserted.id);
+
+      await db
+        .update(mspPoamsTable)
+        .set({
+          status: "converted_to_risk_acceptance",
+          convertedToRiskDecisionId: inserted.id,
+          conversionReason: data.reason,
+          updatedAt: new Date(),
+        })
+        .where(eq(mspPoamsTable.id, existing.id));
+
+      await db.insert(mspAuditLogsTable).values({
+        actorUserId: req.user?.id ?? null,
+        actorRole: req.user?.mspRole ?? req.user?.role ?? null,
+        mspId,
+        actionType: "msp.poam.convert_to_risk_acceptance",
+        entityType: "msp_poam",
+        entityId: String(existing.id),
+        entityLabel: existing.poamId,
+        correlationId: getRequestContext()?.traceId ?? randomUUID(),
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+        outcome: "success",
+        metadata: { poamId: existing.poamId, riskDecisionId: inserted.id, rbdId, reason: data.reason },
+      });
+
+      log.info({ mspId, poamId: existing.poamId, riskDecisionId: inserted.id, rbdId }, "POA&M converted to risk acceptance (#3081)");
+
+      res.status(201).json({
+        poamId: existing.poamId,
+        riskDecisionId: inserted.id,
+        rbdId,
+        registerRef,
+        message: "POA&M converted to a risk acceptance successfully — awaiting customer signature",
+      });
+    } catch (err: unknown) {
+      log.error({ err }, "POST /api/msp/poams/:poamId/convert-to-risk-acceptance failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },

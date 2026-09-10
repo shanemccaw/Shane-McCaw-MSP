@@ -6239,7 +6239,11 @@ export interface RbdNarrativeSnapshot {
  *
  * Enforced at the write path (`msp-rbd.ts`) and by convention, not by a DB CHECK.
  */
-export const RISK_ACCEPTANCE_STATUSES = ["pending_signature", "active", "revoked"] as const;
+// `converted_to_poam` — Git #3081 (Phase 1b of #1935): the customer later
+// decided to actually fix this accepted risk. It is a real terminal state
+// (never `revoked` — nothing was rejected, it was converted) reached only via
+// `msp-rbd.ts`'s own conversion route; see `convertedToPoamId` below.
+export const RISK_ACCEPTANCE_STATUSES = ["pending_signature", "active", "revoked", "converted_to_poam"] as const;
 export type RiskAcceptanceStatus = (typeof RISK_ACCEPTANCE_STATUSES)[number];
 
 /**
@@ -6518,6 +6522,26 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   // NULL for every risk decision not spawned by a remediation-item decline.
   spawnedByRemediationStepId: integer("spawned_by_remediation_step_id"),
 
+  // ── POA&M ⟷ Risk conversion pointers (#3081, Phase 1b of #1935) ────────────
+  //
+  // The real bidirectional conversion #1935 decided on: "a POA&M whose
+  // cost/factors turn out too high converts to an accepted risk". Same
+  // forward/back pointer shape the CR⟷Risk relationship above already uses.
+  //   • spawnedByPoamId — the msp_poams.id this acceptance was converted FROM,
+  //     when this row exists because a POA&M got converted here rather than
+  //     authored directly via msp-rbd.ts. NULL for every direct-authored row.
+  //   • convertedToPoamId — the msp_poams.id this acceptance was later
+  //     converted TO, when the customer decided to actually fix a risk they'd
+  //     previously accepted. Set together with `status = 'converted_to_poam'`
+  //     and `conversionReason` below — never left dangling in `active`.
+  // `set null` on delete, matching every other cross-table pointer on this
+  // table: the permanent record must outlive the other row being pruned.
+  spawnedByPoamId: integer("spawned_by_poam_id").references(() => mspPoamsTable.id, { onDelete: "set null" }),
+  convertedToPoamId: integer("converted_to_poam_id").references(() => mspPoamsTable.id, { onDelete: "set null" }),
+  /** Why this row was converted — required at the conversion route, real MSP-
+   * or customer-stated reasoning, never inferred. NULL until converted. */
+  conversionReason: text("conversion_reason"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -6530,6 +6554,9 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   // #1505
   index("msp_risk_decisions_spawned_by_change_request_idx").on(t.spawnedByChangeRequestId),
   index("msp_risk_decisions_discharged_by_change_request_idx").on(t.dischargedByChangeRequestId),
+  // #3081
+  index("msp_risk_decisions_converted_to_poam_idx").on(t.convertedToPoamId),
+  index("msp_risk_decisions_spawned_by_poam_idx").on(t.spawnedByPoamId),
 ]);
 
 export const insertMspRiskDecisionSchema = createInsertSchema(mspRiskDecisionsTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -7183,7 +7210,12 @@ export type InsertRiskInstance = typeof riskInstancesTable.$inferInsert;
 // `set null` on delete rather than cascade — a POA&M is the durable governance
 // record and must outlive a SOW row being pruned, same reasoning
 // `msp_risk_decisions`'s CR pointers already use.
-export const POAM_STATUSES = ["draft", "pending_signature", "active", "completed", "cancelled"] as const;
+// `converted_to_risk_acceptance` — Git #3081 (Phase 1b of #1935): this plan's
+// cost/factors turned out too high and it was converted to an accepted risk.
+// A real terminal state (never `cancelled` — nothing was abandoned, it was
+// converted) reached only via `msp-poams.ts`'s own conversion route; see
+// `convertedToRiskDecisionId` below.
+export const POAM_STATUSES = ["draft", "pending_signature", "active", "completed", "cancelled", "converted_to_risk_acceptance"] as const;
 export type PoamStatus = (typeof POAM_STATUSES)[number];
 
 export const mspPoamsTable = pgTable("msp_poams", {
@@ -7240,6 +7272,33 @@ export const mspPoamsTable = pgTable("msp_poams", {
   /** Real, nullable FK — see header for why this targets `mspSowsTable.sowId`. */
   sowId: uuid("sow_id").references(() => mspSowsTable.sowId, { onDelete: "set null" }),
 
+  // ── Risk ⟷ POA&M conversion pointers (#3081, Phase 1b of #1935) ────────────
+  // Mirror of `mspRiskDecisionsTable`'s own `spawnedByPoamId`/`convertedToPoamId`
+  // — see that table's header for the full reasoning. `converted_to_risk_acceptance`
+  // is added to POAM_STATUSES below for the same "never left dangling" discipline.
+  //   • spawnedByRiskDecisionId — the msp_risk_decisions.id this plan was
+  //     converted FROM, when the customer decided to actually fix a risk they'd
+  //     previously accepted. NULL for every directly-authored plan.
+  //   • convertedToRiskDecisionId — the msp_risk_decisions.id this plan was
+  //     later converted TO, when its cost/factors turned out too high to
+  //     execute. Set together with `status = 'converted_to_risk_acceptance'`
+  //     and `conversionReason` below.
+  // Deliberately NO `.references()` here (unlike `mspRiskDecisionsTable`'s own
+  // `spawnedByPoamId`/`convertedToPoamId` pointing the other way): the two
+  // tables would otherwise form a genuine circular type dependency at
+  // declaration-emit time (`tsc -b` TS7022/TS7024 — each table's column set
+  // depends on the other's before either is fully resolved). Same
+  // no-hard-FK shape `spawnedByRemediationStepId` above already uses, for a
+  // different reason (union-of-sources) but the same real outcome: the real
+  // FK constraint already exists at the DB level (this migration's own
+  // `REFERENCES msp_risk_decisions(id) ON DELETE SET NULL`), enforced by
+  // Postgres regardless of whether Drizzle's type layer models it.
+  spawnedByRiskDecisionId: integer("spawned_by_risk_decision_id"),
+  convertedToRiskDecisionId: integer("converted_to_risk_decision_id"),
+  /** Why this row was converted — required at the conversion route, real MSP-
+   * or customer-stated reasoning, never inferred. NULL until converted. */
+  conversionReason: text("conversion_reason"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -7248,6 +7307,9 @@ export const mspPoamsTable = pgTable("msp_poams", {
   unique("msp_poams_msp_id_poam_id_uidx").on(t.mspId, t.poamId),
   index("msp_poams_tenant_check_status_idx").on(t.tenantId, t.checkKey, t.status),
   index("msp_poams_sow_id_idx").on(t.sowId),
+  // #3081
+  index("msp_poams_converted_to_risk_decision_idx").on(t.convertedToRiskDecisionId),
+  index("msp_poams_spawned_by_risk_decision_idx").on(t.spawnedByRiskDecisionId),
 ]);
 
 export const insertMspPoamSchema = createInsertSchema(mspPoamsTable).omit({ id: true, createdAt: true, updatedAt: true });
