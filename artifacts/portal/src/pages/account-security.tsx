@@ -2,7 +2,11 @@ import { useState } from "react";
 import { startRegistration } from "@simplewebauthn/browser";
 import { Loader2, AlertCircle, Info, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { useAccountSecurityLive } from "@/components/account-security/useAccountSecurityLive";
+import {
+  useAccountSecurityLive,
+  changePasswordErrorText,
+  changePasswordSuccessText,
+} from "@/components/account-security/useAccountSecurityLive";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -48,9 +52,11 @@ function last4(phone: string | null): string {
  * `@simplewebauthn/browser`'s `startRegistration` — the same pattern already
  * shipped in `artifacts/admin-panel/src/pages/AdminSecurity.tsx`.
  *
- * Still deliberately NOT wired here, matching the design's own "Not wired
- * yet" copy where it still applies: change-password (#1675, its own open
- * sibling issue).
+ * #3529 (superseding #1675/#1601) adds the "Password" card — real
+ * `POST /auth/change-password`, all four of the route's own documented error
+ * states rendered verbatim (`changePasswordErrorText`), and the real
+ * `revokedOtherSessions` count surfaced on success (every other session is
+ * genuinely killed as a side effect of this action).
  */
 export default function AccountSecurityPage() {
   const { user, fetchWithAuth, roleLabel } = useAuth();
@@ -58,6 +64,34 @@ export default function AccountSecurityPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [deletionResult, setDeletionResult] = useState<string | null>(null);
+
+  // ── Change password (#3529) ───────────────────────────────────────────────
+  const [passwordFormOpen, setPasswordFormOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+
+  function closePasswordForm() {
+    setPasswordFormOpen(false);
+    setCurrentPassword("");
+    setNewPassword("");
+    setPasswordError(null);
+  }
+
+  async function submitPasswordChange() {
+    setPasswordError(null);
+    setPasswordSuccess(null);
+    const outcome = await live.changePassword(currentPassword, newPassword);
+    if (outcome.kind === "success") {
+      setPasswordSuccess(changePasswordSuccessText(outcome.revokedOtherSessions));
+      setCurrentPassword("");
+      setNewPassword("");
+      setPasswordFormOpen(false);
+    } else {
+      setPasswordError(changePasswordErrorText(outcome));
+    }
+  }
 
   const showLoading = live.loading;
   const showError = live.readFailed && !live.loading;
@@ -487,6 +521,100 @@ export default function AccountSecurityPage() {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Password (#3529 — POST /auth/change-password) */}
+          <div className="rounded-[14px] px-5 pb-4 pt-[15px]" style={{ border: `1px solid ${HAIRLINE}`, background: CARD_BG }}>
+            <div className="flex items-center gap-3">
+              <span className="text-[13.5px] font-semibold text-[#f8fafc]">Password</span>
+              <span className="text-[11.5px] text-[#64748b]">No forced expiry</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (passwordFormOpen) {
+                    closePasswordForm();
+                  } else {
+                    setPasswordFormOpen(true);
+                    setPasswordSuccess(null);
+                  }
+                }}
+                className="ml-auto rounded-md px-4 py-[7px] text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
+                style={{ background: "#0078D4", border: "1px solid #0078D4" }}
+                data-testid="account-security-password-toggle"
+              >
+                {passwordFormOpen ? "Close" : "Change password"}
+              </button>
+            </div>
+
+            {passwordSuccess ? (
+              <div
+                className="mt-3 rounded-[10px] px-[14px] py-[10px] text-[12px] text-[#e2e8f0]"
+                style={{ border: "1px solid rgba(52,211,153,.3)", background: "rgba(52,211,153,.06)" }}
+                data-testid="account-security-password-success"
+              >
+                {passwordSuccess}
+              </div>
+            ) : null}
+
+            {passwordFormOpen ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void submitPasswordChange();
+                }}
+                className="mt-[14px] flex max-w-[400px] flex-col gap-[10px] border-t pt-[14px]"
+                style={{ borderColor: "rgba(255,255,255,.06)" }}
+              >
+                {passwordError ? (
+                  <p
+                    className="rounded-md p-2 text-[11.5px]"
+                    style={{ border: "1px solid rgba(248,113,113,.3)", background: "rgba(248,113,113,.08)", color: RED }}
+                    data-testid="account-security-password-error"
+                  >
+                    {passwordError}
+                  </p>
+                ) : null}
+                <div className="flex flex-col gap-[5px]">
+                  <label className="text-[11px] font-semibold text-[#94a3b8]">Current password</label>
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="rounded-md px-3 py-[9px] text-[13px] outline-none"
+                    style={{ border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.03)", color: "#f8fafc" }}
+                    data-testid="account-security-password-current"
+                  />
+                </div>
+                <div className="flex flex-col gap-[5px]">
+                  <label className="text-[11px] font-semibold text-[#94a3b8]">New password</label>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="At least 8 characters"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="rounded-md px-3 py-[9px] text-[13px] outline-none"
+                    style={{ border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.03)", color: "#f8fafc" }}
+                    data-testid="account-security-password-new"
+                  />
+                </div>
+                <div className="flex items-center gap-[10px]">
+                  <button
+                    type="submit"
+                    disabled={live.changingPassword || !currentPassword || !newPassword}
+                    className="rounded-md px-[18px] py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                    style={{ background: "#0078D4", border: "1px solid #0078D4" }}
+                    data-testid="account-security-password-submit"
+                  >
+                    {live.changingPassword ? "Updating…" : "Update password"}
+                  </button>
+                  <button type="button" onClick={closePasswordForm} className="text-[12px] font-semibold text-[#94a3b8]">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : null}
           </div>
 
           {/* Sign-in history (#1603 — GET /auth/login-history, all six real fields) */}
