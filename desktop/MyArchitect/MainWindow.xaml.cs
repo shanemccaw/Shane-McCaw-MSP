@@ -53,6 +53,7 @@ public partial class MainWindow : FluentWindow
     private readonly IPoamsService _poamsService;
     private readonly ISlaService _slaService;
     private readonly ITaskQueueService _taskQueueService;
+    private readonly IAlertsService _alertsService;
     private readonly IActivityContextService _activityContextService;
     private readonly IForegroundAppWatcher _foregroundAppWatcher;
     private CancellationTokenSource? _taskQueueSseCts;
@@ -96,6 +97,7 @@ public partial class MainWindow : FluentWindow
         _poamsService = new PoamsService();
         _slaService = new SlaService();
         _taskQueueService = new TaskQueueService();
+        _alertsService = new AlertsService();
         _authService.SessionChanged += OnAuthSessionChanged;
         _consoleService.CommandExecuted += (s, record) => _consoleHistoryService.Add(record);
 
@@ -182,11 +184,11 @@ public partial class MainWindow : FluentWindow
         RegisterWatchTab();
         RegisterDocumentsTab();
         RegisterAdminTab();
-        // Watch now carries Support Tickets (#3488), SLA (#3487) and the Task Queue (#3490);
-        // Alerts (#3483) adds its own group alongside them as it lands (UI_RULES.md §2: one
-        // tab, one group per real source, not one hand-fused group). Admin now carries Vault
-        // (#3461); Audit Log (#3489), Break-Glass (#3480) and consent status (#3485) attach here
-        // as they land. Documents now carries Document Hub (#3486).
+        // Watch now carries Support Tickets (#3488), SLA (#3487), the Task Queue (#3490) and
+        // Alerts (#3483) — each its own group (UI_RULES.md §2: one tab, one group per real
+        // source, not one hand-fused group). Admin now carries Vault (#3461), Break-Glass
+        // (#3480) and the Audit Log (#3489); consent status (#3485) attaches here as it lands.
+        // Documents now carries Document Hub (#3486).
 
         _shellRegistry.RegisterPaletteProvider(BuildPaletteCommands);
     }
@@ -516,10 +518,10 @@ public partial class MainWindow : FluentWindow
     }
 
     /// <summary>Watch tab (UI_RULES.md §2) — "the one 'what needs me' surface." Support Tickets
-    /// (#3488) and SLA (#3487, real msp-sla.ts + msp-m365-sla.ts endpoints) are the first two
-    /// groups to land; Alerts (#3483) and the Task Queue (#3490) add their own groups alongside
-    /// them (UI_RULES.md §2: one tab, one group per real source, not one hand-fused group).
-    /// Support Tickets is a cross-tenant Open-intent list (nothing tenant-specific to select yet,
+    /// (#3488), SLA (#3487, real msp-sla.ts + msp-m365-sla.ts endpoints), the Task Queue (#3490)
+    /// and Alerts (#3483, real msp-alerts.ts) each get their own group (UI_RULES.md §2: one tab,
+    /// one group per real source, not one hand-fused group). Support Tickets is a cross-tenant
+    /// Open-intent list (nothing tenant-specific to select yet,
     /// so fixed-tab legal), same shape as Break-Glass's pending list on Admin. SLA's five
     /// galleries are also Open-intent: Breaches/Compliance carry a numeric customerId filter
     /// server-side, but <see cref="TryResolveLaunchControlScope"/>'s customerId half is the same
@@ -640,6 +642,29 @@ public partial class MainWindow : FluentWindow
                         Title = "Task Queue",
                         Searchable = true,
                         GetRows = BuildOperatorTaskRows,
+                    },
+                    OnSelect = () => { },
+                },
+            },
+        });
+
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Watch, new RibbonGroupSpec
+        {
+            Label = "Alerts",
+            Order = 40,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Alerts",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Real GET /api/msp/alerts (#3483) — cross-tenant triage feed, merged from open policy incidents and each customer's latest diagnostic findings",
+                    LiveCount = () => GetOpenAlertsCount(),
+                    Gallery = new GallerySpec
+                    {
+                        Title = "Alerts",
+                        Searchable = true,
+                        GetRows = BuildAlertRows,
                     },
                     OnSelect = () => { },
                 },
@@ -3743,6 +3768,187 @@ public partial class MainWindow : FluentWindow
         }
     }
 
+    // ---- Cross-Tenant Alerts (#3483) — Watch tab gallery + record workspace ----------------
+
+    /// <summary>Live count badge for the Watch tab's "Alerts" command (UI_RULES.md §8's one
+    /// allowed badge) — the real, current <c>total</c> GET /api/msp/alerts already computed
+    /// server-side, not a client-side re-count. Never throws: a 401/403 before sign-in (this
+    /// renders at shell startup, before <see cref="ApplyAuthState"/> has run) or a transient
+    /// network failure reads as "0 open" rather than crashing ribbon render — the gallery itself
+    /// (<see cref="BuildAlertRows"/>) is where a real failure is surfaced honestly.</summary>
+    private int GetOpenAlertsCount()
+    {
+        try
+        {
+            return _alertsService.GetAlertsAsync().GetAwaiter().GetResult().Total;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>Real rows from GET /api/msp/alerts (#3483) — every open, already-triaged
+    /// cross-tenant alert, severity-ranked then most-recent-first exactly as the server returns
+    /// them (no client-side re-sort). Deliberately not filtered to the active tenant — a
+    /// cross-tenant feed is the entire point (UI_RULES.md §2: "the one 'what needs me' surface").</summary>
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildAlertRows()
+    {
+        AlertsPayload payload;
+        try
+        {
+            payload = _alertsService.GetAlertsAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            // Real, honest failure — most likely 401/403 (not signed in / not msp-operator), not
+            // a bug in this client.
+            return new[]
+            {
+                new GalleryRowSpec { Id = "alerts-error", Name = $"Could not load alerts: {ex.Message}", OnSelect = () => { } },
+            };
+        }
+
+        if (payload.Alerts.Count == 0)
+        {
+            return new[]
+            {
+                new GalleryRowSpec { Id = "alerts-empty", Name = "No open alerts — the book is clean", OnSelect = () => { } },
+            };
+        }
+
+        return payload.Alerts
+            .Select(a => new GalleryRowSpec
+            {
+                Id = a.Id,
+                Tile = AlertSeverityTile(a.Severity),
+                Name = a.Title,
+                Sub = $"{(string.IsNullOrEmpty(a.CustomerName) ? "(no customer)" : a.CustomerName)} · {a.Category} · {a.OccurredAt.ToLocalTime():g}",
+                OnSelect = () => OpenAlertRecord(a),
+            })
+            .ToList();
+    }
+
+    private static string AlertSeverityTile(string severity) => severity switch
+    {
+        "critical" => "CR",
+        "warning" => "WA",
+        "info" => "IN",
+        _ => "—",
+    };
+
+    private static string AlertSeverityLabel(string severity) => severity switch
+    {
+        "critical" => "Critical",
+        "warning" => "Warning",
+        "info" => "Info",
+        _ => severity,
+    };
+
+    private static string AlertSourceLabel(string source) => source switch
+    {
+        "policy_incident" => "Policy engine incident",
+        "diagnostic_finding" => "Diagnostic finding",
+        _ => source,
+    };
+
+    /// <summary>Full-panel record workspace for one cross-tenant alert. A "policy_incident"
+    /// source carries a real, confirm-armed Acknowledge action (POST .../acknowledge, which
+    /// really resolves the underlying policy_rule_incidents row — see msp-alerts.ts's own
+    /// header). A "diagnostic_finding" source has no per-item resolution mechanism anywhere in
+    /// this codebase today, so it gets an honest Note fact instead of an action that would only
+    /// 400 — same "state the real gap, don't fake the control" pattern
+    /// <see cref="OpenTrackerStepRecord"/> already uses for "accepted_risk", and UI_RULES.md §7
+    /// uses for Undo on Runbooks/Remediation Tracker.</summary>
+    private void OpenAlertRecord(CrossTenantAlert alert)
+    {
+        var facts = new System.Collections.Generic.List<WorkspaceFact>
+        {
+            new WorkspaceFact { Label = "Severity", Value = AlertSeverityLabel(alert.Severity) },
+            new WorkspaceFact { Label = "Category", Value = alert.Category },
+            new WorkspaceFact { Label = "Source", Value = AlertSourceLabel(alert.Source) },
+            new WorkspaceFact { Label = "Occurred", Value = alert.OccurredAt.ToLocalTime().ToString("g") },
+        };
+
+        if (alert.EscalationLevel is { } level and > 1)
+        {
+            facts.Add(new WorkspaceFact { Label = "Escalation level", Value = level.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+        }
+
+        var actions = new System.Collections.Generic.List<WorkspaceAction>();
+        if (alert.Source == "diagnostic_finding")
+        {
+            facts.Add(new WorkspaceFact
+            {
+                Label = "Note",
+                Value = "Diagnostic findings have no per-item acknowledge mechanism yet — filed as a real gap from #3366's audit (see msp-alerts.ts).",
+                Prose = true,
+            });
+        }
+        else
+        {
+            actions.Add(new WorkspaceAction
+            {
+                Label = "Acknowledge",
+                Confirm = true,
+                OnSelect = () => AcknowledgeAlert(alert),
+            });
+        }
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "alert",
+            Id = alert.Id,
+            Eyebrow = AlertSeverityLabel(alert.Severity),
+            Title = alert.Title,
+            Sub = string.IsNullOrEmpty(alert.CustomerName) ? "(no customer)" : alert.CustomerName,
+            Facts = facts,
+            Body = string.IsNullOrEmpty(alert.Description) ? null : ("Description", alert.Description),
+            Actions = actions,
+        };
+
+        _shellRegistry.OpenContextual(
+            new TrailEntry("alert", alert.Id, alert.Title, () => OpenAlertRecord(alert)),
+            contextualTab: null,
+            onSearchEverything: () => PaletteOverlay.Open());
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>POST /api/msp/alerts/:alertId/acknowledge. A successful acknowledge really
+    /// resolves the incident, which means it drops out of GET /api/msp/alerts entirely — unlike
+    /// POA&amp;M cancel (the row survives, just terminal), there is nothing left to re-open, so
+    /// this closes the workspace and refreshes the gallery instead of trying to re-fetch a row
+    /// that's now gone. A real failure (already resolved is idempotent success server-side; a
+    /// genuine 400/404/500 is not) leaves the workspace open so the operator can see why and
+    /// retry.</summary>
+    private void AcknowledgeAlert(CrossTenantAlert alert)
+    {
+        try
+        {
+            var result = _alertsService.AcknowledgeAlertAsync(alert.Id).GetAwaiter().GetResult();
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[Alerts] Acknowledged \"{alert.Title}\" — now {result.Status}.");
+        }
+        catch (AlertsServiceException ex)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[Alerts] Acknowledge failed: {ex.Message}");
+            OpenAlertRecord(alert);
+            return;
+        }
+        catch (Exception ex)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[Alerts] Exception: {ex.Message}");
+            OpenAlertRecord(alert);
+            return;
+        }
+
+        _shellRegistry.CloseContextual();
+        _shellRegistry.OpenRecord(null);
+    }
+
     // ---- Runbooks (#3479) — Console tab galleries + record workspaces ----------------------
 
     /// <summary>Real rows from GET /api/msp/runbooks (#3479), gated by the same MSP+customer
@@ -4428,6 +4634,7 @@ public partial class MainWindow : FluentWindow
         _poamsService.AuthToken = token;
         _slaService.AuthToken = token;
         _taskQueueService.AuthToken = token;
+        _alertsService.AuthToken = token;
         TelemetryDashboardView.SetAuthToken(token);
         SowAssessmentDashboardView.SetAuthToken(token);
         EvidenceGalleryPanel.SetAuthToken(token);
