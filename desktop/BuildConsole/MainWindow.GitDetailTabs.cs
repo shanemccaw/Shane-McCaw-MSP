@@ -277,8 +277,7 @@ namespace BuildConsole
                     ToastEngine.Warning("New Epic Chat", "The configured New Chat Project URL isn't a valid URL.");
                     return;
                 }
-                var pat = settings.GitHubPat?.Trim() ?? "";
-                var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, epicNumber);
+                var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, epicNumber);
                 ActivityLog.Log(GitDetailChannel, $"new chat for epic #{epicNumber} -> {baseUrl} (prefill 'Epic #{epicNumber}')");
                 OpenWebTab(fullUrl, $"Epic #{epicNumber} New Chat", "", injectPrefillPoll: true, associateIssueNumber: epicNumber, associateIssueType: "Epic", associateDefaultTitle: $"[#{epicNumber}] Epic Chat");
             }

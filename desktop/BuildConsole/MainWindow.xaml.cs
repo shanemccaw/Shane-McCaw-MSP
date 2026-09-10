@@ -5710,7 +5710,7 @@ namespace BuildConsole
             }
 
             var pat = settings.GitHubPat?.Trim() ?? "";
-            var fullUrl = BuildConsole.Services.EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, n, handoffFromChatUrl: chatUrl);
+            var fullUrl = BuildConsole.Services.EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, n, handoffFromChatUrl: chatUrl);
 
             BuildConsole.Services.ActivityLog.Log("git-board.chat", $"successor chat for Epic #{n} -> {baseUrl} (handoff from {chatUrl}, PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
             OpenWebTab(fullUrl, $"#{n} New Chat", "", injectPrefillPoll: true, associateIssueNumber: n, associateIssueType: "Epic", associateDefaultTitle: $"[#{n}] New Chat");
@@ -6789,7 +6789,7 @@ namespace BuildConsole
 
                 var pat = settings.GitHubPat?.Trim() ?? "";
                 var label = $"Epic #{targetIssue}";
-                var fullUrl = BuildConsole.Services.EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, targetIssue);
+                var fullUrl = BuildConsole.Services.EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, targetIssue);
 
                 BuildConsole.Services.ActivityLog.Log("git-board.chat", $"new chat for Epic #{targetIssue} -> {baseUrl} (prefill '{label}', PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
                 OpenWebTab(fullUrl, $"#{targetIssue} New Chat", "", injectPrefillPoll: true, associateIssueNumber: targetIssue, associateIssueType: "Epic", associateDefaultTitle: $"[#{targetIssue}] New Chat");
@@ -8041,8 +8041,6 @@ namespace BuildConsole
                     return;
                 }
 
-                var pat = settings.GitHubPat?.Trim() ?? "";
-
                 // Git #1837 — carry a pointer back to the chat being archived, so the
                 // successor isn't dropped into the epic with no idea a predecessor existed.
                 // A handoff that loses its pointer is still better than one that doesn't fire
@@ -8057,7 +8055,7 @@ namespace BuildConsole
                     BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Handoff for Epic #{epicNumber} firing without a handoff pointer — old chat's conversation URL could not be resolved.");
                 }
 
-                var fullUrl = BuildConsole.Services.EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, epicNumber, handoffFromChatUrl);
+                var fullUrl = BuildConsole.Services.EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, epicNumber, handoffFromChatUrl);
 
                 string convId = chat.ConversationId;
                 BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Archiving old chat '{chat.Title}' ({convId})...");

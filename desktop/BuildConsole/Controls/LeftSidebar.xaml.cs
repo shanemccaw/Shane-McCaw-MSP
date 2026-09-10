@@ -4659,9 +4659,8 @@ namespace BuildConsole.Controls
                 ToastEngine.Warning("New Chat", "The configured New Chat Project URL isn't a valid URL.");
                 return;
             }
-            var pat = settings.GitHubPat?.Trim() ?? "";
             var label = $"Epic #{epicNumber}";
-            var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, epicNumber, label: label);
+            var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, epicNumber, label: label);
             var defaultTitle = $"[#{epicNumber}] {epicTitle}";
             ActivityLog.Log("git-board.chat", $"new epic chat #{epicNumber} ('{epicTitle}') from Chats panel -> {baseUrl} (Git #2534)");
             EpicChatRequested?.Invoke(this, (fullUrl, $"#{epicNumber} New Chat", true, epicNumber, "Epic", defaultTitle));
@@ -5275,9 +5274,8 @@ namespace BuildConsole.Controls
                                     return;
                                 }
                                 var baseUrl = settings.EpicChatProjectUrl.Trim();
-                                var pat = settings.GitHubPat?.Trim() ?? "";
                                 var label = $"Milestone #{m.GithubNumber.Value}";
-                                var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, m.GithubNumber.Value, label: label);
+                                var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, m.GithubNumber.Value, label: label);
                                 EpicChatRequested?.Invoke(this, (fullUrl, $"Milestone #{m.GithubNumber.Value} New Chat", true, m.GithubNumber.Value, "Milestone", $"[Milestone #{m.GithubNumber.Value}] {m.Title}"));
                             };
                             cmMilestone.Items.Add(miNewChat);
@@ -6387,7 +6385,7 @@ namespace BuildConsole.Controls
                         }
                         var pat = settings.GitHubPat?.Trim() ?? "";
                         var label = $"{issueType} #{issue.IssueNumber}";
-                        var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, issue.IssueNumber, label: label);
+                        var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, issue.IssueNumber, label: label);
                         ActivityLog.Log("git-board.chat", $"new chat for issue #{issue.IssueNumber} -> {baseUrl} (prefill '{label}', PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
                         EpicChatRequested?.Invoke(this, (fullUrl, $"#{issue.IssueNumber} New Chat", true, issue.IssueNumber, issueType, $"[#{issue.IssueNumber}] {issue.RawTitle}"));
                     };
