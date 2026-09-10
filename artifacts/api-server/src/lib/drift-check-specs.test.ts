@@ -9,6 +9,9 @@ import {
   buildEmailAuthDriftConfig,
   driftSpecForCheck,
   checkKeyForDriftDomain,
+  driftSpecForDomain,
+  driftDisplayNamesFromBaselineConfig,
+  resolveDriftEventLabel,
   DRIFT_CHECK_SPECS,
   type DriftScanContext,
 } from "./drift-check-specs.ts";
@@ -355,5 +358,77 @@ describe("drift-check-specs — email authentication (dns)", () => {
 
   it("refuses when no DNS item was produced", () => {
     expect(buildEmailAuthDriftConfig(ctx({ items: [] })).comparable).toBe(false);
+  });
+});
+
+describe("drift-check-specs — timeline label resolution (Git #3364)", () => {
+  const CA_BASELINE_CONFIG = {
+    policies: {
+      "aaaaaaaa-1111-2222-3333-444444444444": { id: "aaaaaaaa-1111-2222-3333-444444444444", displayName: "Require MFA for admins", state: "enabled" },
+    },
+  };
+
+  it("driftSpecForDomain is the real domainKey -> spec lookup", () => {
+    expect(driftSpecForDomain("ca-policy")?.domainKey).toBe("ca-policy");
+    expect(driftSpecForDomain("not-a-real-domain")).toBeUndefined();
+  });
+
+  it("recovers display names from a domain's own baseline config, keyed by object id", () => {
+    const spec = driftSpecForDomain("ca-policy")!;
+    const names = driftDisplayNamesFromBaselineConfig(spec, CA_BASELINE_CONFIG);
+    expect(names.get("aaaaaaaa-1111-2222-3333-444444444444")).toBe("Require MFA for admins");
+    expect(names.size).toBe(1);
+  });
+
+  it("returns an empty map for a domain with no identity/labelHint, or a malformed config", () => {
+    const noHint = driftSpecForDomain("tenant-sharing-capability")!;
+    expect(driftDisplayNamesFromBaselineConfig(noHint, { sharingCapability: 1 }).size).toBe(0);
+
+    const spec = driftSpecForDomain("ca-policy")!;
+    expect(driftDisplayNamesFromBaselineConfig(spec, null).size).toBe(0);
+    expect(driftDisplayNamesFromBaselineConfig(spec, { policies: "not-an-object" }).size).toBe(0);
+  });
+
+  it("a nested property replace (the #3364 motivating case) resolves '<name> — <property> changed', not the raw GUID", () => {
+    const names = driftDisplayNamesFromBaselineConfig(driftSpecForDomain("ca-policy")!, CA_BASELINE_CONFIG);
+    const label = resolveDriftEventLabel({
+      domainKey: "ca-policy",
+      setting: "/policies/aaaaaaaa-1111-2222-3333-444444444444/state",
+      op: "replace",
+      displayNameById: names,
+    });
+    expect(label).toBe("Require MFA for admins — state changed");
+  });
+
+  it("a whole-policy add/remove resolves '<name> added'/'<name> removed'", () => {
+    const names = driftDisplayNamesFromBaselineConfig(driftSpecForDomain("ca-policy")!, CA_BASELINE_CONFIG);
+    expect(
+      resolveDriftEventLabel({ domainKey: "ca-policy", setting: "/policies/aaaaaaaa-1111-2222-3333-444444444444", op: "add", displayNameById: names }),
+    ).toBe("Require MFA for admins added");
+    expect(
+      resolveDriftEventLabel({ domainKey: "ca-policy", setting: "/policies/aaaaaaaa-1111-2222-3333-444444444444", op: "remove", displayNameById: names }),
+    ).toBe("Require MFA for admins removed");
+  });
+
+  it("falls back to the raw setting path when no name is recoverable", () => {
+    // Unknown object id — not (yet) in the baseline.
+    expect(
+      resolveDriftEventLabel({ domainKey: "ca-policy", setting: "/policies/unknown-id/state", op: "replace", displayNameById: new Map() }),
+    ).toBe("/policies/unknown-id/state changed");
+    // A whole-collection event with no object named at all.
+    expect(
+      resolveDriftEventLabel({ domainKey: "ca-policy", setting: "/policies", op: "replace", displayNameById: new Map([["x", "y"]]) }),
+    ).toBe("/policies changed");
+    // A domain with no spec at all.
+    expect(
+      resolveDriftEventLabel({ domainKey: "not-a-real-domain", setting: "/foo/1/bar", op: "replace", displayNameById: new Map() }),
+    ).toBe("/foo/1/bar changed");
+  });
+
+  it("a SharePoint site's url stands in for a display name", () => {
+    const spec = driftSpecForDomain("eeeu-site-sharing")!;
+    const names = driftDisplayNamesFromBaselineConfig(spec, { sites: { "site-1": { url: "https://contoso.sharepoint.com/sites/finance", broadAccess: false } } });
+    const label = resolveDriftEventLabel({ domainKey: "eeeu-site-sharing", setting: "/sites/site-1/broadAccess", op: "replace", displayNameById: names });
+    expect(label).toBe("https://contoso.sharepoint.com/sites/finance — broadAccess changed");
   });
 });

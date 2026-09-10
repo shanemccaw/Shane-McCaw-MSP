@@ -140,6 +140,28 @@ export type BaselineMigrationOutcome =
   | { migrated: true; config: unknown; rewriteSetting?: (setting: string) => string | null }
   | { migrated: false; reason: string };
 
+/**
+ * How to recover a human display name for the object a drift `setting` path
+ * names, for the timeline label (Git #3364).
+ *
+ * #3089 keyed every domain's comparable config by the object's own stable id
+ * (`/policies/<policyId>/state`, `/teams/<teamId>/visibility`, …), which is the
+ * right fix for attribution but left the RENDERED label reading the raw id —
+ * `/policies/aaaaaaaa-1111-.../state changed` names the right object and
+ * communicates nothing to whoever reads the timeline.
+ *
+ * `displayNameProperty` says which property of the object VALUE the builder
+ * stores (see `DriftSettingIdentity.collection`) carries a human name — e.g.
+ * `displayName` for CA policies/Teams, `url` for a SharePoint site with no
+ * friendlier name. A domain without this hint (or without `identity` at all)
+ * falls back to the raw setting path, same as before — see
+ * {@link resolveDriftEventLabel}.
+ */
+export interface DriftLabelHint {
+  /** Property on the object at `identity.collection[<id>]` holding the display name. */
+  displayNameProperty: string;
+}
+
 export interface DriftCheckSpec {
   /** Bare drift domain slug stored on drift_events.domain_key (metric sourceKey minus "drift:"). */
   domainKey: string;
@@ -152,6 +174,12 @@ export interface DriftCheckSpec {
    * to an object and nothing can be attributed. See {@link DriftSettingIdentity}.
    */
   identity?: DriftSettingIdentity;
+  /**
+   * Optional alongside `identity` — how to recover a display name for the
+   * object a setting path names, for the rendered timeline label. See
+   * {@link DriftLabelHint} and {@link resolveDriftEventLabel}.
+   */
+  labelHint?: DriftLabelHint;
   /**
    * #3089 — the SHAPE version `buildConfig` currently emits. Omitted means 1 (the
    * original shape); every stored snapshot predating versioning is version 1 too,
@@ -456,6 +484,9 @@ export const DRIFT_CHECK_SPECS: Record<string, DriftCheckSpec> = {
     // positional is left to agree about; reshaping the builder again means bumping
     // `configVersion` and extending the migration below, never an edit in place.
     identity: { collection: "policies" },
+    // #3364 — the policy object stored verbatim at `policies[<id>]` carries
+    // Graph's own `displayName`.
+    labelHint: { displayNameProperty: "displayName" },
     configVersion: CA_POLICY_CONFIG_VERSION,
     migrateBaselineConfig: migrateCaPolicyBaselineConfig,
     buildConfig: buildCaPolicyDriftConfig,
@@ -463,12 +494,19 @@ export const DRIFT_CHECK_SPECS: Record<string, DriftCheckSpec> = {
   "governance:public-teams-discoverable": {
     domainKey: "public-teams-discoverable",
     label: "Public / discoverable Teams",
+    identity: { collection: "teams" },
+    // #3364
+    labelHint: { displayNameProperty: "displayName" },
     buildConfig: buildPublicTeamsDriftConfig,
   },
   // fan-out (graph, per-site)
   "compliance:eeeu-site-sharing": {
     domainKey: "eeeu-site-sharing",
     label: "SharePoint external site sharing",
+    identity: { collection: "sites" },
+    // #3364 — a SharePoint site has no separate friendly name in this config;
+    // its `url` is the closest thing to one.
+    labelHint: { displayNameProperty: "url" },
     buildConfig: buildEeeuSiteSharingDriftConfig,
   },
   // sharepoint-admin
@@ -501,4 +539,92 @@ export function driftSpecForCheck(checkKey: string): DriftCheckSpec | undefined 
  */
 export function checkKeyForDriftDomain(domainKey: string): string | undefined {
   return Object.entries(DRIFT_CHECK_SPECS).find(([, spec]) => spec.domainKey === domainKey)?.[0];
+}
+
+/** The drift spec for a domain key (`drift_events.domain_key`), via {@link checkKeyForDriftDomain}. */
+export function driftSpecForDomain(domainKey: string): DriftCheckSpec | undefined {
+  const checkKey = checkKeyForDriftDomain(domainKey);
+  return checkKey ? driftSpecForCheck(checkKey) : undefined;
+}
+
+// ── timeline label resolution (Git #3364) ──────────────────────────────────────
+
+/**
+ * Object id named by a drift `setting` path in this spec's identity collection,
+ * or null when the path isn't about one identifiable object — a whole-collection
+ * event (`/policies`), or a domain with no `identity` declared at all. Mirrors
+ * `resolveDriftSettingTarget` (drift-change-attribution.ts) but stays local and
+ * DB-free — this file is pure and unit-tested without a database (see the file
+ * header), and that file pulls in the real `db` client to resolve attribution.
+ */
+function objectIdFromSetting(setting: string, identity: DriftSettingIdentity | undefined): string | null {
+  if (!identity) return null;
+  const segments = setting.split("/").filter((s) => s.length > 0);
+  if (segments.length < 2 || segments[0] !== identity.collection) return null;
+  return segments[1].length > 0 ? segments[1] : null;
+}
+
+/**
+ * A domain's `identity.collection[<id>][labelHint.displayNameProperty]` values,
+ * keyed by object id — built once from a domain's own captured baseline config
+ * (`drift_baseline_snapshots.config`), which is the one place a keyed config's
+ * full objects (Graph `displayName`, a site `url`, …) live. `drift_events.
+ * old_value`/`new_value` only carry the display name for a whole-object add or
+ * remove; a nested property replace (`/policies/<id>/state`, the common case)
+ * carries just the changed leaf value, so the baseline is the honest source for
+ * a name that also has to cover that case. Returns an empty map when the spec
+ * has no `identity`/`labelHint`, the config isn't the expected shape, or the
+ * collection is empty/missing — callers fall back to the raw setting path.
+ */
+export function driftDisplayNamesFromBaselineConfig(
+  spec: Pick<DriftCheckSpec, "identity" | "labelHint">,
+  config: unknown,
+): Map<string, string> {
+  const names = new Map<string, string>();
+  const { identity, labelHint } = spec;
+  if (!identity || !labelHint) return names;
+  if (typeof config !== "object" || config === null) return names;
+  const collection = (config as Record<string, unknown>)[identity.collection];
+  if (typeof collection !== "object" || collection === null) return names;
+  for (const [id, item] of Object.entries(collection as Record<string, unknown>)) {
+    if (typeof item !== "object" || item === null) continue;
+    const name = (item as Record<string, unknown>)[labelHint.displayNameProperty];
+    if (typeof name === "string" && name.length > 0) names.set(id, name);
+  }
+  return names;
+}
+
+/**
+ * The human timeline label for a drift event (Git #3364) — the fix for the
+ * display-layer gap #3089's id-keyed diff shape surfaced: `drift_events.setting`
+ * rendered verbatim reads as a bare GUID (`/policies/<policyId>/state changed`)
+ * even though the object it names has a real display name, once one is
+ * recoverable (see {@link driftDisplayNamesFromBaselineConfig}).
+ *
+ * `dashboard-resolvers.ts` (the customer timeline) and `admin-drift.ts` (the
+ * operator view) both call this — same resolution, same fallback, so the two
+ * surfaces agree on what a drift event is called.
+ *
+ * Falls back to the original `<setting> <verb>` form whenever a name can't be
+ * recovered: no spec for the domain, no `identity`/`labelHint`, the path isn't
+ * about one identifiable object, or that object's id isn't in `displayNameById`
+ * (not yet captured in the baseline, or genuinely has no name in this domain).
+ */
+export function resolveDriftEventLabel(params: {
+  domainKey: string;
+  setting: string;
+  op: string;
+  displayNameById: ReadonlyMap<string, string>;
+}): string {
+  const { domainKey, setting, op, displayNameById } = params;
+  const verb = op === "add" ? "added" : op === "remove" ? "removed" : "changed";
+  const spec = driftSpecForDomain(domainKey);
+  const objectId = spec ? objectIdFromSetting(setting, spec.identity) : null;
+  const displayName = objectId ? displayNameById.get(objectId) : undefined;
+  if (!displayName) return `${setting} ${verb}`;
+
+  const segments = setting.split("/").filter((s) => s.length > 0);
+  const propertyPath = segments.slice(2).join(".");
+  if (propertyPath.length === 0) return `${displayName} ${verb}`;
+  return `${displayName} — ${propertyPath} ${verb}`;
 }

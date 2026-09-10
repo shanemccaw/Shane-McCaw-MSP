@@ -24,11 +24,12 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, driftEventsTable, DRIFT_EVENT_VERDICTS, DRIFT_EVENT_STATUSES } from "@workspace/db";
-import { and, desc, eq, gte, inArray, type SQL } from "drizzle-orm";
+import { db, driftEventsTable, driftBaselineSnapshotsTable, DRIFT_EVENT_VERDICTS, DRIFT_EVENT_STATUSES } from "@workspace/db";
+import { and, desc, eq, gte, inArray, or, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
+import { driftDisplayNamesFromBaselineConfig, driftSpecForDomain, resolveDriftEventLabel } from "../lib/drift-check-specs.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -108,6 +109,46 @@ router.get("/admin/drift/events", requireAdmin, async (req: Request, res: Respon
       .orderBy(desc(driftEventsTable.detectedAt))
       .limit(limit);
 
+    // ── Timeline labels (#3364) ───────────────────────────────────────────────
+    // Same resolver the customer timeline uses (dashboard-resolvers.ts), so the
+    // operator view and the customer view agree on what a drift event is called.
+    // A display name is recovered from the domain's own captured baseline config
+    // — the one place a keyed config's full objects (Graph displayName, a site
+    // url, …) live — batched per distinct (tenantId, domainKey) pair actually
+    // present in this page of results, never a name-only property replace can't
+    // carry on its own.
+    const tenantDomainPairs = new Map<string, { tenantId: string; domainKey: string }>();
+    for (const r of rows) {
+      tenantDomainPairs.set(`${r.tenantId}|${r.domainKey}`, { tenantId: r.tenantId, domainKey: r.domainKey });
+    }
+    const displayNamesByTenantDomain = new Map<string, Map<string, string>>();
+    if (tenantDomainPairs.size > 0) {
+      const baselineConditions = [...tenantDomainPairs.values()].map((p) =>
+        and(eq(driftBaselineSnapshotsTable.tenantId, p.tenantId), eq(driftBaselineSnapshotsTable.domainKey, p.domainKey)),
+      );
+      const baselines = await db
+        .select({
+          tenantId: driftBaselineSnapshotsTable.tenantId,
+          domainKey: driftBaselineSnapshotsTable.domainKey,
+          config: driftBaselineSnapshotsTable.config,
+        })
+        .from(driftBaselineSnapshotsTable)
+        .where(or(...baselineConditions));
+      for (const b of baselines) {
+        const spec = driftSpecForDomain(b.domainKey);
+        if (!spec) continue;
+        displayNamesByTenantDomain.set(`${b.tenantId}|${b.domainKey}`, driftDisplayNamesFromBaselineConfig(spec, b.config));
+      }
+    }
+    const emptyDisplayNames = new Map<string, string>();
+    const labelForRow = (r: (typeof rows)[number]): string =>
+      resolveDriftEventLabel({
+        domainKey: r.domainKey,
+        setting: r.setting,
+        op: r.op,
+        displayNameById: displayNamesByTenantDomain.get(`${r.tenantId}|${r.domainKey}`) ?? emptyDisplayNames,
+      });
+
     // ── Roll-up over the returned set ─────────────────────────────────────────
     const byStatus: Record<string, number> = {};
     const byVerdict: Record<string, number> = {};
@@ -156,6 +197,9 @@ router.get("/admin/drift/events", requireAdmin, async (req: Request, res: Respon
         eventId: r.eventId,
         tenantId: r.tenantId,
         domainKey: r.domainKey,
+        // #3364 — the resolved `<display name> — <property> changed` label; the
+        // customer timeline (dashboard-resolvers.ts) renders the same value.
+        label: labelForRow(r),
         setting: r.setting,
         op: r.op,
         oldValue: r.oldValue ?? null,

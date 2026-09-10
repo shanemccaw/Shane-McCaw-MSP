@@ -101,6 +101,7 @@ import { computeSkuCostBreakdown, centsToDollars, lookupSkuMonthlyPriceCents, ty
 import { resolveLicenseWasteCounts, paidSeatFiguresFromLines } from "./license-waste-source.ts";
 import { evaluateDocGateCoverage } from "./doc-gate-coverage";
 import { getTenantServiceState, serviceDisplayName } from "./service-availability.ts";
+import { driftDisplayNamesFromBaselineConfig, driftSpecForDomain, resolveDriftEventLabel } from "./drift-check-specs.ts";
 import { TENANT_SERVICE_KEYS, type TenantServiceKey } from "@workspace/db";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -742,7 +743,7 @@ async function resolveDriftEvents(def: MetricDef, tenantId: string, ctx: Resolve
   const domainKey = def.sourceKey.slice("drift:".length);
 
   const [baseline] = await db
-    .select({ id: driftBaselineSnapshotsTable.id })
+    .select({ id: driftBaselineSnapshotsTable.id, config: driftBaselineSnapshotsTable.config })
     .from(driftBaselineSnapshotsTable)
     .where(and(eq(driftBaselineSnapshotsTable.tenantId, tenantId), eq(driftBaselineSnapshotsTable.domainKey, domainKey)))
     .limit(1);
@@ -784,13 +785,18 @@ async function resolveDriftEvents(def: MetricDef, tenantId: string, ctx: Resolve
     )
     .orderBy(desc(driftEventsTable.detectedAt));
 
+  // #3364 — resolve `<display name> — <property> changed` where the domain's
+  // own captured baseline config recovers a name for the object the setting
+  // path names, falling back to the raw path otherwise (resolveDriftEventLabel).
+  const spec = driftSpecForDomain(domainKey);
+  const displayNameById = spec ? driftDisplayNamesFromBaselineConfig(spec, baseline.config) : new Map<string, string>();
+
   const events = rows.map((r) => {
-    const verb = r.op === "add" ? "added" : r.op === "remove" ? "removed" : "changed";
     return {
       // timeline entries key off `t` (ISO timestamp) + `label`; the rest is
       // passthrough metadata the table/timeline renderers surface.
       t: r.detectedAt?.toISOString() ?? "",
-      label: `${r.setting} ${verb}`,
+      label: resolveDriftEventLabel({ domainKey, setting: r.setting, op: r.op, displayNameById }),
       setting: r.setting,
       op: r.op,
       oldValue: r.oldValue ?? null,
