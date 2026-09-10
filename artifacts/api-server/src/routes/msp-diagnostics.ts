@@ -1133,7 +1133,16 @@ router.get(
           createdAt: mspDiagnosticFindingsTable.createdAt,
         })
         .from(mspDiagnosticFindingsTable)
-        .where(eq(mspDiagnosticFindingsTable.runId, runId))
+        .where(and(
+          eq(mspDiagnosticFindingsTable.runId, runId),
+          // #3362 (same class as #3102): defense-in-depth — customer_id is
+          // denormalized on this table with only an FK from run_id to
+          // msp_diagnostic_runs, not a constraint tying a finding's own
+          // customer_id to its run's. Scope this read by tenant on its own
+          // terms rather than relying solely on the preceding ownership
+          // check above.
+          eq(mspDiagnosticFindingsTable.customerId, customerId),
+        ))
         .orderBy(mspDiagnosticFindingsTable.severity);
 
       res.json({ run, findings });
