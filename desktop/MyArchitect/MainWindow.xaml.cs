@@ -45,6 +45,7 @@ public partial class MainWindow : FluentWindow
     private readonly IVaultService _vaultService;
     private readonly IBreakGlassService _breakGlassService;
     private readonly ISupportTicketsService _supportTicketsService;
+    private readonly IAuditLogService _auditLogService;
     private readonly IAuthService _authService;
     private readonly IRetainerService _retainerService;
     private readonly IPoamsService _poamsService;
@@ -83,6 +84,7 @@ public partial class MainWindow : FluentWindow
         _vaultService = new VaultService();
         _breakGlassService = new BreakGlassService();
         _supportTicketsService = new SupportTicketsService();
+        _auditLogService = new AuditLogService();
         _authService = new AuthService();
         _retainerService = new RetainerService();
         _poamsService = new PoamsService();
@@ -414,10 +416,10 @@ public partial class MainWindow : FluentWindow
         });
     }
 
-    /// <summary>Admin tab (UI_RULES.md §2). Carries the Credential Vault (#3461) and Break-Glass
-    /// Access (#3480) — both <see cref="RibbonIntent.Open"/> commands (global-scope, no specific
-    /// record). Audit Log (#3489) and consent status (#3485) attach their own groups here as they
-    /// land.</summary>
+    /// <summary>Admin tab (UI_RULES.md §2). Carries the Credential Vault (#3461), Break-Glass
+    /// Access (#3480), and the Audit Log (#3489) — all <see cref="RibbonIntent.Open"/> commands
+    /// (global-scope, no specific record). Consent status (#3485) attaches its own group here as
+    /// it lands.</summary>
     private void RegisterAdminTab()
     {
         _shellRegistry.RegisterFixedTabGroup(FixedTab.Admin, new RibbonGroupSpec
@@ -452,6 +454,25 @@ public partial class MainWindow : FluentWindow
                     Intent = RibbonIntent.Open,
                     ToolTip = "Cross-tenant pending break-glass credential deliveries (GET /api/msp/break-glass, #3480)",
                     OnSelect = () => OpenBreakGlassPendingList(),
+                },
+            },
+        });
+
+        // Audit Log (#3489) — real msp-audit-log.ts client, filterable by tenant (mspId,
+        // PlatformAdmin-only server-side) / action type. Open-intent (nothing tenant-specific to
+        // select yet), so it is fixed-tab legal.
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Admin, new RibbonGroupSpec
+        {
+            Label = "Audit Log",
+            Order = 30,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Audit Log",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Filterable platform audit trail — tenant / action type (GET /api/msp/audit, #3489)",
+                    OnSelect = () => OpenAuditLog(new Models.AuditLogFilter()),
                 },
             },
         });
@@ -1077,6 +1098,125 @@ public partial class MainWindow : FluentWindow
     private static string DescribeBreakGlassError(Exception ex) => ex switch
     {
         BreakGlassServiceException bge => bge.Message,
+        _ => ex.Message,
+    };
+
+    // ---- Audit Log (#3489) — real msp-audit-log.ts client, filterable by tenant / action type ----
+
+    /// <summary>Opens the real audit trail (GET /api/msp/audit) as a full-panel record workspace.
+    /// <see cref="WorkspaceEdit"/> fields capture the two filters the issue asks for — tenant
+    /// (<c>mspId</c>, honored server-side for PlatformAdmin only) and action type (server-side
+    /// <c>ilike</c> substring match) — locally, and an <c>Apply filters</c> action re-runs the
+    /// query and re-opens the record with the results, the same local-capture-then-refresh pattern
+    /// the Break-Glass override form and VIP lookup box already use. On an auth or transport
+    /// failure the record states the honest reason rather than showing a fabricated list.</summary>
+    private void OpenAuditLog(Models.AuditLogFilter filter)
+    {
+        Models.AuditLogPage page;
+        try
+        {
+            page = _auditLogService.GetAuditLogAsync(filter).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "audit-log",
+                Id = "audit-log",
+                Eyebrow = "Admin",
+                Title = "Audit Log",
+                Sub = "Could not load",
+                Body = ("Error", DescribeAuditLogError(ex)),
+            });
+            return;
+        }
+
+        var mspId = filter.MspId ?? string.Empty;
+        var actionType = filter.ActionType ?? string.Empty;
+
+        void Rerun() => OpenAuditLog(new Models.AuditLogFilter
+        {
+            MspId = string.IsNullOrWhiteSpace(mspId) ? null : mspId,
+            ActionType = string.IsNullOrWhiteSpace(actionType) ? null : actionType,
+        });
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "audit-log",
+            Id = "audit-log",
+            Eyebrow = "Admin",
+            Title = "Audit Log",
+            Sub = page.Entries.Count == 0
+                ? "No audit entries match the current filters"
+                : $"{page.Entries.Count} of {page.Total} entries, most recent first (page {page.Page})",
+            Edits =
+            {
+                new WorkspaceEdit
+                {
+                    Key = "mspId",
+                    Label = "Tenant (MSP ID — PlatformAdmin only)",
+                    Value = mspId,
+                    OnChange = v => mspId = v,
+                },
+                new WorkspaceEdit
+                {
+                    Key = "actionType",
+                    Label = "Action type",
+                    Value = actionType,
+                    OnChange = v => actionType = v,
+                },
+            },
+            Actions =
+            {
+                new WorkspaceAction { Label = "Apply filters", OnSelect = Rerun },
+            },
+            List = page.Entries.Count == 0
+                ? null
+                : ("Entries", page.Entries.Select(e => new WorkspaceListRow
+                {
+                    Id = e.Id.ToString(),
+                    Name = e.Action,
+                    Sub = $"{e.ActorEmail ?? e.ActorRole ?? "unknown actor"} · {e.Resource ?? "—"} · {e.CreatedAt}",
+                    Right = e.Outcome,
+                    OnSelect = () => OpenAuditLogEntry(e),
+                }).ToList()),
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>One audit entry's full detail — the raw <c>detail</c> string the route already
+    /// flattens from <c>metadata</c>, plus a link back to the filtered list.</summary>
+    private void OpenAuditLogEntry(Models.AuditLogEntry entry)
+    {
+        _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+        {
+            Kind = "audit-log-entry",
+            Id = $"audit-log-entry-{entry.Id}",
+            Eyebrow = "Admin · Audit Log",
+            Title = entry.Action,
+            Sub = entry.CreatedAt,
+            Facts =
+            {
+                new WorkspaceFact { Label = "Actor", Value = entry.ActorEmail ?? entry.ActorName ?? entry.ActorRole ?? "unknown" },
+                new WorkspaceFact { Label = "Role", Value = entry.ActorRole ?? "—" },
+                new WorkspaceFact { Label = "Resource", Value = entry.Resource ?? "—" },
+                new WorkspaceFact { Label = "Outcome", Value = entry.Outcome ?? "—" },
+                new WorkspaceFact { Label = "Event ID", Value = entry.EventId ?? "—" },
+            },
+            Body = string.IsNullOrWhiteSpace(entry.Detail) ? null : ("Detail", entry.Detail),
+            Actions =
+            {
+                new WorkspaceAction { Label = "Back to Audit Log", OnSelect = () => OpenAuditLog(new Models.AuditLogFilter()) },
+            },
+        });
+    }
+
+    /// <summary>Best-effort human message from an <see cref="AuditLogServiceException"/> (which
+    /// already parses the route's <c>{ error, detail }</c>) or any other transport error.</summary>
+    private static string DescribeAuditLogError(Exception ex) => ex switch
+    {
+        AuditLogServiceException ale => ale.Message,
         _ => ex.Message,
     };
 
@@ -3022,6 +3162,7 @@ public partial class MainWindow : FluentWindow
             new() { Id = "dest:vault", Type = PaletteType.Destination, Name = "Credential Vault", Sub = "Per-tenant, local-only, DPAPI-encrypted (#3461)", Run = () => ShowDocument(VaultPanel) },
             new() { Id = "dest:break-glass", Type = PaletteType.Destination, Name = "Break-Glass Requests", Sub = "Cross-tenant pending break-glass deliveries (#3480)", Run = () => OpenBreakGlassPendingList() },
             new() { Id = "dest:support-tickets", Type = PaletteType.Destination, Name = "Support Tickets", Sub = "Every ticket under your MSP's Zoho Desk org (#3488)", Run = () => OpenSupportTicketsList() },
+            new() { Id = "dest:audit-log", Type = PaletteType.Destination, Name = "Audit Log", Sub = "Filterable platform audit trail — tenant / action type (#3489)", Run = () => OpenAuditLog(new Models.AuditLogFilter()) },
             new() { Id = "act:open-all", Type = PaletteType.Action, Name = "Open all portals", Run = () => _ = OpenAllPortalsAsync() },
             new() { Id = "ans:open-tabs", Type = PaletteType.Answer, Name = "Open portal tabs", Live = _tabs.Count.ToString(), Run = () => { } },
         };
@@ -3142,6 +3283,7 @@ public partial class MainWindow : FluentWindow
         _changeControlService.AuthToken = token;
         _breakGlassService.AuthToken = token;
         _supportTicketsService.AuthToken = token;
+        _auditLogService.AuthToken = token;
         _adminRetainerService.AuthToken = token;
         _remediationTrackerService.AuthToken = token;
         _vipClassificationsService.AuthToken = token;
