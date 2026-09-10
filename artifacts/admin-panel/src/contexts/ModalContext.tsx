@@ -40,7 +40,8 @@ import {
   Trash2,
   Plus,
   Zap,
-  Globe
+  Globe,
+  FileCog
 } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -72,6 +73,7 @@ export type ModalType =
   | "new-assessment"
   | "delete-assessment"
   | "deprecate-assessment"
+  | "new-document-type"
   | null;
 
 interface ModalContextType {
@@ -148,6 +150,7 @@ function ModalContainer() {
         {activeModal === "deprecate-assessment" && modalData?.assessment && (
           <DeprecateAssessmentModal assessment={modalData.assessment} onClose={closeModal} />
         )}
+        {activeModal === "new-document-type" && <NewDocumentTypeModal />}
       </DialogContent>
     </Dialog>
   );
@@ -1427,6 +1430,213 @@ function MonitorCheckEditorModal({ isNew = false }: { isNew: boolean }) {
         <Button onClick={handleSave} disabled={saving} className="h-9 text-xs">
           {saving ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1.5" />}
           {isNew ? "Create endpoint" : "Save changes"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Create one `document_types` row — the reachable entry point Git #3492 filed
+ * back in after the two independently-correct deletions (#3416 removing
+ * Document Generator IDE, #3417 removing the orphaned Insights Engine page)
+ * left `POST /api/admin/document-types` with no UI caller. Kept deliberately
+ * minimal (key/label/category/pipeline/service/sort/active) — sections and
+ * signal scoping are edited afterward in Simulator Studio's Documents node
+ * (SimulatorDocumentCanvas.tsx), which already round-trips those fields via
+ * PUT /api/admin/document-types/:key.
+ */
+function NewDocumentTypeModal() {
+  const { closeModal } = useModal();
+  const { fetchWithAuth } = useAuth();
+
+  const [key, setKey] = useState("");
+  const [label, setLabel] = useState("");
+  const [category, setCategory] = useState<"report" | "consulting">("report");
+  const [pipelineCategory, setPipelineCategory] = useState<"standalone" | "pipeline_output">("standalone");
+  const [serviceId, setServiceId] = useState<string>("");
+  const [services, setServices] = useState<{ id: number; name: string }[]>([]);
+  const [sortOrder, setSortOrder] = useState("0");
+  const [isActive, setIsActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // No dedicated lightweight services-lookup endpoint exists yet — same
+  // trade-off DocumentTypesManager.tsx already made, reusing the full
+  // GET /api/admin/services list and picking {id, name} out of it.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchWithAuth("/api/admin/services");
+        if (res.ok && !cancelled) {
+          const rows = (await res.json()) as { id: number; name: string }[];
+          setServices(rows.map((r) => ({ id: r.id, name: r.name })));
+        }
+      } catch {
+        // Select just stays empty — "(none)" remains a valid choice.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchWithAuth]);
+
+  const handleSave = async () => {
+    if (!key.trim()) {
+      toast.error("Key is required");
+      return;
+    }
+    if (!/^[a-z0-9_]+$/.test(key.trim())) {
+      toast.error("Key must be lowercase letters, digits, or underscores only");
+      return;
+    }
+    if (!label.trim()) {
+      toast.error("Label is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/document-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: key.trim(),
+          label: label.trim(),
+          category,
+          pipelineCategory,
+          serviceId: serviceId.trim() !== "" ? Number(serviceId) : null,
+          sortOrder: Number(sortOrder) || 0,
+          isActive,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        toast.success("Document type created");
+        // Same event SimulatorDocumentCanvas's Save button fires — the tree
+        // reloads its document_types registry without a manual refresh.
+        window.dispatchEvent(new CustomEvent("simulator-documents-updated"));
+        closeModal();
+      } else {
+        toast.error((data as { error?: string } | null)?.error ?? "Failed to create document type");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Network error creating document type");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <DialogHeader>
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-card border border-border">
+            <FileCog className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <DialogTitle className="text-lg font-semibold text-foreground">New Document Type</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              A real document_types registry row driving report/consulting deliverable generation. Section
+              structure and signal scoping are edited afterward in the Documents node.
+            </DialogDescription>
+          </div>
+        </div>
+      </DialogHeader>
+
+      <div className="grid grid-cols-2 gap-4 pt-1">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-muted-foreground">Key</Label>
+          <Input
+            placeholder="e.g. security_posture_report"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            className="bg-background border-border text-foreground text-xs h-9 font-mono"
+          />
+          <p className="text-[10px] text-muted-foreground">Lowercase letters, digits, and underscores only.</p>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-muted-foreground">Label</Label>
+          <Input
+            placeholder="e.g. Security Posture Report"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            className="bg-background border-border text-foreground text-xs h-9"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-muted-foreground">Category</Label>
+          <Select value={category} onValueChange={(v) => setCategory(v as "report" | "consulting")}>
+            <SelectTrigger className="w-full bg-background border-border text-foreground text-xs h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border text-foreground text-xs">
+              <SelectItem value="report">report</SelectItem>
+              <SelectItem value="consulting">consulting</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-muted-foreground">Pipeline category</Label>
+          <Select value={pipelineCategory} onValueChange={(v) => setPipelineCategory(v as "standalone" | "pipeline_output")}>
+            <SelectTrigger className="w-full bg-background border-border text-foreground text-xs h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border text-foreground text-xs">
+              <SelectItem value="standalone">standalone</SelectItem>
+              <SelectItem value="pipeline_output">pipeline_output</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-muted-foreground">Linked service</Label>
+        <Select value={serviceId === "" ? "none" : serviceId} onValueChange={(v) => setServiceId(v === "none" ? "" : v)}>
+          <SelectTrigger className="w-full bg-background border-border text-foreground text-xs h-9">
+            <SelectValue placeholder="(none)" />
+          </SelectTrigger>
+          <SelectContent className="bg-card border-border text-foreground text-xs">
+            <SelectItem value="none">(none)</SelectItem>
+            {services.map((s) => (
+              <SelectItem key={s.id} value={String(s.id)}>
+                {s.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 items-end">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-muted-foreground">Sort order</Label>
+          <Input
+            type="number"
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value)}
+            className="bg-background border-border text-foreground text-xs h-9"
+          />
+        </div>
+        <label className="flex items-center gap-2 text-xs text-foreground/90 pb-2">
+          <input
+            type="checkbox"
+            checked={isActive}
+            onChange={(e) => setIsActive(e.target.checked)}
+            className="w-4 h-4 rounded border-border bg-background accent-primary focus:ring-ring/30"
+          />
+          Active
+        </label>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-1">
+        <Button variant="outline" onClick={closeModal} className="h-9 text-xs">
+          Cancel
+        </Button>
+        <Button onClick={handleSave} disabled={saving} className="h-9 text-xs">
+          {saving ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1.5" />}
+          Create document type
         </Button>
       </div>
     </div>

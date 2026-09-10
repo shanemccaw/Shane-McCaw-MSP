@@ -2290,12 +2290,19 @@ export function SimulatorLeftTree() {
             column ("report"/"consulting"), mirroring how Section 11 groups
             Assessments Free/Paid. Clicking a row opens the client/project
             picker + dry-run preview / real-AI generate pane + editable
-            properties panel in the center canvas. Read-only browse here —
-            no tree-level create/edit/delete (that stays Document Types
-            Manager's job elsewhere); a yellow warning triangle flags any
-            row with no linked AI prompt (aiPromptId null). */}
+            properties panel in the center canvas. No tree-level edit/delete
+            here (that stays the document canvas's job) — but creation IS
+            here: the "+" button / right-click "New Document Type" open
+            NewDocumentTypeModal via openModal, same as Section 11's
+            openModal("new-assessment"). This is the reachable entry point
+            Git #3492 filed back in after #3416 + #3417 independently removed
+            both prior UI paths to POST /api/admin/document-types. A yellow
+            warning triangle flags any row with no linked AI prompt
+            (aiPromptId null). */}
         {showDocuments && (
         <div>
+          <ContextMenu>
+          <ContextMenuTrigger asChild>
           <div
             onClick={() => setDocumentsOpen(!documentsOpen)}
             className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
@@ -2307,7 +2314,25 @@ export function SimulatorLeftTree() {
             )}
             <FileText className="h-3.5 w-3.5 text-sky-400" />
             <span className="truncate">Documents</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                openModal("new-document-type");
+              }}
+              className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              title="New document type"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
           </div>
+          </ContextMenuTrigger>
+          <ContextMenuContent className="w-44">
+            <ContextMenuItem onSelect={() => openModal("new-document-type")} className="gap-2 text-xs">
+              <Plus className="h-3.5 w-3.5" />
+              New Document Type
+            </ContextMenuItem>
+          </ContextMenuContent>
+          </ContextMenu>
 
           {(isSearching || documentsOpen) && (
             <div className="ml-[22px] border-l border-accent">
