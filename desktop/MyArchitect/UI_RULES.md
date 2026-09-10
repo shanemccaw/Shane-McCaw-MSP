@@ -158,14 +158,24 @@ acting deliberately: always show the button when behind, no network check.
 
 ---
 
-## 7. Open — not yet resolved
+## 7. Undo/Redo — resolved
 
-**Undo/Redo.** AdminV2 has a real per-screen undo stack (`pushUndo`/`undo`/
-`redo`, capped at 20, revert functions per mutation). Several MyArchitect
-actions already have real server-side rollback (`msp_change_requests`
-rollback, #3471). Does client-side Undo/Redo still add value on top of
-that, or does the real rollback already cover it? Don't build either
-side of this until it's answered.
+**Undo calls the real backend rollback — no separate client-side undo
+stack.** Unlike AdminV2's local `pushUndo`/`revert` mechanism, MyArchitect's
+title-bar Undo button is a thin trigger over whatever real server-side
+reversal already exists for the action that was just taken:
+
+- **Change Control executions** — real: `POST
+  /msp/change-control/change-requests/:id/rollback`. Undo is live here.
+- **Remediation Tracker steps, Runbooks** — no rollback endpoint exists
+  today (`msp-remediation-tracker.ts` / `msp-runbooks.ts` only expose a
+  status/step PUT, nothing to reverse it). Undo is **absent/disabled** for
+  these action types, not faked with a client-side revert. Building a real
+  backend rollback for them is separate work, not assumed here.
+
+Redo, if it ever matters, would re-issue the original action — not
+reconstructed from AdminV2's redo-stack mechanism, since there's no local
+undo stack to redo from in the first place.
 
 ---
 
