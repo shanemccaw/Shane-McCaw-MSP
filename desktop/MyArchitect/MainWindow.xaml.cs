@@ -416,21 +416,196 @@ public partial class MainWindow : FluentWindow
         _shellRegistry.OpenRecord(spec);
     }
 
-    /// <summary>Real catalog rows when a real MSP+customer id pair is resolvable. Today it never
-    /// is — MyArchitect has no auth/session mechanism to source one from (#3501, also noted on
-    /// <see cref="ILaunchControlActionsService"/> itself) — so this states that honestly instead
-    /// of guessing an id, which would be inventing data.</summary>
+    /// <summary>Real MSP+customer id resolution for every Launch Control call. Returns false
+    /// today because MyArchitect has no auth/session mechanism anywhere to source either id
+    /// from (#3501, also noted on <see cref="ILaunchControlActionsService"/> itself) — Tenant
+    /// only ever carries a TenantGuid (string), never a numeric mspId/tenants.id. Kept as its
+    /// own resolver, not inlined, so the one thing that changes once #3501 lands is this
+    /// method's body — the gallery/record-workspace/execute wiring below it doesn't move.</summary>
+    private bool TryResolveLaunchControlScope(out int mspId, out int customerId)
+    {
+        mspId = 0;
+        customerId = 0;
+        return false;
+    }
+
+    /// <summary>Real catalog rows, real mapping (tile/name/sub from
+    /// <see cref="LaunchControlAction"/>'s own fields, grouped by the catalog's real Domain —
+    /// UI_RULES.md §4) once a real MSP+customer id pair is resolvable. Today it never is
+    /// (#3501) — this states that honestly instead of guessing an id, which would be inventing
+    /// data.</summary>
     private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildScriptLibraryRows()
     {
-        return new[]
+        if (!TryResolveLaunchControlScope(out var mspId, out var customerId))
         {
-            new GalleryRowSpec
+            return new[]
             {
-                Id = "blocked",
-                Name = "Script Library needs MSP/customer identity — not yet resolvable (#3501)",
-                OnSelect = () => { },
+                new GalleryRowSpec
+                {
+                    Id = "blocked",
+                    Name = "Script Library needs MSP/customer identity — not yet resolvable (#3501)",
+                    OnSelect = () => { },
+                },
+            };
+        }
+
+        LaunchControlCatalog catalog;
+        try
+        {
+            catalog = _launchControlActionsService.GetActionsAsync(mspId, customerId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            // Real, honest failure — most likely 401/403 (auth still not wired), not a bug in
+            // this client. Surfaced as a single disabled row rather than a fake row.
+            return new[]
+            {
+                new GalleryRowSpec { Id = "error", Name = $"Could not load: {ex.Message}", OnSelect = () => { } },
+            };
+        }
+
+        return catalog.Actions
+            .OrderBy(a => a.Domain, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(a => a.SortOrder)
+            .Select(a => new GalleryRowSpec
+            {
+                Id = a.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Tile = TileForScriptLibraryRow(a),
+                Name = a.ActionName,
+                Sub = $"{a.Domain} · {SubForScriptLibraryRow(a)}",
+                OnSelect = () => OpenScriptLibraryRecord(a, mspId, customerId),
+            })
+            .ToList();
+    }
+
+    /// <summary>Two-character code from the catalog's own safe/gated classification — the
+    /// destructive-vs-read-only signal UI_RULES.md §4 asks a script's tile to carry. "—" for the
+    /// catalog's blocked_no_workaround rows, which have no classification at all.</summary>
+    private static string TileForScriptLibraryRow(LaunchControlAction action) => action.SafeOrGated switch
+    {
+        "gated" => "GA",
+        "safe" => "SA",
+        _ => "—",
+    };
+
+    private static string SubForScriptLibraryRow(LaunchControlAction action) =>
+        action.TemplateId == null ? "not execution-ready" : $"{action.Availability} · {action.Status}";
+
+    /// <summary>Opens the record workspace for one catalog action — real facts from the row,
+    /// one write-through <see cref="WorkspaceEdit"/> per real
+    /// <see cref="LaunchControlAction.RequiredVariables"/> entry, and a confirm-armed "Run"
+    /// action that runs it for real via <see cref="RunScriptLibraryAction"/>. Same
+    /// gallery → contextual tab → workspace contract #3493 proved with Change Requests.</summary>
+    private void OpenScriptLibraryRecord(LaunchControlAction action, int mspId, int customerId)
+    {
+        var variableValues = action.RequiredVariables.ToDictionary(v => v, _ => string.Empty);
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "script-library-action",
+            Id = action.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Eyebrow = "Script Library",
+            Title = action.ActionName,
+            Sub = $"{action.Domain} · {action.Surface}",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Status", Value = action.Status ?? "(none)" },
+                new WorkspaceFact { Label = "Availability", Value = action.Availability },
+                new WorkspaceFact { Label = "Safe/Gated", Value = action.SafeOrGated ?? "(unclassified)" },
+                new WorkspaceFact { Label = "Min tier", Value = action.MinBundledTier ?? "(none)" },
+                new WorkspaceFact { Label = "Required permission", Value = action.RequiredPermission ?? "(none)" },
+            },
+            Edits = action.RequiredVariables
+                .Select(v => new WorkspaceEdit
+                {
+                    Key = v,
+                    Label = v,
+                    Value = string.Empty,
+                    OnChange = value => variableValues[v] = value,
+                })
+                .ToList(),
+            Body = !string.IsNullOrEmpty(action.SnapshotNotes) ? ("Notes", action.SnapshotNotes) : null,
+            Actions =
+            {
+                new WorkspaceAction
+                {
+                    Label = "Run",
+                    Confirm = true,
+                    OnSelect = () => RunScriptLibraryAction(action, mspId, customerId, variableValues),
+                },
             },
         };
+
+        _shellRegistry.OpenContextual(
+            new TrailEntry("script-library-action", action.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), action.ActionName,
+                () => OpenScriptLibraryRecord(action, mspId, customerId)),
+            new ContextualTabSpec
+            {
+                Id = "script-library-action",
+                Label = "Script",
+                Groups =
+                {
+                    new RibbonGroupSpec
+                    {
+                        Label = "Actions",
+                        Large = { new RibbonCommandSpec
+                        {
+                            Label = "Run",
+                            Intent = RibbonIntent.Record,
+                            OnSelect = () => { },
+                        } },
+                    },
+                },
+            },
+            onSearchEverything: () => PaletteOverlay.Open());
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Runs entries straight into the embedded Console (the issue's own words) — a
+    /// real POST /launch-control/execute with the operator's pre-filled
+    /// <see cref="LaunchControlAction.RequiredVariables"/> values, its real result (success,
+    /// label, missing variables, audit log id) surfaced into the Console tab's output pane, the
+    /// same place a typed command's output lands. The execute route runs server-side, not
+    /// through the hosted runspace, so this reports via <see cref="ConsolePanelView.AppendExternal"/>
+    /// rather than feeding PowerShell text into <see cref="IPowerShellConsoleService"/>.</summary>
+    private void RunScriptLibraryAction(
+        LaunchControlAction action,
+        int mspId,
+        int customerId,
+        System.Collections.Generic.Dictionary<string, string> variableValues)
+    {
+        ShowDocument(ConsolePanel);
+        ConsolePanel.AppendExternal($"[Script Library] Running \"{action.ActionName}\" against customer {customerId}…");
+
+        try
+        {
+            var response = _launchControlActionsService
+                .ExecuteAsync(mspId, action.Id, customerId, variableValues)
+                .GetAwaiter().GetResult();
+
+            var result = response.Result;
+            ConsolePanel.AppendExternal(
+                $"[Script Library] {(result.Success ? "Succeeded" : "Failed")} · {result.Label} · status {result.Status}");
+            if (result.MissingVariables is { Count: > 0 })
+            {
+                ConsolePanel.AppendExternal($"[Script Library] Missing variables: {string.Join(", ", result.MissingVariables)}");
+            }
+            if (result.AuditLogId is { } auditLogId)
+            {
+                ConsolePanel.AppendExternal($"[Script Library] Audit log #{auditLogId}{(result.Reversible ? " (reversible)" : string.Empty)}");
+            }
+        }
+        catch (LaunchControlActionsException ex)
+        {
+            // A real server-side rejection (402/403/404/409/500 — see msp-launch-control.ts),
+            // surfaced with its own real message, not swallowed or faked into a success.
+            ConsolePanel.AppendExternal($"[Script Library] Execute failed: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            ConsolePanel.AppendExternal($"[Script Library] Exception: {ex.Message}");
+        }
     }
 
     private System.Collections.Generic.IReadOnlyList<PaletteCommand> BuildPaletteCommands()

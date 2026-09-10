@@ -111,6 +111,12 @@ public partial class ConsolePanelView : UserControl
         }
     }
 
+    /// <summary>Appends a line from outside the typed-command loop — used by Script Library's
+    /// "run entries straight into the embedded Console" wiring (#3460) to surface a real
+    /// POST /launch-control/execute result in the same output pane a typed command's output
+    /// lands in, since that execute route runs server-side (not through this hosted runspace).</summary>
+    public void AppendExternal(string line) => Dispatcher.Invoke(() => Append(line));
+
     private async void InputBox_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.M && Keyboard.Modifiers == ModifierKeys.Control)

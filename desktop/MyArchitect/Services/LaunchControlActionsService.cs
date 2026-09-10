@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -87,6 +89,48 @@ public sealed class LaunchControlActionsService : ILaunchControlActionsService
 
         _cache[key] = new CacheEntry(catalog, DateTimeOffset.UtcNow.Add(_cacheTtl));
         return catalog;
+    }
+
+    public async Task<LaunchControlExecuteResponse> ExecuteAsync(
+        int mspId,
+        int catalogActionId,
+        int customerId,
+        IReadOnlyDictionary<string, string> variables,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/msp/{mspId}/launch-control/execute");
+
+        if (!string.IsNullOrWhiteSpace(AuthToken))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AuthToken);
+        }
+
+        // Matches ExecuteLaunchControlActionRequest exactly (msp-launch-control.ts:193) —
+        // catalogActionId is the write_action_catalog row's own id, never templateId/actionName.
+        var payload = new
+        {
+            catalogActionId,
+            customerId,
+            variables,
+        };
+        request.Content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // Real server-side rejections land here honestly — e.g. 409 "not wired to a real
+            // executable template yet", 402 not included in plan, 403 not isTestbed. Never
+            // synthesized client-side.
+            throw new LaunchControlActionsException(
+                $"POST /api/msp/{mspId}/launch-control/execute returned {(int)response.StatusCode} {response.ReasonPhrase}",
+                (int)response.StatusCode,
+                body);
+        }
+
+        return JsonSerializer.Deserialize<LaunchControlExecuteResponse>(body, JsonOptions)
+            ?? throw new LaunchControlActionsException("Execute response body was empty", (int)response.StatusCode, body);
     }
 
     public void InvalidateCache(int mspId, int customerId) => _cache.TryRemove(CacheKey(mspId, customerId), out _);

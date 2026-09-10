@@ -86,3 +86,69 @@ public sealed class LaunchControlCatalog
     [JsonPropertyName("customerTier")]
     public string? CustomerTier { get; set; }
 }
+
+/// <summary>
+/// Real result shape from POST /api/msp/:mspId/launch-control/execute — mirrors
+/// BaselineTemplateExecutionResult (workflow-executor.ts) plus the server-added
+/// `reversible` flag, exactly as msp-launch-control.ts:293-296 sends it. No field
+/// invented here that the endpoint doesn't already send.
+/// </summary>
+public sealed class LaunchControlExecuteResult
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("status")]
+    public int Status { get; set; }
+
+    /// <summary>Opaque — the real Graph/template response body, shape varies per action.</summary>
+    [JsonPropertyName("data")]
+    public System.Text.Json.JsonElement Data { get; set; }
+
+    /// <summary>"insufficient_privilege" | "conflict" | "bad_request" | "unexpected" | null.</summary>
+    [JsonPropertyName("errorType")]
+    public string? ErrorType { get; set; }
+
+    [JsonPropertyName("endpoint")]
+    public string Endpoint { get; set; } = string.Empty;
+
+    [JsonPropertyName("method")]
+    public string Method { get; set; } = string.Empty;
+
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = string.Empty;
+
+    /// <summary>Present + Success=false when required variables didn't resolve — no real
+    /// Graph call was made.</summary>
+    [JsonPropertyName("missingVariables")]
+    public List<string>? MissingVariables { get; set; }
+
+    /// <summary>baseline_action_template_audit_log.id — needed to call the rollback route.</summary>
+    [JsonPropertyName("auditLogId")]
+    public int? AuditLogId { get; set; }
+
+    /// <summary>Server-computed: Success && the template's own `reversible` flag.</summary>
+    [JsonPropertyName("reversible")]
+    public bool Reversible { get; set; }
+}
+
+/// <summary>The customer tenant Launch Control actually executed against — real Graph writes
+/// are currently staging-restricted to isTestbed customers (msp-launch-control.ts:257-267).</summary>
+public sealed class LaunchControlExecuteTenant
+{
+    [JsonPropertyName("customerId")]
+    public int CustomerId { get; set; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+}
+
+/// <summary>The full response envelope from POST /api/msp/:mspId/launch-control/execute.</summary>
+public sealed class LaunchControlExecuteResponse
+{
+    [JsonPropertyName("result")]
+    public LaunchControlExecuteResult Result { get; set; } = new();
+
+    [JsonPropertyName("tenant")]
+    public LaunchControlExecuteTenant Tenant { get; set; } = new();
+}

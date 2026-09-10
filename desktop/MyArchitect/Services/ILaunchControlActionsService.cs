@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using MyArchitect.Models;
@@ -26,4 +27,21 @@ public interface ILaunchControlActionsService
     /// <summary>Drops any cached entry for this MSP+customer pair so the next
     /// call is guaranteed to hit the real endpoint.</summary>
     void InvalidateCache(int mspId, int customerId);
+
+    /// <summary>
+    /// Runs one catalog action for real against a customer's tenant via
+    /// POST /api/msp/:mspId/launch-control/execute (msp-launch-control.ts) — the
+    /// Script Library's "run entries straight into the embedded Console" wiring
+    /// (#3460). <paramref name="catalogActionId"/> is the write_action_catalog row's
+    /// own id (not templateId, not actionName). <paramref name="variables"/> is keyed
+    /// by the action's own <see cref="LaunchControlAction.RequiredVariables"/> names.
+    /// The server re-validates entitlement and the isTestbed staging restriction from
+    /// scratch — never trusts anything this client cached.
+    /// </summary>
+    Task<LaunchControlExecuteResponse> ExecuteAsync(
+        int mspId,
+        int catalogActionId,
+        int customerId,
+        IReadOnlyDictionary<string, string> variables,
+        CancellationToken cancellationToken = default);
 }
