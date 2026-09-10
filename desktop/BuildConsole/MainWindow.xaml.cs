@@ -332,6 +332,13 @@ namespace BuildConsole
             _testPadPill = new BuildConsole.TestPad.TestPadPillWindow { OnTogglePad = ToggleTestPadPad };
             _testPadPill.Closed += (_, _) => _testPadPill = null;
             _testPadPill.Show();
+
+            // Git #3466 — load persisted Test Pad notes from local Postgres so they survive a
+            // restart. One-shot (guarded inside the service), fire-and-forget: the DB read runs off
+            // the UI thread and raises NotesChanged when done, so the pill badge and pad re-render
+            // with the restored notes reactively. A DB failure is swallowed in the persistence layer
+            // (pad simply runs in-memory only, exactly as before this fix).
+            _ = BuildConsole.Services.TestPad.TestPadService.InitializeAsync();
         }
 
         private void ToggleTestPadPad()

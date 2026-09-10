@@ -11,7 +11,10 @@ namespace BuildConsole.Services.TestPad;
 /// <see cref="IsSelected"/> is for the notes list's per-note checkbox.</summary>
 public sealed class TestPadNote
 {
-    public string Id { get; } = Guid.NewGuid().ToString("N");
+    // `init` (not a bare getter) so TestPadPersistence can rehydrate a note's original Id when
+    // loading it back from bt_test_pad_notes on startup (Git #3466); a normal `new TestPadNote()`
+    // still gets a fresh Guid via this default.
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public string Text { get; set; } = "";
     public NoteType Type { get; set; } = NoteType.Note;
 
@@ -20,7 +23,8 @@ public sealed class TestPadNote
     public string? Feature { get; set; }
     public int? BuildNumber { get; set; }
 
-    public DateTime CreatedAt { get; } = DateTime.UtcNow;
+    // `init` so the original file-time is restored on load (Git #3466), not reset to "now".
+    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
     public bool IsSent { get; set; }
     public bool IsEdited { get; set; }
 
