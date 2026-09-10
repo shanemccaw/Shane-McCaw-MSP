@@ -1,0 +1,88 @@
+using System;
+using System.Collections.Generic;
+using System.Text.Json.Serialization;
+
+namespace MyArchitect.Models;
+
+/// <summary>
+/// A single row from the real write_action_catalog table, entitlement-resolved
+/// for one MSP+customer pair. Mirrors the exact shape returned by
+/// GET /api/msp/:mspId/launch-control/actions (msp-launch-control.ts) — no field
+/// invented here that the endpoint doesn't already send.
+/// </summary>
+public sealed class LaunchControlAction
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("domain")]
+    public string Domain { get; set; } = string.Empty;
+
+    [JsonPropertyName("actionName")]
+    public string ActionName { get; set; } = string.Empty;
+
+    [JsonPropertyName("surface")]
+    public string Surface { get; set; } = string.Empty;
+
+    [JsonPropertyName("requiredPermission")]
+    public string? RequiredPermission { get; set; }
+
+    /// <summary>"safe" | "gated" | null — null for the catalog's
+    /// blocked_no_workaround rows (no safe/gated classification exists).</summary>
+    [JsonPropertyName("safeOrGated")]
+    public string? SafeOrGated { get; set; }
+
+    [JsonPropertyName("minBundledTier")]
+    public string? MinBundledTier { get; set; }
+
+    [JsonPropertyName("requiredCapabilityKey")]
+    public string? RequiredCapabilityKey { get; set; }
+
+    [JsonPropertyName("snapshotNotes")]
+    public string? SnapshotNotes { get; set; }
+
+    /// <summary>'metadata_pending' | 'endpoint_design_pending' | 'blocked' |
+    /// 'blocked_no_workaround' | 'execution_ready' | null.</summary>
+    [JsonPropertyName("status")]
+    public string? Status { get; set; }
+
+    [JsonPropertyName("blockedReason")]
+    public string? BlockedReason { get; set; }
+
+    [JsonPropertyName("sortOrder")]
+    public int SortOrder { get; set; }
+
+    [JsonPropertyName("createdAt")]
+    public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>Null until this catalog row is wired to a real
+    /// baseline_action_templates row — that's also what gates RequiredVariables
+    /// being non-empty and what the execute route requires to be non-null.</summary>
+    [JsonPropertyName("templateId")]
+    public string? TemplateId { get; set; }
+
+    /// <summary>Server-computed, never trust a client-cached copy of this for the
+    /// actual execute gate — "included" | "billable_upsell" | "a_la_carte".</summary>
+    [JsonPropertyName("availability")]
+    public string Availability { get; set; } = string.Empty;
+
+    /// <summary>Sourced from baseline_action_templates.requiredVariables, keyed
+    /// off TemplateId — empty until TemplateId is set.</summary>
+    [JsonPropertyName("requiredVariables")]
+    public List<string> RequiredVariables { get; set; } = new();
+}
+
+/// <summary>
+/// The full response envelope from GET /api/msp/:mspId/launch-control/actions.
+/// </summary>
+public sealed class LaunchControlCatalog
+{
+    [JsonPropertyName("actions")]
+    public List<LaunchControlAction> Actions { get; set; } = new();
+
+    /// <summary>The customer's resolved Monitoring tier (services.tier) used to
+    /// compute each action's Availability — "basic" | "enhanced" | "premium" |
+    /// null when no active client_services row was found for the customer.</summary>
+    [JsonPropertyName("customerTier")]
+    public string? CustomerTier { get; set; }
+}
