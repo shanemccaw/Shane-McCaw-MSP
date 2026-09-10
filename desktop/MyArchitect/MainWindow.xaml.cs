@@ -1825,6 +1825,21 @@ public partial class MainWindow : FluentWindow
             OnSelect = () => OpenPirPickExecutionRecord(cr),
         });
 
+        // #3471's execute wiring — the checklist's own words: "pre-fill Script Library (#3460)
+        // entry into Console for catalog-backed items." Real per-item-type branch: only a change
+        // request that is both catalog-backed (CatalogItemId set) and MSP-implemented (the field
+        // ChangeRequest.Implementer's own doc comment says this is exactly what this branch keys
+        // off — "customer"/"microsoft"-implemented changes are not something an MSP operator runs
+        // through Console) gets the jump.
+        if (cr.CatalogItemId is { } catalogItemId && cr.Implementer == "msp")
+        {
+            actions.Add(new WorkspaceAction
+            {
+                Label = "Open in Script Library",
+                OnSelect = () => OpenCatalogItemForChangeRequest(catalogItemId),
+            });
+        }
+
         var spec = new RecordWorkspaceSpec
         {
             Kind = "change-request",
@@ -1869,6 +1884,72 @@ public partial class MainWindow : FluentWindow
             onSearchEverything: () => PaletteOverlay.Open());
 
         _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>#3471's execute wiring, real: resolves the given `write_action_catalog` id inside
+    /// the caller's own real, entitlement-resolved catalog (the same
+    /// <see cref="ILaunchControlActionsService.GetActionsAsync"/> #3460's Script Library gallery
+    /// already reads) and opens it via <see cref="OpenScriptLibraryRecord"/> — the same real
+    /// pre-filled-variables + confirm-armed "Run" straight into the Console pane #3460 already
+    /// built. Not a second execute path; this is the jump into the existing one. Real customerId
+    /// resolution is the same #3540 gap <see cref="TryResolveLaunchControlScope"/> already
+    /// documents — stated honestly rather than guessed.</summary>
+    private void OpenCatalogItemForChangeRequest(int catalogItemId)
+    {
+        if (!TryResolveLaunchControlScope(out var mspId, out var customerId))
+        {
+            var reason = !_authService.IsAuthenticated
+                ? "Sign in to open the Script Library"
+                : "Script Library needs a real customer id — TenantService is fixture data (#3540)";
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "script-library-action",
+                Id = "blocked",
+                Eyebrow = "Script Library",
+                Title = "Open in Script Library",
+                Sub = reason,
+            });
+            return;
+        }
+
+        LaunchControlCatalog catalog;
+        try
+        {
+            catalog = _launchControlActionsService.GetActionsAsync(mspId, customerId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            // Real, honest failure — most likely 401/403 (auth still not wired), not a bug in
+            // this client.
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "script-library-action",
+                Id = "error",
+                Eyebrow = "Script Library",
+                Title = "Open in Script Library",
+                Sub = $"Could not load: {ex.Message}",
+            });
+            return;
+        }
+
+        var action = catalog.Actions.FirstOrDefault(a => a.Id == catalogItemId);
+        if (action == null)
+        {
+            // Real, honest state — the change request's own catalogItemId points at a real
+            // catalog row, but this MSP+customer's own entitlement-resolved catalog doesn't
+            // include it (e.g. not entitled at the customer's current tier). Not a bug to swallow.
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "script-library-action",
+                Id = "not-found",
+                Eyebrow = "Script Library",
+                Title = "Open in Script Library",
+                Sub = $"Catalog item {catalogItemId} was not found in this customer's resolved catalog",
+            });
+            return;
+        }
+
+        OpenScriptLibraryRecord(action, mspId, customerId);
     }
 
     // ---- POA&Ms (#3481) --------------------------------------------------------------------
