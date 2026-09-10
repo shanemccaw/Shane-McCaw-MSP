@@ -708,7 +708,6 @@ namespace BuildConsole.Services
             string? chatUrl = null, string? originatingChatId = null, string? buildSet = null, string? cli = null,
             string? account = null, bool park = false, int? reuseRowId = null)
         {
-            var finalStatus = park ? "parked" : "queued";
             var titleTrimmed = title.Trim();
             var modelTrimmed = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
             var effortTrimmed = string.IsNullOrWhiteSpace(effort) ? null : effort.Trim();
@@ -721,6 +720,23 @@ namespace BuildConsole.Services
             // else (null, blank, "primary") stores NULL and launches against the default config dir.
             var accountTrimmed = string.Equals(account?.Trim(), "secondary", StringComparison.OrdinalIgnoreCase)
                 ? "secondary" : null;
+
+            // Git #3012 — dispatch-time validation: fail loud and early on a header the queue
+            // cannot actually launch (a --cwd that doesn't exist, or a --model/--effort value that
+            // is itself a stray/malformed flag token), rather than claiming a 'queued' slot and
+            // letting the launched session discover the problem itself seconds in. Reuses the
+            // existing 'parked' status (the #1638 staging spot the watcher's claim query,
+            // WHERE status = 'queued', never picks up) — this is genuinely the same kind of "not
+            // ready to run yet" row that status already models, just with a different reason.
+            var headerInvalidReason = BuildHeaderValidation.Validate(modelTrimmed, effortTrimmed, cwdTrimmed);
+            var finalStatus = (park || headerInvalidReason != null) ? "parked" : "queued";
+            if (headerInvalidReason != null)
+            {
+                ActivityLog.Log("watcher",
+                    $"Queue header validation failed for \"{titleTrimmed}\"" +
+                    (githubNumber.HasValue ? $" (#{githubNumber.Value})" : "") +
+                    $" — parked instead of queued: {headerInvalidReason} (Git #3012).");
+            }
 
             var allBlockers = (blockedByNumbers ?? new List<int>()).Distinct().ToList();
             int? firstBlocker = allBlockers.Count > 0 ? allBlockers[0] : null;
