@@ -2,19 +2,26 @@ using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 using Microsoft.Web.WebView2.Wpf;
 using Wpf.Ui.Controls;
 using MyArchitect.Models;
 using MyArchitect.Services;
+using MyArchitect.Shell;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace MyArchitect;
 
 /// <summary>
-/// Main window operator shell hosting tenant switcher, activity bar, bookmarks side panel, isolated WebView2 profile tabs, and tray management.
+/// Main window operator shell — UI Shell Redesign (#3493): a Fluent.Ribbon fixed/contextual tab
+/// bar, a left reference panel, a right full-panel record workspace, a command palette, and the
+/// title-bar QAT, all assembled from <see cref="ShellRegistry"/> per UI_RULES.md. Portal tab
+/// management (WebView2 hosting, per-tenant isolation) is unchanged from the pre-shell version.
 /// </summary>
 public partial class MainWindow : FluentWindow
 {
@@ -24,15 +31,23 @@ public partial class MainWindow : FluentWindow
     private readonly ObservableCollection<PortalTabItem> _tabs = new();
     private PortalTabItem? _activeTab;
 
-    // #3459 — hosted PowerShell console service layer. No Console UI panel is wired up here yet:
-    // GEMINI.md's standing rule requires the UI Shell (#3493) to land first ("do not build
-    // ad-hoc chrome ... stop and flag it instead"), and #3493 isn't built. These services are
-    // real and functional on their own — the runspace hosts, auto-connects modules on tenant
-    // switch, and records history — ready for a Console panel to consume once #3493 lands.
     private readonly IPowerShellConsoleService _consoleService;
     private readonly ITenantModuleConnectionService _tenantModuleConnectionService;
     private readonly IConsoleHistoryService _consoleHistoryService;
     private readonly IChangeRequestReplayService _changeRequestReplayService;
+    private readonly IChangeControlService _changeControlService;
+    private readonly ILaunchControlActionsService _launchControlActionsService;
+
+    private readonly ShellRegistry _shellRegistry = new();
+    private FixedRibbonRenderer? _ribbonRenderer;
+    private readonly DispatcherTimer _clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+
+    // Document views live in the center area; only one is visible at a time (WebView tabs are
+    // themselves a "document" too, handled via WebViewsContainer/EmptyTabsOverlay below).
+    private FrameworkElement[] DocumentOverlays => new FrameworkElement[]
+    {
+        SowAssessmentDashboardView, TelemetryDashboardView, ConsolePanel, ScreenshotEvidenceDocument,
+    };
 
     public MainWindow()
     {
@@ -45,6 +60,8 @@ public partial class MainWindow : FluentWindow
         _consoleHistoryService = new ConsoleHistoryService();
         _changeRequestReplayService = new ChangeRequestReplayService();
         _tenantModuleConnectionService = new TenantModuleConnectionService(_tenantService, _consoleService);
+        _changeControlService = new ChangeControlService();
+        _launchControlActionsService = new LaunchControlActionsService();
         _consoleService.CommandExecuted += (s, record) => _consoleHistoryService.Add(record);
 
         ShellTenantSwitcher.Initialize(_tenantService);
@@ -54,28 +71,380 @@ public partial class MainWindow : FluentWindow
 
         _tenantService.CurrentTenantChanged += OnCurrentTenantChanged;
 
-        EvidenceGalleryPanel.CloseRequested += (s, e) => CloseEvidencePanel();
+        EvidenceGalleryPanel.CloseRequested += (s, e) => HideDocument(ScreenshotEvidenceDocument);
         EvidenceGalleryPanel.CaptureRequested += (s, e) => TriggerScreenCapture();
-        DesktopScreenClipService.CaptureCompleted += (s, item) => Dispatcher.Invoke(() => ShowEvidencePanel());
+        DesktopScreenClipService.CaptureCompleted += (s, item) => Dispatcher.Invoke(() => ShowDocument(ScreenshotEvidenceDocument));
 
         SowAssessmentDashboardView.Initialize(_tenantService);
         TelemetryDashboardView.Initialize(_tenantService);
+        ConsolePanel.Initialize(_consoleService, _tenantModuleConnectionService, _tenantService);
+
+        LeftReferencePanelControl.BookmarkSelected += async portalType =>
+        {
+            if (_tenantService.CurrentTenant != null)
+            {
+                await OpenPortalTabAsync(_tenantService.CurrentTenant, portalType);
+            }
+        };
+
+        InitializeShell();
+        InitializeStatusBar();
 
         Loaded += MainWindow_Loaded;
         Closed += MainWindow_Closed;
     }
 
+    // ---- Status bar (UI_RULES.md §1: current time, app version from the assembly) ----------
+
+    private void InitializeStatusBar()
+    {
+        // App version — from the assembly, never hardcoded (UI_RULES.md §1). Falls back to the
+        // informational version string if the file version isn't set.
+        var asm = Assembly.GetExecutingAssembly();
+        var version = asm.GetName().Version;
+        StatusVersionTextBlock.Text = version != null ? $"MyArchitect v{version.Major}.{version.Minor}.{version.Build}" : "MyArchitect";
+
+        _clockTimer.Tick += (_, _) => StatusClockTextBlock.Text = DateTime.Now.ToString("h:mm tt");
+        StatusClockTextBlock.Text = DateTime.Now.ToString("h:mm tt");
+        _clockTimer.Start();
+    }
+
+    // ---- Shell wiring (#3493) --------------------------------------------------------------
+
+    private void InitializeShell()
+    {
+        _ribbonRenderer = new FixedRibbonRenderer(AppRibbon, _shellRegistry);
+        PaletteOverlay.Initialize(_shellRegistry);
+
+        _shellRegistry.RecordOpened += spec =>
+        {
+            RecordWorkspaceControl.Render(spec);
+            RightPanelColumn.Width = new GridLength(spec == null ? 0 : 320);
+        };
+
+        RegisterHomeTab();
+        RegisterConsoleTab();
+        // Watch / Documents / Admin are intentionally left unregistered here — their real
+        // content is #3483/#3487/#3490 (Watch), #3486 (Documents) and #3461/#3489/#3480/#3485
+        // (Admin), all separate Features blocked on this shell landing. FixedRibbonRenderer
+        // renders a stated empty state for each until those land (SHELL.md §6) — never a
+        // fabricated placeholder group.
+
+        _shellRegistry.RegisterPaletteProvider(BuildPaletteCommands);
+    }
+
+    private void RegisterHomeTab()
+    {
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Home, new RibbonGroupSpec
+        {
+            Label = "Tenant",
+            Order = 10,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Open All Portals",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Open every bookmarked Microsoft portal for the active tenant",
+                    OnSelect = () => _ = OpenAllPortalsAsync(),
+                },
+            },
+        });
+
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Home, new RibbonGroupSpec
+        {
+            Label = "Views",
+            Order = 20,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "SOW & Assessment",
+                    Intent = RibbonIntent.Open,
+                    OnSelect = () => ShowAssessmentView(),
+                },
+                new RibbonCommandSpec
+                {
+                    Label = "Live Telemetry",
+                    Intent = RibbonIntent.Open,
+                    OnSelect = () => ShowTelemetryView(),
+                },
+                new RibbonCommandSpec
+                {
+                    Label = "Screenshot Evidence",
+                    Intent = RibbonIntent.Open,
+                    OnSelect = () => ShowDocument(ScreenshotEvidenceDocument),
+                },
+            },
+        });
+
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Home, new RibbonGroupSpec
+        {
+            Label = "Change Requests",
+            Order = 30,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Browse",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Real GET /api/msp/change-requests, filtered to the active tenant",
+                    Gallery = new GallerySpec
+                    {
+                        Title = "Change Requests",
+                        Searchable = true,
+                        GetRows = BuildChangeRequestRows,
+                    },
+                    OnSelect = () => { },
+                },
+            },
+        });
+    }
+
+    private void RegisterConsoleTab()
+    {
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Console, new RibbonGroupSpec
+        {
+            Label = "Console",
+            Order = 10,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Open Console",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Hosted PowerShell runspace (#3459) — real stdout/stderr, no shelled-out process",
+                    OnSelect = () => ShowDocument(ConsolePanel),
+                },
+            },
+        });
+
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Console, new RibbonGroupSpec
+        {
+            Label = "Script Library",
+            Order = 20,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Browse",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Entitlement-resolved write_action_catalog (#3460)",
+                    Gallery = new GallerySpec
+                    {
+                        Title = "Script Library",
+                        Searchable = true,
+                        GetRows = BuildScriptLibraryRows,
+                    },
+                    OnSelect = () => { },
+                },
+            },
+        });
+    }
+
+    /// <summary>Real rows from GET /api/msp/change-requests, filtered client-side to the active
+    /// tenant. Selecting a row opens the contextual tab + right-panel workspace with a real,
+    /// confirm-armed action calling <see cref="IChangeControlService.RecordHumanActionAsync"/> —
+    /// the end-to-end proof of the shell's gallery → contextual tab → workspace contract.</summary>
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildChangeRequestRows()
+    {
+        var tenant = _tenantService.CurrentTenant;
+        if (tenant == null) return Array.Empty<GalleryRowSpec>();
+
+        System.Collections.Generic.IReadOnlyList<ChangeRequest> requests;
+        try
+        {
+            requests = _changeControlService.GetChangeRequestsAsync(tenant.TenantGuid).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            // Real, honest failure — most likely #3501 (no auth/session mechanism yet), not a
+            // bug in this client. Surfaced as a single disabled row rather than a fake row.
+            return new[]
+            {
+                new GalleryRowSpec { Id = "error", Name = $"Could not load: {ex.Message}", OnSelect = () => { } },
+            };
+        }
+
+        return requests.Select(cr => new GalleryRowSpec
+        {
+            Id = cr.Id,
+            Tile = cr.RiskLevel.Length >= 2 ? cr.RiskLevel[..2].ToUpperInvariant() : cr.RiskLevel.ToUpperInvariant(),
+            Name = cr.Title,
+            Sub = $"{cr.Status} · {cr.Category}",
+            OnSelect = () => OpenChangeRequestRecord(cr),
+        }).ToList();
+    }
+
+    private void OpenChangeRequestRecord(ChangeRequest cr)
+    {
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "change-request",
+            Id = cr.Id,
+            Eyebrow = "Change Request",
+            Title = cr.Title,
+            Sub = $"{cr.TenantName} · {cr.PrimaryDomain}",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Status", Value = cr.Status },
+                new WorkspaceFact { Label = "Risk", Value = cr.RiskLevel },
+                new WorkspaceFact { Label = "Class", Value = cr.ChangeClass },
+                new WorkspaceFact { Label = "Impacted users", Value = cr.ImpactedUsersCount.ToString() },
+            },
+            Body = ("Description", string.IsNullOrEmpty(cr.Description) ? "(none)" : cr.Description),
+            Actions =
+            {
+                new WorkspaceAction
+                {
+                    Label = "Record human action",
+                    Confirm = true,
+                    OnSelect = () =>
+                    {
+                        var numericId = cr.NumericId;
+                        if (numericId == null) return;
+                        _ = _changeControlService.RecordHumanActionAsync(numericId.Value);
+                    },
+                },
+            },
+        };
+
+        _shellRegistry.OpenContextual(
+            new TrailEntry("change-request", cr.Id, cr.Title, () => OpenChangeRequestRecord(cr)),
+            new ContextualTabSpec
+            {
+                Id = "change-request",
+                Label = "Change Request",
+                Groups =
+                {
+                    new RibbonGroupSpec
+                    {
+                        Label = "Actions",
+                        Large = { new RibbonCommandSpec
+                        {
+                            Label = "Record human action",
+                            Intent = RibbonIntent.Record,
+                            OnSelect = () => { },
+                        } },
+                    },
+                },
+            },
+            onSearchEverything: () => PaletteOverlay.Open());
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Real catalog rows when a real MSP+customer id pair is resolvable. Today it never
+    /// is — MyArchitect has no auth/session mechanism to source one from (#3501, also noted on
+    /// <see cref="ILaunchControlActionsService"/> itself) — so this states that honestly instead
+    /// of guessing an id, which would be inventing data.</summary>
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildScriptLibraryRows()
+    {
+        return new[]
+        {
+            new GalleryRowSpec
+            {
+                Id = "blocked",
+                Name = "Script Library needs MSP/customer identity — not yet resolvable (#3501)",
+                OnSelect = () => { },
+            },
+        };
+    }
+
+    private System.Collections.Generic.IReadOnlyList<PaletteCommand> BuildPaletteCommands()
+    {
+        var commands = new System.Collections.Generic.List<PaletteCommand>
+        {
+            new() { Id = "dest:home", Type = PaletteType.Destination, Name = "Home", Run = () => AppRibbon.SelectedTabIndex = 0 },
+            new() { Id = "dest:console", Type = PaletteType.Destination, Name = "Console", Run = () => ShowDocument(ConsolePanel) },
+            new() { Id = "dest:sow", Type = PaletteType.Destination, Name = "SOW & Assessment", Sub = "Gate, SOW, Drift & Snapshot", Run = () => ShowAssessmentView() },
+            new() { Id = "dest:telemetry", Type = PaletteType.Destination, Name = "Live Telemetry Console", Sub = "Engines, Drift, SOW & Feed", Run = () => ShowTelemetryView() },
+            new() { Id = "act:open-all", Type = PaletteType.Action, Name = "Open all portals", Run = () => _ = OpenAllPortalsAsync() },
+            new() { Id = "ans:open-tabs", Type = PaletteType.Answer, Name = "Open portal tabs", Live = _tabs.Count.ToString(), Run = () => { } },
+        };
+
+        foreach (var tenant in _tenantService.Tenants)
+        {
+            commands.Add(new PaletteCommand
+            {
+                Id = $"rec:tenant:{tenant.Id}",
+                Type = PaletteType.Record,
+                Name = tenant.Name,
+                Sub = tenant.TenantGuid,
+                Run = () => _tenantService.SelectTenant(tenant.Id),
+            });
+        }
+
+        return commands;
+    }
+
+    private async Task OpenAllPortalsAsync()
+    {
+        var tenant = _tenantService.CurrentTenant;
+        if (tenant == null) return;
+
+        foreach (PortalType portalType in Enum.GetValues<PortalType>())
+        {
+            if (portalType == PortalType.ClaudeChat) continue;
+            if (_tabs.Any(t => t.Tenant == tenant && t.PortalType == portalType)) continue;
+            await OpenPortalTabAsync(tenant, portalType);
+        }
+    }
+
+    private void PaletteTriggerButton_Click(object sender, RoutedEventArgs e) => PaletteOverlay.Open();
+
+    private void UndoButton_Click(object sender, RoutedEventArgs e)
+    {
+        // UI_RULES.md §7 — thin trigger over real backend rollback only, no client-side undo
+        // stack. IChangeControlService has no rollback client method today (only
+        // human-action/attest); the button stays disabled until that real endpoint is wired,
+        // rather than faking an undo. See build-journal/3493.md for the filed follow-up.
+    }
+
+    // ---- Document toggling (SOW / Telemetry / Console / Screenshot Evidence) ---------------
+
+    private void ShowDocument(FrameworkElement document)
+    {
+        WebViewsContainer.Visibility = Visibility.Collapsed;
+        EmptyTabsOverlay.Visibility = Visibility.Collapsed;
+        foreach (var d in DocumentOverlays) d.Visibility = d == document ? Visibility.Visible : Visibility.Collapsed;
+
+        if (document == SowAssessmentDashboardView && _tenantService.CurrentTenant != null)
+        {
+            _ = SowAssessmentDashboardView.LoadForTenantAsync(_tenantService.CurrentTenant);
+        }
+        else if (document == TelemetryDashboardView && _tenantService.CurrentTenant != null)
+        {
+            _ = TelemetryDashboardView.LoadForTenantAsync(_tenantService.CurrentTenant);
+        }
+    }
+
+    private void HideDocument(FrameworkElement document)
+    {
+        document.Visibility = Visibility.Collapsed;
+        if (DocumentOverlays.All(d => d.Visibility != Visibility.Visible))
+        {
+            UpdateTabsState();
+        }
+    }
+
+    public void ShowAssessmentView() => ShowDocument(SowAssessmentDashboardView);
+    public void ShowTelemetryView() => ShowDocument(TelemetryDashboardView);
+
+    // ---- Portal tab management (unchanged from pre-shell version) --------------------------
+
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         if (_tenantService.CurrentTenant != null)
         {
-            BookmarksTenantSubtext.Text = $"Active: {_tenantService.CurrentTenant.Name}";
+            LeftReferencePanelControl.SetTenantName(_tenantService.CurrentTenant.Name);
             await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.M365Admin);
         }
     }
 
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
+        _clockTimer.Stop();
         _trayIconManager.Dispose();
         foreach (var tab in _tabs)
         {
@@ -174,8 +543,7 @@ public partial class MainWindow : FluentWindow
 
     public void ActivateTab(PortalTabItem tab)
     {
-        HideAssessmentView();
-        HideTelemetryView();
+        foreach (var d in DocumentOverlays) d.Visibility = Visibility.Collapsed;
 
         if (_activeTab != null)
         {
@@ -186,6 +554,7 @@ public partial class MainWindow : FluentWindow
         _activeTab = tab;
         tab.IsActive = true;
         tab.WebView.Visibility = Visibility.Visible;
+        WebViewsContainer.Visibility = Visibility.Visible;
 
         UrlTextBox.Text = tab.Url;
         IsolatedProfileBadgeTextBlock.Text = tab.DisplayBadge;
@@ -223,7 +592,8 @@ public partial class MainWindow : FluentWindow
 
     private void UpdateTabsState()
     {
-        EmptyTabsOverlay.Visibility = _tabs.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var anyDocumentVisible = DocumentOverlays.Any(d => d.Visibility == Visibility.Visible);
+        EmptyTabsOverlay.Visibility = (_tabs.Count == 0 && !anyDocumentVisible) ? Visibility.Visible : Visibility.Collapsed;
         StatusTabCountTextBlock.Text = $"{_tabs.Count} Open Tab{(_tabs.Count == 1 ? "" : "s")}";
     }
 
@@ -245,7 +615,7 @@ public partial class MainWindow : FluentWindow
     {
         if (tenant == null) return;
 
-        BookmarksTenantSubtext.Text = $"Active: {tenant.Name}";
+        LeftReferencePanelControl.SetTenantName(tenant.Name);
         _trayIconManager.UpdateTenant(tenant);
 
         var existingTab = _tabs.FirstOrDefault(t => t.Tenant != null && t.Tenant.Id.Equals(tenant.Id, StringComparison.OrdinalIgnoreCase));
@@ -288,11 +658,11 @@ public partial class MainWindow : FluentWindow
         }
     }
 
-    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && e.Key == Key.B)
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && e.Key == Key.K)
         {
-            ToggleBookmarksPanel();
+            PaletteOverlay.Open();
             e.Handled = true;
         }
         else if (e.Key == Key.PrintScreen ||
@@ -303,12 +673,12 @@ public partial class MainWindow : FluentWindow
         }
         else if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.A)
         {
-            ToggleAssessmentView();
+            ShowAssessmentView();
             e.Handled = true;
         }
         else if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.T)
         {
-            ToggleTelemetryView();
+            ShowTelemetryView();
             e.Handled = true;
         }
     }
@@ -323,255 +693,11 @@ public partial class MainWindow : FluentWindow
         TriggerScreenCapture();
     }
 
-    private void ToggleBookmarksPanel()
-    {
-        if (BookmarksSidePanel.Visibility == Visibility.Visible)
-        {
-            BookmarksSidePanel.Visibility = Visibility.Collapsed;
-            ActivityBookmarksRadio.IsChecked = false;
-        }
-        else
-        {
-            CloseEvidencePanel();
-            BookmarksSidePanel.Visibility = Visibility.Visible;
-            ActivityBookmarksRadio.IsChecked = true;
-            PortalSearchTextBox.Focus();
-        }
-    }
-
-    private void ToggleEvidencePanel()
-    {
-        if (ScreenshotEvidenceSidePanel.Visibility == Visibility.Visible)
-        {
-            CloseEvidencePanel();
-        }
-        else
-        {
-            ShowEvidencePanel();
-        }
-    }
-
-    private void ShowEvidencePanel()
-    {
-        BookmarksSidePanel.Visibility = Visibility.Collapsed;
-        ActivityBookmarksRadio.IsChecked = false;
-        ScreenshotEvidenceSidePanel.Visibility = Visibility.Visible;
-        ActivityScreenshotsRadio.IsChecked = true;
-    }
-
-    private void CloseEvidencePanel()
-    {
-        ScreenshotEvidenceSidePanel.Visibility = Visibility.Collapsed;
-        ActivityScreenshotsRadio.IsChecked = false;
-    }
-
-    private void ActivityScreenshotsRadio_Click(object sender, RoutedEventArgs e)
-    {
-        if (ScreenshotEvidenceSidePanel.Visibility == Visibility.Visible && ActivityScreenshotsRadio.IsChecked == false)
-        {
-            CloseEvidencePanel();
-        }
-        else
-        {
-            ShowEvidencePanel();
-        }
-    }
-
-    public void ToggleAssessmentView()
-    {
-        if (SowAssessmentDashboardView.Visibility == Visibility.Visible)
-        {
-            HideAssessmentView();
-        }
-        else
-        {
-            ShowAssessmentView();
-        }
-    }
-
-    public void ShowAssessmentView()
-    {
-        HideTelemetryView();
-        CloseEvidencePanel();
-        WebViewsContainer.Visibility = Visibility.Collapsed;
-        EmptyTabsOverlay.Visibility = Visibility.Collapsed;
-        SowAssessmentDashboardView.Visibility = Visibility.Visible;
-        ActivityExplorerRadio.IsChecked = true;
-
-        IsolatedProfileBadgeTextBlock.Text = "Mode: SOW Assessment Dashboard";
-        StatusProfileTextBlock.Text = $"Active Tenant Assessment: {_tenantService.CurrentTenant?.Name}";
-
-        if (_tenantService.CurrentTenant != null)
-        {
-            _ = SowAssessmentDashboardView.LoadForTenantAsync(_tenantService.CurrentTenant);
-        }
-    }
-
-    public void HideAssessmentView()
-    {
-        SowAssessmentDashboardView.Visibility = Visibility.Collapsed;
-        WebViewsContainer.Visibility = Visibility.Visible;
-        ActivityExplorerRadio.IsChecked = false;
-        UpdateTabsState();
-    }
-
-    private void ActivityExplorerRadio_Click(object sender, RoutedEventArgs e)
-    {
-        ToggleAssessmentView();
-    }
-
-    private void BookmarkAssessment_Click(object sender, RoutedEventArgs e)
-    {
-        ShowAssessmentView();
-    }
-
-    public void ToggleTelemetryView()
-    {
-        if (TelemetryDashboardView.Visibility == Visibility.Visible)
-        {
-            HideTelemetryView();
-        }
-        else
-        {
-            ShowTelemetryView();
-        }
-    }
-
-    public void ShowTelemetryView()
-    {
-        HideAssessmentView();
-        CloseEvidencePanel();
-        BookmarksSidePanel.Visibility = Visibility.Collapsed;
-        ActivityBookmarksRadio.IsChecked = false;
-
-        WebViewsContainer.Visibility = Visibility.Collapsed;
-        EmptyTabsOverlay.Visibility = Visibility.Collapsed;
-        TelemetryDashboardView.Visibility = Visibility.Visible;
-        ActivityTelemetryRadio.IsChecked = true;
-
-        IsolatedProfileBadgeTextBlock.Text = "Mode: Live Telemetry Console";
-        StatusProfileTextBlock.Text = $"Active Tenant Telemetry: {_tenantService.CurrentTenant?.Name}";
-
-        if (_tenantService.CurrentTenant != null)
-        {
-            _ = TelemetryDashboardView.LoadForTenantAsync(_tenantService.CurrentTenant);
-        }
-    }
-
-    public void HideTelemetryView()
-    {
-        TelemetryDashboardView.Visibility = Visibility.Collapsed;
-        WebViewsContainer.Visibility = Visibility.Visible;
-        ActivityTelemetryRadio.IsChecked = false;
-        UpdateTabsState();
-    }
-
-    private void ActivityTelemetryRadio_Click(object sender, RoutedEventArgs e)
-    {
-        ToggleTelemetryView();
-    }
-
-    private void BookmarkTelemetry_Click(object sender, RoutedEventArgs e)
-    {
-        ShowTelemetryView();
-    }
-
-    private void ActivityBookmarksRadio_Click(object sender, RoutedEventArgs e)
-    {
-        if (BookmarksSidePanel.Visibility == Visibility.Visible && ActivityBookmarksRadio.IsChecked == false)
-        {
-            BookmarksSidePanel.Visibility = Visibility.Collapsed;
-        }
-        else
-        {
-            BookmarksSidePanel.Visibility = Visibility.Visible;
-            ActivityBookmarksRadio.IsChecked = true;
-            PortalSearchTextBox.Focus();
-        }
-    }
-
-    private void CollapseBookmarksButton_Click(object sender, RoutedEventArgs e)
-    {
-        BookmarksSidePanel.Visibility = Visibility.Collapsed;
-        ActivityBookmarksRadio.IsChecked = false;
-    }
-
     private void NewTabButton_Click(object sender, RoutedEventArgs e)
     {
-        BookmarksSidePanel.Visibility = Visibility.Visible;
-        ActivityBookmarksRadio.IsChecked = true;
-        PortalSearchTextBox.Focus();
-        PortalSearchTextBox.SelectAll();
-    }
-
-    private void PortalSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        var filter = PortalSearchTextBox.Text?.Trim() ?? string.Empty;
-        foreach (var child in BookmarksItemsStackPanel.Children)
-        {
-            if (child is System.Windows.Controls.Button btn)
-            {
-                if (string.IsNullOrWhiteSpace(filter))
-                {
-                    btn.Visibility = Visibility.Visible;
-                }
-                else
-                {
-                    var tag = btn.Tag?.ToString() ?? string.Empty;
-                    btn.Visibility = tag.Contains(filter, StringComparison.OrdinalIgnoreCase)
-                        ? Visibility.Visible
-                        : Visibility.Collapsed;
-                }
-            }
-        }
-    }
-
-    private async void BookmarkM365_Click(object sender, RoutedEventArgs e)
-    {
-        if (_tenantService.CurrentTenant != null)
-            await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.M365Admin);
-    }
-
-    private async void BookmarkEntra_Click(object sender, RoutedEventArgs e)
-    {
-        if (_tenantService.CurrentTenant != null)
-            await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.EntraAdmin);
-    }
-
-    private async void BookmarkAzure_Click(object sender, RoutedEventArgs e)
-    {
-        if (_tenantService.CurrentTenant != null)
-            await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.AzurePortal);
-    }
-
-    private async void BookmarkIntune_Click(object sender, RoutedEventArgs e)
-    {
-        if (_tenantService.CurrentTenant != null)
-            await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.IntuneAdmin);
-    }
-
-    private async void BookmarkExchange_Click(object sender, RoutedEventArgs e)
-    {
-        if (_tenantService.CurrentTenant != null)
-            await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.ExchangeAdmin);
-    }
-
-    private async void BookmarkSecurity_Click(object sender, RoutedEventArgs e)
-    {
-        if (_tenantService.CurrentTenant != null)
-            await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.SecurityAdmin);
-    }
-
-    private async void BookmarkCompliance_Click(object sender, RoutedEventArgs e)
-    {
-        if (_tenantService.CurrentTenant != null)
-            await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.ComplianceAdmin);
-    }
-
-    private async void BookmarkTeams_Click(object sender, RoutedEventArgs e)
-    {
-        if (_tenantService.CurrentTenant != null)
-            await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.TeamsAdmin);
+        // Bookmarks live permanently in the left panel now (UI_RULES.md §8) — nothing to pop
+        // open here anymore; this button is a no-op placeholder kept for the tab-strip's own
+        // "+" affordance until a blank-document picker exists.
     }
 
     private void BackButton_Click(object sender, RoutedEventArgs e)
@@ -606,6 +732,13 @@ public partial class MainWindow : FluentWindow
                 }
             }
         }
+    }
+
+    private void UpdateAvailableButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Version-update mechanism (UI_RULES.md §6 — port of BuildConsole's VersionInfo.cs +
+        // MainWindow.VersionUpdate.cs) is not built this session; button stays hidden
+        // (Visibility="Collapsed" in XAML) until it lands. See build-journal/3493.md.
     }
 
     private void LaunchExternalButton_Click(object sender, RoutedEventArgs e)

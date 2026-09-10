@@ -15,6 +15,9 @@
     <!-- #3459 — hosted System.Management.Automation runspace inside the app,
          not shelling to external powershell.exe. -->
     <PackageReference Include="Microsoft.PowerShell.SDK" Version="7.4.6" />
+    <!-- #3493 — UI Shell Redesign: fixed + contextual Ribbon tabs. Real Fluent.Ribbon,
+         not the built-in System.Windows.Controls.Ribbon (UI_RULES.md §1). -->
+    <PackageReference Include="Fluent.Ribbon" Version="10.0.1" />
   </ItemGroup>
 
 </Project>

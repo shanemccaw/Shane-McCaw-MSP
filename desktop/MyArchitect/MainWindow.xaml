@@ -4,96 +4,15 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        xmlns:fluent="urn:fluent-ribbon"
         xmlns:controls="clr-namespace:MyArchitect.Controls"
+        xmlns:shell="clr-namespace:MyArchitect.Shell"
         mc:Ignorable="d"
         Title="MyArchitect" Height="800" Width="1280"
         WindowState="Maximized"
         PreviewKeyDown="Window_PreviewKeyDown">
 
     <ui:FluentWindow.Resources>
-        <!-- Activity Bar Radio Item Style (Top navigation icons) -->
-        <Style x:Key="ActivityBarRadioItemStyle" TargetType="{x:Type RadioButton}">
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Width" Value="48" />
-            <Setter Property="Height" Value="48" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Foreground" Value="#858585" />
-            <Setter Property="GroupName" Value="ActivityBarGroup" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type RadioButton}">
-                        <Border x:Name="RootBorder" Background="{TemplateBinding Background}" SnapsToDevicePixels="True">
-                            <Grid>
-                                <Border x:Name="ActiveIndicator"
-                                        Width="2"
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Stretch"
-                                        Background="#FFFFFF"
-                                        Visibility="Collapsed" />
-                                <ContentPresenter x:Name="ContentPresenter"
-                                                  HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center"
-                                                  SnapsToDevicePixels="True" />
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="RootBorder" Property="Background" Value="#252526" />
-                                <Setter Property="Foreground" Value="#D4D4D4" />
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
-                                <Setter Property="Foreground" Value="#FFFFFF" />
-                            </Trigger>
-                            <MultiTrigger>
-                                <MultiTrigger.Conditions>
-                                    <Condition Property="IsMouseOver" Value="True" />
-                                    <Condition Property="IsChecked" Value="True" />
-                                </MultiTrigger.Conditions>
-                                <Setter TargetName="RootBorder" Property="Background" Value="#252526" />
-                                <Setter Property="Foreground" Value="#FFFFFF" />
-                            </MultiTrigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Activity Bar Button Style (Bottom action icons: Accounts, Settings) -->
-        <Style x:Key="ActivityBarButtonStyle" TargetType="{x:Type Button}">
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Width" Value="48" />
-            <Setter Property="Height" Value="48" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Foreground" Value="#858585" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type Button}">
-                        <Border x:Name="RootBorder" Background="{TemplateBinding Background}" SnapsToDevicePixels="True">
-                            <ContentPresenter x:Name="ContentPresenter"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              SnapsToDevicePixels="True" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="RootBorder" Property="Background" Value="#252526" />
-                                <Setter Property="Foreground" Value="#FFFFFF" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="RootBorder" Property="Background" Value="#2A2D2E" />
-                                <Setter Property="Foreground" Value="#FFFFFF" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <!-- Navigation Bar / Toolbar Action Button Style -->
         <Style x:Key="NavBarButtonStyle" TargetType="{x:Type Button}">
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -132,38 +51,6 @@
             </Setter>
         </Style>
 
-        <!-- Bookmark Pop-Out Item Card Style -->
-        <Style x:Key="BookmarkCardButtonStyle" TargetType="{x:Type Button}">
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Margin" Value="0,2" />
-            <Setter Property="Padding" Value="8,7" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type Button}">
-                        <Border x:Name="CardBorder"
-                                Background="{TemplateBinding Background}"
-                                CornerRadius="6"
-                                Padding="{TemplateBinding Padding}"
-                                SnapsToDevicePixels="True">
-                            <ContentPresenter />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="CardBorder" Property="Background" Value="#252526" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="CardBorder" Property="Background" Value="#2D2D30" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <!-- Dynamic Portal Tab Item Border Style -->
         <Style x:Key="TabBorderStyle" TargetType="{x:Type Border}">
             <Setter Property="Background" Value="#141414" />
@@ -179,387 +66,59 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" /> <!-- Title bar (QAT) -->
+            <RowDefinition Height="Auto" /> <!-- Fixed + contextual Ribbon -->
+            <RowDefinition Height="*" />    <!-- Body: left / center / right -->
+            <RowDefinition Height="Auto" /> <!-- Status bar -->
         </Grid.RowDefinitions>
 
-        <!-- Custom Top Title Bar with Tenant Switcher -->
+        <!-- Custom Top Title Bar — QAT: Tenant Switcher, Command Palette trigger, Undo (UI_RULES.md §1) -->
         <ui:TitleBar x:Name="AppTitleBar" Grid.Row="0" Title="MyArchitect">
             <ui:TitleBar.Header>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                    <controls:TenantSwitcher x:Name="ShellTenantSwitcher" />
+                    <controls:TenantSwitcher x:Name="ShellTenantSwitcher" Margin="0,0,10,0" />
+                    <Button x:Name="UndoButton"
+                            Style="{StaticResource NavBarButtonStyle}"
+                            ToolTip="Undo — only live for a Change Control execution (UI_RULES.md §7)"
+                            IsEnabled="False"
+                            Click="UndoButton_Click"
+                            Margin="0,0,4,0">
+                        <ui:SymbolIcon Symbol="ArrowUndo24" FontSize="16" />
+                    </Button>
+                    <Button x:Name="PaletteTriggerButton"
+                            Style="{StaticResource NavBarButtonStyle}"
+                            Width="150"
+                            ToolTip="Command Palette (Ctrl+K)"
+                            Click="PaletteTriggerButton_Click"
+                            HorizontalContentAlignment="Left">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="Search24" FontSize="14" Margin="4,0,6,0" />
+                            <TextBlock Text="Search or run…" FontSize="11" Foreground="#858585" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </ui:TitleBar.Header>
         </ui:TitleBar>
 
-        <!-- Main Body Area -->
-        <Grid Grid.Row="1">
+        <!-- Fixed + contextual Ribbon (UI_RULES.md §1/§2) — Fluent.Ribbon, populated at runtime
+             from ShellRegistry by FixedRibbonRenderer; never hand-authored per tab in XAML. -->
+        <fluent:Ribbon x:Name="AppRibbon" Grid.Row="1" IsMinimized="False" />
+
+        <!-- Body: Left reference panel | Center documents | Right record workspace -->
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" /> <!-- Col 0: Activity Bar (48px) -->
-                <ColumnDefinition Width="Auto" /> <!-- Col 1: Pop-out Bookmarks Side Panel (270px) -->
-                <ColumnDefinition Width="*" />    <!-- Col 2: Main Workspace -->
+                <ColumnDefinition x:Name="LeftPanelColumn" Width="270" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="RightPanelColumn" Width="0" />
             </Grid.ColumnDefinitions>
 
-            <!-- Left Icon Bar (Activity Bar) -->
-            <Border Grid.Column="0"
-                    Width="48"
-                    Background="#181818"
-                    BorderBrush="#2B2B2B"
-                    BorderThickness="0,0,1,0">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <!-- Top Navigation Icons -->
-                    <StackPanel Grid.Row="0" Orientation="Vertical">
-                        <!-- Bookmarks Icon (Pops out the side panel) -->
-                        <RadioButton x:Name="ActivityBookmarksRadio"
-                                     Style="{StaticResource ActivityBarRadioItemStyle}"
-                                     IsChecked="True"
-                                     ToolTip="Portal Bookmarks (Ctrl+B)"
-                                     Click="ActivityBookmarksRadio_Click">
-                            <Path Data="M 17,3 L 7,3 C 5.9,3 5,3.9 5,5 L 5,21 L 12,18 L 19,21 L 19,5 C 19,3.9 18.1,3 17,3 Z"
-                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                  Width="16" Height="16"
-                                  Stretch="Uniform" />
-                        </RadioButton>
-                        <!-- Screenshot Evidence Gallery Icon (Ctrl+Shift+S) -->
-                        <RadioButton x:Name="ActivityScreenshotsRadio"
-                                     Style="{StaticResource ActivityBarRadioItemStyle}"
-                                     ToolTip="Screenshot Evidence Gallery (Ctrl+Shift+S)"
-                                     Click="ActivityScreenshotsRadio_Click">
-                            <Path Data="M 9,2 L 7.17,4 L 4,4 C 2.9,4 2,4.9 2,6 L 2,18 C 2,19.1 2.9,20 4,20 L 20,20 C 21.1,20 22,19.1 22,18 L 22,6 C 22,4.9 21.1,4 20,4 L 16.83,4 L 15,2 L 9,2 Z M 12,17 C 9.24,17 7,14.76 7,12 C 7,9.24 9.24,7 12,7 C 14.76,7 17,9.24 17,12 C 17,14.76 14.76,17 12,17 Z"
-                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                  Width="16" Height="16"
-                                  Stretch="Uniform" />
-                        </RadioButton>
-                        <RadioButton x:Name="ActivityExplorerRadio"
-                                     Style="{StaticResource ActivityBarRadioItemStyle}"
-                                     ToolTip="SOW &amp; Assessment Viewer (Ctrl+Shift+A)"
-                                     Click="ActivityExplorerRadio_Click">
-                            <ui:SymbolIcon Symbol="DocumentMultiple24" FontSize="20" />
-                        </RadioButton>
-                        <!-- Live Telemetry Console (Ctrl+Shift+T) -->
-                        <RadioButton x:Name="ActivityTelemetryRadio"
-                                     Style="{StaticResource ActivityBarRadioItemStyle}"
-                                     ToolTip="Live Telemetry Console (Ctrl+Shift+T)"
-                                     Click="ActivityTelemetryRadio_Click">
-                            <ui:SymbolIcon Symbol="Pulse24" FontSize="20" />
-                        </RadioButton>
-                        <RadioButton Style="{StaticResource ActivityBarRadioItemStyle}"
-                                     ToolTip="Search (Ctrl+Shift+F)">
-                            <ui:SymbolIcon Symbol="Search24" FontSize="20" />
-                        </RadioButton>
-                        <RadioButton Style="{StaticResource ActivityBarRadioItemStyle}"
-                                     ToolTip="Source Control (Ctrl+Shift+G)">
-                            <ui:SymbolIcon Symbol="BranchCompare24" FontSize="20" />
-                        </RadioButton>
-                        <RadioButton Style="{StaticResource ActivityBarRadioItemStyle}"
-                                     ToolTip="Run and Debug (Ctrl+Shift+D)">
-                            <ui:SymbolIcon Symbol="Play24" FontSize="20" />
-                        </RadioButton>
-                        <RadioButton Style="{StaticResource ActivityBarRadioItemStyle}"
-                                     ToolTip="Extensions &amp; Scripts (Ctrl+Shift+X)">
-                            <ui:SymbolIcon Symbol="PuzzlePiece24" FontSize="20" />
-                        </RadioButton>
-                    </StackPanel>
-
-                    <!-- Bottom Action Icons -->
-                    <StackPanel Grid.Row="1" Orientation="Vertical">
-                        <Button Style="{StaticResource ActivityBarButtonStyle}"
-                                ToolTip="Accounts">
-                            <ui:SymbolIcon Symbol="PersonCircle24" FontSize="20" />
-                        </Button>
-                        <Button Style="{StaticResource ActivityBarButtonStyle}"
-                                ToolTip="Settings (Ctrl+,)">
-                            <ui:SymbolIcon Symbol="Settings24" FontSize="20" />
-                        </Button>
-                    </StackPanel>
-                </Grid>
+            <!-- Left panel — reference, read-only (UI_RULES.md §1) -->
+            <Border Grid.Column="0" BorderBrush="#2B2B2B" BorderThickness="0,0,1,0">
+                <shell:LeftReferencePanel x:Name="LeftReferencePanelControl" />
             </Border>
 
-            <!-- Pop-Out Primary Side Panel: Tenant Portal Bookmarks -->
-            <Border x:Name="BookmarksSidePanel"
-                    Grid.Column="1"
-                    Width="270"
-                    Background="#181818"
-                    BorderBrush="#2B2B2B"
-                    BorderThickness="0,0,1,0"
-                    Visibility="Visible">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" /> <!-- Header -->
-                        <RowDefinition Height="Auto" /> <!-- Search Box -->
-                        <RowDefinition Height="*" />    <!-- Bookmarks List -->
-                    </Grid.RowDefinitions>
-
-                    <!-- Header -->
-                    <Border Grid.Row="0" Padding="14,12,10,10" BorderBrush="#262626" BorderThickness="0,0,0,1">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="PORTAL BOOKMARKS"
-                                           Foreground="#858585"
-                                           FontSize="10"
-                                           FontWeight="Bold" />
-                                <TextBlock x:Name="BookmarksTenantSubtext"
-                                           Text="Active: Contoso Ltd"
-                                           Foreground="#389BFF"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Margin="0,2,0,0"
-                                           TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    x:Name="CollapseBookmarksButton"
-                                    Style="{StaticResource NavBarButtonStyle}"
-                                    Width="24" Height="24"
-                                    ToolTip="Collapse Side Panel (Ctrl+B)"
-                                    Click="CollapseBookmarksButton_Click">
-                                <Path Data="M 15,19 L 8,12 L 15,5"
-                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                      StrokeThickness="1.75"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round"
-                                      Width="10" Height="10"
-                                      Stretch="Uniform" />
-                            </Button>
-                        </Grid>
-                    </Border>
-
-                    <!-- Search Filter Box -->
-                    <Border Grid.Row="1" Margin="10,8,10,6" Background="#222222" CornerRadius="4" BorderBrush="#333333" BorderThickness="1" Padding="8,4">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Path Grid.Column="0"
-                                  Data="M 15.5,14 L 14.71,14 L 14.43,13.73 C 15.41,12.59 16,11.11 16,9.5 C 16,5.91 13.09,3 9.5,3 C 5.91,3 3,5.91 3,9.5 C 3,13.09 5.91,16 9.5,16 C 11.11,16 12.59,15.41 13.73,14.43 L 14,14.71 L 14,15.5 L 19,20.49 L 20.49,19 L 15.5,14 Z M 9.5,14 C 7.01,14 5,11.99 5,9.5 C 5,7.01 7.01,5 9.5,5 C 11.99,5 14,7.01 14,9.5 C 14,11.99 11.99,14 9.5,14 Z"
-                                  Fill="#777777"
-                                  Width="11" Height="11"
-                                  Margin="0,0,6,0"
-                                  VerticalAlignment="Center"
-                                  Stretch="Uniform" />
-                            <TextBox Grid.Column="1"
-                                     x:Name="PortalSearchTextBox"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     Foreground="#E0E0E0"
-                                     CaretBrush="#FFFFFF"
-                                     FontSize="11"
-                                     TextChanged="PortalSearchTextBox_TextChanged"
-                                     VerticalAlignment="Center" />
-                        </Grid>
-                    </Border>
-
-                    <!-- Scrollable Bookmarks List -->
-                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="8,4">
-                        <StackPanel x:Name="BookmarksItemsStackPanel">
-                            <!-- Local SOW & Assessment Viewer -->
-                            <Button x:Name="BookmarkAssessmentBtn" Tag="sow assessment viewer copilot gate drift audit" Style="{StaticResource BookmarkCardButtonStyle}" Click="BookmarkAssessment_Click">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="5" Background="#107C41" Margin="0,0,8,0" VerticalAlignment="Center">
-                                        <Path Data="M 19,3 H 5 C 3.9,3 3,3.9 3,5 V 19 C 3,20.1 3.9,21 5,21 H 19 C 20.1,21 21,20.1 21,19 V 5 C 21,3.9 20.1,3 19,3 Z M 10,17 L 5,12 L 6.41,10.59 L 10,14.17 L 17.59,6.58 L 19,8 L 10,17 Z"
-                                              Fill="#FFFFFF" Width="14" Height="14" Stretch="Uniform" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="SOW &amp; Assessment Viewer" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold" />
-                                        <TextBlock Text="Gate, SOW, Drift &amp; Snapshot" Foreground="#389BFF" FontSize="10" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </Grid>
-                            </Button>
-
-                            <!-- Live Telemetry Console -->
-                            <Button x:Name="BookmarkTelemetryBtn" Tag="telemetry console engine drift sow timeline copilot pulse" Style="{StaticResource BookmarkCardButtonStyle}" Click="BookmarkTelemetry_Click">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="5" Background="#8957E5" Margin="0,0,8,0" VerticalAlignment="Center">
-                                        <Path Data="M 3,13 H 5.5 L 8,4 L 12,20 L 15,10 L 17.5,15 H 21"
-                                              Stroke="#FFFFFF" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                                              Width="14" Height="14" Stretch="Uniform" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="Live Telemetry Console" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold" />
-                                        <TextBlock Text="Engines, Drift, SOW &amp; Feed" Foreground="#8957E5" FontSize="10" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </Grid>
-                            </Button>
-
-                            <!-- Microsoft 365 Admin Center -->
-                            <Button x:Name="BookmarkM365Btn" Tag="m365 admin center microsoft 365" Style="{StaticResource BookmarkCardButtonStyle}" Click="BookmarkM365_Click">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="5" Background="#0078D4" Margin="0,0,8,0" VerticalAlignment="Center">
-                                        <Path Data="M 12,2 C 6.48,2 2,6.48 2,12 C 2,17.52 6.48,22 12,22 C 17.52,22 22,17.52 22,12 C 22,6.48 17.52,2 12,2 Z M 11,19.93 C 7.05,19.44 4,16.08 4,12 C 4,11.38 4.08,10.79 4.21,10.21 L 9,15 L 9,16 C 9,17.1 9.9,18 11,18 L 11,19.93 Z"
-                                              Fill="#FFFFFF" Width="14" Height="14" Stretch="Uniform" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="M365 Admin Center" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold" />
-                                        <TextBlock Text="admin.microsoft.com" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </Grid>
-                            </Button>
-
-                            <!-- Entra ID Admin Center -->
-                            <Button x:Name="BookmarkEntraBtn" Tag="entra id azure ad active directory" Style="{StaticResource BookmarkCardButtonStyle}" Click="BookmarkEntra_Click">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="5" Background="#005A9E" Margin="0,0,8,0" VerticalAlignment="Center">
-                                        <Path Data="M 12,1 L 3,5 L 3,11 C 3,16.55 6.84,21.74 12,23 C 17.16,21.74 21,16.55 21,11 L 21,5 L 12,1 Z"
-                                              Fill="#FFFFFF" Width="13" Height="13" Stretch="Uniform" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="Entra ID Admin Center" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold" />
-                                        <TextBlock Text="entra.microsoft.com" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </Grid>
-                            </Button>
-
-                            <!-- Azure Portal -->
-                            <Button x:Name="BookmarkAzureBtn" Tag="azure portal cloud resources subscriptions" Style="{StaticResource BookmarkCardButtonStyle}" Click="BookmarkAzure_Click">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="5" Background="#0089D6" Margin="0,0,8,0" VerticalAlignment="Center">
-                                        <Path Data="M 19.35,10.04 C 18.67,6.59 15.64,4 12,4 C 9.11,4 6.6,5.64 5.35,8.04 C 2.34,8.36 0,10.91 0,14 C 0,17.31 2.69,20 6,20 L 19,20 C 21.76,20 24,17.76 24,15 C 24,12.36 21.95,10.22 19.35,10.04 Z"
-                                              Fill="#FFFFFF" Width="14" Height="14" Stretch="Uniform" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="Azure Portal" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold" />
-                                        <TextBlock Text="portal.azure.com" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </Grid>
-                            </Button>
-
-                            <!-- Intune Endpoint Manager -->
-                            <Button x:Name="BookmarkIntuneBtn" Tag="intune endpoint manager mdum devices" Style="{StaticResource BookmarkCardButtonStyle}" Click="BookmarkIntune_Click">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="5" Background="#008272" Margin="0,0,8,0" VerticalAlignment="Center">
-                                        <Path Data="M 20,18 C 21.1,18 22,17.1 22,16 L 22,6 C 22,4.9 21.1,4 20,4 L 4,4 C 2.9,4 2,4.9 2,6 L 2,16 C 2,17.1 2.9,18 4,18 L 0,18 L 0,20 L 24,20 L 24,18 L 20,18 Z M 4,6 L 20,6 L 20,16 L 4,16 L 4,6 Z"
-                                              Fill="#FFFFFF" Width="14" Height="14" Stretch="Uniform" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="Intune Endpoint Manager" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold" />
-                                        <TextBlock Text="intune.microsoft.com" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </Grid>
-                            </Button>
-
-                            <!-- Exchange Admin Center -->
-                            <Button x:Name="BookmarkExchangeBtn" Tag="exchange admin center mail mailbox transport" Style="{StaticResource BookmarkCardButtonStyle}" Click="BookmarkExchange_Click">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="5" Background="#0078D4" Margin="0,0,8,0" VerticalAlignment="Center">
-                                        <Path Data="M 20,4 L 4,4 C 2.9,4 2.01,4.9 2.01,6 L 2,18 C 2,19.1 2.9,20 4,20 L 20,20 C 21.1,20 22,19.1 22,18 L 22,6 C 22,4.9 21.1,4 20,4 Z M 20,8 L 12,13 L 4,8 L 4,6 L 12,11 L 20,6 L 20,8 Z"
-                                              Fill="#FFFFFF" Width="14" Height="14" Stretch="Uniform" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="Exchange Admin Center" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold" />
-                                        <TextBlock Text="admin.exchange.microsoft.com" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </Grid>
-                            </Button>
-
-                            <!-- Microsoft Defender Security -->
-                            <Button x:Name="BookmarkSecurityBtn" Tag="defender security incident alert compliance" Style="{StaticResource BookmarkCardButtonStyle}" Click="BookmarkSecurity_Click">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="5" Background="#D83B01" Margin="0,0,8,0" VerticalAlignment="Center">
-                                        <Path Data="M 12,1 L 3,5 L 3,11 C 3,16.55 6.84,21.74 12,23 C 17.16,21.74 21,16.55 21,11 L 21,5 L 12,1 Z M 12,11.99 L 19,11.99 C 18.47,16.11 15.72,19.78 12,20.93 L 12,12 L 5,12 C 5,7.9 10.37,5.55 12,4.99 L 12,11.99 Z"
-                                              Fill="#FFFFFF" Width="13" Height="13" Stretch="Uniform" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="Defender Security Center" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold" />
-                                        <TextBlock Text="security.microsoft.com" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </Grid>
-                            </Button>
-
-                            <!-- Microsoft Purview Compliance -->
-                            <Button x:Name="BookmarkComplianceBtn" Tag="purview compliance ediscovery audit dlp" Style="{StaticResource BookmarkCardButtonStyle}" Click="BookmarkCompliance_Click">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="5" Background="#5C2D91" Margin="0,0,8,0" VerticalAlignment="Center">
-                                        <Path Data="M 12,1 L 3,5 L 3,11 C 3,16.55 6.84,21.74 12,23 C 17.16,21.74 21,16.55 21,11 L 21,5 L 12,1 Z M 10,17 L 6,13 L 7.41,11.59 L 10,14.17 L 16.59,7.58 L 18,9 L 10,17 Z"
-                                              Fill="#FFFFFF" Width="13" Height="13" Stretch="Uniform" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="Purview Compliance" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold" />
-                                        <TextBlock Text="compliance.microsoft.com" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </Grid>
-                            </Button>
-
-                            <!-- Microsoft Teams Admin Center -->
-                            <Button x:Name="BookmarkTeamsBtn" Tag="teams admin voice phone meeting policies" Style="{StaticResource BookmarkCardButtonStyle}" Click="BookmarkTeams_Click">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="5" Background="#464EB8" Margin="0,0,8,0" VerticalAlignment="Center">
-                                        <Path Data="M 16.5,12 C 17.88,12 18.99,10.88 18.99,9.5 C 18.99,8.12 17.88,7 16.5,7 C 15.12,7 14,8.12 14,9.5 C 14,10.88 15.12,12 16.5,12 Z M 9,11 C 10.66,11 11.99,9.66 11.99,8 C 11.99,6.34 10.66,5 9,5 C 7.34,5 6,6.34 6,8 C 6,9.66 7.34,11 9,11 Z M 16.5,14 C 14.67,14 11,14.92 11,16.75 L 11,19 L 22,19 L 22,16.75 C 22,14.92 18.33,14 16.5,14 Z M 9,13 C 6.67,13 2,14.17 2,16.5 L 2,19 L 9,19 L 9,16.75 C 9,15.9 9.33,14.41 10.6,13.34 C 10.05,13.13 9.47,13 9,13 Z"
-                                              Fill="#FFFFFF" Width="14" Height="14" Stretch="Uniform" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="Teams Admin Center" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold" />
-                                        <TextBlock Text="admin.teams.microsoft.com" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </Grid>
-                            </Button>
-                        </StackPanel>
-                    </ScrollViewer>
-                </Grid>
-            </Border>
-
-            <!-- Pop-Out Side Panel: Screenshot Evidence Review & Gallery -->
-            <Border x:Name="ScreenshotEvidenceSidePanel"
-                    Grid.Column="1"
-                    Width="340"
-                    Background="#181818"
-                    BorderBrush="#2B2B2B"
-                    BorderThickness="0,0,1,0"
-                    Visibility="Collapsed">
-                <controls:ScreenshotGalleryPanel x:Name="EvidenceGalleryPanel" />
-            </Border>
-
-            <!-- Main Workspace: Multi-Tab Isolated Portal Shell -->
-            <Grid Grid.Column="2" Background="#1E1E1E">
+            <!-- Center: documents (tabs + nav bar + WebView2 hosts / dashboards) -->
+            <Grid Grid.Column="1" Background="#1E1E1E">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -573,11 +132,10 @@
                         BorderThickness="0,0,0,1"
                         Padding="4,2,4,0">
                     <DockPanel LastChildFill="True">
-                        <!-- Add Tab Button (Opens Bookmarks side panel) -->
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,4,0">
                             <Button x:Name="NewTabButton"
                                     Style="{StaticResource NavBarButtonStyle}"
-                                    ToolTip="Open Portal Bookmarks (Ctrl+B)"
+                                    ToolTip="Open a Portal Bookmark from the left panel"
                                     Click="NewTabButton_Click">
                                 <Path Data="M 19,13 L 13,13 L 13,19 L 11,19 L 11,13 L 5,13 L 5,11 L 11,11 L 11,5 L 13,5 L 13,11 L 19,11 Z"
                                       Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
@@ -586,7 +144,6 @@
                             </Button>
                         </StackPanel>
 
-                        <!-- Open Tabs List -->
                         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                             <ItemsControl x:Name="TabsItemsControl">
                                 <ItemsControl.ItemsPanel>
@@ -664,173 +221,120 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- Navigation Buttons (Crisp vector SVG paths) -->
                         <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,6,0" VerticalAlignment="Center">
-                            <Button x:Name="BackButton"
-                                    Style="{StaticResource NavBarButtonStyle}"
-                                    ToolTip="Back"
-                                    Click="BackButton_Click">
+                            <Button x:Name="BackButton" Style="{StaticResource NavBarButtonStyle}" ToolTip="Back" Click="BackButton_Click">
                                 <Path Data="M 12,4 L 4,12 L 12,20 M 4,12 L 20,12"
                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                      StrokeThickness="2"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round"
-                                      StrokeLineJoin="Round"
-                                      Width="13" Height="13"
-                                      Stretch="Uniform" />
+                                      StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Width="13" Height="13" Stretch="Uniform" />
                             </Button>
-                            <Button x:Name="ForwardButton"
-                                    Style="{StaticResource NavBarButtonStyle}"
-                                    ToolTip="Forward"
-                                    Click="ForwardButton_Click">
+                            <Button x:Name="ForwardButton" Style="{StaticResource NavBarButtonStyle}" ToolTip="Forward" Click="ForwardButton_Click">
                                 <Path Data="M 12,4 L 20,12 L 12,20 M 4,12 L 20,12"
                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                      StrokeThickness="2"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round"
-                                      StrokeLineJoin="Round"
-                                      Width="13" Height="13"
-                                      Stretch="Uniform" />
+                                      StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Width="13" Height="13" Stretch="Uniform" />
                             </Button>
-                            <Button x:Name="RefreshButton"
-                                    Style="{StaticResource NavBarButtonStyle}"
-                                    ToolTip="Reload Portal"
-                                    Click="RefreshButton_Click">
+                            <Button x:Name="RefreshButton" Style="{StaticResource NavBarButtonStyle}" ToolTip="Reload Portal" Click="RefreshButton_Click">
                                 <Path Data="M 17.65,6.35 C 16.2,4.9 14.21,4 12,4 C 7.58,4 4.01,7.58 4.01,12 C 4.01,16.42 7.58,20 12,20 C 15.73,20 18.84,17.45 19.73,14 L 17.65,14 C 16.83,16.33 14.61,18 12,18 C 8.69,18 6,15.31 6,12 C 6,8.69 8.69,6 12,6 C 13.66,6 15.14,6.69 16.22,7.78 L 13,11 L 20,11 L 20,4 L 17.65,6.35 Z"
                                       Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                      Width="13" Height="13"
-                                      Stretch="Uniform" />
+                                      Width="13" Height="13" Stretch="Uniform" />
                             </Button>
                         </StackPanel>
 
-                        <!-- Tenant Isolation Badge with Padlock Vector -->
-                        <Border Grid.Column="1"
-                                Background="#004578"
-                                CornerRadius="4"
-                                Padding="8,3"
-                                Margin="0,0,8,0"
-                                VerticalAlignment="Center">
+                        <Border Grid.Column="1" Background="#004578" CornerRadius="4" Padding="8,3" Margin="0,0,8,0" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
                                 <Path Data="M 18,8 L 17,8 L 17,6 C 17,3.24 14.76,1 12,1 C 9.24,1 7,3.24 7,6 L 7,8 L 6,8 C 4.9,8 4,8.9 4,10 L 4,20 C 4,21.1 4.9,22 6,22 L 18,22 C 19.1,22 20,21.1 20,20 L 20,10 C 20,8.9 19.1,8 18,8 Z M 12,17 C 10.9,17 10,16.1 10,15 C 10,13.9 10.9,13 12,13 C 13.1,13 14,13.9 14,15 C 14,16.1 13.1,17 12,17 Z M 15.1,8 L 8.9,8 L 8.9,6 C 8.9,4.29 10.29,2.9 12,2.9 C 13.71,2.9 15.1,4.29 15.1,6 L 15.1,8 Z"
-                                      Fill="#FFFFFF"
-                                      Width="11" Height="11"
-                                      Margin="0,0,5,0"
-                                      VerticalAlignment="Center"
-                                      Stretch="Uniform" />
-                                <TextBlock x:Name="IsolatedProfileBadgeTextBlock"
-                                           Text="Profile: Contoso"
-                                           Foreground="#FFFFFF"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center" />
+                                      Fill="#FFFFFF" Width="11" Height="11" Margin="0,0,5,0" VerticalAlignment="Center" Stretch="Uniform" />
+                                <TextBlock x:Name="IsolatedProfileBadgeTextBlock" Text="Profile: Contoso" Foreground="#FFFFFF" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
 
-                        <!-- URL Display Box -->
-                        <Border Grid.Column="2"
-                                Background="#252526"
-                                BorderBrush="#3E3E42"
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="8,4"
-                                VerticalAlignment="Center">
-                            <TextBox x:Name="UrlTextBox"
-                                     Background="Transparent"
-                                     Foreground="#E0E0E0"
-                                     CaretBrush="#FFFFFF"
-                                     BorderThickness="0"
-                                     FontSize="11"
-                                     FontFamily="Consolas"
-                                     IsReadOnly="True"
-                                     VerticalAlignment="Center" />
+                        <Border Grid.Column="2" Background="#252526" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
+                            <TextBox x:Name="UrlTextBox" Background="Transparent" Foreground="#E0E0E0" CaretBrush="#FFFFFF" BorderThickness="0" FontSize="11" FontFamily="Consolas" IsReadOnly="True" VerticalAlignment="Center" />
                         </Border>
 
-                        <!-- External Browser Launch & Screen Clip Buttons -->
                         <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
-                            <Button x:Name="ScreenClipButton"
-                                    Style="{StaticResource NavBarButtonStyle}"
-                                    ToolTip="Capture Region Screenshot (PrintScreen / Ctrl+Shift+S)"
-                                    Margin="0,0,4,0"
-                                    Click="ScreenClipButton_Click">
+                            <Button x:Name="ScreenClipButton" Style="{StaticResource NavBarButtonStyle}" ToolTip="Capture Region Screenshot (PrintScreen / Ctrl+Shift+S)" Margin="0,0,4,0" Click="ScreenClipButton_Click">
                                 <Path Data="M 9,2 L 7.17,4 L 4,4 C 2.9,4 2,4.9 2,6 L 2,18 C 2,19.1 2.9,20 4,20 L 20,20 C 21.1,20 22,19.1 22,18 L 22,6 C 22,4.9 21.1,4 20,4 L 16.83,4 L 15,2 L 9,2 Z M 12,17 C 9.24,17 7,14.76 7,12 C 7,9.24 9.24,7 12,7 C 14.76,7 17,9.24 17,12 C 17,14.76 14.76,17 12,17 Z"
-                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                      Width="13" Height="13"
-                                      Stretch="Uniform" />
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="13" Height="13" Stretch="Uniform" />
                             </Button>
-                            <Button x:Name="LaunchExternalButton"
-                                    Style="{StaticResource NavBarButtonStyle}"
-                                    ToolTip="Open in External Browser"
-                                    Click="LaunchExternalButton_Click">
+                            <Button x:Name="LaunchExternalButton" Style="{StaticResource NavBarButtonStyle}" ToolTip="Open in External Browser" Click="LaunchExternalButton_Click">
                                 <Path Data="M 19,19 L 5,19 L 5,5 L 12,5 L 12,3 L 5,3 C 3.89,3 3,3.9 3,5 L 3,19 C 3,20.1 3.89,21 5,21 L 19,21 C 20.1,21 21,20.1 21,19 L 21,12 L 19,12 L 19,19 Z M 14,3 L 14,5 L 17.59,5 L 7.76,14.83 L 9.17,16.24 L 19,6.41 L 19,10 L 21,10 L 21,3 L 14,3 Z"
-                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                      Width="13" Height="13"
-                                      Stretch="Uniform" />
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="13" Height="13" Stretch="Uniform" />
                             </Button>
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <!-- Central Area: Multiple Isolated WebView2 Hosts & Dashboard Views -->
+                <!-- Central Area: Multiple Isolated WebView2 Hosts & Dashboard/Document Views -->
                 <Grid Grid.Row="2">
                     <Grid x:Name="WebViewsContainer" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
-                    <!-- Embedded SOW & Assessment Viewer Dashboard -->
                     <controls:SowAssessmentView x:Name="SowAssessmentDashboardView"
                                                Visibility="Collapsed"
-                                               HorizontalAlignment="Stretch"
-                                               VerticalAlignment="Stretch" />
+                                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
-                    <!-- Embedded Live Telemetry Console Dashboard -->
                     <controls:TelemetryConsoleView x:Name="TelemetryDashboardView"
                                                   Visibility="Collapsed"
-                                                  HorizontalAlignment="Stretch"
-                                                  VerticalAlignment="Stretch" />
+                                                  HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
-                    <!-- Fallback / Empty Tabs Overlay -->
+                    <shell:ConsolePanelView x:Name="ConsolePanel"
+                                            Visibility="Collapsed"
+                                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+
+                    <Border x:Name="ScreenshotEvidenceDocument"
+                            Background="#181818"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                        <controls:ScreenshotGalleryPanel x:Name="EvidenceGalleryPanel" />
+                    </Border>
+
                     <Border x:Name="EmptyTabsOverlay"
                             Background="#1E1E1E"
                             Visibility="Collapsed"
-                            HorizontalAlignment="Stretch"
-                            VerticalAlignment="Stretch">
+                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20">
                             <Path Data="M 17,3 L 7,3 C 5.9,3 5,3.9 5,5 L 5,21 L 12,18 L 19,21 L 19,5 C 19,3.9 18.1,3 17,3 Z"
                                   Fill="#389BFF" Width="44" Height="44" Margin="0,0,0,16" Stretch="Uniform" HorizontalAlignment="Center" />
-                            <TextBlock Text="No Open Portal Tabs"
-                                       Foreground="#FFFFFF"
-                                       FontSize="16"
-                                       FontWeight="SemiBold"
-                                       HorizontalAlignment="Center"
-                                       Margin="0,0,0,8" />
-                            <TextBlock Text="Select a portal from the Bookmarks panel on the left or press '+' above."
-                                       Foreground="#858585"
-                                       FontSize="12"
-                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="No Open Portal Tabs" Foreground="#FFFFFF" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                            <TextBlock Text="Select a portal from the Bookmarks in the left panel, or press '+' above."
+                                       Foreground="#858585" FontSize="12" HorizontalAlignment="Center" />
                         </StackPanel>
                     </Border>
                 </Grid>
             </Grid>
+
+            <!-- Right panel — full-panel record workspace, always docked (UI_RULES.md §3) -->
+            <Border x:Name="RightPanelBorder" Grid.Column="2" BorderBrush="#2B2B2B" BorderThickness="1,0,0,0" ClipToBounds="True">
+                <shell:RecordWorkspacePanel x:Name="RecordWorkspaceControl" />
+            </Border>
         </Grid>
 
         <!-- Bottom Shell Status Bar -->
-        <Border Grid.Row="2"
-                Background="#007ACC"
-                Height="22"
-                Padding="8,0">
+        <Border Grid.Row="3" Background="#007ACC" Height="22" Padding="8,0">
             <DockPanel VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                     <Path Data="M 18,8 L 17,8 L 17,6 C 17,3.24 14.76,1 12,1 C 9.24,1 7,3.24 7,6 L 7,8 L 6,8 C 4.9,8 4,8.9 4,10 L 4,20 C 4,21.1 4.9,22 6,22 L 18,22 C 19.1,22 20,21.1 20,20 L 20,10 C 20,8.9 19.1,8 18,8 Z M 12,17 C 10.9,17 10,16.1 10,15 C 10,13.9 10.9,13 12,13 C 13.1,13 14,13.9 14,15 C 14,16.1 13.1,17 12,17 Z M 15.1,8 L 8.9,8 L 8.9,6 C 8.9,4.29 10.29,2.9 12,2.9 C 13.71,2.9 15.1,4.29 15.1,6 L 15.1,8 Z"
-                          Fill="#FFFFFF"
-                          Width="11" Height="11"
-                          Margin="0,0,5,0"
-                          VerticalAlignment="Center"
-                          Stretch="Uniform" />
+                          Fill="#FFFFFF" Width="11" Height="11" Margin="0,0,5,0" VerticalAlignment="Center" Stretch="Uniform" />
                     <TextBlock x:Name="StatusProfileTextBlock" Text="Session Isolation: Active" Foreground="#FFFFFF" FontSize="11" VerticalAlignment="Center" />
+                    <!-- Contract-hours utilization deferred until #3473/#3474 land (UI_RULES.md §1) -->
+                    <TextBlock x:Name="ContractHoursTextBlock" Text="" Foreground="#D8E8FF" FontSize="11" VerticalAlignment="Center" Margin="16,0,0,0" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
                     <TextBlock x:Name="StatusTabCountTextBlock" Text="1 Open Tab" Foreground="#FFFFFF" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0" />
-                    <TextBlock Text="MyArchitect v1.1" Foreground="#E0E0E0" FontSize="11" VerticalAlignment="Center" />
+                    <TextBlock x:Name="StatusClockTextBlock" Text="" Foreground="#E0E0E0" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <Button x:Name="UpdateAvailableButton"
+                            Visibility="Collapsed"
+                            Background="Transparent" BorderThickness="0" Foreground="#FFD700" FontSize="11"
+                            Cursor="Hand" Padding="0" Margin="0,0,12,0"
+                            Click="UpdateAvailableButton_Click"
+                            Content="Update available" />
+                    <TextBlock x:Name="StatusVersionTextBlock" Text="MyArchitect" Foreground="#E0E0E0" FontSize="11" VerticalAlignment="Center" />
                 </StackPanel>
             </DockPanel>
         </Border>
+
+        <!-- Command Palette overlay — topmost, spans the whole window (UI_RULES.md §5) -->
+        <shell:CommandPaletteOverlay x:Name="PaletteOverlay" Grid.Row="0" Grid.RowSpan="4" Panel.ZIndex="1000" />
     </Grid>
 </ui:FluentWindow>

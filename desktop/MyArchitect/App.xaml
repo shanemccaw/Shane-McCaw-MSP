@@ -8,6 +8,11 @@
             <ResourceDictionary.MergedDictionaries>
                 <ui:ThemesDictionary Theme="Dark" />
                 <ui:ControlsDictionary />
+                <!-- #3493 — Fluent.Ribbon dark theme, matching the shell's existing dark
+                     palette (UI_RULES.md §1: "not the built-in System.Windows.Controls.Ribbon
+                     — looks like Office 2010 next to WPF-UI's dark Fluent theme"). -->
+                <ResourceDictionary Source="pack://application:,,,/Fluent;component/Themes/Generic.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/Fluent;component/Themes/Themes/Dark.Blue.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>
