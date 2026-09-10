@@ -68,7 +68,7 @@ function snapshotIdCondition(raw: string): SQL | null {
 
 // ── GET /api/admin/config-snapshots ──────────────────────────────────────────
 
-router.get("/api/admin/config-snapshots", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/config-snapshots", requireAdmin, async (req: Request, res: Response) => {
   try {
     const where: SQL[] = [];
     const { tenantId, status } = req.query;
@@ -126,7 +126,7 @@ router.get("/api/admin/config-snapshots", requireAdmin, async (req: Request, res
 // resource that was skipped or failed appears here with its real reason — that is
 // the whole point of rendering this table rather than only the header counts.
 
-router.get("/api/admin/config-snapshots/:id", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/config-snapshots/:id", requireAdmin, async (req: Request, res: Response) => {
   try {
     const cond = snapshotIdCondition(String(req.params.id));
     if (!cond) {
@@ -206,7 +206,7 @@ router.get("/api/admin/config-snapshots/:id", requireAdmin, async (req: Request,
 // ── GET /api/admin/config-snapshots/:id/objects ──────────────────────────────
 // The drill-down: the real objects behind one resource type's summary row.
 
-router.get("/api/admin/config-snapshots/:id/objects", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/config-snapshots/:id/objects", requireAdmin, async (req: Request, res: Response) => {
   try {
     const cond = snapshotIdCondition(String(req.params.id));
     if (!cond) {

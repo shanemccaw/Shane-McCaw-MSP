@@ -71,7 +71,7 @@ function diffIdCondition(raw: string): SQL | null {
 
 // ── GET /api/admin/config-diffs ──────────────────────────────────────────────
 
-router.get("/api/admin/config-diffs", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/config-diffs", requireAdmin, async (req: Request, res: Response) => {
   try {
     const where: SQL[] = [];
     const { mode, tenantId, status } = req.query;
@@ -138,7 +138,7 @@ router.get("/api/admin/config-diffs", requireAdmin, async (req: Request, res: Re
 // ── GET /api/admin/config-diffs/rules ────────────────────────────────────────
 // Registered BEFORE `/:diffId` so the literal path is not swallowed by the param route.
 
-router.get("/api/admin/config-diffs/rules", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/config-diffs/rules", requireAdmin, async (req: Request, res: Response) => {
   try {
     const includeInactive = req.query.includeInactive === "true";
     const rows = await db.select().from(configDiffPropertyRulesTable)
@@ -176,7 +176,7 @@ router.get("/api/admin/config-diffs/rules", requireAdmin, async (req: Request, r
 
 // ── POST /api/admin/config-diffs ─────────────────────────────────────────────
 
-router.post("/api/admin/config-diffs", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/config-diffs", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { baseSnapshotRowId, headSnapshotRowId, mode, resourceKeys, triggerRef, recompute } =
       req.body ?? {};
@@ -226,7 +226,7 @@ router.post("/api/admin/config-diffs", requireAdmin, async (req: Request, res: R
 
 // ── GET /api/admin/config-diffs/:diffId/resources ────────────────────────────
 
-router.get("/api/admin/config-diffs/:diffId/resources", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/config-diffs/:diffId/resources", requireAdmin, async (req: Request, res: Response) => {
   try {
     const cond = diffIdCondition(String(req.params.diffId));
     if (!cond) {
@@ -279,7 +279,7 @@ router.get("/api/admin/config-diffs/:diffId/resources", requireAdmin, async (req
 
 // ── GET /api/admin/config-diffs/:diffId ──────────────────────────────────────
 
-router.get("/api/admin/config-diffs/:diffId", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/config-diffs/:diffId", requireAdmin, async (req: Request, res: Response) => {
   try {
     const cond = diffIdCondition(String(req.params.diffId));
     if (!cond) {
