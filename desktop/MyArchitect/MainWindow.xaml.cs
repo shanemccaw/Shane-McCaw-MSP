@@ -40,6 +40,7 @@ public partial class MainWindow : FluentWindow
     private readonly ILaunchControlActionsService _launchControlActionsService;
     private readonly IAdminRetainerService _adminRetainerService;
     private readonly IVaultService _vaultService;
+    private readonly IBreakGlassService _breakGlassService;
     private readonly IAuthService _authService;
     private readonly IRetainerService _retainerService;
     private readonly IActivityContextService _activityContextService;
@@ -72,6 +73,7 @@ public partial class MainWindow : FluentWindow
         _launchControlActionsService = new LaunchControlActionsService();
         _adminRetainerService = new AdminRetainerService();
         _vaultService = new VaultService();
+        _breakGlassService = new BreakGlassService();
         _authService = new AuthService();
         _retainerService = new RetainerService();
         _authService.SessionChanged += OnAuthSessionChanged;
@@ -305,10 +307,10 @@ public partial class MainWindow : FluentWindow
         });
     }
 
-    /// <summary>Admin tab (UI_RULES.md §2). Carries the Credential Vault (#3461) — an
-    /// <see cref="RibbonIntent.Open"/> command (global-scope, no specific record) that opens the
-    /// vault document. Audit Log (#3489), Break-Glass (#3480) and consent status (#3485) attach
-    /// their own groups here as they land.</summary>
+    /// <summary>Admin tab (UI_RULES.md §2). Carries the Credential Vault (#3461) and Break-Glass
+    /// Access (#3480) — both <see cref="RibbonIntent.Open"/> commands (global-scope, no specific
+    /// record). Audit Log (#3489) and consent status (#3485) attach their own groups here as they
+    /// land.</summary>
     private void RegisterAdminTab()
     {
         _shellRegistry.RegisterFixedTabGroup(FixedTab.Admin, new RibbonGroupSpec
@@ -326,7 +328,382 @@ public partial class MainWindow : FluentWindow
                 },
             },
         });
+
+        // Break-Glass Access (#3480) — cross-tenant pending list opens as a full-panel record
+        // workspace (UI_RULES.md §3); rows drill into a per-secret detail with the verification
+        // attempts, a confirm-armed admin-override, and the per-customer override audit trail. An
+        // Open-intent command (nothing tenant-specific to select yet), so it is fixed-tab legal.
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Admin, new RibbonGroupSpec
+        {
+            Label = "Break-Glass",
+            Order = 20,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Pending Requests",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Cross-tenant pending break-glass credential deliveries (GET /api/msp/break-glass, #3480)",
+                    OnSelect = () => OpenBreakGlassPendingList(),
+                },
+            },
+        });
     }
+
+    // ---- Break-Glass Access (#3480) — real msp-break-glass.ts client, full-panel workspaces ----
+
+    /// <summary>Opens the cross-tenant pending list (GET /api/msp/break-glass) as a full-panel record
+    /// workspace. Each row is a real pending_delivery secret carrying its own numeric customerId, so a
+    /// drill-down into detail/override/audit never depends on a locally-resolved tenant id. On an auth
+    /// or transport failure the record states the honest reason (a 401/403 means the operator session
+    /// isn't attached, not a bug here) rather than showing a fabricated list.</summary>
+    private void OpenBreakGlassPendingList()
+    {
+        System.Collections.Generic.IReadOnlyList<Models.BreakGlassPendingItem> pending;
+        try
+        {
+            pending = _breakGlassService.GetPendingAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "break-glass-pending",
+                Id = "break-glass-pending",
+                Eyebrow = "Break-Glass",
+                Title = "Pending Requests",
+                Sub = "Could not load",
+                Body = ("Error", DescribeBreakGlassError(ex)),
+            });
+            return;
+        }
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "break-glass-pending",
+            Id = "break-glass-pending",
+            Eyebrow = "Break-Glass",
+            Title = "Pending Requests",
+            Sub = pending.Count == 0
+                ? "No break-glass credentials are awaiting delivery across your customers"
+                : $"{pending.Count} pending across your customers, most recent first",
+            List = pending.Count == 0
+                ? null
+                : ("Pending", pending.Select(p => new WorkspaceListRow
+                {
+                    Id = p.PendingSecretId.ToString(),
+                    Name = p.CustomerName ?? $"Customer #{p.CustomerId}",
+                    Sub = $"Secret #{p.PendingSecretId} · {p.Status} · {p.CreatedAt.ToLocalTime():g}",
+                    Right = p.LiveInviteCount > 0 ? $"{p.LiveInviteCount} live invite(s)" : $"{p.TotalInviteCount} invite(s)",
+                    OnSelect = () => OpenBreakGlassSecretRecord(p.CustomerId, p.PendingSecretId, p.CustomerName),
+                }).ToList()),
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Opens one pending secret (GET .../break-glass/:pendingSecretId) as a full-panel record
+    /// with its verification attempts, a confirm-armed admin-override (only when the secret is still
+    /// awaiting delivery — the server enforces this too), and links to the customer's override audit
+    /// trail and full break-glass history. Reason/emails for the override are collected via
+    /// write-through <see cref="WorkspaceEdit"/> fields, the same local-capture pattern the Script
+    /// Library record uses for its required variables.</summary>
+    private void OpenBreakGlassSecretRecord(int customerId, int pendingSecretId, string? customerName)
+    {
+        Models.BreakGlassSecretDetail detail;
+        try
+        {
+            detail = _breakGlassService.GetSecretDetailAsync(customerId, pendingSecretId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "break-glass-secret",
+                Id = $"break-glass-secret-{pendingSecretId}",
+                Eyebrow = "Break-Glass",
+                Title = $"Pending secret #{pendingSecretId}",
+                Sub = customerName ?? $"Customer #{customerId}",
+                Body = ("Error", DescribeBreakGlassError(ex)),
+            });
+            return;
+        }
+
+        var liveInvites = detail.Attempts.Count(a => a.LinkStatus == "pending");
+
+        // Local write-through capture for the override inputs (no dirty state, no save step — same
+        // as the Script Library record's RequiredVariables capture).
+        var overrideReason = string.Empty;
+        var overrideEmails = string.Empty;
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "break-glass-secret",
+            Id = $"break-glass-secret-{pendingSecretId}",
+            Eyebrow = "Break-Glass",
+            Title = $"Pending secret #{detail.PendingSecretId}",
+            Sub = $"{customerName ?? $"Customer #{customerId}"} · {detail.Status}",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Status", Value = detail.Status },
+                new WorkspaceFact { Label = "Attempts", Value = detail.Attempts.Count.ToString() },
+                new WorkspaceFact { Label = "Live invites", Value = liveInvites.ToString() },
+                new WorkspaceFact { Label = "Created", Value = detail.CreatedAt.ToLocalTime().ToString("g"), Prose = true },
+                new WorkspaceFact
+                {
+                    Label = "Delivered",
+                    Value = detail.DeliveredAt.HasValue
+                        ? $"{detail.DeliveredAt.Value.ToLocalTime():g}{(string.IsNullOrEmpty(detail.DeliveredToEmail) ? "" : $" · {detail.DeliveredToEmail}")}"
+                        : "not yet",
+                    Prose = true,
+                },
+            },
+            List = detail.Attempts.Count == 0
+                ? null
+                : ("Verification attempts", detail.Attempts.Select(a => new WorkspaceListRow
+                {
+                    Id = a.Id.ToString(),
+                    Name = string.IsNullOrEmpty(a.InvitedEmail) ? "(no invited email)" : a.InvitedEmail!,
+                    Sub = $"{a.LinkStatus ?? "?"}{(string.IsNullOrEmpty(a.VerificationOutcome) ? "" : $" · {a.VerificationOutcome}")}"
+                          + (a.FailedAttemptCount > 0 ? $" · {a.FailedAttemptCount} failed" : ""),
+                    Right = a.AttemptedAt.HasValue ? a.AttemptedAt.Value.ToLocalTime().ToString("g") : a.CreatedAt.ToLocalTime().ToString("g"),
+                    OnSelect = () => { }, // attempts have no deeper record — display only
+                }).ToList()),
+        };
+
+        var isPending = detail.Status == "pending_delivery";
+        if (isPending)
+        {
+            spec.Edits.Add(new WorkspaceEdit
+            {
+                Key = "override-reason",
+                Label = "Override reason (required)",
+                Value = string.Empty,
+                OnChange = v => overrideReason = v,
+            });
+            spec.Edits.Add(new WorkspaceEdit
+            {
+                Key = "override-emails",
+                Label = "Reissue to emails (optional, comma-separated — blank reuses original recipients)",
+                Value = string.Empty,
+                OnChange = v => overrideEmails = v,
+            });
+            spec.Actions.Add(new WorkspaceAction
+            {
+                Label = "Force reset & reissue",
+                Confirm = true,
+                Danger = true,
+                OnSelect = () => RunBreakGlassOverride(customerId, pendingSecretId, customerName, () => overrideReason, () => overrideEmails),
+            });
+        }
+
+        spec.Actions.Add(new WorkspaceAction
+        {
+            Label = "View override audit trail",
+            OnSelect = () => OpenBreakGlassAuditRecord(customerId, customerName),
+        });
+        spec.Actions.Add(new WorkspaceAction
+        {
+            Label = "View customer break-glass history",
+            OnSelect = () => OpenBreakGlassHistoryRecord(customerId, customerName),
+        });
+
+        _shellRegistry.OpenContextual(
+            new TrailEntry("break-glass-secret", pendingSecretId.ToString(), $"Break-Glass #{pendingSecretId}",
+                () => OpenBreakGlassSecretRecord(customerId, pendingSecretId, customerName)),
+            new ContextualTabSpec
+            {
+                Id = "break-glass-secret",
+                Label = "Break-Glass",
+                Groups =
+                {
+                    new RibbonGroupSpec
+                    {
+                        Label = "Actions",
+                        Large = { new RibbonCommandSpec
+                        {
+                            Label = isPending ? "Force reset & reissue" : "View audit trail",
+                            Intent = RibbonIntent.Record,
+                            OnSelect = () => { },
+                        } },
+                    },
+                },
+            },
+            onSearchEverything: () => PaletteOverlay.Open());
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Performs the real POST .../admin-override with the operator-supplied reason and
+    /// optional reissue recipients, then opens a result record stating the honest outcome — the new
+    /// pending-secret id and reissue count on success, or the server's own refusal message (409
+    /// still-live links / not awaiting delivery / write-back-gate block, 5xx) on failure. Reason is
+    /// validated client-side first to avoid a guaranteed 400.</summary>
+    private void RunBreakGlassOverride(int customerId, int pendingSecretId, string? customerName, Func<string> reasonGetter, Func<string> emailsGetter)
+    {
+        var reason = (reasonGetter() ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(reason))
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "break-glass-override-result",
+                Id = $"break-glass-override-{pendingSecretId}",
+                Eyebrow = "Break-Glass Override",
+                Title = "Reason required",
+                Sub = customerName ?? $"Customer #{customerId}",
+                Body = ("Not submitted", "An override reason is required. Enter one on the pending secret, then arm the action again."),
+            });
+            return;
+        }
+
+        var emails = (emailsGetter() ?? string.Empty)
+            .Split(new[] { ',', ';', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(e => e.Trim())
+            .Where(e => e.Length > 0)
+            .ToList();
+
+        try
+        {
+            var result = _breakGlassService
+                .AdminOverrideAsync(customerId, pendingSecretId, reason, emails.Count > 0 ? emails : null)
+                .GetAwaiter().GetResult();
+
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "break-glass-override-result",
+                Id = $"break-glass-override-{pendingSecretId}",
+                Eyebrow = "Break-Glass Override",
+                Title = "Override complete",
+                Sub = customerName ?? $"Customer #{customerId}",
+                Facts =
+                {
+                    new WorkspaceFact { Label = "New secret", Value = $"#{result.NewPendingSecretId}" },
+                    new WorkspaceFact { Label = "Reissued", Value = result.Reissued.ToString() },
+                    new WorkspaceFact { Label = "Sent", Value = result.Sent.ToString() },
+                },
+                Body = ("What happened",
+                    $"The old pending secret #{pendingSecretId} was force-reset and a replacement (#{result.NewPendingSecretId}) "
+                    + $"was issued and sent to {result.Sent} recipient(s). The override is recorded in this customer's audit trail."),
+                Actions =
+                {
+                    new WorkspaceAction { Label = "View override audit trail", OnSelect = () => OpenBreakGlassAuditRecord(customerId, customerName) },
+                    new WorkspaceAction { Label = "Back to pending requests", OnSelect = () => OpenBreakGlassPendingList() },
+                },
+            });
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "break-glass-override-result",
+                Id = $"break-glass-override-{pendingSecretId}",
+                Eyebrow = "Break-Glass Override",
+                Title = "Override refused",
+                Sub = customerName ?? $"Customer #{customerId}",
+                Body = ("Server response", DescribeBreakGlassError(ex)),
+                Actions =
+                {
+                    new WorkspaceAction { Label = "Back to secret", OnSelect = () => OpenBreakGlassSecretRecord(customerId, pendingSecretId, customerName) },
+                },
+            });
+        }
+    }
+
+    /// <summary>Opens the per-customer override audit trail (GET .../break-glass/audit) — #3480's
+    /// "audit trail view" checklist item — as a full-panel record workspace list.</summary>
+    private void OpenBreakGlassAuditRecord(int customerId, string? customerName)
+    {
+        System.Collections.Generic.IReadOnlyList<Models.BreakGlassAuditEntry> audit;
+        try
+        {
+            audit = _breakGlassService.GetAuditAsync(customerId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "break-glass-audit",
+                Id = $"break-glass-audit-{customerId}",
+                Eyebrow = "Break-Glass Audit",
+                Title = customerName ?? $"Customer #{customerId}",
+                Sub = "Could not load",
+                Body = ("Error", DescribeBreakGlassError(ex)),
+            });
+            return;
+        }
+
+        _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+        {
+            Kind = "break-glass-audit",
+            Id = $"break-glass-audit-{customerId}",
+            Eyebrow = "Break-Glass Audit",
+            Title = $"Override audit — {customerName ?? $"Customer #{customerId}"}",
+            Sub = audit.Count == 0 ? "No admin overrides recorded for this customer" : $"{audit.Count} override(s), most recent first",
+            List = audit.Count == 0
+                ? null
+                : ("Overrides", audit.Select(a => new WorkspaceListRow
+                {
+                    Id = a.Id.ToString(),
+                    Name = a.AdminName,
+                    Sub = string.IsNullOrEmpty(a.Reason) ? "(no reason recorded)" : a.Reason!,
+                    Right = a.CreatedAt.ToLocalTime().ToString("g"),
+                    OnSelect = () => { }, // audit rows are terminal display
+                }).ToList()),
+        });
+    }
+
+    /// <summary>Opens the full per-customer break-glass history (GET .../customers/:id/break-glass —
+    /// any status), the "per-tenant list" half of #3480's first checklist item. Rows drill back into
+    /// the same per-secret detail record.</summary>
+    private void OpenBreakGlassHistoryRecord(int customerId, string? customerName)
+    {
+        System.Collections.Generic.IReadOnlyList<Models.BreakGlassSecretHistoryItem> history;
+        try
+        {
+            history = _breakGlassService.GetCustomerHistoryAsync(customerId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "break-glass-history",
+                Id = $"break-glass-history-{customerId}",
+                Eyebrow = "Break-Glass",
+                Title = customerName ?? $"Customer #{customerId}",
+                Sub = "Could not load",
+                Body = ("Error", DescribeBreakGlassError(ex)),
+            });
+            return;
+        }
+
+        _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+        {
+            Kind = "break-glass-history",
+            Id = $"break-glass-history-{customerId}",
+            Eyebrow = "Break-Glass",
+            Title = $"Break-Glass history — {customerName ?? $"Customer #{customerId}"}",
+            Sub = history.Count == 0 ? "No break-glass secrets on record for this customer" : $"{history.Count} secret(s), most recent first",
+            List = history.Count == 0
+                ? null
+                : ("Secrets", history.Select(h => new WorkspaceListRow
+                {
+                    Id = h.PendingSecretId.ToString(),
+                    Name = $"Secret #{h.PendingSecretId}",
+                    Sub = $"{h.Status} · {h.CreatedAt.ToLocalTime():g}"
+                          + (string.IsNullOrEmpty(h.DeliveredToEmail) ? "" : $" · {h.DeliveredToEmail}"),
+                    Right = h.DeliveredAt.HasValue ? "delivered" : h.Status,
+                    OnSelect = () => OpenBreakGlassSecretRecord(customerId, h.PendingSecretId, customerName),
+                }).ToList()),
+        });
+    }
+
+    /// <summary>Best-effort human message from a <see cref="BreakGlassServiceException"/> (which
+    /// already parses the route's <c>{ error, detail, blockedBy }</c>) or any other transport error.</summary>
+    private static string DescribeBreakGlassError(Exception ex) => ex switch
+    {
+        BreakGlassServiceException bge => bge.Message,
+        _ => ex.Message,
+    };
 
     /// <summary>Real rows from GET /api/msp/change-requests, filtered client-side to the active
     /// tenant. Selecting a row opens the contextual tab + right-panel workspace with a real,
@@ -1063,6 +1440,7 @@ public partial class MainWindow : FluentWindow
             new() { Id = "dest:sow", Type = PaletteType.Destination, Name = "SOW & Assessment", Sub = "Gate, SOW, Drift & Snapshot", Run = () => ShowAssessmentView() },
             new() { Id = "dest:telemetry", Type = PaletteType.Destination, Name = "Live Telemetry Console", Sub = "Engines, Drift, SOW & Feed", Run = () => ShowTelemetryView() },
             new() { Id = "dest:vault", Type = PaletteType.Destination, Name = "Credential Vault", Sub = "Per-tenant, local-only, DPAPI-encrypted (#3461)", Run = () => ShowDocument(VaultPanel) },
+            new() { Id = "dest:break-glass", Type = PaletteType.Destination, Name = "Break-Glass Requests", Sub = "Cross-tenant pending break-glass deliveries (#3480)", Run = () => OpenBreakGlassPendingList() },
             new() { Id = "act:open-all", Type = PaletteType.Action, Name = "Open all portals", Run = () => _ = OpenAllPortalsAsync() },
             new() { Id = "ans:open-tabs", Type = PaletteType.Answer, Name = "Open portal tabs", Live = _tabs.Count.ToString(), Run = () => { } },
         };
@@ -1181,6 +1559,7 @@ public partial class MainWindow : FluentWindow
 
         _launchControlActionsService.AuthToken = token;
         _changeControlService.AuthToken = token;
+        _breakGlassService.AuthToken = token;
         _adminRetainerService.AuthToken = token;
         _remediationTrackerService.AuthToken = token;
         _retainerService.AuthToken = token;
