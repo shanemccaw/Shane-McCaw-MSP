@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, ChevronRight, Info } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { EditWebhookDialog } from "@/components/webhooks/EditWebhookDialog";
 
 /**
  * Webhooks (#3523, real design landed at
@@ -26,12 +27,9 @@ import { useAuth } from "@/lib/auth-context";
  *   - POST   /api/portal/webhooks/:webhookId/rotate-secret
  *   - GET    /api/portal/webhooks/:webhookId/deliveries
  *
- * "Edit label, URL and events" intentionally renders an inert confirm dialog
- * ("Editing is wired, this prototype is not") rather than a pre-filled form —
- * that is the design's own explicit, final copy (CLAUDE.md "Copy is final"),
- * carried into this ledger's own ledger entry rather than authored here.
- * PATCH itself is real and used for the isActive (pause/resume) toggle,
- * which the design does wire.
+ * "Edit label, URL and events" opens a real, pre-filled `EditWebhookDialog`
+ * (#3546) that PATCHes only the fields actually changed against the same
+ * real endpoint the isActive (pause/resume) toggle already used.
  */
 
 interface Webhook {
@@ -64,7 +62,7 @@ interface DeliveryLogEntry {
 
 type DataState = "loading" | "live" | "failed";
 type SecretMoment = { mode: "create" | "rotate"; label: string; value: string } | null;
-type ConfirmSpec = { kind: "rotate" | "delete" | "edit"; webhookId: string; label: string } | null;
+type ConfirmSpec = { kind: "rotate" | "delete"; webhookId: string; label: string } | null;
 
 const MAX_ATTEMPTS = 3;
 
@@ -163,6 +161,7 @@ export function WebhooksContent() {
   const [copied, setCopied] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmSpec>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [ledgerOpen, setLedgerOpen] = useState(true);
@@ -286,29 +285,17 @@ export function WebhooksContent() {
         cta: "Rotate now",
         bg: ACCENT,
       };
-    if (confirm.kind === "delete")
-      return {
-        title: `Delete ${confirm.label}?`,
-        body: "The endpoint is removed and its delivery history is removed with it. There is no archive and no undo.",
-        note: "If you only want deliveries to stop, pause it instead — a paused endpoint keeps its history.",
-        cta: "Delete endpoint",
-        bg: "#b91c1c",
-      };
     return {
-      title: "Editing is wired, this prototype is not",
-      body: "Label, URL, events and the paused state are all patchable against the real endpoint. The form is the same one used to create — this design has not built the pre-filled version yet.",
-      note: "Owner, secret and delivery history are not editable by any code path.",
-      cta: "Understood",
-      bg: ACCENT,
+      title: `Delete ${confirm.label}?`,
+      body: "The endpoint is removed and its delivery history is removed with it. There is no archive and no undo.",
+      note: "If you only want deliveries to stop, pause it instead — a paused endpoint keeps its history.",
+      cta: "Delete endpoint",
+      bg: "#b91c1c",
     };
   })();
 
   const runConfirm = async () => {
     if (!confirm) return;
-    if (confirm.kind === "edit") {
-      setConfirm(null);
-      return;
-    }
     setConfirmBusy(true);
     try {
       if (confirm.kind === "delete") {
@@ -771,7 +758,7 @@ export function WebhooksContent() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setConfirm({ kind: "edit", webhookId: wh.webhookId, label: wh.label })}
+                        onClick={() => setEditingId(wh.webhookId)}
                         className="rounded-md border px-3 py-1.5 text-[11.5px] font-semibold"
                         style={{ borderColor: "rgba(255,255,255,.14)", color: "#cbd5e1" }}
                         data-testid={`webhook-edit-${wh.webhookId}`}
@@ -995,6 +982,27 @@ export function WebhooksContent() {
           </div>
         </div>
       )}
+
+      {editingId &&
+        (() => {
+          const editingWebhook = webhooks.find((w) => w.webhookId === editingId);
+          if (!editingWebhook) return null;
+          return (
+            <EditWebhookDialog
+              webhook={editingWebhook}
+              eventCatalog={eventCatalog}
+              deadEvent={DEAD_EVENT}
+              fetchWithAuth={fetchWithAuth}
+              onClose={() => setEditingId(null)}
+              onSaved={(patch) => {
+                setWebhooks((prev) =>
+                  prev.map((w) => (w.webhookId === editingId ? { ...w, ...patch } : w)),
+                );
+                setEditingId(null);
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }

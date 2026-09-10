@@ -2,7 +2,7 @@
   "issue": 3523,
   "feature": "Webhooks (#1597) — the real Webhooks page in artifacts/portal, wired to the already-built webhooks.ts endpoints (docs/webhooks-contract-pack.md). Real design landed in Design/portal/design_handoff_full_site/screens/Webhooks.dc.html; page lives at artifacts/portal/src/pages/webhooks.tsx, route /webhooks. Design's own copy (and sync-record.md:64) settle #3523's own decision ask: 'Reveal' is dropped — the full secret is shown only once, at creation and at rotation.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "e5ecd7891",
 
   "notes": [
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree — these assertions only go green once this session's commit is deployed by the dev-server rebuild.",
@@ -11,7 +11,8 @@
     "TEST3 creates a real webhook with eventTypes ['auth.login'] (a real, always-present canonical EVENT_TYPES member, not one of the design's own illustrative/dead ones) and asserts the response carries the full plaintext 'secret' field (webhooks.ts:193) exactly once — this is the create-moment reveal the page's secret modal is built on.",
     "TEST4 asserts the list endpoint (GET /api/portal/webhooks) never re-exposes that secret — only secretPrefix — proving the page's 'no reveal after creation' copy matches the real wire contract, not just the design's own claim.",
     "TEST8 (DELETE) is the manifest's own cleanup step — it always runs, keeping this a repeatable, non-accumulating test run against a real account.",
-    "UI steps deliberately CANCEL rather than submit the create form (webhooks-cancel-create, not -form-submit) — the real create/secret-modal/rotate/delete round trip is already proven end to end by apiTests TEST3-TEST8 above, including its own cleanup; a UI run that also created a row would leave a second, UI-only row behind on every repeated run with no matching cleanup path from this side. Rendering + interactivity of the create form is proven here without persisting anything."
+    "UI steps deliberately CANCEL rather than submit the create form (webhooks-cancel-create, not -form-submit) — the real create/secret-modal/rotate/delete round trip is already proven end to end by apiTests TEST3-TEST8 above, including its own cleanup; a UI run that also created a row would leave a second, UI-only row behind on every repeated run with no matching cleanup path from this side. Rendering + interactivity of the create form is proven here without persisting anything.",
+    "#3546 (sessionTag 3546) — 'Edit label, URL and events' used to open an inert confirm stub; it now opens a real, pre-filled EditWebhookDialog that PATCHes against the same already-proven endpoint. TEST5B proves the PATCH contract accepts label+url+eventTypes together (not just isActive, which TEST5 already covered). UI10-UI13 prove the button now opens the real dialog (data-testid webhook-edit-modal) rather than the old confirm-stub copy, and that Cancel closes it without writing — the UI round trip doesn't submit for the same no-second-row reason UI8/UI9 above don't submit the create form; the real PATCH path is proven by TEST5B and TEST5."
   ],
 
   "apiTests": [
@@ -66,6 +67,15 @@
       "expect": { "status": 200, "jsonPath": "$.webhook.isActive", "value": false }
     },
     {
+      "name": "TEST5B (#3546, sessionTag 3546) — PATCH accepts label+url+eventTypes together, matching EditWebhookDialog's multi-field save.",
+      "sessionTag": "3546",
+      "method": "PATCH",
+      "path": "/api/portal/webhooks/{{webhookId}}",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "label": "shaneapp-runtest webhook #3523 (edited #3546)", "url": "https://example.com/webhook-test-3523-edited", "eventTypes": ["auth.login", "auth.logout"] },
+      "expect": { "status": 200, "jsonPath": "$.webhook.label", "value": "shaneapp-runtest webhook #3523 (edited #3546)" }
+    },
+    {
       "name": "TEST6 — POST rotate-secret returns a NEW plaintext secret, once, matching the page's rotate modal.",
       "method": "POST",
       "path": "/api/portal/webhooks/{{webhookId}}/rotate-secret",
@@ -106,6 +116,24 @@
     { "name": "UI7 — the submit button is now enabled (real client-side http/https + label validation, never submitted).", "action": "expect", "selector": "[data-testid='webhooks-form-submit']", "state": "visible" },
 
     { "name": "UI8 — cancel rather than submit (see notes — apiTests already proves the real create/rotate/delete round trip with its own cleanup).", "action": "click", "selector": "[data-testid='webhooks-cancel-create']", "critical": true },
-    { "name": "UI9 — the create form is gone after cancel.", "action": "expect", "selector": "[data-testid='webhooks-create-form']", "state": "absent" }
+    { "name": "UI9 — the create form is gone after cancel.", "action": "expect", "selector": "[data-testid='webhooks-create-form']", "state": "absent" },
+
+    { "name": "UI10 (#3546, sessionTag 3546) — reopen the create form, this time to submit, so there is a real row to open the Edit dialog against.", "sessionTag": "3546", "action": "click", "selector": "[data-testid='webhooks-new-endpoint']", "critical": true },
+    { "name": "UI11 — fill the label.", "sessionTag": "3546", "action": "input", "selector": "[data-testid='webhooks-form-label']", "value": "shaneapp-runtest UI edit webhook #3546" },
+    { "name": "UI12 — fill the URL.", "sessionTag": "3546", "action": "input", "selector": "[data-testid='webhooks-form-url']", "value": "https://example.com/webhook-ui-edit-3546" },
+    { "name": "UI13 — submit for real this time.", "sessionTag": "3546", "action": "click", "selector": "[data-testid='webhooks-form-submit']", "critical": true },
+    { "name": "UI14 — the one-time secret modal appears.", "sessionTag": "3546", "action": "expect", "selector": "[data-testid='webhook-secret-modal']", "state": "visible", "critical": true },
+    { "name": "UI15 — dismiss it; the new row is already open (submitCreate sets openId to the new webhook).", "sessionTag": "3546", "action": "click", "selector": "[data-testid='webhook-secret-dismiss']", "critical": true },
+
+    { "name": "UI16 — click the real row's Edit button (prefix-matched, id unknown at manifest-authoring time — see remediation-tracker-e2e.json for the same pattern).", "sessionTag": "3546", "action": "click", "selector": "[data-testid^='webhook-edit-']", "critical": true },
+    { "name": "UI17 — this is the real EditWebhookDialog, not the old inert confirm stub.", "sessionTag": "3546", "action": "expect", "selector": "[data-testid='webhook-edit-modal']", "state": "visible", "critical": true },
+    { "name": "UI18 — the label field is visible, pre-filled (EditWebhookDialog seeds useState from the real row — see apiTests TEST5B for the PATCH contract this form calls).", "sessionTag": "3546", "action": "expect", "selector": "[data-testid='webhook-edit-label']", "state": "visible", "critical": true },
+    { "name": "UI19 — the URL field is visible.", "sessionTag": "3546", "action": "expect", "selector": "[data-testid='webhook-edit-url']", "state": "visible" },
+    { "name": "UI20 — cancel rather than save (TEST5B already proves the real multi-field PATCH round trip from the API side).", "sessionTag": "3546", "action": "click", "selector": "[data-testid='webhook-edit-cancel']", "critical": true },
+    { "name": "UI21 — the edit dialog is gone after cancel, with nothing written.", "sessionTag": "3546", "action": "expect", "selector": "[data-testid='webhook-edit-modal']", "state": "absent" },
+
+    { "name": "UI22 — CLEANUP: delete the UI-created row so this run leaves nothing behind (prefix-matched, same reasoning as UI16).", "sessionTag": "3546", "action": "click", "selector": "[data-testid^='webhook-delete-']", "critical": true },
+    { "name": "UI23 — confirm the delete.", "sessionTag": "3546", "action": "click", "selector": "[data-testid='webhook-confirm-go']", "critical": true },
+    { "name": "UI24 — the confirm modal is gone after the delete completes.", "sessionTag": "3546", "action": "expect", "selector": "[data-testid='webhook-confirm-modal']", "state": "absent" }
   ]
 }
