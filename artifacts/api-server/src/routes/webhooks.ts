@@ -409,6 +409,14 @@ router.post(
 );
 
 // ── GET /api/portal/webhooks/:webhookId/deliveries ───────────────────────────
+//
+// No POST .../replay route exists here, deliberately. Once a delivery's attempt
+// count exhausts MAX_ATTEMPTS (webhook-delivery.ts) its status becomes `failed`
+// and stays there — decided, not merely unbuilt (#3525): the landed Design
+// (Design/portal/design_handoff_full_site/screens/Webhooks.dc.html) renders that
+// as an honest terminal state ("There is no replay — this event is gone.")
+// rather than a working Replay control. Do not add a replay endpoint without a
+// new product decision superseding this one.
 
 router.get(
   "/portal/webhooks/:webhookId/deliveries",

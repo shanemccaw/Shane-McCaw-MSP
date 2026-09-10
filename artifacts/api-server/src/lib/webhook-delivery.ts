@@ -161,7 +161,12 @@ async function attemptDelivery(
     return true;
   }
 
-  // Failed — determine if we retry
+  // Failed — determine if we retry. `failed` is a genuine terminal state: once
+  // attempts are exhausted nothing in this file (or anywhere else) ever moves a
+  // delivery back to `pending`/`retrying`. That is a decided product choice, not
+  // an unbuilt gap — the landed Design (Webhooks.dc.html) renders the honest
+  // "Terminal after 3 attempts. There is no replay — this event is gone." copy
+  // for exactly this state rather than a working Replay control. See #3525.
   const isLastAttempt = attemptNumber >= MAX_ATTEMPTS;
   const nextRetryAt = isLastAttempt
     ? null

@@ -416,15 +416,22 @@ rather than invented as a route-header list:
   today (rotate-secret, PATCH, DELETE — replay has no backend at all, see
   next point). This is a wiring gap in the Design page, not a backend
   limitation.
-- **Replay has no backend at all.** `WH_REPLAY`-style labels
-  (`liveReplayLabel`, `webhooksWire.ts:198-200`; `whReplayLabel`,
-  referenced from `webhooksModel.ts`) render a "Replay N dropped" button, but
-  there is no `POST .../replay` route anywhere in `webhooks.ts` and no
-  function anywhere in `webhook-delivery.ts` that re-attempts a `failed`
-  delivery. Once `attempt >= MAX_ATTEMPTS` (3) a delivery is terminal — its
-  `status` becomes `failed` and nothing in the codebase ever transitions it
-  back to `pending`/`retrying`. This is a real, unbuilt capability with no
-  issue number yet.
+- **Replay has no backend at all — `DECIDED` (#3525), not built.** The old
+  `WH_REPLAY`-style labels (`liveReplayLabel`, `webhooksWire.ts:198-200`;
+  `whReplayLabel`, referenced from `webhooksModel.ts`) rendered a "Replay N
+  dropped" button in the retired `portal-v2-webhooks.tsx`, but there was no
+  `POST .../replay` route anywhere in `webhooks.ts` and no function anywhere
+  in `webhook-delivery.ts` that re-attempts a `failed` delivery. Once
+  `attempt >= MAX_ATTEMPTS` (3) a delivery is terminal — its `status` becomes
+  `failed` and nothing in the codebase ever transitions it back to
+  `pending`/`retrying`. **The landed Design resolves this**
+  (`Webhooks.dc.html:186-188`, `d.terminal` branch): no Replay control is
+  drawn at all; a failed delivery renders the honest copy "Terminal after 3
+  attempts. There is no replay — this event is gone." (also carried in the
+  page's own "what this page deliberately does not do" ledger,
+  `Webhooks.dc.html:486`). No replay route was added — see the matching
+  decision comments at `webhooks.ts` (above the deliveries route) and
+  `webhook-delivery.ts` (`attemptDelivery`'s terminal-status branch).
 - **No admin-facing "why is this route CustomerUser vs MSP" scoping note**
   exists in `webhooks.ts` the way other modules document their role floor —
   `resolveOwner()` (§2) is the only scoping logic and is undocumented beyond
@@ -444,13 +451,14 @@ design-fixture event catalogue groups its (fictional) events under the same
 grouping is shared, the underlying event/condition wire strings are not."*
 No other real edge exists to record for this module today.
 
-## 9. Summary — CURRENT vs. open (no `DECIDED` items exist yet for this module)
+## 9. Summary — CURRENT vs. open vs. DECIDED
 
-Every gap below is a genuine open architecture question with **no issue
-number filed against it yet** — per #1577's own rule, that means none of
-these can be marked `DECIDED`; they are listed here so Shane can turn them
-into sub-issues before Design builds against them, the same discipline
-already applied to Change Control / Risk Register.
+Most gaps below remain genuine open architecture questions with **no issue
+number filed against them** — per #1577's own rule, that means those stay
+un-`DECIDED`; they are listed here so Shane can turn them into sub-issues
+before Design builds against them, the same discipline already applied to
+Change Control / Risk Register. One has since moved to `DECIDED`, resolved
+by the landed Design plus its own build issue (marked below).
 
 | Gap | Where verified |
 |---|---|
@@ -461,7 +469,7 @@ already applied to Change Control / Risk Register.
 | `requestBodySnapshot` is stored per-delivery but never served | §2 (deliveries) |
 | Secret "Reveal" button has no backing endpoint after creation/rotation | §6 |
 | Rotate / Edit / Delete buttons render but are unwired (`onClick`-less) despite real backend support | §7 |
-| Replay has no backend at all — not just unwired, unbuilt | §7 |
+| `DECIDED` (#3525) — Replay has no backend and none will be built; the landed Design renders an honest terminal state instead of a Replay control | §7 |
 | No pagination past the most recent 200 deliveries | §2 (deliveries) |
 | Webhook health "state" is a client-side heuristic, not a stored/served value | §3 |
 | #1597's quoted "19 live / 4 pending_detector" split does not match the live DB (23/0 today) | §4(C) |
