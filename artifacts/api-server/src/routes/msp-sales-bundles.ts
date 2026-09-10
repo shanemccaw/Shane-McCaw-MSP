@@ -41,6 +41,7 @@ const log = logger.child({ channel: "tenant.msp-admin" });
 import { getRequestContext } from "../lib/request-context.ts";
 import { z } from "zod";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 
 const router = Router();
 
@@ -52,17 +53,6 @@ function p(val: string | string[] | undefined): string {
 
 function apiErr(res: Response, status: number, message: string) {
   res.status(status).json({ error: message });
-}
-
-function getMspId(req: Request): number | null {
-  const user = req.user!;
-  if (user.role === "admin" || user.mspRole === LEGACY_ROLE.platformAdmin) {
-    const q = parseInt(p(req.query["mspId"] as string | undefined), 10);
-    // Fall back to the user's own mspId (e.g. PlatformAdmin browsing their own MSP)
-    if (isNaN(q)) return user.mspId ?? null;
-    return q;
-  }
-  return user.mspId ?? null;
 }
 
 /** Compute internal cost from a list of package keys. */
@@ -154,7 +144,7 @@ router.get(
   "/msp/monitoring-packages",
   requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
-    const mspId = getMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
     try {
       const packages = await db
@@ -189,7 +179,7 @@ router.get(
   "/msp/sales-bundles/pricing-preview",
   requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
-    const mspId = getMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
     try {
       const raw = req.query["packageKeys"];
@@ -239,7 +229,7 @@ router.get(
   "/msp/sales-bundles",
   requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
-    const mspId = getMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
     try {
       const status = p(req.query["status"] as string | undefined) || null;
@@ -283,7 +273,7 @@ router.post(
   "/msp/sales-bundles",
   requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
-    const mspId = getMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     const parsed = createBundleSchema.safeParse(req.body);
@@ -363,7 +353,7 @@ router.get(
   "/msp/sales-bundles/:bundleId",
   requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
-    const mspId = getMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
     const bundleId = p(req.params["bundleId"]);
     try {
@@ -414,7 +404,7 @@ router.patch(
   "/msp/sales-bundles/:bundleId",
   requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
-    const mspId = getMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
     const bundleId = p(req.params["bundleId"]);
 
@@ -506,7 +496,7 @@ router.delete(
   "/msp/sales-bundles/:bundleId",
   requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
-    const mspId = getMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
     const bundleId = p(req.params["bundleId"]);
     try {
@@ -559,7 +549,7 @@ router.get(
   "/msp/sales-bundles/:bundleId/assignments",
   requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
-    const mspId = getMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
     const bundleId = p(req.params["bundleId"]);
     try {
@@ -615,7 +605,7 @@ router.post(
   "/msp/sales-bundles/:bundleId/assignments",
   requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
-    const mspId = getMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
     const bundleId = p(req.params["bundleId"]);
 
@@ -713,7 +703,7 @@ router.delete(
   "/msp/sales-bundles/:bundleId/assignments/:assignmentId",
   requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
-    const mspId = getMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
     const bundleId = p(req.params["bundleId"]);
     const assignmentId = p(req.params["assignmentId"]);
@@ -783,7 +773,7 @@ router.get(
   "/msp/customers/:customerId/bundle-assignments",
   requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
-    const mspId = getMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
     const customerId = parseInt(p(req.params["customerId"]), 10);
     if (isNaN(customerId)) { apiErr(res, 400, "Invalid customerId"); return; }

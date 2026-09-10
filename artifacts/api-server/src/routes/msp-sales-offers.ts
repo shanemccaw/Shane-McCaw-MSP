@@ -51,7 +51,7 @@ import {
 } from "../lib/sse-channels";
 import { logger } from "../lib/logger";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
-import { resolveMspId } from "../lib/resolve-msp-id.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import type { AuthUser } from "../middlewares/requireAuth";
 
 const log = logger.child({ channel: "engine.offer" });
@@ -63,9 +63,6 @@ const router: IRouter = Router();
 function apiErr(res: Response, status: number, message: string): void {
   res.status(status).json({ error: message });
 }
-
-/** Resolve the calling MSP's id from the JWT.
- *  PlatformAdmin can override with ?mspId= query param. */
 
 // ── GET /api/msp/:mspId/sales-offers ──────────────────────────────────────────
 
@@ -173,7 +170,7 @@ router.post(
   requireCapability("ladder.msp-operator"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = await resolveMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {
@@ -272,7 +269,7 @@ router.get(
   "/msp/sales-offers/:id/events",
   requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = await resolveMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {
@@ -307,7 +304,7 @@ router.patch(
   requireCapability("ladder.msp-operator"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = await resolveMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {
@@ -357,7 +354,7 @@ router.patch(
   requireCapability("ladder.msp-operator"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = await resolveMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {
@@ -405,7 +402,7 @@ router.delete(
   requireCapability("ladder.msp-operator"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = await resolveMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {
