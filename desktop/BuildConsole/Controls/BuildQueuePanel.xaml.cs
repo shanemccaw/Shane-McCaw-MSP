@@ -1350,6 +1350,15 @@ namespace BuildConsole.Controls
             public int ManuallyPaused { get; init; } // queued rows in PausedBuildIds
             public int LimitPaused { get; init; }    // LimitPausedStatus rows
             public bool Provisional { get; init; }   // true on a cold start (no open-issue set yet)
+
+            /// <summary>Git #3520 — every row that is genuinely active/in-progress right now:
+            /// InQueue (queued + limit-paused) plus Verifying (a build that finished but whose
+            /// GitHub issue hasn't closed yet — still real, active work, not a terminal state).
+            /// #3519's live ground-truth query found 12 queued + 1 running + 31 verifying = 44
+            /// real active rows while the header's only summable figure (InQueue) read 12 —
+            /// Shane read that as "the total" and it silently dropped the 31 verifying rows.
+            /// This is the one real total the header should show alongside the breakdown.</summary>
+            public int Total => InQueue + Verifying;
         }
 
         /// <summary>
@@ -1403,7 +1412,7 @@ namespace BuildConsole.Controls
 
             string blockedText = c.Provisional ? $"{c.Blocked}*" : c.Blocked.ToString();
             QueueStatusCountsText.Text =
-                $"In queue: {c.InQueue}  ·  Blocked: {blockedText}  ·  Up next: {c.UpNext}  ·  Verifying: {c.Verifying}";
+                $"Total: {c.Total}  ·  In queue: {c.InQueue}  ·  Blocked: {blockedText}  ·  Up next: {c.UpNext}  ·  Verifying: {c.Verifying}";
 
             if (c.Provisional)
             {
