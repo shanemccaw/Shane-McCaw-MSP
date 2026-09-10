@@ -944,14 +944,15 @@ namespace BuildConsole
             // the dispatch with no second manual click.
             LeftSidebar.BoardRefreshCompleted += async (s, e) => await DispatchPanel.RecheckPendingBuildCommentsAsync();
 
-            // Git #2685 — same event-piggyback pattern as the hooks above. A self-blocked session
-            // that wrote a real 🛑 BLOCKED bookend and exited cleanly gets marked 'done' by the
-            // watcher (its only completion signal), then dedup-locks that issue forever because
-            // 'done' is in none of the dedup dead-checks. Ride this same manual board refresh to
-            // reconcile every false-done row against its authoritative origin/main bookend: reset it
-            // to 'canceled' (re-dispatchable) and move its board Status to Backlog (a conscious
-            // re-dispatch, never an auto-relaunch). Fail-soft — a reconcile error never breaks the
-            // cascade.
+            // Git #2685 / #3513 — same event-piggyback pattern as the hooks above. Two false-done
+            // shapes get reconciled here on every manual board refresh (see FalseDoneReconciler):
+            // (A #2685) a self-blocked session that wrote a real 🛑 BLOCKED bookend and exited cleanly
+            // was marked 'done'/'verifying' by the watcher and then dedup-locked that issue forever;
+            // (B #3513) a row promoted to 'done' off an empty/truncated open-issue snapshot while its
+            // real GitHub issue is still OPEN — 69 such rows were measured live. Each false-done is
+            // reset to 'canceled' + board Status → Backlog (re-dispatchable) when no verified DONE
+            // bookend exists, or reverted 'done' → 'verifying' when the work genuinely landed and the
+            // issue simply was not really closed. Fail-soft — a reconcile error never breaks the cascade.
             LeftSidebar.BoardRefreshCompleted += async (s, e) =>
             {
                 if (_queueDb == null) return;
@@ -964,7 +965,7 @@ namespace BuildConsole
                         _queueDb, gh, msg => Services.ActivityLog.Log("batter-up", msg));
                     if (n > 0)
                         Services.ActivityLog.Log("batter-up",
-                            $"Git #2685 false-done reconcile: {n} false-done row(s) reset to 'canceled' + moved to Backlog this refresh.");
+                            $"Git #2685/#3513 false-done reconcile: {n} false-done row(s) corrected this refresh (reset to 'canceled' + Backlog, or reverted 'done' → 'verifying' where the work genuinely landed).");
                 }
                 catch (Exception ex)
                 {
@@ -4217,7 +4218,16 @@ namespace BuildConsole
                         // Home refresh is unaffected.
                         await BuildConsole.Services.StartupGitHubCoordinator.RunAsync("Home queue/board reconciliation", async () =>
                         {
-                            _homeOpenIssueNumbers = await BuildConsole.Services.GitHubIssuesService.GetOpenIssueNumbersAsync();
+                            // Git #3513 — was GetOpenIssueNumbersAsync() with the default 500 cap while
+                            // this repo already has >600 open issues, so ~130 genuinely-open issues were
+                            // silently truncated out of the set. PromoteVerifyingToDoneAsync then read
+                            // any truncated-away issue as "closed" and promoted its verifying row to done
+                            // — a false-done generator on every Home refresh, independent of the empty-set
+                            // storm case. Fetch with a generous cap (matching Build Watch / Build Queue's
+                            // 1000, headroom beyond that) so the snapshot is complete. Cost is unchanged in
+                            // practice: `gh issue list` pages in 100s and stops when exhausted, so a higher
+                            // cap fetches the same ~7 pages, not more.
+                            _homeOpenIssueNumbers = await BuildConsole.Services.GitHubIssuesService.GetOpenIssueNumbersAsync(5000);
                             BuildConsole.Services.ActivityLog.Log("github.manual-refresh",
                                 $"Home queue/board reconciliation [Home-tab open/refresh]: {_homeOpenIssueNumbers.Count} open issue number(s) via gh CLI");
 

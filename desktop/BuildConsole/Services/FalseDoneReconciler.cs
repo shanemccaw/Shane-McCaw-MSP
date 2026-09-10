@@ -6,40 +6,66 @@ using System.Threading.Tasks;
 namespace BuildConsole.Services
 {
     /// <summary>
-    /// Git #2685, widened by #2775 — reconciles false-<c>done</c>/false-<c>verifying</c> queue rows
-    /// against their real origin/main bookend on every manual board refresh.
+    /// Git #2685, widened by #2775, widened again by #3513 — reconciles false-<c>done</c>/false-<c>verifying</c>
+    /// queue rows against reality on every manual board refresh. There are now TWO distinct false-positive
+    /// shapes this catches, both produced by the same root truth: a local queue-row status is NOT the same
+    /// thing as the real GitHub issue's state, and has repeatedly been trusted as if it were.
     ///
-    /// The problem: <see cref="QueueWatcherService"/> → <c>MarkCompleteAsync</c> is the ONLY
-    /// completion signal <c>bt_build_queue</c> gets. A self-blocking session that does real
-    /// investigation, writes a real <c>🛑 BLOCKED</c> bookend, wires a real GitHub <c>blocked_by</c>
-    /// edge, and exits cleanly (process exit 0 — nothing crashed) is marked <c>done</c> (no
-    /// <c>github_number</c>) or, per Git #1469, <c>verifying</c> (a real <c>github_number</c> is
-    /// present — held there until the issue actually closes). Neither is in the dedup dead-checks
-    /// (RefreshAsync treats only failed/canceled as "let it reappear"; QueueRowAsync keys on
-    /// IsTerminalStatus &amp;&amp; !done, and <c>verifying</c> isn't even terminal), so a false
-    /// <c>done</c>/<c>verifying</c> row silently, permanently dedup-locks every future dispatch for
-    /// that issue — with no path back except Shane manually finding and Parking it. #1676 (Git
-    /// #2775) is the real, live-reproduced <c>verifying</c> case: the original <c>done</c>-only query
-    /// left it structurally invisible to reconciliation.
+    /// ── Shape A (Git #2685/#2775) — the BLOCKED bookend ────────────────────────────────────────────────
+    /// <see cref="QueueWatcherService"/> → <c>MarkCompleteAsync</c> is the ONLY completion signal
+    /// <c>bt_build_queue</c> gets. A self-blocking session that does real investigation, writes a real
+    /// <c>🛑 BLOCKED</c> bookend, wires a real GitHub <c>blocked_by</c> edge, and exits cleanly (process
+    /// exit 0 — nothing crashed) is marked <c>done</c> (no <c>github_number</c>) or, per Git #1469,
+    /// <c>verifying</c> (a real <c>github_number</c> is present). Neither is in the dedup dead-checks, so the
+    /// row silently, permanently dedup-locks that issue. Fix: any row whose origin/main bookend's effective
+    /// <c>**Status:**</c> says BLOCKED is reset to <c>canceled</c> (re-dispatchable) + board Status → Backlog.
     ///
-    /// The fix: on the manual refresh cascade (wired off <c>BoardRefreshCompleted</c> in MainWindow,
-    /// the same event #1813/#2557 ride), read every <c>done</c>-or-<c>verifying</c> row's
-    /// authoritative bookend via <see cref="DoneBookendVerifier.GetBlockedAsync"/> (the trusted
-    /// origin/main <c>build-journal/{N}.md</c> reader). Any row whose bookend's effective
-    /// <c>**Status:**</c> says BLOCKED is a false-positive: reset it to <c>canceled</c> (a real
-    /// non-blocking terminal state that flows through every dedup dead-check, so the issue is
-    /// re-dispatchable) via the dedicated
-    /// <see cref="BuildQueuePostgresClient.MarkFalseDoneReconciledAsync"/>, and move its GitHub board
-    /// Status to <c>Backlog</c> — Shane's explicit resting place, because an unblocked self-blocked
-    /// build needs a conscious re-dispatch decision, not an auto-relaunch the moment its blocker
-    /// closes. Every correction is logged (never silent).
+    /// ── Shape B (Git #3513) — the false PROMOTION (done, but the issue is still OPEN) ────────────────────
+    /// A row with a real <c>github_number</c> should only ever reach terminal <c>done</c> AFTER
+    /// <see cref="BuildQueuePostgresClient.PromoteVerifyingToDoneAsync"/> confirmed its GitHub issue actually
+    /// closed (#1469). That confirmation is "the issue number is ABSENT from the open-issue snapshot" — which
+    /// is only sound if the snapshot is trustworthy. During the #3512 rate-limit storm the snapshot came back
+    /// EMPTY, and MainWindow's Home reconcile fetched it with the old default 500-cap while &gt;600 issues were
+    /// open, so genuinely-open issues went missing from the set and every verifying row for them was promoted
+    /// to <c>done</c> against an issue that never closed. Result (measured live for #3513): 69 rows sitting at
+    /// <c>done</c> with the real GitHub issue still open — invisible in Batter Up (hidden as "tracked"), past
+    /// Verifying/Running locally, with the real work in many cases never landed. Shape A never caught these:
+    /// their bookend does not say BLOCKED (most say DONE, or have no bookend at all), and nothing else looked
+    /// at a <c>done</c> row's real issue state.
+    ///
+    /// The unambiguous Shape-B signal is <c>status='done'</c> + a real <c>github_number</c> + that issue
+    /// CURRENTLY OPEN (a <c>verifying</c> row whose issue is open is the CORRECT waiting state and is left
+    /// alone). Each such row is then split by whether real work actually landed, using the exact git-verified
+    /// DONE-bookend check the dispatch gate already trusts (<see cref="DoneBookendVerifier.GetSatisfiedAsync"/>
+    /// — a real <c>build-journal/{N}.md</c> whose Status is DONE and whose cited commit is a real ancestor of
+    /// origin/main):
+    ///   • Verified DONE bookend (work genuinely landed, the issue just was not really closed) → revert to
+    ///     <c>verifying</c> (<see cref="BuildQueuePostgresClient.RevertFalseDoneToVerifyingAsync"/>). It becomes
+    ///     visible in the active queue again and, crucially, is NOT re-dispatched — re-running completed work is
+    ///     waste; the next promote pass moves it to real done once the issue actually closes.
+    ///   • No verified DONE bookend (no bookend at all, or a DONE claim whose commit is not on main, or an
+    ///     IN FLIGHT/other non-DONE effective status) → the work never landed → reset to <c>canceled</c> +
+    ///     board Status → Backlog, exactly like Shape A, so it genuinely resurfaces as re-dispatchable work
+    ///     instead of vanishing into a done-but-not-done black hole.
+    ///
+    /// Fail-closed throughout: an unreachable GitHub (open-issue fetch fails) SKIPS Shape-B entirely this pass
+    /// rather than guessing — never releases or cancels on bad data. Every correction is logged (never silent).
+    /// This does not fix the root generator on its own; #3513 also added the empty-set guard inside
+    /// PromoteVerifyingToDoneAsync and raised MainWindow's fetch cap — this reconciler is the backstop that
+    /// heals rows already poisoned and any that slip past a partial (non-empty) snapshot.
     /// </summary>
     public static class FalseDoneReconciler
     {
+        // Git #3513 — the open-issue snapshot cap for Shape-B detection. Must sit comfortably above the real
+        // open-issue count (>600 for this repo) so a genuinely-open issue is never truncated out of the set
+        // and thereby misread as closed. `gh issue list` pages in 100s and stops when exhausted, so a high
+        // cap costs no extra pages in practice — it only removes the truncation cliff the old 500 default hit.
+        private const int OpenIssueSnapshotLimit = 5000;
+
         /// <summary>
-        /// Runs one reconciliation pass. Returns the number of rows actually reset this pass.
-        /// Never throws into the caller — a reconciliation failure is logged, not propagated, so it
-        /// can never break the board-refresh cascade it rides on.
+        /// Runs one reconciliation pass. Returns the number of rows actually corrected this pass (Shape A
+        /// cancels + Shape B reverts/cancels). Never throws into the caller — a reconciliation failure is
+        /// logged, not propagated, so it can never break the board-refresh cascade it rides on.
         /// </summary>
         public static async Task<int> ReconcileAsync(BuildQueuePostgresClient db, GitHubApiClient gh, Action<string> log)
         {
@@ -52,11 +78,14 @@ namespace BuildConsole.Services
             }
             catch (Exception ex)
             {
-                log($"Git #2685/#2775 false-done reconcile: could not read done/verifying rows: {ex.Message}");
+                log($"Git #2685/#2775/#3513 false-done reconcile: could not read done/verifying rows: {ex.Message}");
                 return 0;
             }
             if (candidateRows.Count == 0) return 0;
 
+            int reconciled = 0;
+
+            // ── Shape A (Git #2685/#2775): rows whose origin/main bookend says BLOCKED ──────────────────
             HashSet<int> blocked;
             try
             {
@@ -65,11 +94,9 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 log($"Git #2685/#2775 false-done reconcile: bookend check failed: {ex.Message}");
-                return 0;
+                blocked = new HashSet<int>();
             }
-            if (blocked.Count == 0) return 0;
 
-            int reconciled = 0;
             foreach (var row in candidateRows.Where(r => blocked.Contains(r.GithubNumber)))
             {
                 try
@@ -79,17 +106,7 @@ namespace BuildConsole.Services
                         continue; // already moved on (concurrent watcher/refresh) — nothing to do
 
                     reconciled++;
-
-                    bool moved = false;
-                    try
-                    {
-                        moved = await gh.SetIssueStatusByNumberAsync(row.GithubNumber, GitHubApiClient.BacklogOptionId);
-                    }
-                    catch (Exception ex)
-                    {
-                        log($"Git #2685/#2775 false-done reconcile: #{row.GithubNumber} DB reset to 'canceled', but board move to Backlog FAILED: {ex.Message}");
-                    }
-
+                    bool moved = await TryMoveToBacklogAsync(gh, row.GithubNumber, log);
                     log($"Git #2685/#2775 false-done reconcile: queue row {row.Id} (#{row.GithubNumber}) was '{row.Status}' " +
                         $"but its origin/main bookend says BLOCKED — reset to 'canceled' (re-dispatchable) " +
                         (moved ? "and board Status moved to Backlog." : "(board move to Backlog did not confirm — see above)."));
@@ -100,7 +117,109 @@ namespace BuildConsole.Services
                 }
             }
 
+            // ── Shape B (Git #3513): rows at 'done' whose real GitHub issue is still OPEN ───────────────
+            // A verifying row whose issue is open is the CORRECT waiting state, so this considers 'done'
+            // rows only. Skip a row already handled by Shape A above (its bookend said BLOCKED).
+            LiveOpenIssuesResult openResult;
+            try
+            {
+                openResult = await GitHubIssuesService.TryGetOpenIssueNumbersAsync(OpenIssueSnapshotLimit);
+            }
+            catch (Exception ex)
+            {
+                log($"Git #3513 false-done reconcile: open-issue fetch threw ({ex.Message}) — skipping done+open detection this pass (fail closed).");
+                return reconciled;
+            }
+            if (!openResult.Success)
+            {
+                log($"Git #3513 false-done reconcile: couldn't fetch the open-issue set ({openResult.Error}) — skipping done+open detection this pass (fail closed; no row cancelled or reverted on unverified data).");
+                return reconciled;
+            }
+            var open = openResult.OpenNumbers;
+            if (open.Count == 0)
+            {
+                // A successful fetch that is genuinely empty is implausible for this repo and matches the
+                // failure shape the source guard already rejects — treat it as untrustworthy and skip.
+                log("Git #3513 false-done reconcile: open-issue set came back empty on a 'successful' fetch — treating as untrustworthy, skipping done+open detection this pass (fail closed).");
+                return reconciled;
+            }
+
+            var doneOpenRows = candidateRows
+                .Where(r => string.Equals(r.Status, "done", StringComparison.OrdinalIgnoreCase)
+                            && !blocked.Contains(r.GithubNumber)
+                            && open.Contains(r.GithubNumber))
+                .ToList();
+            if (doneOpenRows.Count == 0)
+                return reconciled;
+
+            // The subset whose real work genuinely landed (git-verified DONE bookend). Everything else in
+            // doneOpenRows had no proof of landed work and is re-dispatched.
+            HashSet<int> verifiedDone;
+            try
+            {
+                verifiedDone = await DoneBookendVerifier.GetSatisfiedAsync(doneOpenRows.Select(r => r.GithubNumber).Distinct());
+            }
+            catch (Exception ex)
+            {
+                log($"Git #3513 false-done reconcile: DONE-bookend verification failed ({ex.Message}) — skipping done+open remediation this pass (fail closed).");
+                return reconciled;
+            }
+
+            foreach (var row in doneOpenRows)
+            {
+                try
+                {
+                    if (verifiedDone.Contains(row.GithubNumber))
+                    {
+                        // Work really landed; the issue simply was not actually closed. Honest state is
+                        // verifying (visible, awaiting Shane's close) — NOT re-dispatch of completed work.
+                        int changed = await db.RevertFalseDoneToVerifyingAsync(row.Id);
+                        if (changed == 0) continue; // concurrently moved on
+                        reconciled++;
+                        log($"Git #3513 false-done reconcile: queue row {row.Id} (#{row.GithubNumber}) was 'done' but GH #{row.GithubNumber} is STILL OPEN " +
+                            "while its origin/main bookend is a git-verified DONE — the issue was never really closed (false promotion). " +
+                            "Reverted 'done' → 'verifying' so it is visible and awaiting the real close, not silently hidden or re-run.");
+                    }
+                    else
+                    {
+                        // No proof the work ever landed (no bookend, DONE claim not on main, or non-DONE
+                        // effective status). Re-dispatchable, exactly like the BLOCKED shape.
+                        int changed = await db.MarkFalseDoneReconciledAsync(row.Id);
+                        if (changed == 0) continue; // concurrently moved on
+                        reconciled++;
+                        bool moved = await TryMoveToBacklogAsync(gh, row.GithubNumber, log);
+                        log($"Git #3513 false-done reconcile: queue row {row.Id} (#{row.GithubNumber}) was 'done' but GH #{row.GithubNumber} is STILL OPEN " +
+                            "and has NO git-verified DONE bookend (no bookend, or a DONE claim whose commit is not on origin/main) — " +
+                            "the work never landed (false promotion). Reset 'done' → 'canceled' (re-dispatchable) " +
+                            (moved ? "and board Status moved to Backlog." : "(board move to Backlog did not confirm — see above)."));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    log($"Git #3513 false-done reconcile: FAILED for row {row.Id} (#{row.GithubNumber}): {ex.Message}");
+                }
+            }
+
             return reconciled;
+        }
+
+        /// <summary>
+        /// Moves an issue's board Status to Backlog (Shane's conscious re-dispatch resting place — never an
+        /// auto-relaunch). Returns whether the move confirmed; logs and returns false on failure without
+        /// throwing, so a board-move hiccup never undoes the DB reset that already succeeded.
+        /// </summary>
+        private static async Task<bool> TryMoveToBacklogAsync(GitHubApiClient gh, int githubNumber, Action<string> log)
+        {
+            if (gh == null) return false;
+            try
+            {
+                return await gh.SetIssueStatusByNumberAsync(githubNumber, GitHubApiClient.BacklogOptionId);
+            }
+            catch (Exception ex)
+            {
+                log($"false-done reconcile: #{githubNumber} DB reset succeeded, but board move to Backlog FAILED: {ex.Message}");
+                return false;
+            }
         }
     }
 }

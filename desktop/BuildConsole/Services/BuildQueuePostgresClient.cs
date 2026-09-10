@@ -1114,6 +1114,38 @@ namespace BuildConsole.Services
             return await cmd.ExecuteNonQueryAsync();
         }
 
+        // ── RevertFalseDoneToVerifyingAsync (Git #3513) ───────────────────────────
+        /// <summary>
+        /// Git #3513 — the counterpart to <see cref="MarkFalseDoneReconciledAsync"/> for the OTHER
+        /// false-done shape: a row marked terminal <c>done</c> (with a real github_number) whose
+        /// GitHub issue is in fact STILL OPEN, but whose origin/main bookend is a genuine, git-verified
+        /// DONE (its cited commit is a real ancestor of origin/main — the work really landed). That row
+        /// was wrongly promoted <c>verifying → done</c> by <see cref="PromoteVerifyingToDoneAsync"/>
+        /// off an empty/partial open-issue snapshot (the #3512 rate-limit storm; and MainWindow's Home
+        /// reconcile fetched with the old default 500-limit while &gt;500 issues were open) — the issue
+        /// never actually closed. Because the work DID land, the honest state is <see cref="VerifyingStatus"/>
+        /// (visible in the active queue, correctly waiting for Shane to close the real issue), NOT
+        /// <c>canceled</c>/re-dispatchable — re-dispatching genuinely-completed work is waste. The very
+        /// next <see cref="PromoteVerifyingToDoneAsync"/> pass leaves it in verifying while the issue
+        /// stays open and promotes it to real done only once the issue actually closes, exactly as
+        /// #1469 intended. Guarded <c>status='done' AND github_number IS NOT NULL</c> so it is
+        /// idempotent and never touches a genuinely-closed/no-github row. Returns rows changed (0 or 1).
+        /// </summary>
+        public async Task<int> RevertFalseDoneToVerifyingAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status     = @verifyingStatus,
+                       updated_at = NOW()
+                 WHERE id = @id
+                   AND status = 'done'
+                   AND github_number IS NOT NULL", conn);
+            cmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
+            cmd.Parameters.AddWithValue("@id", id);
+            return await cmd.ExecuteNonQueryAsync();
+        }
+
         // ── StampBuildPidAsync ────────────────────────────────────────────────────
         /// <summary>
         /// Git #1839 — records the launched build process's pid and its process-creation time on
@@ -1153,6 +1185,28 @@ namespace BuildConsole.Services
         public async Task<List<(int Id, int GithubNumber)>> PromoteVerifyingToDoneAsync(IReadOnlySet<int> openIssueNumbers)
         {
             var promoted = new List<(int, int)>();
+
+            // Git #3513 — fail CLOSED on an empty open-issue set. A row is promoted to done only on
+            // POSITIVE evidence its issue closed: its number being ABSENT from the open set. That logic
+            // is only sound when the set is a TRUSTWORTHY snapshot. An EMPTY set never is here — this
+            // repo always has hundreds of open issues, so Count==0 means the `gh` fetch failed or was
+            // rate-limited (the #3512 storm), NOT "every issue is closed." Promoting off an empty set
+            // marks EVERY verifying row done in one pass against issues that are all still open — the
+            // exact mechanism that produced #3513's 69 false-done rows (MainWindow's Home reconcile
+            // called this with GetOpenIssueNumbersAsync(), which collapses a failed fetch to an empty
+            // set, with no caller-side guard). Guarding here protects every caller centrally; a skipped
+            // promotion is self-healing — the next refresh with a real set promotes any genuinely-closed
+            // row then. (Partial-but-non-empty snapshots are the FalseDoneReconciler's backstop: a row
+            // wrongly promoted off a truncated set is caught next board refresh as done+issue-still-open
+            // and reverted to verifying / re-dispatched.)
+            if (openIssueNumbers == null || openIssueNumbers.Count == 0)
+            {
+                ActivityLog.Log("github",
+                    "Git #3513: PromoteVerifyingToDoneAsync received an EMPTY open-issue set — promoting nothing (fail closed). " +
+                    "An empty set here means the open-issue fetch failed, never that all issues are closed.");
+                return promoted;
+            }
+
             await using var conn = await OpenAsync();
             await using var fetchCmd = new NpgsqlCommand(@"
                 SELECT id, github_number FROM bt_build_queue
