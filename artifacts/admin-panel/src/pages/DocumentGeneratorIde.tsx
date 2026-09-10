@@ -28,9 +28,11 @@ export function formatGenerationCostLabel(
 }
 
 // Net-new admin surface — zero code, logic, or UI ported from admin-insights.ts /
-// InsightsOutputs.tsx / InsightsPayloadDialog.tsx (those are legacy and being
-// marked dead in a later phase of this same initiative). Real generation is
-// routed through generateDocument()/generateSowDocument() via
+// InsightsOutputs.tsx / InsightsPayloadDialog.tsx (legacy; the latter two were
+// deleted outright in Git #3417 — InsightsOutputs.tsx / InsightsPayloadDialog.tsx
+// no longer exist. admin-insights.ts itself is still mounted on purpose; see its
+// own file header). Real generation is routed through
+// generateDocument()/generateSowDocument() via
 // admin-document-generator.ts, keyed off document_types.pipelineCategory.
 
 interface DocumentType {
