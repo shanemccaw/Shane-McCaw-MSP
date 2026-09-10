@@ -59,10 +59,12 @@
                 <TextBlock x:Name="VipResultText" Text="" Foreground="#5A5A5A" FontSize="11"
                            TextWrapping="Wrap" Margin="4,0,4,12" />
 
-                <!-- Consent status — #3485, not built yet. -->
+                <!-- Consent status (#3485) — real precondition flag for the active tenant, driven
+                     by GET /api/msp/consent (MainWindow.RefreshConsentStatusAsync). -->
                 <TextBlock Text="CONSENT STATUS" Foreground="#858585" FontSize="10" FontWeight="Bold" Margin="4,0,0,4" />
-                <TextBlock Text="Not available yet — Feature #3485." Foreground="#5A5A5A" FontSize="11"
+                <TextBlock x:Name="ConsentStatusEmptyText" Text="No consent record for this tenant." Foreground="#5A5A5A" FontSize="11"
                            TextWrapping="Wrap" Margin="4,0,4,12" />
+                <StackPanel x:Name="ConsentStatusList" Margin="0,0,0,12" />
 
                 <!-- Document browse — #3486, not built yet. -->
                 <TextBlock Text="DOCUMENT BROWSE" Foreground="#858585" FontSize="10" FontWeight="Bold" Margin="4,0,0,4" />

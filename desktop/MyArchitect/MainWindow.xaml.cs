@@ -54,6 +54,7 @@ public partial class MainWindow : FluentWindow
     private readonly ISlaService _slaService;
     private readonly ITaskQueueService _taskQueueService;
     private readonly IAlertsService _alertsService;
+    private readonly IConsentService _consentService;
     private readonly IActivityContextService _activityContextService;
     private readonly IForegroundAppWatcher _foregroundAppWatcher;
     private CancellationTokenSource? _taskQueueSseCts;
@@ -98,6 +99,7 @@ public partial class MainWindow : FluentWindow
         _slaService = new SlaService();
         _taskQueueService = new TaskQueueService();
         _alertsService = new AlertsService();
+        _consentService = new ConsentService();
         _authService.SessionChanged += OnAuthSessionChanged;
         _consoleService.CommandExecuted += (s, record) => _consoleHistoryService.Add(record);
 
@@ -456,9 +458,8 @@ public partial class MainWindow : FluentWindow
     }
 
     /// <summary>Admin tab (UI_RULES.md §2). Carries the Credential Vault (#3461), Break-Glass
-    /// Access (#3480), and the Audit Log (#3489) — all <see cref="RibbonIntent.Open"/> commands
-    /// (global-scope, no specific record). Consent status (#3485) attaches its own group here as
-    /// it lands.</summary>
+    /// Access (#3480), the Audit Log (#3489) and Tenant Consent Status (#3485) — all
+    /// <see cref="RibbonIntent.Open"/> commands (global-scope, no specific record).</summary>
     private void RegisterAdminTab()
     {
         _shellRegistry.RegisterFixedTabGroup(FixedTab.Admin, new RibbonGroupSpec
@@ -512,6 +513,26 @@ public partial class MainWindow : FluentWindow
                     Intent = RibbonIntent.Open,
                     ToolTip = "Filterable platform audit trail — tenant / action type (GET /api/msp/audit, #3489)",
                     OnSelect = () => OpenAuditLog(new Models.AuditLogFilter()),
+                },
+            },
+        });
+
+        // Tenant Consent Status (#3485) — cross-tenant list of the three real grant keys (Graph
+        // read / write-back / SharePoint) opens as a full-panel record workspace (UI_RULES.md §3);
+        // rows drill into a per-customer detail with the real invite-link/start-consent/revoke
+        // actions. An Open-intent command (nothing tenant-specific to select yet), fixed-tab legal.
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Admin, new RibbonGroupSpec
+        {
+            Label = "Consent Status",
+            Order = 40,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Tenant Consent",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Admin/write/SharePoint consent status across your MSP book (GET /api/msp/consent, #3485)",
+                    OnSelect = () => OpenConsentStatusList(),
                 },
             },
         });
@@ -1823,6 +1844,331 @@ public partial class MainWindow : FluentWindow
         AuditLogServiceException ale => ale.Message,
         _ => ex.Message,
     };
+
+    // ---- Tenant Consent Status (#3485) — real msp-consent.ts client, full-panel workspaces -----
+
+    /// <summary>Opens the cross-tenant consent list (GET /api/msp/consent) as a full-panel record
+    /// workspace. Each row already carries its own real numeric customerId (tenants.id) from the
+    /// server, so drilling into a per-customer detail never depends on the fixture
+    /// <see cref="ITenantService"/> resolving one (the same #3540 gap <see cref="TryResolveTrackerCustomerId"/>
+    /// and <see cref="TryResolveRetainerCustomerId"/> document — this Feature's cross-tenant list
+    /// sidesteps it entirely, same as <see cref="OpenBreakGlassPendingList"/> already does). On an
+    /// auth or transport failure the record states the honest reason rather than showing a
+    /// fabricated list.</summary>
+    private void OpenConsentStatusList()
+    {
+        System.Collections.Generic.IReadOnlyList<Models.CustomerConsentSummary> summaries;
+        try
+        {
+            summaries = _consentService.GetAllAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "consent-status",
+                Id = "consent-status",
+                Eyebrow = "Consent Status",
+                Title = "Tenant Consent",
+                Sub = "Could not load",
+                Body = ("Error", DescribeConsentError(ex)),
+            });
+            return;
+        }
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "consent-status",
+            Id = "consent-status",
+            Eyebrow = "Consent Status",
+            Title = "Tenant Consent",
+            Sub = summaries.Count == 0
+                ? "No customer has any consent record yet across your MSP book"
+                : $"{summaries.Count} customer(s) with a consent record, across your MSP book",
+            List = summaries.Count == 0
+                ? null
+                : ("Customers", summaries.Select(s => new WorkspaceListRow
+                {
+                    Id = s.CustomerId.ToString(),
+                    Name = s.CustomerName ?? $"Customer #{s.CustomerId}",
+                    Sub = $"Read: {DescribeGrant(s.Graph)} · Write: {DescribeGrant(s.WriteBack)} · SharePoint: {DescribeGrant(s.Sharepoint)}",
+                    Right = s.UpdatedAt.HasValue ? s.UpdatedAt.Value.ToLocalTime().ToString("g") : null,
+                    OnSelect = () => OpenConsentDetailRecord(s.CustomerId, s.CustomerName),
+                }).ToList()),
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Opens one customer's consent detail (GET .../customers/:customerId/consent) as a
+    /// full-panel record with all three real grant keys as Facts and the real
+    /// invite-link/start-consent actions (always legitimate — minting a fresh invite is valid even
+    /// when a grant is already active, same as the portal's own reconsent-link path). A per-key
+    /// "Revoke" action only renders when that key is currently "granted" — never a fake clickable
+    /// stop over a key with nothing to revoke (UI_RULES.md §1).</summary>
+    private void OpenConsentDetailRecord(int customerId, string? customerName)
+    {
+        Models.CustomerConsentSummary detail;
+        try
+        {
+            detail = _consentService.GetForCustomerAsync(customerId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "consent-detail",
+                Id = $"consent-detail-{customerId}",
+                Eyebrow = "Consent Status",
+                Title = customerName ?? $"Customer #{customerId}",
+                Sub = "Could not load",
+                Body = ("Error", DescribeConsentError(ex)),
+            });
+            return;
+        }
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "consent-detail",
+            Id = $"consent-detail-{customerId}",
+            Eyebrow = "Consent Status",
+            Title = detail.CustomerName ?? customerName ?? $"Customer #{customerId}",
+            Sub = detail.UpdatedAt.HasValue ? $"Last updated {detail.UpdatedAt.Value.ToLocalTime():g}" : "No consent activity recorded yet",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Read (Graph)", Value = DescribeGrant(detail.Graph) },
+                new WorkspaceFact { Label = "Write-back", Value = DescribeGrant(detail.WriteBack) },
+                new WorkspaceFact { Label = "SharePoint", Value = DescribeGrant(detail.Sharepoint) },
+            },
+        };
+
+        AddConsentGrantDetailFact(spec, "Read admin", detail.Graph);
+        AddConsentGrantDetailFact(spec, "Write-back admin", detail.WriteBack);
+        AddConsentGrantDetailFact(spec, "SharePoint admin", detail.Sharepoint);
+
+        spec.Actions.Add(new WorkspaceAction
+        {
+            Label = "Generate read-consent invite link",
+            OnSelect = () => RunConsentInviteAction(customerId, customerName, () =>
+            {
+                var r = _consentService.CreateInviteLinkAsync(customerId).GetAwaiter().GetResult();
+                return (r.ConsentUrl, r.ExpiresAt);
+            }),
+        });
+        spec.Actions.Add(new WorkspaceAction
+        {
+            Label = "Start write-back consent",
+            OnSelect = () => RunConsentInviteAction(customerId, customerName, () =>
+            {
+                var r = _consentService.StartWriteConsentAsync(customerId).GetAwaiter().GetResult();
+                return (r.ConsentUrl, r.ExpiresAt);
+            }),
+        });
+        spec.Actions.Add(new WorkspaceAction
+        {
+            Label = "Start SharePoint consent",
+            OnSelect = () => RunConsentInviteAction(customerId, customerName, () =>
+            {
+                var r = _consentService.StartSharePointConsentAsync(customerId).GetAwaiter().GetResult();
+                return (r.ConsentUrl, r.ExpiresAt);
+            }),
+        });
+
+        if (detail.Graph?.ConsentStatus == "granted")
+        {
+            spec.Actions.Add(new WorkspaceAction
+            {
+                Label = "Revoke read consent",
+                Confirm = true,
+                Danger = true,
+                OnSelect = () => RunConsentRevoke(customerId, customerName, "graph"),
+            });
+        }
+        if (detail.WriteBack?.ConsentStatus == "granted")
+        {
+            spec.Actions.Add(new WorkspaceAction
+            {
+                Label = "Revoke write-back consent",
+                Confirm = true,
+                Danger = true,
+                OnSelect = () => RunConsentRevoke(customerId, customerName, "writeBack"),
+            });
+        }
+        if (detail.Sharepoint?.ConsentStatus == "granted")
+        {
+            spec.Actions.Add(new WorkspaceAction
+            {
+                Label = "Revoke SharePoint consent",
+                Confirm = true,
+                Danger = true,
+                OnSelect = () => RunConsentRevoke(customerId, customerName, "sharepoint"),
+            });
+        }
+
+        spec.Actions.Add(new WorkspaceAction { Label = "Back to consent list", OnSelect = () => OpenConsentStatusList() });
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Appends the admin identity + granted-scopes Facts for one grant key, only when
+    /// there is something real to show — an unset key already reads "not requested" from the
+    /// top-level Facts block, so no redundant empty rows here.</summary>
+    private static void AddConsentGrantDetailFact(RecordWorkspaceSpec spec, string label, Models.ConsentGrant? grant)
+    {
+        if (grant == null) return;
+        var who = !string.IsNullOrEmpty(grant.AdminDisplayName) || !string.IsNullOrEmpty(grant.AdminEmail)
+            ? $"{grant.AdminDisplayName}{(string.IsNullOrEmpty(grant.AdminEmail) ? "" : $" <{grant.AdminEmail}>")}"
+            : null;
+        var scopes = grant.Grants.Count > 0 ? string.Join(", ", grant.Grants) : null;
+        if (who == null && scopes == null) return;
+
+        spec.Facts.Add(new WorkspaceFact
+        {
+            Label = label,
+            Value = who != null && scopes != null ? $"{who} · {scopes}" : who ?? scopes!,
+            Prose = true,
+        });
+    }
+
+    /// <summary>Real invite-link / write-consent / SharePoint-consent mint, then opens a result
+    /// record with the real consent URL — never a "press again" confirm for these (minting a link
+    /// is not destructive, it always parallels the portal's own reconsent-link path).
+    /// <paramref name="mint"/> performs exactly one real call and returns its (url, expiry) pair —
+    /// deliberately a single call, not two, so a second invocation never mints a second, wasted
+    /// invite token just to read its expiry.</summary>
+    private void RunConsentInviteAction(int customerId, string? customerName, Func<(string Url, DateTimeOffset Expires)> mint)
+    {
+        string consentUrl;
+        DateTimeOffset expiresAt;
+        try
+        {
+            (consentUrl, expiresAt) = mint();
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "consent-invite-result",
+                Id = $"consent-invite-{customerId}-{Guid.NewGuid():N}",
+                Eyebrow = "Consent Invite",
+                Title = "Could not mint invite link",
+                Sub = customerName ?? $"Customer #{customerId}",
+                Body = ("Server response", DescribeConsentError(ex)),
+                Actions = { new WorkspaceAction { Label = "Back to consent record", OnSelect = () => OpenConsentDetailRecord(customerId, customerName) } },
+            });
+            return;
+        }
+
+        _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+        {
+            Kind = "consent-invite-result",
+            Id = $"consent-invite-{customerId}-{Guid.NewGuid():N}",
+            Eyebrow = "Consent Invite",
+            Title = "Invite link ready",
+            Sub = $"{customerName ?? $"Customer #{customerId}"} · expires {expiresAt.ToLocalTime():g}",
+            Body = ("Consent URL", consentUrl),
+            Actions =
+            {
+                new WorkspaceAction { Label = "Open in browser", OnSelect = () => OpenExternalUrl(consentUrl) },
+                new WorkspaceAction { Label = "Copy link to clipboard", OnSelect = () => CopyConsentUrlToClipboard(consentUrl) },
+                new WorkspaceAction { Label = "Back to consent record", OnSelect = () => OpenConsentDetailRecord(customerId, customerName) },
+            },
+        });
+    }
+
+    /// <summary>Real PATCH .../consent/revoke for one key, then reopens the customer's detail
+    /// record from fresh server state so the operator sees the real post-revoke status rather than
+    /// a locally-guessed one.</summary>
+    private void RunConsentRevoke(int customerId, string? customerName, string key)
+    {
+        try
+        {
+            _consentService.RevokeAsync(customerId, key).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "consent-detail",
+                Id = $"consent-detail-{customerId}",
+                Eyebrow = "Consent Status",
+                Title = customerName ?? $"Customer #{customerId}",
+                Sub = "Revoke failed",
+                Body = ("Server response", DescribeConsentError(ex)),
+                Actions = { new WorkspaceAction { Label = "Back to consent record", OnSelect = () => OpenConsentDetailRecord(customerId, customerName) } },
+            });
+            return;
+        }
+
+        OpenConsentDetailRecord(customerId, customerName);
+    }
+
+    private static void OpenExternalUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+        }
+        catch
+        {
+            // Ignore failure to launch external process — same best-effort handling as the
+            // existing LaunchExternalButton_Click.
+        }
+    }
+
+    private static void CopyConsentUrlToClipboard(string url)
+    {
+        try
+        {
+            System.Windows.Clipboard.SetText(string.IsNullOrEmpty(url) ? " " : url);
+        }
+        catch
+        {
+            // Clipboard can transiently fail if another process holds it; ignore (same handling
+            // as VaultPanelView's CopyToClipboard).
+        }
+    }
+
+    /// <summary>Human-readable grant status for a Fact/list row: the real status text when a grant
+    /// record exists, "not requested" when the key has never been started for this tenant.</summary>
+    private static string DescribeGrant(Models.ConsentGrant? grant) => grant?.ConsentStatus ?? "not requested";
+
+    /// <summary>Best-effort human message from a <see cref="ConsentServiceException"/> (which
+    /// already parses the route's <c>{ error, detail }</c>) or any other transport error.</summary>
+    private static string DescribeConsentError(Exception ex) => ex switch
+    {
+        ConsentServiceException cse => cse.Message,
+        _ => ex.Message,
+    };
+
+    /// <summary>Refreshes the left reference panel's read-only Consent Status section
+    /// (UI_RULES.md §1) for whichever tenant is currently active, via GET /api/msp/consent filtered
+    /// client-side to the active tenant's real <see cref="Tenant.TenantGuid"/> — the list route
+    /// needs no numeric customerId, so this sidesteps the #3540 fixture-TenantService gap
+    /// entirely. Hides the section (states "no record" honestly) when not signed in, no tenant is
+    /// selected, the call fails, or the MSP's book genuinely has no consent record yet for this
+    /// tenant — never a fabricated status.</summary>
+    private async Task RefreshConsentStatusAsync()
+    {
+        var tenant = _tenantService.CurrentTenant;
+        if (!_authService.IsAuthenticated || tenant == null)
+        {
+            LeftReferencePanelControl.SetConsentStatus(null);
+            return;
+        }
+
+        try
+        {
+            var all = await _consentService.GetAllAsync().ConfigureAwait(true);
+            var match = all.FirstOrDefault(c => string.Equals(c.TenantId, tenant.TenantGuid, StringComparison.OrdinalIgnoreCase));
+            LeftReferencePanelControl.SetConsentStatus(match);
+        }
+        catch (ConsentServiceException)
+        {
+            // Real, honest failure (401/403 most likely) — hide rather than show a fake/stale status.
+            LeftReferencePanelControl.SetConsentStatus(null);
+        }
+    }
 
     /// <summary>Real rows from GET /api/msp/change-requests, filtered client-side to the active
     /// tenant. Selecting a row opens the contextual tab + right-panel workspace with a real,
@@ -4632,12 +4978,14 @@ public partial class MainWindow : FluentWindow
         _taskQueueService.AuthToken = token;
         _alertsService.AuthToken = token;
         _tenantService.AuthToken = token;
+        _consentService.AuthToken = token;
         TelemetryDashboardView.SetAuthToken(token);
         SowAssessmentDashboardView.SetAuthToken(token);
         EvidenceGalleryPanel.SetAuthToken(token);
 
         UpdateSessionStatusUi();
         _ = RefreshContractHoursAsync();
+        _ = RefreshConsentStatusAsync();
         RestartTaskQueueEventStream();
 
         // Real customer list load (#3540) — the mspId that just landed on the session is what
@@ -4920,6 +5268,7 @@ public partial class MainWindow : FluentWindow
         }
 
         await RefreshContractHoursAsync();
+        await RefreshConsentStatusAsync();
     }
 
     // ---- Contract-hours utilization (#3474) — real GET /api/admin/retainer/:customerId -------

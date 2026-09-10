@@ -16,9 +16,10 @@ namespace MyArchitect.Shell;
 /// <summary>
 /// The left panel — reference, read-only (UI_RULES.md §1's "shell owns header/collapse/splitter/
 /// persisted size; a Feature supplies only the body"). Portal Bookmarks is real, existing content
-/// folded in from the old activity-bar popout (UI_RULES.md §8). VIP lookup / consent status /
-/// document browse are stated-empty until their own Features (#3484/#3485/#3486) land — never a
-/// fabricated box standing in for a feature that doesn't exist yet.
+/// folded in from the old activity-bar popout (UI_RULES.md §8). Consent Status (#3485) is real,
+/// driven by <see cref="SetConsentStatus"/> — the active tenant's real precondition flag across
+/// all three grant keys. VIP lookup / document browse are stated-empty until their own Features
+/// (#3484/#3486) land — never a fabricated box standing in for a feature that doesn't exist yet.
 /// </summary>
 public partial class LeftReferencePanel : UserControl
 {
@@ -52,6 +53,72 @@ public partial class LeftReferencePanel : UserControl
     {
         TenantSubtext.Text = string.IsNullOrEmpty(name) ? "No tenant selected" : $"Active: {name}";
     }
+
+    /// <summary>Renders the real, live consent status (#3485) for whichever tenant
+    /// <see cref="MainWindow.RefreshConsentStatusAsync"/> resolved — one row per grant key
+    /// (Read/Write-back/SharePoint), a colored status dot, and the real status text. <c>null</c>
+    /// covers every honest "nothing to show" case (not signed in, no tenant selected, the call
+    /// failed, or this MSP's book has no consent record at all for the active tenant) — never a
+    /// fabricated status.</summary>
+    public void SetConsentStatus(CustomerConsentSummary? summary)
+    {
+        ConsentStatusList.Children.Clear();
+
+        if (summary == null)
+        {
+            ConsentStatusEmptyText.Visibility = Visibility.Visible;
+            ConsentStatusList.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        ConsentStatusEmptyText.Visibility = Visibility.Collapsed;
+        ConsentStatusList.Visibility = Visibility.Visible;
+
+        AddConsentStatusRow("Read (Graph)", summary.Graph);
+        AddConsentStatusRow("Write-back", summary.WriteBack);
+        AddConsentStatusRow("SharePoint", summary.Sharepoint);
+    }
+
+    private void AddConsentStatusRow(string label, ConsentGrant? grant)
+    {
+        var status = grant?.ConsentStatus ?? "not requested";
+
+        var dot = new Border
+        {
+            Width = 8,
+            Height = 8,
+            CornerRadius = new CornerRadius(4),
+            Background = ConsentStatusColor(status),
+            Margin = new Thickness(0, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var text = new TextBlock
+        {
+            Text = $"{label}: {status}",
+            Foreground = Brushes.Gainsboro,
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+
+        var row = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = new Thickness(4, 2, 4, 2) };
+        row.Children.Add(dot);
+        row.Children.Add(text);
+        ConsentStatusList.Children.Add(row);
+    }
+
+    /// <summary>Real <c>TenantConsentRecord.status</c> values only ("pending" | "granted" |
+    /// "declined" | "revoked", <c>lib/db/src/schema/msp.ts</c>) plus the client-only "not
+    /// requested" for a key with no record at all — never an invented status.</summary>
+    private static Brush ConsentStatusColor(string status) => status switch
+    {
+        "granted" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3F, 0xB9, 0x50)),
+        "pending" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xD2, 0x99, 0x22)),
+        "revoked" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xF8, 0x51, 0x49)),
+        "declined" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xF8, 0x51, 0x49)),
+        _ => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x5A, 0x5A, 0x5A)),
+    };
 
     private void BuildBookmarks()
     {
