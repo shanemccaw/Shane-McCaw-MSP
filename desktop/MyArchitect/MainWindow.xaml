@@ -7,17 +7,167 @@
         mc:Ignorable="d"
         Title="MyArchitect" Height="700" Width="1100"
         WindowState="Maximized">
+
+    <ui:FluentWindow.Resources>
+        <!-- Activity Bar Radio Item Style (Top navigation icons) -->
+        <Style x:Key="ActivityBarRadioItemStyle" TargetType="{x:Type RadioButton}">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Width" Value="48" />
+            <Setter Property="Height" Value="48" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="#858585" />
+            <Setter Property="GroupName" Value="ActivityBarGroup" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type RadioButton}">
+                        <Border x:Name="RootBorder" Background="{TemplateBinding Background}" SnapsToDevicePixels="True">
+                            <Grid>
+                                <!-- Active indicator line on the left edge (VS Code / Antigravity style) -->
+                                <Border x:Name="ActiveIndicator"
+                                        Width="2"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Stretch"
+                                        Background="#FFFFFF"
+                                        Visibility="Collapsed" />
+
+                                <!-- Icon Content -->
+                                <ContentPresenter x:Name="ContentPresenter"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  SnapsToDevicePixels="True" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RootBorder" Property="Background" Value="#252526" />
+                                <Setter Property="Foreground" Value="#D4D4D4" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="IsChecked" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="RootBorder" Property="Background" Value="#252526" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Activity Bar Button Style (Bottom action icons: Accounts, Settings) -->
+        <Style x:Key="ActivityBarButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Width" Value="48" />
+            <Setter Property="Height" Value="48" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="#858585" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="RootBorder" Background="{TemplateBinding Background}" SnapsToDevicePixels="True">
+                            <ContentPresenter x:Name="ContentPresenter"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              SnapsToDevicePixels="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RootBorder" Property="Background" Value="#252526" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="RootBorder" Property="Background" Value="#2A2D2E" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </ui:FluentWindow.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <!-- Top Title Bar -->
         <ui:TitleBar
             Grid.Row="0"
             Title="MyArchitect" />
 
+        <!-- Main Body Area -->
         <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Icon Bar (Activity Bar) -->
+            <Border Grid.Column="0"
+                    Width="48"
+                    Background="#181818"
+                    BorderBrush="#2B2B2B"
+                    BorderThickness="0,0,1,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Top Navigation Icons -->
+                    <StackPanel Grid.Row="0" Orientation="Vertical">
+                        <RadioButton Style="{StaticResource ActivityBarRadioItemStyle}"
+                                     IsChecked="True"
+                                     ToolTip="Explorer (Ctrl+Shift+E)">
+                            <ui:SymbolIcon Symbol="DocumentMultiple24" FontSize="20" />
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource ActivityBarRadioItemStyle}"
+                                     ToolTip="Search (Ctrl+Shift+F)">
+                            <ui:SymbolIcon Symbol="Search24" FontSize="20" />
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource ActivityBarRadioItemStyle}"
+                                     ToolTip="Source Control (Ctrl+Shift+G)">
+                            <ui:SymbolIcon Symbol="BranchCompare24" FontSize="20" />
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource ActivityBarRadioItemStyle}"
+                                     ToolTip="Run and Debug (Ctrl+Shift+D)">
+                            <ui:SymbolIcon Symbol="Play24" FontSize="20" />
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource ActivityBarRadioItemStyle}"
+                                     ToolTip="Extensions (Ctrl+Shift+X)">
+                            <ui:SymbolIcon Symbol="PuzzlePiece24" FontSize="20" />
+                        </RadioButton>
+                    </StackPanel>
+
+                    <!-- Bottom Action Icons -->
+                    <StackPanel Grid.Row="1" Orientation="Vertical">
+                        <Button Style="{StaticResource ActivityBarButtonStyle}"
+                                ToolTip="Accounts">
+                            <ui:SymbolIcon Symbol="PersonCircle24" FontSize="20" />
+                        </Button>
+                        <Button Style="{StaticResource ActivityBarButtonStyle}"
+                                ToolTip="Settings (Ctrl+,)">
+                            <ui:SymbolIcon Symbol="Settings24" FontSize="20" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Workspace Area -->
+            <Grid Grid.Column="1" Background="#1E1E1E">
+            </Grid>
         </Grid>
     </Grid>
 </ui:FluentWindow>
