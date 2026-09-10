@@ -40,6 +40,8 @@ public partial class MainWindow : FluentWindow
     private readonly IVaultService _vaultService;
     private readonly IAuthService _authService;
     private readonly IRetainerService _retainerService;
+    private readonly IActivityContextService _activityContextService;
+    private readonly IForegroundAppWatcher _foregroundAppWatcher;
 
     private readonly ShellRegistry _shellRegistry = new();
     private FixedRibbonRenderer? _ribbonRenderer;
@@ -70,6 +72,15 @@ public partial class MainWindow : FluentWindow
         _retainerService = new RetainerService();
         _authService.SessionChanged += OnAuthSessionChanged;
         _consoleService.CommandExecuted += (s, record) => _consoleHistoryService.Add(record);
+
+        // Activity Layer (#3463) — local, in-app "current context" tracking. Local-only, no
+        // backend sync (see the type's own doc comment for why).
+        _activityContextService = new ActivityContextService();
+        _tenantService.CurrentTenantChanged += (s, tenant) => _activityContextService.RecordTenantSwitch(tenant);
+        _consoleService.CommandExecuted += (s, record) => _activityContextService.RecordConsoleCommand(record);
+        _foregroundAppWatcher = new ForegroundAppWatcher();
+        _foregroundAppWatcher.ForegroundAppChanged += appLabel => _activityContextService.RecordExternalApp(appLabel);
+        _foregroundAppWatcher.Start();
 
         ShellTenantSwitcher.Initialize(_tenantService);
         _trayIconManager = new TrayIconManager(this, _tenantService);
@@ -129,6 +140,14 @@ public partial class MainWindow : FluentWindow
         {
             RecordWorkspaceControl.Render(spec);
             RightPanelColumn.Width = new GridLength(spec == null ? 0 : 320);
+
+            // Activity Layer (#3463) — a record opening is the "active step" signal (a
+            // remediation step, a change request, a runbook, ...). Excludes the Activity
+            // Timeline's own records so reviewing your own timeline doesn't spam itself.
+            if (spec != null && spec.Kind != "activity-timeline" && spec.Kind != "activity-event")
+            {
+                _activityContextService.RecordOpen(spec.Kind, spec.Id, spec.Title);
+            }
         };
 
         RegisterHomeTab();
@@ -184,6 +203,13 @@ public partial class MainWindow : FluentWindow
                     Label = "Screenshot Evidence",
                     Intent = RibbonIntent.Open,
                     OnSelect = () => ShowDocument(ScreenshotEvidenceDocument),
+                },
+                new RibbonCommandSpec
+                {
+                    Label = "Activity Timeline",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Local daily timeline (#3463) — tenant switches, console commands, records opened, external apps",
+                    OnSelect = () => OpenActivityTimelineRecord(),
                 },
             },
         });
@@ -440,6 +466,82 @@ public partial class MainWindow : FluentWindow
                         if (wantMarked == record.MarkedForReport) return;
                         _consoleHistoryService.ToggleMarkedForReport(record.ExecutionId);
                         record.MarkedForReport = wantMarked;
+                    },
+                },
+            },
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Activity Layer (#3463)'s own review/tagging UI — a daily local timeline of
+    /// tenant switches, console commands, records opened, and external-app foreground switches.
+    /// Same full-panel record-workspace pattern as <see cref="OpenConsoleHistoryRecord"/>; for
+    /// Shane's own reference, local-only, never synced anywhere.</summary>
+    private void OpenActivityTimelineRecord()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var events = _activityContextService.GetForDay(today);
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "activity-timeline",
+            Id = $"activity-timeline-{today:yyyy-MM-dd}",
+            Eyebrow = "Activity",
+            Title = $"Today — {today:MMM d}",
+            Sub = events.Count == 0 ? "No activity recorded yet today" : $"{events.Count} event(s), most recent first",
+            List = events.Count == 0
+                ? null
+                : ("Events", events.Select(e => new WorkspaceListRow
+                {
+                    Id = e.Id.ToString(),
+                    Name = (string.IsNullOrEmpty(e.Tag) ? "" : $"[{e.Tag}] ") + e.Detail,
+                    Sub = $"{KindLabel(e.Kind)} · {(string.IsNullOrEmpty(e.TenantName) ? "(no tenant)" : e.TenantName)}",
+                    Right = e.TimestampUtc.ToLocalTime().ToString("h:mm tt"),
+                    OnSelect = () => OpenActivityEventDetail(e.Id),
+                }).ToList()),
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    private static string KindLabel(string kind) => kind switch
+    {
+        "tenant-switch" => "Tenant switch",
+        "console-command" => "Console command",
+        "record-open" => "Record opened",
+        "external-app" => "External app",
+        _ => kind,
+    };
+
+    private void OpenActivityEventDetail(Guid eventId)
+    {
+        var ev = _activityContextService.GetAll().FirstOrDefault(e => e.Id == eventId);
+        if (ev == null) return;
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "activity-event",
+            Id = ev.Id.ToString(),
+            Eyebrow = KindLabel(ev.Kind),
+            Title = ev.Detail,
+            Sub = string.IsNullOrEmpty(ev.TenantName) ? "(no tenant)" : ev.TenantName,
+            Facts =
+            {
+                new WorkspaceFact { Label = "When", Value = ev.TimestampUtc.ToLocalTime().ToString("g") },
+                new WorkspaceFact { Label = "Kind", Value = KindLabel(ev.Kind) },
+            },
+            Edits =
+            {
+                new WorkspaceEdit
+                {
+                    Key = "tag",
+                    Label = "Tag",
+                    Value = ev.Tag ?? "(none)",
+                    OnChange = newValue =>
+                    {
+                        _activityContextService.SetTag(ev.Id, newValue == "(none)" ? null : newValue);
+                        ev.Tag = string.IsNullOrWhiteSpace(newValue) || newValue == "(none)" ? null : newValue;
                     },
                 },
             },
@@ -827,6 +929,7 @@ public partial class MainWindow : FluentWindow
         }
         _tenantModuleConnectionService.Dispose();
         _consoleService.Dispose();
+        _foregroundAppWatcher.Dispose();
         (_authService as IDisposable)?.Dispose();
     }
 
