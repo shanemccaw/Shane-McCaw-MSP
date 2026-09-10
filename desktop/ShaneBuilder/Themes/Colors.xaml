@@ -183,7 +183,12 @@
     <SolidColorBrush x:Key="Brush.Workspace.Chats" Color="#7C8CF0"/>
     <SolidColorBrush x:Key="Brush.Workspace.Designs" Color="#00B4D8"/>
     <SolidColorBrush x:Key="Brush.Workspace.GitIssues" Color="#E2593F"/>
-    <SolidColorBrush x:Key="Brush.Workspace.Favorites" Color="#E2B039"/>
+    <!-- Git #2392 — Favorites' real four target workspaces (spec items 3-6), replacing the old
+         single placeholder Brush.Workspace.Favorites (#E2B039, now reused for Dev). -->
+    <SolidColorBrush x:Key="Brush.Workspace.Web" Color="#5FA8D3"/>
+    <SolidColorBrush x:Key="Brush.Workspace.Dev" Color="#E2B039"/>
+    <SolidColorBrush x:Key="Brush.Workspace.Stage" Color="#F0A868"/>
+    <SolidColorBrush x:Key="Brush.Workspace.Production" Color="#C1121F"/>
     <SolidColorBrush x:Key="Brush.Workspace.Logs" Color="#7FB08A"/>
     <SolidColorBrush x:Key="Brush.Workspace.Api" Color="#C084FC"/>
     <SolidColorBrush x:Key="Brush.Workspace.Files" Color="#8FA7C4"/>
