@@ -413,15 +413,35 @@ namespace BuildConsole.Controls
                 }
                 catch (Exception ex)
                 {
+                    // Git #2926 — a suppressed call under the #2815 breaker is transient and
+                    // self-recovering within its backoff window; show that distinctly from a real,
+                    // standing failure so it doesn't read as an urgent bug (see #2916).
+                    bool circuitOpen = Services.GitHubRateLimitCircuit.IsCircuitOpenMessage(ex.Message);
+
+                    // Git #3494 — on a transient circuit-open deferral, KEEP the last-known rows
+                    // exactly as they are instead of blanking the panel. Blanking (then repainting on
+                    // the next closed-window refresh) flapped the whole lane every ~minute at batch
+                    // scale, and the pre-#3494 behaviour was worse still: it rebuilt every item as
+                    // "needs dispatch," which read as "their BUILD comments were lost." Preserving the
+                    // rows and annotating the header keeps the lane stable and honest until GitHub
+                    // stops rate-limiting us. Only blank on a first load (nothing to preserve) or a
+                    // real, standing failure.
+                    if (circuitOpen && _allRows.Count > 0)
+                    {
+                        Services.ActivityLog.Log("batter-up",
+                            $"Refresh deferred (rate-limit circuit open) — keeping last-known {_allRows.Count} row(s); recovers automatically (Git #3494/#2815).");
+                        string deferredMode = settings.BatterUpFreeFlow ? "free flow" : "gated";
+                        TxtCount.Text = $"({_allRows.Count}) · {deferredMode} · GitHub cooling down (#2815)";
+                        TxtEmpty.Visibility = Visibility.Collapsed;
+                        return;
+                    }
+
                     Services.ActivityLog.Log("batter-up", $"Refresh failed: {ex.Message}");
                     TxtCount.Text = "";
                     RowsList.Children.Clear();
                     _allRows = new List<Services.BatterUpRow>();
                     UpdateFilterBoxVisibility();
-                    // Git #2926 — a suppressed call under the #2815 breaker is transient and
-                    // self-recovering within its backoff window; show that distinctly from a real,
-                    // standing failure so it doesn't read as an urgent bug (see #2916).
-                    TxtEmpty.Text = Services.GitHubRateLimitCircuit.IsCircuitOpenMessage(ex.Message)
+                    TxtEmpty.Text = circuitOpen
                         ? BuildCircuitOpenMessage()
                         : $"Couldn't read Batter Up: {ex.Message}";
                     TxtEmpty.Visibility = Visibility.Visible;

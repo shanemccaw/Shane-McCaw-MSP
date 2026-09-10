@@ -45,6 +45,22 @@ namespace BuildConsole.Services
         /// </summary>
         public static async Task<(List<AiBatterUpRow> Rows, ClosedSweepResult SweepResult)> RefreshAsync(GitHubApiClient gh)
         {
+            // Git #3494 — same guard as BatterUpQueueService.RefreshAsync: bail the whole pass fast
+            // when the shared #2815 rate-limit circuit is OPEN, rather than building rows from data we
+            // cannot read. Under an open circuit ResolveBuildCommentsAsync returns nothing, so every
+            // item came back HasBuildComment=false — harmless for most raw findings here, but it also
+            // wrongly dropped the BUILD: comment off any AI Batter Up item that already carries one.
+            // Throw the recognized "rate-limit circuit open" message so this panel shows its honest
+            // "GitHub cooling down (#2815)" holding state and keeps its last-known rows instead of
+            // flapping, exactly like the Batter Up lane.
+            if (GitHubRateLimitCircuit.IsOpen)
+            {
+                ActivityLog.Log("ai-batter-up",
+                    $"AI Batter Up refresh deferred — GitHub rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); " +
+                    "board items keep their last-known state and re-resolve on the next refresh (Git #3494).");
+                throw new System.InvalidOperationException("AI Batter Up refresh skipped — rate-limit circuit open (Git #2815).");
+            }
+
             // Git #2557 — auto-sweep: a closed issue sitting in "AI Batter Up" status is
             // structurally invisible to the OPEN-only board read below (GetAiBatterUpIssuesAsync),
             // so nothing ever demotes it on its own. Runs BEFORE the open-only row list is built
