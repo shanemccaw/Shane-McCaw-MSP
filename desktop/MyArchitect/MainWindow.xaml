@@ -4,8 +4,10 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:controls="clr-namespace:MyArchitect.Controls"
         mc:Ignorable="d"
-        Title="MyArchitect" Height="700" Width="1100"
+        Title="MyArchitect" Height="800" Width="1280"
         WindowState="Maximized">
 
     <ui:FluentWindow.Resources>
@@ -94,18 +96,59 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- Portal Tab Button Style -->
+        <Style x:Key="PortalTabStyle" TargetType="{x:Type RadioButton}">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="#999999" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="GroupName" Value="PortalTabsGroup" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type RadioButton}">
+                        <Border x:Name="TabBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="Transparent"
+                                BorderThickness="0,0,0,2"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabBorder" Property="Background" Value="#252526" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#389BFF" />
+                                <Setter TargetName="TabBorder" Property="Background" Value="#1E1E1E" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </ui:FluentWindow.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Top Title Bar -->
-        <ui:TitleBar
-            Grid.Row="0"
-            Title="MyArchitect" />
+        <!-- Custom Top Title Bar with Tenant Switcher -->
+        <ui:TitleBar x:Name="AppTitleBar" Grid.Row="0" Title="MyArchitect">
+            <ui:TitleBar.Header>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                    <controls:TenantSwitcher x:Name="ShellTenantSwitcher" />
+                </StackPanel>
+            </ui:TitleBar.Header>
+        </ui:TitleBar>
 
         <!-- Main Body Area -->
         <Grid Grid.Row="1">
@@ -130,7 +173,7 @@
                     <StackPanel Grid.Row="0" Orientation="Vertical">
                         <RadioButton Style="{StaticResource ActivityBarRadioItemStyle}"
                                      IsChecked="True"
-                                     ToolTip="Explorer (Ctrl+Shift+E)">
+                                     ToolTip="Explorer / Portal Cockpit (Ctrl+Shift+E)">
                             <ui:SymbolIcon Symbol="DocumentMultiple24" FontSize="20" />
                         </RadioButton>
                         <RadioButton Style="{StaticResource ActivityBarRadioItemStyle}"
@@ -146,7 +189,7 @@
                             <ui:SymbolIcon Symbol="Play24" FontSize="20" />
                         </RadioButton>
                         <RadioButton Style="{StaticResource ActivityBarRadioItemStyle}"
-                                     ToolTip="Extensions (Ctrl+Shift+X)">
+                                     ToolTip="Extensions &amp; Scripts (Ctrl+Shift+X)">
                             <ui:SymbolIcon Symbol="PuzzlePiece24" FontSize="20" />
                         </RadioButton>
                     </StackPanel>
@@ -165,9 +208,184 @@
                 </Grid>
             </Border>
 
-            <!-- Workspace Area -->
+            <!-- Main Workspace: WebView2 Host & Portal Tabs Shell -->
             <Grid Grid.Column="1" Background="#1E1E1E">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Portal Selector Tabs -->
+                <Border Grid.Row="0"
+                        Background="#141414"
+                        BorderBrush="#2B2B2B"
+                        BorderThickness="0,0,0,1"
+                        Padding="8,2,8,0">
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="M365Tab"
+                                     Style="{StaticResource PortalTabStyle}"
+                                     IsChecked="True"
+                                     Click="PortalTab_Click">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <ui:SymbolIcon Symbol="Globe24" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                <TextBlock Text="M365 Admin" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="AzureTab"
+                                     Style="{StaticResource PortalTabStyle}"
+                                     Click="PortalTab_Click">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <ui:SymbolIcon Symbol="Cloud24" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                <TextBlock Text="Azure Portal" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="EntraTab"
+                                     Style="{StaticResource PortalTabStyle}"
+                                     Click="PortalTab_Click">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <ui:SymbolIcon Symbol="Shield24" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                <TextBlock Text="Entra Admin" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="IntuneTab"
+                                     Style="{StaticResource PortalTabStyle}"
+                                     Click="PortalTab_Click">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <ui:SymbolIcon Symbol="Globe24" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                <TextBlock Text="Intune" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="ExchangeTab"
+                                     Style="{StaticResource PortalTabStyle}"
+                                     Click="PortalTab_Click">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <ui:SymbolIcon Symbol="Mail24" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                <TextBlock Text="Exchange" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
+                    </StackPanel>
+                </Border>
+
+                <!-- Navigation / Address Bar -->
+                <Border Grid.Row="1"
+                        Background="#181818"
+                        BorderBrush="#2B2B2B"
+                        BorderThickness="0,0,0,1"
+                        Padding="10,6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Active Tenant Badge -->
+                        <Border Grid.Column="0"
+                                Background="#004578"
+                                CornerRadius="4"
+                                Padding="8,3"
+                                Margin="0,0,10,0"
+                                VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal">
+                                <ui:SymbolIcon Symbol="Building24" FontSize="12" Foreground="#FFFFFF" Margin="0,0,4,0" VerticalAlignment="Center" />
+                                <TextBlock x:Name="ActiveTenantBadgeTextBlock"
+                                           Text="Tenant: Contoso"
+                                           Foreground="#FFFFFF"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- URL Display Box -->
+                        <Border Grid.Column="1"
+                                Background="#252526"
+                                BorderBrush="#3E3E42"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="8,4"
+                                VerticalAlignment="Center">
+                            <TextBox x:Name="UrlTextBox"
+                                     Background="Transparent"
+                                     Foreground="#CCCCCC"
+                                     CaretBrush="#FFFFFF"
+                                     BorderThickness="0"
+                                     FontSize="11"
+                                     FontFamily="Consolas"
+                                     IsReadOnly="True"
+                                     VerticalAlignment="Center" />
+                        </Border>
+
+                        <!-- Quick Actions -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                            <Button x:Name="RefreshButton"
+                                    Width="30" Height="28"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Cursor="Hand"
+                                    ToolTip="Reload Portal"
+                                    Click="RefreshButton_Click">
+                                <ui:SymbolIcon Symbol="ArrowClockwise24" FontSize="14" Foreground="#858585" />
+                            </Button>
+                            <Button x:Name="LaunchExternalButton"
+                                    Width="30" Height="28"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Cursor="Hand"
+                                    ToolTip="Open In External Browser"
+                                    Click="LaunchExternalButton_Click">
+                                <ui:SymbolIcon Symbol="Open24" FontSize="14" Foreground="#858585" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Central WebView2 Host Control -->
+                <Grid Grid.Row="2">
+                    <wv2:WebView2 x:Name="MainWebView" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+
+                    <!-- Fallback / Loading Overlay -->
+                    <Border x:Name="WebViewStatusOverlay"
+                            Background="#1E1E1E"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20">
+                            <ui:SymbolIcon Symbol="Globe24" FontSize="48" Foreground="#389BFF" Margin="0,0,0,16" HorizontalAlignment="Center" />
+                            <TextBlock x:Name="OverlayTitleTextBlock"
+                                       Text="Initializing WebView2 Operator Shell..."
+                                       Foreground="#FFFFFF"
+                                       FontSize="16"
+                                       FontWeight="SemiBold"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,0,0,8" />
+                            <TextBlock x:Name="OverlaySubtitleTextBlock"
+                                       Text="Scoping isolated profile to the active tenant."
+                                       Foreground="#858585"
+                                       FontSize="12"
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
             </Grid>
         </Grid>
+
+        <!-- Bottom Shell Status Bar -->
+        <Border Grid.Row="2"
+                Background="#007ACC"
+                Height="22"
+                Padding="8,0">
+            <DockPanel VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                    <ui:SymbolIcon Symbol="Building24" FontSize="12" Foreground="#FFFFFF" Margin="0,0,4,0" VerticalAlignment="Center" />
+                    <TextBlock x:Name="StatusTenantTextBlock" Text="Tenant: Ready" Foreground="#FFFFFF" FontSize="11" VerticalAlignment="Center" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                    <TextBlock Text="WebView2 Host Ready" Foreground="#FFFFFF" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <TextBlock Text="MyArchitect v1.1" Foreground="#E0E0E0" FontSize="11" VerticalAlignment="Center" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
     </Grid>
 </ui:FluentWindow>
