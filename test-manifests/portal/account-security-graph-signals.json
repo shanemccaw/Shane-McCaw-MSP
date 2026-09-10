@@ -1,0 +1,58 @@
+{
+  "issue": 3544,
+  "feature": "Account security - GET /api/portal/account-security/graph-signals (routes/portal-account-security-graph.ts, built backend-only under #1593) wired into artifacts/portal/src/pages/account-security.tsx (part of #1595): the local failed-portal-login line on the Password card and the 'Your Microsoft 365 tenant' card (passwordAge / failedSignIns / deviceCompliance). Tenant-wide signals per lib/account-security-graph.ts's own documented reasoning - portal users have no verified identity link to an M365 UPN (#1751). localFailedLogins is real per-user local data, no Graph/license gate.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "25766f489317faa3f944f06c47a8e635f00b02af",
+
+  "notes": [
+    "WHAT THIS COVERS: the route's auth gate, and the real four-field discriminated-union response shape (passwordAge / failedSignIns / deviceCompliance / localFailedLogins) for a logged-in customer, plus the page-side wiring reachability check.",
+    "WHAT THIS DOES NOT COVER, AND WHY (no portal login page yet): artifacts/portal has no login page today (#1648) - App.tsx's RequireAuth renders an honest 'Sign in required' panel for an unauthenticated visitor, the same structural gap test-manifests/portal/account-security-data-rights.json (#2996) and customer-home-overview.json (#2921) already document. The uiSteps below only assert what is honestly reachable today - once a portal login page exists, extend this manifest with a real login block + goto '/account-security' + assert on the real rendered data-testids (account-security-local-failed-logins / account-security-tenant-signals are already on the page) - no code change needed on the page side.",
+    "TENANT-WIDE SIGNALS CAN BE GENUINELY UNAVAILABLE FOR A GIVEN TENANT: failedSignIns needs Entra ID Premium, deviceCompliance needs an active Intune entitlement - the testbed tenant (mccawsoft2.onmicrosoft.com) has neither, confirmed via subscribedSkus (see docs/account-security-contract-pack.md section 8). This is asserted as a real discriminated-union shape (the field always exists, 'available' may legitimately be false), not asserted as always-true 200 data.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use).",
+    "NOT YET RUN via shaneapp://runTest as of this build (2026-09-10, session for #3544): a real attempt was made (shaneapp://runTest?file=account-security-graph-signals.json) and returned 'manifest not found or unparseable' - BuildConsole's local instance resolves test-manifests/ against the dev-server checkout, which does not yet have this file or the page change (this branch's commits are pushed to origin/main but the dev-server merge/restart cycle has not yet picked them up). Same structural gap account-security-data-rights.json's own notes document for its equivalent case. Verified instead by: a real tsc --noEmit pass (0 errors) across artifacts/portal, a real `vite build` (succeeds, PORT=5173) with this page + wiring, a real curl against the live local dev api-server confirming GET /api/portal/account-security/graph-signals genuinely 401s unauthenticated (requireCapability is wired), and direct reading of routes/portal-account-security-graph.ts + lib/account-security-graph.ts confirming the four-field response shape this manifest asserts against. Re-run this manifest via shaneapp://runTest once the dev-server merge/restart cycle has picked up these commits."
+  ],
+
+  "apiTests": [
+    {
+      "name": "AUTH-GATE - GET /api/portal/account-security/graph-signals with no Authorization header returns 401/403 (requireCapability)",
+      "method": "GET",
+      "path": "/api/portal/account-security/graph-signals",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP - log in as the designated testbed portal account to obtain a real client bearer; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "GRAPH-SIGNALS - an authenticated GET returns the real four-field discriminated-union shape (portal-account-security-graph.ts:63-100)",
+      "method": "GET",
+      "path": "/api/portal/account-security/graph-signals",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.localFailedLogins.available", "exists": true }
+    },
+    {
+      "name": "GRAPH-SIGNALS - passwordAge field is present (available true or a real available:false/reason)",
+      "method": "GET",
+      "path": "/api/portal/account-security/graph-signals",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.passwordAge.available", "exists": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/account-security" },
+    {
+      "name": "Unauthenticated visit: the shell route mounts and RequireAuth's honest sign-in-required panel renders (no portal login page exists yet - see notes)",
+      "action": "expect",
+      "selector": "h1",
+      "state": "visible",
+      "textContains": "Sign in required",
+      "critical": true
+    }
+  ]
+}

@@ -81,6 +81,7 @@
     "portal/account-security-data-rights.json",
     "portal/account-security-mfa-enrollment.json",
     "portal/account-security-change-password.json",
+    "portal/account-security-graph-signals.json",
     "portal/notification-preferences.json",
     "portal/webhooks.json",
     "portal/billing.json",
