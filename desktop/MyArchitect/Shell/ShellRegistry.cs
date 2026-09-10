@@ -49,6 +49,11 @@ public sealed class ShellRegistry
 
     public RecordWorkspaceSpec? CurrentRecord { get; private set; }
 
+    /// <summary>Re-renders every fixed tab so any <see cref="RibbonCommandSpec.LiveCount"/> badge
+    /// is recomputed — the real repaint trigger for a push-driven update (e.g. a real SSE event
+    /// arriving, #3490) rather than only the render-time evaluation a tab switch already gets.</summary>
+    public void RefreshLiveCounts() => Changed?.Invoke();
+
     /// <summary>Registers (or adds to) a group on a fixed tab. Throws if any command carries
     /// <see cref="RibbonIntent.Record"/> — that intent is contextual-tab only.</summary>
     public void RegisterFixedTabGroup(FixedTab tab, RibbonGroupSpec group)

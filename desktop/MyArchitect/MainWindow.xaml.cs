@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -51,8 +52,10 @@ public partial class MainWindow : FluentWindow
     private readonly IRetainerService _retainerService;
     private readonly IPoamsService _poamsService;
     private readonly ISlaService _slaService;
+    private readonly ITaskQueueService _taskQueueService;
     private readonly IActivityContextService _activityContextService;
     private readonly IForegroundAppWatcher _foregroundAppWatcher;
+    private CancellationTokenSource? _taskQueueSseCts;
 
     private readonly ShellRegistry _shellRegistry = new();
     private FixedRibbonRenderer? _ribbonRenderer;
@@ -92,6 +95,7 @@ public partial class MainWindow : FluentWindow
         _retainerService = new RetainerService();
         _poamsService = new PoamsService();
         _slaService = new SlaService();
+        _taskQueueService = new TaskQueueService();
         _authService.SessionChanged += OnAuthSessionChanged;
         _consoleService.CommandExecuted += (s, record) => _consoleHistoryService.Add(record);
 
@@ -178,8 +182,8 @@ public partial class MainWindow : FluentWindow
         RegisterWatchTab();
         RegisterDocumentsTab();
         RegisterAdminTab();
-        // Watch now carries Support Tickets (#3488) and SLA (#3487); Alerts (#3483) and the Task
-        // Queue (#3490) add their own groups alongside them as they land (UI_RULES.md §2: one
+        // Watch now carries Support Tickets (#3488), SLA (#3487) and the Task Queue (#3490);
+        // Alerts (#3483) adds its own group alongside them as it lands (UI_RULES.md §2: one
         // tab, one group per real source, not one hand-fused group). Admin now carries Vault
         // (#3461); Audit Log (#3489), Break-Glass (#3480) and consent status (#3485) attach here
         // as they land. Documents now carries Document Hub (#3486).
@@ -618,6 +622,103 @@ public partial class MainWindow : FluentWindow
                 },
             },
         });
+
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Watch, new RibbonGroupSpec
+        {
+            Label = "Task Queue",
+            Order = 30,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Open Tasks",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Virtual queue — unresolved SLA breaches + scope-creep violations, deep-linked to the Admin Panel (GET /api/msp/operator-tasks, live via SSE #3490)",
+                    LiveCount = () => CountOpenOperatorTasks(),
+                    Gallery = new GallerySpec
+                    {
+                        Title = "Task Queue",
+                        Searchable = true,
+                        GetRows = BuildOperatorTaskRows,
+                    },
+                    OnSelect = () => { },
+                },
+            },
+        });
+    }
+
+    // ---- Task Queue (#3490) — real msp-sla.ts operator-tasks galleries ------------------------
+
+    private int CountOpenOperatorTasks()
+    {
+        try
+        {
+            return _taskQueueService.GetTasksAsync().GetAwaiter().GetResult().Count;
+        }
+        catch
+        {
+            // LiveCount has no error surface of its own (Shell/ShellContracts.cs) — 0 is honest
+            // "couldn't reach it right now", the gallery itself shows the real error message.
+            return 0;
+        }
+    }
+
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildOperatorTaskRows()
+    {
+        System.Collections.Generic.IReadOnlyList<Models.OperatorTask> tasks;
+        try
+        {
+            tasks = _taskQueueService.GetTasksAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            return new[]
+            {
+                new GalleryRowSpec { Id = "operator-task-error", Name = $"Could not load task queue: {ex.Message}", OnSelect = () => { } },
+            };
+        }
+
+        return tasks
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => new GalleryRowSpec
+            {
+                Id = t.Id,
+                Tile = t.Severity.Length >= 2 ? t.Severity[..2].ToUpperInvariant() : t.Severity.ToUpperInvariant(),
+                Name = string.IsNullOrWhiteSpace(t.CustomerName) && t.CustomerId == null
+                    ? t.Category
+                    : $"{t.CustomerName ?? $"Customer #{t.CustomerId}"} · {t.Category}",
+                Sub = t.Description,
+                OnSelect = () => OpenOperatorTaskRecord(t),
+            })
+            .ToList();
+    }
+
+    private void OpenOperatorTaskRecord(Models.OperatorTask task)
+    {
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "operator-task",
+            Id = task.Id,
+            Eyebrow = task.Category,
+            Title = task.CustomerName ?? (task.CustomerId.HasValue ? $"Customer #{task.CustomerId}" : task.Category),
+            Sub = task.Severity,
+            Facts =
+            {
+                new WorkspaceFact { Label = "Type", Value = task.Type },
+                new WorkspaceFact { Label = "Severity", Value = task.Severity },
+                new WorkspaceFact { Label = "Created", Value = task.CreatedAt.ToLocalTime().ToString("g"), Prose = true },
+                new WorkspaceFact
+                {
+                    Label = "Resolved",
+                    Value = task.ResolvedAt.HasValue ? task.ResolvedAt.Value.ToLocalTime().ToString("g") : "not yet",
+                    Prose = true,
+                },
+                new WorkspaceFact { Label = "Admin Panel", Value = task.DeepLink ?? "(none)", Prose = true },
+            },
+            Body = ("Description", task.Description),
+        };
+
+        _shellRegistry.OpenRecord(spec);
     }
 
     // ---- Support Tickets (#3488) — real msp-support.ts client, full-panel workspaces ------------
@@ -4326,12 +4427,57 @@ public partial class MainWindow : FluentWindow
         _documentHubService.AuthToken = token;
         _poamsService.AuthToken = token;
         _slaService.AuthToken = token;
+        _taskQueueService.AuthToken = token;
         TelemetryDashboardView.SetAuthToken(token);
         SowAssessmentDashboardView.SetAuthToken(token);
         EvidenceGalleryPanel.SetAuthToken(token);
 
         UpdateSessionStatusUi();
         _ = RefreshContractHoursAsync();
+        RestartTaskQueueEventStream();
+    }
+
+    // ---- Task Queue (#3490) — real msp-sla.ts operator-tasks + events/stream client -------
+
+    /// <summary>Stops any running SSE subscription and starts a fresh one iff a token is present
+    /// — called from <see cref="ApplyAuthState"/> so sign-in starts the stream and sign-out stops
+    /// it (an unauthenticated stream would just 401 and end immediately, but there's no reason to
+    /// hold the connection open at all with nothing to authorize it).</summary>
+    private void RestartTaskQueueEventStream()
+    {
+        _taskQueueSseCts?.Cancel();
+        _taskQueueSseCts?.Dispose();
+        _taskQueueSseCts = null;
+
+        if (string.IsNullOrWhiteSpace(_authService.AccessToken)) return;
+
+        var cts = new CancellationTokenSource();
+        _taskQueueSseCts = cts;
+        _ = RunTaskQueueEventStreamAsync(cts.Token);
+    }
+
+    /// <summary>One real SSE connection to /api/msp/sla/events/stream for as long as
+    /// <paramref name="cancellationToken"/> allows. A dropped/failed connection ends the loop
+    /// rather than retrying indefinitely (Git #2160's bounded-wait discipline) — the next
+    /// ApplyAuthState (a token refresh, ~hourly) reconnects it. Each real event bumps the Watch
+    /// tab's live-count badges via ShellRegistry.RefreshLiveCounts so the Task Queue count reacts
+    /// to a push rather than only refreshing when the tab happens to redraw.</summary>
+    private async Task RunTaskQueueEventStreamAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _taskQueueService.SubscribeToEventsAsync(
+                _ => Dispatcher.Invoke(() => _shellRegistry.RefreshLiveCounts(), DispatcherPriority.Background),
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on sign-out / window close — not a real failure.
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.Invoke(() => ConsolePanel.AppendExternal($"[Task Queue] SSE stream ended: {ex.Message}"));
+        }
     }
 
     private void UpdateSessionStatusUi()
@@ -4377,6 +4523,8 @@ public partial class MainWindow : FluentWindow
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
         _clockTimer.Stop();
+        _taskQueueSseCts?.Cancel();
+        _taskQueueSseCts?.Dispose();
         _trayIconManager.Dispose();
         foreach (var tab in _tabs)
         {
