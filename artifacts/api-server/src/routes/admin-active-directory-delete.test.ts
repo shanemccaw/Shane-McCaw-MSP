@@ -301,10 +301,12 @@ const DB_HANDLED_TABLES = [
   "tenant_signal_history",
   "sales_offers",
   "sales_offer_events",
-  // #2984: NOT DB-handled — the cascade blanks it itself with an UPDATE, because its FK
-  // is NO ACTION where every sibling attribution column is SET NULL. It belongs in this
-  // list all the same: the row is keyed to the TENANT, and DELETING it because of who
-  // last edited it would destroy a live customer's alert configuration.
+  // #2984 found this FK as NO ACTION where every sibling attribution column is SET
+  // NULL and worked around it in code with an explicit UPDATE; #3105 fixed the
+  // constraint itself instead, so the DB now blanks it the same as every sibling —
+  // no explicit UPDATE, no explicit DELETE. It belongs in this list all the same:
+  // the row is keyed to the TENANT, and DELETING it because of who last edited it
+  // would destroy a live customer's alert configuration.
   "customer_alert_settings",
 ];
 
@@ -419,11 +421,12 @@ describe("DELETE /admin/active-directory/user/:id — successful full wipe (acce
     expect(h.txState.committed).toBe(true);
     expect(h.txState.rolledBack).toBe(false);
 
-    // #2984 — the one attribution blanked in code rather than by the DB. It is an UPDATE,
-    // not a DELETE (asserted above), and it must actually have happened: without it the
-    // users DELETE fails on a NO ACTION constraint for any user who ever edited a tenant's
-    // alert settings.
-    expect(h.opRecords.filter((r) => r.op === "update" && r.table === "customer_alert_settings")).toHaveLength(1);
+    // #2984 found this FK as NO ACTION and worked around it in code with an explicit
+    // UPDATE; #3105 fixed the constraint itself (ON DELETE SET NULL) and removed that
+    // workaround in the same commit. The route must issue neither an explicit UPDATE
+    // nor an explicit DELETE against it anymore — it's DB-handled like every sibling
+    // attribution column (asserted above via DB_HANDLED_TABLES).
+    expect(h.opRecords.filter((r) => r.op !== "select" && r.table === "customer_alert_settings")).toHaveLength(0);
 
     // Platform audit row written after success.
     expect(auditLogSpy).toHaveBeenCalledTimes(1);
