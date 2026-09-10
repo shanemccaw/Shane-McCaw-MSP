@@ -2395,63 +2395,83 @@ namespace BuildConsole.Controls
                 .Where(i => i.Status != "CLOSED").ToList();
             if (openIssues.Count == 0) return;
 
-            // Git #1635 — measured for real against this repo's live open-issue count
-            // (257 issues, concurrency=6): ~6.4s of real wall time. It's async — it
-            // does NOT block the UI thread the way the RenderIssuesTree rebuild below
-            // does — but nothing visibly happens for that whole span, which Shane's
-            // own words called "indistinguishable from a freeze." Left at concurrency=6
-            // rather than raised: Git #876 is the standing reason this repo has a
-            // conservative REST concurrency cap here at all ("Something is causing a
-            // git refresh a lot and I am being rate limited quickly"), and the required
-            // button-disable + critter loading strip (BtnRefreshGitBoard_Click) already
-            // solves the "looks frozen" complaint without reopening that rate-limit risk.
             var sweepSw = System.Diagnostics.Stopwatch.StartNew();
 
-            var client = new GitHubApiClient(pat);
-            using var gate = new System.Threading.SemaphoreSlim(6);
+            // Git #1367 — capture the previous authoritative blocked set BEFORE this pass mutates any
+            // issue, so the newly-blocked / newly-unblocked diff (Whammy / Sparky animations) is computed
+            // against real prior state regardless of which source (mirror or live) populated IsBlocked.
+            var previousKnownBlocked = _knownBlockedIssueNumbers;
+
+            // Git #3467 — mirror-first. This was the single biggest remaining automatic GitHub burst on a
+            // board load: one live GetOpenBlockedByAsync REST call PER open issue (~528 at current scale),
+            // re-run on every startup / Issues-tab open / manual refresh / post-write reload. bt_issue_mirror
+            // already carries every issue's blocked_by graph + state, refreshed by the one batched
+            // #3113/#3337 sync, so the whole sweep is now a couple of local Postgres reads on the common hit.
+            // Same fail-closed shape as #3358 (board tree) and #3134 (Batter Up): trusted only once the mirror
+            // has genuinely synced at least once, and ANY miss/error falls straight back to the live per-issue
+            // sweep below — this can never make the board worse than today, only cheaper and rate-limit-proof
+            // on the hit. Git #1367 semantics are preserved: whichever source runs sets IsBlocked
+            // authoritatively (blocked iff a still-open blocked_by exists right now), never OR'd with the
+            // pre-seeded _blockedStatusCache value.
+            string sweepMode;
+            var mirrorBlocked = await TryResolveBlockedStatusFromMirrorAsync(openIssues);
+            if (mirrorBlocked != null)
+            {
+                foreach (var issue in openIssues)
+                {
+                    var res = mirrorBlocked.TryGetValue(issue.IssueNumber, out var r) ? r : (false, (int?)null, (string?)null);
+                    issue.IsBlocked = res.Item1;
+                    issue.BlockedByNumber = res.Item2;
+                    issue.BlockedByTitle = res.Item3;
+                }
+                sweepMode = "mirror";
+            }
+            else
+            {
+                // Live fallback — the original per-issue sweep, unchanged in behaviour: one blocked_by REST
+                // call per open issue, bounded to concurrency=6 (Git #876 — the standing reason this repo has
+                // a conservative REST cap here at all: "Something is causing a git refresh a lot and I am being
+                // rate limited quickly"). Only reached on a mirror miss / never-synced / error (cold start
+                // before the first sync, or the DB unavailable). Measured ~6.4s at 257 issues; async, so it
+                // doesn't block the UI thread, and the button-disable + critter strip (BtnRefreshGitBoard_Click)
+                // covers the "looks frozen" span. A transient fetch failure throws into the catch and leaves
+                // the seeded value untouched, so a badge survives a hiccup rather than flickering off.
+                var client = new GitHubApiClient(pat);
+                using var gate = new System.Threading.SemaphoreSlim(6);
+                await System.Threading.Tasks.Task.WhenAll(openIssues.Select(async issue =>
+                {
+                    await gate.WaitAsync();
+                    try
+                    {
+                        var blocker = await client.GetOpenBlockedByAsync(issue.IssueNumber);
+                        issue.IsBlocked = blocker != null;
+                        issue.BlockedByNumber = blocker?.Number;
+                        issue.BlockedByTitle = blocker?.Title;
+                    }
+                    catch { /* best-effort — worst case this one issue just doesn't show a Blocked badge */ }
+                    finally { gate.Release(); }
+                }));
+                sweepMode = "live";
+            }
+
+            // Git #1367 / #3467 — the newly-blocked / newly-unblocked diff, computed uniformly from the now-
+            // populated IsBlocked state against previousKnownBlocked, for both the mirror and live sources.
+            // Skipped entirely on the very first sweep this session (previousKnownBlocked == null — nothing
+            // was rendered with real blocked state yet), exactly as before, so a cold start doesn't flood the
+            // Whammy with the whole real blocked set as "newly blocked".
             var newlyBlocked = new List<(GitIssue issue, int? blockerNumber)>();
             var newlyUnblocked = new List<(GitIssue issue, int? wasBlockedBy)>();
-
-            await System.Threading.Tasks.Task.WhenAll(openIssues.Select(async issue =>
+            if (previousKnownBlocked != null)
             {
-                await gate.WaitAsync();
-                try
+                foreach (var issue in openIssues)
                 {
-                    var blocker = await client.GetOpenBlockedByAsync(issue.IssueNumber);
-                    bool wasBlocked = _knownBlockedIssueNumbers != null && _knownBlockedIssueNumbers.Contains(issue.IssueNumber);
-                    // Git #1367 — this REST result is authoritative: the issue is
-                    // blocked iff it still has an open blocked_by dependency right now.
-                    // (Previously OR'd with the incoming issue.IsBlocked, which now
-                    // arrives pre-seeded true from _blockedStatusCache and would have
-                    // made a remotely-unblocked issue stick as blocked forever and
-                    // suppressed the unblock detection below.) A transient fetch failure
-                    // throws into the catch and leaves the seeded value untouched, so the
-                    // badge survives a hiccup rather than flickering off.
-                    issue.IsBlocked = blocker != null;
-                    issue.BlockedByNumber = blocker?.Number;
-                    issue.BlockedByTitle = blocker?.Title;
-
-                    if (issue.IsBlocked && _knownBlockedIssueNumbers != null && !_knownBlockedIssueNumbers.Contains(issue.IssueNumber))
-                    {
-                        lock (newlyBlocked)
-                        {
-                            newlyBlocked.Add((issue, blocker?.Number));
-                        }
-                    }
-                    else if (!issue.IsBlocked && wasBlocked)
-                    {
-                        lock (newlyUnblocked)
-                        {
-                            newlyUnblocked.Add((issue, blocker?.Number));
-                        }
-                    }
+                    bool wasBlocked = previousKnownBlocked.Contains(issue.IssueNumber);
+                    if (issue.IsBlocked && !wasBlocked) newlyBlocked.Add((issue, issue.BlockedByNumber));
+                    else if (!issue.IsBlocked && wasBlocked) newlyUnblocked.Add((issue, null));
                 }
-                catch { /* best-effort — worst case this one issue just doesn't show a Blocked badge */ }
-                finally { gate.Release(); }
-            }));
+            }
 
             sweepSw.Stop();
-            var previousKnownBlocked = _knownBlockedIssueNumbers;
             _knownBlockedIssueNumbers = openIssues.Where(i => i.IsBlocked).Select(i => i.IssueNumber).ToHashSet();
 
             // Git #1367 — refresh the cross-rebuild cache from this authoritative pass
@@ -2481,13 +2501,13 @@ namespace BuildConsole.Controls
                 await RenderIssuesTreeAsync(_currentFilter == "Done" ? "All" : _currentFilter);
                 renderSw.Stop();
                 ActivityLog.Log("git-board.data",
-                    $"blocked-by sweep ({openIssues.Count} issue(s), concurrency=6) took {sweepSw.ElapsedMilliseconds}ms, " +
+                    $"blocked-by sweep [{sweepMode}] ({openIssues.Count} issue(s)) took {sweepSw.ElapsedMilliseconds}ms, " +
                     $"blocked state changed — second RenderIssuesTree took {renderSw.ElapsedMilliseconds}ms wall (chunked, #1679)");
             }
             else
             {
                 ActivityLog.Log("git-board.data",
-                    $"blocked-by sweep ({openIssues.Count} issue(s), concurrency=6) took {sweepSw.ElapsedMilliseconds}ms, " +
+                    $"blocked-by sweep [{sweepMode}] ({openIssues.Count} issue(s)) took {sweepSw.ElapsedMilliseconds}ms, " +
                     "confirmed no change — skipped the redundant second RenderIssuesTree");
             }
 
@@ -2545,6 +2565,91 @@ namespace BuildConsole.Controls
                     }
                     delay += 800;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Git #3467 — resolve each open issue's blocked status from the local <c>bt_issue_mirror</c>
+        /// graph instead of one live <see cref="GitHubApiClient.GetOpenBlockedByAsync"/> REST call per
+        /// issue. Replicates that call's exact contract: an issue is blocked iff it has at least one
+        /// still-OPEN <c>blocked_by</c> dependency, and the reported blocker is the first such open one
+        /// (in the mirror's stored order). Two batched local Postgres reads — the open issues' own rows
+        /// (for their <c>blocked_by_numbers</c>) plus every referenced blocker's row (for its own
+        /// open/closed state + title) — replace ~528 GitHub calls.
+        ///
+        /// Returns <c>null</c> on a mirror miss / never-synced / error so the caller falls back to the
+        /// live sweep — the same fail-closed shape as <see cref="GitHubIssueMirror.TryGetBoardIssuesAsync"/>
+        /// (#3358) / <see cref="GitHubIssueMirror.TryGetByBoardStatusAsync"/> (#3134), so this can never
+        /// make the board worse than today, only cheaper on the common hit.
+        ///
+        /// Scope caveat (honest, per #3467's body): the mirror sync fetches <c>blocked_by</c> ONLY for
+        /// issues carrying the <c>blocked</c> label (<see cref="GitHubIssueMirror"/> full/incremental sync).
+        /// This relies on this repo's convention that the <c>blocked</c> label is ALWAYS set alongside a
+        /// real <c>blocked_by</c> edge (CLAUDE.md's blocked-label protocol / Git #1987) — so an open issue
+        /// with no <c>blocked</c> label has an empty <c>blocked_by_numbers</c> and is correctly treated as
+        /// unblocked. Verified the sync honours that convention. A blocked issue mislabeled without the edge
+        /// would, worst case, show a stale badge until a full walk — never a wrong dispatch, since the
+        /// fail-closed dispatch/blocker gate stays live (#3113).
+        /// </summary>
+        private static async System.Threading.Tasks.Task<Dictionary<int, (bool IsBlocked, int? BlockerNumber, string? BlockerTitle)>?>
+            TryResolveBlockedStatusFromMirrorAsync(List<GitIssue> openIssues)
+        {
+            try
+            {
+                // Fail-closed to the live path until the mirror has genuinely synced at least once —
+                // an empty/never-populated table must not read as "nothing is blocked".
+                if (!await GitHubIssueMirror.HasUsableDataAsync()) return null;
+
+                var openNumbers = openIssues.Select(i => i.IssueNumber).Where(n => n > 0).Distinct().ToList();
+                if (openNumbers.Count == 0) return new Dictionary<int, (bool, int?, string?)>();
+
+                var rows = await GitHubIssueMirror.GetManyAsync(openNumbers);
+                if (rows.Count == 0) return null; // synced but no rows for any open issue — anomaly; fall back live.
+
+                // Second batched read: every blocker referenced by any open issue, so each blocker's own
+                // OPEN/closed state + title is available without a per-issue call (blocked_by_numbers stores
+                // ALL declared blockers, open and closed — see the sync's GetBlockedByAsync upsert — so the
+                // still-open filter must consult each blocker's own row, exactly as ChatDockService's chain
+                // walk does). A blocker the mirror has never heard of is treated as still-open/blocking
+                // (fail-toward-showing-the-badge, the same default WalkChainFromMirrorAsync uses): a stale
+                // badge self-corrects on the next sync, whereas a wrong drop would fire a spurious Sparky
+                // "unblocked!" animation.
+                var blockerNumbers = rows.Values.SelectMany(r => r.BlockedByNumbers).Where(n => n > 0).Distinct().ToList();
+                var blockerRows = blockerNumbers.Count > 0
+                    ? await GitHubIssueMirror.GetManyAsync(blockerNumbers)
+                    : new Dictionary<int, GitHubIssueMirror.MirrorIssue>();
+
+                var result = new Dictionary<int, (bool IsBlocked, int? BlockerNumber, string? BlockerTitle)>();
+                foreach (var issue in openIssues)
+                {
+                    if (!rows.TryGetValue(issue.IssueNumber, out var row))
+                    {
+                        // Open issue absent from the mirror (rare — the full walk covers every open issue).
+                        // No known blocked_by edge → treat as unblocked.
+                        result[issue.IssueNumber] = (false, null, null);
+                        continue;
+                    }
+
+                    int? firstOpenBlocker = null;
+                    string? blockerTitle = null;
+                    foreach (var bn in row.BlockedByNumbers)
+                    {
+                        bool blockerClosed = blockerRows.TryGetValue(bn, out var br) && br.IsClosed;
+                        if (blockerClosed) continue; // resolved blocker — no longer blocking.
+                        firstOpenBlocker = bn;
+                        blockerTitle = blockerRows.TryGetValue(bn, out var brr) && !string.IsNullOrWhiteSpace(brr.Title)
+                            ? brr.Title : null;
+                        break;
+                    }
+                    result[issue.IssueNumber] = (firstOpenBlocker != null, firstOpenBlocker, blockerTitle);
+                }
+                return result;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("git-board.data",
+                    $"blocked-by mirror resolve failed ({ex.Message}) — falling back to the live per-issue sweep.");
+                return null;
             }
         }
 
@@ -6631,21 +6736,36 @@ namespace BuildConsole.Controls
 
             List<GitHubIssueResult> blockedBy;
             List<GitHubIssueResult> blocking;
-            try
+
+            // Git #3467 — mirror-first, the companion to EnrichBlockedStatusCoreAsync's migration. This
+            // hover popup used to fire 2 live REST calls (GetBlockedByAsync + GetBlockingAsync) per hovered
+            // issue, bursting on a hover-scan down the tree. bt_issue_mirror already carries both dependency
+            // directions (blocked_by_numbers / blocking_numbers, the inverse graph the full sync computes),
+            // so both lists are now local Postgres reads on the common hit. Same fail-closed shape as the
+            // sweep: a mirror miss / never-synced / error falls back to the live pair below.
+            var fromMirror = await TryLoadIssueRelationshipsFromMirrorAsync(issue.IssueNumber);
+            if (fromMirror != null)
             {
-                var gh = new GitHubApiClient(settings.GitHubPat);
-                var blockedByTask = gh.GetBlockedByAsync(issue.IssueNumber);
-                var blockingTask = gh.GetBlockingAsync(issue.IssueNumber);
-                await System.Threading.Tasks.Task.WhenAll(blockedByTask, blockingTask);
-                blockedBy = blockedByTask.Result;
-                blocking = blockingTask.Result;
+                (blockedBy, blocking) = fromMirror.Value;
             }
-            catch
+            else
             {
-                // Leave whatever was already seeded (the sweep's cached "waiting on #N" line, or
-                // nothing) rather than replacing it with an error — this is a hover popup, not a
-                // place to surface a network failure.
-                return;
+                try
+                {
+                    var gh = new GitHubApiClient(settings.GitHubPat);
+                    var blockedByTask = gh.GetBlockedByAsync(issue.IssueNumber);
+                    var blockingTask = gh.GetBlockingAsync(issue.IssueNumber);
+                    await System.Threading.Tasks.Task.WhenAll(blockedByTask, blockingTask);
+                    blockedBy = blockedByTask.Result;
+                    blocking = blockingTask.Result;
+                }
+                catch
+                {
+                    // Leave whatever was already seeded (the sweep's cached "waiting on #N" line, or
+                    // nothing) rather than replacing it with an error — this is a hover popup, not a
+                    // place to surface a network failure.
+                    return;
+                }
             }
 
             if (generation != _issueHoverPopupGeneration) return;
@@ -6654,6 +6774,61 @@ namespace BuildConsole.Controls
             container.Children.Clear();
             AddRelationshipList(container, "🔒 Blocked by", blockedBy);
             AddRelationshipList(container, "⛔ Blocks", blocking);
+        }
+
+        /// <summary>
+        /// Git #3467 — build BOTH dependency directions of an issue's relationship picture from the local
+        /// <c>bt_issue_mirror</c> graph (<see cref="GitHubIssueMirror.MirrorIssue.BlockedByNumbers"/> and
+        /// the inverse <see cref="GitHubIssueMirror.MirrorIssue.BlockingNumbers"/> the full sync computes)
+        /// instead of the live <see cref="GitHubApiClient.GetBlockedByAsync"/> + <see cref="GitHubApiClient.GetBlockingAsync"/>
+        /// pair the hover popup fired per hovered issue. Returns <c>null</c> on a mirror miss / never-synced /
+        /// error so the caller falls back to that live pair — same fail-closed shape as the blocked-by sweep.
+        /// Shapes each related number back into the <see cref="GitHubIssueResult"/> the popup renderer
+        /// expects (Number/Title/State), reading each related issue's own row for its real title + open/closed
+        /// state; a number the mirror has never heard of is shown as still-open (highlighted), matching the
+        /// unknown-node default used elsewhere. Same <c>blocked</c>-label scope caveat as
+        /// <see cref="TryResolveBlockedStatusFromMirrorAsync"/> (the inverse graph is complete only for edges
+        /// whose blocked side carries the label — the repo convention).
+        /// </summary>
+        private static async System.Threading.Tasks.Task<(List<GitHubIssueResult> BlockedBy, List<GitHubIssueResult> Blocking)?>
+            TryLoadIssueRelationshipsFromMirrorAsync(int number)
+        {
+            if (number <= 0) return null;
+            try
+            {
+                if (!await GitHubIssueMirror.HasUsableDataAsync()) return null;
+                var row = await GitHubIssueMirror.TryGetAsync(number);
+                if (row == null) return null; // miss → live fallback.
+
+                var referenced = row.BlockedByNumbers.Concat(row.BlockingNumbers).Where(n => n > 0).Distinct().ToList();
+                var relRows = referenced.Count > 0
+                    ? await GitHubIssueMirror.GetManyAsync(referenced)
+                    : new Dictionary<int, GitHubIssueMirror.MirrorIssue>();
+
+                List<GitHubIssueResult> Build(List<int> nums) => nums
+                    .Where(n => n > 0)
+                    .Select(n =>
+                    {
+                        relRows.TryGetValue(n, out var r);
+                        return new GitHubIssueResult
+                        {
+                            Number = n,
+                            Title = (r != null && !string.IsNullOrWhiteSpace(r.Title)) ? r.Title : $"#{n}",
+                            // MirrorIssue.State is already "open"/"closed"; unknown → "open" (shown highlighted),
+                            // GitHubIssueResult.IsClosed reads case-insensitively either way.
+                            State = r?.State ?? "open",
+                        };
+                    })
+                    .ToList();
+
+                return (Build(row.BlockedByNumbers), Build(row.BlockingNumbers));
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("git-board.data",
+                    $"issue-relationships mirror resolve for #{number} failed ({ex.Message}) — falling back to the live pair.");
+                return null;
+            }
         }
 
         /// <summary>Renders one capped, real-title relationship list (either direction) into the
