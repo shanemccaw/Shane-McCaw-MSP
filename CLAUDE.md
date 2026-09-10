@@ -152,6 +152,29 @@ If the work is abandoned, fails, or the session ends before this step, the file 
 left at `⏳ IN FLIGHT` — that is the record. Do not go back and clean up or delete
 other sessions' stale IN FLIGHT files.
 
+## GitHub access from an interactive chat session — use the shanes-git MCP, not a raw PAT (Git #3556)
+
+Distinct from the `gh` CLI conventions below, which are for dispatched BuildConsole build
+sessions running with real local shell access in a worktree — this section is for interactive
+chat sessions with no shell access at all: any chat opened via BuildConsole's "New Chat," "Hand
+Off Now," or Git Board's Epic/Milestone/Issue context-menu New Chat items.
+
+These sessions used to be seeded with a raw GitHub PAT pasted directly into the chat's first
+message (`{PAT}\r\nEpic #N`) — a live credential sitting in plaintext chat history, searchable
+and re-surfaceable by past-chat tools. That's retired (Git #3556): `EpicChatUrlBuilder` no
+longer embeds a PAT in any New Chat prefill.
+
+**The real, current mechanism:** connect the `shanes-git` MCP connector (a standalone GitHub
+MCP server, live at `https://shanes-git.replit.app` — see
+`desktop/BuildConsole/BuildConsole-Chat-Tools-Reference.md` for its full real tool list and
+connection details) and use its tools (`create_issue`, `get_issue`, `update_issue`,
+`post_comment`, `close_issue`, `move_to_status`, `get_board_status`, `add_sub_issue`,
+`set_blocked_by`, etc.) for any GitHub operation from an interactive chat session — never
+paste, request, or reconstruct a raw PAT.
+
+If `shanes-git` isn't connected in a given chat, say so plainly and ask to have it connected —
+don't fall back to a raw PAT + `bash_tool`/`curl` as a workaround.
+
 ## Mandatory: file every finding as its own GitHub issue
 
 **A build that discovers a real problem and does not file it has lost the finding.** Mentioning
