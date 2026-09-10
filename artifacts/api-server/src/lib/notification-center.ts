@@ -550,64 +550,6 @@ export async function notifyRetentionRestore(opts: {
 }
 
 /**
- * Fan a published status report out to the whole customer (Git #1923, corrects
- * #1589's "stays user-scoped" decision). A status report is a deliverable to the
- * customer organisation, not a private message to `clientUserId` — this notifies
- * every real portal login on the tenant (`users.role = "client"`), same predicate
- * `notifyRetentionRestore` above uses, not just the one named addressee. Delivery
- * is still per-user opt-out-gated by the existing `customer_notification_preferences`
- * mechanism (category "project", the same category `admin-status-reports.ts`
- * already uses for reply/thread notifications on this same table) via
- * `createNotification` — that is the real "subscription mechanism" #1923 asks
- * this to fan out through; no new category was invented for it.
- *
- * Deliberately does NOT add a per-recipient permission filter: #1923 explicitly
- * sequences that piece behind #1704's `can(principal, action, resource)` engine
- * (still open at the time this landed) and forbids approximating it with a
- * role-ladder comparison, so a subscribed customer_user receives this
- * unconditionally today. See the #1923 follow-up issue wiring `blocked_by` #1704
- * for the piece this intentionally leaves undone.
- *
- * `addresseeUserId` (the report's own optional `clientUserId`) is accepted only
- * to fold into the body copy — it never gates who gets notified. Best-effort and
- * never throws, same convention as every other notifier in this file.
- */
-export async function notifyStatusReportPublished(opts: {
-  customerId: number;
-  reportTitle: string;
-  addresseeUserId?: number | null;
-  linkPath?: string;
-}): Promise<{ notified: number }> {
-  const { customerId, reportTitle, addresseeUserId, linkPath } = opts;
-  try {
-    const recipients = await db
-      .select({ id: usersTable.id })
-      .from(usersTable)
-      .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.role, "client")));
-
-    const title = `New status report: ${reportTitle}`;
-    const body = "Your consultant has sent a project status report. View it in your portal.";
-
-    let notified = 0;
-    for (const recipient of recipients) {
-      const notifId = await createNotification({
-        title,
-        body,
-        category: "project",
-        notifType: "project_update",
-        linkPath,
-        recipient: { type: "customer_user", userId: recipient.id },
-      });
-      if (notifId !== null) notified++;
-    }
-    return { notified };
-  } catch (err) {
-    log.warn({ err, customerId, addresseeUserId }, "notification-center: status report publish fan-out failed (non-fatal)");
-    return { notified: 0 };
-  }
-}
-
-/**
  * Create notifications for ALL platform_admin users.
  * Used by the create_notification workflow node.
  */

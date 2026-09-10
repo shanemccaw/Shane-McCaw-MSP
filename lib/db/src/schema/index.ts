@@ -735,7 +735,6 @@ export const kanbanTasksTable = pgTable("kanban_tasks", {
   completionNotes: text("completion_notes"),
   priority: text("priority").notNull().default("medium"),
   sourceEmailId: integer("source_email_id"),
-  statusReportId: integer("status_report_id"),
   taskType: text("task_type"),
   taskMetadata: jsonb("task_metadata"),
   publicNotes: text("public_notes"),

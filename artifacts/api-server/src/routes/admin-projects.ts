@@ -516,17 +516,6 @@ router.get("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respon
     .where(eq(kanbanTasksTable.projectId, projectId))
     .orderBy(asc(kanbanTasksTable.order));
 
-  const reportIds = tasks.map(t => t.statusReportId).filter((id): id is number => id !== null);
-  const reports = reportIds.length > 0
-    ? await db.select({
-        id: statusReportsTable.id,
-        clientQuestion: statusReportsTable.clientQuestion,
-        adminReply: statusReportsTable.adminReply,
-        replyThread: statusReportsTable.replyThread,
-      }).from(statusReportsTable).where(inArray(statusReportsTable.id, reportIds))
-    : [];
-  const reportMap = new Map(reports.map(r => [r.id, r]));
-
   // ── Enrich task_metadata.linkedRunbook from template task runbookId ───────────
   // Chain: kanban_task.workflow_step_id → workflow_steps.workflow_template_step_id
   //        → workflow_template_step_tasks.runbook_id → powershell_scripts | script_modules
@@ -636,12 +625,7 @@ router.get("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respon
   }
   // ─────────────────────────────────────────────────────────────────────────────
 
-  res.json(tasks.map(t => ({
-    ...t,
-    statusReportQuestion: t.statusReportId ? (reportMap.get(t.statusReportId)?.clientQuestion ?? null) : null,
-    statusReportAdminReply: t.statusReportId ? (reportMap.get(t.statusReportId)?.adminReply ?? null) : null,
-    statusReportReplyThread: t.statusReportId ? (reportMap.get(t.statusReportId)?.replyThread ?? []) : [],
-  })));
+  res.json(tasks);
 });
 
 router.post("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Response) => {

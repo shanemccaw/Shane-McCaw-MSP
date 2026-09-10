@@ -628,26 +628,6 @@ export function closureRequestEmail(opts: {
   `;
 }
 
-export function statusReportReplyEmail(opts: {
-  clientName: string;
-  reportTitle: string;
-  adminReply: string;
-  projectId?: number | null;
-}): string {
-  const projectUrl = opts.projectId
-    ? `${getMspPortalBaseUrl()}/projects/${opts.projectId}`
-    : getMspPortalBaseUrl();
-  const safeReply = escapeHtml(opts.adminReply).replace(/\n/g, "<br/>");
-  return `
-    <p>Hi ${escapeHtml(opts.clientName) || "there"},</p>
-    <p>Shane has replied to your question on the status report: <strong>${escapeHtml(opts.reportTitle)}</strong>.</p>
-    <blockquote style="margin:16px 0;padding:12px 16px;background:#f8fafc;border-left:4px solid #0078D4;border-radius:0 6px 6px 0;color:#1e293b;font-size:15px;line-height:1.6;">${safeReply}</blockquote>
-    <p>You can view the full report and mark the question as resolved in your client portal.</p>
-    ${emailButton("View your project", projectUrl)}
-    <p style="margin-top:24px;">— Shane McCaw</p>
-  `;
-}
-
 export function clientThreadReplyEmail(opts: {
   clientName: string;
   reportTitle: string;
@@ -665,26 +645,6 @@ export function clientThreadReplyEmail(opts: {
     <p>You can view the full conversation and reply in the admin panel.</p>
     ${emailButton("View in admin panel", adminUrl)}
     <p style="margin-top:24px;">— Shane McCaw Consulting (automated notification)</p>
-  `;
-}
-
-export function adminThreadReplyEmail(opts: {
-  clientName: string;
-  reportTitle: string;
-  replyContent: string;
-  projectId?: number | null;
-}): string {
-  const projectUrl = opts.projectId
-    ? `${getMspPortalBaseUrl()}/projects/${opts.projectId}`
-    : getMspPortalBaseUrl();
-  const safeContent = escapeHtml(opts.replyContent).replace(/\n/g, "<br/>");
-  return `
-    <p>Hi ${escapeHtml(opts.clientName) || "there"},</p>
-    <p>Shane has replied to your follow-up on the status report: <strong>${escapeHtml(opts.reportTitle)}</strong>.</p>
-    <blockquote style="margin:16px 0;padding:12px 16px;background:#f8fafc;border-left:4px solid #0078D4;border-radius:0 6px 6px 0;color:#1e293b;font-size:15px;line-height:1.6;">${safeContent}</blockquote>
-    <p>You can continue the conversation or mark it as resolved in your client portal.</p>
-    ${emailButton("View your project", projectUrl)}
-    <p style="margin-top:24px;">— Shane McCaw</p>
   `;
 }
 
