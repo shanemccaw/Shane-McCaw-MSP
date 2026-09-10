@@ -40,7 +40,6 @@ import AdminV2 from "@/adminv2/AdminV2";
 
 // ─── Standalone pages (remain at legacy paths, tree leaves in the IDE shell) ─
 import DocumentsPage from "@/pages/crm/Documents";
-import StatusReportsPage from "@/pages/crm/StatusReports";
 import TestimonialsPage from "@/pages/crm/Testimonials";
 import ChecklistsPage from "@/pages/asset-library/ChecklistsPage";
 import ArtifactSetsPage from "@/pages/asset-library/ArtifactSetsPage";
@@ -313,9 +312,6 @@ function Router() {
       {/* ── Standalone pages still at legacy paths ── */}
       <Route path="/crm/documents">
         <AdminRoute><DocumentsPage /></AdminRoute>
-      </Route>
-      <Route path="/crm/status-reports">
-        <AdminRoute><StatusReportsPage /></AdminRoute>
       </Route>
       <Route path="/crm/testimonials">
         <AdminRoute><TestimonialsPage /></AdminRoute>

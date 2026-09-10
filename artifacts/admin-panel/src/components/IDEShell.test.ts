@@ -82,7 +82,6 @@ describe("Workspace config integrity", () => {
 
   it("legacy standalone pages are owned by the right workspace", () => {
     expect(findWorkspace("/crm/documents")?.id).toBe("delivery");
-    expect(findWorkspace("/crm/status-reports")?.id).toBe("delivery");
     expect(findWorkspace("/crm/testimonials")?.id).toBe("delivery");
     expect(findWorkspace("/asset-library/checklists")?.id).toBe("content");
     expect(findWorkspace("/msp/plans")?.id).toBe("system");
@@ -92,7 +91,7 @@ describe("Workspace config integrity", () => {
   it("legacy standalone pages appear as Explorer tree leaves", () => {
     const allPaths = WORKSPACES.flatMap(ws => workspaceLeaves(ws)).map(l => l.path);
     for (const p of [
-      "/crm/documents", "/crm/status-reports", "/crm/testimonials",
+      "/crm/documents", "/crm/testimonials",
       "/asset-library/checklists", "/asset-library/artifact-sets",
       "/asset-library/deliverable-sets", "/asset-library/categories",
       "/msp", "/msp/plans", "/msp/overrides", "/msp/reports",
