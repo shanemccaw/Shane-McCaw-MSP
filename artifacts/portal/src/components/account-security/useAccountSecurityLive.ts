@@ -16,6 +16,15 @@ import { toast } from "sonner";
  * shape and the four documented error states carried forward from the
  * retired `portal-v2` implementation). MFA self-service enrollment writes are
  * wired separately, in `account-security.tsx` itself (#2995).
+ *
+ * `graphSignals` (#3544, superseding the un-wired finding filed against
+ * #1593/#1751) is `GET /api/portal/account-security/graph-signals`
+ * (`routes/portal-account-security-graph.ts`) — the local failed-portal-login
+ * signal plus the three M365-tenant-wide Graph readings (password age, failed
+ * sign-ins, device compliance). Fetched and tracked independently of the
+ * MFA/sessions/login-history read above: a genuine per-tenant Graph gap
+ * (no Entra Premium, no Intune) is an honest `available: false` on an
+ * individual signal, not a page-level read failure.
  */
 
 const MFA_URL = "/api/auth/mfa/enrollments";
@@ -25,6 +34,7 @@ const DATA_EXPORT_URL = "/api/portal/data-export";
 const DELETION_REQUEST_URL = "/api/portal/deletion-request";
 const CHANGE_PASSWORD_URL = "/api/auth/change-password";
 const CHANGE_PASSWORD_CHANNEL = "auth";
+const GRAPH_SIGNALS_URL = "/api/portal/account-security/graph-signals";
 
 /**
  * `POST /auth/change-password` (`auth.ts:822-868`) has no machine-readable
@@ -108,6 +118,55 @@ export interface LiveLoginHistoryRow {
   readonly revoked: boolean;
 }
 
+/** Discriminated-union shapes from `lib/account-security-graph.ts`, wire-identical
+ * to `WireAccountSecurityGraphSignals` (`routes/portal-account-security-graph.ts`). */
+export type GraphSignalUnavailableReason =
+  | "consent_revoked"
+  | "entra_premium_required"
+  | "no_intune_license"
+  | "error";
+
+export interface GraphSignalUnavailable {
+  readonly available: false;
+  readonly reason: GraphSignalUnavailableReason;
+  readonly detail: string;
+}
+
+export interface PasswordAgeSignal {
+  readonly available: true;
+  readonly staleThresholdDays: number;
+  readonly totalUsers: number;
+  readonly staleCount: number;
+  readonly oldestChangeAt: string | null;
+}
+
+export interface FailedSignInsSignal {
+  readonly available: true;
+  readonly failedCount: number;
+  readonly mostRecentFailureAt: string | null;
+}
+
+export interface DeviceComplianceSignal {
+  readonly available: true;
+  readonly totalDevices: number;
+  readonly compliantCount: number;
+  readonly noncompliantCount: number;
+}
+
+export interface LocalFailedLoginSignal {
+  readonly available: true;
+  readonly failedAttempts: number;
+  readonly lastFailedLoginAt: string | null;
+  readonly lockedUntil: string | null;
+}
+
+export interface LiveAccountSecurityGraphSignals {
+  readonly passwordAge: PasswordAgeSignal | GraphSignalUnavailable;
+  readonly failedSignIns: FailedSignInsSignal | GraphSignalUnavailable;
+  readonly deviceCompliance: DeviceComplianceSignal | GraphSignalUnavailable;
+  readonly localFailedLogins: LocalFailedLoginSignal | GraphSignalUnavailable;
+}
+
 export interface AccountSecurityLiveState {
   readonly mfa: LiveMfaEnrollments | null;
   readonly sessions: LiveSecSession[] | null;
@@ -118,6 +177,11 @@ export interface AccountSecurityLiveState {
   readonly loading: boolean;
   /** true only when a read genuinely failed (never for an honest-empty result) */
   readonly readFailed: boolean;
+  /** GET /api/portal/account-security/graph-signals (#3544) — local failed-login + tenant-wide Graph signals */
+  readonly graphSignals: LiveAccountSecurityGraphSignals | null;
+  readonly graphSignalsLoading: boolean;
+  /** true only when the graph-signals request itself failed (never for an honest per-signal `available: false`) */
+  readonly graphSignalsFailed: boolean;
   readonly revokeSession: (id: number) => Promise<void>;
   readonly signOutOthers: () => Promise<void>;
   readonly revoking: Record<number, boolean>;
@@ -180,6 +244,9 @@ export function useAccountSecurityLive(): AccountSecurityLiveState {
   const [submittingDeletion, setSubmittingDeletion] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [graphSignals, setGraphSignals] = useState<LiveAccountSecurityGraphSignals | null>(null);
+  const [graphSignalsLoading, setGraphSignalsLoading] = useState(true);
+  const [graphSignalsFailed, setGraphSignalsFailed] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -217,6 +284,35 @@ export function useAccountSecurityLive(): AccountSecurityLiveState {
       .finally(() => {
         if (cancelled) return;
         setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, fetchWithAuth, attempt]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    setGraphSignalsLoading(true);
+
+    fetchWithAuth(GRAPH_SIGNALS_URL, undefined, { silent: true })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`graph-signals ${res.status}`);
+        return (await res.json()) as LiveAccountSecurityGraphSignals;
+      })
+      .then((body) => {
+        if (cancelled) return;
+        setGraphSignals(body);
+        setGraphSignalsFailed(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setGraphSignalsFailed(true);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setGraphSignalsLoading(false);
       });
 
     return () => {
@@ -355,6 +451,9 @@ export function useAccountSecurityLive(): AccountSecurityLiveState {
     loginHistory,
     loading,
     readFailed,
+    graphSignals,
+    graphSignalsLoading,
+    graphSignalsFailed,
     revokeSession,
     signOutOthers,
     revoking,

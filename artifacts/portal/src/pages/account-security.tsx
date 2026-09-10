@@ -6,6 +6,7 @@ import {
   useAccountSecurityLive,
   changePasswordErrorText,
   changePasswordSuccessText,
+  type LiveAccountSecurityGraphSignals,
 } from "@/components/account-security/useAccountSecurityLive";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
@@ -35,6 +36,84 @@ function last4(phone: string | null): string {
   return digits.slice(-4);
 }
 
+/** Local failed-portal-login line for the Password card — `localFailedLogins`
+ * from `GET /api/portal/account-security/graph-signals` (#3544). Real per-user
+ * data, no Graph/license gate; mirrors the design's `lfDot`/`lfHead`/`lfDetail`. */
+function localFailedLoginLine(gs: LiveAccountSecurityGraphSignals | null): { dot: string; head: string; detail: string } {
+  if (!gs) return { dot: "#64748b", head: "Loading…", detail: "" };
+  const lf = gs.localFailedLogins;
+  if (!lf.available) {
+    return { dot: AMB, head: "Couldn't read failed sign-in attempts", detail: lf.detail };
+  }
+  if (lf.failedAttempts === 0) {
+    return {
+      dot: GRN,
+      head: "No failed sign-in attempts on your account",
+      detail: "Counted since your last successful sign-in. Your account is not locked.",
+    };
+  }
+  const lastAt = lf.lastFailedLoginAt ? new Date(lf.lastFailedLoginAt).toLocaleString() : "an unknown time";
+  const lockedText = lf.lockedUntil
+    ? `Your account is locked until ${new Date(lf.lockedUntil).toLocaleString()}.`
+    : "Your account is not locked.";
+  return {
+    dot: AMB,
+    head: `${lf.failedAttempts} failed sign-in attempt${lf.failedAttempts === 1 ? "" : "s"}`,
+    detail: `Last one ${lastAt}. ${lockedText}`,
+  };
+}
+
+interface TenantSignalRow {
+  name: string;
+  value: string;
+  note: string;
+  dot: string;
+  ink: string;
+  tag: string;
+  tagInk: string;
+  tagBd: string;
+  tagBg: string;
+}
+
+const TENANT_SIGNAL_OK = { tag: "Read", tagInk: GRN, tagBd: "rgba(52,211,153,.28)", tagBg: "rgba(52,211,153,.08)", dot: GRN, ink: "#cbd5e1" };
+const TENANT_SIGNAL_NA = { tag: "Cannot read", tagInk: AMB, tagBd: "rgba(194,166,61,.30)", tagBg: "rgba(194,166,61,.07)", dot: AMB, ink: AMB };
+
+/** The three M365-tenant-wide Graph signals for the "Your Microsoft 365 tenant"
+ * card — real values when `available`, the route's own real `detail` text
+ * (never a paraphrase) when a signal is genuinely unavailable for this tenant. */
+function tenantSignalRows(gs: LiveAccountSecurityGraphSignals | null): TenantSignalRow[] {
+  if (!gs) return [];
+
+  const passwordAge = gs.passwordAge.available
+    ? {
+        ...TENANT_SIGNAL_OK,
+        name: "Password age across the tenant",
+        value: `${gs.passwordAge.staleCount} of ${gs.passwordAge.totalUsers} account${gs.passwordAge.totalUsers === 1 ? "" : "s"} have not changed a password in over ${gs.passwordAge.staleThresholdDays} days.${gs.passwordAge.oldestChangeAt ? ` The oldest is from ${new Date(gs.passwordAge.oldestChangeAt).toLocaleDateString()}.` : ""}`,
+        note: "Read from your tenant directly. It says nothing about the password on this portal login, which has no forced expiry.",
+      }
+    : { ...TENANT_SIGNAL_NA, name: "Password age across the tenant", value: "Cannot be read for your tenant.", note: gs.passwordAge.detail };
+
+  const failedSignIns = gs.failedSignIns.available
+    ? {
+        ...TENANT_SIGNAL_OK,
+        name: "Failed sign-ins to your tenant",
+        value: `${gs.failedSignIns.failedCount} failed sign-in${gs.failedSignIns.failedCount === 1 ? "" : "s"}${gs.failedSignIns.mostRecentFailureAt ? `, the most recent at ${new Date(gs.failedSignIns.mostRecentFailureAt).toLocaleString()}.` : "."}`,
+        note: "Read from your tenant's sign-in log.",
+      }
+    : { ...TENANT_SIGNAL_NA, name: "Failed sign-ins to your tenant", value: "Cannot be read for your tenant.", note: gs.failedSignIns.detail };
+
+  const deviceCompliance = gs.deviceCompliance.available
+    ? {
+        ...TENANT_SIGNAL_OK,
+        name: "Device compliance",
+        value: `${gs.deviceCompliance.totalDevices} device${gs.deviceCompliance.totalDevices === 1 ? "" : "s"} enrolled · ${gs.deviceCompliance.compliantCount} compliant · ${gs.deviceCompliance.noncompliantCount} not compliant.`,
+        note: "Read from your tenant's device management.",
+      }
+    : { ...TENANT_SIGNAL_NA, name: "Device compliance", value: "Cannot be read for your tenant.", note: gs.deviceCompliance.detail };
+
+  return [passwordAge, failedSignIns, deviceCompliance];
+}
+
 /**
  * Account security (#2996 built the page + data rights; #2995, this pass,
  * adds the Multifactor methods section — real TOTP/SMS/passkey self-service
@@ -57,6 +136,16 @@ function last4(phone: string | null): string {
  * states rendered verbatim (`changePasswordErrorText`), and the real
  * `revokedOtherSessions` count surfaced on success (every other session is
  * genuinely killed as a side effect of this action).
+ *
+ * #3544 wires `GET /api/portal/account-security/graph-signals` (built
+ * backend-only under #1593, no frontend called it until now): the local
+ * failed-portal-login line on the Password card (`localFailedLogins`, real
+ * per-user data, no Graph/license gate) and the "Your Microsoft 365 tenant"
+ * card (`passwordAge`/`failedSignIns`/`deviceCompliance`, tenant-wide per
+ * `lib/account-security-graph.ts`'s own documented reasoning — portal users
+ * have no verified identity link to an M365 UPN, #1751). Each signal renders
+ * its real `available`/unavailable state with the route's own real `detail`
+ * text, never a fabricated value.
  */
 export default function AccountSecurityPage() {
   const { user, fetchWithAuth, roleLabel } = useAuth();
@@ -314,6 +403,15 @@ export default function AccountSecurityPage() {
   const othersCount = live.sessions ? live.sessions.filter((s) => !s.current).length : 0;
   const ready = typed.trim().toUpperCase() === REQUIRED_PHRASE;
 
+  // ── Graph signals (#3544 — GET /api/portal/account-security/graph-signals) ─
+  const lf = localFailedLoginLine(live.graphSignals);
+  const tenantSignals = tenantSignalRows(live.graphSignals);
+  const tenantSignalsMeta = live.graphSignalsLoading
+    ? "loading…"
+    : tenantSignals.length === 0
+      ? "unavailable"
+      : `${tenantSignals.filter((t) => t.tag === "Read").length} of ${tenantSignals.length} readings available`;
+
   const methodCards = [
     {
       key: "passkey" as const,
@@ -546,6 +644,17 @@ export default function AccountSecurityPage() {
               </button>
             </div>
 
+            <div
+              className="mt-3 flex flex-wrap items-center gap-[11px] border-t pt-3"
+              style={{ borderColor: "rgba(255,255,255,.06)" }}
+              data-testid="account-security-local-failed-logins"
+            >
+              <span className="size-[7px] shrink-0 rounded-full" style={{ background: lf.dot }} />
+              <span className="text-[12px] text-[#cbd5e1]">{lf.head}</span>
+              <span className="text-[11.5px] text-[#64748b]">{lf.detail}</span>
+              <span className="ml-auto shrink-0 text-[10.5px] text-[#475569]">Your portal account only</span>
+            </div>
+
             {passwordSuccess ? (
               <div
                 className="mt-3 rounded-[10px] px-[14px] py-[10px] text-[12px] text-[#e2e8f0]"
@@ -615,6 +724,52 @@ export default function AccountSecurityPage() {
                 </div>
               </form>
             ) : null}
+          </div>
+
+          {/* Your Microsoft 365 tenant (#3544 — GET /api/portal/account-security/graph-signals,
+              tenant-wide signals; portal users have no verified identity link to an M365 UPN, #1751) */}
+          <div
+            className="flex flex-col gap-[11px] rounded-[14px] px-5 pb-[15px] pt-[15px]"
+            style={{ border: `1px solid ${HAIRLINE}`, background: CARD_BG }}
+            data-testid="account-security-tenant-signals"
+          >
+            <div className="flex flex-wrap items-baseline gap-[10px]">
+              <span className="text-[13.5px] font-semibold text-[#f8fafc]">Your Microsoft 365 tenant</span>
+              <span className="text-[11px] text-[#64748b]">{tenantSignalsMeta}</span>
+            </div>
+            <span className="max-w-[660px] text-[12px] leading-[1.6] text-[#94a3b8]">
+              Everything above is about your login to this portal. The three readings below are about your Microsoft
+              365 tenant as a whole — they count every account in it, not yours, because a portal login has no
+              verified link to a tenant account.
+            </span>
+            <div className="flex flex-col">
+              {tenantSignals.map((t) => (
+                <div
+                  key={t.name}
+                  className="flex items-start gap-3 border-t py-[11px]"
+                  style={{ borderColor: "rgba(255,255,255,.06)" }}
+                >
+                  <span className="mt-[5px] size-[7px] shrink-0 rounded-full" style={{ background: t.dot }} />
+                  <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+                    <span className="text-[12.5px] font-semibold text-[#e2e8f0]">{t.name}</span>
+                    <span className="text-[12px] leading-[1.5]" style={{ color: t.ink }}>
+                      {t.value}
+                    </span>
+                    <span className="max-w-[520px] text-[11px] leading-[1.5] text-[#64748b]">{t.note}</span>
+                  </div>
+                  <span
+                    className="shrink-0 rounded-full px-[9px] py-[3px] text-[10px] font-semibold"
+                    style={{ color: t.tagInk, border: `1px solid ${t.tagBd}`, background: t.tagBg }}
+                  >
+                    {t.tag}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <span className="max-w-[660px] text-[10.5px] leading-[1.55] text-[#475569]">
+              A reading we cannot take says so and names what is missing. None of these is ever shown as a clean
+              result when the check could not run.
+            </span>
           </div>
 
           {/* Sign-in history (#1603 — GET /auth/login-history, all six real fields) */}
