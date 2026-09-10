@@ -103,10 +103,10 @@ public sealed class TelemetryService : ITelemetryService
             // Drift route offline
         }
 
-        // 3. SOW Progress (/api/portal/remediation-checklist)
+        // 3. SOW Progress (/api/portal/remediation/checklist)
         try
         {
-            var res = await _httpClient.GetAsync($"{_baseUrl}/api/portal/remediation-checklist?tenantId={tenant.TenantGuid}");
+            var res = await _httpClient.GetAsync($"{_baseUrl}/api/portal/remediation/checklist?tenantId={tenant.TenantGuid}");
             if (res.IsSuccessStatusCode)
             {
                 anyEndpointReached = true;
@@ -137,31 +137,33 @@ public sealed class TelemetryService : ITelemetryService
             // Remediation checklist offline
         }
 
-        // 4. Copilot Readiness Deltas (engine history)
+        // 4. Copilot Readiness Deltas (/api/admin/engines/copilot/history — admin-scoped by customerId,
+        //    same real tenant_engine_snapshots history the health engine's copilot sub-score reads from)
         try
         {
-            var res = await _httpClient.GetAsync($"{_baseUrl}/api/portal/engine-history?tenantId={tenant.TenantGuid}&pillar=copilot");
+            var res = await _httpClient.GetAsync($"{_baseUrl}/api/admin/engines/copilot/history?customerId={tenant.Id}");
             if (res.IsSuccessStatusCode)
             {
                 anyEndpointReached = true;
                 var json = await res.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("snapshots", out var snaps) && snaps.ValueKind == JsonValueKind.Array)
+                if (doc.RootElement.TryGetProperty("series", out var series) && series.ValueKind == JsonValueKind.Array)
                 {
-                    int prevScore = -1;
-                    foreach (var s in snaps.EnumerateArray())
+                    foreach (var s in series.EnumerateArray())
                     {
                         int score = s.TryGetProperty("score", out var sc) ? sc.GetInt32() : 0;
-                        string date = s.TryGetProperty("snapshotDate", out var sd) ? sd.GetString() ?? "" : "";
-                        int delta = prevScore >= 0 ? score - prevScore : 0;
-                        prevScore = score;
+                        int delta = s.TryGetProperty("delta", out var dl) && dl.ValueKind == JsonValueKind.Number ? dl.GetInt32() : 0;
+                        string date = s.TryGetProperty("date", out var sd) ? sd.GetString() ?? "" : "";
+                        string trend = s.TryGetProperty("trendDirection", out var td) && td.ValueKind == JsonValueKind.String
+                            ? td.GetString() ?? "Stable"
+                            : (delta > 0 ? "Improving" : (delta < 0 ? "Degraded" : "Stable"));
 
                         dashboard.CopilotDeltas.Add(new CopilotDeltaTelemetry
                         {
                             ScanDate = date,
                             Score = score,
                             Delta = delta,
-                            Verdict = delta > 0 ? "Improving" : (delta < 0 ? "Degraded" : "Stable")
+                            Verdict = trend
                         });
                     }
                 }

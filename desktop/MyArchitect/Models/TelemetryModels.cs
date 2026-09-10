@@ -29,15 +29,15 @@ public sealed class TenantTelemetryDashboard
     [JsonPropertyName("engines")]
     public List<EngineTelemetryItem> Engines { get; set; } = new();
 
-    // 2. Drift Changes (/admin/engines/drift/history)
+    // 2. Drift Changes (/admin/drift/events)
     [JsonPropertyName("driftEvents")]
     public List<DriftTelemetryItem> DriftEvents { get; set; } = new();
 
-    // 3. SOW Progress (/portal/remediation-checklist)
+    // 3. SOW Progress (/portal/remediation/checklist)
     [JsonPropertyName("sowProgress")]
     public SowRemediationTelemetry SowProgress { get; set; } = new();
 
-    // 4. Copilot Readiness Deltas (msp-engine-history.ts)
+    // 4. Copilot Readiness Deltas (/admin/engines/copilot/history)
     [JsonPropertyName("copilotDeltas")]
     public List<CopilotDeltaTelemetry> CopilotDeltas { get; set; } = new();
 
