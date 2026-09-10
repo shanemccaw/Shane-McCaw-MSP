@@ -37,6 +37,7 @@ public partial class MainWindow : FluentWindow
     private readonly IChangeRequestReplayService _changeRequestReplayService;
     private readonly IChangeControlService _changeControlService;
     private readonly ILaunchControlActionsService _launchControlActionsService;
+    private readonly IVaultService _vaultService;
 
     private readonly ShellRegistry _shellRegistry = new();
     private FixedRibbonRenderer? _ribbonRenderer;
@@ -46,7 +47,7 @@ public partial class MainWindow : FluentWindow
     // themselves a "document" too, handled via WebViewsContainer/EmptyTabsOverlay below).
     private FrameworkElement[] DocumentOverlays => new FrameworkElement[]
     {
-        SowAssessmentDashboardView, TelemetryDashboardView, ConsolePanel, ScreenshotEvidenceDocument,
+        SowAssessmentDashboardView, TelemetryDashboardView, ConsolePanel, VaultPanel, ScreenshotEvidenceDocument,
     };
 
     public MainWindow()
@@ -62,6 +63,7 @@ public partial class MainWindow : FluentWindow
         _tenantModuleConnectionService = new TenantModuleConnectionService(_tenantService, _consoleService);
         _changeControlService = new ChangeControlService();
         _launchControlActionsService = new LaunchControlActionsService();
+        _vaultService = new VaultService();
         _consoleService.CommandExecuted += (s, record) => _consoleHistoryService.Add(record);
 
         ShellTenantSwitcher.Initialize(_tenantService);
@@ -79,6 +81,7 @@ public partial class MainWindow : FluentWindow
         TelemetryDashboardView.Initialize(_tenantService);
         ConsolePanel.Initialize(_consoleService, _tenantModuleConnectionService, _tenantService, _consoleHistoryService);
         ConsolePanel.HistoryRequested += () => OpenConsoleHistoryRecord();
+        VaultPanel.Initialize(_vaultService, _tenantService);
 
         LeftReferencePanelControl.BookmarkSelected += async portalType =>
         {
@@ -125,11 +128,12 @@ public partial class MainWindow : FluentWindow
 
         RegisterHomeTab();
         RegisterConsoleTab();
-        // Watch / Documents / Admin are intentionally left unregistered here — their real
-        // content is #3483/#3487/#3490 (Watch), #3486 (Documents) and #3461/#3489/#3480/#3485
-        // (Admin), all separate Features blocked on this shell landing. FixedRibbonRenderer
+        RegisterAdminTab();
+        // Watch / Documents are intentionally left unregistered here — their real content is
+        // #3483/#3487/#3490 (Watch) and #3486 (Documents), separate Features. FixedRibbonRenderer
         // renders a stated empty state for each until those land (SHELL.md §6) — never a
-        // fabricated placeholder group.
+        // fabricated placeholder group. Admin now carries Vault (#3461); Audit Log (#3489),
+        // Break-Glass (#3480) and consent status (#3485) attach here as they land.
 
         _shellRegistry.RegisterPaletteProvider(BuildPaletteCommands);
     }
@@ -245,6 +249,29 @@ public partial class MainWindow : FluentWindow
                         GetRows = BuildScriptLibraryRows,
                     },
                     OnSelect = () => { },
+                },
+            },
+        });
+    }
+
+    /// <summary>Admin tab (UI_RULES.md §2). Carries the Credential Vault (#3461) — an
+    /// <see cref="RibbonIntent.Open"/> command (global-scope, no specific record) that opens the
+    /// vault document. Audit Log (#3489), Break-Glass (#3480) and consent status (#3485) attach
+    /// their own groups here as they land.</summary>
+    private void RegisterAdminTab()
+    {
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Admin, new RibbonGroupSpec
+        {
+            Label = "Vault",
+            Order = 10,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Credential Vault",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Per-tenant username/password store — local-only, DPAPI-encrypted, master-unlocked (#3461)",
+                    OnSelect = () => ShowDocument(VaultPanel),
                 },
             },
         });
@@ -616,6 +643,7 @@ public partial class MainWindow : FluentWindow
             new() { Id = "dest:console", Type = PaletteType.Destination, Name = "Console", Run = () => ShowDocument(ConsolePanel) },
             new() { Id = "dest:sow", Type = PaletteType.Destination, Name = "SOW & Assessment", Sub = "Gate, SOW, Drift & Snapshot", Run = () => ShowAssessmentView() },
             new() { Id = "dest:telemetry", Type = PaletteType.Destination, Name = "Live Telemetry Console", Sub = "Engines, Drift, SOW & Feed", Run = () => ShowTelemetryView() },
+            new() { Id = "dest:vault", Type = PaletteType.Destination, Name = "Credential Vault", Sub = "Per-tenant, local-only, DPAPI-encrypted (#3461)", Run = () => ShowDocument(VaultPanel) },
             new() { Id = "act:open-all", Type = PaletteType.Action, Name = "Open all portals", Run = () => _ = OpenAllPortalsAsync() },
             new() { Id = "ans:open-tabs", Type = PaletteType.Answer, Name = "Open portal tabs", Live = _tabs.Count.ToString(), Run = () => { } },
         };
@@ -673,6 +701,11 @@ public partial class MainWindow : FluentWindow
         else if (document == TelemetryDashboardView && _tenantService.CurrentTenant != null)
         {
             _ = TelemetryDashboardView.LoadForTenantAsync(_tenantService.CurrentTenant);
+        }
+        else if (document == VaultPanel)
+        {
+            // Re-evaluate lock/unlock state and focus the right input each time it opens.
+            VaultPanel.OnShown();
         }
     }
 

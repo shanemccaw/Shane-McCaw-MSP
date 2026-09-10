@@ -282,6 +282,11 @@
                                             Visibility="Collapsed"
                                             HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
+                    <!-- Credential Vault (#3461) — Admin-tab document, local-only DPAPI-encrypted store -->
+                    <shell:VaultPanelView x:Name="VaultPanel"
+                                          Visibility="Collapsed"
+                                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+
                     <Border x:Name="ScreenshotEvidenceDocument"
                             Background="#181818"
                             Visibility="Collapsed"
