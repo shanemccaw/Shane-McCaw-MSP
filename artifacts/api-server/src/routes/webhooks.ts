@@ -28,7 +28,6 @@ const router = Router();
 export const SUBSCRIBABLE_EVENT_TYPES = [
   ...Object.values(EVENT_TYPES),
   // Additional platform-specific event types
-  "signal.fired",
   "fulfillment.item.created",
   "fulfillment.item.updated",
   "offer.accepted",

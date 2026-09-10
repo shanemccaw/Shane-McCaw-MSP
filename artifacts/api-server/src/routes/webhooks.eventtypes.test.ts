@@ -60,9 +60,10 @@ describe("webhook eventTypes catalog gating (#1607)", () => {
     expect(r.success).toBe(true);
   });
 
-  it("signal.fired is still in the catalog today (flagged for Shane, not removed this session)", () => {
-    // Documents current state: removal is a term-live-in-code drop and was flagged,
-    // not decided unilaterally (see build-journal/1607.md + the #1607 comment).
-    expect((SUBSCRIBABLE_EVENT_TYPES as readonly string[]).includes("signal.fired")).toBe(true);
+  it("signal.fired was removed from the catalog (#3547 — Shane's decision, no dispatch call site ever existed)", () => {
+    // #1607 flagged signal.fired as subscribable-but-never-dispatched and left removal
+    // as an open decision for Shane; #3547 decided it — remove, confirmed zero live
+    // subscriptions (see build-journal/3547.md).
+    expect((SUBSCRIBABLE_EVENT_TYPES as readonly string[]).includes("signal.fired")).toBe(false);
   });
 });

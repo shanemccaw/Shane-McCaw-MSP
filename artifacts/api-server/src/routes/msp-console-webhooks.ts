@@ -36,8 +36,8 @@
  * vocabulary. It re-exports the same real, currently-dispatchable list
  * (`SUBSCRIBABLE_EVENT_TYPES`, `webhooks.ts`) the portal's own
  * `/api/portal/webhooks/event-types` already serves, and flags each webhook's
- * subscribed events that are NOT in that list — e.g. `signal.fired`, which is
- * subscribable today but has no dispatch call site anywhere (see
+ * subscribed events that are NOT in that list — e.g. `fulfillment.item.created`, which
+ * is subscribable today but has no dispatch call site anywhere (see
  * docs/portal/webhooks-contract-pack.md §4(A)) — so an operator can see a subscription that
  * will never fire without cross-referencing the catalog by hand.
  *
