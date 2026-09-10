@@ -54,7 +54,12 @@ export default defineConfig({
     // they were written to test. Read the file's header before changing it; a test
     // about the unseeded path overrides it with its own file-level vi.mock, and the
     // live-Postgres acceptance test vi.unmocks it.
-    setupFiles: ["./src/test-setup/rbac-ladder-rows.ts"],
+    // #2460 adds the second of these for the same reason #2458 added the first —
+    // read both files' headers before changing either.
+    setupFiles: [
+      "./src/test-setup/rbac-ladder-rows.ts",
+      "./src/test-setup/rbac-capability-rows.ts",
+    ],
     // The one place a file is deliberately kept out of vitest's own run, with
     // a reason on it. These 20 files import `describe`/`it` from `node:test`,
     // not `vitest` — they are a genuinely different test runner, dispatched

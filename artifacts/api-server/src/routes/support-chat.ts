@@ -35,7 +35,8 @@ import {
   clientServicesTable,
   servicesTable,
 } from "@workspace/db";
-import { eq, and, or, desc, notInArray, sql } from "drizzle-orm";
+import { eq, and, or, desc, inArray, notInArray, sql } from "drizzle-orm";
+import { purchaseApproverUserIds } from "../middlewares/rbac-capability.ts";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
@@ -347,8 +348,9 @@ async function loadPlatformAdminRecipients(): Promise<EscalationRecipient[]> {
  *   - CustomerUser on any other MSP                    → that MSP's active MSPAdmins
  *   - CustomerUser MSP with zero active MSPAdmins      → fall back to platform admins
  *   - no resolvable mspId                              → all platform admins
- * Mirrors the MSP-scoped fan-out query in workflow-executor.ts (active
- * MSPAdmin / canApprovePurchases members joined to usersTable for email).
+ * Mirrors the MSP-scoped fan-out in workflow-executor.ts — since #2460 both resolve
+ * their recipients through `msp:purchases.approve` rather than through the retired
+ * `can_approve_purchases` column, so the two cannot drift apart.
  */
 async function resolveEscalationRecipients(opts: {
   mspId: number | null;
@@ -362,17 +364,26 @@ async function resolveEscalationRecipients(opts: {
   }
 
   const mspId = opts.mspId as number;
-  const mspAdmins = await db
+  const approverIds = await purchaseApproverUserIds(mspId);
+  if (approverIds === null) {
+    // The model could not be read — distinct from "this MSP has nobody". Escalations
+    // must still reach a human, so this takes the same platform-admin fallback the
+    // empty case takes, but says which of the two happened.
+    log.warn({ mspId }, "support-chat: could not resolve MSP escalation recipients from the RBAC model — falling back to platform admins");
+    return loadPlatformAdminRecipients();
+  }
+
+  const mspAdmins = approverIds.length === 0 ? [] : await db
     .select({ userId: usersTable.id, email: usersTable.email })
     .from(usersTable)
     .where(and(
       eq(usersTable.mspId, mspId),
       eq(usersTable.isActive, true),
-      or(eq(usersTable.mspRole, "MSPAdmin"), eq(usersTable.canApprovePurchases, true)),
+      inArray(usersTable.id, approverIds),
     ));
 
   if (mspAdmins.length === 0) {
-    log.warn({ mspId }, "support-chat: MSP escalation with no active MSPAdmin — falling back to platform admins");
+    log.warn({ mspId }, "support-chat: MSP escalation with no active approver — falling back to platform admins");
     return loadPlatformAdminRecipients();
   }
 

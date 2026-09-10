@@ -86,6 +86,7 @@ import { anthropic, withAiAttribution, type AiCallAttribution } from "@workspace
 import { resolveNodeTypeMeta, resolveEffectiveNodeType } from "./node-type-registry.js";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
 import { eq, and, count, desc, inArray, or, sql } from "drizzle-orm";
+import { purchaseApproverUserIds } from "../middlewares/rbac-capability.ts";
 import path from "path";
 import fs from "fs/promises";
 import { randomUUID } from "crypto";
@@ -7822,13 +7823,18 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           if (isMspScoped) {
             const notifLink = `/pending-approvals`;
             try {
-              const approvers = await db
+              // #2460 — was `mspRole = 'MSPAdmin' OR can_approve_purchases`. The
+              // approvers are now whoever holds `msp:purchases.approve`, which is the
+              // same authority msp-v1.ts's decide route checks — so nobody is paged
+              // about an approval they cannot actually perform.
+              const approverIds = await purchaseApproverUserIds(gateMspId);
+              const approvers = (approverIds === null || approverIds.length === 0) ? [] : await db
                 .select({ userId: usersTable.id, email: usersTable.email, name: usersTable.name })
                 .from(usersTable)
                 .where(and(
                   eq(usersTable.mspId, gateMspId),
                   eq(usersTable.isActive, true),
-                  or(eq(usersTable.mspRole, "MSPAdmin"), eq(usersTable.canApprovePurchases, true)),
+                  inArray(usersTable.id, approverIds),
                 ));
 
               if (approvers.length > 0) {
@@ -7847,7 +7853,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                   if (a.email) void sendEmail(a.email, notifTitle, `<p>${notifBody}</p><p>Log in to the MSP Portal to review.</p>`);
                 }
               } else {
-                log.warn({ runId, mspId: gateMspId }, "approval_gate: MSP-scoped approval with no eligible approver (no MSPAdmin, no canApprovePurchases user) — nobody notified");
+                log.warn({ runId, mspId: gateMspId, resolvable: approverIds !== null }, "approval_gate: MSP-scoped approval with nobody holding msp:purchases.approve — nobody notified");
               }
             } catch (notifErr) {
               log.warn({ notifErr, runId, mspId: gateMspId }, "approval_gate: failed to notify MSP approvers (non-fatal)");

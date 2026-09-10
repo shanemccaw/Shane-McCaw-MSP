@@ -64,7 +64,8 @@
  * point of #2936.
  */
 
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
+import { purchaseApproverUserIds } from "../../middlewares/rbac-capability.ts";
 import {
   db,
   mspsTable,
@@ -147,6 +148,15 @@ async function readTicketContext(
  * just isn't emailed on top.
  */
 async function resolvePlatformNotifyEmails(): Promise<string[]> {
+  // #2460 — was `mspRole = 'MSPAdmin' OR can_approve_purchases`. Both columns of that
+  // predicate are gone; the recipients are now whoever the model says holds
+  // `msp:purchases.approve`, so a re-grant changes who is notified without a deploy.
+  // A null answer means the model could not be read, which is not the same as nobody
+  // qualifying — an empty notify list is already a non-failure here (see the docblock
+  // above), so both end up not emailing, but only one of them is normal.
+  const approverIds = await purchaseApproverUserIds(ZOHO_DEFAULT_MSP_ID);
+  if (approverIds === null || approverIds.length === 0) return [];
+
   const admins = await db
     .select({ email: usersTable.email })
     .from(usersTable)
@@ -154,7 +164,7 @@ async function resolvePlatformNotifyEmails(): Promise<string[]> {
       and(
         eq(usersTable.mspId, ZOHO_DEFAULT_MSP_ID),
         eq(usersTable.isActive, true),
-        or(eq(usersTable.mspRole, "MSPAdmin"), eq(usersTable.canApprovePurchases, true)),
+        inArray(usersTable.id, approverIds),
       ),
     );
   return admins.map((a) => a.email).filter((e): e is string => Boolean(e));

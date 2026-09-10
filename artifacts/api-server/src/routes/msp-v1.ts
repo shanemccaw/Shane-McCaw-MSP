@@ -25,6 +25,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspsTable, tenantsTable, mspJobQueueTable, pendingApprovalsTable, wfRunsTable, wfDefinitionsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql } from "drizzle-orm";
 import { requireCapability, requireMspScope } from "../middlewares/requireAuth.ts";
+import { userHasCapability } from "../middlewares/rbac-capability.ts";
 import { mspRateLimit, mspMutatingRateLimit } from "../middlewares/mspRateLimit.ts";
 import { mspRequestLog } from "../middlewares/mspRequestLog.ts";
 import { withIdempotency } from "../lib/idempotency.ts";
@@ -333,24 +334,27 @@ router.post(
 
     const user = req.user!;
 
-    // Verify decision authorization:
-    // MSPAdmin and PlatformAdmin (legacy role: admin) can always decide.
-    // MSPOperator needs canApprovePurchases = true.
-    let isAuthorized = false;
-    if (user.role === "admin" || user.mspRole === "PlatformAdmin" || user.mspRole === "MSPAdmin") {
-      isAuthorized = true;
-    } else if (user.mspRole === "MSPOperator") {
-      const [dbUser] = await db
-        .select({ canApprovePurchases: usersTable.canApprovePurchases })
-        .from(usersTable)
-        .where(and(eq(usersTable.id, user.id), eq(usersTable.mspId, mspId)))
-        .limit(1);
-      if (dbUser?.canApprovePurchases) {
-        isAuthorized = true;
-      }
+    // Verify decision authorization — #2460.
+    //
+    // This was: PlatformAdmin/legacy-admin/MSPAdmin always; MSPOperator only with
+    // `users.can_approve_purchases`. That rule is now the seeded `msp:purchases.approve`
+    // mapping row, whose allow set is {PlatformAdmin, MSPAdmin, cap.purchases.approve} —
+    // and `cap.purchases.approve` was granted by #2457's seed to exactly the MSPOperators
+    // who carried the column, which is the only place that column granted anything. Same
+    // answer, read from rows, still read LIVE so a revoke takes effect immediately.
+    //
+    // `requireMspScope("params")` above already established that this caller belongs to
+    // this mspId (PlatformAdmin bypassing), which is what the retired query's own
+    // `eq(usersTable.mspId, mspId)` clause was doing a second time.
+    const approval = await userHasCapability(user, "msp", "purchases.approve");
+    if (approval.kind === "unavailable") {
+      // Not a denial: the model could not be consulted. Answering 403 would report a
+      // missing seed as a permission decision — see rbac-capability.ts's header.
+      req.log?.error({ reason: approval.reason }, "purchase-approval capability check could not consult the RBAC model — failing closed");
+      apiError(res, 503, ApiErrorCode.INTERNAL, "Authorization is temporarily unavailable");
+      return;
     }
-
-    if (!isAuthorized) {
+    if (approval.kind !== "allow") {
       apiError(res, 403, ApiErrorCode.FORBIDDEN, "You do not have permission to decide on approvals for this MSP");
       return;
     }

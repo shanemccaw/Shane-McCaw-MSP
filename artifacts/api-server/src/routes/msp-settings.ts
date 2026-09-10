@@ -75,6 +75,8 @@ import {
 import { eq, and, desc, isNull, inArray, gte, lt, count } from "drizzle-orm";
 import { requireAuth, requireCapability, effectiveMspRole } from "../middlewares/requireAuth.ts";
 import { roleClearsLadderFloor } from "../middlewares/rbac-ladder.ts";
+import { setGrantRole, usersHoldingGrantRole } from "../middlewares/rbac-capability.ts";
+import { CAPABILITY_COLUMN_ROLE_KEYS } from "@workspace/db/rbac/legacy-ladder";
 import { z } from "zod";
 import { randomBytes, createHash, randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
@@ -597,7 +599,6 @@ router.get("/msp/settings/users", requireCapability("ladder.msp-admin"), async (
       id: usersTable.id,
       userId: usersTable.id,
       mspRole: usersTable.mspRole,
-      canApprovePurchases: usersTable.canApprovePurchases,
       isActive: usersTable.isActive,
       lastLoginAt: usersTable.lastLoginAt,
       createdAt: usersTable.createdAt,
@@ -618,9 +619,32 @@ router.get("/msp/settings/users", requireCapability("ladder.msp-admin"), async (
     .groupBy(mspStaffCustomerScopesTable.staffUserId);
   const scopeCountByUser = new Map(scopeCounts.map((r) => [r.staffUserId, Number(r.n)]));
 
+  // #2460 — `canApprovePurchases` was a column on this row. It is now a membership
+  // of the platform `cap.purchases.approve` role, so the toggle's state is a
+  // separate read. The wire field name is deliberately unchanged: the MSP settings
+  // UI reads `canApprovePurchases` and PATCHes the same name back, and renaming a
+  // response field is a client change this migration has no business forcing.
+  //
+  // This is the GRANT, not the capability. An MSPAdmin can approve purchases without
+  // holding this role; showing their toggle as ON would tell an admin they had
+  // granted something they never granted. `msp-v1.ts`'s decide route asks the
+  // capability question, which is the one that actually gates the action.
+  const granted = await usersHoldingGrantRole(
+    "msp",
+    CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases,
+    users.map((u) => u.userId),
+  );
+  if (granted === null) {
+    // Unseeded/unreadable model. Rendering every toggle as OFF would look like a
+    // mass revoke, so this is reported rather than guessed at.
+    apiError(res, 503, "Role data is temporarily unavailable");
+    return;
+  }
+
   res.json(
     users.map((u) => ({
       ...u,
+      canApprovePurchases: granted.has(u.userId),
       // assignedCustomersCount === 0 means unrestricted, NOT "no access".
       assignedCustomersCount: scopeCountByUser.get(u.userId) ?? 0,
     })),
@@ -795,13 +819,30 @@ router.patch("/msp/settings/users/:userId/approve-purchases", requireCapability(
     return;
   }
 
-  const [updated] = await db
-    .update(usersTable)
-    .set({ canApprovePurchases: parsed.data.canApprovePurchases, updatedAt: new Date() })
+  // #2460 — the target must still be a real member of the caller's MSP before
+  // anything is granted. That check used to be the UPDATE's own WHERE clause; with
+  // the column gone it has to be made explicitly, because the grant row lives in
+  // `msp_user_roles` and knows nothing about which MSP a user belongs to.
+  const [target] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
     .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
-    .returning({ id: usersTable.id });
+    .limit(1);
 
-  if (!updated) { apiError(res, 404, "User not found in this MSP"); return; }
+  if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
+
+  // Was `UPDATE users SET can_approve_purchases = $1`. Now a membership of the
+  // platform `cap.purchases.approve` role — the same grant #2457's seed carried the
+  // column's live values into, so an existing grant is untouched and a new one lands
+  // in the place the evaluator actually reads.
+  const result = await setGrantRole(
+    "msp",
+    userId,
+    CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases,
+    parsed.data.canApprovePurchases,
+    req.user?.id ?? null,
+  );
+  if (!result.ok) { apiError(res, 503, "Role data is temporarily unavailable"); return; }
 
   await writeAuditLog({
     req,

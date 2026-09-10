@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { db, usersTable, mfaEnrollmentsTable, webauthnCredentialsTable, userSessionsTable, passwordResetTokensTable, mfaChallengesTable, webauthnChallengesTable, mfaBypassCodesTable } from "@workspace/db";
 import { eq, and, inArray, gte, isNull, sql, count } from "drizzle-orm";
 import { requireAuth, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth.ts";
+import { userHasCapability } from "../middlewares/rbac-capability.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { getPortalBaseUrl, getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
@@ -25,33 +26,40 @@ const router: IRouter = Router();
  *  1. Tenant isolation via assertCustomerAccess — the caller must be entitled to
  *     touch this customer at all (own tenant for customer-tier users; in-MSP +
  *     staff-scope for MSP staff; anything for PlatformAdmin).
- *  2. Team-admin capability — a customer-tier user (CustomerUser/Free/Assessment)
- *     must ADDITIONALLY carry the live `canManageTeam` flag. MSP staff
- *     (MSPAdmin/MSPOperator) and PlatformAdmin manage customer teams by virtue
- *     of their role and are not subject to the per-user flag. There is no
- *     "CustomerAdmin" role in MSP_ROLES, so this per-user capability is the
- *     elevated-customer distinction (mirrors usersTable.canApprovePurchases).
+ *  2. Team-admin capability — `customer:team.manage`. A customer-tier user
+ *     (CustomerUser/Free/Assessment) must ADDITIONALLY hold it; MSP staff and
+ *     PlatformAdmin hold it by virtue of their role and are not subject to a
+ *     per-user grant. There is no "CustomerAdmin" rung, so this capability is the
+ *     elevated-customer distinction.
  *
- * The flag is read LIVE from the DB, never trusted from the JWT, so a revoke
- * takes effect immediately without waiting for token refresh. Returns the HTTP
- * status to answer with on denial, or null when the caller may proceed. Both
- * denial reasons answer 403 and never leak which gate failed.
+ * ── #2460 — where that second gate now reads from ──────────────────────────
+ *
+ * Until #2460 this was the per-user `users.can_manage_team` column, read live in
+ * this function. #2457 expressed it as rows — the users who carried the column hold
+ * the `cap.team.manage` customer role, and the `customer:team.manage` mapping row's
+ * allow set is {cap.team.manage, MSPAdmin, MSPOperator, PlatformAdmin,
+ * ServiceAccount}. That set is the transcription of the exact rule above, including
+ * the artifact that `ServiceAccount` passes without a grant because the live test
+ * was an allow-list of three tier NAMES rather than a rung comparison (#1696 records
+ * this; `legacy-ladder.test.ts` pins it). The column is retired; the answer is the
+ * same one, from the database.
+ *
+ * Still read LIVE, never trusted from the JWT, so a revoke takes effect immediately
+ * without waiting for token refresh — the property Git #1142 chose the column shape
+ * for in the first place, preserved deliberately.
+ *
+ * Returns the HTTP status to answer with on denial, or null when the caller may
+ * proceed. Both denial reasons answer 403 and never leak which gate failed — except
+ * an unreadable/unseeded model, which is 503 and NOT a denial (see
+ * rbac-capability.ts's header on why those two must not look alike).
  */
 async function denyIfCannotManageTeam(user: AuthUser, targetCustomerId: number): Promise<number | null> {
   const allowed = await assertCustomerAccess(user, targetCustomerId);
   if (!allowed) return 403;
 
-  const effectiveRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
-  const isCustomerTier =
-    effectiveRole === "CustomerUser" || effectiveRole === "Free" || effectiveRole === "Assessment";
-  if (!isCustomerTier) return null; // MSP staff / PlatformAdmin — role is the gate
-
-  const [row] = await db
-    .select({ canManageTeam: usersTable.canManageTeam })
-    .from(usersTable)
-    .where(eq(usersTable.id, user.id))
-    .limit(1);
-  return row?.canManageTeam ? null : 403;
+  const outcome = await userHasCapability(user, "customer", "team.manage");
+  if (outcome.kind === "allow") return null;
+  return outcome.kind === "unavailable" ? 503 : 403;
 }
 
 router.delete("/portal/team/:userId/sessions", requireAuth, async (req: Request, res: Response) => {

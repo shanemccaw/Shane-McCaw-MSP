@@ -34,7 +34,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { db, tenantsTable, usersTable } from "@workspace/db";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, inArray, or } from "drizzle-orm";
+import { purchaseApproverUserIds } from "../middlewares/rbac-capability.ts";
 import { ZohoNotConnectedError, ZohoApiError } from "../lib/zoho-client.ts";
 import {
   enqueueEscalationTicket,
@@ -75,6 +76,11 @@ async function resolveCustomerMspId(customerId: number, fallback?: number | null
  */
 async function resolveMspAdminEmails(mspId: number | undefined): Promise<string[]> {
   if (!mspId) return [];
+  // #2460 — was `mspRole = 'MSPAdmin' OR can_approve_purchases`; the recipients are
+  // now whoever the model says holds `msp:purchases.approve` for this MSP.
+  const approverIds = await purchaseApproverUserIds(mspId);
+  if (approverIds === null || approverIds.length === 0) return [];
+
   const admins = await db
     .select({ email: usersTable.email })
     .from(usersTable)
@@ -82,7 +88,7 @@ async function resolveMspAdminEmails(mspId: number | undefined): Promise<string[
       and(
         eq(usersTable.mspId, mspId),
         eq(usersTable.isActive, true),
-        or(eq(usersTable.mspRole, "MSPAdmin"), eq(usersTable.canApprovePurchases, true)),
+        inArray(usersTable.id, approverIds),
       ),
     );
   return admins.map((a) => a.email).filter((e): e is string => Boolean(e));
