@@ -294,6 +294,26 @@ namespace BuildConsole.Services
         public static async Task<(List<BatterUpRow> Rows, int SuppressedCount, ClosedSweepResult SweepResult)> RefreshAsync(
             GitHubApiClient gh, BuildQueuePostgresClient? queueDb, Action<string> log)
         {
+            // Git #3494 — fail the WHOLE pass fast when the shared #2815 rate-limit circuit is OPEN,
+            // rather than proceeding to build rows from data we cannot read. Under an open circuit
+            // ResolveBuildCommentsAsync (below) makes no live GitHub call and returns nothing, so
+            // EVERY board item came back HasBuildComment=false and rendered as "no BUILD: comment yet
+            // — needs dispatch" — even the items whose BUILD: comment is real and already posted. That
+            // is exactly the false "75 items reverted to needs-dispatch as if their BUILD comments
+            // were lost" reversion this issue chased: the items lost nothing; this pass simply could
+            // not resolve their comments while GitHub was rate-limiting us. Throw the recognized
+            // "rate-limit circuit open" message so the panel shows its honest, self-recovering
+            // "GitHub cooling down (#2815)" holding state and KEEPS its last-known rows
+            // (BatterUpPanel.RefreshCoreAsync + GitHubRateLimitCircuit.IsCircuitOpenMessage), instead
+            // of flapping every item to needs-dispatch. The next closed-window refresh resolves and
+            // auto-queues normally — the underlying queue insertion was never broken.
+            if (GitHubRateLimitCircuit.IsOpen)
+            {
+                log($"Batter Up refresh deferred — GitHub rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); " +
+                    "board items keep their last-known state and re-resolve on the next refresh rather than flapping to 'needs dispatch' (Git #3494).");
+                throw new InvalidOperationException("Batter Up refresh skipped — rate-limit circuit open (Git #2815).");
+            }
+
             // Git #2557 — auto-sweep: a closed issue sitting in "Batter Up" status is
             // structurally invisible to the OPEN-only board read below (GetBatterUpIssuesAsync),
             // so nothing ever demotes it on its own. Runs BEFORE the open-only row list is built

@@ -218,15 +218,30 @@ namespace BuildConsole.Controls
                 }
                 catch (Exception ex)
                 {
+                    // Git #2926 — a suppressed call under the #2815 breaker is transient and
+                    // self-recovering within its backoff window; show that distinctly from a real,
+                    // standing failure so it doesn't read as an urgent bug (see #2916).
+                    bool circuitOpen = Services.GitHubRateLimitCircuit.IsCircuitOpenMessage(ex.Message);
+
+                    // Git #3494 — on a transient circuit-open deferral, keep the last-known rows
+                    // instead of blanking the lane every ~minute while GitHub is rate-limiting us
+                    // (same reasoning as the Batter Up lane). Only blank on a first load (nothing to
+                    // preserve) or a real, standing failure.
+                    if (circuitOpen && _allRows.Count > 0)
+                    {
+                        Services.ActivityLog.Log("ai-batter-up",
+                            $"Refresh deferred (rate-limit circuit open) — keeping last-known {_allRows.Count} row(s); recovers automatically (Git #3494/#2815).");
+                        TxtCount.Text = $"({_allRows.Count}) · GitHub cooling down (#2815)";
+                        TxtEmpty.Visibility = Visibility.Collapsed;
+                        return;
+                    }
+
                     Services.ActivityLog.Log("ai-batter-up", $"Refresh failed: {ex.Message}");
                     TxtCount.Text = "";
                     RowsList.Children.Clear();
                     _allRows = new List<Services.AiBatterUpRow>();
                     UpdateFilterBoxVisibility();
-                    // Git #2926 — a suppressed call under the #2815 breaker is transient and
-                    // self-recovering within its backoff window; show that distinctly from a real,
-                    // standing failure so it doesn't read as an urgent bug (see #2916).
-                    TxtEmpty.Text = Services.GitHubRateLimitCircuit.IsCircuitOpenMessage(ex.Message)
+                    TxtEmpty.Text = circuitOpen
                         ? BuildCircuitOpenMessage()
                         : $"Couldn't read AI Batter Up: {ex.Message}";
                     TxtEmpty.Visibility = Visibility.Visible;
