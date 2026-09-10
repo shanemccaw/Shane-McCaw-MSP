@@ -147,10 +147,10 @@ describe.skipIf(!process.env.DATABASE_URL)("#2984 — the post-termination purge
       VALUES (${`sx-${SUFFIX}`}, ${dueUserId}, now() + interval '1 day')
     `);
     // A real generated document owned by this user, and a print token pointing at it.
-    // `print_tokens.document_id` → `insights_generated_documents(id)` is NO ACTION, so
-    // this pair is also the probe for the second ordering constraint #2984 found: the
-    // `documents` module has to clear the token before it deletes the document, or the
-    // whole purge aborts long before the identity phase is even reached.
+    // `print_tokens.document_id` → `insights_generated_documents(id)` is `ON DELETE
+    // CASCADE` (Git #3106; was NO ACTION when #2984 found it — that made this pair the
+    // probe for a second ordering constraint the `documents` module had to honour, or
+    // the whole purge aborted long before the identity phase was even reached).
     const docRows = await db.execute<{ id: number }>(sql`
       INSERT INTO insights_generated_documents (title, msp_customer_id, customer_id)
       VALUES (${`#2984 doc ${SUFFIX}`}, ${dueTenantId}, ${dueUserId})

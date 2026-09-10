@@ -966,7 +966,12 @@ export const printTokensTable = pgTable("print_tokens", {
   id: serial("id").primaryKey(),
   token: text("token").notNull().unique(),
   userId: integer("user_id").notNull().references(() => usersTable.id),
-  documentId: integer("document_id").notNull().references(() => insightsGeneratedDocumentsTable.id),
+  // Git #3106: ON DELETE CASCADE — a print token is a short-lived capability
+  // scoped to exactly one document; once that document is purged the token
+  // has no remaining purpose, and cascading removes the ordering constraint
+  // that previously made an MSP-staff-minted token abort the whole 7-year
+  // purge (NO ACTION blocked the documents DELETE).
+  documentId: integer("document_id").notNull().references(() => insightsGeneratedDocumentsTable.id, { onDelete: "cascade" }),
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

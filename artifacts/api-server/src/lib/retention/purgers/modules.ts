@@ -322,12 +322,13 @@ export const documentsPurger: TenantDataPurgerDeclaration = {
     // a report is a deliverable to the customer organisation, not the named
     // `clientUserId` addressee, so it purges in this id space).
     { table: "status_reports", column: "customer_id", keySpace: "customerId" },
-    // `print_tokens` BEFORE the documents it points at: `print_tokens.document_id` →
-    // `insights_generated_documents(id)` is NO ACTION (live `pg_constraint` sweep,
-    // #2984), so a live print token aborts the whole purge transaction. Keyed by the
-    // tenant's own logins, which is who mints one. A print token held by an MSP STAFF
-    // account against this customer's document is out of this key space's reach and
-    // would still block — filed as its own finding rather than papered over here.
+    // Git #3106: `print_tokens.document_id` → `insights_generated_documents(id)` is
+    // now `ON DELETE CASCADE` (was `NO ACTION`), so this target no longer needs to run
+    // ahead of `insights_generated_documents` for correctness — a cascade clears any
+    // remaining print token, including one held by an MSP STAFF account that this
+    // module's `userId` key space can't reach. Left declared (and still ordered first)
+    // as an explicit, auditable purge of the tenant's own logins' tokens, not because
+    // ordering still matters.
     { table: "print_tokens", column: "user_id", keySpace: "userId" },
     { table: "insights_generated_documents", column: "msp_customer_id", keySpace: "customerId" },
     // #2983: `customer_id` on these three is a users.id, not a tenants.id —
