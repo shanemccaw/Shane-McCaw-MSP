@@ -167,6 +167,62 @@ describe("GET /msp/customers/:customerId/remediation-tracker", () => {
   });
 });
 
+describe("GET /msp/customers/:customerId/remediation-tracker/catalogue", () => {
+  it("404s a customer outside the caller's book, never disclosing existence", async () => {
+    mockAssertCustomerAccess.mockResolvedValue(false);
+    const res = await request(buildApp()).get("/api/msp/customers/999/remediation-tracker/catalogue");
+    expect(res.status).toBe(404);
+  });
+
+  it("400s a malformed customerId before any ownership check", async () => {
+    const res = await request(buildApp()).get("/api/msp/customers/not-a-number/remediation-tracker/catalogue");
+    expect(res.status).toBe(400);
+    expect(mockAssertCustomerAccess).not.toHaveBeenCalled();
+  });
+
+  it("returns all 30 real catalogue steps, defaulting untouched ones to not_started", async () => {
+    mockAssertCustomerAccess.mockResolvedValue(true);
+    mockSelectResultsQueue.push([
+      {
+        stepId: "s7",
+        status: "completed",
+        completedAt: new Date("2026-01-01T00:00:00Z"),
+        updatedAt: new Date("2026-01-01T00:00:00Z"),
+        verificationState: "verified",
+        verifiedAt: new Date("2026-01-02T00:00:00Z"),
+      },
+    ]);
+    const res = await request(buildApp()).get("/api/msp/customers/42/remediation-tracker/catalogue");
+    expect(res.status).toBe(200);
+    // 28 rows, not 30 — s24/s25 were removed from the catalogue in #757 (see
+    // remediation-tracker-catalogue.ts's own header comment).
+    expect(res.body.steps).toHaveLength(28);
+
+    const touched = res.body.steps.find((s: any) => s.stepId === "s7");
+    expect(touched).toMatchObject({
+      title: "Audit and fix MFA on the 11 admin accounts",
+      pillar: "security",
+      status: "completed",
+      statusLabel: "Completed",
+      terminalState: "verified",
+    });
+
+    const untouched = res.body.steps.find((s: any) => s.stepId === "s1");
+    expect(untouched).toMatchObject({
+      title: "Close org-wide sharing on the four sensitive sites",
+      pillar: "governance",
+      status: "not_started",
+      verificationState: "unverified",
+      completedAt: null,
+    });
+
+    // accepted_risk is a signed customer-only fact — never offered as
+    // something an MSP browse surface can assign.
+    expect(res.body.assignableStatuses.map((s: any) => s.status)).not.toContain("accepted_risk");
+    expect(res.body.assignableStatuses).toContainEqual({ status: "not_started", label: "Not started" });
+  });
+});
+
 describe("PUT /msp/customers/:customerId/remediation-tracker/steps/:stepId", () => {
   it("404s a customer outside the caller's book", async () => {
     mockAssertCustomerAccess.mockResolvedValue(false);

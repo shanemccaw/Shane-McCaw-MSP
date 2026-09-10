@@ -63,6 +63,27 @@ public sealed class RemediationTrackerService : IRemediationTrackerService
         return JsonSerializer.Deserialize<RemediationTrackerResponse>(body, JsonOptions) ?? new RemediationTrackerResponse();
     }
 
+    public async Task<RemediationTrackerCatalogueResponse> GetCatalogueAsync(int customerId, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"{_baseUrl}/api/msp/customers/{customerId}/remediation-tracker/catalogue");
+        Authorize(request);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new RemediationTrackerException(
+                $"GET /api/msp/customers/{customerId}/remediation-tracker/catalogue returned {(int)response.StatusCode} {response.ReasonPhrase}",
+                (int)response.StatusCode,
+                body);
+        }
+
+        return JsonSerializer.Deserialize<RemediationTrackerCatalogueResponse>(body, JsonOptions) ?? new RemediationTrackerCatalogueResponse();
+    }
+
     public async Task<RemediationTrackerStep> SetStepStatusAsync(
         int customerId,
         string stepId,

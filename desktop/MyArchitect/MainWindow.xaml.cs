@@ -36,6 +36,7 @@ public partial class MainWindow : FluentWindow
     private readonly IConsoleHistoryService _consoleHistoryService;
     private readonly IChangeRequestReplayService _changeRequestReplayService;
     private readonly IChangeControlService _changeControlService;
+    private readonly IRemediationTrackerService _remediationTrackerService;
     private readonly ILaunchControlActionsService _launchControlActionsService;
     private readonly IAdminRetainerService _adminRetainerService;
     private readonly IVaultService _vaultService;
@@ -67,6 +68,7 @@ public partial class MainWindow : FluentWindow
         _changeRequestReplayService = new ChangeRequestReplayService();
         _tenantModuleConnectionService = new TenantModuleConnectionService(_tenantService, _consoleService);
         _changeControlService = new ChangeControlService();
+        _remediationTrackerService = new RemediationTrackerService();
         _launchControlActionsService = new LaunchControlActionsService();
         _adminRetainerService = new AdminRetainerService();
         _vaultService = new VaultService();
@@ -218,7 +220,7 @@ public partial class MainWindow : FluentWindow
 
         _shellRegistry.RegisterFixedTabGroup(FixedTab.Home, new RibbonGroupSpec
         {
-            Label = "Change Requests",
+            Label = "Remediation Plan",
             Order = 30,
             Large =
             {
@@ -226,12 +228,12 @@ public partial class MainWindow : FluentWindow
                 {
                     Label = "Browse",
                     Intent = RibbonIntent.Open,
-                    ToolTip = "Real GET /api/msp/change-requests, filtered to the active tenant",
+                    ToolTip = "Unified item browser (#3471) — real remediation tracker steps + change-control queue, one view",
                     Gallery = new GallerySpec
                     {
-                        Title = "Change Requests",
+                        Title = "Remediation Plan",
                         Searchable = true,
-                        GetRows = BuildChangeRequestRows,
+                        GetRows = BuildRemediationPlanRows,
                     },
                     OnSelect = () => { },
                 },
@@ -534,6 +536,180 @@ public partial class MainWindow : FluentWindow
     }
 
     private static string? Nullify(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    /// <summary>#3471's unified item browser — both real sources (checklist-style remediation
+    /// tracker steps and catalog-backed change requests) in one gallery, real instruction/action
+    /// text per item (the issue's own words), instead of the two separate galleries the shell's
+    /// own #3493 proof-of-concept session first added for Change Requests alone.</summary>
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildRemediationPlanRows()
+    {
+        var rows = new System.Collections.Generic.List<GalleryRowSpec>();
+        rows.AddRange(BuildTrackerStepRows());
+        rows.AddRange(BuildChangeRequestRows());
+        return rows;
+    }
+
+    /// <summary>Real numeric `tenants.id` resolution for the remediation tracker's
+    /// customer-keyed endpoints. Returns false today: <see cref="ITenantService"/> is fixture
+    /// data (fake tenant guids, no numeric id at all) — filed as #3540, the same underlying gap
+    /// <see cref="TryResolveLaunchControlScope"/> already documents for Script Library. Never
+    /// guesses an id; once #3540 gives this app a real customer source, this is the one place to
+    /// wire it in.</summary>
+    private bool TryResolveTrackerCustomerId(out int customerId)
+    {
+        customerId = 0;
+        return false;
+    }
+
+    /// <summary>Checklist-style half of #3471's two sources. Real rows from
+    /// GET /api/msp/customers/:customerId/remediation-tracker/catalogue — all 28 real steps with
+    /// their real title/pillar text, joined server-side with this customer's real state. Today
+    /// there is no real customer id to scope the call to (#3540), so this states that honestly as
+    /// a single disabled row — same pattern <see cref="BuildScriptLibraryRows"/> already uses for
+    /// the identical underlying gap — rather than guessing one.</summary>
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildTrackerStepRows()
+    {
+        if (!TryResolveTrackerCustomerId(out var customerId))
+        {
+            return new[]
+            {
+                new GalleryRowSpec
+                {
+                    Id = "tracker-blocked",
+                    Name = "Remediation tracker needs a real customer id — TenantService is fixture data (#3540)",
+                    OnSelect = () => { },
+                },
+            };
+        }
+
+        RemediationTrackerCatalogueResponse catalogue;
+        try
+        {
+            catalogue = _remediationTrackerService.GetCatalogueAsync(customerId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            // Real, honest failure — most likely 401/403 (auth still not wired) or a customer
+            // outside the caller's book, not a bug in this client. One disabled row, not a fake one.
+            return new[]
+            {
+                new GalleryRowSpec { Id = "tracker-error", Name = $"Could not load remediation tracker: {ex.Message}", OnSelect = () => { } },
+            };
+        }
+
+        return catalogue.Steps.Select(step => new GalleryRowSpec
+        {
+            Id = $"tracker:{step.StepId}",
+            Tile = step.Pillar.Length >= 2 ? step.Pillar[..2].ToUpperInvariant() : step.Pillar.ToUpperInvariant(),
+            Name = step.Title,
+            Sub = $"Tracker · {step.StatusLabel}",
+            OnSelect = () => OpenTrackerStepRecord(step, catalogue, customerId),
+        }).ToList();
+    }
+
+    /// <summary>Opens the record workspace for one remediation tracker step. Real facts from the
+    /// step's own state; a write-through status cycle-button sourced from the endpoint's own real
+    /// <see cref="RemediationTrackerCatalogueResponse.AssignableStatuses"/> (never a client-invented
+    /// display list) that calls <see cref="IRemediationTrackerService.SetStepStatusAsync"/> for
+    /// real, then re-opens itself with the server's own returned state so the workspace never
+    /// shows a stale value after a write. "accepted_risk" is not offered — same rule the server's
+    /// own PUT enforces, since it is the customer's own signed decline-to-risk fact, never an MSP
+    /// operator's to set. Same gallery → contextual tab → workspace contract #3493 proved with
+    /// Change Requests.</summary>
+    private void OpenTrackerStepRecord(RemediationTrackerCatalogueStep step, RemediationTrackerCatalogueResponse catalogue, int customerId)
+    {
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "remediation-tracker-step",
+            Id = step.StepId,
+            Eyebrow = "Remediation Tracker",
+            Title = step.Title,
+            Sub = $"{step.StepLabel} · {step.Pillar}",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Status", Value = step.StatusLabel },
+                new WorkspaceFact { Label = "Verification", Value = step.VerificationState },
+                new WorkspaceFact { Label = "Terminal state", Value = step.TerminalState },
+                new WorkspaceFact { Label = "Updated", Value = step.UpdatedAt?.ToLocalTime().ToString("g") ?? "(never)" },
+            },
+        };
+
+        if (step.Status == "accepted_risk")
+        {
+            spec.Facts.Add(new WorkspaceFact
+            {
+                Label = "Note",
+                Value = "accepted_risk is a signed customer fact — not settable by an MSP operator",
+                Prose = true,
+            });
+        }
+        else
+        {
+            var currentLabel = catalogue.AssignableStatuses.FirstOrDefault(s => s.Status == step.Status)?.Label ?? step.StatusLabel;
+            spec.Edits.Add(new WorkspaceEdit
+            {
+                Key = "status",
+                Label = "Status",
+                Value = currentLabel,
+                Options = catalogue.AssignableStatuses.Select(s => s.Label).ToList(),
+                OnChange = newLabel =>
+                {
+                    var target = catalogue.AssignableStatuses.FirstOrDefault(s => s.Label == newLabel);
+                    if (target == null) return;
+
+                    try
+                    {
+                        var updated = _remediationTrackerService.SetStepStatusAsync(customerId, step.StepId, target.Status).GetAwaiter().GetResult();
+                        step.Status = updated.Status;
+                        step.StatusLabel = catalogue.StatusLabels.TryGetValue(updated.Status, out var lbl) ? lbl : updated.Status;
+                        step.CompletedAt = updated.CompletedAt;
+                        step.UpdatedAt = updated.UpdatedAt;
+                        step.VerificationState = updated.VerificationState;
+                        step.VerifiedAt = updated.VerifiedAt;
+                        step.TerminalState = updated.TerminalState;
+                        OpenTrackerStepRecord(step, catalogue, customerId);
+                    }
+                    catch (RemediationTrackerException ex)
+                    {
+                        // Real, honest failure (e.g. the server's own "accepted_risk cannot be set
+                        // directly" 400) surfaced in place rather than swallowed.
+                        _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+                        {
+                            Kind = "remediation-tracker-step",
+                            Id = step.StepId,
+                            Eyebrow = "Remediation Tracker",
+                            Title = step.Title,
+                            Sub = $"Update failed: {ex.Message}",
+                        });
+                    }
+                },
+            });
+        }
+
+        _shellRegistry.OpenContextual(
+            new TrailEntry("remediation-tracker-step", step.StepId, step.Title, () => OpenTrackerStepRecord(step, catalogue, customerId)),
+            new ContextualTabSpec
+            {
+                Id = "remediation-tracker-step",
+                Label = "Remediation Step",
+                Groups =
+                {
+                    new RibbonGroupSpec
+                    {
+                        Label = "Actions",
+                        Large = { new RibbonCommandSpec
+                        {
+                            Label = "Update status",
+                            Intent = RibbonIntent.Record,
+                            OnSelect = () => { },
+                        } },
+                    },
+                },
+            },
+            onSearchEverything: () => PaletteOverlay.Open());
+
+        _shellRegistry.OpenRecord(spec);
+    }
 
     /// <summary>#3459's real console-history surface, rendered via the shell's own full-panel
     /// record workspace (UI_RULES.md §3) rather than a second list control invented inside
@@ -1006,6 +1182,7 @@ public partial class MainWindow : FluentWindow
         _launchControlActionsService.AuthToken = token;
         _changeControlService.AuthToken = token;
         _adminRetainerService.AuthToken = token;
+        _remediationTrackerService.AuthToken = token;
         _retainerService.AuthToken = token;
         TelemetryDashboardView.SetAuthToken(token);
         SowAssessmentDashboardView.SetAuthToken(token);

@@ -12,11 +12,27 @@ namespace MyArchitect.Services;
 /// </summary>
 public interface IRemediationTrackerService
 {
+    /// <summary>Bearer access token from the real MyArchitect session (#3501). Set by the shell
+    /// on sign-in/refresh so these auth-gated tracker endpoints receive a real Authorization
+    /// header.</summary>
+    string? AuthToken { get; set; }
+
     /// <summary>
     /// GET /api/msp/customers/:customerId/remediation-tracker — every stored
     /// step state for this customer, plus the live pricing envelope.
     /// </summary>
     Task<RemediationTrackerResponse> GetTrackerAsync(int customerId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// GET /api/msp/customers/:customerId/remediation-tracker/catalogue —
+    /// all 28 real steps with their real title/pillar text, each joined with
+    /// this customer's real state (untouched steps default to
+    /// "not_started"/"unverified" rather than being omitted). This is what
+    /// #3471's unified item browser reads for the checklist-style half of
+    /// its two sources — the plain <see cref="GetTrackerAsync"/> response
+    /// carries no human title.
+    /// </summary>
+    Task<RemediationTrackerCatalogueResponse> GetCatalogueAsync(int customerId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// PUT /api/msp/customers/:customerId/remediation-tracker/steps/:stepId —

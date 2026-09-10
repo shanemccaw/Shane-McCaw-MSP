@@ -58,6 +58,7 @@ import { stepCheckKeysFor } from "../lib/remediation-tracker-verification";
 import { emitWorkflowEvent } from "../lib/workflow-executor";
 import { fetchPublishedKnowledgeBaseRows } from "../lib/remediation-knowledge-base";
 import { REMEDIATION_TRACKER_STEP_IDS } from "./portal-remediation-tracker";
+import { REMEDIATION_TRACKER_CATALOGUE, REMEDIATION_TRACKER_STATUS_LABELS } from "../lib/remediation-tracker-catalogue";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 
@@ -156,6 +157,84 @@ router.get(
     } catch (err) {
       log.error({ err, customerId }, "GET /msp/customers/:customerId/remediation-tracker failed");
       res.status(500).json({ error: "Failed to load remediation tracker" });
+    }
+  },
+);
+
+// ── Browse (#3471 — MyArchitect's unified item browser) ────────────────────────
+/**
+ * GET /msp/customers/:customerId/remediation-tracker/catalogue — every one of
+ * the 28 real remediation steps (s1-s23, s26-s30 — #757 removed s24/s25),
+ * joined with this customer's real stored
+ * state where one exists (defaulting the rest to "not_started"/"unverified",
+ * the same real default `msp-remediation-tracker-export.ts`'s CSV/PDF export
+ * already uses — a step with no row genuinely hasn't been started).
+ *
+ * The plain state GET above (`.../remediation-tracker`) only returns rows
+ * that already exist in `remediation_tracker_steps`, and carries no human
+ * title — real gaps for a browse surface that needs to show every step with
+ * real instruction text (#3471's own words), not just the ones already
+ * touched. `REMEDIATION_TRACKER_CATALOGUE` is the same real, already-shipped
+ * vocabulary the export route reads from — extracted here, not invented.
+ */
+router.get(
+  "/msp/customers/:customerId/remediation-tracker/catalogue",
+  requireCapability("ladder.msp-operator"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = await resolveAuthorizedCustomerId(req, res);
+    if (customerId === null) return;
+
+    try {
+      const rows = await db
+        .select({
+          stepId: remediationTrackerStepsTable.stepId,
+          status: remediationTrackerStepsTable.status,
+          completedAt: remediationTrackerStepsTable.completedAt,
+          updatedAt: remediationTrackerStepsTable.updatedAt,
+          verificationState: remediationTrackerStepsTable.verificationState,
+          verifiedAt: remediationTrackerStepsTable.verifiedAt,
+        })
+        .from(remediationTrackerStepsTable)
+        .where(eq(remediationTrackerStepsTable.customerId, customerId));
+
+      const byStepId = new Map(rows.map((r) => [r.stepId, r]));
+      const iso = (v: Date | string | null): string | null =>
+        v === null || v === undefined ? null : v instanceof Date ? v.toISOString() : String(v);
+
+      const steps = REMEDIATION_TRACKER_CATALOGUE.map((step) => {
+        const stored = byStepId.get(step.id);
+        const status = stored?.status ?? "not_started";
+        const verificationState = stored?.verificationState ?? "unverified";
+        return {
+          stepId: step.id,
+          stepLabel: step.label,
+          title: step.title,
+          pillar: step.pillar,
+          status,
+          statusLabel: REMEDIATION_TRACKER_STATUS_LABELS[status] ?? status,
+          completedAt: iso(stored?.completedAt ?? null),
+          updatedAt: iso(stored?.updatedAt ?? null),
+          verificationState,
+          verifiedAt: iso(stored?.verifiedAt ?? null),
+          terminalState: remediationTerminalState(status, verificationState),
+        };
+      });
+
+      // Real, server-owned display labels for every status a client might show
+      // or offer to set — never duplicated as an invented client-side string
+      // table. "accepted_risk" is deliberately excluded from
+      // assignableStatuses: this route's own PUT rejects setting it directly
+      // (it's the customer's own signed decline-to-risk fact), so an MSP
+      // browse surface has nothing to offer for it beyond display.
+      const assignableStatuses = REMEDIATION_TRACKER_STEP_STATUS.filter((s) => s !== "accepted_risk").map((s) => ({
+        status: s,
+        label: REMEDIATION_TRACKER_STATUS_LABELS[s] ?? s,
+      }));
+
+      res.json({ steps, statusLabels: REMEDIATION_TRACKER_STATUS_LABELS, assignableStatuses });
+    } catch (err) {
+      log.error({ err, customerId }, "GET /msp/customers/:customerId/remediation-tracker/catalogue failed");
+      res.status(500).json({ error: "Failed to load remediation tracker catalogue" });
     }
   },
 );
