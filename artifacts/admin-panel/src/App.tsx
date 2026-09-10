@@ -355,7 +355,6 @@ function Router() {
 
       <Route path="/crm/invoices"><Redirect to="/finance/invoices" /></Route>
       <Route path="/crm/purchases"><Redirect to="/finance/purchases" /></Route>
-      <Route path="/crm/contracts"><Redirect to="/finance/contracts" /></Route>
       <Route path="/coupons"><Redirect to="/finance/coupons" /></Route>
       <Route path="/crm/reports"><Redirect to="/finance/reports" /></Route>
 

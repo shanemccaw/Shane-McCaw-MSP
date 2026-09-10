@@ -431,12 +431,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         ],
       },
       {
-        id: "agreements", label: "Agreements", defaultOpen: true,
-        items: [
-          { id: "fin-contracts", label: "Contracts", path: "/finance/contracts", icon: FileSignature },
-        ],
-      },
-      {
         id: "promotions", label: "Promotions", defaultOpen: true,
         items: [
           { id: "fin-coupons", label: "Coupons", path: "/finance/coupons", icon: TicketPercent },
