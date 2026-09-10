@@ -110,10 +110,12 @@ namespace BuildConsole.Services
         /// own live ALL walk every 5 minutes, which is the whole point of Git #3359.</summary>
         public static readonly TimeSpan ClosedBackfillInterval = TimeSpan.FromHours(24);
 
-        /// <summary>Runaway guard on the per-blocked-issue <c>blocked_by</c> fetch during a sync
-        /// (the one part of the sync that is still per-issue REST). Only issues carrying the
-        /// <c>blocked</c> label are ever fetched — normally a handful — and this caps a pathological
-        /// case rather than letting the sync itself become a mini-storm.</summary>
+        /// <summary>Runaway guard on the <c>blocked_by</c> population during a sync. As of Git #3477
+        /// this fetch is BATCHED (a handful of aliased GraphQL reads via
+        /// <c>GitHubApiClient.BatchGetBlockedByAsync</c>), not one REST call per issue — but the cap
+        /// still bounds how many blocked-labeled issues a single pass will populate, so a pathological
+        /// blocked-count can't inflate the batched read's node/complexity cost. Only issues carrying
+        /// the <c>blocked</c> label are ever fetched — normally a handful.</summary>
         private const int MaxBlockedByFetchesPerSync = 200;
 
         private static string? _connString;
@@ -894,17 +896,25 @@ namespace BuildConsole.Services
             foreach (var i in changed)
                 if (!blockedSet.Contains(i.Number))
                     blockedByMap[i.Number] = new List<int>();
-            foreach (var num in blockedNumbers)
+            // Git #3477 — batch the blocked_by POPULATION into a handful of aliased GraphQL reads
+            // instead of one live REST call per blocked-labeled issue (the real remaining rate-limit
+            // burst that #3467's READ-side mirror move did not remove). Issues the batch didn't return
+            // keep their existing mirrored blocked_by (haveBlockedBy=false below), same as the old
+            // per-item catch preserved a single failed fetch.
+            if (blockedNumbers.Count > 0)
             {
                 try
                 {
-                    var blockers = await gh.GetBlockedByAsync(num);
-                    blockedByMap[num] = blockers.Select(b => b.Number).Where(n => n > 0).Distinct().ToList();
-                    summary.BlockedByFetched++;
+                    var fetched = await gh.BatchGetBlockedByAsync(blockedNumbers);
+                    foreach (var kv in fetched)
+                    {
+                        blockedByMap[kv.Key] = kv.Value;
+                        summary.BlockedByFetched++;
+                    }
                 }
                 catch (Exception ex)
                 {
-                    ActivityLog.Log("issue-mirror", $"incremental sync: blocked_by fetch for #{num} failed ({ex.Message}) — its blocked_by preserved this pass.");
+                    ActivityLog.Log("issue-mirror", $"incremental sync: batched blocked_by fetch failed ({ex.Message}) — blocked_by for the affected issues preserved this pass.");
                 }
             }
 
@@ -1121,18 +1131,32 @@ namespace BuildConsole.Services
             foreach (var i in openIssues)
                 if (!blockedSet.Contains(i.Number))
                     blockedByMap[i.Number] = new List<int>();
-            foreach (var num in blockedNumbers)
+            // Git #3477 — batch the blocked_by POPULATION into a handful of aliased GraphQL reads
+            // instead of one live REST call per blocked-labeled issue (the real remaining rate-limit
+            // burst #3467's READ-side mirror move did not remove). Any blocked issue the batch didn't
+            // return marks the pass incomplete, exactly as a single failed per-item fetch used to — so
+            // the blocking (inverse) graph is not refreshed from an incomplete blocked_by pass.
+            if (blockedNumbers.Count > 0)
             {
                 try
                 {
-                    var blockers = await gh.GetBlockedByAsync(num);
-                    blockedByMap[num] = blockers.Select(b => b.Number).Where(n => n > 0).Distinct().ToList();
-                    summary.BlockedByFetched++;
+                    var fetched = await gh.BatchGetBlockedByAsync(blockedNumbers);
+                    foreach (var kv in fetched)
+                    {
+                        blockedByMap[kv.Key] = kv.Value;
+                        summary.BlockedByFetched++;
+                    }
+                    if (fetched.Count < blockedNumbers.Count)
+                    {
+                        blockedByPassComplete = false; // some issues weren't refreshed — don't invert a partial graph
+                        ActivityLog.Log("issue-mirror",
+                            $"sync: batched blocked_by returned {fetched.Count} of {blockedNumbers.Count} blocked-labeled issues — blocking edges preserved this pass.");
+                    }
                 }
                 catch (Exception ex)
                 {
                     blockedByPassComplete = false; // don't refresh blocking from an incomplete pass
-                    ActivityLog.Log("issue-mirror", $"sync: blocked_by fetch for #{num} failed ({ex.Message}) — its blocked_by preserved this pass.");
+                    ActivityLog.Log("issue-mirror", $"sync: batched blocked_by fetch failed ({ex.Message}) — blocked_by for the affected issues preserved this pass.");
                 }
             }
             // Invert whatever blocked_by we have into the blocking direction.

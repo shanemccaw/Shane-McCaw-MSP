@@ -1572,6 +1572,17 @@ namespace BuildConsole.Services
         /// so correctness never depends on this window being large.</summary>
         private const int RecentCommentsPerIssue = 20;
 
+        /// <summary>Git #3477 — aliased <c>issue(number:).blockedBy</c> lookups per GraphQL READ in
+        /// <see cref="BatchGetBlockedByAsync"/>. 25 aliases × <see cref="BlockedByEdgesPerIssue"/> nodes
+        /// stays comfortably within GraphQL's node/complexity budget.</summary>
+        private const int BlockedByLookupChunkSize = 25;
+
+        /// <summary>Git #3477 — how many <c>blocked_by</c> edges to pull per issue in the batched
+        /// population read. An issue with more than this many declared blockers is vanishingly rare, so
+        /// this generous window makes the batched read complete for every real case (matching the REST
+        /// <see cref="GetBlockedByAsync"/>, which returns the full list).</summary>
+        private const int BlockedByEdgesPerIssue = 50;
+
         /// <summary>
         /// Git #3347 — the batched, by-issue-NUMBER equivalent of <see cref="GetIssueBoardStatusAsync"/>:
         /// resolves MANY issue numbers to their current ProjectV2Item node id + LIVE Status option id
@@ -1808,6 +1819,89 @@ namespace BuildConsole.Services
                                 bodies.Add(b.GetString() ?? "");
 
                     result[chunk[i]] = (bodies, totalCount);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Git #3477 — the batched, WRITE-side counterpart of <see cref="GetBlockedByAsync"/> for the
+        /// mirror sync's own <c>blocked_by</c> POPULATION step (<c>GitHubIssueMirror</c>'s incremental
+        /// and full sync paths). Resolves the declared <c>blocked_by</c> issue NUMBERS for MANY issues
+        /// in a small, bounded number of GraphQL reads (aliased <c>issue(number:).blockedBy</c>
+        /// sub-queries, <see cref="BlockedByLookupChunkSize"/> per call) instead of one live REST call
+        /// per blocked-labeled issue — the same de-burst #3347 applied to the closed-sweep resolve and
+        /// #3350 to the BUILD-comment resolve. This is the half #3467 did NOT touch: #3467 moved the
+        /// blocked-status READ onto the mirror, but the mirror still filled <c>blocked_by</c> in the
+        /// first place with one REST call per issue (the real remaining rate-limit burst). Only issue
+        /// numbers GraphQL returned a real issue for appear in the result; each maps to its distinct
+        /// declared blocker numbers (open AND closed, matching GetBlockedByAsync's own full list). Each
+        /// chunk is one HTTP request through the shared rate-limit circuit
+        /// (<see cref="GitHubRateLimitHandler"/>); a rate-limited/short-circuited chunk throws so the
+        /// caller can stop and PRESERVE the mirror's existing <c>blocked_by</c> for the un-fetched
+        /// issues rather than hammering the remaining chunks.
+        /// </summary>
+        public async Task<Dictionary<int, List<int>>> BatchGetBlockedByAsync(IReadOnlyList<int> issueNumbers)
+        {
+            var result = new Dictionary<int, List<int>>();
+            if (issueNumbers == null || issueNumbers.Count == 0) return result;
+
+            var distinct = issueNumbers.Where(n => n > 0).Distinct().ToList();
+
+            for (int offset = 0; offset < distinct.Count; offset += BlockedByLookupChunkSize)
+            {
+                var chunk = distinct.Skip(offset).Take(BlockedByLookupChunkSize).ToList();
+                var sb = new StringBuilder();
+                sb.Append("query { ");
+                sb.Append($"repository(owner: \"{Owner}\", name: \"{Repo}\") {{ ");
+                for (int i = 0; i < chunk.Count; i++)
+                    sb.Append($"a{i}: issue(number: {chunk[i]}) {{ blockedBy(first: {BlockedByEdgesPerIssue}) {{ nodes {{ number }} }} }} ");
+                sb.Append("} }");
+
+                using var req = new HttpRequestMessage(HttpMethod.Post, "graphql")
+                {
+                    Content = JsonContent.Create(new { query = sb.ToString() }),
+                };
+                var res = await _http.SendAsync(req);
+                LogIfUnauthorized(res, "graphql (mirror blocked_by batch population)");
+                res.EnsureSuccessStatusCode();
+
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("errors", out var errs) && errs.ValueKind == JsonValueKind.Array && errs.GetArrayLength() > 0)
+                {
+                    var msg = string.Join("; ", errs.EnumerateArray()
+                        .Select(e => e.TryGetProperty("message", out var m) ? m.GetString() : null)
+                        .Where(s => !string.IsNullOrEmpty(s)));
+                    // A rate-limit error stops the whole population pass (don't fire the rest of the
+                    // chunks); any other field-level error is logged but we still parse partial data.
+                    if (GitHubRateLimitCircuit.LooksLikeRateLimit(msg) || GitHubRateLimitCircuit.IsCircuitOpenMessage(msg))
+                        throw new Exception("GitHub GraphQL: " + msg);
+                    ActivityLog.Log("issue-mirror",
+                        $"mirror blocked_by batch population — partial GraphQL error(s), continuing with returned data: {msg}");
+                }
+
+                if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object) continue;
+                if (!data.TryGetProperty("repository", out var repo) || repo.ValueKind != JsonValueKind.Object) continue;
+
+                for (int i = 0; i < chunk.Count; i++)
+                {
+                    if (!repo.TryGetProperty($"a{i}", out var issueEl) || issueEl.ValueKind != JsonValueKind.Object) continue;
+                    if (!issueEl.TryGetProperty("blockedBy", out var bb) || bb.ValueKind != JsonValueKind.Object) continue;
+
+                    var blockers = new List<int>();
+                    if (bb.TryGetProperty("nodes", out var nodes) && nodes.ValueKind == JsonValueKind.Array)
+                        foreach (var node in nodes.EnumerateArray())
+                            if (node.ValueKind == JsonValueKind.Object
+                                && node.TryGetProperty("number", out var num) && num.ValueKind == JsonValueKind.Number)
+                            {
+                                int n = num.GetInt32();
+                                if (n > 0 && !blockers.Contains(n)) blockers.Add(n);
+                            }
+
+                    result[chunk[i]] = blockers;
                 }
             }
 
