@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { AlertCircle, Play, Pause, RefreshCw, Layers, CheckCircle, XCircle, ShieldAlert, Database, HelpCircle, Terminal, FileText, Activity } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface PccTest {
   id: string;
@@ -28,6 +29,8 @@ interface PccRunResult {
 }
 
 export function PccDashboard() {
+  const { accessToken, fetchWithAuth } = useAuth();
+
   // Env & Config state
   const [environment, setEnvironment] = useState<"dev" | "test" | "prod">("test");
   const [catalog, setCatalog] = useState<PccTest[]>([]);
@@ -63,6 +66,7 @@ export function PccDashboard() {
 
   // Load catalog and initial state
   useEffect(() => {
+    if (!accessToken) return;
     fetchCatalog();
     fetchState();
     connectStream();
@@ -72,7 +76,7 @@ export function PccDashboard() {
         eventSourceRef.current.close();
       }
     };
-  }, []);
+  }, [accessToken]);
 
   useEffect(() => {
     if (logsEndRef.current) {
@@ -86,8 +90,11 @@ export function PccDashboard() {
       eventSourceRef.current.close();
     }
 
+    // Query-param JWT, not an Authorization header — EventSource can't send
+    // custom headers. Same pattern as useLiveStream.ts / ProjectDetail.tsx's
+    // kanban-events stream.
     const host = window.location.origin;
-    const es = new EventSource(`${host}/api/pcc/stream`);
+    const es = new EventSource(`${host}/api/pcc/stream?token=${encodeURIComponent(accessToken ?? "")}`);
 
     es.addEventListener("run_started", (e: any) => {
       const data = JSON.parse(e.data);
@@ -144,7 +151,7 @@ export function PccDashboard() {
 
   const fetchCatalog = async () => {
     try {
-      const res = await fetch("/api/pcc/catalog");
+      const res = await fetchWithAuth("/api/pcc/catalog");
       const data = await res.json();
       setCatalog(data.tests || []);
     } catch (err) {
@@ -154,7 +161,7 @@ export function PccDashboard() {
 
   const fetchState = async () => {
     try {
-      const res = await fetch("/api/pcc/state");
+      const res = await fetchWithAuth("/api/pcc/state");
       const data = await res.json();
       setEnvironment(data.environment);
       setReplayMode(data.replayMode);
@@ -168,7 +175,7 @@ export function PccDashboard() {
 
   const changeEnvironment = async (env: "dev" | "test" | "prod") => {
     try {
-      const res = await fetch("/api/pcc/environment", {
+      const res = await fetchWithAuth("/api/pcc/environment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ environment: env })
@@ -188,7 +195,7 @@ export function PccDashboard() {
     setIsRunning(true);
     setResults([]);
     try {
-      await fetch("/api/pcc/run", { method: "POST" });
+      await fetchWithAuth("/api/pcc/run", { method: "POST" });
     } catch (err) {
       addLog("[ERROR] Failed to trigger run");
       setIsRunning(false);
@@ -197,7 +204,7 @@ export function PccDashboard() {
 
   const triggerInjection = async (type: string, payload: any) => {
     try {
-      await fetch("/api/pcc/inject", {
+      await fetchWithAuth("/api/pcc/inject", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ eventType: type, payload })
@@ -218,7 +225,7 @@ export function PccDashboard() {
             return 90;
           }
           const nextDay = prev + 1;
-          fetch("/api/pcc/replay/config", {
+          fetchWithAuth("/api/pcc/replay/config", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ day: nextDay, tick: 0 })
@@ -240,7 +247,7 @@ export function PccDashboard() {
 
   const togglePlayback = () => {
     setIsPlaying(!isPlaying);
-    fetch("/api/pcc/replay/config", {
+    fetchWithAuth("/api/pcc/replay/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "replay" })
@@ -251,7 +258,7 @@ export function PccDashboard() {
   const resetReplay = () => {
     setIsPlaying(false);
     setCurrentDay(1);
-    fetch("/api/pcc/replay/config", {
+    fetchWithAuth("/api/pcc/replay/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ day: 1, tick: 0 })

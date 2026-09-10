@@ -1,11 +1,32 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import pccRouter from './pcc.js';
 import { PccStateManager } from '../lib/pcc/state-manager.js';
 import { PccStreamingServer } from '../lib/pcc/streaming-server.js';
 import { PccGraphValidator } from '../lib/pcc/graph-validator.js';
 import { PccUiValidator } from '../lib/pcc/ui-validator.js';
+
+// requireAuth.ts (imported transitively via requireAdmin) imports @workspace/db
+// at module scope, which throws on import unless DATABASE_URL is set. This
+// router test only exercises JWT verification + routing, never a DB query —
+// same mock as admin-live-stream.test.ts.
+vi.mock('@workspace/db', () => ({
+  db: {},
+  tenantsTable: {},
+}));
+
+const JWT_SECRET = 'test-pcc-secret';
+process.env.JWT_SECRET = JWT_SECRET;
+
+function adminToken(): string {
+  return jwt.sign({ id: 1, role: 'admin' }, JWT_SECRET, { expiresIn: '1h' });
+}
+
+function clientToken(): string {
+  return jwt.sign({ id: 2, role: 'client' }, JWT_SECRET, { expiresIn: '1h' });
+}
 
 // Setup local test express application mounting only the PCC router
 const testApp = express();
@@ -25,6 +46,7 @@ describe('Platform Command Center (PCC) API & Runner Integration Tests', () => {
   it('GET /api/pcc/catalog should return the complete taxonomy catalog', async () => {
     const res = await request(testApp)
       .get('/api/pcc/catalog')
+      .set('Authorization', `Bearer ${adminToken()}`)
       .expect(200);
 
     expect(res.body).toHaveProperty('tests');
@@ -36,6 +58,7 @@ describe('Platform Command Center (PCC) API & Runner Integration Tests', () => {
   it('GET /api/pcc/state should return correct default state', async () => {
     const res = await request(testApp)
       .get('/api/pcc/state')
+      .set('Authorization', `Bearer ${adminToken()}`)
       .expect(200);
 
     expect(res.body.environment).toBe('test');
@@ -45,6 +68,7 @@ describe('Platform Command Center (PCC) API & Runner Integration Tests', () => {
   it('POST /api/pcc/environment should update target environment gating', async () => {
     await request(testApp)
       .post('/api/pcc/environment')
+      .set('Authorization', `Bearer ${adminToken()}`)
       .send({ environment: 'prod' })
       .expect(200);
 
@@ -57,6 +81,7 @@ describe('Platform Command Center (PCC) API & Runner Integration Tests', () => {
 
     const res = await request(testApp)
       .post('/api/pcc/run')
+      .set('Authorization', `Bearer ${adminToken()}`)
       .send({})
       .expect(200);
 
@@ -74,6 +99,7 @@ describe('Platform Command Center (PCC) API & Runner Integration Tests', () => {
     const validPayload = { customerId: 'cus_testing_123', amountTotal: 2500, subscriptionId: 'sub_123' };
     const resSuccess = await request(testApp)
       .post('/api/pcc/inject')
+      .set('Authorization', `Bearer ${adminToken()}`)
       .send({ eventType: 'stripe.checkout.success', payload: validPayload })
       .expect(200);
 
@@ -83,6 +109,7 @@ describe('Platform Command Center (PCC) API & Runner Integration Tests', () => {
     const invalidPayload = { customerId: 'cus_testing_123' };
     const resFail = await request(testApp)
       .post('/api/pcc/inject')
+      .set('Authorization', `Bearer ${adminToken()}`)
       .send({ eventType: 'stripe.checkout.failure', payload: invalidPayload })
       .expect(200);
 
@@ -95,11 +122,12 @@ describe('Platform Command Center (PCC) API & Runner Integration Tests', () => {
 
     const res = await request(testApp)
       .post('/api/pcc/run')
+      .set('Authorization', `Bearer ${adminToken()}`)
       .send({})
       .expect(200);
 
     expect(res.body.success).toBe(true);
-    
+
     // Verify event-stripe-checkout is executed (not skipped) and passes
     const stripeResult = res.body.results.find((r: any) => r.testId === 'event-stripe-checkout');
     expect(stripeResult).toBeDefined();
@@ -152,11 +180,12 @@ describe('Platform Command Center (PCC) API & Runner Integration Tests', () => {
 
     const res = await request(testApp)
       .post('/api/pcc/run')
+      .set('Authorization', `Bearer ${adminToken()}`)
       .send({ tags: ['smoke'] })
       .expect(200);
 
     expect(res.body.success).toBe(true);
-    
+
     // Verify only tests tagged with 'smoke' are in the execution results
     const executedTestIds = res.body.results.map((r: any) => r.testId);
     expect(executedTestIds).toContain('drift-detect-settings');
@@ -164,5 +193,68 @@ describe('Platform Command Center (PCC) API & Runner Integration Tests', () => {
     expect(executedTestIds).toContain('ui-banner-check');
     expect(executedTestIds).not.toContain('graph-license-check');
     expect(executedTestIds).not.toContain('journey-90day-replay');
+  });
+});
+
+// Git #3499 — every /api/pcc/* route used to be reachable with zero auth,
+// including the mutating ones (/run, /inject, /environment, /replay/config).
+// Locks in requireAdmin on the JSON routes and the query-token jwt.verify
+// check on /stream (EventSource can't send an Authorization header).
+describe('PCC routes reject unauthenticated / non-admin callers (Git #3499)', () => {
+  it('GET /api/pcc/catalog rejects with no Authorization header', async () => {
+    const res = await request(testApp).get('/api/pcc/catalog');
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /api/pcc/state rejects with no Authorization header', async () => {
+    const res = await request(testApp).get('/api/pcc/state');
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/pcc/environment rejects with no Authorization header', async () => {
+    const res = await request(testApp).post('/api/pcc/environment').send({ environment: 'prod' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/pcc/run rejects with no Authorization header', async () => {
+    const res = await request(testApp).post('/api/pcc/run').send({});
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/pcc/inject rejects with no Authorization header', async () => {
+    const res = await request(testApp).post('/api/pcc/inject').send({ eventType: 'consent.granted' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/pcc/replay/config rejects with no Authorization header', async () => {
+    const res = await request(testApp).post('/api/pcc/replay/config').send({ mode: 'replay' });
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /api/pcc/stream rejects with no ?token= query param', async () => {
+    const res = await request(testApp).get('/api/pcc/stream');
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /api/pcc/stream rejects an invalid/garbage token', async () => {
+    const res = await request(testApp).get('/api/pcc/stream').query({ token: 'not-a-real-jwt' });
+    expect(res.status).toBe(401);
+  });
+
+  it('non-admin (role: client) callers are rejected with 403, not silently allowed', async () => {
+    const token = clientToken();
+    const catalogRes = await request(testApp).get('/api/pcc/catalog').set('Authorization', `Bearer ${token}`);
+    expect(catalogRes.status).toBe(403);
+
+    const runRes = await request(testApp).post('/api/pcc/run').set('Authorization', `Bearer ${token}`).send({});
+    expect(runRes.status).toBe(403);
+
+    const streamRes = await request(testApp).get('/api/pcc/stream').query({ token });
+    expect(streamRes.status).toBe(403);
+  });
+
+  it('a valid admin Bearer token still reaches the route (auth added, not broken)', async () => {
+    const res = await request(testApp).get('/api/pcc/catalog').set('Authorization', `Bearer ${adminToken()}`);
+    expect(res.status).toBe(200);
   });
 });
