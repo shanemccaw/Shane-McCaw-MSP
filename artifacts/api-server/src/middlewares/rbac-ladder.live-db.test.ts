@@ -91,6 +91,15 @@ describeLive("#2458 — requireRole's new decision source, against the real seed
     expect(outcome.kind).toBe("allow");
   });
 
+  it("primes at boot without throwing, against the real database", async () => {
+    // index.ts calls this right after listen() so an unseeded or unreachable model is
+    // reported once at startup rather than first appearing as a 503 on whichever gated
+    // route a user happens to hit. It must never throw — the routes that need no role
+    // gate stay serviceable either way.
+    const { primeLadderSnapshot } = await import("./rbac-ladder.ts");
+    await expect(primeLadderSnapshot()).resolves.toBeUndefined();
+  });
+
   it("agrees with roleIndex() for all 49 rung × floor pairs", async () => {
     const disagreements: string[] = [];
 
