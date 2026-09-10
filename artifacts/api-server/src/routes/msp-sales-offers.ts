@@ -20,7 +20,10 @@
  *                                                (requireMspScope, path-based mspId)
  *   GET    /api/msp/sales-offers/:id/events   — get offer event log
  *   PATCH  /api/msp/sales-offers/:id          — edit title / rationale (draft only)
- *   PATCH  /api/msp/sales-offers/:id/state    — transition offer state
+ *   PATCH  /api/msp/sales-offers/:id/state    — transition offer state (rejected/expired
+ *                                                only — see #3386; "accepted" must go
+ *                                                through POST /api/msp/offers/:offerId/accept
+ *                                                in msp-sow.ts, which does real fulfillment)
  *   DELETE /api/msp/sales-offers/:id          — delete draft offer
  */
 
@@ -364,6 +367,26 @@ router.patch(
       const { newState, rejectionReason } = req.body as { newState?: string; rejectionReason?: string };
       if (!newState || !SALES_OFFER_STATES.includes(newState as SalesOfferState)) {
         apiErr(res, 400, `newState must be one of: ${SALES_OFFER_STATES.join(", ")}`);
+        return;
+      }
+
+      // #3386 — this route only drives the abstract state machine
+      // (transitionOfferState / VALID_TRANSITIONS) with no knowledge of
+      // services.serviceClass and NO fulfillment: no msp_sows row for
+      // project-class offers, no Stripe Checkout Session for add_on/
+      // subscription, no Monitoring-Tier entitlement gate. Because
+      // VALID_TRANSITIONS defines accepted: [], an offer flipped to
+      // "accepted" here is permanently stuck with zero real fulfillment and
+      // no way out. "accepted" must only be reached through the
+      // purpose-built POST /api/msp/offers/:offerId/accept route (msp-sow.ts),
+      // which branches by serviceClass and does the real work before writing
+      // the state.
+      if (newState === "accepted") {
+        apiErr(
+          res,
+          422,
+          "Offers cannot be accepted via this endpoint. Use POST /api/msp/offers/:offerId/accept, which creates the SOW or Stripe checkout session required for real fulfillment.",
+        );
         return;
       }
 
