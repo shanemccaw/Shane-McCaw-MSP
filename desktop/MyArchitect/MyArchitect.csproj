@@ -12,6 +12,9 @@
   <ItemGroup>
     <PackageReference Include="WPF-UI" Version="4.3.0" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <!-- #3459 — hosted System.Management.Automation runspace inside the app,
+         not shelling to external powershell.exe. -->
+    <PackageReference Include="Microsoft.PowerShell.SDK" Version="7.4.6" />
   </ItemGroup>
 
 </Project>

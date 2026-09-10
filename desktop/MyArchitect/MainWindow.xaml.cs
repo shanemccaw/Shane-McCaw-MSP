@@ -24,12 +24,28 @@ public partial class MainWindow : FluentWindow
     private readonly ObservableCollection<PortalTabItem> _tabs = new();
     private PortalTabItem? _activeTab;
 
+    // #3459 — hosted PowerShell console service layer. No Console UI panel is wired up here yet:
+    // GEMINI.md's standing rule requires the UI Shell (#3493) to land first ("do not build
+    // ad-hoc chrome ... stop and flag it instead"), and #3493 isn't built. These services are
+    // real and functional on their own — the runspace hosts, auto-connects modules on tenant
+    // switch, and records history — ready for a Console panel to consume once #3493 lands.
+    private readonly IPowerShellConsoleService _consoleService;
+    private readonly ITenantModuleConnectionService _tenantModuleConnectionService;
+    private readonly IConsoleHistoryService _consoleHistoryService;
+    private readonly IChangeRequestReplayService _changeRequestReplayService;
+
     public MainWindow()
     {
         InitializeComponent();
 
         _tenantService = new TenantService();
         _profileService = new WebViewProfileService();
+
+        _consoleService = new PowerShellConsoleService();
+        _consoleHistoryService = new ConsoleHistoryService();
+        _changeRequestReplayService = new ChangeRequestReplayService();
+        _tenantModuleConnectionService = new TenantModuleConnectionService(_tenantService, _consoleService);
+        _consoleService.CommandExecuted += (s, record) => _consoleHistoryService.Add(record);
 
         ShellTenantSwitcher.Initialize(_tenantService);
         _trayIconManager = new TrayIconManager(this, _tenantService);
@@ -65,6 +81,8 @@ public partial class MainWindow : FluentWindow
         {
             tab.WebView.Dispose();
         }
+        _tenantModuleConnectionService.Dispose();
+        _consoleService.Dispose();
     }
 
     public async Task<PortalTabItem> OpenPortalTabAsync(Tenant tenant, PortalType portalType, string? customUrl = null)
