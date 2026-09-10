@@ -50,7 +50,17 @@ vi.mock("@workspace/db", () => {
   // Trimmed to exactly the tables portal-messages.ts imports directly from
   // @workspace/db, plus tenantsTable/mspStaffCustomerScopesTable so the real
   // ../middlewares/requireAuth (used un-mocked here) resolves its own
-  // @workspace/db imports to a defined value.
+  // @workspace/db imports to a defined value, plus
+  // customerNotificationPreferencesTable/portalOwnershipAssignmentsTable so
+  // notification-center.ts's own @workspace/db imports (createNotification,
+  // added by #2849) resolve too (Git #2944). Without these two,
+  // getCustomerPreference's column refs (customerNotificationPreferencesTable
+  // .inAppEnabled, etc — notification-center.ts:31) throw a TypeError on
+  // undefined that its own try/catch silently swallows, so the real select it
+  // should issue never happens and never consumes a mockSelectResultsQueue
+  // slot — exactly the "assertion passes for the wrong reason" masking #2933
+  // (998b4fc05) already called out for this same file. See the matching real
+  // mock in notification-center-suppress-preference-email.test.ts.
   return {
     db: mockDb,
     messagesTable: table("messages"),
@@ -59,6 +69,13 @@ vi.mock("@workspace/db", () => {
     deviceTokensTable: table("deviceTokens"),
     tenantsTable: { id: "id", mspId: "msp_id" },
     mspStaffCustomerScopesTable: table("mspStaffCustomerScopes"),
+    customerNotificationPreferencesTable: {
+      userId: "user_id",
+      category: "category",
+      inAppEnabled: "in_app_enabled",
+      emailEnabled: "email_enabled",
+    },
+    portalOwnershipAssignmentsTable: table("portalOwnershipAssignments"),
   };
 });
 
@@ -145,7 +162,15 @@ describe("POST /api/portal/messages (#177)", () => {
       // getCustomerPreference (#2849) — no row, so it defaults to emailEnabled:
       // false and createNotification's own deliverPreferenceEmail stays a
       // no-op, same as this route's real `suppressPreferenceEmail: true` (#2933).
+      // (Git #2944: this select only actually fires once
+      // customerNotificationPreferencesTable is a real mocked table above —
+      // without it, the column refs in notification-center.ts:31 throw on
+      // undefined and getCustomerPreference's own try/catch swallows it
+      // without ever calling db.select(), silently skipping this queue slot.)
       [],
+      // notificationsTable unread-count select inside createNotification
+      // (feedType defaults to "personal") — count doesn't matter here.
+      [{ n: 0 }],
       // usersTable lookup inside createNotification's fanOutToCustomerWebhook ->
       // resolveMspUserContext (#2849) — no matching row, so webhook fan-out is
       // a no-op.
