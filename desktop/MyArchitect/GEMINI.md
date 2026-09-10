@@ -1,7 +1,16 @@
 # MyArchitect — Gemini Agent Notes
 
 Multi-tenant WPF operator cockpit. Epic #3454 in this repo. Read
-BUILD_QUEUE_METHOD.md (repo root) before touching any issue in this epic.
+BUILD_QUEUE_METHOD.md (repo root) AND desktop/MyArchitect/UI_RULES.md before
+touching any issue in this epic.
+
+## Standing rule — UI Shell first, no exceptions
+#3493 (UI Shell Redesign) must land before any other Feature's UI work — the
+6-tab Ribbon, title-bar QAT, and left/right flyout split are real
+prerequisites other issues attach their UI into, not decoration to retrofit
+later. If #3493 isn't done yet, do not build ad-hoc chrome (a new icon, a
+new panel) to unblock yourself — stop and flag it instead. See UI_RULES.md
+for the full shell spec and the six fixed Ribbon tabs.
 
 ## Standing rule — bookend every issue, no exceptions
 Before starting real work on any issue #N:
