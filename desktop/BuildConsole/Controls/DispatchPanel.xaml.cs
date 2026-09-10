@@ -381,7 +381,10 @@ namespace BuildConsole.Controls
             ShowStatus($"Re-checking #{issueNumber}…", (Brush)Application.Current.FindResource("Subtext0Brush"));
             try
             {
-                var gh = new Services.GitHubApiClient(settings.GitHubPat);
+                // Git #3511 — a manual force re-dispatch is a deliberate operator override; use a
+                // manual-priority client so an open rate-limit circuit (from background polling) can't
+                // block it.
+                var gh = Services.GitHubApiClient.ForManualAction(settings.GitHubPat);
 
                 Services.GitHubIssueDetail? issue;
                 try

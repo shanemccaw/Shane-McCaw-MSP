@@ -115,24 +115,29 @@ namespace BuildConsole.Controls
 
         /// <summary>Git #3253 — fired from whatever background context the mirror sync runs on
         /// (the watcher tick), never the UI thread. Marshal to the Dispatcher before touching
-        /// anything. Git #3469 — a closed tab (IsVisible false) takes the mirror-count-only path
+        /// anything. Git #3469 — a closed tab (IsVisible false) took the mirror-count-only path
         /// (zero live GitHub calls) instead of the full RefreshAsync, which still does real live
-        /// enrichment work (batched BUILD-comment resolution, closed-sweep, auto-select detail
-        /// load, and free-flow auto-queue writes) even though its board LIST is mirror-first.</summary>
+        /// enrichment work even though its board LIST is mirror-first.
+        ///
+        /// Git #3512 — that closed-tab count-only path is correct ONLY when Free Flow is OFF. With
+        /// Free Flow ON, the background auto-queue pipeline MUST run even while the tab is closed —
+        /// unattended overnight queuing is the entire point of Free Flow, and #3469 silently disabled
+        /// it (nothing queued while Shane slept and the tab wasn't focused: the confirmed root of the
+        /// overnight-silence half of the 7-day pattern). So: Free Flow ON → real RefreshAsync (which
+        /// resolves + auto-queues) regardless of visibility; Free Flow OFF → the cheap count-only
+        /// path, unchanged. The gate is read LIVE here so toggling it takes effect on the next
+        /// sync.</summary>
         private void OnMirrorSyncCompleted()
         {
             Dispatcher.InvokeAsync(async () =>
             {
-                var settings = Services.BuildConsoleSettings.Load();
-                // When Free Flow is enabled, auto-queueing must run even when the tab is hidden
-                if (IsVisible || settings.BatterUpFreeFlow)
-                {
-                    await RefreshAsync();
-                }
-                else
-                {
-                    await RefreshCountOnlyAsync();
-                }
+                if (IsVisible) { await RefreshAsync(); return; }
+
+                // Git #3512 — Free Flow ON must keep queuing in the background even with the tab
+                // closed; only the gated (OFF) case takes #3469's zero-live-call count-only path.
+                bool freeFlow = Services.BuildConsoleSettings.Load().BatterUpFreeFlow;
+                if (freeFlow) await RefreshAsync();
+                else await RefreshCountOnlyAsync();
             });
         }
 
@@ -426,20 +431,23 @@ namespace BuildConsole.Controls
                     // standing failure so it doesn't read as an urgent bug (see #2916).
                     bool circuitOpen = Services.GitHubRateLimitCircuit.IsCircuitOpenMessage(ex.Message);
 
-                    // Git #3494 — on a transient circuit-open deferral, KEEP the last-known rows
-                    // exactly as they are instead of blanking the panel. Blanking (then repainting on
-                    // the next closed-window refresh) flapped the whole lane every ~minute at batch
-                    // scale, and the pre-#3494 behaviour was worse still: it rebuilt every item as
-                    // "needs dispatch," which read as "their BUILD comments were lost." Preserving the
-                    // rows and annotating the header keeps the lane stable and honest until GitHub
-                    // stops rate-limiting us. Only blank on a first load (nothing to preserve) or a
-                    // real, standing failure.
-                    if (circuitOpen && _allRows.Count > 0)
+                    // Git #3494 / #3512 — NEVER blank the lane when we still hold real rows. #3494
+                    // preserved last-known rows only on a recognized circuit-open throw; #3512 broadens
+                    // that to ANY transient failure (a mirror/DB hiccup, a GitHub blip, anything not
+                    // recognized as the circuit) — blanking (then repainting on the next refresh) flaps
+                    // the whole lane, and rebuilding every item as "needs dispatch" read as "their
+                    // BUILD comments were lost." Preserving the rows and annotating the header keeps the
+                    // lane stable and honest. Only a genuine first load (nothing to preserve) or a real
+                    // standing failure with no prior rows falls through to the empty/error state below.
+                    if (_allRows.Count > 0)
                     {
+                        string why = circuitOpen ? "rate-limit circuit open" : ex.Message;
                         Services.ActivityLog.Log("batter-up",
-                            $"Refresh deferred (rate-limit circuit open) — keeping last-known {_allRows.Count} row(s); recovers automatically (Git #3494/#2815).");
+                            $"Refresh deferred ({why}) — keeping last-known {_allRows.Count} row(s); recovers automatically (Git #3494/#3512/#2815).");
                         string deferredMode = settings.BatterUpFreeFlow ? "free flow" : "gated";
-                        TxtCount.Text = $"({_allRows.Count}) · {deferredMode} · GitHub cooling down (#2815)";
+                        TxtCount.Text = circuitOpen
+                            ? $"({_allRows.Count}) · {deferredMode} · GitHub cooling down (#2815)"
+                            : $"({_allRows.Count}) · {deferredMode} · couldn't refresh, showing last-known";
                         TxtEmpty.Visibility = Visibility.Collapsed;
                         return;
                     }

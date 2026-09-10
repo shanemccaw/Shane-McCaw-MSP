@@ -254,7 +254,9 @@ namespace BuildConsole.Services
             try
             {
                 IssueChompAnimation.Play(null, $"Issue #{issueNumber}");
-                await new GitHubApiClient(settings.GitHubPat).SetIssueStateAsync(issueNumber, close: true);
+                // Git #3511 — Shane's own deliberate Approve click; use a manual-priority client so an
+                // open rate-limit circuit (background polling) can't block the close.
+                await GitHubApiClient.ForManualAction(settings.GitHubPat).SetIssueStateAsync(issueNumber, close: true);
                 ActivityLog.Log(Channel, $"Closed GitHub issue #{issueNumber} on screenshot approval.");
                 return $"closed issue #{issueNumber}";
             }

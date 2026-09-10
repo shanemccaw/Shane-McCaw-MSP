@@ -111,9 +111,75 @@ namespace BuildConsole.Services
     /// </summary>
     public static class BatterUpQueueService
     {
-        /// <summary>In-memory cache of resolved BUILD: comments by issue number so transient rate-limit
-        /// cooldown windows never cause previously resolved items to flap to 'needs dispatch'.</summary>
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, (string? RawComment, (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? Parsed)> _buildCommentCache = new();
+        // ── Git #3512 — in-memory BUILD-comment resolution cache ─────────────────────────────
+        // Why: #3494 made both Batter Up panels THROW when the shared #2815 rate-limit circuit was
+        // open, because ResolveBuildCommentsAsync could make no live GitHub call and returned
+        // nothing — so every board item rendered as "no BUILD: comment yet — needs dispatch" (the
+        // false "their BUILD comments were lost" reversion). Throwing kept the last-known ROWS but
+        // stopped the whole pass, which also silenced Free Flow auto-queuing overnight (the exact
+        // 7-day symptom this issue exists to end). This cache lets a cooldown pass serve each item's
+        // LAST SUCCESSFULLY-RESOLVED BUILD: comment instead: a resolved item stays resolved (and
+        // Free Flow keeps queuing it) across the ~60s the #2815 circuit is open. Only an item never
+        // resolved yet (brand new on the board during a sustained cooldown) stays unresolved, and it
+        // self-heals on the next closed window — never a REVERSION of a previously-resolved item.
+        // Bounded by a generous TTL so a stale prompt can't be re-served forever and the cache can't
+        // grow without limit over a long session; every successful live resolve refreshes the entry.
+        private sealed class BuildCommentCacheEntry
+        {
+            public string? RawComment { get; init; }
+            public (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? Parsed { get; init; }
+            public DateTime StoredUtc { get; init; }
+        }
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, BuildCommentCacheEntry> _buildCommentCache = new();
+
+        /// <summary>Git #3512 — how long a cached BUILD-comment resolution may back a cooldown pass.
+        /// Far longer than the ~60s the #2815 circuit typically stays open (so overnight cooldowns
+        /// always hit a warm cache), but bounded so an edited-then-abandoned prompt can't be re-served
+        /// forever and the cache can't grow without limit.</summary>
+        private static readonly TimeSpan BuildCommentCacheTtl = TimeSpan.FromHours(12);
+
+        private static void StoreInCache(int number,
+            (string? RawComment, (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? Parsed) value)
+        {
+            _buildCommentCache[number] = new BuildCommentCacheEntry
+            {
+                RawComment = value.RawComment,
+                Parsed = value.Parsed,
+                StoredUtc = DateTime.UtcNow,
+            };
+            // Opportunistic prune — cheap, only on a store; keeps the cache from growing unbounded as
+            // many different issues pass through Batter Up over a multi-day session.
+            var cutoff = DateTime.UtcNow - BuildCommentCacheTtl;
+            foreach (var kv in _buildCommentCache)
+                if (kv.Value.StoredUtc < cutoff)
+                    _buildCommentCache.TryRemove(kv.Key, out _);
+        }
+
+        private static bool TryGetFreshCache(int number,
+            out (string? RawComment, (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? Parsed) value)
+        {
+            value = default;
+            if (_buildCommentCache.TryGetValue(number, out var e)
+                && DateTime.UtcNow - e.StoredUtc < BuildCommentCacheTtl)
+            {
+                value = (e.RawComment, e.Parsed);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>Git #3512 — fill any still-unresolved requested numbers from the last-known cache
+        /// (fresh entries only). Returns how many were served from cache, for an honest log line.</summary>
+        private static int FillFromCache(IReadOnlyList<int> numbers,
+            Dictionary<int, (string? RawComment, (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? Parsed)> result)
+        {
+            int served = 0;
+            foreach (var n in numbers)
+                if (!result.ContainsKey(n) && TryGetFreshCache(n, out var cached)) { result[n] = cached; served++; }
+            return served;
+        }
+
         /// <summary>
         /// Parses a `BUILD:` comment body:
         /// <code>
@@ -236,19 +302,17 @@ namespace BuildConsole.Services
             var distinct = issueNumbers.Where(n => n > 0).Distinct().ToList();
             if (distinct.Count == 0) return result;
 
-            // First, populate from in-memory cache for any known issues
-            foreach (var n in distinct)
-            {
-                if (_buildCommentCache.TryGetValue(n, out var cached) && cached.Parsed.HasValue)
-                {
-                    result[n] = cached;
-                }
-            }
-
+            // Git #3512 — when the shared #2815 rate-limit circuit is open we cannot make the live
+            // GraphQL comment read, but we must NOT report every item as "no BUILD: comment" (the
+            // #3494 reversion). Serve each item's LAST SUCCESSFULLY-RESOLVED BUILD: comment from the
+            // in-memory cache instead, so a resolved item stays resolved (and Free Flow keeps queuing
+            // it) across the cooldown. An item never resolved yet stays absent — genuinely unknown,
+            // resolved on the next closed window — never falsely flipped to needs-dispatch.
             if (GitHubRateLimitCircuit.IsOpen)
             {
-                log($"BUILD-comment resolve skipped — GitHub rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); " +
-                    $"served {result.Count} cached item(s); remaining resolve on later refresh (Git #3350).");
+                int servedFromCache = FillFromCache(distinct, result);
+                log($"BUILD-comment resolve skipped live read — GitHub rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); " +
+                    $"served {servedFromCache} of {distinct.Count} item(s) from the last-known cache, the rest resolve on a later refresh (Git #3512/#3350).");
                 return result;
             }
 
@@ -263,7 +327,8 @@ namespace BuildConsole.Services
             }
             catch (Exception ex)
             {
-                log($"BUILD-comment resolve — batched comment lookup failed ({ex.Message}); serving {result.Count} cached item(s) (Git #3350).");
+                int servedFromCache = FillFromCache(distinct, result);
+                log($"BUILD-comment resolve — batched comment lookup failed ({ex.Message}); served {servedFromCache} of {distinct.Count} item(s) from the last-known cache, the rest resolve on a later refresh (Git #3512/#3350).");
                 return result;
             }
 
@@ -273,20 +338,13 @@ namespace BuildConsole.Services
                 if (batch.TryGetValue(n, out var c))
                 {
                     var found = FindBuildCommentInBodies(c.Bodies);
-                    if (found.HasValue)
-                    {
-                        result[n] = found.Value;
-                        _buildCommentCache[n] = found.Value;
-                        continue;
-                    }
+                    // Git #3512 — cache every DEFINITIVE resolution (a real BUILD: comment, or a
+                    // whole-thread-seen "no BUILD: comment") so a later cooldown pass can serve it.
+                    if (found.HasValue) { result[n] = found.Value; StoreInCache(n, found.Value); continue; }
                     // No BUILD: comment in the recent window. If the real thread is deeper than the
                     // window we fetched, one could still be older — resolve just that item live.
                     if (c.TotalCount > c.Bodies.Count) needFullFetch.Add(n);
-                    else
-                    {
-                        result[n] = (null, null);
-                        _buildCommentCache[n] = (null, null);
-                    }
+                    else { result[n] = (null, null); StoreInCache(n, (null, null)); } // whole thread seen — definitively no BUILD: comment
                 }
                 else needFullFetch.Add(n); // GraphQL returned nothing for this number — resolve live
             }
@@ -296,13 +354,18 @@ namespace BuildConsole.Services
 
             foreach (var n in needFullFetch)
             {
-                try
+                try { var found = await FindBuildCommentAsync(gh, n); result[n] = found; StoreInCache(n, found); }
+                catch (Exception ex)
                 {
-                    var found = await FindBuildCommentAsync(gh, n);
-                    result[n] = found;
-                    _buildCommentCache[n] = found;
+                    // Git #3512 — a failed deep fetch falls back to the last-known cached resolution
+                    // rather than leaving the item unresolved (which would read as needs-dispatch).
+                    if (TryGetFreshCache(n, out var cached))
+                    {
+                        result[n] = cached;
+                        log($"BUILD-comment resolve — per-item deep fetch for #{n} failed ({ex.Message}); served last-known cached resolution (Git #3512).");
+                    }
+                    else log($"BUILD-comment resolve — per-item deep fetch for #{n} failed ({ex.Message}); left unresolved this pass (Git #3350).");
                 }
-                catch (Exception ex) { log($"BUILD-comment resolve — per-item deep fetch for #{n} failed ({ex.Message}); left unresolved this pass (Git #3350)."); }
             }
 
             return result;
@@ -324,12 +387,25 @@ namespace BuildConsole.Services
         public static async Task<(List<BatterUpRow> Rows, int SuppressedCount, ClosedSweepResult SweepResult)> RefreshAsync(
             GitHubApiClient gh, BuildQueuePostgresClient? queueDb, Action<string> log)
         {
-            // Git #3494 / fix: Under an open circuit, do NOT throw an exception that blanks the UI
-            // and halts auto-queuing. Serve board items from the local mirror and cached BUILD: comments.
+            // Git #3494 originally THREW here when the shared #2815 rate-limit circuit was open, to
+            // stop the pass rebuilding every item as "no BUILD: comment — needs dispatch" (the false
+            // "their BUILD comments were lost" reversion). Git #3512 removes that throw: throwing also
+            // stopped the WHOLE pass, which silenced Free Flow auto-queuing overnight (the exact 7-day
+            // symptom). The pass is now safe to run under an open circuit because every step it takes
+            // is already circuit-aware and mirror-backed, adding ZERO live GitHub pressure:
+            //   • the board LIST is a local-mirror read (GetBatterUpBoardItemsAsync);
+            //   • BUILD-comment resolution serves each item's LAST-KNOWN resolution from the in-memory
+            //     cache (ResolveBuildCommentsAsync, Git #3512) rather than flipping it to needs-dispatch;
+            //   • the closed-sweep short-circuits on an open circuit (SweepClosedCandidatesToDoneAsync);
+            //   • blocked-by is read from the mirror; DoneBookendVerifier uses local git only.
+            // So a resolved item stays resolved and Free Flow keeps queuing it across the ~60s the
+            // circuit is open; a genuinely-never-resolved item (brand new during a sustained cooldown)
+            // simply stays listed until the next closed window resolves it — never a reversion.
             if (GitHubRateLimitCircuit.IsOpen)
             {
-                log($"Batter Up refresh: GitHub rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); " +
-                    "serving board items from local mirror and cached comments (Git #3494).");
+                log($"Batter Up refresh proceeding in degraded (cache-backed) mode — GitHub rate-limit circuit open " +
+                    $"({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); board list + blocked-by from the local mirror, " +
+                    "BUILD: comments served from the last-known cache, closed-sweep deferred. Free Flow keeps queuing resolved items (Git #3512).");
             }
 
             // Git #2557 — auto-sweep: a closed issue sitting in "Batter Up" status is

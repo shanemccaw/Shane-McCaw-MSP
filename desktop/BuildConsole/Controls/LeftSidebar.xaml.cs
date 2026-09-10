@@ -2272,7 +2272,7 @@ namespace BuildConsole.Controls
             dialog.Owner = Application.Current.MainWindow;
             if (dialog.ShowDialog() != true) return;
 
-            var client = new GitHubApiClient(settings.GitHubPat);
+            var client = GitHubApiClient.ForManualAction(settings.GitHubPat); // Git #3511 — manual create
             CreatedIssue created;
             try
             {
@@ -5382,8 +5382,8 @@ namespace BuildConsole.Controls
                         {
                             var settings = BuildConsole.Services.BuildConsoleSettings.Load();
                             if (!settings.HasGitHubPat) return;
-                            var client = new GitHubApiClient(settings.GitHubPat);
-                            
+                            var client = GitHubApiClient.ForManualAction(settings.GitHubPat); // Git #3511 — manual new-epic + assign
+
                             var created = await client.CreateIssueAsync(newTitle, newBody, m.GithubNumber);
                             
                             foreach (var li in looseBucket.Issues)
@@ -5424,7 +5424,7 @@ namespace BuildConsole.Controls
                             {
                                 var settings = BuildConsole.Services.BuildConsoleSettings.Load();
                                 if (!settings.HasGitHubPat) return;
-                                var client = new GitHubApiClient(settings.GitHubPat);
+                                var client = GitHubApiClient.ForManualAction(settings.GitHubPat); // Git #3511 — manual close milestone
                                 await client.CloseMilestoneAsync(m.GithubNumber.Value);
                                 ActivityLog.Log("git-board.close-milestone", $"Milestone \"{m.Title}\" (#{m.GithubNumber.Value}) closed on GitHub!");
                                 ToastEngine.Success("🎉 Milestone Closed!", $"\"{m.Title}\" has been closed!");
@@ -6185,7 +6185,7 @@ namespace BuildConsole.Controls
                 }
                 try
                 {
-                    var client = new GitHubApiClient(settings.GitHubPat);
+                    var client = GitHubApiClient.ForManualAction(settings.GitHubPat); // Git #3511 — manual close/reopen
                     await client.SetIssueStateAsync(issue.IssueNumber, closing);
                     ActivityLog.Log("git-board.state-change", $"#{issue.IssueNumber} -> {(closing ? "closed" : "reopened")}");
                     ToastEngine.Success("Git Board", $"Issue #{issue.IssueNumber} {(closing ? "closed" : "reopened")}.");
@@ -6219,7 +6219,7 @@ namespace BuildConsole.Controls
 
                 try
                 {
-                    var client = new GitHubApiClient(settings.GitHubPat);
+                    var client = GitHubApiClient.ForManualAction(settings.GitHubPat); // Git #3511 — manual edit
                     await client.UpdateIssueAsync(issue.IssueNumber, dialog.ResultTitle, dialog.ResultBody);
                     ActivityLog.Log("git-board.edit", $"#{issue.IssueNumber} title/body updated");
                 }
@@ -6256,7 +6256,7 @@ namespace BuildConsole.Controls
 
                 try
                 {
-                    var client = new GitHubApiClient(settings.GitHubPat);
+                    var client = GitHubApiClient.ForManualAction(settings.GitHubPat); // Git #3511 — manual assign-to-epic
                     await client.AddSubIssueAsync(targetEpic.Number, issue.DatabaseId);
                     ActivityLog.Log("git-board.assign-epic", $"#{issue.IssueNumber} assigned under epic #{targetEpic.Number}");
                 }
@@ -6294,7 +6294,7 @@ namespace BuildConsole.Controls
 
                 try
                 {
-                    var client = new GitHubApiClient(settings.GitHubPat);
+                    var client = GitHubApiClient.ForManualAction(settings.GitHubPat); // Git #3511 — manual set-blocked-by
                     await client.SetBlockedByAsync(issue.IssueNumber, blocker.Number);
                     ActivityLog.Log("git-board.set-blocked-by", $"#{issue.IssueNumber} set blocked by #{blocker.Number}");
 
@@ -6322,7 +6322,7 @@ namespace BuildConsole.Controls
                     if (!settings.HasGitHubPat) return;
                     try
                     {
-                        var client = new GitHubApiClient(settings.GitHubPat);
+                        var client = GitHubApiClient.ForManualAction(settings.GitHubPat); // Git #3511 — manual unblock
                         await client.RemoveBlockedAsync(issue.IssueNumber, issue.BlockedByNumber);
                         ActivityLog.Log("git-board.unblock", $"#{issue.IssueNumber} unblocked manually");
 
@@ -6893,7 +6893,9 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            var gh = new GitHubApiClient(settings.GitHubPat);
+            // Git #3511 — Git Board Dispatch is a manual escape hatch, same as the Dispatch panel; a
+            // manual-priority client keeps it working when background polling has the circuit open.
+            var gh = GitHubApiClient.ForManualAction(settings.GitHubPat);
             var (rawComment, parsed) = await BatterUpQueueService.FindBuildCommentAsync(gh, issue.IssueNumber);
 
             if (rawComment == null || parsed == null)

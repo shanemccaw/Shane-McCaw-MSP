@@ -513,7 +513,9 @@ namespace BuildConsole.Controls
                     var clickSettings = BuildConsoleSettings.Load();
                     if (!clickSettings.HasGitHubPat)
                         throw new InvalidOperationException("No GitHub PAT configured.");
-                    var clickClient = new GitHubApiClient(clickSettings.GitHubPat);
+                    // Git #3511 — a manual board move must not be pre-blocked by the circuit that
+                    // automatic background polling trips.
+                    var clickClient = GitHubApiClient.ForManualAction(clickSettings.GitHubPat);
                     await clickClient.SetProjectItemStatusAsync(boardItemId, GitHubApiClient.BatterUpPromoteOptionId);
                     boardStatusText.Text = "Board status: Batter Up";
                     batterUpBtn.Visibility = Visibility.Collapsed;

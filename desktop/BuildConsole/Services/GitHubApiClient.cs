@@ -269,7 +269,22 @@ namespace BuildConsole.Services
         private readonly bool _patWasEmpty;
         private readonly int _patLength;
 
-        public GitHubApiClient(string pat)
+        /// <summary>
+        /// Git #3511 — constructs a client whose HTTP layer BYPASSES the shared GitHub rate-limit
+        /// circuit's pre-emptive suppression for a single, deliberate, user-initiated action (Dispatch,
+        /// a board move, closing/editing an issue, posting a comment). The one immediate real attempt
+        /// always goes through regardless of the broader circuit's open/closed state — so Shane's manual
+        /// escape hatch works precisely when automatic background polling has the circuit open — while
+        /// still reporting its real outcome to the breaker (a success closes it, a real rate-limit trips
+        /// it). See <see cref="GitHubRateLimitHandler"/> for the full contract. Use this ONLY for genuine
+        /// manual actions; every automatic/background caller must keep using the plain constructor so it
+        /// stays fully gated.
+        /// </summary>
+        public static GitHubApiClient ForManualAction(string pat) => new GitHubApiClient(pat, manualPriority: true);
+
+        public GitHubApiClient(string pat) : this(pat, manualPriority: false) { }
+
+        private GitHubApiClient(string pat, bool manualPriority)
         {
             _patWasEmpty = string.IsNullOrWhiteSpace(pat);
             _patLength = pat?.Length ?? 0;
@@ -296,7 +311,7 @@ namespace BuildConsole.Services
             // rate-limit circuit breaker (GitHubRateLimitHandler), so the HTTP+PAT path and the
             // `gh` CLI path back off together instead of each hammering GitHub every tick once it
             // has rate-limited us. Wraps a real HttpClientHandler as the network transport.
-            _http = new HttpClient(new GitHubRateLimitHandler(new HttpClientHandler()))
+            _http = new HttpClient(new GitHubRateLimitHandler(new HttpClientHandler(), manualPriority))
             { BaseAddress = new Uri("https://api.github.com/"), Timeout = TimeSpan.FromSeconds(60) };
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", pat);
             _http.DefaultRequestHeaders.UserAgent.ParseAdd("BuildConsole");

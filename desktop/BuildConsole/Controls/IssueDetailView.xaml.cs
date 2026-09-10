@@ -215,7 +215,9 @@ namespace BuildConsole.Controls
             BtnPostComment.Content = "Posting…";
             try
             {
-                var client = new GitHubApiClient(settings.GitHubPat);
+                // Git #3511 — posting a comment is a single deliberate user action; a manual-priority
+                // client keeps it working when background polling has the rate-limit circuit open.
+                var client = GitHubApiClient.ForManualAction(settings.GitHubPat);
                 var created = await client.AddIssueCommentAsync(number, text);
                 if (_currentNumber != number) return; // switched issues mid-post — don't append to the wrong thread
 
