@@ -14,8 +14,8 @@ operator side: two dedicated route files serving the *book* rather than a single
 five real capabilities the customer surface has no equivalent for at all (collection triggering,
 the resource-type registry, and the baseline registry).
 
-Backend routes (both live, both mounted — `artifacts/api-server/src/routes/index.ts:302-303`
-import lines, `:589-590` mount lines):
+Backend routes (both live, both mounted — `artifacts/api-server/src/routes/index.ts:303-304`
+import lines, `:591-592` mount lines):
 
 - `artifacts/api-server/src/routes/msp-config-state.ts` (526 lines) — book-wide tenant coverage,
   snapshot history/detail/objects, collection triggering, the resource-type registry (**8
@@ -24,7 +24,7 @@ import lines, `:589-590` mount lines):
   detail, the four-mode compute endpoint, the noise ruleset, the #2759 attribution pass, and the
   baseline registry (**8 routes**)
 
-**16 routes total.** Scoping: `artifacts/api-server/src/lib/msp-config-state-scope.ts` (106
+**16 routes total.** Scoping: `artifacts/api-server/src/lib/msp-config-state-scope.ts` (107
 lines) — `resolveConfigStateBook`, the one function that turns a caller into the set of tenants
 they may read. Schema: `lib/db/src/schema/config-snapshots.ts` (`tenantConfigSnapshotsTable`
 `:455`, `configSnapshotResourceTypesTable` `:343`, `configSnapshotBaselinesTable` `:828`),
@@ -59,13 +59,13 @@ both files in this pack takes `resolveConfigStateBook(req)` as an explicit predi
 touching a row — there is no route here that reads a snapshot, diff, or baseline without first
 resolving the caller's book.
 
-**The book, precisely** (`msp-config-state-scope.ts:55-106`):
+**The book, precisely** (`msp-config-state-scope.ts:56-107`):
 
 | Caller | Book |
 |---|---|
-| `PlatformAdmin` (`role === "admin"` or `mspRole === "PlatformAdmin"`) | Every tenant, unless `?mspId=`/`?slug=` narrows to one MSP (`resolveMspId`, `:68`) |
-| `MSPAdmin` / `MSPOperator` | Every tenant of their own MSP, intersected with `resolveStaffScopedCustomerIds` when the staff member is scoped (`:80-86`) — a scoped operator never sees a customer outside their assignment |
-| Anything below, or no resolvable `mspId` for MSP staff | **Empty book** — fails closed rather than widening (`:61-63,72-76`) |
+| `PlatformAdmin` (`role === "admin"` or `mspRole === LEGACY_ROLE.platformAdmin`, `:60`) | Every tenant, unless `?mspId=`/`?slug=` narrows to one MSP (`resolveMspId`, `:69`) |
+| `MSPAdmin` / `MSPOperator` | Every tenant of their own MSP, intersected with `resolveStaffScopedCustomerIds` when the staff member is scoped (`:81-87`) — a scoped operator never sees a customer outside their assignment |
+| Anything below, or no resolvable `mspId` for MSP staff | **Empty book** — fails closed rather than widening (`:62-64,73-77`) |
 
 An **empty book is a legitimate state** (a new MSP with no customers yet) and every list route
 short-circuits to empty results on it, never "everything" (`msp-config-state-diffs.ts:167-170`
@@ -146,10 +146,14 @@ config-state page exists on either operator or admin surface.
 
 ### 1.1 Auth and roles — identical floor to every sibling MSP-console pack
 
-`requireRole("MSPOperator")` on all 16 routes (MSPOperator, MSPAdmin, PlatformAdmin — the same
-ordered ladder every other pack in this project documents:
-`Assessment < Free < CustomerUser < ServiceAccount < MSPOperator < MSPAdmin < PlatformAdmin`). No
-route in either file uses a stricter or looser floor. Tenant scoping is the book (§0.1), entirely
+`requireCapability("ladder.msp-operator")` on all 16 routes — as of #2460 (landed after this
+pack's original write, re-verified this pass) the gate is no longer a hardcoded role-order
+comparison; it asks the seeded `msp_feature_role_mapping` row for capability key
+`ladder.msp-operator` (`system = 'msp'`, `msp_id IS NULL` — platform-scoped, not per-MSP-tenant),
+confirmed live against local PostgreSQL to allow exactly three roles: MSPOperator, MSPAdmin,
+PlatformAdmin — the **same three roles this pack already documented**, and #2460's own commit
+note states the 403 body is byte-identical, so nothing observable to a caller changed. No route
+in either file uses a stricter or looser floor. Tenant scoping is the book (§0.1), entirely
 separate from the role floor — matching the pattern this project's other MSP-console packs
 already establish (`msp-executive.ts`, `msp-ownership.ts`).
 
@@ -217,8 +221,8 @@ explicitly on every call, never implicit. Same paging envelope (`{ total, limit,
 (`_req: Request` on the summary handler, `:205`, never even reads `req.user`). The header states
 why (`:35-38`): `config_snapshot_resource_types` describes what this platform can read from
 Microsoft, identically for every customer, and contains no tenant's configuration or identifiers.
-Any caller past the `requireRole("MSPOperator")` floor sees the same registry regardless of which
-MSP or which book they belong to.
+Any caller past the `requireCapability("ladder.msp-operator")` floor sees the same registry
+regardless of which MSP or which book they belong to.
 
 `/registry` accepts four independent filters, each validated against its own enum before the
 query runs (`400` with the allowed-value list on a bad one): `transport` (`CONFIG_READ_TRANSPORTS`,
@@ -677,7 +681,7 @@ module whose API build (#1843) intentionally precedes its MSP Console page.
 
 - `artifacts/api-server/src/routes/msp-config-state.ts` (526 lines, read in full)
 - `artifacts/api-server/src/routes/msp-config-state-diffs.ts` (781 lines, read in full)
-- `artifacts/api-server/src/lib/msp-config-state-scope.ts` (106 lines, read in full)
+- `artifacts/api-server/src/lib/msp-config-state-scope.ts` (107 lines, read in full)
 - `artifacts/api-server/src/lib/config-state-views.ts` (`snapshotCompleteness`,
   `diffCompleteness`, `diffSides`, `readResourceRegistry`, `readResourceRegistrySummary`
   signatures and bodies)
