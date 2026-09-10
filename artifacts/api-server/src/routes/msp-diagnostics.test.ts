@@ -53,6 +53,10 @@ vi.mock("@workspace/db", () => {
 
   const fakeCustomer = { id: 10, name: "Acme Corp", tenantId: "tenant-abc" };
 
+  // #1770 — GET /msp/monitoring-packages fixture: a real-shaped active
+  // package with a nonzero check count (the HAVING clause's target case).
+  const fakePackages = [{ key: "core:security-baseline", label: "Security Baseline", checkCount: 28 }];
+
   const chainable = (returnValue: unknown): unknown => {
     const self: Record<string, unknown> = {};
     const methods = ["select", "from", "where", "orderBy", "limit", "offset", "insert", "values", "returning", "update", "set"];
@@ -101,6 +105,17 @@ vi.mock("@workspace/db", () => {
               }),
             }),
           }),
+          // #1770 — .from(monitoringPackagesTable).leftJoin(monitoringPackageChecksTable)
+          // .where(...).groupBy(...).having(...).orderBy(...) for GET /msp/monitoring-packages.
+          leftJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              groupBy: vi.fn().mockReturnValue({
+                having: vi.fn().mockReturnValue({
+                  orderBy: vi.fn().mockResolvedValue(fakePackages),
+                }),
+              }),
+            }),
+          }),
         }),
       };
     }),
@@ -129,6 +144,8 @@ vi.mock("@workspace/db", () => {
     industryBenchmarkReferenceTable: {},
     monitorChecksTable: {},
     scriptModulesTable: {},
+    monitoringPackagesTable: { key: "key", label: "label", status: "status" },
+    monitoringPackageChecksTable: { id: "id", packageKey: "package_key" },
   };
 });
 
@@ -226,6 +243,16 @@ describe("msp-diagnostics routes", () => {
       .expect(202);
 
     expect(res.body).toMatchObject({ runId: expect.any(String), status: "pending" });
+  });
+
+  // #1770 — GET /msp/monitoring-packages: the real catalog list the AdminV2
+  // AD screen's run-scan picker reads from.
+  it("GET /msp/monitoring-packages returns the real package catalog", async () => {
+    const res = await request(app).get("/msp/monitoring-packages").expect(200);
+
+    expect(res.body).toMatchObject({
+      packages: [{ key: "core:security-baseline", label: "Security Baseline", checkCount: 28 }],
+    });
   });
 
   it("GET /msp/customers/10/diagnostics returns runs list", async () => {

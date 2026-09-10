@@ -18,7 +18,9 @@ import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
 import {
   createAdConsentInviteLink,
   fetchAdCustomer,
+  fetchAdCustomerMonitoringPackage,
   fetchAdCustomerWriteConsent,
+  fetchAdMonitoringPackages,
   hardDeleteAdCustomer,
   revokeAdTenantConsent,
   runAdCustomerDiagnostics,
@@ -28,7 +30,7 @@ import {
 } from "../adApi";
 import { setAdCachedRecord } from "../adNameCache";
 import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
-import type { AdConsentStatus, AdCustomerDetail, AdWriteConsentStatus } from "../adTypes";
+import type { AdConsentStatus, AdCustomerDetail, AdMonitoringPackage, AdWriteConsentStatus } from "../adTypes";
 import { AdRbacOrgRolesPanel } from "../AdRbacPanels";
 import {
   AdArmedButton,
@@ -44,6 +46,7 @@ import {
   AdLoading,
   AdOutcome,
   AdSection,
+  AdSelect,
   AdTile,
   AdTileGrid,
 } from "../adKit";
@@ -68,6 +71,17 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
   const [scanning, setScanning] = useState(false);
+
+  // #1770 — run-scan package picker. `packages` is the real catalog an
+  // operator can choose from; `defaultPackageKey` is the customer's own
+  // resolved active subscription (same value the server would fall back to),
+  // used only to pre-select the picker so one-click behavior is unchanged
+  // when the default is what the operator wants. The picker itself only
+  // opens when there is a genuine choice to make (more than one package).
+  const [packages, setPackages] = useState<AdMonitoringPackage[]>([]);
+  const [defaultPackageKey, setDefaultPackageKey] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [selectedPackageKey, setSelectedPackageKey] = useState("");
 
   // Write-back consent (admin) — Git #1672, rehomed from the archived
   // msp-portal customer-detail.tsx's WriteBackConsentCard.
@@ -118,18 +132,55 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
     void load();
   }, [load]);
 
-  const runScan = useCallback(async () => {
-    setScanning(true);
-    setOutcome(null);
+  // #1770 — the real catalog + this customer's resolved default, loaded once
+  // per tenant so the picker (below) always reflects real data rather than a
+  // hardcoded list. A failure here degrades gracefully: `packages` stays
+  // empty, so `runScan()` below falls through to its pre-#1770 one-click
+  // behavior (no packageKey override, server resolves the subscription as it
+  // always did) instead of blocking the button.
+  const loadPackages = useCallback(async () => {
     try {
-      await runAdCustomerDiagnostics(fetchWithAuth, customerId);
-      setOutcome({ tone: "ok", message: "Scan started. It runs in the background — reopen this tenant in a minute to see results." });
-    } catch (err) {
-      setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to start the scan." });
-    } finally {
-      setScanning(false);
+      const [pkgs, resolved] = await Promise.all([
+        fetchAdMonitoringPackages(fetchWithAuth),
+        fetchAdCustomerMonitoringPackage(fetchWithAuth, customerId),
+      ]);
+      setPackages(pkgs);
+      setDefaultPackageKey(resolved.packageKey);
+    } catch {
+      setPackages([]);
+      setDefaultPackageKey(null);
     }
   }, [fetchWithAuth, customerId]);
+
+  useEffect(() => {
+    void loadPackages();
+  }, [loadPackages]);
+
+  const runScan = useCallback(
+    async (packageKey?: string) => {
+      // More than one real package to choose from, and the operator hasn't
+      // picked one yet: open the picker instead of dispatching immediately.
+      // Exactly one (or the catalog failed to load): run it, unprompted —
+      // the pre-#1770 one-click behavior, unchanged.
+      if (!packageKey && packages.length > 1) {
+        setSelectedPackageKey(defaultPackageKey ?? packages[0]!.key);
+        setPickerOpen(true);
+        return;
+      }
+      setPickerOpen(false);
+      setScanning(true);
+      setOutcome(null);
+      try {
+        await runAdCustomerDiagnostics(fetchWithAuth, customerId, packageKey);
+        setOutcome({ tone: "ok", message: "Scan started. It runs in the background — reopen this tenant in a minute to see results." });
+      } catch (err) {
+        setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to start the scan." });
+      } finally {
+        setScanning(false);
+      }
+    },
+    [fetchWithAuth, customerId, packages, defaultPackageKey],
+  );
 
   const saveBusinessUnit = useCallback(async () => {
     setBusinessUnitSaving(true);
@@ -273,6 +324,33 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
       />
 
       {outcome && <AdOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
+
+      {pickerOpen && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+            padding: "8px 16px",
+            borderBottom: `1px solid ${LINE.base}`,
+            background: SURFACE.chrome,
+          }}
+        >
+          <span style={{ fontSize: 11.5, color: TEXT.label }}>Package to run:</span>
+          <AdSelect
+            value={selectedPackageKey}
+            onChange={setSelectedPackageKey}
+            options={packages.map((p) => ({
+              value: p.key,
+              label: `${p.label} (${p.checkCount} check${p.checkCount === 1 ? "" : "s"})${p.key === defaultPackageKey ? " · current subscription" : ""}`,
+            }))}
+            disabled={scanning}
+          />
+          <AdButton label={scanning ? "Scanning…" : "Run"} tone="primary" onClick={() => void runScan(selectedPackageKey)} disabled={scanning || !selectedPackageKey} />
+          <AdButton label="Cancel" onClick={() => setPickerOpen(false)} disabled={scanning} />
+        </div>
+      )}
 
       <AdCanvasBody>
         <AdSection title="Profile">

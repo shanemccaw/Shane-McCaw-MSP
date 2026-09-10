@@ -241,6 +241,13 @@ export interface AdDiagnosticRunSummary {
   completedAt: string | null;
 }
 
+/** GET /api/msp/monitoring-packages row — #1770's run-scan package picker. */
+export interface AdMonitoringPackage {
+  key: string;
+  label: string;
+  checkCount: number;
+}
+
 export interface AdCustomerDetail {
   customer: AdCustomerProfile;
   owningMsp: AdCustomerOwningMsp | null;

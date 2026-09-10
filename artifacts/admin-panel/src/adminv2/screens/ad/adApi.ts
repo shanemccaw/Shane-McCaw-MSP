@@ -16,6 +16,7 @@ import type {
   AdDiagnosticRunSummary,
   AdEntitlementsView,
   AdGroupDetail,
+  AdMonitoringPackage,
   AdMspDetail,
   AdMspProfile,
   AdOu,
@@ -255,9 +256,31 @@ export async function revokeAdTenantConsent(adminFetch: AdminFetch, tenantGuid: 
   return json<{ ok: true; tenantId: string; key: ConsentKey }>(res);
 }
 
-export async function runAdCustomerDiagnostics(adminFetch: AdminFetch, customerId: number) {
-  const res = await postJson(adminFetch, `/api/msp/customers/${customerId}/diagnostics/run`);
+export async function runAdCustomerDiagnostics(adminFetch: AdminFetch, customerId: number, packageKey?: string) {
+  const res = await postJson(adminFetch, `/api/msp/customers/${customerId}/diagnostics/run`, packageKey ? { packageKey } : undefined);
   return json<{ runId: string; status: string; message: string }>(res);
+}
+
+/** GET /api/msp/monitoring-packages — the real catalog #1770's picker chooses from. */
+export async function fetchAdMonitoringPackages(adminFetch: AdminFetch): Promise<AdMonitoringPackage[]> {
+  const res = await adminFetch("/api/msp/monitoring-packages");
+  const body = await json<{ packages: AdMonitoringPackage[] }>(res);
+  return body.packages;
+}
+
+/**
+ * GET /api/msp/customers/:customerId/monitoring-package — already shipped
+ * (msp-diagnostics.ts:342, née :327 per #1770's own diagnosis) to display the
+ * resolved packageKey; reused here client-side to default the picker's
+ * selection to the customer's real active subscription, per #1770's scope
+ * item 3, without touching the server's resolution chain at all.
+ */
+export async function fetchAdCustomerMonitoringPackage(
+  adminFetch: AdminFetch,
+  customerId: number,
+): Promise<{ packageKey: string | null; serviceId: number | null; serviceName: string | null }> {
+  const res = await adminFetch(`/api/msp/customers/${customerId}/monitoring-package`);
+  return json(res);
 }
 
 export interface AdConsentInviteLink {

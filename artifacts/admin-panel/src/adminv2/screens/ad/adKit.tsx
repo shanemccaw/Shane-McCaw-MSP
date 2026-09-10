@@ -315,6 +315,55 @@ export function AdButton({
   );
 }
 
+/** #1770 — one option a select renders; `label` carries whatever detail the caller wants shown (e.g. a check count). */
+export interface AdSelectOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * Select primitive matching `AdButton`'s footprint (same `BTN_BASE` sizing/
+ * radius/font) — the AD screen's component set had `AdButton` etc. but no
+ * select, so a picker (e.g. the run-scan monitoring-package picker) had
+ * nothing consistent to reach for.
+ */
+export function AdSelect({
+  value,
+  onChange,
+  options,
+  disabled,
+  title,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: AdSelectOption[];
+  disabled?: boolean;
+  title?: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      title={title}
+      style={{
+        ...BTN_BASE,
+        border: `1px solid ${LINE.control}`,
+        background: SURFACE.card,
+        color: TEXT.quiet,
+        opacity: disabled ? 0.5 : 1,
+        cursor: disabled ? "default" : "pointer",
+      }}
+    >
+      {options.map((opt) => (
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 /**
  * Arm-then-confirm in place — no second dialog, matching `Peek`'s
  * `ActionButton` exactly (SHELL.md: "the user does not want to be taken away

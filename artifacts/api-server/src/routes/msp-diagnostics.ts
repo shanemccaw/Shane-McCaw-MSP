@@ -7,6 +7,10 @@
  *   POST /api/msp/customers/:customerId/diagnostics/run
  *     — Trigger a diagnostics run. Fire-and-forget; returns runId immediately.
  *
+ *   GET  /api/msp/monitoring-packages
+ *     — List real monitoring packages (key, display name, real check count)
+ *       an operator can choose from when triggering a run above. #1770.
+ *
  *   GET  /api/msp/customers/:customerId/diagnostics
  *     — List runs for a customer (most recent first).
  *
@@ -53,6 +57,8 @@ import {
   industryBenchmarkReferenceTable,
   monitorChecksTable,
   scriptModulesTable,
+  monitoringPackagesTable,
+  monitoringPackageChecksTable,
 } from "@workspace/db";
 import { eq, and, desc, count, or, sql, inArray } from "drizzle-orm";
 import { requireRole, requireAuth, assertCustomerAccess, isCustomerBlockedByStaffScope, type AuthUser } from "../middlewares/requireAuth";
@@ -215,6 +221,50 @@ async function resolveCallerCustomerId(user: AuthUser): Promise<number | null> {
     .limit(1);
   return row?.customerId ?? null;
 }
+
+// ── GET /api/msp/monitoring-packages ───────────────────────────────────────────
+// #1770 — the real gap: the run route above already accepts a packageKey
+// override (has since before this route existed), but nothing listed the real
+// catalog an operator could pick from, so the AdminV2 AD screen's "Run scan"
+// button could never offer a choice. Lists real, active monitoring_packages
+// rows with a real check count, ordered by label for a deterministic,
+// readable picker.
+//
+// `HAVING count(...) > 0` deliberately excludes active rows with zero linked
+// checks — confirmed (live query against local DATABASE_URL) to be exactly
+// the ten `cat-*` rows lib/db/migrations/manual/2026-07-19-customer-dashboard-
+// category-tabs.sql seeded into this SAME table for the customer dashboard's
+// category tabs, not a diagnostics scan bundle: empty `engines`, zero rows in
+// monitoring_package_checks, and no code anywhere references their keys.
+// Surfacing them here would let an operator "run" a scan that does nothing.
+// Filed as a real finding — #1571's child list — rather than silently working
+// around it.
+
+router.get(
+  "/msp/monitoring-packages",
+  requireRole("MSPOperator"),
+  async (_req: Request, res: Response) => {
+    try {
+      const packages = await db
+        .select({
+          key: monitoringPackagesTable.key,
+          label: monitoringPackagesTable.label,
+          checkCount: count(monitoringPackageChecksTable.id),
+        })
+        .from(monitoringPackagesTable)
+        .leftJoin(monitoringPackageChecksTable, eq(monitoringPackageChecksTable.packageKey, monitoringPackagesTable.key))
+        .where(eq(monitoringPackagesTable.status, "active"))
+        .groupBy(monitoringPackagesTable.key, monitoringPackagesTable.label)
+        .having(sql`count(${monitoringPackageChecksTable.id}) > 0`)
+        .orderBy(monitoringPackagesTable.label);
+
+      res.json({ packages });
+    } catch (err) {
+      log.error({ err }, "GET /msp/monitoring-packages error");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 // ── POST /api/msp/customers/:customerId/diagnostics/run ───────────────────────
 // Fire-and-forget: creates ONE run record (correct mspId + packageKey) and
