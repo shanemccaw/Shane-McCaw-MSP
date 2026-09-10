@@ -346,11 +346,15 @@
                             <!-- Queue status counts (Git #1862) — replaces the old token/cost
                                  badge (it flipped between a context-window ESTIMATE and a real
                                  spend total under one label; see #1862 for why it was unfixable).
-                                 Four REAL, reconciled counts: In queue = queued + limit-paused;
-                                 Blocked = queued rows a GitHub-open blocker holds; Up next = the
-                                 real claim candidates (queued, all blockers closed, not paused);
-                                 Verifying = rows at VerifyingStatus. The "(N active)" running
-                                 readout on the right is unchanged. Clicking opens QueueNextPopup:
+                                 Total (Git #3520) = In queue + Verifying, every row that is
+                                 genuinely active/in-progress right now — without it, Shane read
+                                 "In queue" as the total and it silently dropped Verifying (#3519
+                                 found 31 real verifying rows the header's only summable figure
+                                 omitted). In queue = queued + limit-paused; Blocked = queued rows
+                                 a GitHub-open blocker holds; Up next = the real claim candidates
+                                 (queued, all blockers closed, not paused); Verifying = rows at
+                                 VerifyingStatus. The "(N active)" running readout on the right is
+                                 unchanged. Clicking opens QueueNextPopup:
                                  the next five builds about to run, in genuine claim order (a
                                  read-only peek at GetNextAsync's own selection — claims nothing). -->
                             <Border x:Name="QueueStatusBorder"
@@ -379,7 +383,7 @@
                                                HorizontalAlignment="Right"
                                                VerticalAlignment="Center"/>
                                     <TextBlock x:Name="QueueStatusCountsText"
-                                               Text="In queue: 0  ·  Blocked: 0  ·  Up next: 0  ·  Verifying: 0"
+                                               Text="Total: 0  ·  In queue: 0  ·  Blocked: 0  ·  Up next: 0  ·  Verifying: 0"
                                                FontSize="10.5" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextBrush}"
                                                TextWrapping="Wrap"
