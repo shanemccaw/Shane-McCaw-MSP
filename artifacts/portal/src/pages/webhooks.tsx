@@ -443,6 +443,7 @@ export function WebhooksContent() {
               onClick={() => setCreating(false)}
               className="ml-auto text-[11.5px]"
               style={{ color: "#64748b" }}
+              data-testid="webhooks-cancel-create"
             >
               Cancel
             </button>

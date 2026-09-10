@@ -81,6 +81,7 @@
     "portal/account-security-data-rights.json",
     "portal/account-security-mfa-enrollment.json",
     "portal/notification-preferences.json",
+    "portal/webhooks.json",
     "portal/billing.json",
     "portal/sops-runbooks.json",
     "portal/microsoft-changes.json",
