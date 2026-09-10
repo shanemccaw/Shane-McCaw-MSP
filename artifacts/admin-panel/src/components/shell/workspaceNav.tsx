@@ -59,7 +59,6 @@ import {
   Bug,
   MonitorDot,
   DollarSign,
-  Handshake,
   FlaskConical,
   SlidersHorizontal,
   FileSearch,
@@ -196,7 +195,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         id: "platform", label: "Platform", defaultOpen: true,
         items: [
           { id: "sys-platform-revenue", label: "Platform Revenue", path: "/system/platform-revenue", icon: DollarSign },
-          { id: "sys-platform-agreements", label: "Platform Agreements", path: "/system/platform-agreements", icon: Handshake },
           { id: "sys-simulator", label: "Simulator Studio", path: "/system/simulator", icon: FlaskConical },
           { id: "sys-active-directory", label: "Active Directory", path: "/system/active-directory", icon: FolderTree },
           { id: "sys-ai-billing", label: "AI Billing", path: "/system/ai-billing", icon: Receipt },

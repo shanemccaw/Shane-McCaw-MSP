@@ -5,7 +5,6 @@ import InboxPage from "@/pages/inbox/Inbox";
 import AdminSecurityPage from "@/pages/AdminSecurity";
 import QuizPainConfigPage from "@/pages/crm/QuizPainConfig";
 import SowDebugPage from "@/pages/SowDebugPage";
-import PlatformAgreementsPage from "@/pages/PlatformAgreements";
 import ObservabilityDashboard from "@/pages/ObservabilityDashboard";
 import PlatformRevenueDashboard from "@/pages/PlatformRevenueDashboard";
 import AlertRulesPage from "@/pages/AlertRulesPage";
@@ -27,7 +26,6 @@ function getContent(section: string): ReactNode {
     case "security":              return <AdminSecurityPage />;
     case "signal-mappings":       return <QuizPainConfigPage />;
     case "sow-debug":             return <SowDebugPage />;
-    case "platform-agreements":   return <PlatformAgreementsPage />;
     case "simulator":             return <SimulatorStudioPage />;
     case "active-directory":      return <ActiveDirectoryPage />;
     case "ai-billing":            return <AiBillingPage />;
