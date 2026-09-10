@@ -328,8 +328,21 @@
                             Foreground="#FFFFFF" FontSize="11" Cursor="Hand" Padding="0"
                             VerticalAlignment="Center" Click="SessionStatusButton_Click"
                             Content="Not signed in · Sign in" />
-                    <!-- Contract-hours utilization deferred until #3473/#3474 land (UI_RULES.md §1) -->
-                    <TextBlock x:Name="ContractHoursTextBlock" Text="" Foreground="#D8E8FF" FontSize="11" VerticalAlignment="Center" Margin="16,0,0,0" />
+                    <!-- Contract-hours utilization (#3474) — real GET /api/admin/retainer/:customerId,
+                         corrected anniversary-based period from #3473. The bar is a plain, inert
+                         visual (never a fake clickable stop — UI_RULES.md §1); hidden until a real
+                         bucket has actually loaded. -->
+                    <Border Width="1" Background="#3D8BD4" Margin="12,3,12,3" />
+                    <StackPanel x:Name="ContractHoursPanel" Orientation="Horizontal" Visibility="Collapsed" VerticalAlignment="Center">
+                        <TextBlock x:Name="ContractHoursTextBlock" Text="" Foreground="#D8E8FF" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <ProgressBar x:Name="ContractHoursProgressBar"
+                                     Width="80" Height="8"
+                                     Minimum="0" Maximum="100"
+                                     Background="#005A9E"
+                                     Foreground="#7FD1FF"
+                                     BorderThickness="0"
+                                     VerticalAlignment="Center" />
+                    </StackPanel>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
                     <TextBlock x:Name="StatusTabCountTextBlock" Text="1 Open Tab" Foreground="#FFFFFF" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0" />

@@ -39,6 +39,7 @@ public partial class MainWindow : FluentWindow
     private readonly ILaunchControlActionsService _launchControlActionsService;
     private readonly IVaultService _vaultService;
     private readonly IAuthService _authService;
+    private readonly IRetainerService _retainerService;
 
     private readonly ShellRegistry _shellRegistry = new();
     private FixedRibbonRenderer? _ribbonRenderer;
@@ -66,6 +67,7 @@ public partial class MainWindow : FluentWindow
         _launchControlActionsService = new LaunchControlActionsService();
         _vaultService = new VaultService();
         _authService = new AuthService();
+        _retainerService = new RetainerService();
         _authService.SessionChanged += OnAuthSessionChanged;
         _consoleService.CommandExecuted += (s, record) => _consoleHistoryService.Add(record);
 
@@ -766,11 +768,13 @@ public partial class MainWindow : FluentWindow
 
         _launchControlActionsService.AuthToken = token;
         _changeControlService.AuthToken = token;
+        _retainerService.AuthToken = token;
         TelemetryDashboardView.SetAuthToken(token);
         SowAssessmentDashboardView.SetAuthToken(token);
         EvidenceGalleryPanel.SetAuthToken(token);
 
         UpdateSessionStatusUi();
+        _ = RefreshContractHoursAsync();
     }
 
     private void UpdateSessionStatusUi()
@@ -999,6 +1003,74 @@ public partial class MainWindow : FluentWindow
         {
             await OpenPortalTabAsync(tenant, PortalType.M365Admin);
         }
+
+        await RefreshContractHoursAsync();
+    }
+
+    // ---- Contract-hours utilization (#3474) — real GET /api/admin/retainer/:customerId -------
+
+    /// <summary>Real customerId resolution for the retainer call. <see cref="TenantService"/> is
+    /// fixture data (fake tenant GUIDs, no real numeric tenants.id) — the exact same gap
+    /// <c>TryResolveLaunchControlScope</c> hit and correctly deferred to #3540 (parented under
+    /// #3457, the Feature that actually owns TenantService). Returns true only when a real
+    /// customerId is resolvable; rebuilding TenantService here would be scope creep into #3457's
+    /// own named responsibility, so this states the honest block instead of guessing an id.</summary>
+    private bool TryResolveRetainerCustomerId(out int customerId)
+    {
+        customerId = 0; // no real customer list yet — TenantService is fixture (#3540)
+        return customerId > 0;
+    }
+
+    /// <summary>Loads the real settings + current-period bucket for the active tenant and
+    /// renders it into the status bar's contract-hours progress bar. Hides the whole segment —
+    /// never a fake/zeroed bar — whenever there is nothing real to show yet (not signed in, no
+    /// real customerId, or the call failed), per UI_RULES.md §1's "never a fake clickable stop
+    /// for read-only state."</summary>
+    private async Task RefreshContractHoursAsync()
+    {
+        if (!_authService.IsAuthenticated || !TryResolveRetainerCustomerId(out var customerId))
+        {
+            ContractHoursPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        RetainerDetailResponse retainer;
+        try
+        {
+            retainer = await _retainerService.GetRetainerAsync(customerId).ConfigureAwait(true);
+        }
+        catch (RetainerServiceException)
+        {
+            // Real, honest failure (401/403/404/500) — most likely not signed in as a platform
+            // admin (requireAdmin) or the customer isn't on retainer at all. Hide rather than
+            // show a fake/zeroed bar.
+            ContractHoursPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var bucket = retainer.Bucket;
+        if (bucket == null || retainer.Settings is not { Configured: true })
+        {
+            // No retainer configured for this customer — a real, valid state, not an error.
+            ContractHoursPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var retainedTotal = bucket.RetainedHours + bucket.RolledHours;
+        var percent = retainedTotal > 0
+            ? Math.Min(100.0, bucket.UsedHours / retainedTotal * 100.0)
+            : 0.0;
+
+        ContractHoursProgressBar.Value = percent;
+        ContractHoursProgressBar.Foreground = bucket.IsOverMonth
+            ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x6B, 0x6B))
+            : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x7F, 0xD1, 0xFF));
+
+        ContractHoursTextBlock.Text = bucket.IsOverMonth
+            ? $"{bucket.UsedHours:0.#}h / {retainedTotal:0.#}h retained · {bucket.OverHours:0.#}h over"
+            : $"{bucket.UsedHours:0.#}h / {retainedTotal:0.#}h retained";
+
+        ContractHoursPanel.Visibility = Visibility.Visible;
     }
 
     private static (string Title, SymbolRegular Icon) GetPortalMetadata(PortalType portalType) => portalType switch
