@@ -2,7 +2,6 @@ import { useState } from "react";
 import { startRegistration } from "@simplewebauthn/browser";
 import { Loader2, AlertCircle, Info, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { roleLabel } from "@/components/shell/UserMenu";
 import { useAccountSecurityLive } from "@/components/account-security/useAccountSecurityLive";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
@@ -44,7 +43,7 @@ function last4(phone: string | null): string {
  * sibling issue).
  */
 export default function AccountSecurityPage() {
-  const { user, fetchWithAuth } = useAuth();
+  const { user, fetchWithAuth, roleLabel } = useAuth();
   const live = useAccountSecurityLive();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [typed, setTyped] = useState("");
@@ -333,7 +332,7 @@ export default function AccountSecurityPage() {
               className="whitespace-nowrap rounded-full px-[10px] py-[3px] text-[10.5px] font-semibold text-[#94a3b8]"
               style={{ border: "1px solid rgba(255,255,255,.12)" }}
             >
-              {user ? roleLabel(user) : ""}
+              {user ? roleLabel : ""}
             </span>
           </div>
         </div>

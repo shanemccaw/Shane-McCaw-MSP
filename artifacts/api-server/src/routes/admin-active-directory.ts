@@ -109,6 +109,7 @@ import {
   planRoleChange,
   planAssignmentChange,
   buildUserEntitlementsView,
+  roleLinkageRequirement,
 } from "../lib/active-directory";
 import { resolveCustomerUserIds } from "../lib/tenant-signals";
 import { userEntitlementOverridesTable } from "@workspace/db";
@@ -132,6 +133,31 @@ const FORCED_RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const ACCOUNT_SETUP_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours
 // Matches every existing impersonation-token issuer (portal.ts).
 const IMPERSONATION_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+// ─── GET /admin/active-directory/roles ───────────────────────────────────────
+// The directory's real group-role vocabulary, and what linkage each role
+// requires — straight off the server's own `DIRECTORY_GROUP_ROLES` and
+// `roleLinkageRequirement()` in ../lib/active-directory.ts.
+//
+// #2459 (part of #1696). Both AD panes hardcoded this. `ActiveDirectoryUserPane`
+// carried its own seven-literal `ROLE_OPTIONS` array plus a copy of
+// `roleLinkageRequirement` whose own comment admitted it was "a small
+// intentional duplicate", and `AdUserCanvas` carried a third copy. The two
+// client copies had already DRIFTED from the server and from each other: the v1
+// pane returned "none" for `Free` and `Assessment` where the server returns
+// "customer", so the "this role requires a tenant linkage" hint silently did not
+// appear for two of the seven roles. That is the exact failure mode #1696
+// predicts for a rule duplicated into a component — *"invisible to the server
+// and guaranteed to drift from it"* — and it is why this is now one endpoint
+// instead of three transcriptions.
+router.get("/admin/active-directory/roles", requireAdmin, (_req: Request, res: Response) => {
+  res.json({
+    roles: DIRECTORY_GROUP_ROLES.map((role) => ({
+      role,
+      linkageRequirement: roleLinkageRequirement(role),
+    })),
+  });
+});
 
 // ─── GET /admin/active-directory/tree ────────────────────────────────────────
 // OU=MSPs (every real MSP, each with its real customers nested underneath) +

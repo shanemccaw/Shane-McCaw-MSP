@@ -1,29 +1,24 @@
 import { Link } from "wouter";
 import { CreditCard, Webhook, Settings, ShieldCheck, LogOut } from "lucide-react";
-import type { AuthUser, MspRole } from "@/lib/auth-context";
+import type { AuthUser } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth-context";
 import { comingSoonHref } from "./moduleNav";
 
 const HAIRLINE = "rgba(255,255,255,.10)";
 
-/**
- * Real-role → display label. Not a fabricated value: it reflects the actual
- * `mspRole` claim on the signed-in JWT (auth-context.tsx). Falls back to the
- * coarser `role` claim only when `mspRole` genuinely isn't present.
+/*
+ * The identity badge — "MSP Admin", "Customer", "Assessment" — used to be an
+ * exported `roleLabel(user)` here, backed by a seven-entry
+ * `Record<MspRole, string>` keyed by role literals. Git #2459 (part of #1696)
+ * removed it: that table is exactly what #1696's re-measure comment forbids the
+ * new artifacts from carrying — *"Neither should ever import a role literal."*
+ *
+ * It now lives once, server-side, in
+ * `artifacts/api-server/src/lib/identity-presentation.ts`, and arrives on
+ * `GET /api/auth/me/context`. Both former call sites read `useAuth().roleLabel`
+ * directly; there is deliberately no helper taking a user and computing, because
+ * a signature like that is an invitation to compute it again.
  */
-const MSP_ROLE_LABEL: Partial<Record<MspRole, string>> = {
-  CustomerUser: "Customer",
-  MSPAdmin: "MSP Admin",
-  MSPOperator: "MSP Operator",
-  PlatformAdmin: "Platform Admin",
-  ServiceAccount: "Service Account",
-  Free: "Free",
-  Assessment: "Assessment",
-};
-
-export function roleLabel(user: AuthUser): string {
-  if (user.mspRole && MSP_ROLE_LABEL[user.mspRole]) return MSP_ROLE_LABEL[user.mspRole]!;
-  return user.role === "admin" ? "Admin" : "Customer";
-}
 
 interface MenuRowProps {
   readonly href: string;
@@ -78,6 +73,15 @@ function Divider() {
  * it's the account's own contact e-mail.
  */
 export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose: () => void; onSignOut: () => void }) {
+  const { roleLabel, can } = useAuth();
+  // Git #2459 (part of #1696) — the real capability #1696 was filed about.
+  // Shane, 2026-08-29: *"the customer needs RBAC to stop say an engineer from
+  // seeing billing."* Today every seeded customer role is in `billing.view`'s
+  // allow set, so this hides nothing; it becomes real the moment a customer
+  // role is defined without it, with no code change. The BILLING ROUTES ARE
+  // STILL THE GATE — `portal-billing.ts` is `requireAuth`-only, and narrowing
+  // it is #1698's mechanical route-coverage pass, not this step's to make.
+  const showBilling = can("customer", "billing.view");
   return (
     <div
       data-testid="user-menu-popover"
@@ -108,18 +112,20 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
           className="ml-auto shrink-0 rounded-full px-2 py-[2px] text-[10.5px] font-semibold"
           style={{ background: "rgba(255,255,255,.06)", color: "#94a3b8", border: `1px solid ${HAIRLINE}` }}
         >
-          {roleLabel(user)}
+          {roleLabel}
         </span>
       </div>
       <Divider />
       <div style={{ padding: "4px 6px" }}>
-        <MenuRow
-          href="/billing"
-          icon={CreditCard}
-          label="Billing"
-          testId="user-menu-billing"
-          onNavigate={onClose}
-        />
+        {showBilling && (
+          <MenuRow
+            href="/billing"
+            icon={CreditCard}
+            label="Billing"
+            testId="user-menu-billing"
+            onNavigate={onClose}
+          />
+        )}
         <MenuRow
           href={comingSoonHref("Webhooks", "account")}
           icon={Webhook}

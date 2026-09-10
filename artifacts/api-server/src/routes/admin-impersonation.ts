@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, usersTable, mspsTable, impersonationTokensTable } from "@workspace/db";
+import { db, usersTable, mspsTable, impersonationTokensTable, type MspRole } from "@workspace/db";
 import { eq, and, inArray, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { createAuditLog } from "../lib/audit.ts";
@@ -116,7 +116,41 @@ router.post("/admin/msps/:mspId/impersonate", requireAdmin, async (req: Request,
 // Reuses the existing /admin/impersonate/:userId (Assessment/CustomerUser,
 // both usersTable.role="client") and /admin/msps/:mspId/impersonate
 // (MSPAdmin) endpoints unchanged to actually generate a token.
+//
+// #2459 (part of #1696) — the GROUPING and the CHOICE OF IMPERSONATION ENDPOINT
+// are both decided here now, not in the switcher component.
+//
+// `ViewAsSwitcher.tsx` used to receive a raw `tier` role string and do three
+// things with it: hardcode the group ordering, hardcode the group labels, and
+// branch `account.tier === "MSPAdmin"` to pick between the two token-generation
+// endpoints. That last one is the one that mattered — which impersonation
+// mechanism applies to an account is a property of the ACCOUNT, known here, and
+// a component that re-derives it from a role literal is a rule the server cannot
+// see. Every one of the three now arrives as data, so the client renders the
+// answer instead of recomputing it.
+//
+// `tier` is deliberately NOT returned any more. Its only consumer was that
+// comparison; leaving the raw role on the wire would leave the comparison
+// available to be re-introduced. `groupKey` carries the same value but names it
+// for what the client legitimately does with it — group rows under a heading.
+const VIEW_AS_GROUPS: ReadonlyArray<{
+  key: MspRole;
+  label: string;
+  /** Which pre-existing token-generation endpoint this group's accounts use. */
+  impersonationScope: "msp" | "user";
+}> = [
+  { key: "Assessment", label: "Assessment", impersonationScope: "user" },
+  { key: "CustomerUser", label: "Customer User", impersonationScope: "user" },
+  // MSPAdmin accounts go through /admin/msps/:mspId/impersonate — the MSP-level
+  // token — rather than /admin/impersonate/:userId. Unchanged behaviour; what
+  // changed is that the server states it instead of the component inferring it.
+  { key: "MSPAdmin", label: "MSP Admin", impersonationScope: "msp" },
+];
+
 router.get("/admin/view-as/accounts", requireAdmin, async (req: Request, res: Response) => {
+  const groupKeys = VIEW_AS_GROUPS.map(g => g.key);
+  const scopeByKey = new Map(VIEW_AS_GROUPS.map(g => [g.key, g.impersonationScope]));
+
   const rows = await db
     .select({
       userId: usersTable.id,
@@ -130,17 +164,21 @@ router.get("/admin/view-as/accounts", requireAdmin, async (req: Request, res: Re
     .from(usersTable)
     .leftJoin(mspsTable, eq(usersTable.mspId, mspsTable.id))
     .where(and(
-      inArray(usersTable.mspRole, ["Assessment", "CustomerUser", "MSPAdmin"]),
+      inArray(usersTable.mspRole, groupKeys),
       eq(usersTable.isActive, true),
     ))
     .orderBy(asc(usersTable.mspRole), asc(usersTable.email));
 
   res.json({
+    // The server's own group ordering and labels. The switcher renders these in
+    // order and does not know, or need, what any of the keys mean.
+    groups: VIEW_AS_GROUPS.map(({ key, label }) => ({ key, label })),
     accounts: rows.map(r => ({
       userId: r.userId,
       email: r.email,
       name: r.name,
-      tier: r.mspRole,
+      groupKey: r.mspRole,
+      impersonationScope: scopeByKey.get(r.mspRole) ?? "user",
       mspId: r.mspId,
       mspName: r.mspName,
       mspSlug: r.mspSlug,

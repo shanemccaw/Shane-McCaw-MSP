@@ -23,14 +23,27 @@ import { reportClientEvent } from "./report-client-event";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type MspRole =
-  | "PlatformAdmin"
-  | "MSPAdmin"
-  | "MSPOperator"
-  | "CustomerUser"
-  | "ServiceAccount"
-  | "Free"
-  | "Assessment";
+/**
+ * The legacy `msp_role` claim, as an OPAQUE string (#2459, part of #1696).
+ *
+ * This was a seven-member union of role literals, and the union is gone on
+ * purpose. #1696's re-measure comment on the artifacts being built now is
+ * explicit: *"Neither should ever import a role literal. They consume
+ * capabilities, not roles."* A union of literals is exactly what makes
+ * `mspRole === "CustomerUser"` compile, and this file had two such comparisons
+ * (`:476`, `:801`) deciding where an impersonated identity landed — an
+ * authorization-shaped rule the server could not see.
+ *
+ * Typing it `string` is the point, not a loss: there is no role name the portal
+ * is entitled to recognise, so a comparison against one should look as arbitrary
+ * as it is. Ask `can()` for a capability, or read `presentation` — both come off
+ * `GET /api/auth/me/context`, which answers from the same
+ * `*_feature_role_mapping` rows the server's own evaluator reads.
+ *
+ * The claim itself is still surfaced because it is real, and because #2460 (not
+ * this step) is what retires `MSP_ROLES` and the claim with it.
+ */
+export type MspRole = string;
 
 export interface AuthUser {
   id: number;
@@ -148,6 +161,54 @@ interface AuthContextValue extends AuthState {
    * there is nothing stashed (i.e. switchToTenant was never called).
    */
   returnToAdmin: () => Promise<void>;
+
+  /**
+   * Git #2459 (part of #1696) — the signed-in identity's real capability grants
+   * and presentation strings, from `GET /api/auth/me/context`.
+   *
+   * Null until the first fetch resolves, and null again if it fails. Callers
+   * should use `can()` rather than reading this directly; it is exposed so a
+   * surface that needs to distinguish "still loading" from "denied" can.
+   */
+  sessionContext: SessionContext | null;
+
+  /**
+   * May this identity do `capability` in `system`?
+   *
+   * **This is a presentation hint, not access control.** #1696, verbatim:
+   * *"hiding a nav item is not access control."* What it buys is that the hint
+   * now reads the SAME `*_feature_role_mapping` rows the server's own evaluator
+   * reads, so it cannot silently drift from the server the way a hardcoded
+   * `role === "MSPAdmin"` comparison in a component could. The route is still
+   * the gate, and every route keeps whatever middleware it has.
+   *
+   * Returns `true` while the context is unresolved, and `true` when the server
+   * reports the model unreadable (`model.available === false`). Both are
+   * deliberate: a hint that cannot be evaluated must ABSTAIN rather than hide.
+   * Hiding a surface because a table could not be read would break the whole UI
+   * on an infrastructure failure, to no security benefit — the server would
+   * still refuse the request. Fail-closed belongs on the enforcement path
+   * (`rbac-ladder.ts` answers 503 there); this is not that path.
+   */
+  can: (system: "msp" | "customer", capability: string) => boolean;
+
+  /**
+   * Display label for the signed-in identity, e.g. "MSP Admin".
+   *
+   * Server-supplied (#2459). This used to be a role→label table in `UserMenu`,
+   * keyed by the seven role literals. Falls back to the coarse `role` claim
+   * while the context is still loading, so the badge is never blank.
+   */
+  roleLabel: string;
+}
+
+/** `GET /api/auth/me/context` — see artifacts/api-server/src/routes/auth-session-context.ts. */
+export interface SessionContext {
+  user: { id: number; email: string; role: "admin" | "client"; mspRole: MspRole | null };
+  presentation: { roleLabel: string; landingSurface: string };
+  /** false = the RBAC model could not be read; every `can()` abstains to true. */
+  model: { available: boolean };
+  capabilities: { msp: string[]; customer: string[] };
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -192,7 +253,7 @@ function msUntilRefreshExpiry(): number {
  */
 async function exchangeImpersonationToken(
   token: string,
-): Promise<{ accessToken: string; user: AuthUser } | null> {
+): Promise<{ accessToken: string; user: AuthUser; landingSurface?: string } | null> {
   try {
     const res = await fetch("/api/auth/impersonate-exchange", {
       method: "POST",
@@ -200,10 +261,29 @@ async function exchangeImpersonationToken(
       body: JSON.stringify({ token }),
     });
     if (!res.ok) return null;
-    return (await res.json()) as { accessToken: string; user: AuthUser };
+    return (await res.json()) as { accessToken: string; user: AuthUser; landingSurface?: string };
   } catch {
     return null;
   }
+}
+
+/**
+ * Where an impersonated identity lands, per the SERVER (#2459, part of #1696).
+ *
+ * Both call sites used to run their own copy of
+ * `mspRole === "Assessment" ? … : mspRole === "CustomerUser" ? … : …`. Two copies
+ * of an identity rule in a component is the shape #1696 calls *"a rule that
+ * exists nowhere the server can enforce it"*, and duplicating it twice in one
+ * file is how such a rule ends up disagreeing with itself. The rule now lives in
+ * `artifacts/api-server/src/lib/identity-presentation.ts` and arrives on the
+ * exchange response.
+ *
+ * The fallback is `"dashboard"` — the same default the old chain fell through
+ * to — so a server that predates the field lands exactly where it used to
+ * rather than nowhere.
+ */
+function landingSurfaceOf(data: { landingSurface?: string }): string {
+  return data.landingSurface ?? "dashboard";
 }
 
 /**
@@ -468,14 +548,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // pushing the target URL and letting wouter re-render.
           if (targetSlug) {
             // Assessment lands on the assessment shell; CustomerUser lands on
-            // the Portal v2 Overview; MSP-side roles land on the dashboard.
-            // mspRole is the impersonated identity's role.
-            const landing =
-              data.user.mspRole === "Assessment"
-                ? "copilot-readiness"
-                : data.user.mspRole === "CustomerUser"
-                  ? "portal-v2"
-                  : "dashboard";
+            // the Portal v2 Overview; MSP-side roles land on the dashboard —
+            // decided server-side for the impersonated identity (#2459).
+            const landing = landingSurfaceOf(data);
             const base = import.meta.env.BASE_URL.replace(/\/$/, "");
             const target = `${base}/${targetSlug}/${landing}`;
             window.history.pushState({}, "", target);
@@ -795,12 +870,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (targetSlug) {
-        const landing =
-          data.user.mspRole === "Assessment"
-            ? "copilot-readiness"
-            : data.user.mspRole === "CustomerUser"
-              ? "portal-v2"
-              : "dashboard";
+        const landing = landingSurfaceOf(data);
         const base = import.meta.env.BASE_URL.replace(/\/$/, "");
         window.history.pushState({}, "", `${base}/${targetSlug}/${landing}`);
       }
@@ -908,6 +978,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     [state.accessToken, doRefresh],
   );
+
+  // ── Capability context (Git #2459, part of #1696) ─────────────────────────
+  //
+  // Fetched once per real session identity, not per render: the dependency is
+  // the user id, so a silent access-token refresh (every ~13 min) does NOT
+  // re-fetch, while an impersonation swap or a return-to-admin — both of which
+  // change who the session is — does. Grants that change mid-session are picked
+  // up on the next sign-in, which is the same freshness the JWT claims already
+  // have; a hint surface polling the model would be cost with no benefit.
+  const [sessionContext, setSessionContext] = useState<SessionContext | null>(null);
+  const sessionUserId = state.user?.id ?? null;
+
+  useEffect(() => {
+    if (!state.accessToken || sessionUserId === null) {
+      setSessionContext(null);
+      return;
+    }
+    let cancelled = false;
+    // silent: a failure here must not toast. The shell stays fully usable
+    // without it — every `can()` abstains to true — so surfacing it as an error
+    // would be noise about something the user cannot act on.
+    fetchWithAuth("/api/auth/me/context", undefined, { silent: true })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: SessionContext | null) => {
+        if (!cancelled) setSessionContext(data);
+      })
+      .catch(() => {
+        if (!cancelled) setSessionContext(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // fetchWithAuth is intentionally omitted: it is re-created on every access-
+    // token change, and depending on it would re-run this on each silent
+    // refresh. The token it closes over is read at call time either way.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionUserId, state.accessToken === null]);
+
+  const can = useCallback(
+    (system: "msp" | "customer", capability: string): boolean => {
+      // Unresolved or unreadable → abstain. See the doc on AuthContextValue.can.
+      if (!sessionContext || !sessionContext.model.available) return true;
+      return sessionContext.capabilities[system].includes(capability);
+    },
+    [sessionContext],
+  );
+
+  const roleLabel =
+    sessionContext?.presentation.roleLabel ?? (state.user?.role === "admin" ? "Admin" : "Customer");
 
   const completeMfaLogin = useCallback(
     (accessToken: string, refreshToken?: string, refreshExpiresAt?: string) => {
@@ -1057,6 +1176,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isImpersonating: state.isImpersonating,
     switchToTenant,
     returnToAdmin,
+    sessionContext,
+    can,
+    roleLabel,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

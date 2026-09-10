@@ -13,6 +13,8 @@ import { isProductionEnvironment } from "../lib/env.ts";
 import { dispatchEvent, EVENT_TYPES, systemActor, userActor, impersonationActor } from "../lib/event-bus.ts";
 import { requireRole, requireAuth } from "../middlewares/requireAuth.ts";
 import { getRequestContext } from "../lib/request-context.ts";
+import { portalLandingSurface } from "../lib/identity-presentation.ts";
+import { effectiveLegacyRole } from "@workspace/db/rbac/legacy-ladder";
 import { logger } from "../lib/logger.ts";
 import {
   createSession,
@@ -1034,6 +1036,13 @@ router.post("/auth/impersonate-exchange", async (req: Request, res: Response) =>
 
   res.json({
     accessToken: sessionToken,
+    // #2459 (part of #1696) — WHERE this impersonated identity lands is decided
+    // here, not by the portal. `auth-context.tsx` used to re-derive it from
+    // `user.mspRole` with a hardcoded role chain, written out twice (`:476` and
+    // `:801`), which is exactly the "authorization rule living in a component,
+    // invisible to the server" shape #1696 was filed about. Both copies now read
+    // this field; the rule itself is transcribed in lib/identity-presentation.ts.
+    landingSurface: portalLandingSurface(effectiveLegacyRole({ role: targetUser.role, mspRole: mspClaims.mspRole })),
     user: {
       id: targetUser.id,
       email: targetUser.email,
