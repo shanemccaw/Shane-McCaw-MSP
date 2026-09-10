@@ -121,7 +121,7 @@ public sealed class ScreenshotEvidenceService : IScreenshotEvidenceService
         return item;
     }
 
-    public async Task UpdateCaptionAsync(string id, string caption, string? stepRef = null, string? changeRef = null)
+    public async Task UpdateCaptionAsync(string id, string caption, string? stepRef = null, string? changeRef = null, int? customerId = null)
     {
         await EnsureLoadedAsync();
         ScreenshotEvidenceItem? target = null;
@@ -134,6 +134,32 @@ public sealed class ScreenshotEvidenceService : IScreenshotEvidenceService
                 target.Caption = caption;
                 if (stepRef != null) target.StepRef = stepRef;
                 if (changeRef != null) target.ChangeRef = changeRef;
+                if (customerId != null) target.CustomerId = customerId;
+                await PersistAsync();
+            }
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+
+        if (target != null)
+        {
+            ItemUpdated?.Invoke(this, target);
+        }
+    }
+
+    public async Task MarkPostedAsync(string id, int attachmentId)
+    {
+        await EnsureLoadedAsync();
+        ScreenshotEvidenceItem? target = null;
+        await _semaphore.WaitAsync();
+        try
+        {
+            target = _items.FirstOrDefault(i => i.Id == id);
+            if (target != null)
+            {
+                target.PostedAttachmentId = attachmentId;
                 await PersistAsync();
             }
         }

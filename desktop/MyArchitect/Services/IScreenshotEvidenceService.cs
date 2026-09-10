@@ -16,6 +16,7 @@ public interface IScreenshotEvidenceService
 
     Task<IReadOnlyList<ScreenshotEvidenceItem>> GetAllAsync();
     Task<ScreenshotEvidenceItem> AddAsync(ScreenshotEvidenceItem item);
-    Task UpdateCaptionAsync(string id, string caption, string? stepRef = null, string? changeRef = null);
+    Task UpdateCaptionAsync(string id, string caption, string? stepRef = null, string? changeRef = null, int? customerId = null);
+    Task MarkPostedAsync(string id, int attachmentId);
     Task DeleteAsync(string id, bool deleteLocalFile = false);
 }

@@ -279,8 +279,28 @@
                              Margin="0,0,0,8" />
 
                     <!-- Linked Step / Change Ref -->
-                    <TextBlock Text="LINKED STEP / CHANGE REF" Foreground="#858585" FontSize="10" FontWeight="Bold" Margin="0,0,0,4" />
+                    <TextBlock Text="REMEDIATION STEP ID (e.g. s5) — with Customer ID below" Foreground="#858585" FontSize="10" FontWeight="Bold" Margin="0,0,0,4" />
                     <TextBox x:Name="StepRefTextBox"
+                             Background="#222222"
+                             BorderBrush="#333333"
+                             BorderThickness="1"
+                             Foreground="#FFFFFF"
+                             FontSize="11"
+                             Padding="6,4"
+                             Margin="0,0,0,8" />
+
+                    <TextBlock Text="CUSTOMER ID (numeric — required for Remediation Step)" Foreground="#858585" FontSize="10" FontWeight="Bold" Margin="0,0,0,4" />
+                    <TextBox x:Name="CustomerIdTextBox"
+                             Background="#222222"
+                             BorderBrush="#333333"
+                             BorderThickness="1"
+                             Foreground="#FFFFFF"
+                             FontSize="11"
+                             Padding="6,4"
+                             Margin="0,0,0,8" />
+
+                    <TextBlock Text="OR — CHANGE CONTROL EXECUTION ID (numeric)" Foreground="#858585" FontSize="10" FontWeight="Bold" Margin="0,0,0,4" />
+                    <TextBox x:Name="ChangeRefTextBox"
                              Background="#222222"
                              BorderBrush="#333333"
                              BorderThickness="1"
@@ -314,17 +334,27 @@
                                 Click="DiscardButton_Click" />
                     </WrapPanel>
 
-                    <!-- Blocked Remote Attachment Indicator -->
-                    <Border Background="#20332211"
-                            BorderBrush="#554422"
+                    <!-- Post Evidence to Backend (#3503) -->
+                    <Border Background="#1A1F2E"
+                            BorderBrush="#2E3B4E"
                             BorderThickness="1"
                             CornerRadius="4"
                             Padding="8,6"
                             Margin="0,4,0,0">
                         <StackPanel>
-                            <TextBlock Text="Post Evidence to Backend" Foreground="#DDAA33" FontSize="11" FontWeight="SemiBold" />
-                            <TextBlock Text="Blocked: Needs attach-evidence endpoint on Portal Admin side (#1571)."
-                                       Foreground="#888888" FontSize="10" TextWrapping="Wrap" Margin="0,2,0,0" />
+                            <TextBlock Text="Post Evidence to Backend" Foreground="#389BFF" FontSize="11" FontWeight="SemiBold" />
+                            <TextBlock Text="Fills a Remediation Step ID + Customer ID, or a Change Control Execution ID above, then posts the current capture to that real record (#3503)."
+                                       Foreground="#888888" FontSize="10" TextWrapping="Wrap" Margin="0,2,0,6" />
+                            <Button x:Name="PostEvidenceButton"
+                                    Style="{StaticResource PanelActionButtonStyle}"
+                                    Content="Post Evidence"
+                                    HorizontalAlignment="Left"
+                                    Click="PostEvidenceButton_Click" />
+                            <TextBlock x:Name="PostStatusTextBlock"
+                                       Text=""
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,6,0,0" />
                         </StackPanel>
                     </Border>
                 </StackPanel>

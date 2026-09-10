@@ -33,6 +33,23 @@ public sealed class ScreenshotEvidenceItem
     [JsonPropertyName("changeRef")]
     public string? ChangeRef { get; set; }
 
+    /// <summary>
+    /// Portal customer id (tenants.id) — required to post evidence against a
+    /// remediation tracker step (POST .../customers/{customerId}/remediation-tracker/
+    /// steps/{stepId}/evidence). Not required when posting against a change-control
+    /// execution — that endpoint resolves the customer from the execution itself.
+    /// </summary>
+    [JsonPropertyName("customerId")]
+    public int? CustomerId { get; set; }
+
+    /// <summary>
+    /// Set once this item has been successfully posted to the backend
+    /// (evidence_attachments.id from #3503's endpoint), so the gallery can show
+    /// it's already been posted rather than re-uploading.
+    /// </summary>
+    [JsonPropertyName("postedAttachmentId")]
+    public int? PostedAttachmentId { get; set; }
+
     [JsonPropertyName("caption")]
     public string? Caption { get; set; }
 
