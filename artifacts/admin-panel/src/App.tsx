@@ -169,12 +169,12 @@ function Router() {
 
       {/* ── COMMAND workspace ── */}
       <Route path="/command">
-        <Redirect to="/command/overview" />
+        <Redirect to="/command/prompts" />
       </Route>
       <Route path="/command/:section">
         {(params) => (
           <AdminRoute>
-            <CommandWorkspace section={params?.section ?? "overview"} />
+            <CommandWorkspace section={params?.section ?? "prompts"} />
           </AdminRoute>
         )}
       </Route>
@@ -330,7 +330,7 @@ function Router() {
       </Route>
 
       {/* ── Old routes → workspace redirects ── */}
-      <Route path="/overview"><Redirect to="/command/overview" /></Route>
+      <Route path="/overview"><Redirect to="/command/prompts" /></Route>
       <Route path="/analytics"><Redirect to="/command/analytics" /></Route>
       <Route path="/marketing-command-center"><Redirect to="/command/marketing" /></Route>
       <Route path="/prompt-center"><Redirect to="/command/prompts" /></Route>

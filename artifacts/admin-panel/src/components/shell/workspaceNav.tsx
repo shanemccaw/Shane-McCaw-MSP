@@ -236,12 +236,11 @@ export const WORKSPACES: WorkspaceDef[] = [
     icon: LayoutDashboard,
     prefix: "/command",
     extraPrefixes: ["/prompt-center"],
-    defaultPath: "/command/overview",
+    defaultPath: "/command/prompts",
     sections: [
       {
         id: "overview", label: "Overview", defaultOpen: true,
         items: [
-          { id: "cmd-overview", label: "Overview", path: "/command/overview", icon: LayoutDashboard },
           { id: "cmd-analytics", label: "Analytics", path: "/command/analytics", icon: BarChart3 },
         ],
       },

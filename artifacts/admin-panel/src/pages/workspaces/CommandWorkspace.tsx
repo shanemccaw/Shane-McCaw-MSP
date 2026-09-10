@@ -1,5 +1,4 @@
 import { type ReactNode, lazy, Suspense } from "react";
-import OverviewPage from "@/pages/Overview";
 import MessagesPage from "@/pages/crm/Messages";
 import AnalyticsPage from "@/pages/Analytics";
 import ScriptGeneratorPage from "@/pages/ScriptGeneratorPage";
@@ -26,7 +25,7 @@ function getContent(section: string): ReactNode {
       </Suspense>
     );
     case "presentations":    return <PresentationsPage />;
-    default:                 return <OverviewPage />;
+    default:                 return <PromptCenterPage />;
   }
 }
 
