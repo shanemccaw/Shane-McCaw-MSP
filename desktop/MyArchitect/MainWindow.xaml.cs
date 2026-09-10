@@ -49,6 +49,7 @@ public partial class MainWindow : FluentWindow
     private readonly IAuthService _authService;
     private readonly IRetainerService _retainerService;
     private readonly IPoamsService _poamsService;
+    private readonly ISlaService _slaService;
     private readonly IActivityContextService _activityContextService;
     private readonly IForegroundAppWatcher _foregroundAppWatcher;
 
@@ -88,6 +89,7 @@ public partial class MainWindow : FluentWindow
         _authService = new AuthService();
         _retainerService = new RetainerService();
         _poamsService = new PoamsService();
+        _slaService = new SlaService();
         _authService.SessionChanged += OnAuthSessionChanged;
         _consoleService.CommandExecuted += (s, record) => _consoleHistoryService.Add(record);
 
@@ -174,11 +176,11 @@ public partial class MainWindow : FluentWindow
         RegisterWatchTab();
         RegisterDocumentsTab();
         RegisterAdminTab();
-        // Watch now carries Support Tickets (#3488); Alerts (#3483), Task Queue (#3490) and SLA
-        // breaches (#3487) attach here as they land, consolidated into shared themed groups per
-        // UI_RULES.md §2. Admin now carries Vault (#3461); Audit Log (#3489), Break-Glass (#3480)
-        // and consent status (#3485) attach here as they land. Documents now carries Document Hub
-        // (#3486).
+        // Watch now carries Support Tickets (#3488) and SLA (#3487); Alerts (#3483) and the Task
+        // Queue (#3490) add their own groups alongside them as they land (UI_RULES.md §2: one
+        // tab, one group per real source, not one hand-fused group). Admin now carries Vault
+        // (#3461); Audit Log (#3489), Break-Glass (#3480) and consent status (#3485) attach here
+        // as they land. Documents now carries Document Hub (#3486).
 
         _shellRegistry.RegisterPaletteProvider(BuildPaletteCommands);
     }
@@ -478,12 +480,20 @@ public partial class MainWindow : FluentWindow
         });
     }
 
-    /// <summary>Watch tab (UI_RULES.md §2) — "the one 'what needs me' surface." Alerts (#3483),
-    /// Task Queue (#3490) and SLA breaches (#3487) land here as they're built, consolidated per
-    /// UI_RULES.md's own Watch-tab example. Support Tickets (#3488) is the first group to land on
-    /// this fixed tab: an operator's Zoho Desk queue is exactly this kind of "needs a reply from
-    /// me" surface — a cross-tenant Open-intent list (nothing tenant-specific to select yet, so
-    /// fixed-tab legal), same shape as Break-Glass's pending list on Admin.</summary>
+    /// <summary>Watch tab (UI_RULES.md §2) — "the one 'what needs me' surface." Support Tickets
+    /// (#3488) and SLA (#3487, real msp-sla.ts + msp-m365-sla.ts endpoints) are the first two
+    /// groups to land; Alerts (#3483) and the Task Queue (#3490) add their own groups alongside
+    /// them (UI_RULES.md §2: one tab, one group per real source, not one hand-fused group).
+    /// Support Tickets is a cross-tenant Open-intent list (nothing tenant-specific to select yet,
+    /// so fixed-tab legal), same shape as Break-Glass's pending list on Admin. SLA's five
+    /// galleries are also Open-intent: Breaches/Compliance carry a numeric customerId filter
+    /// server-side, but <see cref="TryResolveLaunchControlScope"/>'s customerId half is the same
+    /// real, already-filed gap (#3540 — TenantService is fixture data, no numeric tenants.id)
+    /// every other customer-keyed surface in this app hits today; those two galleries state that
+    /// honestly and show the full MSP book rather than guessing an id. M365 Uptime is different:
+    /// msp-m365-sla.ts's response carries the real tenant GUID per customer, which this app's
+    /// fixture <see cref="ITenantService.CurrentTenant"/> already has — so that one gallery is
+    /// genuinely filtered to the selected tenant today.</summary>
     private void RegisterWatchTab()
     {
         _shellRegistry.RegisterFixedTabGroup(FixedTab.Watch, new RibbonGroupSpec
@@ -498,6 +508,82 @@ public partial class MainWindow : FluentWindow
                     Intent = RibbonIntent.Open,
                     ToolTip = "Every ticket under your MSP's Zoho Desk org — customer requests + chat escalations (GET /api/msp/support/requests, #3488)",
                     OnSelect = () => OpenSupportTicketsList(),
+                },
+            },
+        });
+
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Watch, new RibbonGroupSpec
+        {
+            Label = "SLA",
+            Order = 20,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Breaches",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Unresolved SLA breaches across the book (GET /api/msp/sla/breaches)",
+                    LiveCount = () => CountOpenSlaBreaches(),
+                    Gallery = new GallerySpec
+                    {
+                        Title = "SLA Breaches",
+                        Searchable = true,
+                        GetRows = BuildSlaBreachRows,
+                    },
+                    OnSelect = () => { },
+                },
+                new RibbonCommandSpec
+                {
+                    Label = "Escalations",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Open SLA escalations (GET /api/msp/sla/escalations)",
+                    LiveCount = () => CountOpenSlaEscalations(),
+                    Gallery = new GallerySpec
+                    {
+                        Title = "SLA Escalations",
+                        Searchable = true,
+                        GetRows = BuildSlaEscalationRows,
+                    },
+                    OnSelect = () => { },
+                },
+                new RibbonCommandSpec
+                {
+                    Label = "Compliance",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Monthly SLA compliance history (GET /api/msp/sla/compliance)",
+                    Gallery = new GallerySpec
+                    {
+                        Title = "SLA Compliance",
+                        Searchable = true,
+                        GetRows = BuildSlaComplianceRows,
+                    },
+                    OnSelect = () => { },
+                },
+                new RibbonCommandSpec
+                {
+                    Label = "Policies",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Active SLA policies for this MSP (GET /api/msp/sla/policies)",
+                    Gallery = new GallerySpec
+                    {
+                        Title = "SLA Policies",
+                        Searchable = true,
+                        GetRows = BuildSlaPolicyRows,
+                    },
+                    OnSelect = () => { },
+                },
+                new RibbonCommandSpec
+                {
+                    Label = "M365 Uptime",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Microsoft's own 99.9% third-party uptime commitment, selected tenant (GET /api/msp/m365-sla)",
+                    Gallery = new GallerySpec
+                    {
+                        Title = "M365 Uptime",
+                        Searchable = false,
+                        GetRows = BuildM365SlaRows,
+                    },
+                    OnSelect = () => { },
                 },
             },
         });
@@ -745,6 +831,367 @@ public partial class MainWindow : FluentWindow
         SupportTicketsServiceException stse => stse.Message,
         _ => ex.Message,
     };
+
+
+    // ---- SLA (#3487) — real msp-sla.ts + msp-m365-sla.ts clients, full-panel workspaces -------
+
+    private int CountOpenSlaBreaches()
+    {
+        try
+        {
+            return _slaService.GetBreachesAsync().GetAwaiter().GetResult().Count;
+        }
+        catch
+        {
+            // LiveCount has no error surface of its own (Shell/ShellContracts.cs) — 0 is honest
+            // "couldn't reach it right now", the gallery itself shows the real error message.
+            return 0;
+        }
+    }
+
+    private int CountOpenSlaEscalations()
+    {
+        try
+        {
+            return _slaService.GetEscalationsAsync().GetAwaiter().GetResult().Count;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildSlaBreachRows()
+    {
+        System.Collections.Generic.IReadOnlyList<Models.SlaBreach> breaches;
+        try
+        {
+            breaches = _slaService.GetBreachesAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            return new[]
+            {
+                new GalleryRowSpec { Id = "sla-breach-error", Name = $"Could not load SLA breaches: {ex.Message}", OnSelect = () => { } },
+            };
+        }
+
+        return breaches
+            .OrderByDescending(b => b.ElapsedMinutes)
+            .Select(b => new GalleryRowSpec
+            {
+                Id = b.BreachId,
+                Tile = (b.BreachType ?? b.Phase).Length >= 2 ? (b.BreachType ?? b.Phase)[..2].ToUpperInvariant() : (b.BreachType ?? b.Phase).ToUpperInvariant(),
+                Name = string.IsNullOrWhiteSpace(b.TicketRef) ? $"Customer #{b.CustomerId} · {b.Phase}" : $"{b.TicketRef} · {b.Phase}",
+                Sub = $"{Math.Round(b.ElapsedMinutes)}m elapsed / {Math.Round(b.ThresholdMinutes)}m limit",
+                OnSelect = () => OpenSlaBreachRecord(b),
+            })
+            .ToList();
+    }
+
+    private void OpenSlaBreachRecord(Models.SlaBreach breach)
+    {
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "sla-breach",
+            Id = breach.BreachId,
+            Eyebrow = "SLA Breach",
+            Title = string.IsNullOrWhiteSpace(breach.TicketRef) ? breach.BreachId : breach.TicketRef,
+            Sub = $"Customer #{breach.CustomerId} · {breach.Phase}",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Breach type", Value = breach.BreachType ?? "(none)" },
+                new WorkspaceFact { Label = "Elapsed", Value = $"{Math.Round(breach.ElapsedMinutes)} min" },
+                new WorkspaceFact { Label = "Threshold", Value = $"{Math.Round(breach.ThresholdMinutes)} min" },
+                new WorkspaceFact { Label = "Timer", Value = breach.TimerId, Prose = true },
+                new WorkspaceFact { Label = "Created", Value = breach.CreatedAt.ToLocalTime().ToString("g"), Prose = true },
+                new WorkspaceFact
+                {
+                    Label = "Resolved",
+                    Value = breach.ResolvedAt.HasValue ? breach.ResolvedAt.Value.ToLocalTime().ToString("g") : "not yet",
+                    Prose = true,
+                },
+            },
+            Body = string.IsNullOrWhiteSpace(breach.ResolutionNotes) ? null : ("Resolution notes", breach.ResolutionNotes!),
+            Actions = breach.ResolvedAt.HasValue
+                ? new System.Collections.Generic.List<WorkspaceAction>()
+                : new System.Collections.Generic.List<WorkspaceAction>
+                {
+                    new WorkspaceAction
+                    {
+                        Label = "Resolve Timer",
+                        Confirm = true,
+                        OnSelect = () => ResolveSlaTimer(breach.TimerId),
+                    },
+                },
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>POST /api/msp/sla/timers/:timerId/resolve — the real backend action behind a
+    /// breach's Resolve (there is no per-breach resolve endpoint; the timer is the resolvable
+    /// unit). Re-opens the breach record afterward so the workspace reflects the real
+    /// resolvedAt the server just set.</summary>
+    private void ResolveSlaTimer(string timerId)
+    {
+        try
+        {
+            _slaService.ResolveTimerAsync(timerId, null).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[SLA] Could not resolve timer {timerId}: {ex.Message}");
+            return;
+        }
+
+        var refreshed = _slaService.GetBreachesAsync().GetAwaiter().GetResult()
+            .FirstOrDefault(b => b.TimerId == timerId);
+        if (refreshed != null) OpenSlaBreachRecord(refreshed);
+    }
+
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildSlaEscalationRows()
+    {
+        System.Collections.Generic.IReadOnlyList<Models.SlaEscalation> escalations;
+        try
+        {
+            escalations = _slaService.GetEscalationsAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            return new[]
+            {
+                new GalleryRowSpec { Id = "sla-escalation-error", Name = $"Could not load SLA escalations: {ex.Message}", OnSelect = () => { } },
+            };
+        }
+
+        return escalations
+            .OrderByDescending(e => e.Level)
+            .ThenByDescending(e => e.CreatedAt)
+            .Select(e => new GalleryRowSpec
+            {
+                Id = e.EscalationId,
+                Tile = $"L{e.Level}",
+                Name = $"Customer #{e.CustomerId} · {e.EscalationType ?? "escalation"}",
+                Sub = $"{e.Status} · {(string.IsNullOrWhiteSpace(e.AssignedTo) ? "unassigned" : e.AssignedTo)}",
+                OnSelect = () => OpenSlaEscalationRecord(e),
+            })
+            .ToList();
+    }
+
+    private void OpenSlaEscalationRecord(Models.SlaEscalation escalation)
+    {
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "sla-escalation",
+            Id = escalation.EscalationId,
+            Eyebrow = "SLA Escalation",
+            Title = $"Level {escalation.Level} · Customer #{escalation.CustomerId}",
+            Sub = escalation.Status,
+            Facts =
+            {
+                new WorkspaceFact { Label = "Type", Value = escalation.EscalationType ?? "(none)" },
+                new WorkspaceFact { Label = "Target", Value = escalation.Target ?? "(none)", Prose = true },
+                new WorkspaceFact { Label = "Assigned to", Value = escalation.AssignedTo ?? "unassigned", Prose = true },
+                new WorkspaceFact { Label = "Breach", Value = escalation.BreachId ?? "(none)", Prose = true },
+                new WorkspaceFact
+                {
+                    Label = "Escalated",
+                    Value = escalation.EscalatedAt.HasValue ? escalation.EscalatedAt.Value.ToLocalTime().ToString("g") : "(none)",
+                    Prose = true,
+                },
+            },
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildSlaComplianceRows()
+    {
+        System.Collections.Generic.IReadOnlyList<Models.SlaComplianceRecord> records;
+        try
+        {
+            records = _slaService.GetComplianceAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            return new[]
+            {
+                new GalleryRowSpec { Id = "sla-compliance-error", Name = $"Could not load SLA compliance: {ex.Message}", OnSelect = () => { } },
+            };
+        }
+
+        return records
+            .OrderByDescending(r => r.PeriodStart)
+            .Select(r => new GalleryRowSpec
+            {
+                Id = r.RecordId,
+                Tile = $"{Math.Round(r.CompliancePct)}%",
+                Name = $"Customer #{r.CustomerId} · {r.PeriodStart:yyyy-MM}",
+                Sub = $"{r.BreachedTickets}/{r.TotalTickets} tickets breached",
+                OnSelect = () => OpenSlaComplianceRecord(r),
+            })
+            .ToList();
+    }
+
+    private void OpenSlaComplianceRecord(Models.SlaComplianceRecord record)
+    {
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "sla-compliance",
+            Id = record.RecordId,
+            Eyebrow = "SLA Compliance",
+            Title = $"Customer #{record.CustomerId} · {record.PeriodStart:yyyy-MM}",
+            Sub = $"{record.CompliancePct:0.0}% compliant",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Period", Value = $"{record.PeriodStart:yyyy-MM-dd} – {record.PeriodEnd:yyyy-MM-dd}", Prose = true },
+                new WorkspaceFact { Label = "Total tickets", Value = record.TotalTickets.ToString() },
+                new WorkspaceFact { Label = "Breached tickets", Value = record.BreachedTickets.ToString() },
+                new WorkspaceFact
+                {
+                    Label = "Avg response",
+                    Value = record.AvgResponseMinutes.HasValue ? $"{Math.Round(record.AvgResponseMinutes.Value)} min" : "(none)",
+                },
+                new WorkspaceFact
+                {
+                    Label = "Avg resolution",
+                    Value = record.AvgResolutionMinutes.HasValue ? $"{Math.Round(record.AvgResolutionMinutes.Value)} min" : "(none)",
+                },
+            },
+            Body = string.IsNullOrWhiteSpace(record.Notes) ? null : ("Notes", record.Notes!),
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildSlaPolicyRows()
+    {
+        System.Collections.Generic.IReadOnlyList<Models.SlaPolicy> policies;
+        try
+        {
+            policies = _slaService.GetPoliciesAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            return new[]
+            {
+                new GalleryRowSpec { Id = "sla-policy-error", Name = $"Could not load SLA policies: {ex.Message}", OnSelect = () => { } },
+            };
+        }
+
+        return policies
+            .OrderBy(p => p.MspId.HasValue ? 0 : 1)
+            .ThenBy(p => p.Id)
+            .Select(p => new GalleryRowSpec
+            {
+                Id = p.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Tile = p.Priority.Length >= 2 ? p.Priority[..2].ToUpperInvariant() : p.Priority.ToUpperInvariant(),
+                Name = p.Name,
+                Sub = p.MspId.HasValue ? "MSP override" : "Global default",
+                OnSelect = () => OpenSlaPolicyRecord(p),
+            })
+            .ToList();
+    }
+
+    private void OpenSlaPolicyRecord(Models.SlaPolicy policy)
+    {
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "sla-policy",
+            Id = policy.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Eyebrow = "SLA Policy",
+            Title = policy.Name,
+            Sub = policy.MspId.HasValue ? "MSP override" : "Global default",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Priority", Value = policy.Priority },
+                new WorkspaceFact { Label = "Response time", Value = $"{policy.ResponseTimeMinutes} min" },
+                new WorkspaceFact { Label = "Warning threshold", Value = $"{policy.WarningThresholdPct}%" },
+                new WorkspaceFact { Label = "Resolution time", Value = $"{policy.ResolutionTimeMinutes} min" },
+                new WorkspaceFact { Label = "Resolution warning", Value = $"{policy.ResolutionWarningThresholdPct}%" },
+                new WorkspaceFact { Label = "Active", Value = policy.IsActive ? "Yes" : "No" },
+            },
+            Body = string.IsNullOrWhiteSpace(policy.Description) ? null : ("Description", policy.Description!),
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Real per-tenant filtering, unlike the four galleries above: msp-m365-sla.ts's
+    /// response carries the real tenant GUID per customer, which this app's
+    /// <see cref="ITenantService.CurrentTenant"/> already has — so this states "no tenant
+    /// selected" honestly rather than the #3540 gap the others hit.</summary>
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildM365SlaRows()
+    {
+        var tenant = _tenantService.CurrentTenant;
+        if (tenant == null)
+        {
+            return new[]
+            {
+                new GalleryRowSpec { Id = "m365sla-no-tenant", Name = "Select a tenant first", OnSelect = () => { } },
+            };
+        }
+
+        Models.M365SlaResponse response;
+        try
+        {
+            response = _slaService.GetM365SlaAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            return new[]
+            {
+                new GalleryRowSpec { Id = "m365sla-error", Name = $"Could not load M365 uptime: {ex.Message}", OnSelect = () => { } },
+            };
+        }
+
+        var customer = response.Customers.FirstOrDefault(c => string.Equals(c.TenantId, tenant.TenantGuid, StringComparison.OrdinalIgnoreCase));
+        if (customer == null || customer.Services.Count == 0)
+        {
+            return new[]
+            {
+                new GalleryRowSpec { Id = "m365sla-none", Name = $"No M365 uptime data for {tenant.Name} yet", OnSelect = () => { } },
+            };
+        }
+
+        return customer.Services
+            .Select(s => new GalleryRowSpec
+            {
+                Id = $"{customer.CustomerId}:{s.ServiceName}",
+                Tile = s.UptimePercent30d.HasValue ? $"{s.UptimePercent30d.Value:0.0}%" : "—",
+                Name = s.ServiceName,
+                Sub = s.Breached30d || s.Breached90d
+                    ? $"Below {response.Target}% target — {(s.Breached30d ? "30d" : "90d")} breach"
+                    : $"90d: {(s.UptimePercent90d.HasValue ? $"{s.UptimePercent90d.Value:0.0}%" : "—")}",
+                OnSelect = () => OpenM365SlaServiceRecord(customer, s, response.Target),
+            })
+            .ToList();
+    }
+
+    private void OpenM365SlaServiceRecord(Models.M365SlaCustomer customer, Models.M365SlaService service, double target)
+    {
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "m365-sla-service",
+            Id = $"{customer.CustomerId}:{service.ServiceName}",
+            Eyebrow = "M365 Uptime",
+            Title = service.ServiceName,
+            Sub = customer.CustomerName,
+            Facts =
+            {
+                new WorkspaceFact { Label = "Target", Value = $"{target}%" },
+                new WorkspaceFact { Label = "30-day uptime", Value = service.UptimePercent30d.HasValue ? $"{service.UptimePercent30d.Value:0.00}%" : "(no data)" },
+                new WorkspaceFact { Label = "90-day uptime", Value = service.UptimePercent90d.HasValue ? $"{service.UptimePercent90d.Value:0.00}%" : "(no data)" },
+                new WorkspaceFact { Label = "30-day breach", Value = service.Breached30d ? "Yes" : "No" },
+                new WorkspaceFact { Label = "90-day breach", Value = service.Breached90d ? "Yes" : "No" },
+            },
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
 
     // ---- Break-Glass Access (#3480) — real msp-break-glass.ts client, full-panel workspaces ----
 
@@ -3291,6 +3738,7 @@ public partial class MainWindow : FluentWindow
         _runbooksService.AuthToken = token;
         _documentHubService.AuthToken = token;
         _poamsService.AuthToken = token;
+        _slaService.AuthToken = token;
         TelemetryDashboardView.SetAuthToken(token);
         SowAssessmentDashboardView.SetAuthToken(token);
         EvidenceGalleryPanel.SetAuthToken(token);
