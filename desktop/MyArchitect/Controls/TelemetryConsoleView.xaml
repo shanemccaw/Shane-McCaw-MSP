@@ -1,0 +1,340 @@
+<UserControl x:Class="MyArchitect.Controls.TelemetryConsoleView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             mc:Ignorable="d" 
+             d:DesignHeight="700" d:DesignWidth="900"
+             Background="#1E1E1E">
+
+    <UserControl.Resources>
+        <Style x:Key="ActionButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="#252526" />
+            <Setter Property="Foreground" Value="#E0E0E0" />
+            <Setter Property="BorderBrush" Value="#3E3E42" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="BtnBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#2E2E32" />
+                                <Setter TargetName="BtnBorder" Property="BorderBrush" Value="#555555" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#0078D4" />
+                                <Setter TargetName="BtnBorder" Property="BorderBrush" Value="#0078D4" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="EngineCardBorderStyle" TargetType="{x:Type Border}">
+            <Setter Property="Background" Value="#252526" />
+            <Setter Property="BorderBrush" Value="#333333" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="Margin" Value="0,0,10,0" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" /> <!-- Top Header -->
+            <RowDefinition Height="Auto" /> <!-- Engine & SOW Status Row -->
+            <RowDefinition Height="*" />    <!-- Main Split: Drift & Copilot Deltas vs Timeline Feed -->
+        </Grid.RowDefinitions>
+
+        <!-- Top Header -->
+        <Border Grid.Row="0" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="0,0,0,1" Padding="16,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="LOCAL TELEMETRY CONSOLE"
+                                   Foreground="#858585"
+                                   FontSize="11"
+                                   FontWeight="Bold" />
+                        <Border x:Name="SourceStatusBorder"
+                                Background="#1A3A5A"
+                                CornerRadius="3"
+                                Padding="6,1"
+                                Margin="10,0,0,0"
+                                VerticalAlignment="Center">
+                            <TextBlock x:Name="SourceStatusTextBlock"
+                                       Text="Live Telemetry Connected"
+                                       Foreground="#389BFF"
+                                       FontSize="10"
+                                       FontWeight="SemiBold" />
+                        </Border>
+                    </StackPanel>
+                    <TextBlock x:Name="TenantTitleTextBlock"
+                               Text="Tenant: Contoso Managed Services"
+                               Foreground="#FFFFFF"
+                               FontSize="16"
+                               FontWeight="Bold"
+                               Margin="0,4,0,0" />
+                    <TextBlock x:Name="TimestampTextBlock"
+                               Text="Polled: 2026-09-10 04:10:00 UTC"
+                               Foreground="#858585"
+                               FontSize="11"
+                               Margin="0,2,0,0" />
+                </StackPanel>
+
+                <!-- Filter Controls & Refresh -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <CheckBox x:Name="SinceYesterdayCheckBox"
+                              Content="Since Yesterday Only (Last 24h)"
+                              Foreground="#CCCCCC"
+                              FontSize="11"
+                              VerticalAlignment="Center"
+                              Margin="0,0,14,0"
+                              Checked="SinceYesterdayCheckBox_Changed"
+                              Unchecked="SinceYesterdayCheckBox_Changed" />
+
+                    <Button x:Name="RefreshTelemetryButton"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Click="RefreshTelemetryButton_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="M 17.65,6.35 C 16.2,4.9 14.21,4 12,4 C 7.58,4 4.01,7.58 4.01,12 C 4.01,16.42 7.58,20 12,20 C 15.73,20 18.84,17.45 19.73,14 L 17.65,14 C 16.83,16.33 14.61,18 12,18 C 8.69,18 6,15.31 6,12 C 6,8.69 8.69,6 12,6 C 13.66,6 15.14,6.69 16.22,7.78 L 13,11 L 20,11 L 20,4 L 17.65,6.35 Z"
+                                  Fill="#389BFF" Width="11" Height="11" Margin="0,0,6,0" Stretch="Uniform" VerticalAlignment="Center" />
+                            <TextBlock Text="Refresh Telemetry" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Engine Status & SOW Progress Row -->
+        <Grid Grid.Row="1" Margin="16,14,16,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="1.3*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Security Engine Card -->
+            <Border Grid.Column="0" Style="{StaticResource EngineCardBorderStyle}">
+                <StackPanel>
+                    <TextBlock Text="SECURITY ENGINE" Foreground="#858585" FontSize="10" FontWeight="Bold" />
+                    <TextBlock x:Name="SecurityScoreTextBlock" Text="92" Foreground="#FFFFFF" FontSize="22" FontWeight="Bold" Margin="0,4,0,0" />
+                    <TextBlock x:Name="SecurityStatusTextBlock" Text="Status: Healthy" Foreground="#4CAF50" FontSize="10" Margin="0,2,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- Compliance Engine Card -->
+            <Border Grid.Column="1" Style="{StaticResource EngineCardBorderStyle}">
+                <StackPanel>
+                    <TextBlock Text="COMPLIANCE ENGINE" Foreground="#858585" FontSize="10" FontWeight="Bold" />
+                    <TextBlock x:Name="ComplianceScoreTextBlock" Text="88" Foreground="#FFFFFF" FontSize="22" FontWeight="Bold" Margin="0,4,0,0" />
+                    <TextBlock x:Name="ComplianceStatusTextBlock" Text="Status: Healthy" Foreground="#4CAF50" FontSize="10" Margin="0,2,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- Identity Engine Card -->
+            <Border Grid.Column="2" Style="{StaticResource EngineCardBorderStyle}">
+                <StackPanel>
+                    <TextBlock Text="IDENTITY ENGINE" Foreground="#858585" FontSize="10" FontWeight="Bold" />
+                    <TextBlock x:Name="IdentityScoreTextBlock" Text="95" Foreground="#FFFFFF" FontSize="22" FontWeight="Bold" Margin="0,4,0,0" />
+                    <TextBlock x:Name="IdentityStatusTextBlock" Text="Status: Healthy" Foreground="#4CAF50" FontSize="10" Margin="0,2,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- Copilot Engine Card -->
+            <Border Grid.Column="3" Style="{StaticResource EngineCardBorderStyle}">
+                <StackPanel>
+                    <TextBlock Text="COPILOT ENGINE" Foreground="#858585" FontSize="10" FontWeight="Bold" />
+                    <TextBlock x:Name="CopilotScoreTextBlock" Text="85" Foreground="#FFFFFF" FontSize="22" FontWeight="Bold" Margin="0,4,0,0" />
+                    <TextBlock x:Name="CopilotStatusTextBlock" Text="Delta: +3 pts (Scan)" Foreground="#389BFF" FontSize="10" Margin="0,2,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- SOW Remediation Progress Card -->
+            <Border Grid.Column="4" Style="{StaticResource EngineCardBorderStyle}" Margin="0">
+                <StackPanel>
+                    <TextBlock Text="SOW CHECKLIST COMPLETION" Foreground="#858585" FontSize="10" FontWeight="Bold" />
+                    <Grid Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="SowPercentageTextBlock" Text="75.0%" Foreground="#FFFFFF" FontSize="20" FontWeight="Bold" />
+                        <TextBlock x:Name="SowStepsCountTextBlock" Grid.Column="1" Text="18/24 Steps" Foreground="#389BFF" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </Grid>
+                    <ProgressBar x:Name="SowProgressBar" Value="75" Maximum="100" Height="5" Background="#333333" Foreground="#389BFF" Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Main Body Split: Drift & Copilot Deltas (Left) vs Customer Timeline Feed (Right) -->
+        <Grid Grid.Row="2" Margin="16,4,16,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="300" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="1.4*" MinWidth="350" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left: Drift Changes & Copilot Deltas -->
+            <TabControl Grid.Column="0" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="1">
+                <TabItem Header="Configuration Drift" Foreground="#E0E0E0" FontSize="12">
+                    <DataGrid x:Name="DriftDataGrid"
+                              Background="#181818"
+                              BorderThickness="0"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#262626"
+                              Foreground="#FFFFFF"
+                              RowBackground="#1E1E1E"
+                              AlternatingRowBackground="#222222"
+                              HeadersVisibility="Column"
+                              Padding="4">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Setting Key" Binding="{Binding SettingKey}" Width="*" />
+                            <DataGridTextColumn Header="Verdict" Binding="{Binding Verdict}" Width="100" />
+                            <DataGridTextColumn Header="Detected" Binding="{Binding DetectedAt}" Width="120" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </TabItem>
+
+                <TabItem Header="Copilot Readiness Deltas" Foreground="#E0E0E0" FontSize="12">
+                    <DataGrid x:Name="CopilotDeltasDataGrid"
+                              Background="#181818"
+                              BorderThickness="0"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#262626"
+                              Foreground="#FFFFFF"
+                              RowBackground="#1E1E1E"
+                              AlternatingRowBackground="#222222"
+                              HeadersVisibility="Column"
+                              Padding="4">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Scan Date" Binding="{Binding ScanDate}" Width="120" />
+                            <DataGridTextColumn Header="Score" Binding="{Binding Score}" Width="80" />
+                            <DataGridTextColumn Header="Delta" Binding="{Binding DisplayDelta}" Width="80" />
+                            <DataGridTextColumn Header="Verdict" Binding="{Binding Verdict}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </TabItem>
+            </TabControl>
+
+            <!-- Grid Splitter -->
+            <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#262626" />
+
+            <!-- Right: Aggregated Customer Timeline Feed -->
+            <Border Grid.Column="2" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="1" Padding="10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                        <TextBlock Text="WHAT CHANGED / TIMELINE FEED"
+                                   Foreground="#858585"
+                                   FontSize="11"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center" />
+                        <TextBlock x:Name="TimelineCountTextBlock"
+                                   Text="24 events"
+                                   Foreground="#389BFF"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Center" />
+                    </DockPanel>
+
+                    <!-- Timeline Items List -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl x:Name="TimelineItemsControl">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#222222"
+                                            BorderBrush="#333333"
+                                            BorderThickness="1"
+                                            CornerRadius="5"
+                                            Padding="10,8"
+                                            Margin="0,0,0,6">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+
+                                            <!-- Header row: Category pill, Title, Time -->
+                                            <Grid Grid.Row="0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <Border Grid.Column="0"
+                                                        Background="#1B3A5A"
+                                                        CornerRadius="3"
+                                                        Padding="6,1"
+                                                        Margin="0,0,8,0"
+                                                        VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Category}" Foreground="#389BFF" FontSize="9" FontWeight="SemiBold" />
+                                                </Border>
+
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding Title}"
+                                                           Foreground="#FFFFFF"
+                                                           FontSize="12"
+                                                           FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center" />
+
+                                                <TextBlock Grid.Column="2"
+                                                           Text="{Binding FormattedTime}"
+                                                           Foreground="#858585"
+                                                           FontSize="10"
+                                                           VerticalAlignment="Center" />
+                                            </Grid>
+
+                                            <!-- Summary / details -->
+                                            <TextBlock Grid.Row="1"
+                                                       Text="{Binding Summary}"
+                                                       Foreground="#AAAAAA"
+                                                       FontSize="11"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,4,0,0" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

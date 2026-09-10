@@ -43,6 +43,7 @@ public partial class MainWindow : FluentWindow
         DesktopScreenClipService.CaptureCompleted += (s, item) => Dispatcher.Invoke(() => ShowEvidencePanel());
 
         SowAssessmentDashboardView.Initialize(_tenantService);
+        TelemetryDashboardView.Initialize(_tenantService);
 
         Loaded += MainWindow_Loaded;
         Closed += MainWindow_Closed;
@@ -156,6 +157,7 @@ public partial class MainWindow : FluentWindow
     public void ActivateTab(PortalTabItem tab)
     {
         HideAssessmentView();
+        HideTelemetryView();
 
         if (_activeTab != null)
         {
@@ -286,6 +288,11 @@ public partial class MainWindow : FluentWindow
             ToggleAssessmentView();
             e.Handled = true;
         }
+        else if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.T)
+        {
+            ToggleTelemetryView();
+            e.Handled = true;
+        }
     }
 
     public void TriggerScreenCapture()
@@ -366,6 +373,8 @@ public partial class MainWindow : FluentWindow
 
     public void ShowAssessmentView()
     {
+        HideTelemetryView();
+        CloseEvidencePanel();
         WebViewsContainer.Visibility = Visibility.Collapsed;
         EmptyTabsOverlay.Visibility = Visibility.Collapsed;
         SowAssessmentDashboardView.Visibility = Visibility.Visible;
@@ -396,6 +405,57 @@ public partial class MainWindow : FluentWindow
     private void BookmarkAssessment_Click(object sender, RoutedEventArgs e)
     {
         ShowAssessmentView();
+    }
+
+    public void ToggleTelemetryView()
+    {
+        if (TelemetryDashboardView.Visibility == Visibility.Visible)
+        {
+            HideTelemetryView();
+        }
+        else
+        {
+            ShowTelemetryView();
+        }
+    }
+
+    public void ShowTelemetryView()
+    {
+        HideAssessmentView();
+        CloseEvidencePanel();
+        BookmarksSidePanel.Visibility = Visibility.Collapsed;
+        ActivityBookmarksRadio.IsChecked = false;
+
+        WebViewsContainer.Visibility = Visibility.Collapsed;
+        EmptyTabsOverlay.Visibility = Visibility.Collapsed;
+        TelemetryDashboardView.Visibility = Visibility.Visible;
+        ActivityTelemetryRadio.IsChecked = true;
+
+        IsolatedProfileBadgeTextBlock.Text = "Mode: Live Telemetry Console";
+        StatusProfileTextBlock.Text = $"Active Tenant Telemetry: {_tenantService.CurrentTenant?.Name}";
+
+        if (_tenantService.CurrentTenant != null)
+        {
+            _ = TelemetryDashboardView.LoadForTenantAsync(_tenantService.CurrentTenant);
+        }
+    }
+
+    public void HideTelemetryView()
+    {
+        TelemetryDashboardView.Visibility = Visibility.Collapsed;
+        WebViewsContainer.Visibility = Visibility.Visible;
+        ActivityTelemetryRadio.IsChecked = false;
+        UpdateTabsState();
+    }
+
+    private void ActivityTelemetryRadio_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleTelemetryView();
+    }
+
+    private void BookmarkTelemetry_Click(object sender, RoutedEventArgs e)
+    {
+        ShowTelemetryView();
     }
 
     private void ActivityBookmarksRadio_Click(object sender, RoutedEventArgs e)

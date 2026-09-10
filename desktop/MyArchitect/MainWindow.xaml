@@ -242,6 +242,13 @@
                                      Click="ActivityExplorerRadio_Click">
                             <ui:SymbolIcon Symbol="DocumentMultiple24" FontSize="20" />
                         </RadioButton>
+                        <!-- Live Telemetry Console (Ctrl+Shift+T) -->
+                        <RadioButton x:Name="ActivityTelemetryRadio"
+                                     Style="{StaticResource ActivityBarRadioItemStyle}"
+                                     ToolTip="Live Telemetry Console (Ctrl+Shift+T)"
+                                     Click="ActivityTelemetryRadio_Click">
+                            <ui:SymbolIcon Symbol="Pulse24" FontSize="20" />
+                        </RadioButton>
                         <RadioButton Style="{StaticResource ActivityBarRadioItemStyle}"
                                      ToolTip="Search (Ctrl+Shift+F)">
                             <ui:SymbolIcon Symbol="Search24" FontSize="20" />
@@ -369,6 +376,25 @@
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                         <TextBlock Text="SOW &amp; Assessment Viewer" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold" />
                                         <TextBlock Text="Gate, SOW, Drift &amp; Snapshot" Foreground="#389BFF" FontSize="10" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+
+                            <!-- Live Telemetry Console -->
+                            <Button x:Name="BookmarkTelemetryBtn" Tag="telemetry console engine drift sow timeline copilot pulse" Style="{StaticResource BookmarkCardButtonStyle}" Click="BookmarkTelemetry_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="5" Background="#8957E5" Margin="0,0,8,0" VerticalAlignment="Center">
+                                        <Path Data="M 3,13 H 5.5 L 8,4 L 12,20 L 15,10 L 17.5,15 H 21"
+                                              Stroke="#FFFFFF" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                              Width="14" Height="14" Stretch="Uniform" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="Live Telemetry Console" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold" />
+                                        <TextBlock Text="Engines, Drift, SOW &amp; Feed" Foreground="#8957E5" FontSize="10" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                 </Grid>
                             </Button>
@@ -753,6 +779,12 @@
                                                Visibility="Collapsed"
                                                HorizontalAlignment="Stretch"
                                                VerticalAlignment="Stretch" />
+
+                    <!-- Embedded Live Telemetry Console Dashboard -->
+                    <controls:TelemetryConsoleView x:Name="TelemetryDashboardView"
+                                                  Visibility="Collapsed"
+                                                  HorizontalAlignment="Stretch"
+                                                  VerticalAlignment="Stretch" />
 
                     <!-- Fallback / Empty Tabs Overlay -->
                     <Border x:Name="EmptyTabsOverlay"
