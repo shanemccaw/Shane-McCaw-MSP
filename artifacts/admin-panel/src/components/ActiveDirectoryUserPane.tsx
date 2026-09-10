@@ -38,6 +38,7 @@ import {
   ShieldOff,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDirectoryRoles } from "@/lib/useDirectoryRoles";
 import { AD_SELECT_EVENT, type AdSelectedObject } from "./ActiveDirectoryTree";
 
 interface UserProfile {
@@ -140,14 +141,13 @@ interface ActionOutcome {
 // the Phase 8 credential-ops block above) since both phases build out this
 // same file concurrently.
 
-const ROLE_OPTIONS = ["PlatformAdmin", "MSPAdmin", "MSPOperator", "CustomerUser", "ServiceAccount", "Free", "Assessment"] as const;
-
-/** Mirrors api-server's roleLinkageRequirement() (lib/active-directory.ts) — admin-panel has no shared-component path to that package, so this is a small intentional duplicate. */
-function roleLinkageRequirement(role: string): "none" | "msp" | "customer" {
-  if (role === "MSPAdmin" || role === "MSPOperator" || role === "ServiceAccount") return "msp";
-  if (role === "CustomerUser") return "customer";
-  return "none";
-}
+// #2459 (part of #1696) — the `ROLE_OPTIONS` literal array and the local
+// `roleLinkageRequirement()` that used to sit here are gone. That function's own
+// comment called itself "a small intentional duplicate" of the server's, and the
+// duplicate had already gone wrong: it returned "none" for `Free` and
+// `Assessment` where the server returns "customer", so this pane silently
+// withheld the "requires a tenant linkage" hint for two of the seven roles.
+// Both now come from `GET /admin/active-directory/roles` via `useDirectoryRoles`.
 
 interface EntitlementOverrideRow {
   capabilityKey: string;
@@ -175,6 +175,7 @@ interface AccountControlOutcome {
 
 export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
   const { fetchWithAuth } = useAuth();
+  const { roles: directoryRoles, linkageRequirementFor } = useDirectoryRoles(fetchWithAuth);
   const [detail, setDetail] = useState<UserDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -615,7 +616,7 @@ export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
                   onChange={(e) => setRoleDraft(e.target.value)}
                   className="rounded border border-border bg-background px-2 py-1 text-[11px]"
                 >
-                  {ROLE_OPTIONS.map((r) => (
+                  {directoryRoles.map(({ role: r }) => (
                     <option key={r} value={r}>
                       {r}
                     </option>
@@ -629,17 +630,17 @@ export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
               </div>
             </div>
 
-            {roleLinkageRequirement(linkage.mspRole) !== "none" && (
+            {linkageRequirementFor(linkage.mspRole) !== "none" && (
               <div className="mb-3">
                 <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Reassign {roleLinkageRequirement(linkage.mspRole) === "customer" ? "customer" : "MSP"}
+                  Reassign {linkageRequirementFor(linkage.mspRole) === "customer" ? "customer" : "MSP"}
                 </p>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
                     value={assignTargetId}
                     onChange={(e) => setAssignTargetId(e.target.value)}
-                    placeholder={roleLinkageRequirement(linkage.mspRole) === "customer" ? "Target customer id" : "Target MSP id"}
+                    placeholder={linkageRequirementFor(linkage.mspRole) === "customer" ? "Target customer id" : "Target MSP id"}
                     className="w-40 rounded border border-border bg-background px-2 py-1 text-[11px]"
                   />
                   <AccountControlButton
@@ -648,7 +649,7 @@ export function ActiveDirectoryUserPane({ userId }: { userId: number }) {
                     onClick={() =>
                       setAcPending({
                         kind: "assignment",
-                        requirement: roleLinkageRequirement(linkage.mspRole) === "customer" ? "customer" : "msp",
+                        requirement: linkageRequirementFor(linkage.mspRole) === "customer" ? "customer" : "msp",
                         targetId: Number(assignTargetId),
                       })
                     }

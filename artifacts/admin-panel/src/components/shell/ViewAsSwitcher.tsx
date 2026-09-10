@@ -18,25 +18,38 @@ import {
 // endpoints (/admin/impersonate/:userId, /admin/msps/:mspId/impersonate)
 // unchanged. This whole app is already gated to role="admin" (App.tsx), so no
 // separate role check is needed here.
+//
+// Git #2459 (part of #1696) — this component used to hold three hardcoded role
+// decisions: the group ordering, the group labels, and
+// `account.tier === "MSPAdmin"` choosing which of the two token endpoints to
+// call. All three now arrive from the server. The last one is the one that
+// actually mattered: which impersonation mechanism an account uses is a
+// property of the account that the server knows, and a component re-deriving it
+// from a role literal is #1696's *"rule that exists nowhere the server can
+// enforce it"* — if the server ever changed which accounts take the MSP-level
+// path, this component would have kept calling the wrong endpoint.
+
+interface ViewAsGroup {
+  key: string;
+  label: string;
+}
 
 interface ViewAsAccount {
   userId: number;
   email: string;
   name: string | null;
-  tier: "Assessment" | "CustomerUser" | "MSPAdmin";
+  /** Which server-declared group this account belongs under. Never compared. */
+  groupKey: string;
+  /** Which token-generation endpoint applies. Server-decided (#2459). */
+  impersonationScope: "msp" | "user";
   mspId: number | null;
   mspName: string | null;
   mspSlug: string | null;
 }
 
-const TIER_LABELS: Record<ViewAsAccount["tier"], string> = {
-  Assessment: "Assessment",
-  CustomerUser: "Customer User",
-  MSPAdmin: "MSP Admin",
-};
-
 export default function ViewAsSwitcher() {
   const { fetchWithAuth } = useAuth();
+  const [groups, setGroups] = useState<ViewAsGroup[]>([]);
   const [accounts, setAccounts] = useState<ViewAsAccount[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -45,8 +58,11 @@ export default function ViewAsSwitcher() {
     if (!open || accounts.length > 0) return;
     fetchWithAuth("/api/admin/view-as/accounts")
       .then(res => (res.ok ? res.json() : null))
-      .then((data: { accounts: ViewAsAccount[] } | null) => {
-        if (data) setAccounts(data.accounts);
+      .then((data: { groups: ViewAsGroup[]; accounts: ViewAsAccount[] } | null) => {
+        if (data) {
+          setGroups(data.groups);
+          setAccounts(data.accounts);
+        }
       })
       .catch(() => {});
   }, [open, accounts.length, fetchWithAuth]);
@@ -55,7 +71,7 @@ export default function ViewAsSwitcher() {
     setLoading(true);
     try {
       const origin = window.location.origin;
-      if (account.tier === "MSPAdmin") {
+      if (account.impersonationScope === "msp") {
         const res = await fetchWithAuth(`/api/admin/msps/${account.mspId}/impersonate`, { method: "POST" });
         if (!res.ok) return;
         const data = (await res.json()) as { token: string; targetSlug: string };
@@ -79,9 +95,9 @@ export default function ViewAsSwitcher() {
     }
   }
 
-  const grouped = (["Assessment", "CustomerUser", "MSPAdmin"] as const).map(tier => ({
-    tier,
-    items: accounts.filter(a => a.tier === tier),
+  const grouped = groups.map(group => ({
+    group,
+    items: accounts.filter(a => a.groupKey === group.key),
   }));
 
   return (
@@ -97,10 +113,10 @@ export default function ViewAsSwitcher() {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64 max-h-96 overflow-y-auto">
-        {grouped.map(({ tier, items }) => (
-          <div key={tier}>
+        {grouped.map(({ group, items }) => (
+          <div key={group.key}>
             <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              {TIER_LABELS[tier]}
+              {group.label}
             </DropdownMenuLabel>
             {items.length === 0 && (
               <div className="px-2 py-1.5 text-xs text-muted-foreground">No accounts</div>

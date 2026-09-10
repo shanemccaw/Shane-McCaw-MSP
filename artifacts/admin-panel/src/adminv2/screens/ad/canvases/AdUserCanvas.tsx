@@ -28,7 +28,8 @@ import {
 } from "../adApi";
 import { setAdCachedRecord } from "../adNameCache";
 import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
-import { DIRECTORY_GROUP_ROLES, type AdEntitlementsView, type AdUserDetail, type DirectoryGroupRole } from "../adTypes";
+import type { AdEntitlementsView, AdUserDetail, DirectoryGroupRole } from "../adTypes";
+import { useDirectoryRoles } from "@/lib/useDirectoryRoles";
 import { AdRbacUserRolesSection } from "../AdRbacPanels";
 import {
   AdArmedButton,
@@ -54,14 +55,15 @@ function fmtDateTime(v: string | null): string {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-function roleLinkageRequirement(role: DirectoryGroupRole): "none" | "msp" | "customer" {
-  if (role === "MSPAdmin" || role === "MSPOperator" || role === "ServiceAccount") return "msp";
-  if (role === "CustomerUser" || role === "Free" || role === "Assessment") return "customer";
-  return "none";
-}
+// #2459 (part of #1696) — the local `roleLinkageRequirement()` copy that used to
+// sit here, and the `DIRECTORY_GROUP_ROLES` literal list it ran over, are gone.
+// Both are read from `GET /admin/active-directory/roles` via `useDirectoryRoles`,
+// which is generated from the server's own rule. See that hook's header for the
+// real drift this closed between this canvas and the v1 pane.
 
 export function AdUserCanvas({ userId }: { userId: number }) {
   const { fetchWithAuth } = useAuth();
+  const { roles: directoryRoles, linkageRequirementFor } = useDirectoryRoles(fetchWithAuth);
   const shell = useShell();
   const [detail, setDetail] = useState<AdUserDetail | null>(null);
   const [entitlements, setEntitlements] = useState<AdEntitlementsView | null>(null);
@@ -224,7 +226,7 @@ export function AdUserCanvas({ userId }: { userId: number }) {
   }
 
   const { profile, linkage, sessions, mfa } = detail;
-  const linkageRequirement = linkage ? roleLinkageRequirement(linkage.mspRole) : "none";
+  const linkageRequirement = linkage ? linkageRequirementFor(linkage.mspRole) : "none";
 
   return (
     <AdCanvasColumn>
@@ -273,12 +275,12 @@ export function AdUserCanvas({ userId }: { userId: number }) {
 
         <AdSection title="Role" note="Reassigning role/linkage takes effect at the account's next JWT refresh.">
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {DIRECTORY_GROUP_ROLES.map((role) => (
+            {directoryRoles.map(({ role }) => (
               <AdButton
                 key={role}
                 label={role}
                 tone={linkage?.mspRole === role ? "primary" : "default"}
-                onClick={() => void changeRole(role)}
+                onClick={() => void changeRole(role as DirectoryGroupRole)}
                 disabled={linkage?.mspRole === role}
               />
             ))}

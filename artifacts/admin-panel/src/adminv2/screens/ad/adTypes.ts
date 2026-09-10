@@ -9,6 +9,21 @@
  * path to api-server's route/lib modules.
  */
 
+/**
+ * A directory group role, as it travels on the wire.
+ *
+ * #2459 (part of #1696) — the `DIRECTORY_GROUP_ROLES` runtime array that sat
+ * beside this is gone. It was a transcription of the server's own list, and
+ * `AdUserCanvas` rendered the role buttons from it; that list now comes from
+ * `GET /admin/active-directory/roles` via `@/lib/useDirectoryRoles`, so the
+ * console cannot offer a role the server does not have (or miss one it does).
+ *
+ * The TYPE stays, and stays a union, on purpose: it is the wire shape of a field
+ * the server sends, and `setAdUserRole` takes it as an argument. That is
+ * describing a payload, not making an authorization decision from a literal —
+ * which is the distinction #2459 is actually about. #2460 retires `MSP_ROLES`
+ * itself, and this union goes with it.
+ */
 export type DirectoryGroupRole =
   | "PlatformAdmin"
   | "MSPAdmin"
@@ -17,16 +32,6 @@ export type DirectoryGroupRole =
   | "ServiceAccount"
   | "Free"
   | "Assessment";
-
-export const DIRECTORY_GROUP_ROLES: DirectoryGroupRole[] = [
-  "PlatformAdmin",
-  "MSPAdmin",
-  "MSPOperator",
-  "CustomerUser",
-  "ServiceAccount",
-  "Free",
-  "Assessment",
-];
 
 // ── Tree (GET /admin/active-directory/tree) ──────────────────────────────────
 
