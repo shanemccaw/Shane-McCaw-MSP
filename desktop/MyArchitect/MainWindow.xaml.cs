@@ -160,8 +160,8 @@ public partial class MainWindow : FluentWindow
         tab.WebView.Visibility = Visibility.Visible;
 
         UrlTextBox.Text = tab.Url;
-        IsolatedProfileBadgeTextBlock.Text = $"Profile: {tab.Tenant.Name}";
-        StatusProfileTextBlock.Text = $"Session Isolation: {tab.Tenant.Name} [{tab.Tenant.TenantGuid}]";
+        IsolatedProfileBadgeTextBlock.Text = tab.DisplayBadge;
+        StatusProfileTextBlock.Text = tab.IsGlobal ? "Session: Global Claude Profile [claude.ai]" : $"Session Isolation: {tab.Tenant?.Name} [{tab.Tenant?.TenantGuid}]";
 
         UpdateTabsState();
         UpdateNavigationButtonsState();
@@ -220,7 +220,7 @@ public partial class MainWindow : FluentWindow
         BookmarksTenantSubtext.Text = $"Active: {tenant.Name}";
         _trayIconManager.UpdateTenant(tenant);
 
-        var existingTab = _tabs.FirstOrDefault(t => t.Tenant.Id.Equals(tenant.Id, StringComparison.OrdinalIgnoreCase));
+        var existingTab = _tabs.FirstOrDefault(t => t.Tenant != null && t.Tenant.Id.Equals(tenant.Id, StringComparison.OrdinalIgnoreCase));
         if (existingTab != null)
         {
             ActivateTab(existingTab);

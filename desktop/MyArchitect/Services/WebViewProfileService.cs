@@ -45,4 +45,26 @@ public sealed class WebViewProfileService : IWebViewProfileService
         _environments[tenant.Id] = env;
         return env;
     }
+
+    public string GetGlobalProfilePath(string profileName = "Claude")
+    {
+        var sanitizedName = string.Concat(profileName.Split(Path.GetInvalidFileNameChars()));
+        return Path.Combine(_baseProfilesDirectory, "Global", sanitizedName);
+    }
+
+    public async Task<CoreWebView2Environment> GetGlobalEnvironmentAsync(string profileName = "Claude")
+    {
+        var cacheKey = $"_global_{profileName.ToLowerInvariant()}";
+        if (_environments.TryGetValue(cacheKey, out var cachedEnv))
+        {
+            return cachedEnv;
+        }
+
+        var profilePath = GetGlobalProfilePath(profileName);
+        Directory.CreateDirectory(profilePath);
+
+        var env = await CoreWebView2Environment.CreateAsync(userDataFolder: profilePath);
+        _environments[cacheKey] = env;
+        return env;
+    }
 }

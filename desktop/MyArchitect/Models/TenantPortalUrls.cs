@@ -15,7 +15,8 @@ public enum PortalType
     ExchangeAdmin,
     SecurityAdmin,
     ComplianceAdmin,
-    TeamsAdmin
+    TeamsAdmin,
+    ClaudeChat
 }
 
 /// <summary>
@@ -59,6 +60,7 @@ public sealed class TenantPortalUrls
         PortalType.SecurityAdmin => SecurityAdminUrl,
         PortalType.ComplianceAdmin => ComplianceAdminUrl,
         PortalType.TeamsAdmin => TeamsAdminUrl,
+        PortalType.ClaudeChat => "https://claude.ai",
         _ => M365AdminUrl
     };
 

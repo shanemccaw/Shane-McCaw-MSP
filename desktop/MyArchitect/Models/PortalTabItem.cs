@@ -18,10 +18,14 @@ public sealed class PortalTabItem : INotifyPropertyChanged
     private bool _isLoading;
 
     public string Id { get; init; } = Guid.NewGuid().ToString("N");
-    public required Tenant Tenant { get; init; }
+    public Tenant? Tenant { get; init; }
     public required PortalType PortalType { get; init; }
     public required WebView2 WebView { get; init; }
     public SymbolRegular IconSymbol { get; init; }
+    public bool IsGlobal => Tenant == null || PortalType == PortalType.ClaudeChat;
+
+    public string DisplaySubtitle => IsGlobal ? "Global Session" : (Tenant?.Name ?? "General");
+    public string DisplayBadge => IsGlobal ? "Global Session: Claude.ai" : $"Profile: {Tenant?.Name}";
 
     public string Title
     {

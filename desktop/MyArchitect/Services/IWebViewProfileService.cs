@@ -11,4 +11,6 @@ public interface IWebViewProfileService
 {
     Task<CoreWebView2Environment> GetEnvironmentForTenantAsync(Tenant tenant);
     string GetProfilePathForTenant(Tenant tenant);
+    Task<CoreWebView2Environment> GetGlobalEnvironmentAsync(string profileName = "Claude");
+    string GetGlobalProfilePath(string profileName = "Claude");
 }
