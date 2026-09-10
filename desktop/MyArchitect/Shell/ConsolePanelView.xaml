@@ -7,11 +7,35 @@
              Background="#1E1E1E">
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ScrollViewer x:Name="OutputScroll" Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="10">
+        <!-- Tenant context indicator (#3459) — which tenant this runspace's Graph/Az modules are
+             actually connected to, distinct from the title bar's global Tenant Switcher; a
+             command typed here runs against whatever this row says, not just whatever the title
+             bar shows. -->
+        <Border Grid.Row="0" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="0,0,0,1" Padding="10,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="Tenant:" FontSize="11" Foreground="#858585" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBlock x:Name="TenantNameText" Text="(none selected)" FontSize="11" Foreground="#E0E0E0" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,14,0" />
+                    <Ellipse x:Name="GraphStatusDot" Width="7" Height="7" Fill="#858585" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBlock x:Name="GraphStatusText" Text="Graph: not connected" FontSize="11" Foreground="#858585" VerticalAlignment="Center" Margin="0,0,14,0" />
+                    <Ellipse x:Name="AzStatusDot" Width="7" Height="7" Fill="#858585" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBlock x:Name="AzStatusText" Text="Az: n/a" FontSize="11" Foreground="#858585" VerticalAlignment="Center" />
+                </StackPanel>
+                <Button x:Name="HistoryButton" Grid.Column="1" Content="History" Click="HistoryButton_Click"
+                        Background="#252526" Foreground="#E0E0E0" BorderBrush="#3E3E42" Padding="8,3" FontSize="11" />
+            </Grid>
+        </Border>
+
+        <ScrollViewer x:Name="OutputScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="10">
             <TextBlock x:Name="OutputText"
                        FontFamily="Consolas"
                        FontSize="12"
@@ -19,16 +43,20 @@
                        TextWrapping="Wrap" />
         </ScrollViewer>
 
-        <Border Grid.Row="1" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="0,1,0,0" Padding="8,6">
+        <Border Grid.Row="2" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="0,1,0,0" Padding="8,6">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="PS&gt;" Foreground="#389BFF" FontFamily="Consolas" VerticalAlignment="Center" Margin="0,0,6,0" />
                 <TextBox x:Name="InputBox" Grid.Column="1" Background="Transparent" BorderThickness="0"
                          Foreground="#E0E0E0" CaretBrush="#FFFFFF" FontFamily="Consolas" FontSize="12"
                          VerticalAlignment="Center" KeyDown="InputBox_KeyDown" />
+                <Button x:Name="MarkForReportButton" Grid.Column="2" Content="&#9733; Mark last (Ctrl+M)" Click="MarkForReportButton_Click"
+                        Background="#252526" Foreground="#E0E0E0" BorderBrush="#3E3E42" Padding="8,3" FontSize="11"
+                        IsEnabled="False" ToolTip="Toggle 'mark for report' on the most recently executed command" />
             </Grid>
         </Border>
     </Grid>

@@ -77,7 +77,8 @@ public partial class MainWindow : FluentWindow
 
         SowAssessmentDashboardView.Initialize(_tenantService);
         TelemetryDashboardView.Initialize(_tenantService);
-        ConsolePanel.Initialize(_consoleService, _tenantModuleConnectionService, _tenantService);
+        ConsolePanel.Initialize(_consoleService, _tenantModuleConnectionService, _tenantService, _consoleHistoryService);
+        ConsolePanel.HistoryRequested += () => OpenConsoleHistoryRecord();
 
         LeftReferencePanelControl.BookmarkSelected += async portalType =>
         {
@@ -216,6 +217,13 @@ public partial class MainWindow : FluentWindow
                     ToolTip = "Hosted PowerShell runspace (#3459) — real stdout/stderr, no shelled-out process",
                     OnSelect = () => ShowDocument(ConsolePanel),
                 },
+                new RibbonCommandSpec
+                {
+                    Label = "History",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Local console run history (#3459) — command, tenant, duration, mark-for-report state",
+                    OnSelect = () => OpenConsoleHistoryRecord(),
+                },
             },
         });
 
@@ -330,6 +338,80 @@ public partial class MainWindow : FluentWindow
                 },
             },
             onSearchEverything: () => PaletteOverlay.Open());
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>#3459's real console-history surface, rendered via the shell's own full-panel
+    /// record workspace (UI_RULES.md §3) rather than a second list control invented inside
+    /// <see cref="ConsolePanelView"/>. Local-only data — <see cref="IConsoleHistoryService"/>
+    /// persists to disk, no backend involved (ad-hoc console runs have no catalog/backend
+    /// equivalent, per the issue's own scope).</summary>
+    private void OpenConsoleHistoryRecord()
+    {
+        var records = _consoleHistoryService.GetAll();
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "console-history",
+            Id = "console-history",
+            Eyebrow = "Console",
+            Title = "Run History",
+            Sub = records.Count == 0 ? "No commands run yet this session/device" : $"{records.Count} recorded run(s), most recent first",
+            List = records.Count == 0
+                ? null
+                : ("Runs", records.Select(r => new WorkspaceListRow
+                {
+                    Id = r.ExecutionId.ToString(),
+                    Name = (r.MarkedForReport ? "★ " : "") + (r.Command.Length > 60 ? r.Command[..60] + "…" : r.Command),
+                    Sub = $"{(string.IsNullOrEmpty(r.TenantName) ? "(no tenant)" : r.TenantName)} · {r.StartedAtUtc.ToLocalTime():g}",
+                    Right = $"{r.DurationMs}ms · {(r.Succeeded ? "ok" : "failed")}",
+                    OnSelect = () => OpenConsoleExecutionDetail(r.ExecutionId),
+                }).ToList()),
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    private void OpenConsoleExecutionDetail(Guid executionId)
+    {
+        var record = _consoleHistoryService.GetAll().FirstOrDefault(r => r.ExecutionId == executionId);
+        if (record == null) return;
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "console-execution",
+            Id = record.ExecutionId.ToString(),
+            Eyebrow = "Console Run",
+            Title = record.Command,
+            Sub = string.IsNullOrEmpty(record.TenantName) ? "(no tenant)" : record.TenantName,
+            Facts =
+            {
+                new WorkspaceFact { Label = "Started", Value = record.StartedAtUtc.ToLocalTime().ToString("g") },
+                new WorkspaceFact { Label = "Duration", Value = $"{record.DurationMs}ms" },
+                new WorkspaceFact { Label = "Result", Value = record.Succeeded ? "OK" : "Failed" },
+            },
+            Body = record.Succeeded
+                ? ("Output", string.IsNullOrEmpty(record.Output) ? "(no output)" : record.Output)
+                : ("Error", string.IsNullOrEmpty(record.ErrorOutput) ? "(no error output)" : record.ErrorOutput),
+            Edits =
+            {
+                new WorkspaceEdit
+                {
+                    Key = "markedForReport",
+                    Label = "Mark for report",
+                    Value = record.MarkedForReport ? "Yes" : "No",
+                    Options = new() { "No", "Yes" },
+                    OnChange = newValue =>
+                    {
+                        var wantMarked = newValue == "Yes";
+                        if (wantMarked == record.MarkedForReport) return;
+                        _consoleHistoryService.ToggleMarkedForReport(record.ExecutionId);
+                        record.MarkedForReport = wantMarked;
+                    },
+                },
+            },
+        };
 
         _shellRegistry.OpenRecord(spec);
     }
