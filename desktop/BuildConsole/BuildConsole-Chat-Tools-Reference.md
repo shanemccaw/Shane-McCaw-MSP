@@ -1,0 +1,104 @@
+# BuildConsole Chat — Tools Reference
+
+Reference for what a BuildConsole chat/agent session should reach for when it needs to touch
+GitHub. See `desktop/BuildConsole/AGENT_PROTOCOLS.md` for the `shaneapp://` protocol contracts
+(`runTest`, `executeSql`, `reportProgress`); this doc covers GitHub specifically.
+
+## GitHub — use the `shanes-git` MCP connector, not a raw PAT
+
+**Real, corrected architecture (2026-09-10, Git #3397) — read this before assuming anything
+about hosting.** The GitHub MCP server for Feature #3377 was originally planned to be hosted
+*inside* Shane's Life's existing MCP server (`web/shanes-life`). **That did not happen.** It
+does not live there, and a future reader should not go looking for it there. Real, confirmed,
+live deployment:
+
+- Runs as its **own standalone Replit Repl**, named **`shanes-git`**, live in production at
+  `https://shanes-git.replit.app`.
+- Has its **own** Replit-provisioned Postgres — genuinely separate from both Shane's Life's DB
+  and the MSP platform's `shanemccawmsp` DB.
+- Has its **own** `GITHUB_MCP_PAT`, scoped to `shanemccaw/Shane-McCaw-MSP` (`repo` + `project`
+  scopes), held **server-side only**. The PAT is never returned in a tool call input, a tool
+  call result, a log line, or an audit row.
+- Source lives in this repo at `artifacts/github-mcp-server` (see that package's own README for
+  implementation detail — token minting, schema, activity logging).
+- Real reason for the deployment deviation: Shane was out of Replit Agent credits and didn't
+  want to touch Shane's Life's live production code path (a personal app he uses daily) to do
+  the TypeScript-to-`.mjs` integration work the original plan implied.
+- **Verified end-to-end (2026-09-10):** `github_whoami` called through a live Claude session
+  connected to the real `shanes-git` connector (auth: bearer token header, same pattern as
+  Shane's Life's own MCP guide, `auth: None` at the transport layer) returned the real
+  `shanemccaw` identity and real scopes.
+
+### Why this replaces raw-PAT `bash_tool` + `curl`
+
+Before this connector existed, a chat that needed to touch GitHub pasted a raw PAT into the
+message and ran `curl`/`git` by hand — putting the live credential in plaintext in conversation
+history, searchable and re-surfaceable indefinitely. `shanes-git` removes that: the PAT is
+consumed internally by the server and never crosses back into chat. **Do not paste a raw PAT
+into a chat message or a `bash_tool` `curl` call for anything the connector already covers below**
+— use the connector's tools instead.
+
+### Real, live tool list
+
+- `server_status` — health check; reports `patConfigured` as a boolean only, never the value.
+- `github_whoami` — proves the server-side credential works; returns identity + scopes only.
+- `get_issue(number)` / `create_issue(title, body?, milestone?, labels?)` /
+  `update_issue(number, title?, body?, milestone?, labels?, state?)` — `milestone` is the real
+  milestone *number*, not its title; `update_issue`'s `labels`, when passed, replaces the full
+  label set (GitHub's own PATCH semantics), not an add/remove diff.
+- `search_issues(query, perPage?)` — real passthrough to GitHub's search syntax, scoped to this
+  repo automatically.
+- `post_comment(number, body)` / `list_comments(number)` — `list_comments` paginates through
+  every comment, oldest-first.
+- `close_issue(number, state_reason, comment?)` — `not_planned` is rejected before any GitHub
+  call unless a non-empty `comment` is supplied, and that comment posts first, enforcing the
+  repo's standing NOT_PLANNED-always-carries-a-comment rule (Git #2167) in the tool itself.
+- `move_to_status(number, status)` — moves an issue/epic to one of the real Projects v2 board
+  columns: `Batter Up`, `Backlog`, `AI Batter Up`, `Ask Shane`, `Done`. Validated against that
+  exact vocabulary before any GitHub call fires.
+- `add_sub_issue(parent_number, child_number)` / `remove_sub_issue(parent_number, child_number)` /
+  `list_sub_issues(number)` — real sub-issue hierarchy management (GitHub's one-parent rule
+  applies — remove an existing parent first to re-parent).
+- `set_blocked_by(number, blocker_numbers[])` — makes `number`'s real `blocked_by` edges match
+  the given list exactly (adds missing, removes stale — pass `[]` to clear). Use this, not a
+  comment alone, any time CLAUDE.md's "a blocking conclusion must become a `blocked_by` edge"
+  rule applies.
+- `list_blocked_by(number)` — real current blockers + their live GitHub state.
+- `get_recent_activity` — the audit trail of what each connected chat/session has actually done
+  through this server.
+
+### Required `context` on every write tool (Git #3538)
+
+Every write through `shanes-git` authenticates as the same server-side PAT, so on GitHub it
+always shows as authored by `shanemccaw` regardless of which chat/session made the change —
+there was previously no way to trace which session did what. Every write tool —
+`create_issue`, `update_issue`, `add_sub_issue`, `remove_sub_issue`, `set_blocked_by`,
+`post_comment`, `close_issue`, `move_to_status` — **requires** a `context` string argument.
+A missing or empty `context` is rejected before any GitHub API call fires.
+
+- Free text, no fixed vocabulary — describe it as "a build id, a chat/session label, or an
+  Epic/issue number." A BuildConsole-dispatched build has a real numeric buildId (e.g.
+  `"build-2211"`); a raw interactive chat has no such id and isn't forced into a shape that
+  doesn't fit it.
+- Recorded automatically in `get_recent_activity` (it's just another key in the tool's own
+  `args`) — no extra plumbing needed.
+- Also stamped visibly on GitHub itself for `post_comment` and `close_issue`'s NOT_PLANNED
+  comment: both are prefixed with a visible `[chat: <context>]` tag, so the trail is readable
+  directly on the issue, not only in the local audit log. `create_issue`/`update_issue`, the
+  sub-issue/`blocked_by` tools, and `move_to_status` don't get a visible tag — an issue body
+  isn't a comment and a board move has no text field to embed one into; for those, `context` is
+  traceable only through `get_recent_activity`.
+
+Read-only tools (`get_issue`, `search_issues`, `list_sub_issues`, `list_blocked_by`,
+`list_comments`, `get_recent_activity`, `server_status`, `github_whoami`) do not take `context`
+— nothing to trace on a read.
+
+### Connecting
+
+```
+claude mcp add --transport http shanes-git https://shanes-git.replit.app/mcp \
+  --header "Authorization: Bearer ghmcp_<the minted token>"
+```
+
+Tokens are minted server-side (see `artifacts/github-mcp-server/README.md` → "Mint a token") and
+shown once; only their SHA-256 is stored. Revocable at any time.
