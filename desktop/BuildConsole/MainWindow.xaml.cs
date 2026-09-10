@@ -6281,6 +6281,18 @@ namespace BuildConsole
 
             if (e.OpenLogPanel)
                 OpenLogViewerTab().ScopeToBuild(e.QueueItemId, e.Epic, e.Task, e.Status);
+
+            // Git #3491 — clicking a running build's card also selects/highlights its slot in
+            // Build Watch, if that window is already open and tracking it. Same "sync an
+            // already-open surface, never force one open" shape as the Log Viewer sync just
+            // above: a plain queue-item click doesn't yank the floaty Build Watch window open,
+            // it only updates it if Shane already has it up. Non-running items (queued/done/
+            // failed) have nothing running there to highlight, so this is a no-op for them —
+            // SelectSlotForQueueItem itself also no-ops if the slot isn't found, but the status
+            // check here avoids even attempting the lookup for a build that was never occupying
+            // a slot in the first place.
+            if (e.Status == "running")
+                _buildWatch?.SelectSlotForQueueItem(e.QueueItemId);
         }
 
         /// <summary>Git #2788 — looks for an already-open Log Viewer tab in the primary
