@@ -41,6 +41,13 @@ namespace BuildConsole.Controls
         private List<Services.BatterUpRow> _allRows = new();
         private bool _sortByState;
 
+        /// <summary>Git #3448 — the real closed-sweep result from the most recent RefreshAsync,
+        /// consumed by MainWindow's FullGitRefreshRequested handler to build the honest "Git Sync"
+        /// toast (Batter Up out of sync vs. no issues) instead of a generic success message. Stays
+        /// at its last real value on a refresh that errors before reaching the sweep read.</summary>
+        public Services.ClosedSweepResult LastSweepResult { get; private set; }
+            = Services.ClosedSweepResult.Clean;
+
         // Shane, 2026-08-30 — the right-column IssueDetailView tracks whichever row was
         // last clicked (SelectCard). _selectedNumber survives a RefreshAsync rebuild (cards
         // are rebuilt fresh every call) so the same issue re-highlights instead of silently
@@ -346,13 +353,17 @@ namespace BuildConsole.Controls
                 {
                     if (freeFlow)
                     {
-                        (rows, justQueuedCount, suppressedCount) = await Services.BatterUpQueueService.RefreshAndAutoQueueAsync(
+                        Services.ClosedSweepResult sweepResult;
+                        (rows, justQueuedCount, suppressedCount, sweepResult) = await Services.BatterUpQueueService.RefreshAndAutoQueueAsync(
                             gh, _db, msg => Services.ActivityLog.Log("batter-up", msg));
+                        LastSweepResult = sweepResult;
                     }
                     else
                     {
-                        (rows, suppressedCount) = await Services.BatterUpQueueService.RefreshAsync(
+                        Services.ClosedSweepResult sweepResult;
+                        (rows, suppressedCount, sweepResult) = await Services.BatterUpQueueService.RefreshAsync(
                             gh, _db, msg => Services.ActivityLog.Log("batter-up", msg));
+                        LastSweepResult = sweepResult;
                         Services.ActivityLog.Log("batter-up",
                             $"Refresh (Free flow OFF — gated) — {rows.Count} board item(s) listed, none queued" +
                             (suppressedCount > 0 ? $"; {suppressedCount} tracked+hidden." : "."));

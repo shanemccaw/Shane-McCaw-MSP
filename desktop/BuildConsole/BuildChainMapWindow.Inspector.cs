@@ -959,7 +959,7 @@ namespace BuildConsole
                     .ToHashSet();
                 if (promoted.Count > 0 && _client != null && BuildConsoleSettings.Load().BatterUpFreeFlow)
                 {
-                    var (rows, _) = await Services.BatterUpQueueService.RefreshAsync(
+                    var (rows, _, _) = await Services.BatterUpQueueService.RefreshAsync(
                         _client, _queueDb, msg => ActivityLog.Log(Channel, msg));
                     foreach (var row in rows.Where(r => promoted.Contains(r.Number) && r.HasBuildComment))
                     {

@@ -121,6 +121,13 @@ namespace BuildConsole.Controls
         /// mentions even with no chat text mutation to trigger the DOM-mutation scan.</summary>
         public event EventHandler? QueueRefreshed;
 
+        /// <summary>Git #3448 — the real, honest Batter Up / AI Batter Up closed-sweep summary from
+        /// the most recent full GitHub refresh, set by MainWindow's FullGitRefreshRequested handler
+        /// right after it awaits both panels' own refresh. <see cref="BtnRefreshGitHubTiles_Click"/>
+        /// uses this for its completion toast instead of a generic "Refreshed!" message — null only
+        /// when FullGitRefreshRequested has no subscriber yet (falls back to the old static text).</summary>
+        public string? LastGitSyncSummary { get; set; }
+
         /// <summary>
         /// Git #2795 — wired once by MainWindow to <c>LeftSidebar.GetEpicForIssueNumber</c> (the
         /// generalized form of GetEpicForChat's own real ancestor-walk resolution). BuildQueuePanel
@@ -6578,7 +6585,16 @@ namespace BuildConsole.Controls
                 RefreshInFlightIssuesAsync("manual Refresh click"),
                 RefreshAsync());
 
-            ToastEngine.Success("Git Sync", "Refreshed Git Board, Batter Up, AI Batter Up, epic issues, and queue!");
+            // Git #3448 — Shane: report real, honest sync status (e.g. "Batter Up: was out of
+            // sync — 3 stale item(s) found and cleared." / "Batter Up: no issues — every item is
+            // current.") instead of a generic "Refreshed!" message. LastGitSyncSummary was just
+            // set above (inside the awaited fullGitRefresh call) from the real closed-sweep result
+            // each panel's own RefreshAsync landed. Falls back to the old static text only if
+            // FullGitRefreshRequested has no subscriber (shouldn't happen once MainWindow wires
+            // it, but keeps this button honest either way rather than throwing on a null).
+            ToastEngine.Success("Git Sync", string.IsNullOrWhiteSpace(LastGitSyncSummary)
+                ? "Refreshed Git Board, Batter Up, AI Batter Up, epic issues, and queue!"
+                : LastGitSyncSummary!);
         }
 
         /// <summary>

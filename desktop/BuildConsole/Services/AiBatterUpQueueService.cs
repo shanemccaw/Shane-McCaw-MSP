@@ -43,14 +43,15 @@ namespace BuildConsole.Services
         /// this panel's own next refresh on its own, before #1709's queue/dedup logic ever runs
         /// against it. No filtering needed here.
         /// </summary>
-        public static async Task<List<AiBatterUpRow>> RefreshAsync(GitHubApiClient gh)
+        public static async Task<(List<AiBatterUpRow> Rows, ClosedSweepResult SweepResult)> RefreshAsync(GitHubApiClient gh)
         {
             // Git #2557 — auto-sweep: a closed issue sitting in "AI Batter Up" status is
             // structurally invisible to the OPEN-only board read below (GetAiBatterUpIssuesAsync),
             // so nothing ever demotes it on its own. Runs BEFORE the open-only row list is built
             // so a just-closed item can never flash into the visible list on the same refresh
-            // it's being swept off of.
-            await SweepClosedIssuesAsync(gh);
+            // it's being swept off of. Git #3448 — its real result is now carried out (not just
+            // logged) so the caller can report honest sync status via a toast.
+            var sweepResult = await SweepClosedIssuesAsync(gh);
 
             var boardItems = await GetAiBatterUpBoardItemsAsync(gh);
             var rows = new List<AiBatterUpRow>();
@@ -81,7 +82,7 @@ namespace BuildConsole.Services
                 });
             }
 
-            return rows;
+            return (rows, sweepResult);
         }
 
         /// <summary>
@@ -123,7 +124,7 @@ namespace BuildConsole.Services
         /// circuit-aware <see cref="BatterUpQueueService.SweepClosedCandidatesToDoneAsync"/> — the
         /// same cross-service reuse this class already uses for <c>FindBuildCommentAsync</c>.
         /// </summary>
-        private static async Task SweepClosedIssuesAsync(GitHubApiClient gh)
+        private static async Task<ClosedSweepResult> SweepClosedIssuesAsync(GitHubApiClient gh)
         {
             List<(int Number, string Title)> stale;
             try
@@ -143,10 +144,10 @@ namespace BuildConsole.Services
             catch (System.Exception ex)
             {
                 ActivityLog.Log("ai-batter-up", $"Auto-sweep: closed-issue scan failed: {ex.Message}");
-                return;
+                return new ClosedSweepResult { Error = ex.Message };
             }
 
-            await BatterUpQueueService.SweepClosedCandidatesToDoneAsync(
+            return await BatterUpQueueService.SweepClosedCandidatesToDoneAsync(
                 gh, GitHubApiClient.AiBatterUpOptionId, stale,
                 s => ActivityLog.Log("ai-batter-up", "AI Batter Up " + s));
         }

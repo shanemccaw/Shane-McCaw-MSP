@@ -63,6 +63,39 @@ namespace BuildConsole.Services
     }
 
     /// <summary>
+    /// Git #3448 — the real, honest result of one closed-sweep pass
+    /// (<see cref="BatterUpQueueService.SweepClosedCandidatesToDoneAsync"/>), carried out of the
+    /// service layer instead of dying as log-only text, so a refresh's caller (the panel, and
+    /// ultimately the manual "Git Sync" toast) can report what was ACTUALLY found — genuinely out
+    /// of sync vs. genuinely clean — instead of a generic "Refreshed!" message. <see cref="Clean"/>
+    /// is the real positive case: zero closed-but-still-shown candidates this pass.
+    /// </summary>
+    public readonly struct ClosedSweepResult
+    {
+        /// <summary>Real count of closed-but-still-shown candidates this pass found, BEFORE the
+        /// per-run cap (<see cref="BatterUpQueueService.MaxClosedSweepPerRun"/>) or live re-check.
+        /// Zero means genuinely clean — nothing was ever out of sync.</summary>
+        public int TotalCandidates { get; init; }
+        /// <summary>Real count actually moved to Done this pass.</summary>
+        public int Moved { get; init; }
+        /// <summary>Real count that were already off the source status by the time of the live
+        /// re-check (mirror lag, #3337) — found stale, but zero writes needed.</summary>
+        public int AlreadyOffStatus { get; init; }
+        /// <summary>Real count still left out of sync after this pass — a failed move, or an
+        /// overflow past the per-run cap — that a later refresh will retry.</summary>
+        public int Deferred { get; init; }
+        /// <summary>True when the sweep was skipped entirely because the #2815 rate-limit circuit
+        /// was open — a real, transient, self-recovering "couldn't check" state, not "clean".</summary>
+        public bool CircuitOpen { get; init; }
+        /// <summary>Real error text when the sweep itself failed (mirror read / live scan / batched
+        /// GraphQL call threw) — also a "couldn't check" state, distinct from genuinely clean.</summary>
+        public string? Error { get; init; }
+
+        /// <summary>The real, positive confirmation: this pass found zero stale candidates.</summary>
+        public static readonly ClosedSweepResult Clean = default;
+    }
+
+    /// <summary>
     /// Git #1709 — reads the real "Batter Up" project-board status and parses each item's
     /// `BUILD:` comment. Git #1870 splits the old one-pass read+queue into two: the READ
     /// (<see cref="RefreshAsync"/>, which resolves and lists rows but QUEUES NOTHING) and the
@@ -258,15 +291,16 @@ namespace BuildConsole.Services
         /// queueable). Displayed rows always carry <c>AlreadyTracked = false</c> /
         /// <c>JustAutoQueued = false</c>, exactly as the old method's returned rows did.
         /// </summary>
-        public static async Task<(List<BatterUpRow> Rows, int SuppressedCount)> RefreshAsync(
+        public static async Task<(List<BatterUpRow> Rows, int SuppressedCount, ClosedSweepResult SweepResult)> RefreshAsync(
             GitHubApiClient gh, BuildQueuePostgresClient? queueDb, Action<string> log)
         {
             // Git #2557 — auto-sweep: a closed issue sitting in "Batter Up" status is
             // structurally invisible to the OPEN-only board read below (GetBatterUpIssuesAsync),
             // so nothing ever demotes it on its own. Runs BEFORE the open-only row list is built
             // so a just-closed item can never flash into the visible list on the same refresh
-            // it's being swept off of.
-            await SweepClosedIssuesAsync(gh, log);
+            // it's being swept off of. Git #3448 — its real result is now carried out (not just
+            // logged) so the caller can report honest sync status via a toast.
+            var sweepResult = await SweepClosedIssuesAsync(gh, log);
 
             var (boardItems, fromMirror, mirrorRows) = await GetBatterUpBoardItemsAsync(gh, log);
             var rows = new List<BatterUpRow>();
@@ -438,7 +472,7 @@ namespace BuildConsole.Services
                 });
             }
 
-            return (rows, suppressedCount);
+            return (rows, suppressedCount, sweepResult);
         }
 
         /// <summary>
@@ -481,7 +515,7 @@ namespace BuildConsole.Services
         /// LIVE status and moves the survivors to Done in a handful of batched, bounded, circuit-aware
         /// GraphQL calls.
         /// </summary>
-        private static async Task SweepClosedIssuesAsync(GitHubApiClient gh, Action<string> log)
+        private static async Task<ClosedSweepResult> SweepClosedIssuesAsync(GitHubApiClient gh, Action<string> log)
         {
             List<(int Number, string Title)> stale;
             try
@@ -501,10 +535,10 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 log($"Batter Up auto-sweep: closed-issue scan failed: {ex.Message}");
-                return;
+                return new ClosedSweepResult { Error = ex.Message };
             }
 
-            await SweepClosedCandidatesToDoneAsync(gh, GitHubApiClient.BatterUpPromoteOptionId, stale,
+            return await SweepClosedCandidatesToDoneAsync(gh, GitHubApiClient.BatterUpPromoteOptionId, stale,
                 s => log("Batter Up " + s));
         }
 
@@ -537,25 +571,27 @@ namespace BuildConsole.Services
         /// A rate-limit mid-sweep stops the remaining chunks and reports the partial result rather
         /// than hammering. Replaces the old one-resolve-plus-one-mutation-per-item loop.
         /// </summary>
-        public static async Task SweepClosedCandidatesToDoneAsync(
+        public static async Task<ClosedSweepResult> SweepClosedCandidatesToDoneAsync(
             GitHubApiClient gh, string sourceOptionId,
             IReadOnlyList<(int Number, string Title)> candidates, Action<string> log)
         {
-            if (candidates == null || candidates.Count == 0) return;
+            if (candidates == null || candidates.Count == 0) return ClosedSweepResult.Clean;
 
             if (GitHubRateLimitCircuit.IsOpen)
             {
                 log($"closed-sweep skipped — GitHub rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); " +
                     $"{candidates.Count} candidate(s) reattempted on a later refresh (Git #3347).");
-                return;
+                return new ClosedSweepResult { TotalCandidates = candidates.Count, CircuitOpen = true, Deferred = candidates.Count };
             }
 
             var work = candidates;
+            int capOverflow = 0;
             if (candidates.Count > MaxClosedSweepPerRun)
             {
                 log($"closed-sweep — {candidates.Count} stale candidate(s) exceeds the per-run cap of {MaxClosedSweepPerRun}; " +
                     $"sweeping the first {MaxClosedSweepPerRun} this run, the rest next refresh (Git #3347).");
                 work = candidates.Take(MaxClosedSweepPerRun).ToList();
+                capOverflow = candidates.Count - work.Count;
             }
 
             var titleByNumber = new Dictionary<int, string>();
@@ -571,7 +607,7 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 log($"closed-sweep — batched live-status lookup failed ({ex.Message}); nothing moved this run (Git #3347).");
-                return;
+                return new ClosedSweepResult { TotalCandidates = candidates.Count, Error = ex.Message, Deferred = candidates.Count };
             }
 
             var toMoveItemIds = new List<string>();
@@ -596,7 +632,12 @@ namespace BuildConsole.Services
             {
                 log($"closed-sweep — nothing to move: all {work.Count} candidate(s) already off this status on the real " +
                     $"board (mirror lag, #3337); zero writes (Git #3347).");
-                return;
+                return new ClosedSweepResult
+                {
+                    TotalCandidates = candidates.Count,
+                    AlreadyOffStatus = alreadyGone,
+                    Deferred = capOverflow,
+                };
             }
 
             // 2) Batched Done move — replaces the per-item mutation burst.
@@ -609,7 +650,13 @@ namespace BuildConsole.Services
             {
                 log($"closed-sweep — batched Done move failed ({ex.Message}); {toMoveItemIds.Count} item(s) still stale, " +
                     $"retry next refresh (Git #3347).");
-                return;
+                return new ClosedSweepResult
+                {
+                    TotalCandidates = candidates.Count,
+                    AlreadyOffStatus = alreadyGone,
+                    Error = ex.Message,
+                    Deferred = toMoveItemIds.Count + capOverflow,
+                };
             }
 
             var okNumbers = new List<int>();
@@ -624,9 +671,18 @@ namespace BuildConsole.Services
                 }
             }
 
+            int deferredCount = (toMoveItemIds.Count - okNumbers.Count) + capOverflow;
             string movedList = okNumbers.Count == 0 ? "" : "#" + string.Join(" #", okNumbers) + "; ";
             log($"closed-sweep complete — moved {okNumbers.Count} closed item(s) to Done ({movedList}" +
-                $"{alreadyGone} already off-status, {toMoveItemIds.Count - okNumbers.Count} deferred) (Git #3347).");
+                $"{alreadyGone} already off-status, {deferredCount} deferred) (Git #3347).");
+
+            return new ClosedSweepResult
+            {
+                TotalCandidates = candidates.Count,
+                Moved = okNumbers.Count,
+                AlreadyOffStatus = alreadyGone,
+                Deferred = deferredCount,
+            };
         }
 
         /// <summary>
@@ -702,10 +758,10 @@ namespace BuildConsole.Services
         /// setting is on) invokes this; with the gate off the panel calls <see cref="RefreshAsync"/>
         /// alone and queues nothing.
         /// </summary>
-        public static async Task<(List<BatterUpRow> Rows, int JustQueuedCount, int SuppressedCount)> RefreshAndAutoQueueAsync(
+        public static async Task<(List<BatterUpRow> Rows, int JustQueuedCount, int SuppressedCount, ClosedSweepResult SweepResult)> RefreshAndAutoQueueAsync(
             GitHubApiClient gh, BuildQueuePostgresClient? queueDb, Action<string> log)
         {
-            var (resolved, suppressedCount) = await RefreshAsync(gh, queueDb, log);
+            var (resolved, suppressedCount, sweepResult) = await RefreshAsync(gh, queueDb, log);
             var rows = new List<BatterUpRow>();
             int justQueuedCount = 0;
 
@@ -732,7 +788,32 @@ namespace BuildConsole.Services
                 rows.Add(row);
             }
 
-            return (rows, justQueuedCount, suppressedCount);
+            return (rows, justQueuedCount, suppressedCount, sweepResult);
+        }
+
+        /// <summary>
+        /// Git #3448 — turns a real <see cref="ClosedSweepResult"/> into the honest toast text
+        /// Shane asked for: a genuine "out of sync" report when the sweep found (or is still
+        /// working through) stale candidates, and an explicit positive "no issues" confirmation
+        /// when it didn't — never a generic "Refreshed!" that says nothing about what was
+        /// actually checked. <paramref name="label"/> is the board lane name ("Batter Up" /
+        /// "AI Batter Up") so one summary string can be built per lane and concatenated.
+        /// </summary>
+        public static string BuildSyncSummary(string label, ClosedSweepResult r)
+        {
+            if (r.CircuitOpen)
+                return $"{label}: sync check skipped (GitHub rate limit cooling down, Git #2815) — retried automatically next refresh.";
+            if (!string.IsNullOrEmpty(r.Error))
+                return $"{label}: sync check failed — {r.Error}.";
+            if (r.TotalCandidates == 0)
+                return $"{label}: no issues — every item is current.";
+            if (r.Moved > 0 && r.Deferred == 0)
+                return $"{label}: was out of sync — {r.Moved} stale item(s) found and cleared.";
+            if (r.Moved > 0 && r.Deferred > 0)
+                return $"{label}: was out of sync — {r.Moved} cleared now, {r.Deferred} still pending next refresh.";
+            if (r.Moved == 0 && r.Deferred == 0)
+                return $"{label}: was out of sync — {r.TotalCandidates} stale item(s) found, already reconciled (zero writes needed).";
+            return $"{label}: still out of sync — {r.Deferred} item(s) pending, retrying next refresh.";
         }
     }
 }

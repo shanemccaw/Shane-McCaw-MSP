@@ -44,6 +44,13 @@ namespace BuildConsole.Controls
         private Border? _selectedCard;
         private Brush? _selectedCardOriginalBrush;
 
+        /// <summary>Git #3448 — the real closed-sweep result from the most recent RefreshAsync,
+        /// consumed by MainWindow's FullGitRefreshRequested handler to build the honest "Git Sync"
+        /// toast (AI Batter Up out of sync vs. no issues) instead of a generic success message.
+        /// Stays at its last real value on a refresh that errors before reaching the sweep read.</summary>
+        public Services.ClosedSweepResult LastSweepResult { get; private set; }
+            = Services.ClosedSweepResult.Clean;
+
         /// <summary>Git #1872 — fired every time RefreshAsync lands (success, no-PAT, or error),
         /// carrying the same row count TxtCount renders. MainWindow's title-bar button badge
         /// subscribes to this instead of re-fetching or polling on its own.</summary>
@@ -164,7 +171,9 @@ namespace BuildConsole.Controls
                 List<Services.AiBatterUpRow> rows;
                 try
                 {
-                    rows = await Services.AiBatterUpQueueService.RefreshAsync(gh);
+                    Services.ClosedSweepResult sweepResult;
+                    (rows, sweepResult) = await Services.AiBatterUpQueueService.RefreshAsync(gh);
+                    LastSweepResult = sweepResult;
                 }
                 catch (Exception ex)
                 {
