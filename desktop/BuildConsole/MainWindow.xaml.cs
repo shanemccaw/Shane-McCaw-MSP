@@ -1097,9 +1097,9 @@ namespace BuildConsole
             // board-refresh cascade everything else on this line rides
             // (LeftSidebar.BoardRefreshCompleted, wired below); on top of that, Shane wants
             // this "to feel alive" ("might be fun to watch the numbers"), so also re-derive
-            // every real minute — cheap, since GetAllIssuesAsync/ResolveActiveMilestoneAsync
-            // are both already 5-minute-TTL cached, so a 60s tick almost always reads that
-            // cache rather than issuing a new GitHub call.
+            // every real minute — cheap, since GetAllIssuesAsync is 5-minute-TTL cached and
+            // (Git #3468) ResolveActiveMilestoneAsync now reads the local milestone mirror
+            // first, so a 60s tick almost always resolves without issuing a new GitHub call.
             _ = RefreshEditorPanesStatsAsync();
             _editorPanesStatsTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
             _editorPanesStatsTimer.Tick += async (_, _) => await RefreshEditorPanesStatsAsync();

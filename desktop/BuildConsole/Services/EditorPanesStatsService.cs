@@ -31,9 +31,11 @@ namespace BuildConsole.Services
     {
         /// <summary>
         /// Real stats for the active GitHub Milestone. Rides the same cached
-        /// <see cref="GitHubIssueTimeSeriesService.GetAllIssuesAsync"/> fetch both halves need,
-        /// so this never issues its own extra GitHub call beyond that shared 5-minute-TTL cache.
-        /// Fails closed (<see cref="EditorPanesStats.HasData"/> == false with a real
+        /// <see cref="GitHubIssueTimeSeriesService.GetAllIssuesAsync"/> fetch the series half
+        /// needs; the active-milestone resolution itself (Git #3468) reads the local milestone
+        /// mirror first via <see cref="GitHubIssueTimeSeriesService.ResolveActiveMilestoneAsync"/>,
+        /// falling back to a live call only on a mirror miss — so this doesn't issue its own extra
+        /// GitHub call on the common hit. Fails closed (<see cref="EditorPanesStats.HasData"/> == false with a real
         /// <see cref="EditorPanesStats.Reason"/>) exactly like #2711's series — no PAT, no active
         /// milestone, or GitHub unreachable never renders a fabricated 0.
         /// </summary>

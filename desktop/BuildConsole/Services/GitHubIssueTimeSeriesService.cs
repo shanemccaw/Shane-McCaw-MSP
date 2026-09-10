@@ -461,9 +461,37 @@ namespace BuildConsole.Services
         /// being worked. Reads GitHub's own milestone object counts, never a label. Returns null
         /// when no PAT is configured, GitHub is unreachable, or no open milestone has any issues
         /// (all fail-closed — the caller shows an honest empty state, not a guessed milestone).
+        ///
+        /// Git #3468 — served from <see cref="GitHubIssueMirror.TryGetMilestoneInfosAsync"/> (the
+        /// #3358 read, backed by <c>bt_milestone_mirror</c>) first, falling back to a live
+        /// <see cref="GitHubApiClient.GetMilestonesAsync"/> only on a mirror miss. This was
+        /// previously the one milestone-count path #3359 left un-migrated: it fired a live call on
+        /// EVERY invocation (no mirror, no service-level TTL) — including automatically, once a
+        /// minute, off <c>MainWindow</c>'s unconditional editor-panes stats timer.
         /// </summary>
         public static async Task<ActiveMilestone?> ResolveActiveMilestoneAsync()
         {
+            var mirrored = await GitHubIssueMirror.TryGetMilestoneInfosAsync();
+            if (mirrored != null)
+            {
+                var mirroredBest = mirrored
+                    .Where(m => !m.IsClosed && (m.OpenIssues + m.ClosedIssues) > 0)
+                    .OrderByDescending(m => m.OpenIssues + m.ClosedIssues)
+                    .FirstOrDefault();
+                if (mirroredBest != null)
+                {
+                    ActivityLog.Log("git-board.data",
+                        $"active-milestone resolution: #{mirroredBest.Number} \"{mirroredBest.Title}\" served from the local mirror — no live GitHub call (Git #3468).");
+                    return new ActiveMilestone
+                    {
+                        Number = mirroredBest.Number,
+                        Title = mirroredBest.Title,
+                        OpenIssues = mirroredBest.OpenIssues,
+                        ClosedIssues = mirroredBest.ClosedIssues,
+                    };
+                }
+            }
+
             var settings = BuildConsoleSettings.Load();
             if (!settings.HasGitHubPat) return null;
             try
