@@ -52,7 +52,6 @@ import {
   MailPlus,
   FileSignature,
   Library,
-  FolderOpen,
   ShieldCheck,
   AlertTriangle,
   AlertOctagon,
@@ -338,7 +337,7 @@ export const WORKSPACES: WorkspaceDef[] = [
     description: "Projects, workflows & activity",
     icon: ClipboardCheck,
     prefix: "/delivery",
-    extraPrefixes: ["/crm/projects/", "/crm/documents", "/crm/testimonials"],
+    extraPrefixes: ["/crm/projects/", "/crm/testimonials"],
     defaultPath: "/delivery/projects",
     sections: [
       {
@@ -405,7 +404,6 @@ export const WORKSPACES: WorkspaceDef[] = [
       {
         id: "client-records", label: "Client Records", defaultOpen: false,
         items: [
-          { id: "del-documents", label: "Documents", path: "/crm/documents", icon: FolderOpen },
           { id: "del-testimonials", label: "Testimonials", path: "/crm/testimonials", icon: Star },
         ],
       },
