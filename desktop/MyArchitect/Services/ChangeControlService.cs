@@ -145,6 +145,125 @@ public sealed class ChangeControlService : IChangeControlService
             body);
     }
 
+    public async Task<IReadOnlyList<ChangeRequestExecution>> GetExecutionsForChangeAsync(
+        int changeRequestId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"{_baseUrl}/api/msp/change-control/executions?changeRequestId={changeRequestId}");
+        Authorize(request);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new ChangeControlException(
+                $"GET /api/msp/change-control/executions returned {(int)response.StatusCode} {response.ReasonPhrase}",
+                (int)response.StatusCode,
+                body);
+        }
+
+        var parsed = JsonSerializer.Deserialize<ChangeRequestExecutionListResponse>(body, JsonOptions);
+        return parsed?.Executions ?? new List<ChangeRequestExecution>();
+    }
+
+    public async Task<IReadOnlyList<ChangeRequestPir>> GetPirsForChangeAsync(
+        int changeRequestId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"{_baseUrl}/api/msp/change-control/pirs?changeRequestId={changeRequestId}");
+        Authorize(request);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new ChangeControlException(
+                $"GET /api/msp/change-control/pirs returned {(int)response.StatusCode} {response.ReasonPhrase}",
+                (int)response.StatusCode,
+                body);
+        }
+
+        var parsed = JsonSerializer.Deserialize<ChangeRequestPirListResponse>(body, JsonOptions);
+        return parsed?.Pirs ?? new List<ChangeRequestPir>();
+    }
+
+    public async Task<ChangeRequestPir> RecordPirAsync(
+        int executionId,
+        string closeCode,
+        string summary,
+        string? issuesNoted = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/msp/change-control/executions/{executionId}/pir")
+        {
+            Content = JsonContent.Create(new { closeCode, summary, issuesNoted }, options: JsonOptions),
+        };
+        Authorize(request);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new ChangeControlException(
+                $"POST /api/msp/change-control/executions/{executionId}/pir returned {(int)response.StatusCode} {response.ReasonPhrase}",
+                (int)response.StatusCode,
+                body);
+        }
+
+        var parsed = JsonSerializer.Deserialize<ChangeRequestPirResponse>(body, JsonOptions);
+        return parsed?.Pir ?? throw new ChangeControlException(
+            $"POST /api/msp/change-control/executions/{executionId}/pir returned an empty PIR",
+            (int)response.StatusCode,
+            body);
+    }
+
+    public async Task<IReadOnlyList<ChangeFreezeWindow>> GetFreezeWindowsAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/api/msp/change-freeze-windows");
+        Authorize(request);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new ChangeControlException(
+                $"GET /api/msp/change-freeze-windows returned {(int)response.StatusCode} {response.ReasonPhrase}",
+                (int)response.StatusCode,
+                body);
+        }
+
+        var parsed = JsonSerializer.Deserialize<ChangeFreezeWindowsResponse>(body, JsonOptions);
+        return parsed?.Windows ?? new List<ChangeFreezeWindow>();
+    }
+
+    public async Task<IReadOnlyList<ChangeMaintenanceWindow>> GetMaintenanceWindowsAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/api/msp/change-maintenance-windows");
+        Authorize(request);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new ChangeControlException(
+                $"GET /api/msp/change-maintenance-windows returned {(int)response.StatusCode} {response.ReasonPhrase}",
+                (int)response.StatusCode,
+                body);
+        }
+
+        var parsed = JsonSerializer.Deserialize<ChangeMaintenanceWindowsResponse>(body, JsonOptions);
+        return parsed?.Windows ?? new List<ChangeMaintenanceWindow>();
+    }
+
     private void Authorize(HttpRequestMessage request)
     {
         if (!string.IsNullOrWhiteSpace(AuthToken))

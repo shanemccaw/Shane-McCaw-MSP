@@ -52,4 +52,51 @@ public interface IChangeControlService
         int executionId,
         string? attestationNote = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// GET /api/msp/change-control/executions?changeRequestId=&lt;n&gt; — every
+    /// execution recorded against one change (#3482's PIR-filing checklist item
+    /// needs this to find a completed execution with no PIR yet).
+    /// </summary>
+    Task<IReadOnlyList<ChangeRequestExecution>> GetExecutionsForChangeAsync(
+        int changeRequestId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// GET /api/msp/change-control/pirs?changeRequestId=&lt;n&gt; — every
+    /// Post-Implementation Review already filed for one change's executions.
+    /// </summary>
+    Task<IReadOnlyList<ChangeRequestPir>> GetPirsForChangeAsync(
+        int changeRequestId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// POST /api/msp/change-control/executions/:id/pir — files the
+    /// Post-Implementation Review for a completed execution. 409s (surfaced as
+    /// <see cref="ChangeControlException"/>) if that execution already has one
+    /// — a correction is a new execution + a new PIR, never a rewrite.
+    /// </summary>
+    Task<ChangeRequestPir> RecordPirAsync(
+        int executionId,
+        string closeCode,
+        string summary,
+        string? issuesNoted = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// GET /api/msp/change-freeze-windows — every standing freeze/blackout rule
+    /// for this MSP (#1500). Evaluated client-side against a specific
+    /// (tenant, workload, instant) via <see cref="Models.ChangeCalendarMatching"/>
+    /// — no server endpoint answers "is a freeze active right now" directly.
+    /// </summary>
+    Task<IReadOnlyList<ChangeFreezeWindow>> GetFreezeWindowsAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// GET /api/msp/change-maintenance-windows — every standing maintenance
+    /// rule for this MSP (#1504). Same evaluation model as
+    /// <see cref="GetFreezeWindowsAsync"/>.
+    /// </summary>
+    Task<IReadOnlyList<ChangeMaintenanceWindow>> GetMaintenanceWindowsAsync(
+        CancellationToken cancellationToken = default);
 }

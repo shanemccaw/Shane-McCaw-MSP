@@ -36,6 +36,7 @@ public partial class MainWindow : FluentWindow
     private readonly IConsoleHistoryService _consoleHistoryService;
     private readonly IChangeRequestReplayService _changeRequestReplayService;
     private readonly IChangeControlService _changeControlService;
+    private readonly ICabService _cabService;
     private readonly IRemediationTrackerService _remediationTrackerService;
     private readonly IVipClassificationsService _vipClassificationsService;
     private readonly ILaunchControlActionsService _launchControlActionsService;
@@ -76,6 +77,7 @@ public partial class MainWindow : FluentWindow
         _changeRequestReplayService = new ChangeRequestReplayService();
         _tenantModuleConnectionService = new TenantModuleConnectionService(_tenantService, _consoleService);
         _changeControlService = new ChangeControlService();
+        _cabService = new CabService();
         _remediationTrackerService = new RemediationTrackerService();
         _vipClassificationsService = new VipClassificationsService();
         _launchControlActionsService = new LaunchControlActionsService();
@@ -284,6 +286,35 @@ public partial class MainWindow : FluentWindow
                     Intent = RibbonIntent.Create,
                     ToolTip = "POST /api/msp/poams — author a new plan for the active tenant",
                     OnSelect = () => OpenCreatePoamRecord(),
+                },
+            },
+        });
+
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Home, new RibbonGroupSpec
+        {
+            Label = "Change Advisory Board",
+            Order = 36,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Browse",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Real GET /api/msp/change-control/cab/meetings (#3482 / Git #1501)",
+                    Gallery = new GallerySpec
+                    {
+                        Title = "CAB Meetings",
+                        Searchable = true,
+                        GetRows = BuildCabMeetingRows,
+                    },
+                    OnSelect = () => { },
+                },
+                new RibbonCommandSpec
+                {
+                    Label = "Schedule Meeting",
+                    Intent = RibbonIntent.Create,
+                    ToolTip = "POST /api/msp/change-control/cab/meetings",
+                    OnSelect = () => OpenScheduleCabMeetingRecord(),
                 },
             },
         });
@@ -1701,6 +1732,38 @@ public partial class MainWindow : FluentWindow
         }).ToList();
     }
 
+    /// <summary>
+    /// #3482's pre-execution gate — the real gap the issue opens with: "hands-on work could
+    /// start with no way to check whether a freeze window blocks it right now." No server
+    /// endpoint evaluates this at execution time (msp-change-executions.ts's human-action
+    /// route never touches either calendar), so the client fetches both real calendars
+    /// (GET /msp/change-freeze-windows, GET /msp/change-maintenance-windows) and evaluates
+    /// them itself via <see cref="ChangeCalendarMatching"/>, ported from the server's own
+    /// portal-change-freeze.ts / portal-change-maintenance.ts. An active freeze BLOCKS the
+    /// "Record human action" action outright (the action is simply not added) rather than
+    /// just noting it — maintenance coverage is surfaced as a fact only, since the server
+    /// itself never enforces maintenance against execution time, only against a change's
+    /// originally booked span at submission.</summary>
+    private (ChangeFreezeWindow? Freeze, ChangeMaintenanceWindow? Maintenance, string? Error) EvaluateChangeCalendar(ChangeRequest cr)
+    {
+        var workload = ChangeCalendarMatching.WorkloadForCategory(cr.Category);
+        var now = DateTimeOffset.UtcNow;
+        try
+        {
+            var freezeWindows = _changeControlService.GetFreezeWindowsAsync().GetAwaiter().GetResult();
+            var maintenanceWindows = _changeControlService.GetMaintenanceWindowsAsync().GetAwaiter().GetResult();
+            var freeze = ChangeCalendarMatching.FindActiveFreezeNow(freezeWindows, cr.TenantId, workload, now);
+            var maintenance = ChangeCalendarMatching.FindMaintenanceCoverageNow(maintenanceWindows, cr.TenantId, workload, now);
+            return (freeze, maintenance, null);
+        }
+        catch (Exception ex)
+        {
+            // Real, honest failure (most likely #3501 auth) — reported, not swallowed into a
+            // silent "clear" reading that would be worse than no check at all.
+            return (null, null, ex.Message);
+        }
+    }
+
     private void OpenChangeRequestRecord(ChangeRequest cr)
     {
         // Session Notes (#3472) — the change-control-linked half. attestationNote already
@@ -1709,6 +1772,59 @@ public partial class MainWindow : FluentWindow
         // threaded into RecordHumanActionAsync's real attestationNote parameter below.
         var attestationNote = string.Empty;
 
+        var (blockingFreeze, coveringMaintenance, calendarError) = EvaluateChangeCalendar(cr);
+
+        var facts = new System.Collections.Generic.List<WorkspaceFact>
+        {
+            new() { Label = "Status", Value = cr.Status },
+            new() { Label = "Risk", Value = cr.RiskLevel },
+            new() { Label = "Class", Value = cr.ChangeClass },
+            new() { Label = "Impacted users", Value = cr.ImpactedUsersCount.ToString() },
+        };
+
+        if (calendarError != null)
+        {
+            facts.Add(new WorkspaceFact { Label = "Freeze / maintenance check", Value = $"Could not evaluate: {calendarError}", Prose = true });
+        }
+        else
+        {
+            facts.Add(new WorkspaceFact
+            {
+                Label = "Freeze status",
+                Value = blockingFreeze != null ? $"BLOCKED — \"{blockingFreeze.Name}\" is active now" : "Clear — no active freeze",
+                Prose = blockingFreeze != null,
+            });
+            facts.Add(new WorkspaceFact
+            {
+                Label = "Maintenance window",
+                Value = coveringMaintenance != null ? $"Covered by \"{coveringMaintenance.Name}\"" : "Not covered by any maintenance window right now",
+                Prose = true,
+            });
+        }
+
+        var actions = new System.Collections.Generic.List<WorkspaceAction>();
+        if (blockingFreeze == null)
+        {
+            actions.Add(new WorkspaceAction
+            {
+                Label = "Record human action",
+                Confirm = true,
+                OnSelect = () =>
+                {
+                    var numericId = cr.NumericId;
+                    if (numericId == null) return;
+                    _ = _changeControlService.RecordHumanActionAsync(
+                        numericId.Value,
+                        attestationNote: string.IsNullOrWhiteSpace(attestationNote) ? null : attestationNote);
+                },
+            });
+        }
+        actions.Add(new WorkspaceAction
+        {
+            Label = "File Post-Implementation Review",
+            OnSelect = () => OpenPirPickExecutionRecord(cr),
+        });
+
         var spec = new RecordWorkspaceSpec
         {
             Kind = "change-request",
@@ -1716,13 +1832,7 @@ public partial class MainWindow : FluentWindow
             Eyebrow = "Change Request",
             Title = cr.Title,
             Sub = $"{cr.TenantName} · {cr.PrimaryDomain}",
-            Facts =
-            {
-                new WorkspaceFact { Label = "Status", Value = cr.Status },
-                new WorkspaceFact { Label = "Risk", Value = cr.RiskLevel },
-                new WorkspaceFact { Label = "Class", Value = cr.ChangeClass },
-                new WorkspaceFact { Label = "Impacted users", Value = cr.ImpactedUsersCount.ToString() },
-            },
+            Facts = facts,
             Body = ("Description", string.IsNullOrEmpty(cr.Description) ? "(none)" : cr.Description),
             Edits =
             {
@@ -1734,22 +1844,7 @@ public partial class MainWindow : FluentWindow
                     OnChange = v => attestationNote = v,
                 },
             },
-            Actions =
-            {
-                new WorkspaceAction
-                {
-                    Label = "Record human action",
-                    Confirm = true,
-                    OnSelect = () =>
-                    {
-                        var numericId = cr.NumericId;
-                        if (numericId == null) return;
-                        _ = _changeControlService.RecordHumanActionAsync(
-                            numericId.Value,
-                            attestationNote: string.IsNullOrWhiteSpace(attestationNote) ? null : attestationNote);
-                    },
-                },
-            },
+            Actions = actions,
         };
 
         _shellRegistry.OpenContextual(
@@ -1763,12 +1858,11 @@ public partial class MainWindow : FluentWindow
                     new RibbonGroupSpec
                     {
                         Label = "Actions",
-                        Large = { new RibbonCommandSpec
+                        Large =
                         {
-                            Label = "Record human action",
-                            Intent = RibbonIntent.Record,
-                            OnSelect = () => { },
-                        } },
+                            new RibbonCommandSpec { Label = "Record human action", Intent = RibbonIntent.Record, OnSelect = () => { } },
+                            new RibbonCommandSpec { Label = "File PIR", Intent = RibbonIntent.Record, OnSelect = () => { } },
+                        },
                     },
                 },
             },
@@ -2287,6 +2381,417 @@ public partial class MainWindow : FluentWindow
             ConsolePanel.AppendExternal($"[POA&M] Delete failed: {ex.Message}");
         }
         OpenPoamRecord(poamId);
+    }
+
+    /// <summary>#3482's PIR-filing checklist item: real executions for this change
+    /// (GET /msp/change-control/executions?changeRequestId=), narrowed to the ones with no
+    /// PIR on file yet (GET /msp/change-control/pirs?changeRequestId=) — a PIR attaches to a
+    /// specific execution and the server 409s a second one against an already-reviewed
+    /// execution, so this never offers to re-file one.</summary>
+    private void OpenPirPickExecutionRecord(ChangeRequest cr)
+    {
+        var numericId = cr.NumericId;
+        if (numericId == null) return;
+
+        System.Collections.Generic.IReadOnlyList<ChangeRequestExecution> executions;
+        System.Collections.Generic.IReadOnlyList<ChangeRequestPir> pirs;
+        try
+        {
+            executions = _changeControlService.GetExecutionsForChangeAsync(numericId.Value).GetAwaiter().GetResult();
+            pirs = _changeControlService.GetPirsForChangeAsync(numericId.Value).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "cr-pir-pick",
+                Id = cr.Id,
+                Eyebrow = "Post-Implementation Review",
+                Title = cr.Title,
+                Sub = $"Could not load executions: {ex.Message}",
+            });
+            return;
+        }
+
+        var reviewedExecutionIds = new System.Collections.Generic.HashSet<int>(pirs.Select(p => p.ExecutionId));
+        var unreviewed = executions.Where(e => !reviewedExecutionIds.Contains(e.Id)).ToList();
+
+        var rows = unreviewed.Select(e => new WorkspaceListRow
+        {
+            Id = e.Id.ToString(),
+            Name = $"Execution #{e.Id} · {e.ExecutorKind}",
+            Sub = e.ExecutedAt is { } executedAt ? $"Executed {executedAt:yyyy-MM-dd HH:mm}" : "Not yet marked executed",
+            Right = e.Outcome,
+            OnSelect = () => OpenPirFilingRecord(cr, e),
+        }).ToList();
+
+        _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+        {
+            Kind = "cr-pir-pick",
+            Id = cr.Id,
+            Eyebrow = "Post-Implementation Review",
+            Title = cr.Title,
+            Sub = executions.Count == 0
+                ? "No executions recorded against this change yet"
+                : (unreviewed.Count == 0 ? "Every execution already has a Post-Implementation Review" : "Choose the execution to review"),
+            List = ("Executions awaiting review", rows),
+        });
+    }
+
+    /// <summary>The real PIR-filing form — write-through Edits for the close code (cycle
+    /// button over CR_PIR_CLOSE_CODES) and the required narrative, a confirm-armed submit
+    /// calling POST /msp/change-control/executions/:id/pir.</summary>
+    private void OpenPirFilingRecord(ChangeRequest cr, ChangeRequestExecution execution)
+    {
+        var fields = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["closeCode"] = "successful",
+            ["summary"] = string.Empty,
+            ["issuesNoted"] = string.Empty,
+        };
+
+        _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+        {
+            Kind = "cr-pir-file",
+            Id = $"{cr.Id}-exec-{execution.Id}",
+            Eyebrow = "Post-Implementation Review",
+            Title = $"{cr.Title} — Execution #{execution.Id}",
+            Sub = "A correction requires a new execution + a new PIR — this one cannot be re-filed once submitted",
+            Edits =
+            {
+                new WorkspaceEdit
+                {
+                    Key = "closeCode",
+                    Label = "Close code",
+                    Value = fields["closeCode"],
+                    Options = new System.Collections.Generic.List<string> { "successful", "successful_with_issues", "failed", "rolled_back" },
+                    OnChange = v => fields["closeCode"] = v,
+                },
+                new WorkspaceEdit { Key = "summary", Label = "Summary", Value = string.Empty, OnChange = v => fields["summary"] = v },
+                new WorkspaceEdit { Key = "issuesNoted", Label = "Issues noted", Value = string.Empty, OnChange = v => fields["issuesNoted"] = v },
+            },
+            Actions =
+            {
+                new WorkspaceAction
+                {
+                    Label = "Submit Review",
+                    Confirm = true,
+                    OnSelect = () =>
+                    {
+                        if (string.IsNullOrWhiteSpace(fields["summary"]))
+                        {
+                            ShowDocument(ConsolePanel);
+                            ConsolePanel.AppendExternal("[PIR] Summary is required — nothing filed.");
+                            return;
+                        }
+                        ShowDocument(ConsolePanel);
+                        ConsolePanel.AppendExternal($"[PIR] Filing review for execution #{execution.Id}…");
+                        try
+                        {
+                            var pir = _changeControlService
+                                .RecordPirAsync(execution.Id, fields["closeCode"], fields["summary"], Nullify(fields["issuesNoted"]))
+                                .GetAwaiter().GetResult();
+                            ConsolePanel.AppendExternal($"[PIR] Recorded #{pir.Id} · {pir.CloseCode} · drift rescan: {pir.DriftRescan.Status}");
+                        }
+                        catch (ChangeControlException ex)
+                        {
+                            ConsolePanel.AppendExternal($"[PIR] Filing failed ({ex.StatusCode}): {ex.Message}");
+                        }
+                        catch (Exception ex)
+                        {
+                            ConsolePanel.AppendExternal($"[PIR] Exception: {ex.Message}");
+                        }
+                    },
+                },
+            },
+        });
+    }
+
+    // ---- Change Advisory Board (#3482 — Git #1501) ----------------------------------------
+
+    /// <summary>Real rows from GET /api/msp/change-control/cab/meetings — every CAB/ECAB
+    /// meeting for this MSP, each already carrying its own agenda summary.</summary>
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildCabMeetingRows()
+    {
+        System.Collections.Generic.IReadOnlyList<CabMeeting> meetings;
+        try
+        {
+            meetings = _cabService.GetMeetingsAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            return new[] { new GalleryRowSpec { Id = "error", Name = $"Could not load: {ex.Message}", OnSelect = () => { } } };
+        }
+
+        return meetings.Select(m => new GalleryRowSpec
+        {
+            Id = m.Id.ToString(),
+            Tile = m.MeetingType.ToUpperInvariant(),
+            Name = $"{(m.MeetingType == "ecab" ? "ECAB" : "CAB")} · {m.ScheduledFor:yyyy-MM-dd HH:mm}",
+            Sub = $"{m.Status} · {m.AgendaSummary.Total} item(s), {m.AgendaSummary.Undecided} undecided",
+            OnSelect = () => OpenCabMeetingRecord(m.Id),
+        }).ToList();
+    }
+
+    /// <summary>The CAB meeting/agenda workspace (#3482's checklist item) — real agenda,
+    /// each row a real change with its recommendation, plus the meeting lifecycle actions
+    /// (start/close/cancel) gated on the same rules the server itself enforces
+    /// (`isMeetingOpen`, `canCloseMeeting`).</summary>
+    private void OpenCabMeetingRecord(int meetingId)
+    {
+        CabMeeting meeting;
+        System.Collections.Generic.IReadOnlyList<CabAgendaItem> agenda;
+        try
+        {
+            (meeting, agenda) = _cabService.GetMeetingAsync(meetingId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "cab-meeting",
+                Id = meetingId.ToString(),
+                Eyebrow = "CAB Meeting",
+                Title = $"Meeting #{meetingId}",
+                Sub = $"Could not load: {ex.Message}",
+            });
+            return;
+        }
+
+        var rows = agenda.Select(item => new WorkspaceListRow
+        {
+            Id = item.Id.ToString(),
+            Name = $"{item.ChangeCode} — {item.ChangeTitle}",
+            Sub = item.Recommendation ?? "Undecided",
+            Right = item.PresenterName,
+            OnSelect = () => OpenCabAgendaItemRecord(meeting, item),
+        }).ToList();
+
+        var actions = new System.Collections.Generic.List<WorkspaceAction>();
+        if (meeting.Status == "scheduled")
+        {
+            actions.Add(new WorkspaceAction
+            {
+                Label = "Start Meeting",
+                Confirm = true,
+                OnSelect = () => { _ = _cabService.StartMeetingAsync(meeting.Id).GetAwaiter().GetResult(); OpenCabMeetingRecord(meeting.Id); },
+            });
+        }
+        if (meeting.IsOpen)
+        {
+            var canClose = agenda.All(i => i.Recommendation != null);
+            actions.Add(new WorkspaceAction
+            {
+                Label = canClose ? "Close Meeting" : "Close Meeting (undecided items remain)",
+                Confirm = canClose,
+                OnSelect = () =>
+                {
+                    if (!canClose) return;
+                    _ = _cabService.CloseMeetingAsync(meeting.Id).GetAwaiter().GetResult();
+                    OpenCabMeetingRecord(meeting.Id);
+                },
+            });
+            actions.Add(new WorkspaceAction
+            {
+                Label = "Cancel Meeting",
+                Confirm = true,
+                Danger = true,
+                OnSelect = () => { _ = _cabService.CancelMeetingAsync(meeting.Id).GetAwaiter().GetResult(); OpenCabMeetingRecord(meeting.Id); },
+            });
+        }
+
+        _shellRegistry.OpenContextual(
+            new TrailEntry("cab-meeting", meeting.Id.ToString(), $"CAB #{meeting.Id}", () => OpenCabMeetingRecord(meeting.Id)),
+            new ContextualTabSpec
+            {
+                Id = "cab-meeting",
+                Label = "CAB Meeting",
+                Groups =
+                {
+                    new RibbonGroupSpec
+                    {
+                        Label = "Agenda",
+                        Large =
+                        {
+                            new RibbonCommandSpec
+                            {
+                                Label = "Add Eligible Change",
+                                Intent = RibbonIntent.Record,
+                                ToolTip = "GET .../eligible-changes — changes of this meeting's class with a pending approval slot",
+                                Gallery = new GallerySpec
+                                {
+                                    Title = "Eligible Changes",
+                                    Searchable = true,
+                                    GetRows = () => BuildCabEligibleChangeRows(meeting),
+                                },
+                                OnSelect = () => { },
+                            },
+                        },
+                    },
+                },
+            },
+            onSearchEverything: () => PaletteOverlay.Open());
+
+        _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+        {
+            Kind = "cab-meeting",
+            Id = meeting.Id.ToString(),
+            Eyebrow = meeting.MeetingType == "ecab" ? "Emergency CAB" : "CAB Meeting",
+            Title = $"{meeting.ScheduledFor:yyyy-MM-dd HH:mm}",
+            Sub = $"{meeting.ChairName} · {meeting.Location}",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Status", Value = meeting.Status },
+                new WorkspaceFact { Label = "Total items", Value = meeting.AgendaSummary.Total.ToString() },
+                new WorkspaceFact { Label = "Undecided", Value = meeting.AgendaSummary.Undecided.ToString() },
+                new WorkspaceFact { Label = "Retroactive", Value = meeting.AgendaSummary.Retroactive.ToString() },
+            },
+            Body = ("Minutes", string.IsNullOrEmpty(meeting.Minutes) ? "(not yet compiled — minutes are written when the meeting closes)" : meeting.Minutes),
+            List = ("Agenda", rows),
+            Actions = actions,
+        });
+    }
+
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildCabEligibleChangeRows(CabMeeting meeting)
+    {
+        System.Collections.Generic.IReadOnlyList<CabEligibleChange> eligible;
+        try
+        {
+            eligible = _cabService.GetEligibleChangesAsync(meeting.Id).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            return new[] { new GalleryRowSpec { Id = "error", Name = $"Could not load: {ex.Message}", OnSelect = () => { } } };
+        }
+
+        return eligible.Select(c => new GalleryRowSpec
+        {
+            Id = c.Code,
+            Tile = c.RiskLevel.Length >= 2 ? c.RiskLevel[..2].ToUpperInvariant() : c.RiskLevel.ToUpperInvariant(),
+            Name = $"{c.Code} — {c.Title}",
+            Sub = c.TenantId,
+            OnSelect = () =>
+            {
+                _cabService.AddAgendaItemAsync(meeting.Id, c.Id).GetAwaiter().GetResult();
+                OpenCabMeetingRecord(meeting.Id);
+            },
+        }).ToList();
+    }
+
+    /// <summary>One agenda item's own workspace — the board's actual decision surface.
+    /// `recordAgendaDecision` 409s once a recommendation is already recorded, so once
+    /// decided the actions simply aren't offered again (the fact already shows the
+    /// outcome) rather than letting a second click race the server's own guard.</summary>
+    private void OpenCabAgendaItemRecord(CabMeeting meeting, CabAgendaItem item)
+    {
+        var facts = new System.Collections.Generic.List<WorkspaceFact>
+        {
+            new() { Label = "Recommendation", Value = item.Recommendation ?? "Undecided" },
+            new() { Label = "Presenter", Value = string.IsNullOrEmpty(item.PresenterName) ? "(unassigned)" : item.PresenterName },
+            new() { Label = "Retroactive", Value = item.IsRetroactive ? "Yes — emergency change, reviewed after the fact" : "No" },
+        };
+
+        var actions = new System.Collections.Generic.List<WorkspaceAction>();
+        if (item.Recommendation == null && meeting.IsOpen)
+        {
+            actions.Add(new WorkspaceAction
+            {
+                Label = "Approve",
+                Confirm = true,
+                OnSelect = () => { _cabService.RecordDecisionAsync(item.Id, "approve").GetAwaiter().GetResult(); OpenCabMeetingRecord(meeting.Id); },
+            });
+            actions.Add(new WorkspaceAction
+            {
+                Label = "Reject",
+                Confirm = true,
+                Danger = true,
+                OnSelect = () => { _cabService.RecordDecisionAsync(item.Id, "reject").GetAwaiter().GetResult(); OpenCabMeetingRecord(meeting.Id); },
+            });
+            actions.Add(new WorkspaceAction
+            {
+                Label = "Defer",
+                Confirm = true,
+                OnSelect = () => { _cabService.DeferAgendaItemAsync(item.Id, null).GetAwaiter().GetResult(); OpenCabMeetingRecord(meeting.Id); },
+            });
+        }
+
+        _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+        {
+            Kind = "cab-agenda-item",
+            Id = item.Id.ToString(),
+            Eyebrow = "CAB Agenda Item",
+            Title = $"{item.ChangeCode} — {item.ChangeTitle}",
+            Sub = $"Ordinal {item.Ordinal}",
+            Facts = facts,
+            Body = ("Discussion notes", string.IsNullOrEmpty(item.DiscussionNotes) ? "(none)" : item.DiscussionNotes),
+            Actions = actions,
+        });
+    }
+
+    /// <summary>POST /msp/change-control/cab/meetings — schedules a new meeting from a
+    /// write-through create form, same shape as <see cref="OpenLogAdHocHoursRecord"/>.</summary>
+    private void OpenScheduleCabMeetingRecord()
+    {
+        var fields = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["meetingType"] = "cab",
+            ["scheduledFor"] = DateTimeOffset.UtcNow.AddDays(7).ToString("yyyy-MM-dd HH:mm"),
+            ["chairName"] = string.Empty,
+            ["location"] = string.Empty,
+            ["notes"] = string.Empty,
+        };
+
+        _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+        {
+            Kind = "cab-meeting-new",
+            Id = "new",
+            Eyebrow = "Change Advisory Board",
+            Title = "Schedule Meeting",
+            Edits =
+            {
+                new WorkspaceEdit
+                {
+                    Key = "meetingType",
+                    Label = "Meeting type",
+                    Value = fields["meetingType"],
+                    Options = new System.Collections.Generic.List<string> { "cab", "ecab" },
+                    OnChange = v => fields["meetingType"] = v,
+                },
+                new WorkspaceEdit { Key = "scheduledFor", Label = "Scheduled for (UTC)", Value = fields["scheduledFor"], OnChange = v => fields["scheduledFor"] = v },
+                new WorkspaceEdit { Key = "chairName", Label = "Chair", Value = string.Empty, OnChange = v => fields["chairName"] = v },
+                new WorkspaceEdit { Key = "location", Label = "Location", Value = string.Empty, OnChange = v => fields["location"] = v },
+                new WorkspaceEdit { Key = "notes", Label = "Notes", Value = string.Empty, OnChange = v => fields["notes"] = v },
+            },
+            Actions =
+            {
+                new WorkspaceAction
+                {
+                    Label = "Schedule",
+                    Confirm = true,
+                    OnSelect = () =>
+                    {
+                        if (!DateTimeOffset.TryParse(fields["scheduledFor"], System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var scheduledFor))
+                        {
+                            ShowDocument(ConsolePanel);
+                            ConsolePanel.AppendExternal($"[CAB] \"{fields["scheduledFor"]}\" is not a valid date/time — nothing scheduled.");
+                            return;
+                        }
+                        try
+                        {
+                            var meeting = _cabService
+                                .ScheduleMeetingAsync(fields["meetingType"], scheduledFor, fields["chairName"], fields["location"], fields["notes"])
+                                .GetAwaiter().GetResult();
+                            OpenCabMeetingRecord(meeting.Id);
+                        }
+                        catch (Exception ex)
+                        {
+                            ShowDocument(ConsolePanel);
+                            ConsolePanel.AppendExternal($"[CAB] Schedule failed: {ex.Message}");
+                        }
+                    },
+                },
+            },
+        });
     }
 
     /// <summary>The ad-hoc half of #3464's real hour-logging scope — work not tied to a
@@ -3731,6 +4236,7 @@ public partial class MainWindow : FluentWindow
         _breakGlassService.AuthToken = token;
         _supportTicketsService.AuthToken = token;
         _auditLogService.AuthToken = token;
+        _cabService.AuthToken = token;
         _adminRetainerService.AuthToken = token;
         _remediationTrackerService.AuthToken = token;
         _vipClassificationsService.AuthToken = token;
