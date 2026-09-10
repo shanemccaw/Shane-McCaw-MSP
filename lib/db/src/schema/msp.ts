@@ -9053,6 +9053,61 @@ export const retainerWorkLogTable = pgTable("retainer_work_log", {
 export type RetainerWorkLogRow = typeof retainerWorkLogTable.$inferSelect;
 export type InsertRetainerWorkLogRow = typeof retainerWorkLogTable.$inferInsert;
 
+// ── Evidence attachments (#3503) ──────────────────────────────────────────────
+//
+// `desktop/MyArchitect/Services/IEvidencePostClient.cs` (#3470's screenshot tool)
+// shipped a local capture/review/gallery pipeline with no live server side to
+// post to — this is that server side. One row per posted screenshot/attachment,
+// against either of the two record types MyArchitect's evidence pipeline
+// targets: a `remediation_tracker_steps` step, or a `cr_executions` change
+// execution.
+//
+// Same polymorphic (source, sourceRefId) shape `retainer_work_log` already uses
+// for the exact same two source tables just above — no FK, matching both
+// tables' own soft-link convention (`remediation_tracker_steps` carries no FK
+// anywhere, and `cr_executions`'s own id is referenced elsewhere in this file
+// only softly once denormalised). `sourceRefId` is the source table's own `id`
+// column (remediation_tracker_steps.id, not its stepId text; cr_executions.id).
+export const EVIDENCE_ATTACHMENT_SOURCES = ["remediation_tracker", "change_control"] as const;
+export type EvidenceAttachmentSource = typeof EVIDENCE_ATTACHMENT_SOURCES[number];
+
+export const evidenceAttachmentsTable = pgTable("evidence_attachments", {
+  id: serial("id").primaryKey(),
+  /** Owning MSP — every evidence upload happens through an MSP-operator-scoped route. */
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** tenants.id — the JWT `customerId` claim, matching remediation_tracker_steps.customer_id / retainer_work_log.customer_id. */
+  customerId: integer("customer_id").notNull(),
+  source: text("source", { enum: EVIDENCE_ATTACHMENT_SOURCES }).notNull(),
+  /** remediation_tracker_steps.id or cr_executions.id, depending on `source`. No FK — see note above. */
+  sourceRefId: integer("source_ref_id").notNull(),
+  /** Server-relative storage path under UPLOADS_DIR/evidence-attachments — never a client-supplied URL. */
+  filePath: text("file_path").notNull(),
+  /** Original uploaded filename, for display only. */
+  originalFilename: text("original_filename"),
+  /** MIME type as reported by the upload. */
+  contentType: text("content_type"),
+  /** File size in bytes, as stored. */
+  fileSizeBytes: integer("file_size_bytes"),
+  /** Caption text, matching ScreenshotEvidenceItem.Caption on the MyArchitect side. */
+  caption: text("caption"),
+  /** Pixel dimensions, when the evidence is an image. NULL for a non-image attachment. */
+  width: integer("width"),
+  height: integer("height"),
+  /** When the screenshot/evidence was actually captured (client-side timestamp), matching ScreenshotEvidenceItem.CapturedAt. Falls back to createdAt when not supplied. */
+  capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+  /** users.id of whoever posted it. NULL for a row written by automation. */
+  uploadedByUserId: integer("uploaded_by_user_id"),
+  /** The uploader's wire person id ("u<userId>"), matching cr_executions' attested_by_person_id convention. */
+  uploadedByPersonId: text("uploaded_by_person_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("evidence_attachments_source_ref_idx").on(t.source, t.sourceRefId),
+  index("evidence_attachments_msp_customer_idx").on(t.mspId, t.customerId),
+]);
+
+export type EvidenceAttachment = typeof evidenceAttachmentsTable.$inferSelect;
+export type InsertEvidenceAttachment = typeof evidenceAttachmentsTable.$inferInsert;
+
 /**
  * #1793 — the app-only PowerShell capability survey.
  *
