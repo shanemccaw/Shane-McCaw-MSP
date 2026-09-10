@@ -101,16 +101,58 @@ namespace BuildConsole.Controls
             // off-screen" / "a static event outlives the view") don't apply to an app-lifetime
             // singleton: the view IS the singleton, so the event can't outlive it, and the cheap
             // off-screen RowsList render is precisely what keeps the visible badge current.
+            //
+            // Git #3469 — that "cheap" framing was wrong: RefreshAsync's board LIST is mirror-only,
+            // but the pass around it still fires live GitHub work every time (batched BUILD-comment
+            // resolution, the closed-sweep, and the auto-select detail load — plus, in free-flow
+            // mode, real board writes), regardless of whether this panel's document tab is actually
+            // open. OnMirrorSyncCompleted now checks IsVisible and takes the zero-live-call
+            // mirror-count-only path when the tab is closed; IsVisible becoming true again fires a
+            // real RefreshAsync so the tab never opens onto stale rows.
             Services.GitHubIssueMirror.SyncCompleted += OnMirrorSyncCompleted;
+            IsVisibleChanged += OnIsVisibleChanged;
         }
 
         /// <summary>Git #3253 — fired from whatever background context the mirror sync runs on
         /// (the watcher tick), never the UI thread. Marshal to the Dispatcher before touching
-        /// anything, then just re-run the panel's own existing local-mirror RefreshAsync — no new
-        /// GitHub calls, the same call a manual refresh already makes.</summary>
+        /// anything. Git #3469 — a closed tab (IsVisible false) takes the mirror-count-only path
+        /// (zero live GitHub calls) instead of the full RefreshAsync, which still does real live
+        /// enrichment work (batched BUILD-comment resolution, closed-sweep, auto-select detail
+        /// load, and free-flow auto-queue writes) even though its board LIST is mirror-first.</summary>
         private void OnMirrorSyncCompleted()
         {
-            Dispatcher.InvokeAsync(async () => await RefreshAsync());
+            Dispatcher.InvokeAsync(async () =>
+            {
+                if (IsVisible) await RefreshAsync();
+                else await RefreshCountOnlyAsync();
+            });
+        }
+
+        /// <summary>Git #3469 — the tab going from closed to open needs a real RefreshAsync so it
+        /// never opens onto rows that are stale by up to a full mirror-sync cycle (the
+        /// mirror-count-only path this panel took while closed only ever touched the badge, never
+        /// RowsList/DetailPane).</summary>
+        private async void OnIsVisibleChanged(object sender, System.Windows.DependencyPropertyChangedEventArgs e)
+        {
+            if (IsVisible) await RefreshAsync();
+        }
+
+        /// <summary>Git #3469 — the badge-only refresh for a mirror sync landing while this panel's
+        /// document tab isn't open: a plain local-mirror count read, no live GitHub calls at all
+        /// (no closed-sweep, no BUILD-comment resolution, no detail auto-select, no free-flow
+        /// auto-queue). Leaves the badge at its last value if the mirror isn't usable yet — never
+        /// falls back to a live call just to keep an off-screen badge current.</summary>
+        private async System.Threading.Tasks.Task RefreshCountOnlyAsync()
+        {
+            try
+            {
+                int? count = await Services.BatterUpQueueService.GetMirrorOnlyOpenCountAsync();
+                if (count.HasValue) SetCount(count.Value);
+            }
+            catch (Exception ex)
+            {
+                Services.ActivityLog.Log("batter-up", $"Badge-only mirror count read failed: {ex.Message}");
+            }
         }
 
         /// <summary>

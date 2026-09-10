@@ -112,6 +112,16 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #3469 — the badge-only path for a mirror sync while the panel's document tab isn't
+        /// open: a plain local-mirror read of the open board count, with ZERO live GitHub calls —
+        /// no closed-sweep, no batched BUILD-comment resolution, no fallback to a live project-page
+        /// walk. Returns null (leave the badge at its last value) when the mirror isn't usable yet;
+        /// the next visible-panel refresh (or the next sync once the mirror IS usable) catches up.
+        /// </summary>
+        public static async Task<int?> GetMirrorOnlyOpenCountAsync() =>
+            (await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.AiBatterUpOptionId, "open"))?.Count;
+
+        /// <summary>
         /// Git #2557 — sweeps every real CLOSED issue still sitting in "AI Batter Up" status to
         /// "Done" (<see cref="GitHubApiClient.DoneOptionId"/>). Git #3134 — the closed-issue READ is
         /// mirror-first (<see cref="GitHubIssueMirror.TryGetByBoardStatusAsync"/> with
