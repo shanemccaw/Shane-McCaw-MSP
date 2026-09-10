@@ -223,15 +223,19 @@ namespace BuildConsole.Controls
                     // standing failure so it doesn't read as an urgent bug (see #2916).
                     bool circuitOpen = Services.GitHubRateLimitCircuit.IsCircuitOpenMessage(ex.Message);
 
-                    // Git #3494 — on a transient circuit-open deferral, keep the last-known rows
-                    // instead of blanking the lane every ~minute while GitHub is rate-limiting us
-                    // (same reasoning as the Batter Up lane). Only blank on a first load (nothing to
-                    // preserve) or a real, standing failure.
-                    if (circuitOpen && _allRows.Count > 0)
+                    // Git #3494 / #3512 — NEVER blank the lane when we still hold real rows. #3494
+                    // preserved last-known rows only on a recognized circuit-open throw; #3512 broadens
+                    // that to ANY transient failure (same reasoning, and same change, as the Batter Up
+                    // lane). Only a genuine first load (nothing to preserve) or a real standing failure
+                    // with no prior rows falls through to the empty/error state below.
+                    if (_allRows.Count > 0)
                     {
+                        string why = circuitOpen ? "rate-limit circuit open" : ex.Message;
                         Services.ActivityLog.Log("ai-batter-up",
-                            $"Refresh deferred (rate-limit circuit open) — keeping last-known {_allRows.Count} row(s); recovers automatically (Git #3494/#2815).");
-                        TxtCount.Text = $"({_allRows.Count}) · GitHub cooling down (#2815)";
+                            $"Refresh deferred ({why}) — keeping last-known {_allRows.Count} row(s); recovers automatically (Git #3494/#3512/#2815).");
+                        TxtCount.Text = circuitOpen
+                            ? $"({_allRows.Count}) · GitHub cooling down (#2815)"
+                            : $"({_allRows.Count}) · couldn't refresh, showing last-known";
                         TxtEmpty.Visibility = Visibility.Collapsed;
                         return;
                     }

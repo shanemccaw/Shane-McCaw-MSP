@@ -194,35 +194,62 @@ namespace BuildConsole.Services
                         return IssueFetchResult.Ok(_cache);
                 }
 
-                // Git #3359 — read the whole issue set (open + closed, with each issue's real
-                // created/closed timestamps) from the local mirror instead of firing a live
-                // ALL-states GraphQL walk, exactly like #3358 did for the Git Board tree. This is
-                // what removes Home's own per-5-min live walk from GitHub's secondary-rate-limit
-                // budget — the whole point of this issue. Two gates, both fail-closed to the live path
-                // so a burndown is never built off partial data:
-                //   • HasUsableDataAsync — the mirror has completed at least one full sync at all;
-                //   • HasClosedBackfillAsync — the CLOSED history has genuinely been backfilled (the
-                //     mirror's full walk only ever fetches the OPEN set, so without this gate the
-                //     closed side would be badly truncated — see GitHubIssueMirror.MaybeBackfillClosedIssuesAsync).
-                // Any miss / never-synced / error returns null and falls through to the live path
-                // below, so this can never make Home worse than today — only cheaper and rate-limit
-                // proof on the common hit. A manual refresh (forceRefresh) deliberately still goes
-                // live, matching #3358's guaranteed-fresh manual-refresh escape hatch.
-                if (await GitHubIssueMirror.HasUsableDataAsync() && await GitHubIssueMirror.HasClosedBackfillAsync())
+                // Git #3359 read the whole issue set (open + closed, each with its real created/closed
+                // timestamps) from the local mirror instead of a live ALL-states GraphQL walk, exactly
+                // like #3358 did for the Git Board tree — removing Home's own per-5-min live walk from
+                // GitHub's secondary-rate-limit budget.
+                //
+                // Git #3512 — serve from the mirror whenever it has completed at least one full sync
+                // (HasUsableDataAsync), WITHOUT also requiring HasClosedBackfillAsync. That second gate
+                // is exactly what perpetuated the 7-day rate-limit storm this issue exists to end:
+                // under an OPEN secondary-rate-limit circuit the closed backfill can never run (it is
+                // itself circuit-gated), so this method fell through to a live ~35-page
+                // ListBoardIssuesAsync(All) walk — and because a FAILED live walk never populates the
+                // 5-minute cache below, the 1-minute _editorPanesStatsTimer re-fired that whole walk
+                // EVERY minute. That burst pinned the secondary limit, kept the circuit open, kept the
+                // backfill skipped, kept this gate false — a self-perpetuating loop (the second-opinion
+                // investigation's confirmed root cause). The mirror's closed set may be briefly
+                // truncated until the once/24h backfill (MaybeBackfillClosedIssuesAsync) lands, but the
+                // incremental since= pass already captures today's closures with real closed_at, and a
+                // slightly-short historical closed line on the Home burndown is far better than a storm
+                // that also silences Batter Up overnight. It self-heals the moment the circuit recovers
+                // and the backfill runs its one walk. A miss/never-synced/error returns null and falls
+                // through to the (now circuit-guarded) live path, so this can never be worse than today.
+                if (await GitHubIssueMirror.HasUsableDataAsync())
                 {
-                    var mirrored = await GitHubIssueMirror.TryGetBoardIssuesAsync(openOnly: false);
-                    if (mirrored != null)
+                    var served = await TryServeFromMirrorAsync();
+                    if (served != null) return IssueFetchResult.Ok(served);
+                }
+            }
+
+            // Live fallback — reached only when the mirror has no usable data yet (a true cold start,
+            // before the first full sync) or on a manual forceRefresh. Git #3512 — NEVER fire the live
+            // ~35-page ListBoardIssuesAsync(All) walk while the rate-limit circuit is OPEN: that live
+            // walk IS the storm. Serve the best real data we have instead — a stale-but-real cache, or
+            // the mirror even without the closed backfill — and only fail closed when there is
+            // genuinely nothing to serve. (forceRefresh is honoured only when the circuit is closed;
+            // you cannot force a fetch through an open rate limit — the mirror is the freshest data
+            // obtainable at that moment.)
+            if (GitHubRateLimitCircuit.IsOpen)
+            {
+                lock (_lock)
+                {
+                    if (_cache != null)
                     {
-                        lock (_lock)
-                        {
-                            _cache = mirrored;
-                            _cacheFetchedUtc = DateTime.UtcNow;
-                        }
                         ActivityLog.Log("git-board.data",
-                            $"issue time-series fetch: {mirrored.Count} real issue(s) (open+closed) served from the local mirror — no live GitHub call (Git #3359); cached for {CacheTtl.TotalMinutes:0}m.");
-                        return IssueFetchResult.Ok(mirrored);
+                            $"issue time-series fetch: rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left) — serving the last cached {_cache.Count} issue(s) rather than firing a live ALL walk (Git #3512).");
+                        return IssueFetchResult.Ok(_cache);
                     }
                 }
+                var served = await TryServeFromMirrorAsync();
+                if (served != null)
+                {
+                    ActivityLog.Log("git-board.data",
+                        $"issue time-series fetch: rate-limit circuit open — served {served.Count} issue(s) from the local mirror rather than firing a live ALL walk (Git #3512).");
+                    return IssueFetchResult.Ok(served);
+                }
+                return IssueFetchResult.Failure(
+                    $"GitHub rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left) and the local mirror has no usable data yet — no live ALL walk fired (Git #3512).");
             }
 
             var settings = BuildConsoleSettings.Load();
@@ -246,9 +273,49 @@ namespace BuildConsole.Services
             }
             catch (Exception ex)
             {
+                // Git #3512 — a live walk that throws (e.g. a rate-limit response that trips the circuit
+                // mid-walk) must not blank the Home dashboard when we still hold real data: prefer a
+                // stale-but-real cache, then the mirror, before failing closed.
+                lock (_lock)
+                {
+                    if (_cache != null)
+                    {
+                        ActivityLog.Log("git-board.data",
+                            $"issue time-series fetch: live ALL walk failed ({ex.Message}) — serving the last cached {_cache.Count} issue(s) instead of failing closed (Git #3512).");
+                        return IssueFetchResult.Ok(_cache);
+                    }
+                }
+                var served = await TryServeFromMirrorAsync();
+                if (served != null)
+                {
+                    ActivityLog.Log("git-board.data",
+                        $"issue time-series fetch: live ALL walk failed ({ex.Message}) — served {served.Count} issue(s) from the local mirror instead of failing closed (Git #3512).");
+                    return IssueFetchResult.Ok(served);
+                }
                 ActivityLog.Log("git-board.data", $"issue time-series fetch failed (fail-closed, no fabricated series): {ex.Message}");
                 return IssueFetchResult.Failure($"GitHub fetch failed: {ex.Message}");
             }
+        }
+
+        /// <summary>Git #3512 — read the whole issue set (open + closed) from the local mirror and
+        /// refresh the in-memory cache. Returns null on a mirror miss / never-synced / error, so the
+        /// caller decides the fallback. Logs whether the closed backfill has completed so a
+        /// briefly-truncated closed history (before the once/24h backfill lands) is visible in the
+        /// ActivityLog rather than silently wrong.</summary>
+        private static async Task<List<GitBoardIssue>?> TryServeFromMirrorAsync()
+        {
+            var mirrored = await GitHubIssueMirror.TryGetBoardIssuesAsync(openOnly: false);
+            if (mirrored == null) return null;
+            lock (_lock)
+            {
+                _cache = mirrored;
+                _cacheFetchedUtc = DateTime.UtcNow;
+            }
+            bool backfilled = await GitHubIssueMirror.HasClosedBackfillAsync();
+            ActivityLog.Log("git-board.data",
+                $"issue time-series fetch: {mirrored.Count} real issue(s) (open+closed) served from the local mirror — no live GitHub call (Git #3359/#3512); " +
+                $"closed backfill {(backfilled ? "complete" : "pending — historical closed line may be briefly truncated until the once/24h backfill lands")}; cached for {CacheTtl.TotalMinutes:0}m.");
+            return mirrored;
         }
 
         /// <summary>

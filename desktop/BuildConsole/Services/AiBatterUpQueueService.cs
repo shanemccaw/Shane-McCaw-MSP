@@ -45,20 +45,22 @@ namespace BuildConsole.Services
         /// </summary>
         public static async Task<(List<AiBatterUpRow> Rows, ClosedSweepResult SweepResult)> RefreshAsync(GitHubApiClient gh)
         {
-            // Git #3494 — same guard as BatterUpQueueService.RefreshAsync: bail the whole pass fast
-            // when the shared #2815 rate-limit circuit is OPEN, rather than building rows from data we
-            // cannot read. Under an open circuit ResolveBuildCommentsAsync returns nothing, so every
-            // item came back HasBuildComment=false — harmless for most raw findings here, but it also
-            // wrongly dropped the BUILD: comment off any AI Batter Up item that already carries one.
-            // Throw the recognized "rate-limit circuit open" message so this panel shows its honest
-            // "GitHub cooling down (#2815)" holding state and keeps its last-known rows instead of
-            // flapping, exactly like the Batter Up lane.
+            // Git #3494 originally THREW here when the shared #2815 rate-limit circuit was open (same
+            // guard as the Batter Up lane), to stop this pass dropping the BUILD: comment off items
+            // that already carry one. Git #3512 removes that throw for the same reason it removes it
+            // from BatterUpQueueService: the pass is safe to run under an open circuit — the board
+            // list is a local-mirror read (GetAiBatterUpBoardItemsAsync), the closed-sweep
+            // short-circuits on an open circuit, and BUILD-comment resolution now serves each item's
+            // LAST-KNOWN resolution from the shared in-memory cache
+            // (BatterUpQueueService.ResolveBuildCommentsAsync, Git #3512) rather than dropping it. So
+            // an item that already carries a BUILD: comment keeps it across the cooldown, with ZERO
+            // added live GitHub pressure, instead of the whole panel flapping.
             if (GitHubRateLimitCircuit.IsOpen)
             {
                 ActivityLog.Log("ai-batter-up",
-                    $"AI Batter Up refresh deferred — GitHub rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); " +
-                    "board items keep their last-known state and re-resolve on the next refresh (Git #3494).");
-                throw new System.InvalidOperationException("AI Batter Up refresh skipped — rate-limit circuit open (Git #2815).");
+                    $"AI Batter Up refresh proceeding in degraded (cache-backed) mode — GitHub rate-limit circuit open " +
+                    $"({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); board list from the local mirror, BUILD: comments " +
+                    "served from the last-known cache, closed-sweep deferred (Git #3512).");
             }
 
             // Git #2557 — auto-sweep: a closed issue sitting in "AI Batter Up" status is
