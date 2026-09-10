@@ -31,6 +31,7 @@ import {
   type RbacSystem,
 } from "@workspace/db/rbac";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { invalidateLadderSnapshot } from "../middlewares/rbac-ladder.ts";
 import { logger } from "../lib/logger";
 import { createAuditLog } from "../lib/audit";
 
@@ -177,6 +178,11 @@ router.delete("/admin/rbac/roles/:id", requireAdmin, async (req: Request, res: R
       res.status(result.error === "Role not found." ? 404 : 400).json({ error: result.error });
       return;
     }
+    // #2458 — deleting a role strips its id from every mapping in the same
+    // transaction (the #2455 trigger), which can change a `ladder.*` allow set.
+    // requireRole answers from a cached snapshot of those rows, so drop it now
+    // rather than letting a deleted role keep granting for up to the TTL.
+    invalidateLadderSnapshot();
     await createAuditLog({
       ...auditActor(req),
       actionType: "rbac.role.delete",
@@ -348,6 +354,10 @@ router.put("/admin/rbac/mapping", requireAdmin, async (req: Request, res: Respon
       res.status(400).json({ error: result.error });
       return;
     }
+    // #2458 — a mapping edit IS an authorization change, and requireRole reads the
+    // `ladder.*` rows from a cached snapshot. Revoking a grant must not wait out a
+    // TTL, so the snapshot is dropped on every mapping write.
+    invalidateLadderSnapshot();
     await createAuditLog({
       ...auditActor(req),
       actionType: "rbac.mapping.update",

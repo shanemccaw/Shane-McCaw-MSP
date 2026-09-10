@@ -3,6 +3,13 @@
   "compilerOptions": {
     "composite": true,
     "declarationMap": true,
+    // #2458 — src/rbac/{capabilities,evaluate}.ts import their pure siblings with an
+    // explicit `.ts` extension so `@workspace/db/rbac/*` is loadable under Node's own
+    // ESM loader, not only under a bundler. The api-server test files that run on
+    // `node --experimental-strip-types --test` (21 of them, incl. the requireRole
+    // acceptance suite msp-rbac.test.ts) reach the evaluator through that path, and
+    // Node's loader does not do extensionless resolution.
+    "allowImportingTsExtensions": true,
     "emitDeclarationOnly": true,
     "outDir": "dist",
     "rootDir": "src",

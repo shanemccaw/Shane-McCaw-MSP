@@ -10,6 +10,15 @@
  *    top level so requireAuth.ts picks up the mock when dynamically imported
  *    inside before().
  *  - customerRows[] controls what the DB returns for customer-scope lookups.
+ *  - the RBAC ladder rows requireRole now decides from are served from the same
+ *    mock — see the block below. The evaluator itself is NOT mocked: this suite
+ *    exercises the real `@workspace/db/rbac` decision function.
+ *
+ * #2458 — requireRole no longer compares ROLE_ORDER indexes; it evaluates the
+ * `ladder.<floor>` capability against the seeded feature→role mapping rows. Every
+ * assertion in this file is therefore now an end-to-end test of the real evaluator,
+ * and the expected status codes are deliberately unchanged: the whole contract of
+ * that migration step is that this matrix does not move.
  *
  * Run: pnpm --filter @workspace/api-server run test
  */
@@ -19,24 +28,86 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { RequestHandler } from "express";
+import { LADDER_CAPABILITY_KEYS, LEGACY_ROLE_ORDER } from "@workspace/db/rbac/legacy-ladder";
 
 process.env.JWT_SECRET = "msp-rbac-test-secret-xyz-abc";
+
+// ── The RBAC ladder rows, shaped exactly as #2457 seeds them ──────────────────
+// A stable pseudo-uuid per rung, and one mapping row per `ladder.*` capability whose
+// allow set is every rung at or above it — the `idx >= idx` self-join the seed
+// migration performs, so these rows are the same rows the real database holds. They
+// are the INPUT here; that the real rows agree with the real ROLE_ORDER comparison is
+// proven separately, against live Postgres, in
+// middlewares/rbac-ladder.live-db.test.ts.
+const rungRoleId = (rung: string): string => `00000000-0000-4000-8000-${String(LEGACY_ROLE_ORDER.indexOf(rung as never)).padStart(12, "0")}`;
+
+const ladderRoleRows = LEGACY_ROLE_ORDER.map((rung) => ({ id: rungRoleId(rung), key: rung }));
+
+const ladderMappingRows = LEGACY_ROLE_ORDER.map((floor, floorIdx) => ({
+  capabilityKey: LADDER_CAPABILITY_KEYS[floor],
+  roles: {
+    allow: LEGACY_ROLE_ORDER.filter((_, heldIdx) => heldIdx >= floorIdx).map(rungRoleId),
+    deny: [],
+  },
+}));
 
 // ── Configurable DB mock ──────────────────────────────────────────────────────
 // Tests set customerRows before each assertion. requireCustomerScope calls
 // db.select().from().where().limit() — the mock returns customerRows.
 let customerRows: { id: number }[] = [];
 
-const mockLimit = () => Promise.resolve(customerRows);
-const mockWhere = () => ({ limit: mockLimit });
-const mockFrom = () => ({ where: mockWhere });
+const tenantsTable = { id: "id_col", mspId: "mspId_col" };
+const mspStaffCustomerScopesTable = { customerId: "customerId_col", staffUserId: "staffUserId_col" };
+const mspRolesTable = { id: "roles_id_col", key: "roles_key_col", mspId: "roles_mspId_col" };
+const mspFeatureRoleMappingTable = {
+  capabilityKey: "mapping_capabilityKey_col",
+  roles: "mapping_roles_col",
+  mspId: "mapping_mspId_col",
+};
+
+/**
+ * `where()` has to be BOTH awaitable and `.limit()`-able: requireCustomerScope
+ * awaits `.where().limit()`, resolveStaffScopedCustomerIds awaits `.where()`
+ * directly, and rbac-ladder awaits `.where()` directly too. One thenable with a
+ * `limit` method on it satisfies all three without the mock having to know which
+ * caller it is serving.
+ */
+function mockResult<T>(rows: () => T[]): PromiseLike<T[]> & { limit: () => Promise<T[]> } {
+  const promise = () => Promise.resolve(rows());
+  return {
+    limit: promise,
+    then: (onfulfilled, onrejected) => promise().then(onfulfilled, onrejected),
+  };
+}
+
+/**
+ * Per-staff-member customer scoping. Empty = UNRESTRICTED, which is the historical
+ * default and what every principal in this file is meant to be — the suite is testing
+ * the role fence and the mspId/customerId fences, not staff scoping. It has to be
+ * served separately from `customerRows` now that `where()` is awaitable: the scope
+ * lookup awaits `.where()` directly while the tenant lookup awaits `.where().limit()`,
+ * so a single shared row set would feed tenant rows to the scope query and read
+ * `row.customerId` (undefined) as a real restriction.
+ */
+const staffScopeRows: { customerId: number }[] = [];
+
+const mockFrom = (table: unknown) => ({
+  where: () => {
+    if (table === mspRolesTable) return mockResult(() => ladderRoleRows);
+    if (table === mspFeatureRoleMappingTable) return mockResult(() => ladderMappingRows);
+    if (table === mspStaffCustomerScopesTable) return mockResult(() => staffScopeRows);
+    return mockResult(() => customerRows);
+  },
+});
 const mockSelect = () => ({ from: mockFrom });
 
 mock.module("@workspace/db", {
   namedExports: {
     db: { select: mockSelect },
-    tenantsTable: { id: "id_col", mspId: "mspId_col" },
-    mspStaffCustomerScopesTable: { customerId: "customerId_col", staffUserId: "staffUserId_col" },
+    tenantsTable,
+    mspStaffCustomerScopesTable,
+    mspRolesTable,
+    mspFeatureRoleMappingTable,
   },
 });
 
@@ -45,6 +116,7 @@ mock.module("drizzle-orm", {
     and: (..._args: unknown[]) => "and_clause",
     eq: (_col: unknown, _val: unknown) => "eq_clause",
     isNull: (_col: unknown) => "isNull_clause",
+    inArray: (_col: unknown, _vals: unknown) => "inArray_clause",
     gt: (_col: unknown, _val: unknown) => "gt_clause",
   },
 });

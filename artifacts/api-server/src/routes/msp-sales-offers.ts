@@ -35,6 +35,7 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, asc, inArray } from "drizzle-orm";
 import { requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth";
+import { userClearsLadderFloor } from "../middlewares/rbac-ladder.ts";
 import { requirePlanFeature } from "../lib/msp-entitlement";
 import {
   runSalesOfferEngineForTenant,
@@ -105,7 +106,7 @@ router.get(
 // SSE channel for real-time offer state changes.
 // EventSource cannot set Authorization headers, so we accept the JWT via ?token=.
 
-router.get("/msp/sales-offers/sse", (req: Request, res: Response): void => {
+router.get("/msp/sales-offers/sse", async (req: Request, res: Response): Promise<void> => {
   const token = String(req.query["token"] ?? "");
   const secret = process.env["JWT_SECRET"];
   if (!token || !secret) {
@@ -121,9 +122,18 @@ router.get("/msp/sales-offers/sse", (req: Request, res: Response): void => {
     return;
   }
 
-  const effectiveMspRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
-  const ROLE_ORDER = ["Assessment", "Free", "CustomerUser", "ServiceAccount", "MSPOperator", "MSPAdmin", "PlatformAdmin"];
-  if (ROLE_ORDER.indexOf(effectiveMspRole ?? "") < ROLE_ORDER.indexOf("MSPOperator")) {
+  // #2458 — this route cannot use requireRole (EventSource sets no Authorization
+  // header, so it verifies the ?token= JWT itself), and it had grown its own
+  // hand-copied ROLE_ORDER array to reproduce requireRole("MSPOperator") inline. A
+  // second copy of the ladder is exactly the drift #1696 is about: it would have kept
+  // answering from a stale array after the real gate moved onto the database. It now
+  // asks the same evaluator requireRole asks, with the same MSPOperator floor.
+  const outcome = await userClearsLadderFloor(user, "MSPOperator");
+  if (outcome.kind === "unavailable") {
+    apiError(res, 503, ApiErrorCode.INTERNAL, "Authorization is temporarily unavailable");
+    return;
+  }
+  if (outcome.kind !== "allow") {
     apiError(res, 403, ApiErrorCode.FORBIDDEN, "Insufficient privileges");
     return;
   }

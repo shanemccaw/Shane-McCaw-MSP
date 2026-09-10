@@ -43,7 +43,7 @@ import {
   ladderCapabilityDescription,
   ladderCapabilityKey,
   ladderCapabilityLabel,
-} from "./legacy-ladder";
+} from "./legacy-ladder.ts";
 
 /** The two identity systems. Separate tables, separate admins, shared mechanism. */
 export const RBAC_SYSTEMS = ["msp", "customer"] as const;

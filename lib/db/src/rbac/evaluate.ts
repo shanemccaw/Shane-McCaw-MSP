@@ -43,7 +43,7 @@
  * own stated finish line. Loading the rows is ./load.ts's job.
  */
 
-import { isKnownCapability, type RbacSystem } from "./capabilities";
+import { isKnownCapability, type RbacSystem } from "./capabilities.ts";
 
 /**
  * One `*_feature_role_mapping` row, already decoded.

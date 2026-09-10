@@ -73,7 +73,8 @@ import {
   type MspRole,
 } from "@workspace/db";
 import { eq, and, desc, isNull, inArray, gte, lt, count } from "drizzle-orm";
-import { requireAuth, requireRole, roleIndex, effectiveMspRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireRole, effectiveMspRole } from "../middlewares/requireAuth.ts";
+import { roleClearsLadderFloor } from "../middlewares/rbac-ladder.ts";
 import { z } from "zod";
 import { randomBytes, createHash, randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
@@ -110,12 +111,37 @@ function apiError(res: Response, status: number, message: string) {
 // `["MSPAdmin", "MSPOperator"]`), generalized to a real role-index ceiling so
 // a peer or higher-privileged target is rejected regardless of which two
 // tiers are involved, not just the PlatformAdmin case.
-function targetOutranksOrEqualsCaller(req: Request, targetRole: MspRole | null | undefined): boolean {
-  return roleIndex(targetRole ?? undefined) >= roleIndex(effectiveMspRole(req.user!));
+//
+// #2458 — this was `roleIndex(target) >= roleIndex(caller)`, the last request-path
+// reader of the ROLE_ORDER index comparison outside requireRole itself. It now asks
+// the same evaluator requireRole asks, because the two questions are the same
+// question: "does the target clear the caller's own rung?" is exactly the ladder
+// capability of the caller's rung, evaluated with the TARGET as the principal.
+// `ladder.msp-admin`'s allow set is {MSPAdmin, PlatformAdmin}, so an MSPAdmin caller
+// rejects an MSPAdmin or PlatformAdmin target and permits an MSPOperator — identical
+// to the index comparison, and it now moves with the data instead of against it.
+//
+// Both fail-closed edges of the old arithmetic are preserved on purpose, since this
+// function returning `true` is what REJECTS:
+//   - caller holds no recognised rung → old `idx(target) >= -1` was always true, so
+//     the action was always rejected. Kept explicitly below.
+//   - target holds no recognised rung → old `-1 >= idx(caller)` was false, so the
+//     action was permitted; the evaluator returns `unset` (default deny) for a
+//     principal holding no role, which is the same answer.
+async function targetOutranksOrEqualsCaller(req: Request, targetRole: MspRole | null | undefined): Promise<boolean> {
+  const callerRole = effectiveMspRole(req.user!);
+  // No rung to compare against — reject, exactly as roleIndex()'s -1 floor did.
+  if (!callerRole) return true;
+
+  const outcome = await roleClearsLadderFloor(targetRole ?? null, callerRole);
+  // Unreadable model — reject. This guard exists to stop a privilege escalation
+  // (Git #3032); "could not check" must never resolve to "go ahead".
+  if (outcome.kind === "unavailable") return true;
+  return outcome.kind === "allow";
 }
 
-function rejectIfTargetOutranksCaller(req: Request, res: Response, targetRole: MspRole | null | undefined): boolean {
-  if (targetOutranksOrEqualsCaller(req, targetRole)) {
+async function rejectIfTargetOutranksCaller(req: Request, res: Response, targetRole: MspRole | null | undefined): Promise<boolean> {
+  if (await targetOutranksOrEqualsCaller(req, targetRole)) {
     apiError(res, 403, "Cannot perform this action on a user with equal or higher privileges");
     return true;
   }
@@ -836,7 +862,7 @@ router.post("/msp/settings/users/:userId/reset-password", requireRole("MSPAdmin"
     .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
-  if (rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
+  if (await rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
 
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + MSP_RESET_TOKEN_TTL_MS);
@@ -874,7 +900,7 @@ router.post("/msp/settings/users/:userId/temp-password", requireRole("MSPAdmin")
     .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
-  if (rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
+  if (await rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
 
   const tempPassword = `Temp-${randomBytes(6).toString("hex").toUpperCase()}!9`;
   const passwordHash = await bcrypt.hash(tempPassword, 12);
@@ -903,7 +929,7 @@ router.post("/msp/settings/users/:userId/reset-mfa", requireRole("MSPAdmin"), as
     .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
-  if (rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
+  if (await rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
 
   const enrollments = await db
     .select({ method: mfaEnrollmentsTable.method })
@@ -961,7 +987,7 @@ router.patch("/msp/settings/users/:userId/mfa-enforcement", requireRole("MSPAdmi
     .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
-  if (rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
+  if (await rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
 
   await db
     .update(usersTable)
@@ -1000,7 +1026,7 @@ router.patch("/msp/settings/users/:userId/status", requireRole("MSPAdmin"), asyn
     .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
-  if (rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
+  if (await rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
 
   await db
     .update(usersTable)

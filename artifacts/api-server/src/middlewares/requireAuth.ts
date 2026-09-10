@@ -4,6 +4,7 @@ import { db, tenantsTable, mspStaffCustomerScopesTable, type MspRole } from "@wo
 import { and, eq } from "drizzle-orm";
 import { enrichRequestContext } from "../lib/request-context.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { userClearsLadderFloor } from "./rbac-ladder.ts";
 
 export interface AuthUser {
   id: number;
@@ -73,11 +74,44 @@ declare global {
 }
 
 // ── MSP role hierarchy ─────────────────────────────────────────────────────────
-// Higher index = higher privilege. Used by requireRole() range checks.
-// "Assessment" and "Free" share the bottom tier (both below CustomerUser): every
-// requireRole() floor in the codebase is CustomerUser or higher, so both are
-// rejected identically. Assessment is placed at the absolute bottom so it can
-// never resolve to a higher privilege than Free under index comparison.
+// Higher index = higher privilege. "Assessment" and "Free" share the bottom tier
+// (both below CustomerUser): every requireRole() floor in the codebase is
+// CustomerUser or higher, so both are rejected identically. Assessment is placed
+// at the absolute bottom so it can never resolve to a higher privilege than Free
+// under index comparison.
+//
+// #2458 — NO LONGER READ ON THE REQUEST PATH. requireRole() now decides from the
+// seeded `ladder.*` mapping rows via ./rbac-ladder.ts, and the last two request-path
+// readers of this ordering (the msp-sales-offers SSE route's hand-copied ROLE_ORDER
+// and msp-settings' target-role ceiling check) went with it. What remains is:
+//   - `LEGACY_ROLE_ORDER` in @workspace/db/rbac, which #2457's seed and its parity
+//     check are computed from, and which `legacy-ladder.test.ts` asserts still matches
+//     this array exactly — so if this array is edited without reseeding, that test
+//     fails loudly rather than the two models silently disagreeing;
+//   - `roleIndex`/`effectiveMspRole` below, kept exported for the reason each states.
+// Retiring the array itself is #2460, once MSP_ROLES has no readers at all.
+//
+// The two ordering artifacts #1696 flagged are settled here rather than left to be
+// rediscovered, and BOTH are deliberately carried forward:
+//
+//  1. `ServiceAccount` sits ABOVE `CustomerUser`, so a machine credential clears every
+//     floor a human customer clears. #1696 records this as "an artifact of jamming
+//     account type into the same ordering as permission level, not a decision anyone
+//     made", and #2458 asks whether it is still relied upon. It is: the real code
+//     treats a ServiceAccount as MSP-side infrastructure, not as a customer —
+//     subscription-gate.ts:119 lists it in OPERATOR_ROLES, msp-ownership.ts:69 in
+//     MSP_SCOPED_ROLES, msp-/portal-remediation-tracker-export.ts in MSP_STAFF_ROLES,
+//     and event-bus.ts:221 mints ServiceAccount actors. Demoting it below CustomerUser
+//     would strip it of the 238 `requireRole("CustomerUser")` and 122
+//     `requireRole("Assessment")` routes at once. So the rung order is transcribed
+//     as-is; expressing "machine credential" as its own capability set rather than a
+//     rung is what the lattice is for, and belongs to #2459/#2460.
+//
+//  2. `user.role === "admin"` → `PlatformAdmin`. Carried forward deliberately, in
+//     ./rbac-ladder.ts via `effectiveLegacyRole` (the cited transcription), with a test
+//     asserting it agrees with `effectiveMspRole` below for every principal shape.
+//     One real user holds `role = 'admin'` today; dropping the promotion would lock it
+//     out of all 35 `requireRole("PlatformAdmin")` routes.
 const ROLE_ORDER: MspRole[] = [
   "Assessment",
   "Free",
@@ -88,10 +122,16 @@ const ROLE_ORDER: MspRole[] = [
   "PlatformAdmin",
 ];
 
-// Exported so routes that need a target-role ceiling check (e.g. "the target
-// of this action must outrank neither the caller nor a fixed floor") can
-// reuse the exact same ordering/index logic requireRole() enforces on the
-// caller side, instead of hand-rolling a second comparison (Git #3032).
+// Was exported for the target-role ceiling check (Git #3032) so it could reuse the
+// exact comparison requireRole() made, instead of hand-rolling a second one.
+//
+// #2458 — that consumer (msp-settings.ts's `targetOutranksOrEqualsCaller`) now asks
+// the evaluator the same question through `roleClearsLadderFloor`, so this has no
+// remaining request-path caller. Kept exported, not deleted, for two honest reasons:
+// the ladder-vs-evaluator agreement tests compare against it directly, and removing a
+// public export is #2460's grep-verified retirement, not this step's. Do NOT add a new
+// caller — a fresh ordering comparison here would be a rule the database does not know
+// about, which is the whole failure #1696 exists to end.
 export function roleIndex(role: MspRole | undefined): number {
   if (!role) return -1;
   return ROLE_ORDER.indexOf(role);
@@ -214,21 +254,53 @@ export function requireAdminOrIngestToken(envVar = "BUILD_TRACKER_INGEST_TOKEN")
  *
  * Example:
  *   router.get("/msps", requireRole("MSPAdmin"), handler);
+ *
+ * ── #2458: the decision moved, the signature did not ────────────────────────
+ * The answer no longer comes from the `ROLE_ORDER` index comparison below — it
+ * comes from the seeded `ladder.*` feature→role mapping rows, through the shared
+ * RBAC evaluator, in `./rbac-ladder.ts` (read its header for why the principal is
+ * still identified from the JWT and why the rows are read platform-scoped only).
+ * This function's signature, its 403 body and all 616 real call sites in
+ * `src/routes` are untouched, which is exactly #1696's migration step 3.
+ *
+ * The returned middleware is now async internally. Express ignores a middleware's
+ * return value, and every path below either calls `next()` or writes a response —
+ * nothing can reject out of it — which is the same shape `requireCustomerScope`
+ * has always had.
  */
 export function requireRole(minimumRole: MspRole) {
   return (req: Request, res: Response, next: NextFunction): void => {
     requireAuth(req, res, () => {
-      const user = req.user!;
+      void (async () => {
+        try {
+          const outcome = await userClearsLadderFloor(req.user!, minimumRole);
 
-      // Legacy admin users (role === "admin") treated as PlatformAdmin
-      const effectiveRole: MspRole | undefined =
-        user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+          if (outcome.kind === "allow") {
+            next();
+            return;
+          }
 
-      if (roleIndex(effectiveRole) < roleIndex(minimumRole)) {
-        apiError(res, 403, ApiErrorCode.FORBIDDEN, `Insufficient privileges — ${minimumRole} or above required`);
-        return;
-      }
-      next();
+          if (outcome.kind === "unavailable") {
+            // NOT a denial: the model could not be consulted at all. Answering 403
+            // here would report a configuration failure (typically an environment
+            // where #2457's seed has not been run) as a permission decision, which
+            // is the one thing that would make this cutover undiagnosable.
+            req.log?.error(
+              { minimumRole, reason: outcome.reason },
+              "requireRole could not consult the RBAC model — failing closed",
+            );
+            apiError(res, 503, ApiErrorCode.INTERNAL, "Authorization is temporarily unavailable");
+            return;
+          }
+
+          apiError(res, 403, ApiErrorCode.FORBIDDEN, `Insufficient privileges — ${minimumRole} or above required`);
+        } catch (err) {
+          // Unreachable by design — userClearsLadderFloor catches its own errors —
+          // but an authorization path does not get to throw an unhandled rejection.
+          req.log?.error({ err, minimumRole }, "requireRole threw unexpectedly — failing closed");
+          apiError(res, 503, ApiErrorCode.INTERNAL, "Authorization is temporarily unavailable");
+        }
+      })();
     });
   };
 }

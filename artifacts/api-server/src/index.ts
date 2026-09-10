@@ -25,6 +25,7 @@ import { insightsGeneratedDocumentsTable, wfRunsTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { failOrphanedTestSuiteRuns } from "./lib/test-suite-runner";
 import { installAiUsageSink } from "./lib/ai-usage-sink";
+import { primeLadderSnapshot } from "./middlewares/rbac-ladder.ts";
 
 // Install the AI usage sink before anything else can reach the model. The
 // metered Anthropic client buffers records emitted before this point and
@@ -97,6 +98,14 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  // #2458 — requireRole now decides from the seeded `ladder.*` mapping rows. Load
+  // that snapshot immediately so a database where #2457's seed has not been run is
+  // reported once, here, at boot — instead of first surfacing as a 503 on whichever
+  // gated route a user happens to hit. Deliberately does NOT exit: the routes that
+  // need no role gate (marketing, public, webhooks) are still serviceable, and
+  // primeLadderSnapshot never throws.
+  void primeLadderSnapshot();
 
   failOrphanedTestSuiteRuns().catch((err) => {
     logger.warn({ err }, "Orphaned test-suite-run sweep failed (non-fatal)");
