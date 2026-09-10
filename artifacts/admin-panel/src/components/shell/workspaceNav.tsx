@@ -20,7 +20,6 @@ import {
   ClipboardList,
   PenLine,
   Flag,
-  CheckSquare,
   Link2,
   Plug,
   UserPlus,
@@ -131,7 +130,6 @@ const MARKETING_ITEMS: TreeItem[] = [
   { id: "mkt-content", label: "Content Hub", path: `${MARKETING}?tab=content`, icon: PenLine },
   { id: "mkt-campaigns", label: "Campaigns", path: `${MARKETING}?tab=campaigns`, icon: Flag },
   { id: "mkt-analytics", label: "Analytics", path: `${MARKETING}?tab=analytics`, icon: BarChart3 },
-  { id: "mkt-tasks", label: "Tasks", path: `${MARKETING}?tab=tasks`, icon: CheckSquare },
   {
     id: "mkt-more", label: "More", icon: SlidersHorizontal,
     children: [
