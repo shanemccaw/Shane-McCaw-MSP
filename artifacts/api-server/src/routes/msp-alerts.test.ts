@@ -51,6 +51,7 @@ vi.mock("@workspace/db", () => ({
   policyRuleIncidentsTable: {
     id: "id", ruleId: "ruleId", customerId: "customerId", mspId: "mspId", status: "status",
     currentLevel: "currentLevel", openedAt: "openedAt", lastEscalatedAt: "lastEscalatedAt",
+    resolvedAt: "resolvedAt", resolvedByUserId: "resolvedByUserId",
   },
   policyRulesTable: { id: "id", name: "name", severity: "severity", conditionType: "conditionType" },
   // Per-staff customer-access scoping table (read by resolveStaffScopedCustomerIds).
@@ -69,15 +70,20 @@ vi.mock("../lib/logger", () => {
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
+const mockCreateAuditLog = vi.fn();
+vi.mock("../lib/audit", () => ({ createAuditLog: (...args: unknown[]) => mockCreateAuditLog(...args) }));
+
 import { db } from "@workspace/db";
 import router from "./msp-alerts";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;
+const mockUpdate = ((db as unknown as { update?: ReturnType<typeof vi.fn> }).update ??=
+  vi.fn()) as ReturnType<typeof vi.fn>;
 
 /** Drizzle-style fluent chain, thenable at any point, resolving to `rows`. */
 function buildChain(rows: unknown[]) {
   const chain: Record<string, unknown> = {};
-  for (const m of ["from", "where", "orderBy", "limit", "innerJoin"]) {
+  for (const m of ["from", "where", "orderBy", "limit", "innerJoin", "set", "returning"]) {
     chain[m] = vi.fn().mockReturnValue(chain);
   }
   chain["then"] = (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
@@ -288,5 +294,111 @@ describe("GET /msp/alerts", () => {
     expect(res.body.total).toBe(1);
     expect(res.body.alerts[0].customerId).toBe(1);
     expect(res.body.alerts[0].source).toBe("policy_incident");
+  });
+});
+
+describe("POST /msp/alerts/:alertId/acknowledge", () => {
+  const openRow = { id: 501, mspId: MSP_ID, customerId: 1, status: "open", currentLevel: 2, ruleId: 7 };
+
+  beforeEach(() => {
+    mockCreateAuditLog.mockReset();
+    mockUpdate.mockReset();
+  });
+
+  it("rejects unauthenticated requests", async () => {
+    const res = await request(makeApp()).post("/msp/alerts/incident-501/acknowledge");
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects roles below MSPOperator", async () => {
+    const res = await request(makeApp())
+      .post("/msp/alerts/incident-501/acknowledge")
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, "CustomerUser")}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("resolves the real policy_rule_incidents row and audit-logs it — no parallel status invented", async () => {
+    mockSelect.mockReturnValueOnce(buildChain([openRow])); // incident lookup
+    mockSelect.mockReturnValueOnce(buildChain([])); // staff scope: unrestricted
+    const updatedRow = { id: 501, status: "resolved", resolvedAt: new Date("2026-09-09T23:59:00Z") };
+    mockUpdate.mockReturnValueOnce(buildChain([updatedRow]));
+
+    const res = await request(makeApp())
+      .post("/msp/alerts/incident-501/acknowledge")
+      .set("Authorization", `Bearer ${mspToken(MSP_ID)}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: "incident-501", status: "resolved" });
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockCreateAuditLog).toHaveBeenCalledTimes(1);
+    expect(mockCreateAuditLog.mock.calls[0][0]).toMatchObject({
+      actionType: "msp_alerts.incident.acknowledged",
+      entityType: "policy_rule_incident",
+      entityId: 501,
+    });
+  });
+
+  it("is idempotent for an already-resolved incident (no second write)", async () => {
+    mockSelect.mockReturnValueOnce(buildChain([{ ...openRow, status: "resolved" }]));
+    mockSelect.mockReturnValueOnce(buildChain([])); // staff scope: unrestricted
+
+    const res = await request(makeApp())
+      .post("/msp/alerts/incident-501/acknowledge")
+      .set("Authorization", `Bearer ${mspToken(MSP_ID)}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: "incident-501", status: "resolved" });
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("404s an incident belonging to a different MSP rather than leaking its existence", async () => {
+    mockSelect.mockReturnValueOnce(buildChain([{ ...openRow, mspId: 999 }]));
+
+    const res = await request(makeApp())
+      .post("/msp/alerts/incident-501/acknowledge")
+      .set("Authorization", `Bearer ${mspToken(MSP_ID)}`);
+
+    expect(res.status).toBe(404);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("404s when the row doesn't exist", async () => {
+    mockSelect.mockReturnValueOnce(buildChain([]));
+
+    const res = await request(makeApp())
+      .post("/msp/alerts/incident-9999/acknowledge")
+      .set("Authorization", `Bearer ${mspToken(MSP_ID)}`);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("404s for a scoped operator whose assigned customers don't include this incident's customer", async () => {
+    mockSelect.mockReturnValueOnce(buildChain([openRow])); // incident lookup, customerId 1
+    mockSelect.mockReturnValueOnce(buildChain([{ customerId: 2 }])); // staff scope: only customer 2
+
+    const res = await request(makeApp())
+      .post("/msp/alerts/incident-501/acknowledge")
+      .set("Authorization", `Bearer ${mspToken(MSP_ID)}`);
+
+    expect(res.status).toBe(404);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("400s a diagnostic-finding alert id — genuinely no resolution mechanism exists to drive, not invented here", async () => {
+    const res = await request(makeApp())
+      .post("/msp/alerts/finding-abc123/acknowledge")
+      .set("Authorization", `Bearer ${mspToken(MSP_ID)}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toMatch(/no per-item acknowledge mechanism/i);
+    expect(mockSelect).not.toHaveBeenCalled();
+  });
+
+  it("400s an unrecognized alert id", async () => {
+    const res = await request(makeApp())
+      .post("/msp/alerts/garbage/acknowledge")
+      .set("Authorization", `Bearer ${mspToken(MSP_ID)}`);
+
+    expect(res.status).toBe(400);
   });
 });

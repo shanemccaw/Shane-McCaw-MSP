@@ -18,7 +18,27 @@
  *     single customer, extended across the MSP's book.
  *
  * Routes (MSPOperator+, mspId from JWT claim via resolveMspIdStrict):
- *   GET /api/msp/alerts — merged, filterable (severity/category/customerId), paginated
+ *   GET  /api/msp/alerts                      — merged, filterable (severity/category/customerId), paginated
+ *   POST /api/msp/alerts/:alertId/acknowledge — real acknowledge/dismiss (Git #3366)
+ *
+ * Git #3366 — real audit before building the acknowledge action: each source
+ * table was checked for an existing real resolution mechanism rather than
+ * inventing a parallel "alerts" status.
+ *   - policy_rule_incidents: the Signal Policy Engine (policy-engine.ts,
+ *     evaluateAllPolicies) already owns status="open"→"resolved" — it
+ *     auto-resolves an incident the moment its rule stops firing. No manual,
+ *     operator-triggered transition existed. The acknowledge route below
+ *     drives that SAME real status transition manually (adding only
+ *     resolved_by_user_id to tell manual from automatic apart — see the
+ *     #3366 migration) rather than inventing a new status. If the rule is
+ *     still firing on the next evaluation cycle, a fresh "open" incident is
+ *     correctly reopened — acknowledging does not suppress a real recurrence.
+ *   - msp_diagnostic_findings: genuinely has NO resolution mechanism anywhere
+ *     in this codebase — individual finding rows are immutable historical
+ *     scan output with no status column and no per-finding lifecycle. Per
+ *     this issue's own instruction, that gap is flagged as a separate finding
+ *     (see the issue comment) rather than invented here; acknowledging a
+ *     "finding-*" alert id returns 400 with that context.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -31,9 +51,11 @@ import {
   policyRulesTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
-import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireRole, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
+import { apiError, ApiErrorCode } from "../lib/api-helpers";
+import { createAuditLog } from "../lib/audit";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -235,6 +257,100 @@ router.get("/msp/alerts", requireRole("MSPOperator"), async (req: Request, res: 
   } catch (err) {
     log.error({ err }, "msp-alerts: GET /msp/alerts failed");
     res.status(500).json({ error: "Failed to fetch alerts" });
+  }
+});
+
+// ── POST /msp/alerts/:alertId/acknowledge ───────────────────────────────────
+// `alertId` is exactly the composite id GET /msp/alerts already returns
+// ("incident-<id>" / "finding-<findingId>") so a caller never needs to know
+// which source table backs a given row — it acts on the id it was just shown.
+router.post("/msp/alerts/:alertId/acknowledge", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+  try {
+    const mspId = resolveMspIdStrict(req);
+    if (mspId === null) {
+      apiError(res, 403, ApiErrorCode.FORBIDDEN, "MSP context required");
+      return;
+    }
+
+    const alertId = String(req.params["alertId"] ?? "");
+    const incidentMatch = /^incident-(\d+)$/.exec(alertId);
+    const findingMatch = /^finding-/.exec(alertId);
+
+    if (findingMatch) {
+      // Real audit finding (see file header): msp_diagnostic_findings has no
+      // resolution mechanism anywhere in this codebase to drive. Flagged as
+      // its own issue rather than invented here — do not build a parallel
+      // status for it in this handler.
+      apiError(
+        res,
+        400,
+        ApiErrorCode.VALIDATION,
+        "Diagnostic findings have no per-item acknowledge mechanism yet — see the linked Git issue filed from #3366's audit.",
+      );
+      return;
+    }
+
+    if (!incidentMatch) {
+      apiError(res, 400, ApiErrorCode.VALIDATION, "Unrecognized alert id");
+      return;
+    }
+
+    const incidentId = Number(incidentMatch[1]);
+
+    const [incident] = await db
+      .select({
+        id: policyRuleIncidentsTable.id,
+        mspId: policyRuleIncidentsTable.mspId,
+        customerId: policyRuleIncidentsTable.customerId,
+        status: policyRuleIncidentsTable.status,
+        currentLevel: policyRuleIncidentsTable.currentLevel,
+        ruleId: policyRuleIncidentsTable.ruleId,
+      })
+      .from(policyRuleIncidentsTable)
+      .where(eq(policyRuleIncidentsTable.id, incidentId))
+      .limit(1);
+
+    if (!incident || incident.mspId !== mspId) {
+      // Same 404 whether the row doesn't exist or belongs to another MSP —
+      // never confirm cross-MSP existence to the caller.
+      apiError(res, 404, ApiErrorCode.NOT_FOUND, "Alert not found");
+      return;
+    }
+
+    if (incident.customerId !== null && (await isCustomerBlockedByStaffScope(req.user!, incident.customerId))) {
+      apiError(res, 404, ApiErrorCode.NOT_FOUND, "Alert not found");
+      return;
+    }
+
+    if (incident.status === "resolved") {
+      // Idempotent — acknowledging an already-resolved incident (auto or
+      // manual) is a no-op success, not an error.
+      res.json({ id: `incident-${incident.id}`, status: "resolved" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(policyRuleIncidentsTable)
+      .set({ status: "resolved", resolvedAt: new Date(), resolvedByUserId: req.user!.id })
+      .where(eq(policyRuleIncidentsTable.id, incidentId))
+      .returning();
+
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: req.user!.role,
+      actionType: "msp_alerts.incident.acknowledged",
+      entityType: "policy_rule_incident",
+      entityId: incident.id,
+      metadata: { mspId, customerId: incident.customerId, ruleId: incident.ruleId, escalationLevel: incident.currentLevel },
+    });
+
+    log.info({ incidentId: incident.id, mspId, userId: req.user!.id }, "msp-alerts: incident manually acknowledged");
+
+    res.json({ id: `incident-${updated.id}`, status: updated.status, resolvedAt: updated.resolvedAt });
+  } catch (err) {
+    log.error({ err }, "msp-alerts: POST /msp/alerts/:alertId/acknowledge failed");
+    res.status(500).json({ error: "Failed to acknowledge alert" });
   }
 });
 

@@ -3982,6 +3982,16 @@ export const policyRuleIncidentsTable = pgTable("policy_rule_incidents", {
   openedAt: timestamp("opened_at").notNull().defaultNow(),
   lastEscalatedAt: timestamp("last_escalated_at"),
   resolvedAt: timestamp("resolved_at"),
+  // #3366 — Git #1571's MSP Console Alerts feed acknowledge action. Null means
+  // this incident was auto-resolved by the policy engine's own sweep
+  // (policy-engine.ts, evaluateAllPolicies) because the underlying condition
+  // cleared; non-null records the MSP staff user (users.id) who manually
+  // acknowledged/dismissed it via POST /msp/alerts/:alertId/acknowledge before
+  // the condition necessarily cleared. Reuses the existing "resolved" status —
+  // deliberately NOT a third status value — so an acknowledged incident whose
+  // rule still fires on the next evaluation cycle correctly reopens as a new
+  // "open" incident rather than staying silently closed.
+  resolvedByUserId: integer("resolved_by_user_id"),
 }, (table) => ({
   ruleCustomerStatusIdx: index("policy_rule_incidents_rule_customer_status_idx").on(table.ruleId, table.customerId, table.status),
 }));
