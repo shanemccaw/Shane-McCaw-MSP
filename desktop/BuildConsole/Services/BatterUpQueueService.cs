@@ -60,6 +60,13 @@ namespace BuildConsole.Services
         /// <summary>Git #1997 — the id of the dead <see cref="TrackedTerminalStatus"/> row, so a manual
         /// Queue click re-queues that exact row (reuseRowId) instead of inserting a duplicate.</summary>
         public int? TrackedTerminalRowId { get; init; }
+        /// <summary>Git #3336 — this item's resolved top-level Epic ancestor (see
+        /// <see cref="EpicResolver"/>), walked from the mirror's real <c>parent_number</c> chain. Null
+        /// when the chain resolves to nothing — a real top-level Epic itself, or a genuinely
+        /// un-parented issue; the panel groups these under a real "Ungrouped"/"No Epic" section, never
+        /// silently.</summary>
+        public int? EpicNumber { get; init; }
+        public string? EpicTitle { get; init; }
     }
 
     /// <summary>
@@ -428,6 +435,17 @@ namespace BuildConsole.Services
 
             var (boardItems, fromMirror, mirrorRows) = await GetBatterUpBoardItemsAsync(gh, log);
             var rows = new List<BatterUpRow>();
+
+            // Git #3336 — resolve each item's real top-level Epic ancestor, mirror-first: the mirror
+            // path already carries each row's own ParentNumber; the degraded live-walk fallback does
+            // not, so re-fetch it from the (still-real, still-local) mirror regardless of path — a
+            // cheap local Postgres read, no live GitHub cost either way.
+            var parentByNumber = fromMirror
+                ? mirrorRows.ToDictionary(m => m.Number, m => m.ParentNumber)
+                : (await GitHubIssueMirror.GetManyAsync(boardItems.Select(b => b.Number).ToList()))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value.ParentNumber);
+            var resolvedEpics = await EpicResolver.ResolveTopEpicsAsync(
+                boardItems.Select(b => (b.Number, parentByNumber.TryGetValue(b.Number, out var pn) ? pn : (int?)null)));
             // Git #1997 — count of items genuinely hidden this pass because they hold a LIVE (or
             // already-landed) queue row. Surfaced in the panel header so "nothing in this lane" and
             // "everything in this lane is hidden" are distinguishable at a glance.
@@ -524,6 +542,8 @@ namespace BuildConsole.Services
                 var satisfiedByBookendNumbers = openBlockedByNumbers.Where(n => satisfiedByBookend.Contains(n)).ToList();
                 var blockingNumbers = openBlockedByNumbers.Where(n => !satisfiedByBookend.Contains(n)).ToList();
 
+                resolvedEpics.TryGetValue(item.Number, out var epic);
+
                 if (rawComment == null)
                 {
                     log($"Batter Up #{item.Number} \"{item.Title}\" — no BUILD: comment yet, listed but not auto-queued.");
@@ -537,6 +557,8 @@ namespace BuildConsole.Services
                         OpenBlockedByNumbers = openBlockedByNumbers,
                         SatisfiedByBookendNumbers = satisfiedByBookendNumbers,
                         BlockingNumbers = blockingNumbers,
+                        EpicNumber = epic?.Number,
+                        EpicTitle = epic?.Title,
                     });
                     continue;
                 }
@@ -593,6 +615,8 @@ namespace BuildConsole.Services
                     JustAutoQueued = false,
                     TrackedTerminalStatus = trackedTerminalStatus,
                     TrackedTerminalRowId = trackedTerminalRowId,
+                    EpicNumber = epic?.Number,
+                    EpicTitle = epic?.Title,
                 });
             }
 

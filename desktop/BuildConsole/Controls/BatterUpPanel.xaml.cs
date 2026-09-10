@@ -273,18 +273,66 @@ namespace BuildConsole.Controls
 
             Border? toSelect = null;
             int toSelectNumber = 0;
-            foreach (var row in visibleList)
+            // Git #3336 — group the (already filtered/state-sorted) rows by resolved top Epic, real
+            // header per group (Epic number + title). Rows with no resolved Epic land in a real,
+            // clearly-labeled "No Epic" group instead of being silently mixed in or dropped. Groups
+            // sort by Epic number ascending, "No Epic" last — the within-group order (board order, or
+            // StatePriority when sort-by-state is on) is preserved from visibleList.
+            foreach (var epicGroup in GroupByEpic(visibleList))
             {
-                var card = BuildBatterUpCard(row);
-                RowsList.Children.Add(card);
-                if (row.Number == _selectedNumber || (toSelect == null && _selectedNumber == null))
+                RowsList.Children.Add(BuildEpicGroupHeader(epicGroup.Label));
+                foreach (var row in epicGroup.Rows)
                 {
-                    toSelect = card;
-                    toSelectNumber = row.Number;
+                    var card = BuildBatterUpCard(row);
+                    RowsList.Children.Add(card);
+                    if (row.Number == _selectedNumber || (toSelect == null && _selectedNumber == null))
+                    {
+                        toSelect = card;
+                        toSelectNumber = row.Number;
+                    }
                 }
             }
             if (toSelect != null) SelectCard(toSelect, toSelectNumber);
         }
+
+        /// <summary>Git #3336 — one real Epic-header group of rows, in on-screen order.</summary>
+        private readonly struct EpicRowGroup
+        {
+            public string Label { get; init; }
+            public List<Services.BatterUpRow> Rows { get; init; }
+        }
+
+        /// <summary>
+        /// Groups <paramref name="rows"/> by resolved top Epic (<see cref="Services.BatterUpRow.EpicNumber"/>),
+        /// preserving each row's relative order within its group. Real Epics sort ascending by number;
+        /// the "No Epic" group (rows with no resolved Epic — a real top-level Epic itself, or a
+        /// genuinely un-parented issue) always renders last, never silently merged or hidden.
+        /// </summary>
+        private static List<EpicRowGroup> GroupByEpic(IEnumerable<Services.BatterUpRow> rows)
+        {
+            var groups = rows
+                .GroupBy(r => r.EpicNumber)
+                .OrderBy(g => g.Key.HasValue ? 0 : 1)
+                .ThenBy(g => g.Key ?? int.MaxValue)
+                .Select(g => new EpicRowGroup
+                {
+                    Label = g.Key.HasValue ? $"#{g.Key} — {g.First().EpicTitle}" : "No Epic",
+                    Rows = g.ToList(),
+                })
+                .ToList();
+            return groups;
+        }
+
+        /// <summary>Git #3336 — a real, bold section header naming the resolved Epic (or "No Epic")
+        /// a following block of rows/cards belongs to.</summary>
+        private static TextBlock BuildEpicGroupHeader(string label) => new()
+        {
+            Text = label,
+            FontSize = 11,
+            FontWeight = FontWeights.Bold,
+            Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+            Margin = new Thickness(4, 10, 0, 4),
+        };
 
         /// <summary>Git #1870 — the toggle's label/colour must make the gate state unmistakable on
         /// its own (green "▶ Free flow" when open, peach "⏸ Gated" when closed), reinforcing the

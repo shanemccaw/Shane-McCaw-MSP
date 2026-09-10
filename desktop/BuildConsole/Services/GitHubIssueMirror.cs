@@ -213,6 +213,13 @@ namespace BuildConsole.Services
             public List<int> BlockingNumbers { get; init; } = new();
             public string HtmlUrl { get; init; } = "";
             public DateTime LastSyncedAt { get; init; }
+            /// <summary>Git #3336 — the issue's real GitHub-native IMMEDIATE parent (a Feature, for
+            /// most real issues; a Feature's own ParentNumber points at its Epic), already persisted
+            /// via #3358's Git Board sync and read back here for every mirror-backed consumer, not
+            /// just the board. Null when the mirror has no row for this parent or the field itself is
+            /// null — never inferred. See <see cref="EpicResolver"/> for the real walk-to-top-Epic
+            /// logic built on this field.</summary>
+            public int? ParentNumber { get; init; }
 
             public bool IsOpen => string.Equals(State, "open", StringComparison.OrdinalIgnoreCase);
             public bool IsClosed => string.Equals(State, "closed", StringComparison.OrdinalIgnoreCase);
@@ -230,11 +237,12 @@ namespace BuildConsole.Services
             BlockingNumbers = r.IsDBNull(7) ? new List<int>() : r.GetFieldValue<int[]>(7).ToList(),
             HtmlUrl = r.IsDBNull(8) ? "" : r.GetString(8),
             LastSyncedAt = r.IsDBNull(9) ? DateTime.MinValue : r.GetFieldValue<DateTime>(9),
+            ParentNumber = r.IsDBNull(10) ? (int?)null : r.GetInt32(10),
         };
 
         private const string SelectColumns =
             "issue_number, title, state, board_status_option_id, board_status_name, " +
-            "labels, blocked_by_numbers, blocking_numbers, html_url, last_synced_at";
+            "labels, blocked_by_numbers, blocking_numbers, html_url, last_synced_at, parent_number";
 
         /// <summary>One issue's mirrored row, or null on a miss OR on any error (caller falls back to live).</summary>
         public static async Task<MirrorIssue?> TryGetAsync(int number)

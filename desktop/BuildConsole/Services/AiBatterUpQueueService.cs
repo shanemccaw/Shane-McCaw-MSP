@@ -19,6 +19,11 @@ namespace BuildConsole.Services
         public string? Effort { get; init; }
         public string? BuildSet { get; init; }
         public bool HasBuildComment { get; init; }
+        /// <summary>Git #3336 — this item's resolved top-level Epic ancestor (see
+        /// <see cref="EpicResolver"/>). Null when the chain resolves to nothing — the panel groups
+        /// these under a real "Ungrouped"/"No Epic" section, never silently.</summary>
+        public int? EpicNumber { get; init; }
+        public string? EpicTitle { get; init; }
     }
 
     /// <summary>
@@ -83,9 +88,16 @@ namespace BuildConsole.Services
                 gh, boardItems.Select(b => b.Number).ToList(),
                 s => ActivityLog.Log("ai-batter-up", s));
 
+            // Git #3336 — resolve each item's real top-level Epic ancestor from the local mirror's
+            // parent_number chain (a cheap local Postgres read, no live GitHub cost).
+            var parentByNumber = await GitHubIssueMirror.GetManyAsync(boardItems.Select(b => b.Number).ToList());
+            var resolvedEpics = await EpicResolver.ResolveTopEpicsAsync(
+                boardItems.Select(b => (b.Number, parentByNumber.TryGetValue(b.Number, out var m) ? m.ParentNumber : (int?)null)));
+
             foreach (var item in boardItems)
             {
                 var parsed = buildComments.TryGetValue(item.Number, out var bc) ? bc.Parsed : null;
+                resolvedEpics.TryGetValue(item.Number, out var epic);
 
                 rows.Add(new AiBatterUpRow
                 {
@@ -97,6 +109,8 @@ namespace BuildConsole.Services
                     Effort = parsed?.Effort,
                     BuildSet = parsed?.BuildSet,
                     HasBuildComment = parsed.HasValue,
+                    EpicNumber = epic?.Number,
+                    EpicTitle = epic?.Title,
                 });
             }
 

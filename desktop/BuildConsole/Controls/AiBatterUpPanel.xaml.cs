@@ -326,18 +326,61 @@ namespace BuildConsole.Controls
             // default to the top row, so the right-hand detail pane is never left blank.
             Border? toSelect = null;
             int toSelectNumber = 0;
-            foreach (var row in visibleList)
+            // Git #3336 — group by resolved top Epic, real header per group (Epic number + title).
+            // Rows with no resolved Epic land in a real "No Epic" group, never silently dropped/mixed.
+            foreach (var epicGroup in GroupByEpic(visibleList))
             {
-                var card = BuildAiBatterUpCard(row);
-                RowsList.Children.Add(card);
-                if (row.Number == _selectedNumber || (toSelect == null && _selectedNumber == null))
+                RowsList.Children.Add(BuildEpicGroupHeader(epicGroup.Label));
+                foreach (var row in epicGroup.Rows)
                 {
-                    toSelect = card;
-                    toSelectNumber = row.Number;
+                    var card = BuildAiBatterUpCard(row);
+                    RowsList.Children.Add(card);
+                    if (row.Number == _selectedNumber || (toSelect == null && _selectedNumber == null))
+                    {
+                        toSelect = card;
+                        toSelectNumber = row.Number;
+                    }
                 }
             }
             if (toSelect != null) SelectCard(toSelect, toSelectNumber);
         }
+
+        /// <summary>Git #3336 — one real Epic-header group of rows, in on-screen order.</summary>
+        private readonly struct EpicRowGroup
+        {
+            public string Label { get; init; }
+            public List<Services.AiBatterUpRow> Rows { get; init; }
+        }
+
+        /// <summary>
+        /// Groups <paramref name="rows"/> by resolved top Epic (<see cref="Services.AiBatterUpRow.EpicNumber"/>),
+        /// preserving each row's relative order within its group. Real Epics sort ascending by number;
+        /// the "No Epic" group always renders last.
+        /// </summary>
+        private static List<EpicRowGroup> GroupByEpic(IEnumerable<Services.AiBatterUpRow> rows)
+        {
+            return rows
+                .GroupBy(r => r.EpicNumber)
+                .OrderBy(g => g.Key.HasValue ? 0 : 1)
+                .ThenBy(g => g.Key ?? int.MaxValue)
+                .Select(g => new EpicRowGroup
+                {
+                    Label = g.Key.HasValue ? $"#{g.Key} — {g.First().EpicTitle}" : "No Epic",
+                    Rows = g.ToList(),
+                })
+                .ToList();
+        }
+
+        /// <summary>Git #3336 — a real, bold section header naming the resolved Epic (or "No Epic")
+        /// a following block of rows/cards belongs to.</summary>
+        private static TextBlock BuildEpicGroupHeader(string label) => new()
+        {
+            Text = label,
+            FontSize = 11,
+            FontWeight = FontWeights.Bold,
+            Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+            Margin = new Thickness(4, 10, 0, 4),
+        };
 
         /// <summary>
         /// Highlights <paramref name="card"/> (restoring whatever card was previously

@@ -195,6 +195,13 @@ namespace BuildConsole.Controls
         /// set key (case-insensitive, matching <see cref="_expandedRollupSets"/>).</summary>
         private readonly Dictionary<string, HashSet<int>> _sentVerifyingByBuildSet = new(StringComparer.OrdinalIgnoreCase);
         private const string UngroupedBuildSetKey = "Ungrouped";
+        /// <summary>Git #3336 — each real build-set key's resolved top Epic(s), computed from its
+        /// members' real GithubNumbers via <see cref="EpicResolver"/> right before every
+        /// <see cref="RenderBuildSetRollup"/> call. A set with zero distinct resolved Epics renders
+        /// under "No Epic"; more than one distinct Epic (buildSets are built from one Feature/app by
+        /// construction, but this is checked, not assumed) renders under "(mixed Epics)" instead of
+        /// silently picking one.</summary>
+        private Dictionary<string, List<EpicResolver.ResolvedEpic>> _buildSetEpics = new(StringComparer.OrdinalIgnoreCase);
         private int? _selectedQueueItemId;
         private static readonly Dictionary<int, string> _issueTitleCache = new();
         private static readonly HashSet<int> _pendingFetches = new();
@@ -983,6 +990,9 @@ namespace BuildConsole.Controls
                 {
                     _lastQueueSignature = signature;
                     if (_filter != "Tests") RenderQueue(ApplyFilter(_lastItems));
+                    // Git #3336 — resolve each build set's real top Epic(s) from the local mirror
+                    // BEFORE rendering, so the rollup below can nest under a real Epic header.
+                    _buildSetEpics = await ResolveBuildSetEpicsAsync(_lastItems);
                     // Git #1834 — independent of _filter (the rollup summarizes the whole real
                     // queue, not just whatever status the combo/DAG is currently showing).
                     RenderBuildSetRollup(_lastItems);
@@ -2861,6 +2871,80 @@ namespace BuildConsole.Controls
             return header;
         }
 
+        /// <summary>
+        /// Git #3336 — resolves each real build-set key's top Epic(s) from ONE real member issue
+        /// each (buildSets are built from one Feature/app by construction, so every member should
+        /// share the same Epic) — but actually checks EVERY member's GithubNumber rather than
+        /// assuming, so a set that genuinely spans more than one Epic is caught, not silently
+        /// mis-reported. Members with no GithubNumber (e.g. a local <c>--notGit</c> row) don't
+        /// contribute a resolvable Epic; a set made up entirely of such rows resolves to zero Epics
+        /// ("No Epic"), same honest treatment as a genuinely un-parented issue.
+        /// </summary>
+        private async Task<Dictionary<string, List<EpicResolver.ResolvedEpic>>> ResolveBuildSetEpicsAsync(List<QueueItem> items)
+        {
+            var byKey = items
+                .Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && i.GithubNumber.HasValue)
+                .GroupBy(i => NormalizeBuildSetKey(i.BuildSet))
+                .ToList();
+
+            var result = new Dictionary<string, List<EpicResolver.ResolvedEpic>>(StringComparer.OrdinalIgnoreCase);
+            var allNumbers = byKey.SelectMany(g => g.Select(i => i.GithubNumber!.Value)).Distinct().ToList();
+            if (allNumbers.Count == 0) return result;
+
+            var mirrorRows = await GitHubIssueMirror.GetManyAsync(allNumbers);
+            var resolved = await EpicResolver.ResolveTopEpicsAsync(
+                allNumbers.Select(n => (n, mirrorRows.TryGetValue(n, out var m) ? m.ParentNumber : (int?)null)));
+
+            foreach (var g in byKey)
+            {
+                var epics = g.Select(i => i.GithubNumber!.Value)
+                    .Select(n => resolved.TryGetValue(n, out var e) ? e : null)
+                    .Where(e => e != null)
+                    .Cast<EpicResolver.ResolvedEpic>()
+                    .GroupBy(e => e.Number)
+                    .Select(eg => eg.First())
+                    .ToList();
+                result[g.Key] = epics;
+            }
+            return result;
+        }
+
+        /// <summary>Git #3336 — the real Epic-header sort/group key for one build-set's rollup row:
+        /// rank 0 = a single resolved Epic (sorted by its number), rank 1 = "(mixed Epics)" (the
+        /// set's real members resolved to more than one distinct Epic), rank 2 = "No Epic" (zero
+        /// resolvable Epics). Never silently collapsed into rank 0.</summary>
+        private readonly struct BuildSetEpicGroupKey : IEquatable<BuildSetEpicGroupKey>
+        {
+            public int SortRank { get; init; }
+            public int? EpicNumber { get; init; }
+            public string Label { get; init; }
+            public bool Equals(BuildSetEpicGroupKey other) =>
+                SortRank == other.SortRank && EpicNumber == other.EpicNumber && Label == other.Label;
+            public override bool Equals(object? obj) => obj is BuildSetEpicGroupKey k && Equals(k);
+            public override int GetHashCode() => HashCode.Combine(SortRank, EpicNumber, Label);
+        }
+
+        private BuildSetEpicGroupKey DescribeBuildSetEpicGroup(string buildSetKey)
+        {
+            if (_buildSetEpics.TryGetValue(buildSetKey, out var epics) && epics.Count > 0)
+            {
+                if (epics.Count == 1)
+                    return new BuildSetEpicGroupKey { SortRank = 0, EpicNumber = epics[0].Number, Label = $"#{epics[0].Number} — {epics[0].Title}" };
+                return new BuildSetEpicGroupKey { SortRank = 1, EpicNumber = null, Label = "(mixed Epics)" };
+            }
+            return new BuildSetEpicGroupKey { SortRank = 2, EpicNumber = null, Label = "No Epic" };
+        }
+
+        /// <summary>Git #3336 — a real, bold Epic-group header above a block of build-set rollup rows.</summary>
+        private static UIElement BuildEpicGroupHeader(BuildSetEpicGroupKey key) => new TextBlock
+        {
+            Text = key.Label,
+            FontSize = 11,
+            FontWeight = FontWeights.Bold,
+            Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+            Margin = new Thickness(2, 10, 0, 4),
+        };
+
         /// <summary>Git #1834 — collapsible per-buildSet rollup summary. Rebuilds
         /// BuildSetRollupList from scratch off the real, current <paramref name="items"/> every
         /// call (cheap — a handful of build sets, not the whole DAG). Buckets are "up next"
@@ -2946,10 +3030,26 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            foreach (var key in orderedKeys)
+            // Git #3336 — nest each build set's rollup row under its resolved top Epic (a real
+            // header per Epic — number + title), instead of a flat list. A set with no resolvable
+            // Epic still renders, under a real "No Epic" header; a set whose real members resolve to
+            // more than one distinct Epic renders under a real "(mixed Epics)" header — never
+            // silently dropped or silently collapsed under one guessed Epic.
+            var epicGroups = orderedKeys
+                .GroupBy(DescribeBuildSetEpicGroup)
+                .OrderBy(g => g.Key.SortRank)
+                .ThenBy(g => g.Key.EpicNumber ?? int.MaxValue);
+
+            foreach (var epicGroup in epicGroups)
             {
-                var counts = buckets[key];
-                BuildSetRollupList.Children.Add(BuildRollupRow(key, counts.upNext, counts.running, counts.verifying, counts.members));
+                BuildSetRollupList.Children.Add(BuildEpicGroupHeader(epicGroup.Key));
+                foreach (var key in epicGroup)
+                {
+                    var counts = buckets[key];
+                    var row = BuildRollupRow(key, counts.upNext, counts.running, counts.verifying, counts.members);
+                    if (row is FrameworkElement fe) fe.Margin = new Thickness(fe.Margin.Left + 10, fe.Margin.Top, fe.Margin.Right, fe.Margin.Bottom);
+                    BuildSetRollupList.Children.Add(row);
+                }
             }
         }
 
