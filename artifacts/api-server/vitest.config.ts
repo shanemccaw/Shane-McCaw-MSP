@@ -47,6 +47,14 @@ export default defineConfig({
     // instead of relying on someone remembering to add every new file by
     // name.
     include: ["src/**/*.test.ts"],
+    // #2458 — requireRole now reads the RBAC ladder rows from the database. 33 suites
+    // mount a real router behind the real requireRole while mocking @workspace/db down
+    // to their own route's tables, and would otherwise all fail closed with a 503. This
+    // supplies exactly the rows #2457's seed writes, so those suites keep testing what
+    // they were written to test. Read the file's header before changing it; a test
+    // about the unseeded path overrides it with its own file-level vi.mock, and the
+    // live-Postgres acceptance test vi.unmocks it.
+    setupFiles: ["./src/test-setup/rbac-ladder-rows.ts"],
     // The one place a file is deliberately kept out of vitest's own run, with
     // a reason on it. These 20 files import `describe`/`it` from `node:test`,
     // not `vitest` — they are a genuinely different test runner, dispatched

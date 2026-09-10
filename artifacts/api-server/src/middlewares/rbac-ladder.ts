@@ -67,7 +67,7 @@
  * cutting over.
  */
 
-import { db, mspFeatureRoleMappingTable, mspRolesTable, type MspRole } from "@workspace/db";
+import type { MspRole } from "@workspace/db";
 // Deliberately the two PURE leaf modules, not the `@workspace/db/rbac` barrel. The
 // barrel also re-exports `load.ts`/`admin.ts`/`sync.ts`, which pull in the whole
 // Drizzle schema graph; this middleware needs the decision function and the ladder
@@ -75,14 +75,13 @@ import { db, mspFeatureRoleMappingTable, mspRolesTable, type MspRole } from "@wo
 // of every module graph that reaches `requireRole` — which is all of them.
 import { evaluateCapability, type RbacDecision, type RbacFeatureMapping } from "@workspace/db/rbac/evaluate";
 import {
-  LADDER_CAPABILITY_KEYS,
   LEGACY_ROLE_ORDER,
   effectiveLegacyRole,
   isLegacyRole,
   ladderCapabilityKey,
   type LegacyRole,
 } from "@workspace/db/rbac/legacy-ladder";
-import { and, inArray, isNull } from "drizzle-orm";
+import { LADDER_CAPABILITY_KEY_LIST, readLadderRows } from "./rbac-ladder-source.ts";
 
 /**
  * The platform logger, imported LAZILY and only on a path that actually logs.
@@ -113,8 +112,8 @@ async function emit(level: "info" | "warn" | "error", fields: Record<string, unk
   }
 }
 
-/** Every `ladder.*` capability key, in ladder order. */
-const LADDER_KEYS: readonly string[] = LEGACY_ROLE_ORDER.map((role) => LADDER_CAPABILITY_KEYS[role]);
+
+
 
 /**
  * How long a loaded snapshot is served without re-reading.
@@ -158,44 +157,29 @@ let cached: LadderSnapshot | null = null;
 /** In-flight load, so a burst of concurrent requests issues ONE pair of queries. */
 let inFlight: Promise<LadderSnapshot> | null = null;
 
-function decodeRoleIds(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
-}
-
-/** Read the seven rung role ids and the seven platform `ladder.*` mapping rows. */
+/** Turn the raw rows into a decision-ready snapshot. */
 async function readSnapshot(): Promise<LadderSnapshot> {
-  const roleRows = await db
-    .select({ id: mspRolesTable.id, key: mspRolesTable.key })
-    .from(mspRolesTable)
-    .where(and(isNull(mspRolesTable.mspId), inArray(mspRolesTable.key, [...LEGACY_ROLE_ORDER])));
-
-  const mappingRows = await db
-    .select({
-      capabilityKey: mspFeatureRoleMappingTable.capabilityKey,
-      roles: mspFeatureRoleMappingTable.roles,
-    })
-    .from(mspFeatureRoleMappingTable)
-    .where(and(isNull(mspFeatureRoleMappingTable.mspId), inArray(mspFeatureRoleMappingTable.capabilityKey, [...LADDER_KEYS])));
+  const { rungs, mappings: mappingRows } = await readLadderRows();
 
   const roleIdByRung = new Map<LegacyRole, string>();
-  for (const row of roleRows) {
-    if (isLegacyRole(row.key) && typeof row.id === "string") roleIdByRung.set(row.key, row.id);
+  for (const row of rungs) {
+    if (isLegacyRole(row.key)) roleIdByRung.set(row.key, row.id);
   }
 
   const mappings: RbacFeatureMapping[] = mappingRows.map((row) => ({
     system: "msp" as const,
     capabilityKey: row.capabilityKey,
-    // Platform scope. Read as `msp_id IS NULL` above; restated here so the
+    // Platform scope. The source reads `msp_id IS NULL`; restated here so the
     // evaluator's own cross-org re-check has the right value to compare against.
     orgId: null,
-    allow: decodeRoleIds((row.roles as { allow?: unknown } | null)?.allow),
-    deny: decodeRoleIds((row.roles as { deny?: unknown } | null)?.deny),
+    allow: row.allow,
+    deny: row.deny,
   }));
 
   const mappedKeys = new Set(mappings.map((m) => m.capabilityKey));
   const missing: string[] = [
     ...LEGACY_ROLE_ORDER.filter((role) => !roleIdByRung.has(role)).map((role) => `msp_roles.key=${role}`),
-    ...LADDER_KEYS.filter((key) => !mappedKeys.has(key)).map((key) => `msp_feature_role_mapping.capability_key=${key}`),
+    ...LADDER_CAPABILITY_KEY_LIST.filter((key) => !mappedKeys.has(key)).map((key) => `msp_feature_role_mapping.capability_key=${key}`),
   ];
 
   return { roleIdByRung, mappings, loadedAt: Date.now(), missing };

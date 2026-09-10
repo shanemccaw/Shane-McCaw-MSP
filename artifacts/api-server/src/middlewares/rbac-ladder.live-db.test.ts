@@ -33,12 +33,18 @@
  * Run: pnpm --filter @workspace/api-server vitest run rbac-ladder.live-db
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { LEGACY_ROLE_ORDER, type LegacyRole } from "@workspace/db/rbac";
 import type { MspRole } from "@workspace/db";
+
+// The whole point of this file is that it reads the REAL rows. `vitest.config.ts`
+// installs a setup-file mock of the row source so the 33 route suites that mock
+// @workspace/db still get a working requireRole; this opts back out of it, so nothing
+// asserted below can be satisfied by test-supplied rows.
+vi.unmock("./rbac-ladder-source.ts");
 
 const JWT_SECRET = "test-rbac-ladder-live-secret";
 process.env.JWT_SECRET = JWT_SECRET;

@@ -14,44 +14,36 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { LADDER_CAPABILITY_KEYS, LEGACY_ROLE_ORDER } from "@workspace/db/rbac/legacy-ladder";
 
-// Fake table handles. Identity is all that matters — the query builder is mocked, so
-// nothing ever inspects a column.
-const mspRolesTable = { id: "id", key: "key", mspId: "msp_id" };
-const mspFeatureRoleMappingTable = { capabilityKey: "capability_key", roles: "roles", mspId: "msp_id" };
-
-/** Swappable per test: what the two reads return, or the error they throw. */
+/** Swappable per test: what the read returns, or the error it throws. */
 let roleRows: Array<{ id: string; key: string }> = [];
-let mappingRows: Array<{ capabilityKey: string; roles: { allow: string[]; deny: string[] } }> = [];
+let mappingRows: Array<{ capabilityKey: string; allow: string[]; deny: string[] }> = [];
 let readError: Error | null = null;
 /** Counts real reads, so cache behaviour is asserted rather than assumed. */
 let reads = 0;
 
+// requireAuth.ts (imported below to compare its role promotion against the
+// transcription's) pulls in the real @workspace/db, which throws at import time
+// without DATABASE_URL. Only the three symbols it names are needed here.
 vi.mock("@workspace/db", () => ({
-  db: {
-    select: () => ({
-      from: (table: unknown) => ({
-        where: () => {
-          reads += 1;
-          if (readError) return Promise.reject(readError);
-          if (table === mspRolesTable) return Promise.resolve(roleRows);
-          if (table === mspFeatureRoleMappingTable) return Promise.resolve(mappingRows);
-          return Promise.resolve([]);
-        },
-      }),
-    }),
-  },
-  mspRolesTable,
-  mspFeatureRoleMappingTable,
+  db: {},
   tenantsTable: {},
   mspStaffCustomerScopesTable: {},
 }));
 
-vi.mock("drizzle-orm", () => ({
-  and: () => "and",
-  eq: () => "eq",
-  isNull: () => "isNull",
-  inArray: () => "inArray",
-}));
+// A file-level mock overrides the one `vitest.config.ts`'s setup file installs — which
+// is the documented way to write a test about the row source itself rather than about
+// a route sitting behind it.
+vi.mock("./rbac-ladder-source.ts", async () => {
+  const { LADDER_CAPABILITY_KEYS, LEGACY_ROLE_ORDER } = await import("@workspace/db/rbac/legacy-ladder");
+  return {
+    LADDER_CAPABILITY_KEY_LIST: LEGACY_ROLE_ORDER.map((role) => LADDER_CAPABILITY_KEYS[role]),
+    readLadderRows: () => {
+      reads += 1;
+      if (readError) return Promise.reject(readError);
+      return Promise.resolve({ rungs: roleRows, mappings: mappingRows });
+    },
+  };
+});
 
 const rungRoleId = (rung: string): string => `role-${rung}`;
 
@@ -60,7 +52,8 @@ function seededRows(): void {
   roleRows = LEGACY_ROLE_ORDER.map((rung) => ({ id: rungRoleId(rung), key: rung }));
   mappingRows = LEGACY_ROLE_ORDER.map((floor, floorIdx) => ({
     capabilityKey: LADDER_CAPABILITY_KEYS[floor],
-    roles: { allow: LEGACY_ROLE_ORDER.filter((_, i) => i >= floorIdx).map(rungRoleId), deny: [] },
+    allow: LEGACY_ROLE_ORDER.filter((_, i) => i >= floorIdx).map(rungRoleId),
+    deny: [] as string[],
   }));
 }
 
@@ -149,24 +142,24 @@ describe("the snapshot is loaded once, not per request", () => {
     seededRows();
     const { roleClearsLadderFloor } = await freshModule();
     await Promise.all(LEGACY_ROLE_ORDER.map((rung) => roleClearsLadderFloor(rung, "CustomerUser")));
-    // Two reads (rungs + mappings) for all seven checks — the in-flight dedupe. A
-    // per-request query on 616 route gates is the regression this guards against.
-    expect(reads).toBe(2);
+    // ONE read for all seven checks — the in-flight dedupe. A per-request query on
+    // 616 route gates is the regression this guards against.
+    expect(reads).toBe(1);
   });
 
   it("re-reads after invalidateLadderSnapshot(), so a revoke is not held for a TTL", async () => {
     seededRows();
     const { roleClearsLadderFloor, invalidateLadderSnapshot } = await freshModule();
     await roleClearsLadderFloor("MSPAdmin", "MSPAdmin");
-    expect(reads).toBe(2);
+    expect(reads).toBe(1);
 
     invalidateLadderSnapshot();
     // Revoke MSPAdmin's own rung from the floor it used to clear.
     const row = mappingRows.find((m) => m.capabilityKey === LADDER_CAPABILITY_KEYS.MSPAdmin)!;
-    row.roles.allow = row.roles.allow.filter((id) => id !== rungRoleId("MSPAdmin"));
+    row.allow = row.allow.filter((id) => id !== rungRoleId("MSPAdmin"));
 
     expect((await roleClearsLadderFloor("MSPAdmin", "MSPAdmin")).kind).toBe("deny");
-    expect(reads).toBe(4);
+    expect(reads).toBe(2);
   });
 });
 
@@ -174,7 +167,7 @@ describe("deny wins, through the shared evaluator", () => {
   it("denies a rung that is on both the allow and the deny list", async () => {
     seededRows();
     const row = mappingRows.find((m) => m.capabilityKey === LADDER_CAPABILITY_KEYS.CustomerUser)!;
-    row.roles.deny = [rungRoleId("PlatformAdmin")];
+    row.deny = [rungRoleId("PlatformAdmin")];
     const { roleClearsLadderFloor } = await freshModule();
     // Not this module's rule — it is #2455's evaluator, reached unchanged. Asserted
     // here because `requireRole` is the caller that has to inherit it.

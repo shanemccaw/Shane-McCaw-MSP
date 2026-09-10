@@ -16,6 +16,7 @@
  *   pnpm --filter @workspace/api-server run test
  */
 import { describe, it, mock, before, after, beforeEach } from "node:test";
+import { ladderRowsModule } from "../test-setup/rbac-ladder-fixture.ts";
 import assert from "node:assert/strict";
 import http from "node:http";
 import jwt from "jsonwebtoken";
@@ -107,6 +108,12 @@ const noopLogger = {
   child: () => noopLogger,
 };
 mock.module("../lib/logger.ts", { namedExports: { logger: noopLogger } });
+
+// #2458 — requireAuth.ts is deliberately left unmocked here, and requireRole now
+// decides from the RBAC ladder rows instead of a ROLE_ORDER index. Supply the rows it
+// reads, from the one shared definition, so the gate keeps answering as it did rather
+// than failing closed on a database this suite does not have.
+mock.module("../middlewares/rbac-ladder-source.ts", { namedExports: ladderRowsModule() });
 
 // The handler dynamically imports resolveCustomerPortalUserId to look up the
 // customer's active portal user. Its real implementation orders by

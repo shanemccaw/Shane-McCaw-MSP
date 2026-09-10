@@ -108,6 +108,22 @@ function mockRes(): Response & { status: ReturnType<typeof vi.fn>; json: ReturnT
 
 // ── 1. Role hierarchy ─────────────────────────────────────────────────────────
 
+/**
+ * #2458 — `requireRole` decides from the RBAC ladder rows now, so its inner handler is
+ * async and `next()`/`res.status()` land on a later microtask instead of during the
+ * call. Express never required a middleware to be synchronous (`requireCustomerScope`
+ * has always been async), but these five assertions did, so they wait for the decision
+ * rather than assuming it has already happened. Nothing about WHICH answer is expected
+ * changed — that is the contract of this migration step.
+ */
+async function settled(res: { status: ReturnType<typeof vi.fn> }, next: ReturnType<typeof vi.fn>): Promise<void> {
+  await vi.waitFor(() => {
+    if (next.mock.calls.length === 0 && res.status.mock.calls.length === 0) {
+      throw new Error("requireRole has not decided yet");
+    }
+  });
+}
+
 describe("requireRole()", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -119,6 +135,7 @@ describe("requireRole()", () => {
     const next = vi.fn();
 
     requireRole("MSPAdmin")(req, res, next);
+    await settled(res, next);
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalledWith(403);
   });
@@ -131,6 +148,7 @@ describe("requireRole()", () => {
     const next = vi.fn();
 
     requireRole("MSPOperator")(req, res, next);
+    await settled(res, next);
     expect(next).toHaveBeenCalled();
   });
 
@@ -142,6 +160,7 @@ describe("requireRole()", () => {
     const next = vi.fn();
 
     requireRole("MSPOperator")(req, res, next);
+    await settled(res, next);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(next).not.toHaveBeenCalled();
   });
@@ -154,6 +173,7 @@ describe("requireRole()", () => {
     const next = vi.fn();
 
     requireRole("MSPAdmin")(req, res, next);
+    await settled(res, next);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(next).not.toHaveBeenCalled();
   });
@@ -166,6 +186,7 @@ describe("requireRole()", () => {
     const next = vi.fn();
 
     requireRole("PlatformAdmin")(req, res, next);
+    await settled(res, next);
     expect(next).toHaveBeenCalled();
   });
 });
