@@ -2355,8 +2355,27 @@ export function buildApiRouter() {
     return sendJson(res, 200, await money.getAccountsOverview(user.id));
   });
 
-  // GET, same reasoning as /api/money/what-if: a live preview that changes nothing, never a
-  // persisted target_amount write (that stays ShanesSurvival's own MCP tools' job).
+  // The real persisted write path (Git #3532) for role/target_amount/is_gate/due_day/
+  // last_paid_date/bill_category -- the successor to the now-removed WPF "Assign Account
+  // Roles…" dialog (AccountRoleWindow -> AccountRepository, removed by #3296 Option C). Partial
+  // body: only the fields present get written. See money.mjs's own updateAccount for the real
+  // column-by-column validation.
+  router.patch("/api/money/accounts/:id", async (req, res, params, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    const row = await money.updateAccount(params.id, body);
+    await audit.record({
+      userId: user.id,
+      actor: "owner",
+      action: "money.account.update",
+      entityId: params.id,
+      detail: { fields: Object.keys(body) },
+    });
+    return sendJson(res, 200, row);
+  });
+
+  // GET, same reasoning as /api/money/what-if: a live preview that changes nothing. The real
+  // save action is PATCH /api/money/accounts/:id above (money.updateAccount).
   router.get("/api/money/accounts/:id/preview-target", async (req, res, params, ctx) => {
     requireUser(ctx);
     const url = new URL(req.url, "http://internal");

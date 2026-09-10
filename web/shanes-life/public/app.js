@@ -6523,9 +6523,217 @@ function openEditBalanceSheet(account) {
     ]),
     el("div", { class: "sheet-body" }, [
       el("p", { class: "small muted", text: `Current balance: ${account.balanceFormatted ?? "unknown"}. Real Plaid balance -- this app never edits it directly.` }),
-      el("p", { class: "small muted", text: "Type a target funding amount to see the live short-by warning. This is a preview only -- saving a new target is done in ShanesSurvival." }),
+      el("p", { class: "small muted", text: "Type a target funding amount to see the live short-by warning. This is a preview only -- save a new target from Accounts' own \"Assign Account Roles…\"." }),
       el("div", { class: "row" }, [targetInput, previewBtn]),
       resultEl,
+    ]),
+  );
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+}
+
+// ---------------------------------------------------------------------------
+// "Assign Account Roles…" (Git #3532)
+// ---------------------------------------------------------------------------
+//
+// The real successor to WPF's removed AccountRoleWindow -> AccountRepository (#3296 Option C
+// took that UI and its direct-SQL repository out entirely, leaving no write path anywhere for
+// role/target_amount/is_gate/due_day/last_paid_date/bill_category). Same real vocabulary the
+// WPF dialog's RoleOptions offered, one row per real account, PATCHed to
+// PATCH /api/money/accounts/:id (money.updateAccount) -- only the fields that actually changed
+// on a given row, same partial-update discipline as the Vault edit form above.
+
+const ACCOUNT_ROLE_OPTIONS = [
+  { value: "", label: "Unassigned" },
+  { value: "income_gate", label: "Income Gate (Direct Deposit)" },
+  { value: "bill", label: "Bill" },
+  { value: "spend", label: "Spend" },
+  { value: "emergency_fund", label: "Emergency Fund" },
+  { value: "reserve", label: "Reserve" },
+];
+
+const ACCOUNT_BILL_CATEGORY_OPTIONS = [
+  { value: "", label: "—" },
+  { value: "shared", label: "Shared" },
+  { value: "general", label: "General" },
+  { value: "cars", label: "Cars" },
+  { value: "h2", label: "H2" },
+  { value: "h1", label: "H1" },
+];
+
+function accountRoleField(labelText, control) {
+  return el("label", { class: "small", style: "display:flex;align-items:center;gap:.35rem" }, [
+    el("span", { class: "muted", text: labelText }),
+    control,
+  ]);
+}
+
+function openAssignAccountRolesSheet(accounts, { onSaved } = {}) {
+  const dialog = el("dialog", { class: "sheet" });
+  const statusEl = el("p", { class: "small", style: "min-height:1.2em" });
+  const saveBtn = el("button", { type: "button", class: "primary small", text: "Save" });
+
+  const rows = accounts.map((account) => {
+    const roleSelect = el(
+      "select",
+      { "aria-label": `Role for ${account.name}` },
+      ACCOUNT_ROLE_OPTIONS.map((opt) =>
+        el("option", {
+          value: opt.value,
+          text: opt.label,
+          ...(opt.value === (account.role || "") ? { selected: true } : {}),
+        }),
+      ),
+    );
+    const targetInput = el("input", {
+      type: "number",
+      step: "0.01",
+      inputmode: "decimal",
+      "aria-label": `Target amount for ${account.name}`,
+      value: account.targetCents === null || account.targetCents === undefined ? "" : (account.targetCents / 100).toFixed(2),
+    });
+    const gateCheck = el("input", {
+      type: "checkbox",
+      "aria-label": `GATE for ${account.name}`,
+      ...(account.isGate ? { checked: true } : {}),
+    });
+    const dueDayInput = el("input", {
+      type: "number",
+      min: "1",
+      max: "31",
+      "aria-label": `Due day for ${account.name}`,
+      value: account.dueDay ?? "",
+    });
+    const lastPaidInput = el("input", {
+      type: "date",
+      "aria-label": `Last paid date for ${account.name}`,
+      value: account.lastPaidDate || "",
+    });
+    const categorySelect = el(
+      "select",
+      { "aria-label": `Bill category for ${account.name}` },
+      ACCOUNT_BILL_CATEGORY_OPTIONS.map((opt) =>
+        el("option", {
+          value: opt.value,
+          text: opt.label,
+          ...(opt.value === (account.billCategory || "") ? { selected: true } : {}),
+        }),
+      ),
+    );
+
+    // Target/GATE/due day/last paid date/category are only meaningful for a Bill account
+    // (target also for Emergency Fund) -- same enable/disable rule the WPF dialog's own
+    // roleCombo.SelectionChanged handler used, kept visible-but-disabled so a role change
+    // never hides the value it's about to discard.
+    function syncEnabled() {
+      const role = roleSelect.value;
+      targetInput.disabled = role !== "bill" && role !== "emergency_fund";
+      gateCheck.disabled = role !== "bill";
+      dueDayInput.disabled = role !== "bill";
+      lastPaidInput.disabled = role !== "bill";
+      categorySelect.disabled = role !== "bill";
+    }
+    roleSelect.addEventListener("change", syncEnabled);
+    syncEnabled();
+
+    const row = el("div", { class: "money-bucket-row", style: "flex-direction:column;align-items:stretch;gap:.4rem" }, [
+      el("div", { class: "money-bucket-name" }, [
+        el("span", { text: account.name }),
+        el("span", { class: "money-bucket-meta", text: `${account.masked ?? "no mask yet"} · ${account.balanceFormatted ?? "balance unknown"}` }),
+      ]),
+      el("div", { class: "row", style: "flex-wrap:wrap;gap:.6rem" }, [
+        accountRoleField("Role", roleSelect),
+        accountRoleField("Target", targetInput),
+        accountRoleField("GATE", gateCheck),
+        accountRoleField("Due day", dueDayInput),
+        accountRoleField("Last paid", lastPaidInput),
+        accountRoleField("Category", categorySelect),
+      ]),
+    ]);
+
+    return { account, roleSelect, targetInput, gateCheck, dueDayInput, lastPaidInput, categorySelect, row };
+  });
+
+  saveBtn.addEventListener("click", async () => {
+    saveBtn.disabled = true;
+    statusEl.textContent = "Saving…";
+    statusEl.style.color = "";
+    const failures = [];
+
+    for (const r of rows) {
+      const patch = {};
+
+      const newRole = r.roleSelect.value || null;
+      if (newRole !== (r.account.role || null)) patch.role = newRole;
+
+      const currentTargetStr =
+        r.account.targetCents === null || r.account.targetCents === undefined ? "" : (r.account.targetCents / 100).toFixed(2);
+      if (r.targetInput.disabled) {
+        // Role changed away from bill/emergency_fund -- clear a now-meaningless target, same as
+        // the WPF form never saving a disabled target box.
+        if (currentTargetStr !== "") patch.targetAmount = null;
+      } else if (r.targetInput.value.trim() !== currentTargetStr) {
+        patch.targetAmount = r.targetInput.value.trim() === "" ? null : r.targetInput.value.trim();
+      }
+
+      const newGate = !r.gateCheck.disabled && r.gateCheck.checked;
+      if (newGate !== Boolean(r.account.isGate)) patch.isGate = newGate;
+
+      const currentDueDayStr = r.account.dueDay === null || r.account.dueDay === undefined ? "" : String(r.account.dueDay);
+      if (r.dueDayInput.disabled) {
+        if (currentDueDayStr !== "") patch.dueDay = null;
+      } else if (r.dueDayInput.value.trim() !== currentDueDayStr) {
+        patch.dueDay = r.dueDayInput.value.trim() === "" ? null : Number(r.dueDayInput.value.trim());
+      }
+
+      const currentLastPaid = r.account.lastPaidDate || "";
+      if (r.lastPaidInput.disabled) {
+        if (currentLastPaid !== "") patch.lastPaidDate = null;
+      } else if (r.lastPaidInput.value !== currentLastPaid) {
+        patch.lastPaidDate = r.lastPaidInput.value || null;
+      }
+
+      const currentCategory = r.account.billCategory || "";
+      if (r.categorySelect.disabled) {
+        if (currentCategory !== "") patch.billCategory = null;
+      } else if (r.categorySelect.value !== currentCategory) {
+        patch.billCategory = r.categorySelect.value || null;
+      }
+
+      if (Object.keys(patch).length === 0) continue;
+      try {
+        await api(`/api/money/accounts/${encodeURIComponent(r.account.id)}`, { method: "PATCH", body: JSON.stringify(patch) });
+      } catch (err) {
+        failures.push(`${r.account.name}: ${err?.message || "did not save"}`);
+      }
+    }
+
+    if (failures.length === 0) {
+      statusEl.textContent = "Saved.";
+      statusEl.style.color = "hsl(var(--success))";
+      await onSaved?.();
+      dialog.close();
+    } else {
+      statusEl.textContent = failures.join(" ");
+      statusEl.style.color = "hsl(var(--destructive))";
+      saveBtn.disabled = false;
+    }
+  });
+
+  dialog.append(
+    el("div", { class: "spread" }, [
+      el("span", { class: "sheet-title", text: "Assign Account Roles" }),
+      el("button", { class: "ghost small", text: "Close", onClick: () => dialog.close() }),
+    ]),
+    el("div", { class: "sheet-body" }, [
+      el("p", {
+        class: "small muted",
+        text: "Role, target funding amount, GATE, due day, last paid date, and Skip Suggestions category for every real synced account. Target/GATE/due day/last paid date/category only apply to a Bill account (target also applies to Emergency Fund).",
+      }),
+      ...rows.map((r) => r.row),
+      statusEl,
+      el("div", { class: "row", style: "margin-top:10px" }, [saveBtn]),
     ]),
   );
   document.body.append(dialog);
@@ -6540,6 +6748,19 @@ async function viewMoneyAccounts(view) {
     el("span", { class: "small muted", text: "Total Envelope Balance" }),
     el("div", { class: "money-amount", text: overview.totalEnvelopeFormatted ?? "unknown" }),
     el("p", { class: "small muted", text: "Every real account's current balance, added together." }),
+    // Git #3532: the real successor to WPF's removed "Assign Account Roles…" dialog --
+    // every account's role/target/GATE/due day/last paid date/bill category, now persisted
+    // here instead of nowhere.
+    el("button", {
+      type: "button",
+      class: "ghost small",
+      style: "margin-top:10px",
+      text: "Assign Account Roles…",
+      onClick: () => {
+        const allAccounts = overview.sections.flatMap((s) => s.accounts);
+        openAssignAccountRolesSheet(allAccounts, { onSaved: () => render() });
+      },
+    }),
   ]);
   view.append(totalCard);
 

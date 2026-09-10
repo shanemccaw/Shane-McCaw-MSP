@@ -67,9 +67,16 @@
 //   * There is no "New Cycle" reset anywhere in this app's model, and none is needed: a real
 //     bank balance is never zeroed by the app, so there is nothing analogous to
 //     `bill.assigned` resetting each cycle for a delta to be computed against.
-// Bill/account mutations (target_amount, last_paid_date, role) are ShanesSurvival's own MCP
-// tools' job (`desktop/ShanesSurvival/src/ShanesSurvival.Mcp/Tools/FinanceTools.cs`), not
-// this module's -- another reason a parallel envelope-assignment mutation does not belong here.
+// Bill/account mutations (target_amount, last_paid_date, role, is_gate, due_day, bill_category)
+// are this module's own job -- `updateAccount` below, backing `PATCH /api/money/accounts/:id`.
+// That was NOT always true: this comment used to attribute them to ShanesSurvival's own MCP
+// tools (`FinanceTools.cs`), but that was already stale before Git #3532 investigated it --
+// FinanceTools.cs was explicitly read-only, and the real write path was WPF's own
+// AccountRoleWindow -> AccountRepository, direct SQL, no MCP tool involved. #3296 (Option C)
+// then removed that WPF UI and repository entirely, leaving genuinely no write path anywhere
+// until #3532 built one here. The "no parallel envelope-assignment mutation" reasoning below is
+// unaffected -- role/target_amount/is_gate/due_day/last_paid_date/bill_category are real account
+// columns, not a shadow ledger.
 //
 // Scope 2 of #3162 asked the same honest question of the `persist()`/`latestStateRef` stale-
 // closure fix (Finance-Tracker's #2-ranked pattern) and the answer is the same "no, and here is
@@ -99,6 +106,11 @@ import * as vault from "./vault.mjs";
 const ROLE_INCOME_GATE = "income_gate";
 const ROLE_BILL = "bill";
 const ROLE_RESERVE = "reserve";
+
+/** Every role `accounts.role`'s real CHECK constraint allows -- the same vocabulary the
+ *  now-removed WPF `AccountRoleWindow`'s `RoleOptions` offered (minus "Unassigned", which maps
+ *  to `null` and is always allowed on top of this list). */
+const ACCOUNT_ROLES = [ROLE_INCOME_GATE, ROLE_BILL, "spend", "emergency_fund", ROLE_RESERVE];
 
 // ---------------------------------------------------------------------------
 // cents helpers
@@ -470,7 +482,7 @@ function accountBalanceStatus({ role, targetCents, balanceCents, shortfallCents 
 export async function getAccountsOverview(userId) {
   const rows = await many(
     `SELECT a.id, a.name, a.role, a.current_balance, a.target_amount, a.is_gate, a.due_day,
-            a.mask, a.plaid_item_id,
+            a.last_paid_date, a.bill_category, a.mask, a.plaid_item_id,
             pi.institution_name, pi.health_status, pi.last_synced_at
        FROM accounts a
        JOIN plaid_items pi ON pi.id = a.plaid_item_id
@@ -503,6 +515,8 @@ export async function getAccountsOverview(userId) {
       role: row.role,
       isGate: Boolean(row.is_gate),
       dueDay: row.due_day ?? null,
+      lastPaidDate: row.last_paid_date ? isoDate(row.last_paid_date) : null,
+      billCategory: row.bill_category ?? null,
       balanceCents,
       balanceFormatted: formatMoney(balanceCents),
       targetCents,
@@ -577,10 +591,10 @@ export async function getAccountsOverview(userId) {
 /**
  * A pure, real-time preview of what a NEW target amount would mean for one bill account --
  * "short by $X, needs funds from [the Income Gate]" -- computed the instant Shane types a
- * number, same idiom as whatIf()/simulateTransfer(). This NEVER writes `target_amount`:
- * per this module's own header, account/bill mutations are ShanesSurvival's own MCP tools' job
- * (`FinanceTools.cs`), not this one's. The real save action, when Shane wants one, goes through
- * that tool, not this endpoint -- this is the live warning the design asks for, not the write.
+ * number, same idiom as whatIf()/simulateTransfer(). This NEVER writes `target_amount`: the
+ * real save action, when Shane wants one, goes through `updateAccount` below (Git #3532's
+ * `PATCH /api/money/accounts/:id`), not this endpoint -- this is the live warning the design
+ * asks for, not the write.
  */
 export async function previewAccountTarget(accountId, hypotheticalTargetDollars) {
   const hypotheticalCents = parseAmountCents(hypotheticalTargetDollars, "target");
@@ -620,6 +634,91 @@ export async function previewAccountTarget(accountId, hypotheticalTargetDollars)
         ? `Fully funded at ${formatMoney(hypotheticalCents)}.`
         : `Short ${formatMoney(shortfallCents)}${gateName ? ` — needs funds from ${gateName}` : ""}.`,
   };
+}
+
+const ACCOUNT_EDIT_COLUMNS = `id, name, role, current_balance, target_amount, is_gate, due_day,
+       last_paid_date, bill_category, mask`;
+
+/** One real account's editable fields, in the shape the Accounts tab's edit sheet reads and
+ *  PATCHes back -- current_balance is read-only context (Plaid owns it), everything else is
+ *  what `updateAccount` can actually write. */
+function accountEditOut(row) {
+  const balanceCents = toCents(row.current_balance);
+  return {
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    balanceFormatted: formatMoney(balanceCents),
+    targetAmount: row.target_amount === null ? null : toDollars(toCents(row.target_amount)),
+    isGate: Boolean(row.is_gate),
+    dueDay: row.due_day ?? null,
+    lastPaidDate: row.last_paid_date ? isoDate(row.last_paid_date) : null,
+    billCategory: row.bill_category ?? null,
+    masked: row.mask ? `•••• ${row.mask}` : null,
+  };
+}
+
+/**
+ * The real persisted write path for account role/target_amount/is_gate/due_day/last_paid_date/
+ * bill_category (Git #3532) -- backing `PATCH /api/money/accounts/:id`. Partial update, same
+ * idiom as `updateDebt`: only fields present in `updates` are touched, so the edit sheet can
+ * PATCH just the one field Shane changed.
+ *
+ * This is the real successor to the now-removed WPF `AccountRoleWindow` ->
+ * `AccountRepository.UpdateRoleAsync`/`UpdateDueDayAsync`/`UpdateLastPaidDateAsync` (three
+ * separate single-purpose methods there; one real partial-PATCH here, same columns).
+ * `target_amount`/`is_gate`/`due_day` are only meaningful for a bill account, but -- same call
+ * the old C# made -- this does not reject writing them against a non-bill role; it writes
+ * exactly what it is given.
+ */
+export async function updateAccount(accountId, updates = {}) {
+  const existing = await one(`SELECT ${ACCOUNT_EDIT_COLUMNS} FROM accounts WHERE id = $1`, [accountId]);
+  if (!existing) throw notFound("Account not found");
+
+  const sets = [];
+  const values = [];
+  let i = 1;
+  const put = (column, value) => {
+    sets.push(`${column} = $${i++}`);
+    values.push(value);
+  };
+
+  if ("role" in updates) {
+    const role = updates.role === null || updates.role === "" ? null : String(updates.role);
+    if (role !== null && !ACCOUNT_ROLES.includes(role)) {
+      throw badRequest(`role must be one of: ${ACCOUNT_ROLES.join(", ")}, or null`);
+    }
+    put("role", role);
+  }
+  if ("targetAmount" in updates) {
+    const t = updates.targetAmount;
+    put("target_amount", t === null || t === "" ? null : toDollars(parseAmountCents(t, "targetAmount")));
+  }
+  if ("isGate" in updates) put("is_gate", Boolean(updates.isGate));
+  if ("dueDay" in updates) {
+    const d = updates.dueDay;
+    if (d !== null && d !== "" && (!Number.isInteger(Number(d)) || Number(d) < 1 || Number(d) > 31)) {
+      throw badRequest("dueDay must be an integer between 1 and 31");
+    }
+    put("due_day", d === "" ? null : d);
+  }
+  if ("lastPaidDate" in updates) put("last_paid_date", updates.lastPaidDate || null);
+  if ("billCategory" in updates) {
+    const category = updates.billCategory;
+    if (category && !BILL_CATEGORIES.includes(category)) {
+      throw badRequest(`billCategory must be one of: ${BILL_CATEGORIES.join(", ")}`);
+    }
+    put("bill_category", category || null);
+  }
+
+  if (sets.length === 0) return accountEditOut(existing);
+
+  values.push(accountId);
+  const row = await one(
+    `UPDATE accounts SET ${sets.join(", ")} WHERE id = $${i} RETURNING ${ACCOUNT_EDIT_COLUMNS}`,
+    values,
+  );
+  return accountEditOut(row);
 }
 
 // ---------------------------------------------------------------------------
@@ -970,10 +1069,10 @@ function billOut(bill) {
 const BILL_CATEGORIES = ["shared", "general", "cars", "h2", "h1"];
 
 /**
- * Set a real bill account's Skip Suggestions priority category (migration 044). A field Shane's
- * Life itself owns on the shared `accounts` table -- same pattern as `updateDebt`'s
- * `included_in_bankruptcy`/`due_day` -- not one of the core bill fields (target_amount, balance,
- * role, due_day) money.mjs's own header reserves for ShanesSurvival's MCP tools.
+ * Set a real bill account's Skip Suggestions priority category (migration 044). Kept as its own
+ * narrow endpoint (Skip Suggestions PATCHes just this one field) even though `updateAccount`
+ * above can now also write `bill_category` as part of a general account edit -- both go through
+ * the same `BILL_CATEGORIES` vocabulary and the same column.
  */
 export async function setBillCategory(billAccountId, category) {
   if (!BILL_CATEGORIES.includes(category)) {
