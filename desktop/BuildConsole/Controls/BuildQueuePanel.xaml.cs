@@ -6524,6 +6524,30 @@ namespace BuildConsole.Controls
             PinToggled?.Invoke(this, _isPinned);
         }
 
+        // Git #3444 — opens the overflow "⋯" menu (Pause/Resume, broad GitHub refresh, Pin)
+        // on a normal left-click. A Button.ContextMenu only opens on right-click by default,
+        // so this wires the same left-click gesture the other header icon buttons use.
+        private void BtnQueueMenu_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.ContextMenu != null)
+            {
+                btn.ContextMenu.PlacementTarget = btn;
+                btn.ContextMenu.IsOpen = true;
+            }
+        }
+
+        // Git #3444 — dedicated, always-visible fast refresh: local-only Postgres re-read via
+        // #3074's RefreshAsync(includeGitHubWork: false) path (_db.GetQueueAsync() + in-memory
+        // re-render). Zero GitHub calls — no AutoRecheckOpenIssuesOnTransitionAsync, no
+        // TriggerBackgroundIssueTitleQueries, both gated off by includeGitHubWork:false inside
+        // RefreshAsync. Safe to click freely, unlike the broad refresh moved into the ⋯ menu.
+        private async void BtnRefreshQueueLocal_Click(object sender, RoutedEventArgs e)
+        {
+            ActivityLog.Log("build-queue-panel",
+                "Build Queue panel [manual Refresh Queue click]: local-only Postgres re-read (Git #3444), zero GitHub calls.");
+            await RefreshAsync(includeGitHubWork: false);
+        }
+
         // Git #1816 — the single shared refresh control for Git Board + Batter Up + AI
         // Batter Up. FullGitRefreshRequested drives LeftSidebar.PopulateGitTrackerBoard
         // (forceFresh: true), whose completion fires BoardRefreshCompleted — #1813 already

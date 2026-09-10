@@ -53,7 +53,7 @@ namespace BuildConsole.Controls
             PauseQueueLabel.Text = paused ? "Paused" : "Running";
             PauseQueueIcon.Foreground = paused ? accent : runningAccent;
             PauseQueueLabel.Foreground = paused ? accent : quiet;
-            BtnPauseQueue.ToolTip = paused
+            MiPauseQueue.ToolTip = paused
                 ? "Queue paused — new items won't start. Click to resume."
                 : "Queue running — click to pause (already-running builds keep going; no new items start until resumed).";
         }
