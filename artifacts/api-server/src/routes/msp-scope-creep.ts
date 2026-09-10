@@ -2,7 +2,7 @@
  * msp-scope-creep.ts
  *
  * MSP-scoped Scope Creep Engine API surface.
- * Authenticated via MSP JWT (requireRole("MSPOperator")).
+ * Authenticated via MSP JWT (requireCapability("ladder.msp-operator")).
  * All queries are automatically scoped to the calling MSP's mspId —
  * an MSPOperator can only see data for their own organisation.
  *
@@ -13,7 +13,7 @@
 import { Router, Request, Response } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { requireRole, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth";
+import { requireCapability, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.scope-creep" });
 import {
@@ -30,7 +30,7 @@ const router = Router();
 // ── GET /api/msp/scope-creep/policies ─────────────────────────────────────────
 // Returns active policies that apply to this MSP (own + global defaults).
 
-router.get("/msp/scope-creep/policies", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/scope-creep/policies", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   try {
@@ -56,7 +56,7 @@ router.get("/msp/scope-creep/policies", requireRole("MSPOperator"), async (req: 
 
 // ── GET /api/msp/scope-creep/policies/:id ──────────────────────────────────────
 
-router.get("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/scope-creep/policies/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const id = Number(req.params.id);
@@ -89,7 +89,7 @@ router.get("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async (r
 
 // ── POST /api/msp/scope-creep/policies ─────────────────────────────────────────
 
-router.post("/msp/scope-creep/policies", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/scope-creep/policies", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const b = req.body as Record<string, unknown>;
@@ -126,7 +126,7 @@ router.post("/msp/scope-creep/policies", requireRole("MSPOperator"), async (req:
 
 // ── PATCH /api/msp/scope-creep/policies/:id ─────────────────────────────────────
 
-router.patch("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.patch("/msp/scope-creep/policies/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const id = Number(req.params.id);
@@ -207,7 +207,7 @@ router.patch("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async 
 
 // ── DELETE /api/msp/scope-creep/policies/:id ───────────────────────────────────
 
-router.delete("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.delete("/msp/scope-creep/policies/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const id = Number(req.params.id);
@@ -262,7 +262,7 @@ router.delete("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async
 // ── GET /api/msp/scope-creep/detections ───────────────────────────────────────
 // Open detections for this MSP's customers. Optional ?customerId filter.
 
-router.get("/msp/scope-creep/detections", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/scope-creep/detections", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const customerId = req.query["customerId"] ? Number(req.query["customerId"]) : null;
@@ -306,7 +306,7 @@ router.get("/msp/scope-creep/detections", requireRole("MSPOperator"), async (req
 // ── GET /api/msp/scope-creep/violations ───────────────────────────────────────
 // Open violations for this MSP's portfolio. Optional ?customerId filter.
 
-router.get("/msp/scope-creep/violations", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/scope-creep/violations", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const customerId = req.query["customerId"] ? Number(req.query["customerId"]) : null;
@@ -347,7 +347,7 @@ router.get("/msp/scope-creep/violations", requireRole("MSPOperator"), async (req
 // ── GET /api/msp/scope-creep/escalations ──────────────────────────────────────
 // Open escalations for this MSP. Includes SOW amendment and pricing review flags.
 
-router.get("/msp/scope-creep/escalations", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/scope-creep/escalations", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
@@ -377,7 +377,7 @@ router.get("/msp/scope-creep/escalations", requireRole("MSPOperator"), async (re
 // ── GET /api/msp/scope-creep/compliance ───────────────────────────────────────
 // Monthly compliance history for this MSP.
 
-router.get("/msp/scope-creep/compliance", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/scope-creep/compliance", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const customerId = req.query["customerId"] ? Number(req.query["customerId"]) : null;
@@ -432,7 +432,7 @@ router.get("/msp/scope-creep/compliance", requireRole("MSPOperator"), async (req
 // wrote an msps.id value into a column the rest of the codebase treats as a
 // tenants.id/customer id.
 
-router.post("/msp/scope-creep/evaluate", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/scope-creep/evaluate", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const b = req.body as Record<string, unknown>;
@@ -518,7 +518,7 @@ router.post("/msp/scope-creep/evaluate", requireRole("MSPOperator"), async (req:
 
 router.post(
   "/msp/scope-creep/violations/:violationId/resolve",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = req.user!.mspId;
     if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
@@ -546,7 +546,7 @@ router.post(
 // ── POST /api/msp/scope-creep/escalations ─────────────────────────────────────
 // MSP operators can manually create escalations for their own violations.
 
-router.post("/msp/scope-creep/escalations", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/scope-creep/escalations", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const b = req.body as Record<string, unknown>;

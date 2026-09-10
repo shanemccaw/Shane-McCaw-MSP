@@ -29,7 +29,7 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 
 import { db, mspChangeRequestsTable, CR_PIR_CLOSE_CODES } from "@workspace/db";
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
 import { personIdForUser } from "../lib/portal-ownership";
 import { logger } from "../lib/logger";
@@ -59,7 +59,7 @@ const recordPirSchema = z.object({
 // Record the Post-Implementation Review for one execution — close code,
 // verification evidence, and a real drift re-scan (Conditional Access only;
 // every other category is honestly recorded `not_applicable`).
-router.post("/msp/change-control/executions/:id/pir", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/executions/:id/pir", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const executionId = Number(req.params.id);
@@ -101,7 +101,7 @@ router.post("/msp/change-control/executions/:id/pir", requireAuth, requireRole("
 
 // GET /api/msp/change-control/executions/:id/pir
 // The PIR for one execution, if one has been recorded.
-router.get("/msp/change-control/executions/:id/pir", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/change-control/executions/:id/pir", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const executionId = Number(req.params.id);
@@ -121,7 +121,7 @@ router.get("/msp/change-control/executions/:id/pir", requireAuth, requireRole("M
 // GET /api/msp/change-control/pirs?changeRequestId=<n>
 // PIRs for one change (every execution it's had reviewed), or the MSP's recent
 // PIRs when no id is given.
-router.get("/msp/change-control/pirs", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/change-control/pirs", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   try {

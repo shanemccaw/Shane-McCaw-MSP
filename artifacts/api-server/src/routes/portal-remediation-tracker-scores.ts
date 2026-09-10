@@ -60,7 +60,7 @@ import {
 } from "@workspace/db";
 import { and, asc, desc, eq } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { computeCopilotGate, type CopilotGateResult } from "../lib/copilot-gate";
 import { REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "../lib/remediation-tracker-verification";
@@ -95,7 +95,7 @@ function resolveCustomerId(req: Request): number | null {
 router.get(
   "/portal/remediation-tracker/pillar-scores",
   // Same floor as the rest of the Copilot Readiness journey (portal-assessment.ts).
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

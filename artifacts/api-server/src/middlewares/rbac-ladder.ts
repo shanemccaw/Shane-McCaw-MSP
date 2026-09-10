@@ -21,7 +21,7 @@
  * `ladder.msp-admin` IS `{MSPAdmin, PlatformAdmin}` — `roleIndex(held) >=
  * roleIndex("MSPAdmin")` enumerated as rows instead of evaluated as an array index.
  * The behaviour is identical by construction; what moved is WHERE the rule lives.
- * Changing who clears `requireRole("MSPAdmin")` is now an UPDATE, not a deploy.
+ * Changing who clears `requireCapability("ladder.msp-admin")` is now an UPDATE, not a deploy.
  *
  * **The principal is still identified from the verified JWT, exactly as before.**
  * `effectiveLegacyRole` (the transcription in `@workspace/db/rbac`) applies the same
@@ -67,7 +67,6 @@
  * cutting over.
  */
 
-import type { MspRole } from "@workspace/db";
 // Deliberately the two PURE leaf modules, not the `@workspace/db/rbac` barrel. The
 // barrel also re-exports `load.ts`/`admin.ts`/`sync.ts`, which pull in the whole
 // Drizzle schema graph; this middleware needs the decision function and the ladder
@@ -79,6 +78,7 @@ import {
   effectiveLegacyRole,
   isLegacyRole,
   ladderCapabilityKey,
+  ladderCapabilityRole,
   type LegacyRole,
 } from "@workspace/db/rbac/legacy-ladder";
 import { LADDER_CAPABILITY_KEY_LIST, readLadderRows } from "./rbac-ladder-source.ts";
@@ -236,7 +236,7 @@ export async function primeLadderSnapshot(): Promise<void> {
   try {
     const snapshot = await getSnapshot();
     if (snapshot.missing.length === 0) {
-      log.info({ rungs: snapshot.roleIdByRung.size, mappings: snapshot.mappings.length }, "RBAC ladder enforcement ready — requireRole decisions come from msp_feature_role_mapping (#2458)");
+      log.info({ rungs: snapshot.roleIdByRung.size, mappings: snapshot.mappings.length }, "RBAC ladder enforcement ready — requireCapability decisions come from msp_feature_role_mapping (#2458)");
     }
   } catch (err) {
     log.error({ err }, "RBAC ladder snapshot could not be loaded at boot — requireRole-gated routes will fail closed with 503 until it can be read");
@@ -258,27 +258,37 @@ export type LadderOutcome =
   | { readonly kind: "unavailable"; readonly reason: string };
 
 /**
- * Does a principal holding exactly `heldRole` clear the `requireRole(floor)` bar?
+ * Does a principal holding exactly `heldRole` clear the `requireCapability(key)` bar?
  *
  * `heldRole` is an already-promoted effective rung (or null/undefined/unrecognised,
- * which holds no rung and therefore clears nothing — matching `roleIndex()`'s -1).
- * `floor` must be a real rung; anything else is a coding error on an authorization
- * path and is reported `unavailable`, never allowed.
+ * which holds no rung and therefore clears nothing — matching the -1 the retired
+ * `roleIndex()` returned). `capabilityKey` must be one of the seven catalogued
+ * `ladder.*` keys; anything else is a coding error on an authorization path and is
+ * reported `unavailable`, never allowed.
+ *
+ * #2460 — this is the key-taking form. Before it the parameter was a role NAME and
+ * the key was derived here. The direction is now reversed: the route gates name a
+ * capability, and the rung is recovered only to build the 403 body, which stays
+ * byte-identical to the one the `ROLE_ORDER` comparison produced.
  */
-export async function roleClearsLadderFloor(
+export async function roleClearsLadderCapability(
   heldRole: string | null | undefined,
-  floor: string,
+  capabilityKey: string,
 ): Promise<LadderOutcome> {
-  if (!isLegacyRole(floor)) {
-    log.error({ floor }, "requireRole was given a floor that is not a known ladder rung — failing closed");
-    return { kind: "unavailable", reason: `unknown floor "${floor}"` };
+  const floor = ladderCapabilityRole(capabilityKey);
+  if (!floor) {
+    log.error(
+      { capabilityKey },
+      "requireCapability was given a key that is not a known ladder capability — failing closed",
+    );
+    return { kind: "unavailable", reason: `unknown capability "${capabilityKey}"` };
   }
 
   let snapshot: LadderSnapshot;
   try {
     snapshot = await getSnapshot();
   } catch (err) {
-    log.error({ err, floor }, "RBAC ladder snapshot unavailable — failing closed on a requireRole check");
+    log.error({ err, floor }, "RBAC ladder snapshot unavailable — failing closed on a requireCapability check");
     return { kind: "unavailable", reason: "rbac_model_unreadable" };
   }
 
@@ -292,7 +302,7 @@ export async function roleClearsLadderFloor(
 
   const decision = evaluateCapability({
     system: "msp",
-    capability: ladderCapabilityKey(floor),
+    capability: capabilityKey,
     roleIds: heldRoleId ? [heldRoleId] : [],
     mappings: snapshot.mappings,
     orgId: null,
@@ -302,21 +312,40 @@ export async function roleClearsLadderFloor(
 }
 
 /**
- * `requireRole`'s decision for one authenticated request.
+ * The role-NAME form, for the one caller that genuinely compares two roles as data
+ * rather than gating a route: `msp-settings.ts`'s target-role assignment ceiling
+ * (Git #3032), which asks "does the role I am about to assign outrank the caller's?"
+ * A role being assigned is a value, not a route requirement, so it keeps a
+ * role-shaped question — and asking it through these same rows is what stops the
+ * ceiling from drifting away from the gate.
+ */
+export async function roleClearsLadderFloor(
+  heldRole: string | null | undefined,
+  floor: string,
+): Promise<LadderOutcome> {
+  if (!isLegacyRole(floor)) {
+    log.error({ floor }, "roleClearsLadderFloor was given a floor that is not a known ladder rung — failing closed");
+    return { kind: "unavailable", reason: `unknown floor "${floor}"` };
+  }
+  return roleClearsLadderCapability(heldRole, ladderCapabilityKey(floor));
+}
+
+/**
+ * `requireCapability`'s decision for one authenticated request.
  *
  * The `role === "admin"` → `PlatformAdmin` promotion is applied here, through
  * `effectiveLegacyRole` — the transcription cited to `requireAuth.ts:210-212`.
  * #1696 requires that promotion be *"carried across deliberately rather than
  * inherited by accident"*: it is the one grant of the top rung that comes from a
  * column other than `msp_role`, and dropping it would lock every legacy admin
- * account out of all 35 `requireRole("PlatformAdmin")` routes at once.
+ * account out of all 35 `requireCapability("ladder.platform-admin")` routes at once.
  * `rbac-ladder.test.ts` asserts this agrees with `requireAuth.ts`'s own
  * `effectiveMspRole` for every principal shape, so the two cannot drift apart.
  */
-export async function userClearsLadderFloor(
-  user: { readonly role: string; readonly mspRole?: MspRole | null },
-  floor: MspRole,
+export async function userClearsLadderCapability(
+  user: { readonly role: string; readonly mspRole?: string | null },
+  capabilityKey: string,
 ): Promise<LadderOutcome> {
   const effective = effectiveLegacyRole({ role: user.role, mspRole: user.mspRole ?? null });
-  return roleClearsLadderFloor(effective, floor);
+  return roleClearsLadderCapability(effective, capabilityKey);
 }

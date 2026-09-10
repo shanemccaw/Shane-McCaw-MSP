@@ -34,7 +34,7 @@ import {
   type CopilotQuizProfile,
   type CopilotAssessmentStateMap,
 } from "@workspace/db";
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -124,7 +124,7 @@ function normalizeQuizProfile(profile: CopilotQuizProfile): CopilotQuizProfile {
 // anyway, so a 404 would only make the two cases harder to tell apart.
 router.get(
   "/portal/copilot-assessment/quiz-profile",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const tenantId = resolveTenantId(req);
     if (tenantId === null) {
@@ -160,7 +160,7 @@ router.get(
 // wiped by a quiz retake.
 router.put(
   "/portal/copilot-assessment/quiz-profile",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const tenantId = resolveTenantId(req);
     if (tenantId === null) {

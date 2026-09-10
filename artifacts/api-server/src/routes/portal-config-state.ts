@@ -34,7 +34,7 @@
  * `/api/msp/config-state/*`.
  *
  * ─── Role floor ────────────────────────────────────────────────────────────────
- * `requireRole("CustomerUser")` — which admits CustomerUser and every MSP/admin role
+ * `requireCapability("ladder.customer-user")` — which admits CustomerUser and every MSP/admin role
  * above it, and excludes `Free` and `Assessment`. This is a HIGHER floor than the
  * neighbouring `portal-change-control.ts` / `portal-remediation-tracker.ts`, and
  * deliberately so: those serve findings ABOUT a tenant, this serves the tenant's
@@ -73,7 +73,7 @@ import {
 } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveCustomerId } from "../lib/portal-customer-scope.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
@@ -121,7 +121,7 @@ function pickEnum(raw: unknown, allowed: readonly string[]): string | undefined 
 
 // ── GET /api/portal/config-state/snapshots ───────────────────────────────────
 
-router.get("/portal/config-state/snapshots", requireRole("CustomerUser"),
+router.get("/portal/config-state/snapshots", requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -151,7 +151,7 @@ router.get("/portal/config-state/snapshots", requireRole("CustomerUser"),
 // ── GET /api/portal/config-state/snapshots/current ───────────────────────────
 // Registered BEFORE `/:id` so the literal path is not swallowed by the param route.
 
-router.get("/portal/config-state/snapshots/current", requireRole("CustomerUser"),
+router.get("/portal/config-state/snapshots/current", requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -205,7 +205,7 @@ router.get("/portal/config-state/snapshots/current", requireRole("CustomerUser")
 
 // ── GET /api/portal/config-state/snapshots/:id ───────────────────────────────
 
-router.get("/portal/config-state/snapshots/:id", requireRole("CustomerUser"),
+router.get("/portal/config-state/snapshots/:id", requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -261,7 +261,7 @@ router.get("/portal/config-state/snapshots/:id", requireRole("CustomerUser"),
 
 // ── GET /api/portal/config-state/snapshots/:id/objects ───────────────────────
 
-router.get("/portal/config-state/snapshots/:id/objects", requireRole("CustomerUser"),
+router.get("/portal/config-state/snapshots/:id/objects", requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -345,7 +345,7 @@ const inFlightDrift = new Map<number, Promise<{ diffRowId: number }>>();
  * `?compute=false` returns only an already-stored comparison, for a caller that would
  * rather render "not computed yet" than wait.
  */
-router.get("/portal/config-state/changes", requireRole("CustomerUser"),
+router.get("/portal/config-state/changes", requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -488,7 +488,7 @@ router.get("/portal/config-state/changes", requireRole("CustomerUser"),
 
 // ── GET /api/portal/config-state/changes/:diffId ─────────────────────────────
 
-router.get("/portal/config-state/changes/:diffId", requireRole("CustomerUser"),
+router.get("/portal/config-state/changes/:diffId", requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

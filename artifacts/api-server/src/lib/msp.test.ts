@@ -119,73 +119,73 @@ function mockRes(): Response & { status: ReturnType<typeof vi.fn>; json: ReturnT
 async function settled(res: { status: ReturnType<typeof vi.fn> }, next: ReturnType<typeof vi.fn>): Promise<void> {
   await vi.waitFor(() => {
     if (next.mock.calls.length === 0 && res.status.mock.calls.length === 0) {
-      throw new Error("requireRole has not decided yet");
+      throw new Error("requireCapability has not decided yet");
     }
   });
 }
 
-describe("requireRole()", () => {
+describe("requireCapability()", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("allows PlatformAdmin where MSPAdmin is required", async () => {
-    const { requireRole } = await import("../middlewares/requireAuth");
+    const { requireCapability } = await import("../middlewares/requireAuth");
     const user = { id: 1, email: "pa@x.com", role: "admin", mspRole: "PlatformAdmin" };
     const req = mockReq(user);
     const res = mockRes();
     const next = vi.fn();
 
-    requireRole("MSPAdmin")(req, res, next);
+    requireCapability("ladder.msp-admin")(req, res, next);
     await settled(res, next);
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalledWith(403);
   });
 
   it("allows MSPAdmin where MSPOperator is required", async () => {
-    const { requireRole } = await import("../middlewares/requireAuth");
+    const { requireCapability } = await import("../middlewares/requireAuth");
     const user = { id: 2, email: "msp@x.com", role: "client", mspRole: "MSPAdmin" };
     const req = mockReq(user);
     const res = mockRes();
     const next = vi.fn();
 
-    requireRole("MSPOperator")(req, res, next);
+    requireCapability("ladder.msp-operator")(req, res, next);
     await settled(res, next);
     expect(next).toHaveBeenCalled();
   });
 
   it("blocks Free user from MSPOperator-required route", async () => {
-    const { requireRole } = await import("../middlewares/requireAuth");
+    const { requireCapability } = await import("../middlewares/requireAuth");
     const user = { id: 3, email: "free@x.com", role: "client", mspRole: "Free" };
     const req = mockReq(user);
     const res = mockRes();
     const next = vi.fn();
 
-    requireRole("MSPOperator")(req, res, next);
+    requireCapability("ladder.msp-operator")(req, res, next);
     await settled(res, next);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(next).not.toHaveBeenCalled();
   });
 
   it("blocks CustomerUser from MSPAdmin-required route", async () => {
-    const { requireRole } = await import("../middlewares/requireAuth");
+    const { requireCapability } = await import("../middlewares/requireAuth");
     const user = { id: 4, email: "cu@x.com", role: "client", mspRole: "CustomerUser" };
     const req = mockReq(user);
     const res = mockRes();
     const next = vi.fn();
 
-    requireRole("MSPAdmin")(req, res, next);
+    requireCapability("ladder.msp-admin")(req, res, next);
     await settled(res, next);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(next).not.toHaveBeenCalled();
   });
 
   it("allows legacy role=admin as PlatformAdmin", async () => {
-    const { requireRole } = await import("../middlewares/requireAuth");
+    const { requireCapability } = await import("../middlewares/requireAuth");
     const user = { id: 5, email: "oldadmin@x.com", role: "admin" };
     const req = mockReq(user);
     const res = mockRes();
     const next = vi.fn();
 
-    requireRole("PlatformAdmin")(req, res, next);
+    requireCapability("ladder.platform-admin")(req, res, next);
     await settled(res, next);
     expect(next).toHaveBeenCalled();
   });

@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { LADDER_CAPABILITY_KEYS, LEGACY_ROLE_ORDER } from "@workspace/db/rbac/legacy-ladder";
+import { LADDER, LADDER_CAPABILITY_KEYS, LEGACY_ROLE, LEGACY_ROLE_ORDER } from "@workspace/db/rbac/legacy-ladder";
 
 /** Swappable per test: what the read returns, or the error it throws. */
 let roleRows: Array<{ id: string; key: string }> = [];
@@ -187,7 +187,7 @@ describe("the legacy-admin promotion has exactly one meaning", () => {
     // resolveStaffScopedCustomerIds) and the cited transcription rbac-ladder now
     // decides from. #1696 requires this promotion be carried across DELIBERATELY, so
     // the two agreeing is asserted rather than assumed — a silent divergence here
-    // would mean requireRole and the tenant fences disagreed about who the caller is.
+    // would mean requireCapability and the tenant fences disagreed about who the caller is.
     const roles = ["admin", "client", "", "Admin"] as const;
     const mspRoles = [...LEGACY_ROLE_ORDER, undefined, null, "Engineer"] as const;
 
@@ -206,8 +206,9 @@ describe("the legacy-admin promotion has exactly one meaning", () => {
 
   it("promotes role='admin' to the top rung even with a lower mspRole claim", async () => {
     seededRows();
-    const { userClearsLadderFloor } = await freshModule();
-    expect((await userClearsLadderFloor({ role: "admin", mspRole: "Assessment" }, "PlatformAdmin")).kind).toBe("allow");
-    expect((await userClearsLadderFloor({ role: "client", mspRole: "Assessment" }, "PlatformAdmin")).kind).toBe("deny");
+    const { userClearsLadderCapability } = await freshModule();
+    const top = LADDER.platformAdmin;
+    expect((await userClearsLadderCapability({ role: "admin", mspRole: LEGACY_ROLE.assessment }, top)).kind).toBe("allow");
+    expect((await userClearsLadderCapability({ role: "client", mspRole: LEGACY_ROLE.assessment }, top)).kind).toBe("deny");
   });
 });

@@ -16,14 +16,14 @@
  * is the "build the endpoints" step of #1485's fixed order, ahead of Design.
  *
  * Same floor and customerId->tenantId resolution as portal-tenant-check-items.ts
- * (`requireRole("Assessment")`, JWT `customerId` claim is `tenants.id`).
+ * (`requireCapability("ladder.assessment")`, JWT `customerId` claim is `tenants.id`).
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import {
   getPasswordAgeSignal,
@@ -60,7 +60,7 @@ function resolveCustomerId(req: Request): number | null {
 
 router.get(
   "/portal/account-security/graph-signals",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

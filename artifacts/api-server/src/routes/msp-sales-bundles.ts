@@ -33,7 +33,7 @@ import {
   mspAuditLogsTable,
 } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
-import { requireRole, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth.ts";
+import { requireCapability, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth.ts";
 import { requirePlanFeature } from "../lib/msp-entitlement.ts";
 import { randomUUID } from "crypto";
 import { logger } from "../lib/logger.ts";
@@ -151,7 +151,7 @@ const assignBundleSchema = z.object({
 
 router.get(
   "/msp/monitoring-packages",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = getMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
@@ -186,7 +186,7 @@ router.get(
 
 router.get(
   "/msp/sales-bundles/pricing-preview",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = getMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
@@ -236,7 +236,7 @@ router.get(
 
 router.get(
   "/msp/sales-bundles",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = getMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
@@ -280,7 +280,7 @@ router.get(
 
 router.post(
   "/msp/sales-bundles",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     const mspId = getMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
@@ -360,7 +360,7 @@ router.post(
 
 router.get(
   "/msp/sales-bundles/:bundleId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = getMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
@@ -411,7 +411,7 @@ router.get(
 
 router.patch(
   "/msp/sales-bundles/:bundleId",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     const mspId = getMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
@@ -503,7 +503,7 @@ router.patch(
 
 router.delete(
   "/msp/sales-bundles/:bundleId",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     const mspId = getMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
@@ -556,7 +556,7 @@ router.delete(
 
 router.get(
   "/msp/sales-bundles/:bundleId/assignments",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = getMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
@@ -612,7 +612,7 @@ router.get(
 
 router.post(
   "/msp/sales-bundles/:bundleId/assignments",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     const mspId = getMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
@@ -710,7 +710,7 @@ router.post(
 
 router.delete(
   "/msp/sales-bundles/:bundleId/assignments/:assignmentId",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     const mspId = getMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
@@ -780,7 +780,7 @@ router.delete(
 
 router.get(
   "/msp/customers/:customerId/bundle-assignments",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = getMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }

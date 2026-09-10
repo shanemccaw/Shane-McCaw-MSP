@@ -26,7 +26,7 @@ import {
   mspSharepointConnectorsTable,
 } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
@@ -65,7 +65,7 @@ async function ensureDocPipelineWorkflow(): Promise<void> {
 
 router.post(
   "/msp/documents",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -164,7 +164,7 @@ router.post(
 
 router.get(
   "/msp/documents",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -204,7 +204,7 @@ router.get(
 
 router.get(
   "/msp/documents/:documentId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const { documentId } = req.params as { documentId: string };
@@ -255,7 +255,7 @@ router.get(
 
 router.post(
   "/msp/documents/:documentId/versions",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const { documentId } = req.params as { documentId: string };
@@ -326,7 +326,7 @@ router.post(
 
 router.get(
   "/msp/documents/:documentId/versions",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const { documentId } = req.params as { documentId: string };
@@ -381,7 +381,7 @@ router.get(
 
 router.get(
   "/msp/documents/:documentId/versions/:versionId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const { documentId, versionId } = req.params as { documentId: string; versionId: string };
@@ -430,7 +430,7 @@ router.get(
 
 router.post(
   "/msp/documents/:documentId/publish",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const { documentId } = req.params as { documentId: string };
@@ -492,7 +492,7 @@ router.post(
 
 router.get(
   "/msp/sharepoint-connectors",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -528,7 +528,7 @@ router.get(
 
 router.post(
   "/msp/sharepoint-connectors",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -604,7 +604,7 @@ router.post(
 
 router.patch(
   "/msp/sharepoint-connectors/:connectorId",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const { connectorId } = req.params as { connectorId: string };
@@ -671,7 +671,7 @@ router.patch(
 
 router.delete(
   "/msp/sharepoint-connectors/:connectorId",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const { connectorId } = req.params as { connectorId: string };

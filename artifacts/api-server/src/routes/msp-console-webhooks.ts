@@ -20,7 +20,7 @@
  * (`/api/portal/webhooks/*`); this module never writes label/url/eventTypes/secret.
  *
  * Ownership model: every route here takes a `:customerId` and is gated by
- * `requireRole("MSPOperator")` + `assertCustomerAccess(req.user, customerId)` — same
+ * `requireCapability("ladder.msp-operator")` + `assertCustomerAccess(req.user, customerId)` — same
  * pattern as `msp-data-rights.ts`'s customer-scoped routes. This is deliberately
  * different from `webhooks.ts`'s own `resolveOwner()`, which scopes to the CALLER's
  * own mspId/customerId (an MSP operator managing their own MSP-level webhooks); here
@@ -53,7 +53,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, outboundWebhooksTable, usersTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { getDeliveryLog } from "../lib/webhook-delivery.ts";
 import { SUBSCRIBABLE_EVENT_TYPES } from "./webhooks.ts";
 import { logger } from "../lib/logger.ts";
@@ -136,7 +136,7 @@ function parseCustomerId(req: Request): number | null {
 
 router.get(
   "/msp/webhooks/event-types",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   (_req: Request, res: Response) => {
     res.json({ eventTypes: SUBSCRIBABLE_EVENT_TYPES });
   },
@@ -146,7 +146,7 @@ router.get(
 
 router.get(
   "/msp/customers/:customerId/webhooks",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseCustomerId(req);
@@ -179,7 +179,7 @@ router.get(
 
 router.get(
   "/msp/customers/:customerId/webhooks/:webhookId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseCustomerId(req);
@@ -221,7 +221,7 @@ router.get(
 
 router.post(
   "/msp/customers/:customerId/webhooks/:webhookId/disable",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseCustomerId(req);
@@ -280,7 +280,7 @@ router.post(
 
 router.post(
   "/msp/customers/:customerId/webhooks/:webhookId/enable",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseCustomerId(req);
@@ -335,7 +335,7 @@ router.post(
 
 router.get(
   "/msp/customers/:customerId/webhooks/:webhookId/deliveries",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseCustomerId(req);

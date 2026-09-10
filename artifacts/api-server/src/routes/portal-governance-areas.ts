@@ -25,7 +25,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantMonitorProfilesTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
@@ -42,7 +42,7 @@ const router: IRouter = Router();
 
 router.get(
   "/portal/governance/areas",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response) => {
     try {
       const customerId = resolveCustomerId(req);

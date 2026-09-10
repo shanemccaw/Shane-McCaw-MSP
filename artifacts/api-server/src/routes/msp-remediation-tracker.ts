@@ -30,7 +30,7 @@
  * -------------------------------------------------------------
  * `POST .../decline-to-risk` on the portal route creates a SIGNED liability
  * record — a typed full name + explicit confirmation the CUSTOMER is
- * accepting risk on their own account (`requireRole("CustomerUser")`, a
+ * accepting risk on their own account (`requireCapability("ladder.customer-user")`, a
  * higher floor than the rest of that journey precisely because of what it
  * creates). That is the customer's own signature, not something an MSP
  * operator can complete on their behalf without misattributing who actually
@@ -38,7 +38,7 @@
  * If Shane wants an MSP-initiated risk-decline flow later, it needs its own
  * signed-actor design, not a copy of this one with the role floor lowered.
  *
- * Auth: `requireRole("MSPOperator")` (MSPAdmin/PlatformAdmin clear that floor
+ * Auth: `requireCapability("ladder.msp-operator")` (MSPAdmin/PlatformAdmin clear that floor
  * too) + `assertCustomerAccess` — the same ownership + per-staff-scoping
  * single source of truth every other `/api/msp/*` single-customer route in
  * this repo uses (msp-diagnostics.ts, msp-active-directory.ts, …). A customer
@@ -50,7 +50,7 @@ import { db, remediationTrackerStepsTable, tenantsTable, REMEDIATION_TRACKER_STE
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { computeRemediationTrackerPricing } from "../lib/remediation-tracker-pricing";
 import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger";
@@ -131,7 +131,7 @@ async function resolveAuthorizedCustomerId(req: Request, res: Response): Promise
 // ── Read ──────────────────────────────────────────────────────────────────────
 router.get(
   "/msp/customers/:customerId/remediation-tracker",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;
@@ -163,7 +163,7 @@ router.get(
 // ── Write ─────────────────────────────────────────────────────────────────────
 router.put(
   "/msp/customers/:customerId/remediation-tracker/steps/:stepId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;
@@ -274,7 +274,7 @@ router.put(
 // ── Pointed verify (#1540) — "the only legitimate closer" per Feature #1684 ──
 router.post(
   "/msp/customers/:customerId/remediation-tracker/steps/:stepId/verify",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;
@@ -327,7 +327,7 @@ router.post(
 // ── Verification guide (#1540) ───────────────────────────────────────────────
 router.get(
   "/msp/customers/:customerId/remediation-tracker/steps/:stepId/verification-guide",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;

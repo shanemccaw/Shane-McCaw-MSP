@@ -57,7 +57,7 @@ import { db, policyDecisionsTable, CLEARANCE_TRIGGER_TYPES, REVIEW_CADENCES, com
 import { and, eq, desc, isNull, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
@@ -158,7 +158,7 @@ function toWirePolicyRegisterEntry(row: PolicyDecisionRow, obligationTypeById: M
 /** Every own-table policy decision for the calling customer's own tenant. */
 router.get(
   "/portal/policy-register",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   // #1168: creation (the POST below) is unconditional; only this READ checks
   // the customer's purchased Monitoring tier actually bundles Policy Decisions.
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.policyDecisions),
@@ -299,7 +299,7 @@ function computeReviewDueAt(cadence: (typeof REVIEW_CADENCES)[number], anchor: D
 
 router.post(
   "/portal/policy-register",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     try {
@@ -442,7 +442,7 @@ const resolveClearanceSchema = z.object({
 
 router.patch(
   "/portal/policy-register/:id/clearance/resolve",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     const id = Number(req.params.id);

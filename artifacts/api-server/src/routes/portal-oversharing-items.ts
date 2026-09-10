@@ -50,7 +50,7 @@ import {
 } from "@workspace/db";
 import { and, asc, desc, eq, gt, inArray, sql, type SQL } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
@@ -99,7 +99,7 @@ function parseCsvFilter<T extends string>(raw: unknown, allowed: readonly T[]): 
 
 router.get(
   "/portal/oversharing/items",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response) => {
     try {
       const customerId = resolveCustomerId(req);

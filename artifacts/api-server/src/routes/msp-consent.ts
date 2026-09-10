@@ -58,7 +58,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
 import { db, tenantsTable, consentInviteTokensTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
@@ -81,7 +81,7 @@ const router: IRouter = Router();
 
 // ── GET /api/msp/consent ────────────────────────────────────────────────────
 
-router.get("/msp/consent", requireRole("MSPOperator"), async (req: Request, res: Response): Promise<void> => {
+router.get("/msp/consent", requireCapability("ladder.msp-operator"), async (req: Request, res: Response): Promise<void> => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) {
     res.status(403).json({ error: "No MSP scope on this token" });
@@ -118,7 +118,7 @@ router.get("/msp/consent", requireRole("MSPOperator"), async (req: Request, res:
 
 router.get(
   "/msp/customers/:customerId/consent",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = parseInt(req.params["customerId"] as string, 10);
     if (isNaN(customerId)) {
@@ -168,7 +168,7 @@ router.get(
 
 router.post(
   "/msp/customers/:customerId/consent/invite-link",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     if (!mtAppCredentialsPresent()) {
       res.status(503).json({
@@ -242,7 +242,7 @@ router.post(
 
 router.get(
   "/msp/customers/:customerId/write-consent/start",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = parseInt(req.params["customerId"] as string, 10);
     if (isNaN(customerId)) {
@@ -317,7 +317,7 @@ router.get(
 
 router.get(
   "/msp/customers/:customerId/sharepoint-consent/start",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = parseInt(req.params["customerId"] as string, 10);
     if (isNaN(customerId)) {
@@ -386,7 +386,7 @@ router.get(
 
 router.patch(
   "/msp/customers/:customerId/consent/revoke",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = parseInt(req.params["customerId"] as string, 10);
     if (isNaN(customerId)) {

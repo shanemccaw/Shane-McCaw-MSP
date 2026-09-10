@@ -50,7 +50,7 @@
  * attempted with no draft frozen is a 409 — there is nothing fixed to seal yet.
  */
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
@@ -209,7 +209,7 @@ async function resolveOwnedTenant(req: Request, res: Response): Promise<TenantSc
 router.get(
   "/msp/security-plan/:customerId/assembled",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const tenant = await resolveOwnedTenant(req, res);
@@ -238,7 +238,7 @@ router.get(
 router.get(
   "/msp/security-plan/:customerId/drift",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const tenant = await resolveOwnedTenant(req, res);
@@ -256,7 +256,7 @@ router.get(
 router.get(
   "/msp/security-plan/:customerId/versions",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const tenant = await resolveOwnedTenant(req, res);
@@ -275,7 +275,7 @@ router.get(
 router.get(
   "/msp/security-plan/:customerId/versions/current",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const tenant = await resolveOwnedTenant(req, res);
@@ -308,7 +308,7 @@ const freezeDraftSchema = z.object({
 router.post(
   "/msp/security-plan/:customerId/draft/freeze",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const tenant = await resolveOwnedTenant(req, res);
@@ -336,7 +336,7 @@ router.post(
 router.get(
   "/msp/security-plan/:customerId/draft",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const tenant = await resolveOwnedTenant(req, res);
@@ -365,7 +365,7 @@ const proseEditSchema = z.object({
 router.patch(
   "/msp/security-plan/:customerId/draft/prose",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const tenant = await resolveOwnedTenant(req, res);
@@ -397,7 +397,7 @@ router.patch(
 router.post(
   "/msp/security-plan/:customerId/versions",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const tenant = await resolveOwnedTenant(req, res);
@@ -468,7 +468,7 @@ const signVersionSchema = z.object({
 router.patch(
   "/msp/security-plan/:customerId/versions/:versionUid/sign",
   requireAuth,
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const tenant = await resolveOwnedTenant(req, res);

@@ -18,7 +18,7 @@
  *     old rule is the oracle, not a comment describing it.
  *
  *  2. **The two legacy artifacts #1696 flagged, at the HTTP layer.** `ServiceAccount`
- *     still clears `requireRole("CustomerUser")` (carried forward — the real code
+ *     still clears `requireCapability("ladder.customer-user")` (carried forward — the real code
  *     treats a ServiceAccount as MSP-side infrastructure, see requireAuth.ts's note),
  *     and `role: "admin"` still resolves to `PlatformAdmin`.
  *
@@ -37,7 +37,7 @@ import { describe, it, expect, beforeAll, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { LEGACY_ROLE_ORDER, type LegacyRole } from "@workspace/db/rbac";
+import { LADDER, LEGACY_ROLE_ORDER, ladderCapabilityKey, legacyRoleIndex, type LegacyRole } from "@workspace/db/rbac";
 import type { MspRole } from "@workspace/db";
 
 // The whole point of this file is that it reads the REAL rows. `vitest.config.ts`
@@ -52,26 +52,24 @@ process.env.JWT_SECRET = JWT_SECRET;
 const hasDb = Boolean(process.env.DATABASE_URL);
 const describeLive = hasDb ? describe : describe.skip;
 
-/** Every floor that a real `requireRole(...)` call site actually uses today. */
-const REAL_FLOORS: readonly MspRole[] = ["Assessment", "CustomerUser", "MSPOperator", "MSPAdmin", "PlatformAdmin"];
+/** Every floor that a real route gate actually requires today. */
+const REAL_FLOORS: readonly LegacyRole[] = ["Assessment", "CustomerUser", "MSPOperator", "MSPAdmin", "PlatformAdmin"];
 
-describeLive("#2458 — requireRole's new decision source, against the real seeded rows", () => {
+describeLive("#2458/#2460 — the capability gate's decision source, against the real seeded rows", () => {
   let roleClearsLadderFloor: typeof import("./rbac-ladder.ts").roleClearsLadderFloor;
-  let userClearsLadderFloor: typeof import("./rbac-ladder.ts").userClearsLadderFloor;
-  let roleIndex: typeof import("./requireAuth.ts").roleIndex;
+  let userClearsLadderCapability: typeof import("./rbac-ladder.ts").userClearsLadderCapability;
   let app: express.Express;
 
   beforeAll(async () => {
     const ladder = await import("./rbac-ladder.ts");
     roleClearsLadderFloor = ladder.roleClearsLadderFloor;
-    userClearsLadderFloor = ladder.userClearsLadderFloor;
+    userClearsLadderCapability = ladder.userClearsLadderCapability;
 
     const auth = await import("./requireAuth.ts");
-    roleIndex = auth.roleIndex;
 
     app = express();
     for (const floor of REAL_FLOORS) {
-      app.get(`/t/${floor}`, auth.requireRole(floor), (_req, res) => {
+      app.get(`/t/${floor}`, auth.requireCapability(ladderCapabilityKey(floor)), (_req, res) => {
         res.json({ ok: true });
       });
     }
@@ -100,12 +98,18 @@ describeLive("#2458 — requireRole's new decision source, against the real seed
     await expect(primeLadderSnapshot()).resolves.toBeUndefined();
   });
 
-  it("agrees with roleIndex() for all 49 rung × floor pairs", async () => {
+  it("agrees with the ladder index comparison for all 49 rung × floor pairs", async () => {
+    // The "old answer" side used to be `requireAuth.ts`'s own `roleIndex()`. #2460
+    // deleted that function along with `ROLE_ORDER`; `legacyRoleIndex` is the same
+    // comparison, transcribed in the shim and pinned by `legacy-ladder.test.ts`
+    // (which additionally asserts requireAuth.ts has not grown a second copy). So
+    // this still compares the seeded rows against the pre-migration rule, which is
+    // the whole point of the matrix.
     const disagreements: string[] = [];
 
     for (const held of LEGACY_ROLE_ORDER) {
       for (const floor of LEGACY_ROLE_ORDER) {
-        const oldAnswer = roleIndex(held as MspRole) >= roleIndex(floor as MspRole);
+        const oldAnswer = legacyRoleIndex(held) >= legacyRoleIndex(floor);
         const outcome = await roleClearsLadderFloor(held, floor);
         const newAnswer = outcome.kind === "allow";
         if (oldAnswer !== newAnswer) {
@@ -120,8 +124,8 @@ describeLive("#2458 — requireRole's new decision source, against the real seed
   it("denies every floor for a principal holding no recognised rung", async () => {
     for (const held of [null, undefined, "", "Engineer", "admin"]) {
       for (const floor of LEGACY_ROLE_ORDER) {
-        // roleIndex(undefined) is -1, and every real floor has index >= 0.
-        expect(roleIndex(held as MspRole | undefined) >= roleIndex(floor as MspRole)).toBe(false);
+        // legacyRoleIndex(undefined) is -1, and every real floor has index >= 0.
+        expect(legacyRoleIndex(held) >= legacyRoleIndex(floor)).toBe(false);
         const outcome = await roleClearsLadderFloor(held, floor);
         expect(outcome.kind, `held=${String(held)} floor=${floor}`).toBe("deny");
       }
@@ -149,20 +153,20 @@ describeLive("#2458 — requireRole's new decision source, against the real seed
 
   it("carries the role === 'admin' → PlatformAdmin promotion forward", async () => {
     for (const floor of LEGACY_ROLE_ORDER) {
-      const outcome = await userClearsLadderFloor({ role: "admin" }, floor as MspRole);
+      const outcome = await userClearsLadderCapability({ role: "admin" }, ladderCapabilityKey(floor));
       expect(outcome.kind, `legacy admin must clear ${floor}`).toBe("allow");
     }
     // The promotion is the ONLY thing granting it — the same user as `client` with no
     // mspRole clears nothing.
     for (const floor of LEGACY_ROLE_ORDER) {
-      expect((await userClearsLadderFloor({ role: "client" }, floor as MspRole)).kind).toBe("deny");
+      expect((await userClearsLadderCapability({ role: "client" }, ladderCapabilityKey(floor))).kind).toBe("deny");
     }
   });
 
   it("does not let a stale mspRole claim override the admin promotion", async () => {
-    // requireRole has always read `role === "admin" ? "PlatformAdmin" : mspRole`, so an
+    // The gate has always read `role === "admin" ? "PlatformAdmin" : mspRole`, so an
     // admin row carrying a LOWER mspRole is still promoted. Transcribed, not tidied.
-    const outcome = await userClearsLadderFloor({ role: "admin", mspRole: "Assessment" }, "PlatformAdmin");
+    const outcome = await userClearsLadderCapability({ role: "admin", mspRole: "Assessment" }, LADDER.platformAdmin);
     expect(outcome.kind).toBe("allow");
   });
 
@@ -178,8 +182,9 @@ describeLive("#2458 — requireRole's new decision source, against the real seed
       .get("/t/MSPAdmin")
       .set("Authorization", `Bearer ${token({ id: 1, email: "op@x.com", role: "client", mspRole: "MSPOperator" })}`);
     expect(res.status).toBe(403);
-    // Byte-for-byte the message the ROLE_ORDER comparison produced. 616 call sites and
-    // every client of them depend on this string not moving.
+    // Byte-for-byte the message the retired ROLE_ORDER comparison produced. 631 call
+    // sites and every client of them depend on this string not moving — #2460 changed
+    // what a call site NAMES, deliberately not what a denial says.
     expect(res.body?.error?.message).toBe("Insufficient privileges — MSPAdmin or above required");
     expect(res.body?.error?.code).toBe("FORBIDDEN");
   });
@@ -200,10 +205,10 @@ describeLive("#2458 — requireRole's new decision source, against the real seed
     const mismatches: string[] = [];
     for (const principal of principals) {
       for (const floor of REAL_FLOORS) {
-        const expected = roleIndex(principal.held as MspRole | undefined) >= roleIndex(floor) ? 200 : 403;
+        const expected = legacyRoleIndex(principal.held) >= legacyRoleIndex(floor) ? 200 : 403;
         const res = await request(app).get(`/t/${floor}`).set("Authorization", `Bearer ${token(principal.claims)}`);
         if (res.status !== expected) {
-          mismatches.push(`${principal.label} → requireRole("${floor}"): expected ${expected}, got ${res.status}`);
+          mismatches.push(`${principal.label} → gate ${ladderCapabilityKey(floor)}: expected ${expected}, got ${res.status}`);
         }
       }
     }

@@ -24,7 +24,7 @@ import {
   mspsTable,
 } from "@workspace/db";
 import { eq, and, desc, count, sum } from "drizzle-orm";
-import { requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
+import { requireCapability, requireMspScope } from "../middlewares/requireAuth.ts";
 import { mspMutatingRateLimit } from "../middlewares/mspRateLimit.ts";
 import { apiError, ApiErrorCode, parsePagination, paginatedResponse } from "../lib/api-helpers.ts";
 import {
@@ -51,7 +51,7 @@ const router: IRouter = Router();
 
 router.get(
   "/balance/:mspId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   async (req: Request, res: Response) => {
     const mspId = parseInt(p(req.params["mspId"]), 10);
@@ -78,7 +78,7 @@ router.get(
 
 router.get(
   "/usage/:mspId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   async (req: Request, res: Response) => {
     const mspId = parseInt(p(req.params["mspId"]), 10);
@@ -110,7 +110,7 @@ router.get(
 
 router.get(
   "/ledger/:mspId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   async (req: Request, res: Response) => {
     const mspId = parseInt(p(req.params["mspId"]), 10);
@@ -142,7 +142,7 @@ router.get(
 
 router.post(
   "/grant/:mspId",
-  requireRole("PlatformAdmin"),
+  requireCapability("ladder.platform-admin"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
     const mspId = parseInt(p(req.params["mspId"]), 10);
@@ -184,7 +184,7 @@ router.post(
 
 router.post(
   "/expire-grant/:mspId",
-  requireRole("PlatformAdmin"),
+  requireCapability("ladder.platform-admin"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
     const mspId = parseInt(p(req.params["mspId"]), 10);
@@ -220,13 +220,13 @@ const AI_BLOCK_OPTIONS = [
   { id: "ai_block_10000", priceCents: 10000, creditCents: 10000, label: "$100 — 10,000 AI credits" },
 ] as const;
 
-router.get("/purchase-options", requireRole("MSPOperator"), async (_req: Request, res: Response) => {
+router.get("/purchase-options", requireCapability("ladder.msp-operator"), async (_req: Request, res: Response) => {
   res.json({ options: AI_BLOCK_OPTIONS });
 });
 
 router.post(
   "/purchase/:mspId",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   requireMspScope("params"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
@@ -350,7 +350,7 @@ router.post(
 
 router.post(
   "/purchase-webhook/activate",
-  requireRole("PlatformAdmin"),
+  requireCapability("ladder.platform-admin"),
   async (req: Request, res: Response) => {
     const { purchaseId, stripePaymentIntentId, stripeCustomerId } = req.body as {
       purchaseId?: string;
@@ -403,7 +403,7 @@ router.post(
 
 router.get(
   "/admin/cross-msp-alerts",
-  requireRole("PlatformAdmin"),
+  requireCapability("ladder.platform-admin"),
   async (_req: Request, res: Response) => {
     const alerts = await getCrossMspAlertSummary();
     res.json({ alerts, generatedAt: new Date().toISOString() });

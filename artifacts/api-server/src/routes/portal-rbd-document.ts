@@ -42,7 +42,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
@@ -122,7 +122,7 @@ function versionInScope(version: MspRbdVersion, scope: { mspId: number; tenantId
 // GET /api/portal/risk-register/rbd/:rbdId/versions — full history, scoped.
 router.get(
   "/portal/risk-register/rbd/:rbdId/versions",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     try {
       const scope = await requireScope(req, res);
@@ -142,7 +142,7 @@ router.get(
 // GET /api/portal/risk-register/rbd/:rbdId/versions/current
 router.get(
   "/portal/risk-register/rbd/:rbdId/versions/current",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     try {
       const scope = await requireScope(req, res);
@@ -166,7 +166,7 @@ router.get(
 // the already-rendered document. Never renders on demand (see header).
 router.get(
   "/portal/risk-register/rbd/:rbdId/versions/:versionUid/document",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     try {
       const scope = await requireScope(req, res);
@@ -207,7 +207,7 @@ const signDocumentSchema = z.object({
 
 router.post(
   "/portal/risk-register/rbd/:rbdId/versions/:versionUid/sign",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     try {
       const scope = await requireScope(req, res);

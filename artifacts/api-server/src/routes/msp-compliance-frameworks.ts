@@ -71,7 +71,7 @@ import {
 import { and, eq, asc } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
 import { resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
@@ -144,7 +144,7 @@ const createObligationSchema = z.object({
 router.post(
   "/msp/customers/:customerId/compliance-frameworks",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const tenant = await resolveOwnedTenant(req, res);
@@ -196,7 +196,7 @@ router.post(
 router.get(
   "/msp/customers/:customerId/compliance-frameworks",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const tenant = await resolveOwnedTenant(req, res);
@@ -245,7 +245,7 @@ async function resolveOwnedFramework(
 router.post(
   "/msp/customers/:customerId/compliance-frameworks/:frameworkId/compliance-obligations",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const tenant = await resolveOwnedTenant(req, res);
@@ -300,7 +300,7 @@ router.post(
 router.get(
   "/msp/customers/:customerId/compliance-frameworks/:frameworkId/compliance-obligations",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const tenant = await resolveOwnedTenant(req, res);

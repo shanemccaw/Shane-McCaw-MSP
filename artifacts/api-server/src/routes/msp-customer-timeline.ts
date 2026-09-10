@@ -27,7 +27,7 @@
  * override) + resolveStaffScopedCustomerIds (a scoped MSP staff member only
  * sees events for their assigned customers; 0 scope rows = unrestricted).
  *
- * Auth: requireRole("MSPOperator") — MSPOperator+ (MSPAdmin, PlatformAdmin).
+ * Auth: requireCapability("ladder.msp-operator") — MSPOperator+ (MSPAdmin, PlatformAdmin).
  *
  * Routes:
  *   GET /api/msp/timeline
@@ -45,7 +45,7 @@ import {
   salesOffersTable,
 } from "@workspace/db";
 import { eq, and, desc, lt, inArray } from "drizzle-orm";
-import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { ENGINE_DEFS } from "../lib/engine-registry";
 import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
@@ -114,7 +114,7 @@ async function loadCustomerBridge(mspId: number) {
 
 // ── GET /api/msp/timeline ───────────────────────────────────────────────────
 
-router.get("/msp/timeline", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/timeline", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {

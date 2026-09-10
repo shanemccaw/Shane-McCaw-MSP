@@ -16,7 +16,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { computeM365UptimeForTenant, SLA_TARGET_UPTIME_PERCENT, type SlaWindowDays } from "../lib/sla-uptime";
 import { logger } from "../lib/logger";
 
@@ -35,7 +35,7 @@ export interface M365SlaSummary {
   window: Partial<Record<SlaWindowDays, { uptimePercent: number | null; breached: boolean; worstService: string | null }>>;
 }
 
-router.get("/portal/m365-sla/summary", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.get("/portal/m365-sla/summary", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   try {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

@@ -113,7 +113,7 @@ vi.mock("../lib/remediation-knowledge-base", () => ({
 // requireRole is exercised elsewhere; here it is stubbed so the tests can drive
 // the handler's own customerId resolution directly.
 vi.mock("../middlewares/requireAuth", () => ({
-  requireRole: () => (_req: any, _res: any, next: () => void) => next(),
+  requireCapability: () => (_req: any, _res: any, next: () => void) => next(),
   requireAuth: (_req: any, _res: any, next: () => void) => next(),
 }));
 

@@ -42,7 +42,7 @@ import {
   mspsTable,
 } from "@workspace/db";
 import { eq, and, count, gte, or } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { getStripeKey, getMspDefaultPaymentMethod } from "../lib/stripe.ts";
 import { resolveFulfillment } from "../lib/resolve-fulfillment.ts";
 import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
@@ -181,7 +181,7 @@ ${opts.customerAgreementText ? `<div class="section"><h2>Customer Agreement</h2>
 
 router.post(
   "/portal/offers/:id/checkout",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

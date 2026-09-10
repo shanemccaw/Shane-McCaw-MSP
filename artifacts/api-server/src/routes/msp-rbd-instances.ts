@@ -19,15 +19,15 @@
  * container once per request so callers only ever need the human-facing rbdId,
  * matching every other RBD route's addressing scheme.
  *
- * Auth: `requireRole("MSPOperator")` to list/add a line (same floor as
- * `POST /api/msp/rbd` and capturing a version); `requireRole("MSPAdmin")` to
+ * Auth: `requireCapability("ladder.msp-operator")` to list/add a line (same floor as
+ * `POST /api/msp/rbd` and capturing a version); `requireCapability("ladder.msp-admin")` to
  * accept or resolve one — accepting or closing out a line carries the same
  * weight as signing/revoking the container itself, matching
  * `msp-rbd.ts`'s existing sign/revoke floor. Scoped by `resolveMspIdStrict`,
  * never taken from the request body.
  */
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
@@ -94,7 +94,7 @@ async function resolveContainerOrNotFound(mspId: number, rbdId: string, res: Res
 router.get(
   "/msp/rbd/:rbdId/instances",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -126,7 +126,7 @@ const addInstanceSchema = z.object({
 router.post(
   "/msp/rbd/:rbdId/instances",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -172,7 +172,7 @@ router.post(
 router.patch(
   "/msp/rbd/:rbdId/instances/:instanceId/accept",
   requireAuth,
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -217,7 +217,7 @@ const resolveInstanceSchema = z.object({
 router.patch(
   "/msp/rbd/:rbdId/instances/:instanceId/resolve",
   requireAuth,
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);

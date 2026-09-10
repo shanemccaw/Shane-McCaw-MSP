@@ -29,7 +29,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, usersTable, portalDepartmentMappingsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId } from "../lib/portal-customer-scope";
 import { logger } from "../lib/logger";
 import { groupByDepartment, isPortalDepartmentSource, isPortalDepartmentUnmappedFallback } from "../lib/portal-settings-departments";
@@ -53,7 +53,7 @@ interface WireDepartmentsPayload {
 
 router.get(
   "/portal/settings/departments",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -109,7 +109,7 @@ router.get(
 
 router.put(
   "/portal/settings/departments/:name/mapping",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -157,7 +157,7 @@ router.put(
  *  which the design's own drawer had no way to undo. */
 router.delete(
   "/portal/settings/departments/:name/mapping",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

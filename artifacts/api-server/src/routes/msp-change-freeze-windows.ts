@@ -31,7 +31,7 @@ import {
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
@@ -79,7 +79,7 @@ function toWire(row: ChangeFreezeWindow): WireFreezeWindow {
 router.get(
   "/msp/change-freeze-windows",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -128,7 +128,7 @@ const createSchema = z
 router.post(
   "/msp/change-freeze-windows",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -180,7 +180,7 @@ const patchSchema = z.object({
 router.patch(
   "/msp/change-freeze-windows/:id",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {

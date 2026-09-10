@@ -35,7 +35,7 @@ import {
 import { formatChangeRequestCode } from "../lib/portal-change-control";
 import { personIdForUser } from "../lib/portal-ownership";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
@@ -58,7 +58,7 @@ router.post(
   // Same floor as the sibling shape-resolution route (#1539) — the item itself
   // is visible at Assessment tier; what gates THIS route is the CR's own
   // approval, not a second, separate entitlement check.
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

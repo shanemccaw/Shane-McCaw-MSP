@@ -67,7 +67,7 @@ import {
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
 import { personIdForUser } from "../lib/portal-ownership";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
@@ -94,7 +94,7 @@ function actorIdentity(req: Request): { personId: string; name: string } {
 router.get(
   "/msp/standing-policies",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -137,7 +137,7 @@ const createSchema = z.object({
 router.post(
   "/msp/standing-policies",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -268,7 +268,7 @@ const patchSchema = z
 router.patch(
   "/msp/standing-policies/:id",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -408,7 +408,7 @@ const evaluateSchema = z.object({
 router.post(
   "/msp/standing-policies/:id/evaluate",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -458,7 +458,7 @@ const enactmentQuerySchema = z.object({
 router.get(
   "/msp/standing-policies/:id/enactment",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -542,7 +542,7 @@ router.get(
 router.get(
   "/msp/standing-policies/:id/evaluations",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);

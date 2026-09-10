@@ -17,7 +17,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { resolveBypassResolutionsForCustomer } from "../lib/remediation-bypass-resolutions";
 
@@ -33,7 +33,7 @@ function resolveCustomerId(req: Request): number | null {
 
 router.get(
   "/portal/remediation/bypass-resolutions",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

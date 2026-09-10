@@ -36,7 +36,7 @@ import {
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf";
 import {
@@ -312,7 +312,7 @@ function toEvidenceHtml(customerName: string, rows: readonly EvidenceRow[]): str
 
 router.get(
   "/portal/remediation-tracker/export.csv",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -344,7 +344,7 @@ router.get(
 
 router.get(
   "/portal/remediation-tracker/export.pdf",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -377,7 +377,7 @@ router.get(
 
 router.get(
   "/portal/remediation-tracker/evidence-pack.pdf",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

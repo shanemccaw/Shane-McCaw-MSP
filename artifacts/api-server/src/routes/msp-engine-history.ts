@@ -29,7 +29,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantsTable, tenantEngineSnapshotsTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
-import { requireRole, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
 import { getEngineDef } from "../lib/engine-registry";
 import { getEngineHistoryMerged, getBaselineEvents, getSignalDeltasForRange } from "../lib/engine-history";
@@ -41,7 +41,7 @@ const router: IRouter = Router();
 
 router.get(
   "/msp/engines/:key/history",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const { key } = req.params;
 

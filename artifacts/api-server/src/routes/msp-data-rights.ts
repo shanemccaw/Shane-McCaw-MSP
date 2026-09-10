@@ -46,7 +46,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, auditLogsTable, tenantsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { requireRole, resolveStaffScopedCustomerIds, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { requireCapability, resolveStaffScopedCustomerIds, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { submitAdminInitiatedDeletionRequest } from "../lib/data-rights.ts";
 import { logger } from "../lib/logger.ts";
@@ -91,7 +91,7 @@ async function loadCustomerBridge(mspId: number) {
 
 // ── GET /api/msp/data-rights ─────────────────────────────────────────────────
 
-router.get("/msp/data-rights", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/data-rights", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -154,7 +154,7 @@ router.get("/msp/data-rights", requireRole("MSPAdmin"), async (req: Request, res
 // Portal users linked to a customer, so an admin can pick who a deletion
 // request applies to (a customer/company can have more than one team member).
 
-router.get("/msp/data-rights/customers/:customerId/users", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/data-rights/customers/:customerId/users", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   try {
     const customerId = Number(req.params.customerId);
     if (!Number.isInteger(customerId)) {
@@ -186,7 +186,7 @@ router.get("/msp/data-rights/customers/:customerId/users", requireRole("MSPAdmin
 // using self-service. Reuses the exact same audit-log + admin-email logic the
 // customer-initiated route uses (lib/data-rights.ts) — never a new path.
 
-router.post("/msp/data-rights/customers/:customerId/deletion-request", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.post("/msp/data-rights/customers/:customerId/deletion-request", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   try {
     const customerId = Number(req.params.customerId);
     if (!Number.isInteger(customerId)) {

@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspRiskDecisionsTable, monitorChecksTable, complianceFrameworksTable, complianceObligationsTable, RISK_ACCEPTANCE_STATUSES } from "@workspace/db";
 import { eq, and, or, isNull, desc, asc } from "drizzle-orm";
 import { z } from "zod";
-import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { assignRegisterRef } from "../lib/risk-register-ref.ts";
@@ -80,7 +80,7 @@ const signRbdSchema = z.object({
 router.get(
   "/msp/rbd/available-checks",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (_req: Request, res: Response) => {
     try {
       const checks = await db
@@ -110,7 +110,7 @@ router.get(
 router.get(
   "/msp/rbd/available-obligations",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -153,7 +153,7 @@ router.get(
 router.get(
   "/msp/rbd",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -182,7 +182,7 @@ router.get(
 router.post(
   "/msp/rbd",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -254,7 +254,7 @@ router.post(
 router.patch(
   "/msp/rbd/:rbdId/sign",
   requireAuth,
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -324,7 +324,7 @@ router.patch(
 router.patch(
   "/msp/rbd/:rbdId/revoke",
   requireAuth,
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);

@@ -6,7 +6,7 @@ import type { ToolDef } from "./registry.ts";
  * get_running_sops — the operator's SOP library and its live execution record.
  *
  * Wrapping decision: the issue named `portal-sops.ts`, but every route there is
- * `requireRole("CustomerUser")` and reads the tenant off the JWT's `customerId`
+ * `requireCapability("ladder.customer-user")` and reads the tenant off the JWT's `customerId`
  * claim — which the operator (PlatformAdmin, no customerId) does not carry, so
  * those routes answer 403 for this server. The MSP-operator siblings
  * (`msp-sops.ts`: GET /msp/sops + GET /msp/sop-runs, scoped by resolveMspIdStrict)

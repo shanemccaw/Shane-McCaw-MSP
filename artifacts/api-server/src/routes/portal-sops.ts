@@ -8,7 +8,7 @@
  *
  * ── Why this file exists at all ────────────────────────────────────────────
  * `routes/msp-sops.ts` already reads these two tables, but every route in it is
- * `requireRole("MSPOperator")` and scoped by `resolveMspIdStrict` — it answers
+ * `requireCapability("ladder.msp-operator")` and scoped by `resolveMspIdStrict` — it answers
  * "what does this MSP operator maintain, across all their customers". The
  * customer portal asks a different question with a different blast radius:
  * "what applies to MY tenant, and what has been run against MY tenant". Widening
@@ -36,9 +36,9 @@
  * or a path segment. The caller's identity is the only thing that selects rows.
  *
  * ── Role floor ─────────────────────────────────────────────────────────────
- * `requireRole("CustomerUser")`. Note this is a HIGHER floor than the sibling
+ * `requireCapability("ladder.customer-user")`. Note this is a HIGHER floor than the sibling
  * portal-v2 pages (`portal-runbooks.ts`, `portal-change-control.ts` and
- * `portal-remediation-tracker.ts` all sit at `requireRole("Assessment")`), so an
+ * `portal-remediation-tracker.ts` all sit at `requireCapability("ladder.assessment")`), so an
  * Assessment-tier account that can see Active Runbooks will get a 403 here. That
  * is deliberate: the SOP library is the MSP's own procedure documentation plus
  * whatever the customer's team has written, which is not prospect-tier content.
@@ -78,7 +78,7 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, sql } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
@@ -342,7 +342,7 @@ async function loadCustomStepsBySop(customerId: number): Promise<Map<string, Cus
 
 router.get(
   "/portal/sops",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   // #1168: authoring (POST below) stays unconditional; only this READ checks
   // the tier bundles SOPs & Runbooks.
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.sopsRunbooks),
@@ -513,7 +513,7 @@ function dedupeInOrder(values: readonly string[]): string[] {
 
 router.get(
   "/portal/sop-runs",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.sopsRunbooks),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -691,7 +691,7 @@ const authorSopSchema = z.object({
 
 router.post(
   "/portal/sops",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -784,7 +784,7 @@ const addCustomStepSchema = z.object({
 
 router.post(
   "/portal/sops/:sopId/custom-steps",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

@@ -65,7 +65,7 @@ import { db, remediationTrackerStepsTable, tenantsTable, REMEDIATION_TRACKER_STE
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { logger } from "../lib/logger";
 import { computeRemediationTrackerPricing } from "../lib/remediation-tracker-pricing";
@@ -173,7 +173,7 @@ router.get(
   "/portal/remediation-tracker",
   // Same floor as the rest of the Copilot Readiness journey (see
   // portal-assessment.ts): Assessment is the lowest role carrying a customerId.
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   // #1168: step writes below stay unconditional; only this READ checks the
   // tier bundles Remediation Tracking (an Assessment-tier login has no active
   // Monitoring subscription, so this fails closed to empty automatically).
@@ -224,7 +224,7 @@ router.get(
 // behind claiming a completion that was withdrawn.
 router.put(
   "/portal/remediation-tracker/steps/:stepId",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -365,7 +365,7 @@ router.put(
 // uses (document generation, monitor check runs, …).
 router.post(
   "/portal/remediation-tracker/steps/:stepId/verify",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -430,7 +430,7 @@ router.post(
 // off on).
 router.get(
   "/portal/remediation-tracker/steps/:stepId/verification-guide",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.remediationTracking),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -492,7 +492,7 @@ const declineToRiskSchema = z.object({
 // bar than the `Assessment` floor the rest of this journey uses.
 router.post(
   "/portal/remediation-tracker/steps/:stepId/decline-to-risk",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

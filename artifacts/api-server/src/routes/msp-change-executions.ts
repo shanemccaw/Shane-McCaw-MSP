@@ -32,7 +32,7 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 
 import { db, mspChangeRequestsTable, CHANGE_REQUEST_IMPLEMENTERS, CR_ROLLBACK_OUTCOMES } from "@workspace/db";
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
 import { personIdForUser } from "../lib/portal-ownership";
 import { logger } from "../lib/logger";
@@ -80,7 +80,7 @@ async function loadScopedChange(mspId: number, changeRequestId: number) {
 
 // GET /api/msp/change-control/executions?changeRequestId=<n>
 // Executions for one change, or the MSP's recent executions when no id is given.
-router.get("/msp/change-control/executions", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/change-control/executions", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   try {
@@ -113,7 +113,7 @@ const humanActionSchema = z.object({
 // Record — and attest — a human action against a CR. A human change has no code
 // path to confirm it, so this attests it at record time: who, when, against
 // which CR.
-router.post("/msp/change-control/executions/human-action", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/executions/human-action", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const parsed = humanActionSchema.safeParse(req.body);
@@ -149,7 +149,7 @@ const attestSchema = z.object({ attestationNote: z.string().trim().max(2_000).op
 
 // POST /api/msp/change-control/executions/:id/attest
 // Attest a previously-recorded, still-unattested human action.
-router.post("/msp/change-control/executions/:id/attest", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/executions/:id/attest", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const executionId = Number(req.params.id);
@@ -182,7 +182,7 @@ router.post("/msp/change-control/executions/:id/attest", requireAuth, requireRol
 
 // POST /api/msp/change-control/executions/:id/reconcile-plan
 // Diff the captured planOnly plan against the run's real outcome and persist it.
-router.post("/msp/change-control/executions/:id/reconcile-plan", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/executions/:id/reconcile-plan", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const executionId = Number(req.params.id);
@@ -208,7 +208,7 @@ router.post("/msp/change-control/executions/:id/reconcile-plan", requireAuth, re
 // Raise the INVERSE change request a rollback is. Does NOT revert the tenant —
 // it creates a new CR that must clear its own approval and execute through the
 // authorization gate like any change.
-router.post("/msp/change-control/change-requests/:id/rollback", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/change-requests/:id/rollback", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const changeRequestId = Number(req.params.id);
@@ -240,7 +240,7 @@ const verifyRollbackSchema = z.object({ outcome: z.enum(CR_ROLLBACK_OUTCOMES) })
 // POST /api/msp/change-control/executions/:id/verify-rollback
 // Record the verification result on a rollback execution. On `verified` this
 // flips the ORIGINAL change to rolled_back.
-router.post("/msp/change-control/executions/:id/verify-rollback", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/executions/:id/verify-rollback", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const executionId = Number(req.params.id);

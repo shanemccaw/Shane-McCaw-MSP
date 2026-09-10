@@ -38,7 +38,7 @@ import { db, remediationTrackerStepsTable, REMEDIATION_TRACKER_STEP_STATUS } fro
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { logger } from "../lib/logger";
 import { resolveRemediationChecklist, resolveRemediationChecklistItem, isKnownCheckKey } from "../lib/remediation-checklist";
@@ -80,7 +80,7 @@ function resolveCustomerId(req: Request): number | null {
 // ── Read: the findings-derived checklist ────────────────────────────────────
 router.get(
   "/portal/remediation/checklist",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   // #1168: writes below stay unconditional; only this READ checks the tier
   // bundles Remediation Tracking (same module key as portal-remediation-tracker.ts).
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.remediationTracking),
@@ -104,7 +104,7 @@ router.get(
 // ── Write: the customer's claim about one item, keyed by its checkKey ───────
 router.put(
   "/portal/remediation/checklist/:checkKey",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -237,7 +237,7 @@ router.put(
 // has been waiting on a real row to authorize.
 router.post(
   "/portal/remediation/checklist/:checkKey/raise-change",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -280,7 +280,7 @@ router.post(
 // GET/PUT) uses.
 router.post(
   "/portal/remediation/checklist/:checkKey/decline-to-risk",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

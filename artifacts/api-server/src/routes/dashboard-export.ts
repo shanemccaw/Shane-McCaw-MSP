@@ -23,7 +23,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, insightsGeneratedDocumentsTable, quickWinResultSharesTable } from "@workspace/db";
 import { eq, and, gte, desc } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
 import { renderDashboardSnapshotHtml, DashboardSnapshotError } from "../lib/dashboard-snapshot.ts";
 import { renderDashboardPpt } from "../lib/dashboard-ppt.ts";
@@ -37,7 +37,7 @@ const router: IRouter = Router();
 
 // ── CLIENT: Dashboard → branded PDF download ─────────────────────────────────
 
-router.get("/portal/dashboard/pdf", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.get("/portal/dashboard/pdf", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   try {
     const { title, html } = await renderDashboardSnapshotHtml(req);
     const pdfBuffer = await htmlToPdf(buildHtmlDoc(html));
@@ -59,7 +59,7 @@ router.get("/portal/dashboard/pdf", requireRole("CustomerUser"), async (req: Req
 
 // ── CLIENT: Dashboard → branded PPT download ──────────────────────────────────
 
-router.get("/portal/dashboard/ppt", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.get("/portal/dashboard/ppt", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   try {
     const { title, buffer } = await renderDashboardPpt(req);
 
@@ -80,7 +80,7 @@ router.get("/portal/dashboard/ppt", requireRole("CustomerUser"), async (req: Req
 
 // ── CLIENT: Dashboard share link — GET current, POST create ────────────────
 
-router.get("/portal/dashboard/share", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.get("/portal/dashboard/share", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const now = new Date();
@@ -121,7 +121,7 @@ router.get("/portal/dashboard/share", requireRole("CustomerUser"), async (req: R
   }
 });
 
-router.post("/portal/dashboard/share", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.post("/portal/dashboard/share", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
 

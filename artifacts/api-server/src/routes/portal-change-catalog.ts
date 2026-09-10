@@ -55,7 +55,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, changeCatalogItemsTable, configPacksTable, mspChangeRequestsTable, portalChangeControlPolicyTable, type InsertMspChangeRequest } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireAddOnEntitlement } from "../lib/portal-addon-entitlements";
 import { materializeApprovalsForChange } from "../lib/portal-change-approvals-store";
@@ -83,7 +83,7 @@ interface WireCatalogItem {
 // ── List ──────────────────────────────────────────────────────────────────────
 router.get(
   "/portal/change-catalog",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -130,7 +130,7 @@ router.get(
 // ── Execute — raise a pre-approved standard CR ───────────────────────────────
 router.post(
   "/portal/change-catalog/:id/execute",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);

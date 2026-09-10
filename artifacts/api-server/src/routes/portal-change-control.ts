@@ -6,7 +6,7 @@
  *
  * ── Why this route exists at all, given `msp-changes.ts` already does this ──
  * It does not do this. `msp-changes.ts` serves the same table gated by
- * `requireRole("MSPOperator")` and scoped by `resolveMspIdStrict` — i.e. every
+ * `requireCapability("ladder.msp-operator")` and scoped by `resolveMspIdStrict` — i.e. every
  * change request belonging to every tenant of that MSP, in one list. Pointing a
  * customer-facing page at it would hand each customer the other customers'
  * change history: their tenant names, their primary domains, their target
@@ -115,7 +115,7 @@ import { db, changeFreezeWindowsTable, changeMaintenanceWindowsTable, crApproval
 import { and, asc, desc, eq, or } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireAddOnEntitlement } from "../lib/portal-addon-entitlements";
 import { declineRoutedChangeToRisk } from "../lib/m365-change-router";
@@ -508,7 +508,7 @@ async function callerCanApproveChanges(req: Request): Promise<boolean> {
 // ── Read ──────────────────────────────────────────────────────────────────────
 router.get(
   "/portal/change-control",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -679,7 +679,7 @@ function parseJsonField(value: string | undefined): Record<string, unknown> {
 
 router.post(
   "/portal/change-control",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -793,7 +793,7 @@ function toWireFreezeWindow(
 
 router.get(
   "/portal/change-control/freeze-windows",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -894,7 +894,7 @@ function toWireMaintenanceWindow(
 
 router.get(
   "/portal/change-control/maintenance-windows",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -960,7 +960,7 @@ function parseChangeRequestCode(code: string): number | null {
 
 router.post(
   "/portal/change-control/:code/decline",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -1101,7 +1101,7 @@ const rejectSchema = z.object({ reason: z.string().trim().min(1).max(2_000) });
 
 router.post(
   "/portal/change-control/:code/approve",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -1153,7 +1153,7 @@ router.post(
 
 router.post(
   "/portal/change-control/:code/reject",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -1253,7 +1253,7 @@ interface WireCrAttachment {
 
 router.get(
   "/portal/change-control/:code/timeline",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -1324,7 +1324,7 @@ const commentSchema = z.object({ body: z.string().trim().min(1).max(4_000) });
 
 router.post(
   "/portal/change-control/:code/comments",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -1384,7 +1384,7 @@ const attachmentSchema = z.object({
 
 router.post(
   "/portal/change-control/:code/attachments",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -1491,7 +1491,7 @@ interface WireChangeMetrics {
 
 router.get(
   "/portal/change-control/metrics",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);

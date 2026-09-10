@@ -8,10 +8,10 @@
  * or internal operator data are returned — only what a customer needs to
  * know about their service health.
  *
- * Auth: requireRole("CustomerUser") — MSP JWT with CustomerUser role — for
+ * Auth: requireCapability("ladder.customer-user") — MSP JWT with CustomerUser role — for
  * every route here EXCEPT GET /portal/dashboard, which is requireAuth (see the
  * note on that route), and GET /portal/customer/rescoring-status, which is
- * requireRole("Assessment") (Git #1051 fix) — its own eligibility query looks
+ * requireCapability("ladder.assessment") (Git #1051 fix) — its own eligibility query looks
  * for a tenant's active mspRole='Assessment' user (the free weekly Copilot
  * Assessment rescan's real audience per #1058), so gating the READ one tier
  * above that at CustomerUser blocked the exact free-tier customers the route
@@ -27,7 +27,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth";
 import { randomUUID } from "crypto";
 import { getRequestContext } from "../lib/request-context.ts";
 import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
@@ -179,7 +179,7 @@ function timelineMessage(status: ItemStatus, count: number): string {
 
 router.get(
   "/portal/customer/sla-status",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
     if (!customerId) {
@@ -215,7 +215,7 @@ router.get(
 
 router.get(
   "/portal/customer/scope-status",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
     if (!customerId) {
@@ -300,13 +300,13 @@ function coverageLabel(checksOk: number, checksTotal: number, checksLicenseGap: 
 
 router.get(
   "/portal/customer/rescoring-status",
-  // Git #1051 fix — was requireRole("CustomerUser"), one tier above the route's
+  // Git #1051 fix — was requireCapability("ladder.customer-user"), one tier above the route's
   // real audience (see the file-level doc comment above): its eligibility query
   // looks for an active mspRole='Assessment' user on the tenant, so a
   // CustomerUser+ floor 403'd the free-tier Assessment customers this route
   // exists to inform. Lowered to match /portal/diagnostics/status and
   // /portal/scan-status's own Assessment floor (same data domain).
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
     if (!customerId) {
@@ -400,7 +400,7 @@ router.get(
 // over here). Nothing was lost by deleting it; the only real symptom was #315's
 // tenant-name fetch silently reading a field no live route emitted.
 //
-// requireAuth, not requireRole("CustomerUser") — Shane's call on #327. The
+// requireAuth, not requireCapability("ladder.customer-user") — Shane's call on #327. The
 // Assessment role sits BELOW CustomerUser in ROLE_ORDER, so the old floor 403'd
 // the War Room and the assessment dashboard, which are Assessment-tier surfaces
 // that call this route. Deliberate consequence: Assessment/Free tier now receive
@@ -925,7 +925,7 @@ router.get(
 
 router.get(
   "/portal/diagnostics/results",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
     if (!customerId) {
@@ -976,7 +976,7 @@ router.get(
 
 router.post(
   "/portal/customer/offboard",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
     const mspId = req.user!.mspId;
@@ -1104,7 +1104,7 @@ router.post(
 
 router.get(
   "/portal/customer/export",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
 

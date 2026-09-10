@@ -56,7 +56,7 @@ vi.mock("@workspace/db", () => ({
 // ── Mock auth / infra ─────────────────────────────────────────────────────────
 
 vi.mock("../middlewares/requireAuth.ts", () => ({
-  requireRole: (_role: string) => (req: Request, _res: Response, next: NextFunction) => {
+  requireCapability: (_role: string) => (req: Request, _res: Response, next: NextFunction) => {
     req.user = { id: 1, email: "admin@msp.test", role: "client", mspRole: "MSPAdmin", mspId: 42 };
     next();
   },

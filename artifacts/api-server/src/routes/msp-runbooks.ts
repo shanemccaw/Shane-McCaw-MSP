@@ -42,7 +42,7 @@
  * param on GET, body field on PUT/POST), and every route resolves the
  * caller's own `mspId` via `resolveMspIdStrict` and verifies that customerId
  * is actually in that MSP's book via `customerBelongsToMsp` — the same
- * `requireRole("MSPOperator")` + `resolveMspIdStrict` + MSP-ownership-check
+ * `requireCapability("ladder.msp-operator")` + `resolveMspIdStrict` + MSP-ownership-check
  * pattern every other MSP-scoped route in this repo uses (e.g.
  * msp-vip-classifications.ts). Once that check passes, the underlying
  * customer-scoped ownership queries (`ownedRunbook` / `ownedHold` /
@@ -56,7 +56,7 @@ import { db, portalHoldWindowEventsTable, portalHoldWindowsTable, portalRunbookS
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
@@ -87,7 +87,7 @@ function parseCustomerId(raw: unknown): number | null {
 router.get(
   "/msp/runbooks",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -127,7 +127,7 @@ const putStepSchema = z.object({
 router.put(
   "/msp/runbooks/:runbookId/steps/:position",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -217,7 +217,7 @@ const extendSchema = z.object({
 router.post(
   "/msp/hold-windows/:holdId/extend",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -292,7 +292,7 @@ router.post(
 router.get(
   "/msp/hold-windows/:holdId/events",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);

@@ -136,10 +136,10 @@ let server: http.Server;
 let base: string;
 
 before(async () => {
-  const { requireAuth, requireRole, requireMspScope, requireCustomerScope } =
+  const { requireAuth, requireCapability, requireMspScope, requireCustomerScope } =
     await import("../middlewares/requireAuth.ts") as {
       requireAuth: RequestHandler;
-      requireRole: (r: string) => RequestHandler;
+      requireCapability: (r: string) => RequestHandler;
       requireMspScope: (s: string) => RequestHandler;
       requireCustomerScope: (s: string) => RequestHandler;
     };
@@ -148,19 +148,19 @@ before(async () => {
   app.use(express.json());
 
   // Platform-admin-only route
-  app.get("/test/platform-only", requireRole("PlatformAdmin"), (_req, res) => {
+  app.get("/test/platform-only", requireCapability("ladder.platform-admin"), (_req, res) => {
     res.json({ ok: true });
   });
 
   // MSP-admin-or-above route
-  app.get("/test/msp-admin", requireRole("MSPAdmin"), (_req, res) => {
+  app.get("/test/msp-admin", requireCapability("ladder.msp-admin"), (_req, res) => {
     res.json({ ok: true });
   });
 
   // CustomerUser-or-above route — the floor that fences the Assessment/Free
   // bottom tier out of customer-and-above functionality (dashboards, engines,
-  // signals, monitoring, mission control all sit behind requireRole("CustomerUser")).
-  app.get("/test/customer-floor", requireRole("CustomerUser"), (_req, res) => {
+  // signals, monitoring, mission control all sit behind requireCapability("ladder.customer-user")).
+  app.get("/test/customer-floor", requireCapability("ladder.customer-user"), (_req, res) => {
     res.json({ ok: true });
   });
 
@@ -212,7 +212,7 @@ function get(path: string, token?: string): Promise<{ status: number; body: unkn
 
 // ── 1. requireRole() — role hierarchy ─────────────────────────────────────────
 
-describe("requireRole() HTTP fence", () => {
+describe("requireCapability() HTTP fence", () => {
   it("returns 401 with no Authorization header", async () => {
     const { status } = await get("/test/platform-only");
     assert.equal(status, 401);

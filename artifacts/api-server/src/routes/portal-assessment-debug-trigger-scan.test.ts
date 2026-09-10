@@ -105,7 +105,7 @@ vi.mock("../lib/logger", () => ({
 }));
 
 vi.mock("../middlewares/requireAuth", () => ({
-  requireRole: () => (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  requireCapability: () => (req: express.Request, res: express.Response, next: express.NextFunction) => {
     (req as unknown as Record<string, unknown>).user = { id: 99, customerId: 10 };
     next();
   },

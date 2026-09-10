@@ -38,7 +38,7 @@
  * batch. Unknown metric keys return { status: "error", error: "unknown metric" }.
  *
  * ── Auth & scope (no customer picker) ─────────────────────────────────────────
- *   requireRole("CustomerUser") admits CustomerUser and every higher MSP role.
+ *   requireCapability("ladder.customer-user") admits CustomerUser and every higher MSP role.
  *
  *   CustomerUser  → customer-scope metrics resolve against their own
  *                   req.user.customerId. A mismatching body.customerId is rejected.
@@ -52,7 +52,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
 import { getMetric } from "@workspace/dashboard-registry";
 import { resolveMetric, resolveMetricHistory, type MetricResult, type ResolveContext } from "../lib/dashboard-resolvers.ts";
 import { logger } from "../lib/logger";
@@ -66,7 +66,7 @@ const MAX_METRICS_PER_REQUEST = 200;
 
 router.post(
   "/dashboard/resolve",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const user = req.user!;
     const body = (req.body ?? {}) as { metrics?: unknown; customerId?: unknown; windowDays?: unknown; includeHistory?: unknown };

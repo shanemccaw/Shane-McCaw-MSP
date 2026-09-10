@@ -73,7 +73,7 @@ import { db, tenantsTable, consentInviteTokensTable, checkoutSessionsTable, serv
 import { eq, and, isNull, gte, desc, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
-import { requireAdmin, requireRole } from "../middlewares/requireAuth.ts";
+import { requireAdmin, requireCapability } from "../middlewares/requireAuth.ts";
 import { buildAdminConsentUrl, mergeConsentKey, mtAppCredentialsPresent, getInitialDomainForTenant, REQUIRED_MT_SCOPES, REQUIRED_WRITE_APP_PERMISSIONS } from "../lib/graph.ts";
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
 import { startPowerPlatformEnrollmentDeviceCode, pollPowerPlatformEnrollmentDeviceCode } from "../lib/power-platform-admin.ts";
@@ -399,7 +399,7 @@ router.post("/consent/invite-link", requireAdmin, async (req: Request, res: Resp
 // invite-token + buildAdminConsentUrl mechanism — no second consent mechanism.
 // tenantId/customerId are resolved server-side from the JWT, never trusted
 // from the request body.
-router.post("/portal/consent/reconsent-link", requireRole("Assessment"), async (req: Request, res: Response) => {
+router.post("/portal/consent/reconsent-link", requireCapability("ladder.assessment"), async (req: Request, res: Response) => {
   if (!mtAppCredentialsPresent()) {
     res.status(503).json({
       error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID / MT_APP_CLIENT_SECRET)",
@@ -1346,7 +1346,7 @@ router.get("/admin/customers/:customerId/write-consent/start", requireAdmin, asy
 // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
 // Allows a testbed customer to self-serve the write-consent flow from the
 // msp-portal shell. Uses the exact same write-consent logic as the admin route.
-router.post("/portal/consent/debug-write-reconsent-link", requireRole("Assessment"), async (req: Request, res: Response) => {
+router.post("/portal/consent/debug-write-reconsent-link", requireCapability("ladder.assessment"), async (req: Request, res: Response) => {
   if (!process.env.MT_APP_WRITE_CLIENT_ID) {
     res.status(503).json({ error: "Write app credentials not configured (MT_APP_WRITE_CLIENT_ID)" });
     return;
@@ -1726,7 +1726,7 @@ router.get("/admin/customers/:customerId/sharepoint-consent/start", requireAdmin
 // /portal/consent/reconsent-link (read flow) so the portal pill has one real
 // button to call for the SharePoint case. customerId comes from the JWT only.
 
-router.post("/portal/consent/sharepoint-link", requireRole("Assessment"), async (req: Request, res: Response) => {
+router.post("/portal/consent/sharepoint-link", requireCapability("ladder.assessment"), async (req: Request, res: Response) => {
   if (!process.env.MT_APP_CLIENT_ID) {
     res.status(503).json({ error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID)" });
     return;

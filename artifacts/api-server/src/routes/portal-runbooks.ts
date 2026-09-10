@@ -78,7 +78,7 @@ import {
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
@@ -126,7 +126,7 @@ function titleCasePillar(pillar: string): string {
 // with the MSP-console routes (msp-runbooks.ts, #2669).
 router.get(
   "/portal/runbooks",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   // #1168: Config Pack execution itself stays unconditional; only this READ
   // checks the tier bundles Runbooks (an Assessment-tier login has no active
   // Monitoring subscription, so this fails closed to empty automatically).
@@ -153,7 +153,7 @@ const putStepSchema = z.object({ checked: z.boolean() });
 
 router.put(
   "/portal/runbooks/:runbookId/steps/:position",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -236,7 +236,7 @@ const addStepSchema = z.object({ text: z.string().trim().min(1).max(500) });
 
 router.post(
   "/portal/runbooks/:runbookId/steps",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -314,7 +314,7 @@ const extendSchema = z.object({
 
 router.post(
   "/portal/hold-windows/:holdId/extend",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -542,7 +542,7 @@ async function raiseHoldChangeRequest(opts: {
 function decisionRoute(decision: HoldDecision, path: string) {
   router.post(
     path,
-    requireRole("Assessment"),
+    requireCapability("ladder.assessment"),
     async (req: Request, res: Response): Promise<void> => {
       const customerId = resolveCustomerId(req);
       if (customerId === null) {
@@ -648,7 +648,7 @@ decisionRoute("prepare_cr", "/portal/hold-windows/:holdId/prepare-cr");
 /** The decisions taken on one window — the audit trail, customer-scoped. */
 router.get(
   "/portal/hold-windows/:holdId/events",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.runbooks),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);

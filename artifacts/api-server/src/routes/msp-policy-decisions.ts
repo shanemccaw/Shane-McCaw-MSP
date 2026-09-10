@@ -66,7 +66,7 @@ import { db, policyDecisionsTable, complianceObligationsTable, complianceFramewo
 import { and, eq, desc, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
 import { resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
@@ -185,7 +185,7 @@ async function resolveOwnedTenant(req: Request, res: Response): Promise<TenantSc
 router.get(
   "/msp/policy-decisions/:customerId",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const scope = await resolveOwnedTenant(req, res);
@@ -225,7 +225,7 @@ const resolveClearanceSchema = z.object({
 router.patch(
   "/msp/policy-decisions/:customerId/:id/clearance/resolve",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const scope = await resolveOwnedTenant(req, res);

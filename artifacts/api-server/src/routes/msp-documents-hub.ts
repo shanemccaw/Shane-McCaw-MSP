@@ -42,7 +42,7 @@ import {
   quickWinResultSharesTable,
 } from "@workspace/db";
 import { eq, and, inArray, gte, lte, desc } from "drizzle-orm";
-import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
@@ -86,7 +86,7 @@ async function loadCustomerBridge(mspId: number) {
 
 // ── GET /api/msp/documents-hub ──────────────────────────────────────────────
 
-router.get("/msp/documents-hub", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/documents-hub", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -225,7 +225,7 @@ async function loadScopedDocument(mspId: number, documentId: number, scopedCusto
 
 // ── GET /api/msp/documents-hub/:id/view ─────────────────────────────────────
 
-router.get("/msp/documents-hub/:id/view", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/documents-hub/:id/view", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) { res.status(403).json({ error: "MSP context required" }); return; }
@@ -244,7 +244,7 @@ router.get("/msp/documents-hub/:id/view", requireRole("MSPOperator"), async (req
 
 // ── GET /api/msp/documents-hub/:id/pdf ──────────────────────────────────────
 
-router.get("/msp/documents-hub/:id/pdf", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/documents-hub/:id/pdf", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) { res.status(403).json({ error: "MSP context required" }); return; }
@@ -284,7 +284,7 @@ router.get("/msp/documents-hub/:id/pdf", requireRole("MSPOperator"), async (req:
 // viewing/view-tracking routes, unmodified. Only the authorization check
 // differs: MSP-book ownership instead of doc.customerId === caller.
 
-router.post("/msp/documents-hub/:id/share", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/documents-hub/:id/share", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) { res.status(403).json({ error: "MSP context required" }); return; }

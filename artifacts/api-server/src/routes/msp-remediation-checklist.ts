@@ -40,7 +40,7 @@ import { db, remediationTrackerStepsTable, REMEDIATION_TRACKER_STEP_STATUS } fro
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { resolveRemediationChecklist, resolveRemediationChecklistItem, isKnownCheckKey } from "../lib/remediation-checklist";
 import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger";
@@ -83,7 +83,7 @@ async function resolveAuthorizedCustomerId(req: Request, res: Response): Promise
 // ── Read: the findings-derived checklist ────────────────────────────────────
 router.get(
   "/msp/customers/:customerId/remediation/checklist",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;
@@ -101,7 +101,7 @@ router.get(
 // ── Write: the MSP's claim about one item, keyed by its checkKey ────────────
 router.put(
   "/msp/customers/:customerId/remediation/checklist/:checkKey",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;
@@ -217,7 +217,7 @@ router.put(
 // ── Raise a real Change Request FROM one checklist item ──────────────────────
 router.post(
   "/msp/customers/:customerId/remediation/checklist/:checkKey/raise-change",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;
@@ -248,7 +248,7 @@ router.post(
 // ── Decline this checklist item to the risk register, on the customer's behalf (#2869) ──
 router.post(
   "/msp/customers/:customerId/remediation/checklist/:checkKey/decline-to-risk",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;

@@ -77,7 +77,7 @@ vi.mock("dns/promises", () => ({
 
 vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
-  requireRole: (_role: string) => (req: { user?: unknown }, _res: unknown, next: () => void) => {
+  requireCapability: (_role: string) => (req: { user?: unknown }, _res: unknown, next: () => void) => {
     if (!req.user) {
       (req as Record<string, unknown>).user = {
         id: 1,

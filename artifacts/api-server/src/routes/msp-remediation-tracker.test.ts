@@ -109,7 +109,7 @@ vi.mock("../lib/logger", () => {
 // itself (and its DB-backed ownership rule) has its own coverage elsewhere.
 const mockAssertCustomerAccess = vi.fn();
 vi.mock("../middlewares/requireAuth", () => ({
-  requireRole: () => (req: any, _res: any, next: () => void) => {
+  requireCapability: () => (req: any, _res: any, next: () => void) => {
     req.user = req.user ?? { id: 1, email: "staff@test.com", role: "client", mspRole: "MSPOperator", mspId: 9 };
     next();
   },

@@ -15,7 +15,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspsTable, mspCustomDomainsTable, mspAuditLogsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
 import { randomBytes, randomUUID } from "crypto";
 import { getRequestContext } from "../lib/request-context.ts";
@@ -146,7 +146,7 @@ router.get("/portal/tenant/:slug", async (req: Request, res: Response) => {
 
 // ── GET /api/msp/settings/custom-domain ───────────────────────────────────────
 
-router.get("/msp/settings/custom-domain", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/settings/custom-domain", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) return apiError(res, 400, "No MSP context");
 
@@ -196,7 +196,7 @@ const addDomainSchema = z.object({
     .transform((d) => d.toLowerCase()),
 });
 
-router.post("/msp/settings/custom-domain", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.post("/msp/settings/custom-domain", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) return apiError(res, 400, "No MSP context");
 
@@ -265,7 +265,7 @@ router.post("/msp/settings/custom-domain", requireRole("MSPAdmin"), async (req: 
 // Trigger a live DNS TXT lookup and update verification status accordingly.
 // Rate-limited to avoid hammering DNS resolvers.
 
-router.post("/msp/settings/custom-domain/verify", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.post("/msp/settings/custom-domain/verify", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) return apiError(res, 400, "No MSP context");
 
@@ -345,7 +345,7 @@ router.post("/msp/settings/custom-domain/verify", requireRole("MSPAdmin"), async
 
 // ── DELETE /api/msp/settings/custom-domain ────────────────────────────────────
 
-router.delete("/msp/settings/custom-domain", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.delete("/msp/settings/custom-domain", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) return apiError(res, 400, "No MSP context");
 

@@ -3,7 +3,7 @@
  *
  * MSP Portal-scoped Sales Offer endpoints.
  *
- * Auth: requireRole("MSPOperator") — MSP JWT with at least MSPOperator role.
+ * Auth: requireCapability("ladder.msp-operator") — MSP JWT with at least MSPOperator role.
  * Plan: requirePlanFeature("sales_offers") on write operations.
  * Scope: all queries are automatically filtered to the caller's mspId.
  *
@@ -34,8 +34,9 @@ import {
   type SalesOfferState,
 } from "@workspace/db";
 import { eq, and, desc, asc, inArray } from "drizzle-orm";
-import { requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth";
-import { userClearsLadderFloor } from "../middlewares/rbac-ladder.ts";
+import { requireCapability, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth";
+import { userClearsLadderCapability } from "../middlewares/rbac-ladder.ts";
+import { LADDER } from "@workspace/db/rbac/legacy-ladder";
 import { requirePlanFeature } from "../lib/msp-entitlement";
 import {
   runSalesOfferEngineForTenant,
@@ -70,7 +71,7 @@ function apiErr(res: Response, status: number, message: string): void {
 
 router.get(
   "/msp/:mspId/sales-offers",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = parseInt(String(req.params.mspId ?? ""), 10);
@@ -122,13 +123,13 @@ router.get("/msp/sales-offers/sse", async (req: Request, res: Response): Promise
     return;
   }
 
-  // #2458 — this route cannot use requireRole (EventSource sets no Authorization
-  // header, so it verifies the ?token= JWT itself), and it had grown its own
-  // hand-copied ROLE_ORDER array to reproduce requireRole("MSPOperator") inline. A
+  // #2458 — this route cannot use the requireCapability middleware (EventSource sets
+  // no Authorization header, so it verifies the ?token= JWT itself), and it had grown
+  // its own hand-copied ROLE_ORDER array to reproduce the operator floor inline. A
   // second copy of the ladder is exactly the drift #1696 is about: it would have kept
   // answering from a stale array after the real gate moved onto the database. It now
-  // asks the same evaluator requireRole asks, with the same MSPOperator floor.
-  const outcome = await userClearsLadderFloor(user, "MSPOperator");
+  // asks the same evaluator every gated route asks, for the same capability.
+  const outcome = await userClearsLadderCapability(user, LADDER.mspOperator);
   if (outcome.kind === "unavailable") {
     apiError(res, 503, ApiErrorCode.INTERNAL, "Authorization is temporarily unavailable");
     return;
@@ -169,7 +170,7 @@ router.get("/msp/sales-offers/sse", async (req: Request, res: Response): Promise
 
 router.post(
   "/msp/sales-offers/generate",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = await resolveMspId(req);
@@ -219,7 +220,7 @@ router.post(
 
 router.post(
   "/msp/:mspId/sales-offers/expire-stale",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
@@ -240,7 +241,7 @@ router.post(
 
 router.get(
   "/msp/:mspId/sales-offers/:id",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = parseInt(String(req.params.mspId ?? ""), 10);
@@ -269,7 +270,7 @@ router.get(
 
 router.get(
   "/msp/sales-offers/:id/events",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = await resolveMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
@@ -303,7 +304,7 @@ router.get(
 
 router.patch(
   "/msp/sales-offers/:id",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = await resolveMspId(req);
@@ -353,7 +354,7 @@ router.patch(
 
 router.patch(
   "/msp/sales-offers/:id/state",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = await resolveMspId(req);
@@ -401,7 +402,7 @@ router.patch(
 
 router.delete(
   "/msp/sales-offers/:id",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = await resolveMspId(req);

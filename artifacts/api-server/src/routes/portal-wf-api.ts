@@ -47,7 +47,7 @@ import {
   wfDefinitionsTable,
 } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, like } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { mspMutatingRateLimit } from "../middlewares/mspRateLimit.ts";
 import {
   apiError,
@@ -81,7 +81,7 @@ function p(val: string | string[] | undefined): string {
 const router: IRouter = Router();
 
 // All portal-wf routes require at minimum MSPOperator role
-router.use(requireRole("MSPOperator"));
+router.use(requireCapability("ladder.msp-operator"));
 
 // ── Workflow Definitions ──────────────────────────────────────────────────────
 
@@ -103,7 +103,7 @@ router.get("/workflows/:workflowKey", async (req: Request, res: Response) => {
 
 router.put(
   "/workflows/:workflowKey",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
     const workflowKey = p(req.params["workflowKey"]);
@@ -132,7 +132,7 @@ router.put(
 
 router.patch(
   "/workflows/:workflowKey/active",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
     const workflowKey = p(req.params["workflowKey"]);
@@ -163,7 +163,7 @@ router.get("/start-mappings", async (_req: Request, res: Response) => {
 
 router.post(
   "/start-mappings",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
     const { eventPattern, workflowKey, isActive } = req.body as {
@@ -187,7 +187,7 @@ router.post(
 
 router.delete(
   "/start-mappings",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
     const { eventPattern, workflowKey } = req.body as {
@@ -207,7 +207,7 @@ router.delete(
 
 router.post(
   "/start-mappings/reload",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   mspMutatingRateLimit,
   async (_req: Request, res: Response) => {
     await reloadStartMappings();
@@ -329,7 +329,7 @@ router.get("/runs/:runId", async (req: Request, res: Response) => {
 
 router.post(
   "/runs",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
     const { workflowKey, mspId, customerId, inputPayload } = req.body as {
@@ -364,7 +364,7 @@ router.post(
 
 router.post(
   "/runs/:runId/retry",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
     const runId = p(req.params["runId"]);
@@ -380,7 +380,7 @@ router.post(
 
 router.post(
   "/runs/:runId/cancel",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
     const runId = p(req.params["runId"]);
@@ -426,7 +426,7 @@ router.post(
 
 router.delete(
   "/runs/:runId",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
     const runId = p(req.params["runId"]);
@@ -479,7 +479,7 @@ router.get("/operator-tasks", async (req: Request, res: Response) => {
 
 router.patch(
   "/operator-tasks/:taskId",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
     const taskId = p(req.params["taskId"]);
@@ -532,7 +532,7 @@ router.get("/dlq", async (req: Request, res: Response) => {
 
 router.post(
   "/dlq/:dlqId/replay",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
     const dlqId = p(req.params["dlqId"]);
@@ -548,7 +548,7 @@ router.post(
 
 router.patch(
   "/dlq/:dlqId",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   mspMutatingRateLimit,
   async (req: Request, res: Response) => {
     const dlqId = p(req.params["dlqId"]);

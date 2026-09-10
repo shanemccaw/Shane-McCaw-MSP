@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, crApprovalsTable, mspChangeRequestsTable, portalChangeControlPolicyTable, tenantsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
-import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
@@ -95,7 +95,7 @@ function parseCrId(crId: string): number | null {
 router.get(
   "/msp/change-requests",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -129,7 +129,7 @@ router.get(
 router.post(
   "/msp/change-requests",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -346,7 +346,7 @@ router.post(
 router.patch(
   "/msp/change-requests/:id",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -599,7 +599,7 @@ interface WireCrAttachment {
 router.get(
   "/msp/change-requests/:id/timeline",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -671,7 +671,7 @@ const mspCommentSchema = z.object({ body: z.string().trim().min(1).max(4_000) })
 router.post(
   "/msp/change-requests/:id/comments",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -732,7 +732,7 @@ const mspAttachmentSchema = z.object({
 router.post(
   "/msp/change-requests/:id/attachments",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);

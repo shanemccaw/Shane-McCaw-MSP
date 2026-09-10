@@ -8,7 +8,7 @@
  *
  * ── Why a new route, given `msp-rbd.ts` already serves this table ───────────
  * It serves it MSP-side. Every handler in `msp-rbd.ts` is
- * `requireRole("MSPOperator")` (list) or `requireRole("MSPAdmin")` (sign,
+ * `requireCapability("ladder.msp-operator")` (list) or `requireCapability("ladder.msp-admin")` (sign,
  * revoke), scoped by `resolveMspIdStrict` — i.e. every risk decision belonging
  * to every tenant of that MSP, in one list. Pointing a customer page at it
  * would hand each customer the other customers' liability records: their tenant
@@ -85,7 +85,7 @@ import { db, mspRiskDecisionsTable, complianceObligationsTable, complianceFramew
 import { and, eq, desc, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
@@ -427,7 +427,7 @@ async function scopeOrEmpty(req: Request, res: Response, emptyKey: "risks" | "de
 /** Every risk decision for the calling customer's own tenant. */
 router.get(
   "/portal/risk-register",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   // #1168: creation (accept/POST below) is unconditional; only this READ
   // checks the customer's purchased Monitoring tier bundles Risk Register.
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.riskRegister),
@@ -474,7 +474,7 @@ router.get(
  */
 router.get(
   "/portal/policy-decisions",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   // #1168: this is the policy-decision VIEW of risk data, gated the same as
   // the dedicated policy-decisions.ts module.
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.policyDecisions),
@@ -529,7 +529,7 @@ const acceptSchema = z.object({
 
 router.post(
   "/portal/risk-register/:rbdId/accept",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     const rbdId = String(req.params.rbdId);

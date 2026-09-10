@@ -43,7 +43,7 @@ import {
   mspEventStoreTable,
 } from "@workspace/db";
 import { eq, and, desc, count, or } from "drizzle-orm";
-import { requireRole, requireAuth } from "../middlewares/requireAuth.ts";
+import { requireCapability, requireAuth } from "../middlewares/requireAuth.ts";
 import { resolveMspId, resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { logger } from "../lib/logger.ts";
@@ -132,7 +132,7 @@ async function getMspStripeCustomerId(mspId: number): Promise<string | null> {
 
 router.post(
   "/msp/offers/:offerId/accept",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const offerId = parseInt(p(req.params["offerId"]), 10);
     if (isNaN(offerId)) { apiErr(res, 400, "offerId must be a number"); return; }
@@ -412,7 +412,7 @@ const createSowSchema = z.object({
 
 router.post(
   "/msp/sows",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const parsed = createSowSchema.safeParse(req.body);
     if (!parsed.success) { apiErr(res, 400, parsed.error.message); return; }
@@ -476,7 +476,7 @@ router.post(
 
 router.get(
   "/msp/sows",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiErr(res, 403, "MSP scope required"); return; }
@@ -523,7 +523,7 @@ router.get(
 
 router.get(
   "/msp/sows/:sowId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const sowId = p(req.params["sowId"]);
     const mspId = resolveMspIdStrict(req);
@@ -682,7 +682,7 @@ router.post(
 
 router.post(
   "/msp/sows/:sowId/charge",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const sowId = p(req.params["sowId"]);
     const mspId = resolveMspIdStrict(req);
@@ -721,7 +721,7 @@ router.post(
 
 router.post(
   "/msp/sows/:sowId/expire",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const sowId = p(req.params["sowId"]);
     const mspId = resolveMspIdStrict(req);

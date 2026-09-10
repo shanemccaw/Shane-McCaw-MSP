@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantsTable, mspsTable, usersTable, impersonationTokensTable, mspAuditLogsTable, fulfillmentQueueTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES } from "@workspace/db";
 import { eq, and, count, desc, gte, lte, isNotNull, lt, ne, ilike, or, type SQL } from "drizzle-orm";
-import { requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
+import { requireCapability, requireMspScope } from "../middlewares/requireAuth.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.portal" });
@@ -10,7 +10,7 @@ const router: IRouter = Router();
 
 router.post(
   "/msp/:mspId/customers/:customerId/impersonate",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   async (req: Request, res: Response) => {
     const mspId = parseInt(String(req.params.mspId ?? ""), 10);
@@ -138,7 +138,7 @@ router.post(
 
 router.get(
   "/msp/:mspId/fulfillment-queue",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   async (req: Request, res: Response) => {
   try {

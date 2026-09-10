@@ -25,14 +25,14 @@
  * Each source is fetched independently, already scoped + time-bounded, then
  * merged and re-sorted so no single noisy source can crowd out the others.
  *
- * Auth: requireRole("CustomerUser") — MSP JWT with CustomerUser role.
+ * Auth: requireCapability("ladder.customer-user") — MSP JWT with CustomerUser role.
  *
  * Routes:
  *   GET /api/portal/customer/timeline
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import {
   db,
   mspDiagnosticRunsTable,
@@ -78,7 +78,7 @@ function engineLabel(engineKey: string): string {
 
 router.get(
   "/portal/customer/timeline",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
     if (!customerId) {

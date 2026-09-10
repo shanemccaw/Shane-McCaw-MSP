@@ -24,7 +24,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspsTable, tenantsTable, mspJobQueueTable, pendingApprovalsTable, wfRunsTable, wfDefinitionsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql } from "drizzle-orm";
-import { requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
+import { requireCapability, requireMspScope } from "../middlewares/requireAuth.ts";
 import { mspRateLimit, mspMutatingRateLimit } from "../middlewares/mspRateLimit.ts";
 import { mspRequestLog } from "../middlewares/mspRequestLog.ts";
 import { withIdempotency } from "../lib/idempotency.ts";
@@ -74,7 +74,7 @@ router.get("/health", (_req: Request, res: Response) => {
 // ── MSP Profile ───────────────────────────────────────────────────────────────
 router.get(
   "/msps/:mspId",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   requireMspScope("params"),
   async (req: Request, res: Response) => {
     const mspId = parseInt(p(req.params["mspId"]), 10);
@@ -104,7 +104,7 @@ router.get(
 // ── Customers (paginated) ─────────────────────────────────────────────────────
 router.get(
   "/msps/:mspId/customers",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   async (req: Request, res: Response) => {
     const mspId = parseInt(p(req.params["mspId"]), 10);
@@ -167,7 +167,7 @@ router.get(
 // ── Background Jobs (paginated) ───────────────────────────────────────────────
 router.get(
   "/msps/:mspId/jobs",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   requireMspScope("params"),
   async (req: Request, res: Response) => {
     const mspId = parseInt(p(req.params["mspId"]), 10);
@@ -203,7 +203,7 @@ router.get(
 // ── Job: cancel ───────────────────────────────────────────────────────────────
 router.post(
   "/msps/:mspId/jobs/:jobId/cancel",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   requireMspScope("params"),
   mspMutatingRateLimit,
   withIdempotency(),
@@ -221,7 +221,7 @@ router.post(
 // ── Job: requeue ──────────────────────────────────────────────────────────────
 router.post(
   "/msps/:mspId/jobs/:jobId/requeue",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   requireMspScope("params"),
   mspMutatingRateLimit,
   withIdempotency(),
@@ -239,7 +239,7 @@ router.post(
 // ── Pending Approvals: list ───────────────────────────────────────────────────
 router.get(
   "/msps/:mspId/pending-approvals",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   async (req: Request, res: Response) => {
     const mspId = parseInt(p(req.params["mspId"]), 10);
@@ -322,7 +322,7 @@ router.get(
 // ── Pending Approvals: decide ──────────────────────────────────────────────────
 router.post(
   "/msps/:mspId/pending-approvals/:id/decide",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   mspMutatingRateLimit,
   withIdempotency(),

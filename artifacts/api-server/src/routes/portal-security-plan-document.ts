@@ -65,7 +65,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
@@ -142,7 +142,7 @@ async function requireScope(req: Request, res: Response): Promise<TenantScope | 
 // to the caller's own tenant.
 router.get(
   "/portal/security-plan/versions",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     try {
       const scope = await requireScope(req, res);
@@ -164,7 +164,7 @@ router.get(
 // record," this one answers "what is there for me to act on right now."
 router.get(
   "/portal/security-plan/versions/current",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     try {
       const scope = await requireScope(req, res);
@@ -198,7 +198,7 @@ const signVersionSchema = z.object({
 
 router.post(
   "/portal/security-plan/versions/:versionUid/sign",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     try {
       const scope = await requireScope(req, res);
@@ -308,7 +308,7 @@ function toWireDrift(drift: SecurityPlanDrift): WireSecurityPlanDrift {
 // distinct from "signed, no drift since."
 router.get(
   "/portal/security-plan/drift",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     try {
       const scope = await requireScope(req, res);

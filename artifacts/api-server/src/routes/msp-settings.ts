@@ -73,7 +73,7 @@ import {
   type MspRole,
 } from "@workspace/db";
 import { eq, and, desc, isNull, inArray, gte, lt, count } from "drizzle-orm";
-import { requireAuth, requireRole, effectiveMspRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability, effectiveMspRole } from "../middlewares/requireAuth.ts";
 import { roleClearsLadderFloor } from "../middlewares/rbac-ladder.ts";
 import { z } from "zod";
 import { randomBytes, createHash, randomUUID } from "crypto";
@@ -101,7 +101,7 @@ function apiError(res: Response, status: number, message: string) {
 }
 
 // Target-role ceiling check for the credential/security-action routes below
-// (Git #3032). requireRole("MSPAdmin") only enforces a FLOOR on the caller —
+// (Git #3032). requireCapability("ladder.msp-admin") only enforces a FLOOR on the caller —
 // it says nothing about the target — and every one of these routes' target
 // lookup was `mspId`-ownership only, which let any real MSPAdmin reset the
 // password / clear the MFA / suspend a PlatformAdmin at the same MSP (full
@@ -203,7 +203,7 @@ function validateMergeFields(key: string, body: string): string | null {
 // for white-label display. No sensitive MSP-internal data is exposed here.
 // The write/management surface (PATCH /msp/settings/profile) remains MSPAdmin-gated.
 
-router.get("/msp/profile", requireRole("Assessment"), async (req: Request, res: Response) => {
+router.get("/msp/profile", requireCapability("ladder.assessment"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -230,7 +230,7 @@ router.get("/msp/profile", requireRole("Assessment"), async (req: Request, res: 
 
 // ── GET /api/msp/settings/profile ─────────────────────────────────────────────
 
-router.get("/msp/settings/profile", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/settings/profile", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -263,7 +263,7 @@ const updateProfileSchema = z.object({
   customCustomerAgreement: z.string().max(50000).nullable().optional(),
 });
 
-router.patch("/msp/settings/profile", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.patch("/msp/settings/profile", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -287,7 +287,7 @@ router.patch("/msp/settings/profile", requireRole("MSPAdmin"), async (req: Reque
 
 // ── GET/PUT /api/msp/settings/connector ───────────────────────────────────────
 
-router.get("/msp/settings/connector", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/settings/connector", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -333,7 +333,7 @@ const updateConnectorSchema = z.object({
   customerAgreementTemplate: z.string().max(50000).nullable().optional(),
 });
 
-router.put("/msp/settings/connector", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.put("/msp/settings/connector", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -378,7 +378,7 @@ const exchangeSchema = z.object({
   clientSecret: z.string().min(10),
 });
 
-router.put("/msp/settings/connector/exchange", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.put("/msp/settings/connector/exchange", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -438,7 +438,7 @@ router.put("/msp/settings/connector/exchange", requireRole("MSPAdmin"), async (r
   res.json({ ok: true, exchangeOnlineEnabled: true, kvStored: kvAvailable });
 });
 
-router.delete("/msp/settings/connector/exchange", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.delete("/msp/settings/connector/exchange", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -466,7 +466,7 @@ router.delete("/msp/settings/connector/exchange", requireRole("MSPAdmin"), async
 
 // ── Service Accounts ──────────────────────────────────────────────────────────
 
-router.get("/msp/settings/service-accounts", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/settings/service-accounts", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -494,7 +494,7 @@ const createServiceAccountSchema = z.object({
   expiresInDays: z.number().int().min(1).max(365).optional(),
 });
 
-router.post("/msp/settings/service-accounts", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.post("/msp/settings/service-accounts", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -556,7 +556,7 @@ router.post("/msp/settings/service-accounts", requireRole("MSPAdmin"), async (re
   res.status(201).json({ ...account, rawKey });
 });
 
-router.delete("/msp/settings/service-accounts/:id", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.delete("/msp/settings/service-accounts/:id", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const id = parseInt(p(req.params["id"]), 10);
   if (!mspId || isNaN(id)) { apiError(res, 400, "Invalid params"); return; }
@@ -582,7 +582,7 @@ router.delete("/msp/settings/service-accounts/:id", requireRole("MSPAdmin"), asy
 
 // ── Team / Users ──────────────────────────────────────────────────────────────
 
-router.get("/msp/settings/users", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/settings/users", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -634,7 +634,7 @@ router.get("/msp/settings/users", requireRole("MSPAdmin"), async (req: Request, 
 // MSPAdmin/MSPOperator staff (enforced by assertCustomerAccess &
 // resolveStaffScopedCustomerIds on every customer-scoped route).
 
-router.get("/msp/settings/users/:userId/customer-scopes", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/settings/users/:userId/customer-scopes", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
@@ -674,7 +674,7 @@ const updateScopesSchema = z.object({
   customerIds: z.array(z.number().int().positive()),
 });
 
-router.put("/msp/settings/users/:userId/customer-scopes", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.put("/msp/settings/users/:userId/customer-scopes", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
@@ -749,7 +749,7 @@ const updateRoleSchema = z.object({
   mspRole: z.enum(["MSPAdmin", "MSPOperator"]),
 });
 
-router.patch("/msp/settings/users/:userId/role", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.patch("/msp/settings/users/:userId/role", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
@@ -784,7 +784,7 @@ const updateApprovePurchasesSchema = z.object({
   canApprovePurchases: z.boolean(),
 });
 
-router.patch("/msp/settings/users/:userId/approve-purchases", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.patch("/msp/settings/users/:userId/approve-purchases", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
@@ -815,7 +815,7 @@ router.patch("/msp/settings/users/:userId/approve-purchases", requireRole("MSPAd
   res.json({ ok: true });
 });
 
-router.delete("/msp/settings/users/:userId", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.delete("/msp/settings/users/:userId", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
@@ -850,7 +850,7 @@ router.delete("/msp/settings/users/:userId", requireRole("MSPAdmin"), async (req
 // template) — matches the customer-side portal.ts /portal/team/:userId/reset-password fix.
 const MSP_RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour, matches /auth/forgot-password
 
-router.post("/msp/settings/users/:userId/reset-password", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.post("/msp/settings/users/:userId/reset-password", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
@@ -888,7 +888,7 @@ router.post("/msp/settings/users/:userId/reset-password", requireRole("MSPAdmin"
   res.json({ ok: true, message: "Password reset email sent" });
 });
 
-router.post("/msp/settings/users/:userId/temp-password", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.post("/msp/settings/users/:userId/temp-password", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
@@ -917,7 +917,7 @@ router.post("/msp/settings/users/:userId/temp-password", requireRole("MSPAdmin")
   res.json({ ok: true, tempPassword, requireChange: true });
 });
 
-router.post("/msp/settings/users/:userId/reset-mfa", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.post("/msp/settings/users/:userId/reset-mfa", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
@@ -973,7 +973,7 @@ router.post("/msp/settings/users/:userId/reset-mfa", requireRole("MSPAdmin"), as
   res.json({ ok: true, message: "MFA credentials cleared for re-enrollment" });
 });
 
-router.patch("/msp/settings/users/:userId/mfa-enforcement", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.patch("/msp/settings/users/:userId/mfa-enforcement", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
@@ -1006,7 +1006,7 @@ router.patch("/msp/settings/users/:userId/mfa-enforcement", requireRole("MSPAdmi
   res.json({ ok: true, enforced: !!enforced });
 });
 
-router.patch("/msp/settings/users/:userId/status", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.patch("/msp/settings/users/:userId/status", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
@@ -1044,7 +1044,7 @@ router.patch("/msp/settings/users/:userId/status", requireRole("MSPAdmin"), asyn
   res.json({ ok: true, isActive });
 });
 
-router.delete("/msp/settings/users/:userId/sessions", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.delete("/msp/settings/users/:userId/sessions", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
@@ -1073,7 +1073,7 @@ router.delete("/msp/settings/users/:userId/sessions", requireRole("MSPAdmin"), a
 
 // ── Billing ───────────────────────────────────────────────────────────────────
 
-router.get("/msp/settings/billing", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/settings/billing", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -1096,7 +1096,7 @@ router.get("/msp/settings/billing", requireRole("MSPAdmin"), async (req: Request
   res.json(sub ?? null);
 });
 
-router.post("/msp/settings/billing/portal-session", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.post("/msp/settings/billing/portal-session", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -1134,7 +1134,7 @@ router.post("/msp/settings/billing/portal-session", requireRole("MSPAdmin"), asy
 
 // ── Email Templates ───────────────────────────────────────────────────────────
 
-router.get("/msp/settings/email-templates", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/settings/email-templates", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -1176,7 +1176,7 @@ const emailTemplateSchema = z.object({
   body: z.string().min(20).max(50000),
 });
 
-router.put("/msp/settings/email-templates/:key", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.put("/msp/settings/email-templates/:key", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const key = p(req.params["key"]);
   if (!mspId || !key) { apiError(res, 400, "Invalid params"); return; }
@@ -1233,7 +1233,7 @@ router.put("/msp/settings/email-templates/:key", requireRole("MSPAdmin"), async 
   res.json(row);
 });
 
-router.delete("/msp/settings/email-templates/:key", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.delete("/msp/settings/email-templates/:key", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const key = p(req.params["key"]);
   if (!mspId || !key) { apiError(res, 400, "Invalid params"); return; }
@@ -1260,7 +1260,7 @@ router.delete("/msp/settings/email-templates/:key", requireRole("MSPAdmin"), asy
 
 // ── Customer Agreement Template ───────────────────────────────────────────────
 
-router.get("/msp/settings/agreement-template", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/settings/agreement-template", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -1273,7 +1273,7 @@ router.get("/msp/settings/agreement-template", requireRole("MSPAdmin"), async (r
   res.json({ template: config?.customerAgreementTemplate ?? null, updatedAt: config?.updatedAt ?? null });
 });
 
-router.put("/msp/settings/agreement-template", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.put("/msp/settings/agreement-template", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -1323,7 +1323,7 @@ router.put("/msp/settings/agreement-template", requireRole("MSPAdmin"), async (r
 // after admin consent is granted for the MSP's tenant with Mail.Send scope.
 // ──────────────────────────────────────────────────────────────────────────────
 
-router.get("/msp/settings/connector/mailbox", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/settings/connector/mailbox", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -1366,7 +1366,7 @@ const mailboxConnectSchema = z.object({
   returnPath: z.string().optional(),
 });
 
-router.post("/msp/settings/connector/mailbox/connect", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.post("/msp/settings/connector/mailbox/connect", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -1500,7 +1500,7 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
   res.redirect(`${portalBase}${returnPath}?mailbox_consent=success`);
 });
 
-router.delete("/msp/settings/connector/mailbox", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.delete("/msp/settings/connector/mailbox", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -1534,7 +1534,7 @@ router.delete("/msp/settings/connector/mailbox", requireRole("MSPAdmin"), async 
 
 const automatedEmailsSchema = z.object({ enabled: z.boolean() });
 
-router.patch("/msp/settings/connector/mailbox/automated-emails", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.patch("/msp/settings/connector/mailbox/automated-emails", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -1575,7 +1575,7 @@ router.patch("/msp/settings/connector/mailbox/automated-emails", requireRole("MS
 
 const writeBackSchema = z.object({ enabled: z.boolean() });
 
-router.patch("/msp/settings/connector/mailbox/write-back", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.patch("/msp/settings/connector/mailbox/write-back", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -1607,7 +1607,7 @@ router.patch("/msp/settings/connector/mailbox/write-back", requireRole("MSPAdmin
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
-router.get("/msp/settings/sessions", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/settings/sessions", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -1648,7 +1648,7 @@ router.get("/msp/settings/sessions", requireRole("MSPAdmin"), async (req: Reques
   res.json(tokens);
 });
 
-router.delete("/msp/settings/sessions/:tokenHash", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.delete("/msp/settings/sessions/:tokenHash", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const tokenHash = p(req.params["tokenHash"]);
   if (!mspId || !tokenHash) { apiError(res, 400, "Invalid params"); return; }
@@ -1703,7 +1703,7 @@ const createInviteSchema = z.object({
   mspRole: z.enum(["MSPAdmin", "MSPOperator"]),
 });
 
-router.post("/msp/settings/invites", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.post("/msp/settings/invites", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -1801,7 +1801,7 @@ router.post("/msp/settings/invites", requireRole("MSPAdmin"), async (req: Reques
   res.status(201).json(invite);
 });
 
-router.get("/msp/settings/invites", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/settings/invites", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
@@ -1830,7 +1830,7 @@ router.get("/msp/settings/invites", requireRole("MSPAdmin"), async (req: Request
   res.json(invites);
 });
 
-router.delete("/msp/settings/invites/:inviteId", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.delete("/msp/settings/invites/:inviteId", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const inviteId = parseInt(p(req.params["inviteId"]), 10);
   if (!mspId || isNaN(inviteId)) { apiError(res, 400, "Invalid params"); return; }

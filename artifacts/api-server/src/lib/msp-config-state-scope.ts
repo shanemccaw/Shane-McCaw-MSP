@@ -19,7 +19,7 @@
  *    `resolveStaffScopedCustomerIds` when the member is scoped. A scoped operator
  *    never sees a customer outside their assignment, matching `msp-executive.ts` and
  *    `msp-ownership.ts`.
- *  - Anything below — no book at all. The `requireRole("MSPOperator")` floor on the
+ *  - Anything below — no book at all. The `requireCapability("ladder.msp-operator")` floor on the
  *    routers means this should be unreachable, but the set is empty rather than
  *    absent so a mistake fails closed instead of widening.
  *

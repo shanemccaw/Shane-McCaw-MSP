@@ -3,7 +3,7 @@
  *
  * MSP-initiated marketplace purchase — closes the gap flagged in
  * portal-marketplace.ts / marketplace.tsx: the real Marketplace catalog is
- * floored at requireRole("Assessment"), so only the customer themselves can
+ * floored at requireCapability("ladder.assessment"), so only the customer themselves can
  * browse/buy. MSP staff had no path to purchase or assign a catalog item on a
  * specific customer's behalf.
  *
@@ -48,7 +48,7 @@ import {
   mspSubscriptionsTable,
 } from "@workspace/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
 import { getStripeKey, getMspDefaultPaymentMethod } from "../lib/stripe";
 import { resolveFulfillment } from "../lib/resolve-fulfillment";
 import { resolveCatalogPricing } from "../lib/catalog-pricing";
@@ -98,7 +98,7 @@ async function resolveScopedCustomer(
 
 router.get(
   "/msp/customers/:customerId/marketplace/catalog",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const customerId = parseInt(req.params["customerId"] as string, 10);
@@ -133,7 +133,7 @@ router.get(
 
 router.post(
   "/msp/customers/:customerId/marketplace/checkout",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = parseInt(req.params["customerId"] as string, 10);
     if (isNaN(customerId)) { apiErr(res, 400, "Invalid customerId"); return; }

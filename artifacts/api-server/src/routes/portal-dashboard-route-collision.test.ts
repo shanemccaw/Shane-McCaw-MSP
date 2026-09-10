@@ -2,7 +2,7 @@
  * portal-dashboard-route-collision.test.ts
  *
  * GitHub #327: GET /api/portal/dashboard was registered by TWO route files —
- * portal-customer-engines.ts (requireRole("CustomerUser")) and portal-dashboard.ts
+ * portal-customer-engines.ts (requireCapability("ladder.customer-user")) and portal-dashboard.ts
  * (requireAuth). Express matches in registration order and routes/index.ts mounted
  * the customer-engines router first, so portal-dashboard.ts's handler never
  * executed for any request from the day it was added. That is the handler #315
@@ -226,7 +226,7 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
       .get("/api/portal/dashboard")
       .set("Authorization", `Bearer ${token("Assessment")}`);
 
-    // Before #327 this was a hard 403 from requireRole("CustomerUser") — the
+    // Before #327 this was a hard 403 from requireCapability("ladder.customer-user") — the
     // War Room's whole reason for calling this endpoint.
     expect(res.status).toBe(200);
     expect(res.body.customerName).toBe(REAL_TENANT_NAME);

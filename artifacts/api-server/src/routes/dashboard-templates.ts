@@ -54,7 +54,7 @@ import { z } from "zod";
 import { db, servicesTable } from "@workspace/db";
 import { dashboardTemplatesTable, DASHBOARD_TEMPLATE_TYPES } from "@workspace/db";
 import { and, asc, eq, isNull } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { detectProductType } from "../lib/productTypeConfig";
 import { logger } from "../lib/logger";
 
@@ -145,8 +145,8 @@ async function listHandler(req: Request, res: Response, requireOwn: boolean) {
   }
 }
 
-router.get("/admin/dashboard-templates", requireRole("PlatformAdmin"), (req, res) => listHandler(req, res, false));
-router.get("/msp/dashboard-templates", requireRole("MSPOperator"), (req, res) => listHandler(req, res, true));
+router.get("/admin/dashboard-templates", requireCapability("ladder.platform-admin"), (req, res) => listHandler(req, res, false));
+router.get("/msp/dashboard-templates", requireCapability("ladder.msp-operator"), (req, res) => listHandler(req, res, true));
 
 // ── GET /dashboard-templates/lookup — one by type+key ──────────────────────────
 
@@ -182,8 +182,8 @@ async function lookupHandler(req: Request, res: Response, requireOwn: boolean) {
   }
 }
 
-router.get("/admin/dashboard-templates/lookup", requireRole("PlatformAdmin"), (req, res) => lookupHandler(req, res, false));
-router.get("/msp/dashboard-templates/lookup", requireRole("MSPOperator"), (req, res) => lookupHandler(req, res, true));
+router.get("/admin/dashboard-templates/lookup", requireCapability("ladder.platform-admin"), (req, res) => lookupHandler(req, res, false));
+router.get("/msp/dashboard-templates/lookup", requireCapability("ladder.msp-operator"), (req, res) => lookupHandler(req, res, true));
 
 // ── POST /dashboard-templates — create or update (upsert) ─────────────────────
 
@@ -285,8 +285,8 @@ async function saveHandler(req: Request, res: Response, requireOwn: boolean) {
   }
 }
 
-router.post("/admin/dashboard-templates", requireRole("PlatformAdmin"), (req, res) => saveHandler(req, res, false));
-router.post("/msp/dashboard-templates", requireRole("MSPOperator"), (req, res) => saveHandler(req, res, true));
+router.post("/admin/dashboard-templates", requireCapability("ladder.platform-admin"), (req, res) => saveHandler(req, res, false));
+router.post("/msp/dashboard-templates", requireCapability("ladder.msp-operator"), (req, res) => saveHandler(req, res, true));
 
 // ── DELETE /dashboard-templates/:id ────────────────────────────────────────────
 
@@ -337,12 +337,12 @@ async function deleteHandler(req: Request, res: Response, requireOwn: boolean) {
   }
 }
 
-router.delete("/admin/dashboard-templates/:id", requireRole("PlatformAdmin"), (req, res) => deleteHandler(req, res, false));
-router.delete("/msp/dashboard-templates/:id", requireRole("MSPOperator"), (req, res) => deleteHandler(req, res, true));
+router.delete("/admin/dashboard-templates/:id", requireCapability("ladder.platform-admin"), (req, res) => deleteHandler(req, res, false));
+router.delete("/msp/dashboard-templates/:id", requireCapability("ladder.msp-operator"), (req, res) => deleteHandler(req, res, true));
 
 // ── GET /api/msp/services — minimal catalog list for the targetKey picker ──────
 
-router.get("/msp/services", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/services", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const type = typeof req.query.type === "string" ? req.query.type : undefined;
   if (type && type !== "assessment" && type !== "project") {
     res.status(400).json({ error: `type must be "assessment" or "project"` });

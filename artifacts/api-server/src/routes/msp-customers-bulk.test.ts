@@ -71,7 +71,7 @@ vi.mock("@workspace/db", () => ({
 
 vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAuth: (_req: Request, _res: Response, next: NextFunction) => next(),
-  requireRole: (_role: string) => (_req: Request, _res: Response, next: NextFunction) => next(),
+  requireCapability: (_role: string) => (_req: Request, _res: Response, next: NextFunction) => next(),
 }));
 
 // Route code takes its own child logger off the shared `logger` singleton, so the mock

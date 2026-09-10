@@ -37,7 +37,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantsTable, tenantCheckItemDetailsTable } from "@workspace/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { sharePointPrefixFromDomain } from "../lib/monitor-executor";
 import { getInitialDomainForTenant } from "../lib/graph";
@@ -118,7 +118,7 @@ router.get(
   // Same floor as the rest of the Copilot Readiness/Remediation journey (see
   // portal-remediation-tracker.ts): Assessment is the lowest role carrying a
   // customerId.
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

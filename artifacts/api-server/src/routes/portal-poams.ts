@@ -44,7 +44,7 @@ import { db, mspPoamsTable, mspPoamMilestonesTable, type ClientApprover } from "
 import { and, eq, desc, asc, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
@@ -209,7 +209,7 @@ async function scopeOrEmpty(req: Request, res: Response) {
 /** Every POA&M for the calling customer's own tenant, milestones included. */
 router.get(
   "/portal/poams",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   // #1168/#3104: creation (POST below) is unconditional; only this READ
   // checks the customer's purchased Monitoring tier bundles POA&Ms.
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.poams),
@@ -255,7 +255,7 @@ router.get(
 /** One POA&M, with its milestones. */
 router.get(
   "/portal/poams/:poamId",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.poams),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
@@ -325,7 +325,7 @@ const createPoamSchema = z.object({
 
 router.post(
   "/portal/poams",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     try {
@@ -393,7 +393,7 @@ const signSchema = z.object({
 
 router.post(
   "/portal/poams/:poamId/sign",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     const poamIdParam = String(req.params.poamId);

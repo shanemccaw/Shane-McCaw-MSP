@@ -128,7 +128,7 @@ describe("POST /api/dashboard/resolve", () => {
 
   it("403s a Free/anon role below CustomerUser", async () => {
     const token = jwt.sign({ id: 9, email: "f@f.com", role: "client", mspRole: "Free", mspId: 1 }, JWT_SECRET, { expiresIn: "1h" });
-    // Free is admitted by requireRole("CustomerUser")? No — Free < CustomerUser, so 403.
+    // Free is admitted by requireCapability("ladder.customer-user")? No — Free < CustomerUser, so 403.
     const res = await resolve(token, { metrics: ["engine.healthScore"] });
     expect(res.status).toBe(403);
   });

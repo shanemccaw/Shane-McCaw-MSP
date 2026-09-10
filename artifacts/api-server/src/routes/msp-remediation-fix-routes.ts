@@ -21,7 +21,7 @@ import {
 } from "@workspace/db";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
-import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { resolveFixRoute, resolveTenantWriteCeiling, FIX_ROUTE_AFFORDANCE } from "../lib/remediation-fix-route";
 
@@ -57,7 +57,7 @@ async function resolveAuthorizedCustomerId(req: Request, res: Response): Promise
 
 router.get(
   "/msp/customers/:customerId/remediation/fix-routes",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;

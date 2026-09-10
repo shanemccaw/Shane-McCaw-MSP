@@ -7,7 +7,7 @@
  * keys, no engine snapshots are returned. Customers can accept or reject offers,
  * which emits offer.accepted / offer.rejected into the canonical event bus.
  *
- * Auth: requireRole("CustomerUser") — MSP JWT with CustomerUser role.
+ * Auth: requireCapability("ladder.customer-user") — MSP JWT with CustomerUser role.
  *   The customer's own ID is read from the JWT claim (req.user.customerId).
  *
  * Routes:
@@ -23,7 +23,7 @@ import jwt from "jsonwebtoken";
 import { db } from "@workspace/db";
 import { salesOffersTable } from "@workspace/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { transitionOfferState } from "../lib/sales-offer-engine";
 import { fulfillAcceptedProjectOffer } from "../lib/project-sow-fulfillment";
 import {
@@ -132,7 +132,7 @@ router.get("/portal/offers/sse", (req: Request, res: Response): void => {
 
 router.get(
   "/portal/offers",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const customerId = resolveCustomerId(req);
@@ -165,7 +165,7 @@ router.get(
 
 router.get(
   "/portal/offers/:id",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const customerId = resolveCustomerId(req);
@@ -213,7 +213,7 @@ router.get(
 
 router.post(
   "/portal/offers/:id/accept",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const customerId = resolveCustomerId(req);
@@ -284,7 +284,7 @@ router.post(
 
 router.post(
   "/portal/offers/:id/reject",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const customerId = resolveCustomerId(req);

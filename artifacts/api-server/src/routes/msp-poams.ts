@@ -32,7 +32,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspPoamsTable, mspPoamMilestonesTable, POAM_STATUSES, POAM_MILESTONE_STATUSES } from "@workspace/db";
 import { eq, and, asc, desc, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { randomPlaceholder, assignPoamId } from "../lib/poam-ref.ts";
@@ -66,7 +66,7 @@ const createPoamSchema = z.object({
 router.get(
   "/msp/poams",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -93,7 +93,7 @@ router.get(
 router.post(
   "/msp/poams",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -160,7 +160,7 @@ async function loadOwnScoped(mspId: number, poamId: string) {
 router.get(
   "/msp/poams/:poamId",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -210,7 +210,7 @@ const updatePoamSchema = z.object({
 router.patch(
   "/msp/poams/:poamId",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -258,7 +258,7 @@ router.patch(
 router.patch(
   "/msp/poams/:poamId/cancel",
   requireAuth,
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -301,7 +301,7 @@ const createMilestoneSchema = z.object({
 router.post(
   "/msp/poams/:poamId/milestones",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -354,7 +354,7 @@ const updateMilestoneSchema = z.object({
 router.patch(
   "/msp/poams/:poamId/milestones/:milestoneId",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -420,7 +420,7 @@ router.patch(
 router.delete(
   "/msp/poams/:poamId/milestones/:milestoneId",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);

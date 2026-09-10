@@ -70,7 +70,7 @@ import {
 import { eq, sql } from "drizzle-orm";
 import { resolveTenantScope } from "../lib/portal-customer-scope";
 import { randomBytes } from "crypto";
-import { requireAdminOrIngestToken, requireRole } from "../middlewares/requireAuth";
+import { requireAdminOrIngestToken, requireCapability } from "../middlewares/requireAuth";
 import { isReplitDevEnvironment, getStripeKey } from "../lib/stripe";
 import { dispatchMspStripeEvent } from "./msp-billing-webhook";
 import { handleMspDunningAdvance } from "../lib/msp-billing-nodes";
@@ -767,7 +767,7 @@ router.post(
 router.post(
   "/admin/testbed/seed-runbooks",
   requireDevOrigin,
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     // From the token, never from the body. See the note above.
     const claimed = (req.user as { customerId?: number } | undefined)?.customerId;
@@ -1021,7 +1021,7 @@ router.post(
 router.post(
   "/admin/testbed/seed-sops",
   requireDevOrigin,
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const claimed = (req.user as { customerId?: number } | undefined)?.customerId;
     const customerId = typeof claimed === "number" && !Number.isNaN(claimed) ? claimed : NaN;

@@ -37,7 +37,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, portalOwnershipPolicyTable } from "@workspace/db";
 
-import { requireRole, type AuthUser } from "../middlewares/requireAuth";
+import { requireCapability, type AuthUser } from "../middlewares/requireAuth";
 import { resolveCustomerId } from "../lib/portal-customer-scope";
 import { logger } from "../lib/logger";
 import {
@@ -53,7 +53,7 @@ const router: IRouter = Router();
 
 router.get(
   "/portal/settings/ownership",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -77,7 +77,7 @@ router.get(
 
 router.put(
   "/portal/settings/ownership/policy",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -119,7 +119,7 @@ router.put(
  */
 router.get(
   "/portal/settings/ownership/workloads",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -142,7 +142,7 @@ router.get(
 
 router.put(
   "/portal/settings/ownership/workloads/:key",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

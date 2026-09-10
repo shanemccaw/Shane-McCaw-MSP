@@ -30,7 +30,7 @@
  * entirely client-side in command-palette.tsx — no backend round-trip needed
  * for those.
  *
- * Auth: requireRole("Assessment") — the lowest portal floor, matching
+ * Auth: requireCapability("ladder.assessment") — the lowest portal floor, matching
  * portal-marketplace.ts, so both Assessment-tier and CustomerUser-tier callers
  * reach it; each source query is scoped to the caller's own ids only.
  *
@@ -39,7 +39,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import {
   db,
   mspDiagnosticFindingsTable,
@@ -84,7 +84,7 @@ interface SearchResultDto {
 
 router.get(
   "/portal/customer/search",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = req.user!.customerId;
     const userId = req.user!.id;

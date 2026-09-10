@@ -13,7 +13,7 @@ vi.mock("@workspace/db", () => ({
 vi.mock("../middlewares/requireAuth", () => ({
   requireAdmin: (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
     next(),
-  requireRole: () => (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  requireCapability: () => (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
     next(),
   // Same unconditional-pass behavior as requireAdmin above — no test here
   // exercises the ingest-token path of the real requireAdminOrIngestToken.

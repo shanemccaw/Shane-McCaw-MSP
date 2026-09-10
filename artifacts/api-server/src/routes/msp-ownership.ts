@@ -38,7 +38,7 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 
-import { requireCustomerScope, requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCustomerScope, requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { resolveTenantScope } from "../lib/portal-customer-scope";
 import { gatherOwnershipObjects } from "./portal-ownership";
@@ -70,7 +70,7 @@ const MSP_SCOPED_ROLES = ["MSPAdmin", "MSPOperator", "ServiceAccount"] as const;
 
 router.get(
   "/msp/ownership/mine",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -229,7 +229,7 @@ async function isMspPersonOfThisMsp(personId: string, mspId: number): Promise<bo
 
 router.post(
   "/msp/ownership/:customerId/assign",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireCustomerScope("params"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = Number(req.params.customerId);
@@ -355,7 +355,7 @@ function parseRespondBody(req: Request): {
 
 router.post(
   "/msp/ownership/:customerId/accept",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireCustomerScope("params"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = Number(req.params.customerId);
@@ -428,7 +428,7 @@ router.post(
  */
 router.post(
   "/msp/ownership/:customerId/decline",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireCustomerScope("params"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = Number(req.params.customerId);

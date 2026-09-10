@@ -47,7 +47,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { PII_GOVERNANCE_CHECKS } from "../lib/portal-pii-governance";
@@ -80,7 +80,7 @@ function emptyPayload() {
 
 router.get(
   "/portal/pii-governance",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   // #1168: the underlying compliance signals collect unconditionally; only
   // this READ checks the tier bundles PII Governance.
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.piiGovernance),

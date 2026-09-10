@@ -7,7 +7,7 @@ import type { ToolDef } from "./registry.ts";
  *
  *  • source="msp" (default) — the MSP operational audit trail (msp_audit_logs),
  *    every MSP staff action against a customer. msp-audit-log.ts: GET /msp/audit,
- *    requireRole("MSPAdmin"); PlatformAdmin (the operator) sees all MSPs.
+ *    requireCapability("ladder.msp-admin"); PlatformAdmin (the operator) sees all MSPs.
  *    Filterable by search, actionType, outcome, from, to.
  *  • source="platform" — the legacy platform audit trail (audit_logs), keyed on
  *    the acting client. audit-logs.ts: GET /audit-logs, requireAdmin. Filterable

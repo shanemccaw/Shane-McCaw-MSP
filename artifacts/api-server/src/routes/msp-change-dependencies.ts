@@ -18,7 +18,7 @@ import { db, mspChangeRequestsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
@@ -73,7 +73,7 @@ async function loadScopedCr(dbId: number, mspId: number) {
 router.get(
   "/msp/change-requests/:id/dependencies",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -112,7 +112,7 @@ const createSchema = z.object({
 router.post(
   "/msp/change-requests/:id/dependencies",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -164,7 +164,7 @@ router.post(
 router.delete(
   "/msp/change-requests/:id/dependencies/:depId",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {

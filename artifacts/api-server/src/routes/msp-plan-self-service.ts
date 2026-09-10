@@ -24,7 +24,7 @@ import {
   type MspBillingInterval,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { countActiveTenants } from "../lib/msp-entitlement.ts";
 import { isGenuinePlatformTier, platformTierWhere } from "../lib/platform-tier.ts";
@@ -105,7 +105,7 @@ export function downgradeBlockReason(params: {
 
 // ── GET /api/msp/plan/current ─────────────────────────────────────────────────
 
-router.get("/msp/plan/current", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/plan/current", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiError(res, 400, "No MSP context"); return; }
@@ -186,7 +186,7 @@ router.get("/msp/plan/current", requireRole("MSPAdmin"), async (req: Request, re
 
 // ── GET /api/msp/plan/available ───────────────────────────────────────────────
 
-router.get("/msp/plan/available", requireRole("MSPAdmin"), async (_req: Request, res: Response) => {
+router.get("/msp/plan/available", requireCapability("ladder.msp-admin"), async (_req: Request, res: Response) => {
   try {
     const tiers = await db
       .select({
@@ -224,7 +224,7 @@ const changeSchema = z.object({
   targetInterval: z.enum(["month", "year"]),
 });
 
-router.post("/msp/plan/change", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.post("/msp/plan/change", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiError(res, 400, "No MSP context"); return; }
@@ -377,7 +377,7 @@ router.post("/msp/plan/change", requireRole("MSPAdmin"), async (req: Request, re
 
 // ── POST /api/msp/plan/cancel-pending-change ──────────────────────────────────
 
-router.post("/msp/plan/cancel-pending-change", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.post("/msp/plan/cancel-pending-change", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiError(res, 400, "No MSP context"); return; }

@@ -45,7 +45,7 @@ import {
 } from "@workspace/db";
 import { and, asc, desc, eq } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { buildOversharingSites, type OversharedSiteGrantRow } from "../lib/portal-oversharing-sites";
@@ -61,7 +61,7 @@ const DEFAULT_CHECK_KEY = "compliance:eeeu-site-sharing";
 
 router.get(
   "/portal/oversharing/sites",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response) => {
     try {
       const customerId = resolveCustomerId(req);
@@ -218,7 +218,7 @@ async function loadRunbookWire(runbookId: number, sopKind: SopKind): Promise<Wir
 
 router.post(
   "/portal/oversharing/runbooks/:sopKind",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response) => {
     try {
       const customerId = resolveCustomerId(req);

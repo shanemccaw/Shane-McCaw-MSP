@@ -11,7 +11,7 @@ import { getPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { signMfaToken, getActiveMfaMethods } from "./mfa.ts";
 import { isProductionEnvironment } from "../lib/env.ts";
 import { dispatchEvent, EVENT_TYPES, systemActor, userActor, impersonationActor } from "../lib/event-bus.ts";
-import { requireRole, requireAuth } from "../middlewares/requireAuth.ts";
+import { requireCapability, requireAuth } from "../middlewares/requireAuth.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 import { portalLandingSurface } from "../lib/identity-presentation.ts";
 import { effectiveLegacyRole } from "@workspace/db/rbac/legacy-ladder";
@@ -1337,7 +1337,7 @@ function generateApiKey(): { raw: string; prefix: string; hash: string } {
  * Create a new service account and return the raw API key (shown once only).
  * Requires PlatformAdmin.
  */
-router.post("/admin/msp/service-accounts", requireRole("PlatformAdmin"), async (req: Request, res: Response) => {
+router.post("/admin/msp/service-accounts", requireCapability("ladder.platform-admin"), async (req: Request, res: Response) => {
   const { name, mspId, scopes } = req.body as {
     name?: string;
     mspId?: number;

@@ -27,7 +27,7 @@ import {
   mspSalesBundleAssignmentsTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { monthlyPriceCentsOf } from "../lib/msp-plan-pricing.ts";
 import { logger } from "../lib/logger.ts";
@@ -40,7 +40,7 @@ function apiError(res: Response, status: number, message: string) {
   res.status(status).json({ error: message });
 }
 
-router.get("/msp/billing/revenue", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/billing/revenue", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiError(res, 400, "No MSP context"); return; }

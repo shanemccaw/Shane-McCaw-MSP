@@ -23,7 +23,7 @@
 // POST .../diagnostics/run route, already PlatformAdmin-reachable —
 // portal-assessment.ts's debug-trigger-scan was audited and rejected for
 // this use: it's testbed-only, resolves its target from the CALLER's own
-// JWT rather than a parameterized customerId, and requireRole("Assessment")
+// JWT rather than a parameterized customerId, and requireCapability("ladder.assessment")
 // would reject a PlatformAdmin caller outright), and a re-consent invite
 // link generator (consent.ts's existing POST /consent/invite-link route,
 // already requireAdmin-gated, used as-is).
@@ -111,7 +111,7 @@ interface CustomerDiagnosticRunSummary {
 
 // #371 — expandable diagnostic run findings. Reuses msp-diagnostics.ts's
 // existing GET /msp/customers/:customerId/diagnostics/runs/:runId route
-// as-is (requireRole("MSPOperator") + assertCustomerAccess both bypass for
+// as-is (requireCapability("ladder.msp-operator") + assertCustomerAccess both bypass for
 // PlatformAdmin, same reuse pattern the manual scan trigger below already
 // relies on) — no new admin route needed, since it already returns the run's
 // real check counts plus every msp_diagnostic_findings row for that run.
@@ -696,7 +696,7 @@ export function ActiveDirectoryCustomerPane({ customerId }: { customerId: number
 
   // Manual scan trigger — POST msp-diagnostics.ts's existing
   // /msp/customers/:customerId/diagnostics/run route directly; it is already
-  // reachable by a PlatformAdmin (requireRole("MSPOperator") +
+  // reachable by a PlatformAdmin (requireCapability("ladder.msp-operator") +
   // assertCustomerAccess both bypass for PlatformAdmin) and resolves its
   // target from the customerId path param rather than the caller's own JWT,
   // unlike portal-assessment.ts's testbed-only debug-trigger-scan. No wrapper

@@ -15,8 +15,12 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import {
   CAPABILITY_COLUMN_ROLE_KEYS,
+  LADDER,
   LADDER_CAPABILITY_KEYS,
   LEGACY_CAPABILITY_RULES,
+  LEGACY_CUSTOMER_TIER_ROLES,
+  LEGACY_MSP_STAFF_ROLES,
+  LEGACY_ROLE,
   LEGACY_ROLE_ORDER,
   effectiveLegacyRole,
   isLegacyRole,
@@ -44,8 +48,8 @@ function principal(over: Partial<LegacyUserRow> = {}): LegacyUserRow {
   };
 }
 
-describe("the ladder is transcribed from the live requireAuth.ts, not from memory", () => {
-  it("matches ROLE_ORDER in artifacts/api-server/src/middlewares/requireAuth.ts", () => {
+describe("this module is now the ONLY copy of the ordering (#2460)", () => {
+  it("requireAuth.ts declares no ordering array and no index comparison", () => {
     const here = fileURLToPath(new URL(".", import.meta.url));
     const path = `${here}../../../../artifacts/api-server/src/middlewares/requireAuth.ts`;
 
@@ -60,11 +64,35 @@ describe("the ladder is transcribed from the live requireAuth.ts, not from memor
       );
     }
 
-    const block = /const ROLE_ORDER: MspRole\[\] = \[([^\]]*)\]/.exec(source);
-    expect(block, "ROLE_ORDER is no longer declared in the shape this test reads").not.toBeNull();
+    // Until #2460 this test read requireAuth.ts's own `ROLE_ORDER` array and
+    // asserted LEGACY_ROLE_ORDER matched it byte for byte — a drift guard between
+    // two live copies of the same ordering. #2460 deleted that array, `roleIndex()`
+    // and `MSP_ROLES` itself, so there is no second copy left to drift from: this
+    // module is the migration's compatibility shim and the only transcription.
+    //
+    // The guard that still earns its place is the inverse one. Reintroducing an
+    // ordering comparison in the middleware is exactly the regression #1696 exists
+    // to prevent — it would be a rule the database does not know about, silently
+    // outranking the seeded `ladder.*` rows the real gate decides from.
+    expect(source, "ROLE_ORDER was retired by #2460 — a new one is a second, unseeded copy of the ladder")
+      .not.toMatch(/const\s+ROLE_ORDER\b/);
+    expect(source, "roleIndex() was retired by #2460 — an ordering comparison here is not visible to the RBAC model")
+      .not.toMatch(/function\s+roleIndex\b/);
 
-    const live = [...block![1]!.matchAll(/"([A-Za-z]+)"/g)].map((m) => m[1]);
-    expect(live).toEqual([...LEGACY_ROLE_ORDER]);
+    // And the strings themselves are gone from it — #2460's own mechanical contract.
+    for (const role of LEGACY_ROLE_ORDER) {
+      expect(source, `requireAuth.ts still contains the "${role}" literal`).not.toContain(`"${role}"`);
+    }
+  });
+
+  it("exposes the seven values by name, so no other file needs the literal", () => {
+    expect(Object.values(LEGACY_ROLE).sort()).toEqual([...LEGACY_ROLE_ORDER].sort());
+    expect([...LEGACY_MSP_STAFF_ROLES]).toEqual(["MSPAdmin", "MSPOperator"]);
+    expect([...LEGACY_CUSTOMER_TIER_ROLES]).toEqual(["CustomerUser", "Free", "Assessment"]);
+    // LADDER is the capability-key face of the same seven, and must agree with the
+    // rung → key map the seed was computed from.
+    expect(Object.values(LADDER).sort()).toEqual(Object.values(LADDER_CAPABILITY_KEYS).sort());
+    expect(LADDER.mspAdmin).toBe(ladderCapabilityKey("MSPAdmin"));
   });
 });
 
@@ -153,7 +181,7 @@ describe("ladder capability keys", () => {
 });
 
 describe("isLegacyRole", () => {
-  it("accepts exactly the seven MSP_ROLES values", () => {
+  it("accepts exactly the seven legacy role values", () => {
     for (const role of LEGACY_ROLE_ORDER) expect(isLegacyRole(role)).toBe(true);
     for (const other of ["CustomerAdmin", "admin", "client", "", null, undefined]) {
       expect(isLegacyRole(other)).toBe(false);

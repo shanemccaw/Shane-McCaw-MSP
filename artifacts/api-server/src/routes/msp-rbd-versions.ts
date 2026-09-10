@@ -31,14 +31,14 @@
  * later issues that attach to this chain (#1509–#1512) reuse it rather than
  * re-implementing it.
  *
- * Auth: `requireRole("MSPOperator")` to capture a version (same floor as
- * `POST /api/msp/rbd`); `requireRole("MSPAdmin")` to sign one (same floor as
+ * Auth: `requireCapability("ladder.msp-operator")` to capture a version (same floor as
+ * `POST /api/msp/rbd`); `requireCapability("ladder.msp-admin")` to sign one (same floor as
  * `PATCH /api/msp/rbd/:rbdId/sign`) — capturing a draft and signing it off are
  * different levels of authority on the MSP side, matching the existing pattern
  * exactly. Scoped by `resolveMspIdStrict`, never taken from the request body.
  */
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
@@ -146,7 +146,7 @@ const createVersionSchema = z.object({
 router.get(
   "/msp/rbd/:rbdId/versions",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -169,7 +169,7 @@ router.get(
 router.get(
   "/msp/rbd/:rbdId/versions/current",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -243,7 +243,7 @@ async function deriveScopeAndNarrative(
 router.post(
   "/msp/rbd/:rbdId/versions",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -303,7 +303,7 @@ router.post(
 router.get(
   "/msp/rbd/:rbdId/versions/narrative-audit",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -339,7 +339,7 @@ const signVersionSchema = z.object({
 router.patch(
   "/msp/rbd/:rbdId/versions/:versionUid/sign",
   requireAuth,
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -407,7 +407,7 @@ interface WireRbdDocument {
 router.post(
   "/msp/rbd/:rbdId/versions/:versionUid/document",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -447,7 +447,7 @@ router.post(
 router.post(
   "/msp/rbd/:rbdId/versions/:versionUid/share",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);

@@ -32,7 +32,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { eq, and, inArray, or, ilike, desc } from "drizzle-orm";
-import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
 import { logger } from "../lib/logger";
@@ -63,7 +63,7 @@ interface DocumentSearchResult {
   deepLink: string;
 }
 
-router.get("/msp/staff-search", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/staff-search", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {

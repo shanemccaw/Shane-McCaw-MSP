@@ -65,7 +65,7 @@ import {
 import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { resolveGraphUserByUpn } from "./admin-active-directory";
 import { createAuditLog } from "../lib/audit";
@@ -98,7 +98,7 @@ interface WireOuAssignment {
 
 router.get(
   "/portal/active-directory/ou-assignment",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -190,7 +190,7 @@ async function loadOuNames(customerId: number): Promise<Map<number, string>> {
 // one can see whether it is still pending or how the MSP resolved it.
 router.get(
   "/portal/active-directory/ou-assignment-requests",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -236,7 +236,7 @@ const createRequestSchema = z
 // restriction exactly.
 router.post(
   "/portal/active-directory/ou-assignment-requests",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

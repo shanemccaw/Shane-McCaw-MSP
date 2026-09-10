@@ -51,7 +51,7 @@ import {
   policyRulesTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
-import { requireRole, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth";
+import { requireCapability, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
@@ -80,7 +80,7 @@ interface CrossTenantAlert {
   deepLink: string | null;
 }
 
-router.get("/msp/alerts", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/alerts", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -264,7 +264,7 @@ router.get("/msp/alerts", requireRole("MSPOperator"), async (req: Request, res: 
 // `alertId` is exactly the composite id GET /msp/alerts already returns
 // ("incident-<id>" / "finding-<findingId>") so a caller never needs to know
 // which source table backs a given row — it acts on the id it was just shown.
-router.post("/msp/alerts/:alertId/acknowledge", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/alerts/:alertId/acknowledge", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {

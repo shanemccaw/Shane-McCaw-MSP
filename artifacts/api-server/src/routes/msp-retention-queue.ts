@@ -31,7 +31,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantsTable } from "@workspace/db";
 import { inArray } from "drizzle-orm";
-import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import {
   decideAcceleration,
@@ -84,7 +84,7 @@ async function loadScopedDeletion(
   return existing;
 }
 
-router.get("/msp/retention/queue", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/retention/queue", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -113,7 +113,7 @@ router.get("/msp/retention/queue", requireRole("MSPOperator"), async (req: Reque
   }
 });
 
-router.post("/msp/retention/queue/:deletionId/decide", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/retention/queue/:deletionId/decide", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -142,7 +142,7 @@ router.post("/msp/retention/queue/:deletionId/decide", requireRole("MSPOperator"
   }
 });
 
-router.post("/msp/retention/queue/:deletionId/discuss", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/retention/queue/:deletionId/discuss", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {

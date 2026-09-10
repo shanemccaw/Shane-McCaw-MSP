@@ -31,7 +31,7 @@ vi.mock("@workspace/db", () => {
 });
 
 vi.mock("../middlewares/requireAuth", () => ({
-  requireRole: () => (_req: any, _res: any, next: () => void) => next(),
+  requireCapability: () => (_req: any, _res: any, next: () => void) => next(),
 }));
 
 vi.mock("../lib/logger", () => {

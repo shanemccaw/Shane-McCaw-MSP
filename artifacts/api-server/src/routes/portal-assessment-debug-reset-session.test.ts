@@ -123,7 +123,7 @@ vi.mock("../lib/logger", () => ({
 
 let mockUser: { id: number; customerId: number } = { id: 99, customerId: 10 };
 vi.mock("../middlewares/requireAuth", () => ({
-  requireRole: () => (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+  requireCapability: () => (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     (req as unknown as Record<string, unknown>).user = mockUser;
     next();
   },

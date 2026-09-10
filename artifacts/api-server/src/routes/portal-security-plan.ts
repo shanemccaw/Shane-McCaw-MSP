@@ -54,7 +54,7 @@
  * — read-only, fails closed to `null` on any resolution error.
  *
  * ── Role floor ─────────────────────────────────────────────────────────────
- * `requireRole("CustomerUser")`, matching `portal-ownership.ts`: a security plan
+ * `requireCapability("ladder.customer-user")`, matching `portal-ownership.ts`: a security plan
  * is a thing a paying tenant's team reads, not something a free assessment lead
  * is shown. The cross-tenant guard is the `customerId`-from-JWT scoping below.
  *
@@ -65,7 +65,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { getLastSignedSecurityPlanVersion } from "../lib/security-plan-versioning";
@@ -129,7 +129,7 @@ async function resolveAssembledPlan(customerId: number): Promise<WireAssembledSe
 
 router.get(
   "/portal/security-plan",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   // #1168: authoring the plan (msp-security-plan.ts) is unconditional; only
   // this customer-facing READ checks the tier bundles Security Plan.
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.securityPlan),

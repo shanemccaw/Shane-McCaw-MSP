@@ -7,7 +7,7 @@
  *
  * ── Why this route exists, given `msp-message-center.ts` already serves this ──
  * Because that route cannot be pointed at a customer. It is
- * `requireRole("MSPOperator")`, scoped by `resolveMspIdStrict`, and takes an
+ * `requireCapability("ladder.msp-operator")`, scoped by `resolveMspIdStrict`, and takes an
  * OPTIONAL `customerId` QUERY PARAM:
  *
  *     GET /api/msp/message-center?customerId=3
@@ -50,7 +50,7 @@
  *
  * ── Role floor: `CustomerUser`, as specified ──────────────────────────────
  * MSP_ROLES ranks PlatformAdmin, MSPAdmin, MSPOperator, CustomerUser,
- * ServiceAccount, Free, Assessment — so `requireRole("CustomerUser")` admits
+ * ServiceAccount, Free, Assessment — so `requireCapability("ladder.customer-user")` admits
  * paying customers and MSP staff, and excludes Free and Assessment tiers. That
  * is a deliberately higher floor than `portal-change-control.ts`'s `Assessment`:
  * this page reads the customer's connected Microsoft 365 tenant, which a free
@@ -76,7 +76,7 @@ import {
 } from "@workspace/db";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { formatChangeRequestCode } from "../lib/portal-change-control";
@@ -308,7 +308,7 @@ function toWirePost(row: MessageCenterRow, buckets: readonly Bucket[], now: Date
 
 router.get(
   "/portal/message-center",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   // #1168: sync/ingestion is unconditional; only this READ checks the
   // customer's purchased Monitoring tier bundles Message Center.
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.messageCenter),

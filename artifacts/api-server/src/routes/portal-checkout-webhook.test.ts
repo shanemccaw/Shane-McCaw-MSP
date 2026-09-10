@@ -101,7 +101,7 @@ mock.module("@workspace/db", {
 
 mock.module("../middlewares/requireAuth.ts", {
   namedExports: {
-    requireRole: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+    requireCapability: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   },
 });
 

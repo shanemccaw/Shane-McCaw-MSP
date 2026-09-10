@@ -33,7 +33,7 @@ import {
   mspReportSchedulesTable,
 } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
@@ -143,7 +143,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 
 router.get(
   "/msp/reports/definitions",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -177,7 +177,7 @@ router.get(
 
 router.post(
   "/msp/reports/definitions",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -237,7 +237,7 @@ router.post(
 
 router.get(
   "/msp/reports/definitions/:defId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -270,7 +270,7 @@ router.get(
 
 router.patch(
   "/msp/reports/definitions/:defId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -309,7 +309,7 @@ router.patch(
 
 router.delete(
   "/msp/reports/definitions/:defId",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -342,7 +342,7 @@ router.delete(
 
 router.post(
   "/msp/reports/definitions/:defId/trigger",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -424,7 +424,7 @@ router.post(
 
 router.get(
   "/msp/reports/runs",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -477,7 +477,7 @@ router.get(
 
 router.get(
   "/msp/reports/runs/:runId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -525,7 +525,7 @@ router.get(
 
 router.get(
   "/msp/reports/runs/:runId/download",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -599,7 +599,7 @@ router.get(
 
 router.get(
   "/msp/reports/license-waste",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -683,7 +683,7 @@ router.get(
 
 router.get(
   "/msp/reports/canvases",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -705,7 +705,7 @@ router.get(
 
 router.post(
   "/msp/reports/canvases",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -738,7 +738,7 @@ router.post(
 
 router.put(
   "/msp/reports/canvases/:id",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -770,7 +770,7 @@ router.put(
 
 router.delete(
   "/msp/reports/canvases/:id",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -793,7 +793,7 @@ router.delete(
 
 router.post(
   "/msp/reports/canvases/:id/send-test",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -866,7 +866,7 @@ router.post(
 
 router.get(
   "/msp/reports/schedules",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -888,7 +888,7 @@ router.get(
 
 router.post(
   "/msp/reports/schedules",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -921,7 +921,7 @@ router.post(
 
 router.put(
   "/msp/reports/schedules/:id",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -955,7 +955,7 @@ router.put(
 
 router.delete(
   "/msp/reports/schedules/:id",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);

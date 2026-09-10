@@ -34,7 +34,7 @@ import { db, changeCatalogItemsTable, configPacksTable, type ChangeCatalogItem }
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
 import { personIdForUser } from "../lib/portal-ownership";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
@@ -102,7 +102,7 @@ function toWire(row: ChangeCatalogItem, packLabel: string, packStatus: string): 
 router.get(
   "/msp/change-catalog",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -142,7 +142,7 @@ const createSchema = z.object({
 router.post(
   "/msp/change-catalog",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -219,7 +219,7 @@ function parseIdParam(res: Response, raw: string): number | null {
 router.post(
   "/msp/change-catalog/:id/approve",
   requireAuth,
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -286,7 +286,7 @@ const revokeSchema = z.object({ reason: z.string().trim().min(1).max(2_000) });
 router.post(
   "/msp/change-catalog/:id/revoke",
   requireAuth,
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);

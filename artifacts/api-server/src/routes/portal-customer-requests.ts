@@ -15,7 +15,7 @@
  * resolved from their authenticated email. A customer can never see or reply to
  * a ticket whose Contact isn't theirs — foreign/unknown ids both 404.
  *
- * Auth: requireRole("CustomerUser") on every route — same tier as its sibling
+ * Auth: requireCapability("ladder.customer-user") on every route — same tier as its sibling
  * portal-customer-engines.ts routes. The customer's own id is read from the JWT
  * (req.user.customerId === tenants.id).
  *
@@ -31,7 +31,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { db, tenantsTable, usersTable } from "@workspace/db";
 import { eq, and, or } from "drizzle-orm";
@@ -96,7 +96,7 @@ function isZohoUnavailable(err: unknown): boolean {
 // ── POST /api/portal/customer/requests ────────────────────────────────────────
 // Open a new request. Reuses enqueueEscalationTicket — identical Zoho Desk write
 // path as ShaneBot's escalation, so no new Zoho integration surface.
-router.post("/portal/customer/requests", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.post("/portal/customer/requests", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   const user = req.user!;
   const customerId = user.customerId;
   if (!customerId) {
@@ -160,7 +160,7 @@ router.post("/portal/customer/requests", requireRole("CustomerUser"), async (req
 // ── GET /api/portal/customer/requests ─────────────────────────────────────────
 // List the caller's own requests. Empty (never opened one, or ticketing not yet
 // configured) is a normal state, not an error.
-router.get("/portal/customer/requests", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.get("/portal/customer/requests", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   const user = req.user!;
   const customerId = user.customerId;
   if (!customerId) {
@@ -191,7 +191,7 @@ router.get("/portal/customer/requests", requireRole("CustomerUser"), async (req:
 // ── GET /api/portal/customer/requests/:ticketId ───────────────────────────────
 // One request's detail + conversation thread. Ownership-enforced: a foreign or
 // unknown ticket id both 404 so ownership can't be probed.
-router.get("/portal/customer/requests/:ticketId", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.get("/portal/customer/requests/:ticketId", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   const user = req.user!;
   const customerId = user.customerId;
   if (!customerId) {
@@ -235,7 +235,7 @@ router.get("/portal/customer/requests/:ticketId", requireRole("CustomerUser"), a
 // NOTE: Zoho attributes an API-authored public comment to the connected agent,
 // not the contact, so the customer's name is prefixed into the body to keep
 // authorship legible in the thread.
-router.post("/portal/customer/requests/:ticketId/reply", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.post("/portal/customer/requests/:ticketId/reply", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   const user = req.user!;
   const customerId = user.customerId;
   if (!customerId) {

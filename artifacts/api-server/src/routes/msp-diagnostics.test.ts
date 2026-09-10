@@ -205,7 +205,7 @@ vi.mock("../middlewares/requireAuth", () => {
 
   return {
     requireAuth: makeMiddleware(),
-    requireRole: (_minimumRole: string) => makeMiddleware(_minimumRole),
+    requireCapability: (_minimumRole: string) => makeMiddleware(_minimumRole),
     assertCustomerAccess: vi.fn().mockResolvedValue(true),
   };
 });

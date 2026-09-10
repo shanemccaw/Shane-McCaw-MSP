@@ -67,7 +67,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, complianceFrameworksTable, complianceObligationsTable, tenantComplianceScopeTable, mspRiskDecisionsTable } from "@workspace/db";
 import { and, eq, asc, isNull, or } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
@@ -106,7 +106,7 @@ function normalizeKey(value: string): string {
 
 router.get(
   "/portal/compliance-obligations",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response) => {
     try {
       const customerId = resolveCustomerId(req);

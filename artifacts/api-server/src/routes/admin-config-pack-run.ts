@@ -27,7 +27,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { ConfigPackError, loadConfigPack, runConfigPackForCustomer } from "../lib/config-pack-orchestrator";
 import { buildConfigPackGraph, operatorRequiredVariables } from "../lib/config-pack-graph";
 import { logger } from "../lib/logger";
@@ -83,7 +83,7 @@ const ERROR_STATUS: Record<ConfigPackError["code"], number> = {
  */
 router.get(
   "/admin/config-packs/:packKey/run/plan",
-  requireRole("PlatformAdmin"),
+  requireCapability("ladder.platform-admin"),
   async (req: Request, res: Response) => {
     const packKey = req.params.packKey as string;
     try {
@@ -125,7 +125,7 @@ router.get(
 
 router.post(
   "/admin/config-packs/:packKey/run",
-  requireRole("PlatformAdmin"),
+  requireCapability("ladder.platform-admin"),
   async (req: Request, res: Response) => {
     const packKey = req.params.packKey as string;
 

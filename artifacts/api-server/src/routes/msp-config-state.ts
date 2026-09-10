@@ -38,7 +38,7 @@
  * configuration and no tenant's identifiers.
  *
  * ─── Role floor ────────────────────────────────────────────────────────────────
- * `requireRole("MSPOperator")` throughout — MSPOperator, MSPAdmin and PlatformAdmin.
+ * `requireCapability("ladder.msp-operator")` throughout — MSPOperator, MSPAdmin and PlatformAdmin.
  * Matching `msp-executive.ts` and `msp-ownership.ts`; the cross-tenant guard is the
  * book, not the floor.
  *
@@ -75,7 +75,7 @@ import {
 } from "@workspace/db";
 import { and, asc, desc, eq } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
 import { resolveConfigStateBook } from "../lib/msp-config-state-scope.ts";
@@ -122,7 +122,7 @@ function parseTenantFilter(raw: unknown): number | undefined | null {
 
 // ── GET /api/msp/config-state/tenants ────────────────────────────────────────
 
-router.get("/msp/config-state/tenants", requireRole("MSPOperator"),
+router.get("/msp/config-state/tenants", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);
@@ -168,7 +168,7 @@ router.get("/msp/config-state/tenants", requireRole("MSPOperator"),
 
 // ── GET /api/msp/config-state/snapshots ──────────────────────────────────────
 
-router.get("/msp/config-state/snapshots", requireRole("MSPOperator"),
+router.get("/msp/config-state/snapshots", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);
@@ -201,7 +201,7 @@ router.get("/msp/config-state/snapshots", requireRole("MSPOperator"),
 // Registered before the `/snapshots/:id` family purely for readability; the paths do
 // not collide.
 
-router.get("/msp/config-state/registry/summary", requireRole("MSPOperator"),
+router.get("/msp/config-state/registry/summary", requireCapability("ladder.msp-operator"),
   async (_req: Request, res: Response) => {
     try {
       res.json(await readResourceRegistrySummary());
@@ -211,7 +211,7 @@ router.get("/msp/config-state/registry/summary", requireRole("MSPOperator"),
     }
   });
 
-router.get("/msp/config-state/registry", requireRole("MSPOperator"),
+router.get("/msp/config-state/registry", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const transport = pickEnum(req.query.transport, CONFIG_READ_TRANSPORTS);
@@ -255,7 +255,7 @@ router.get("/msp/config-state/registry", requireRole("MSPOperator"),
 // ── GET /api/msp/config-state/collections/:runId ─────────────────────────────
 // Before `/snapshots/:id` in the file only for grouping; distinct path prefix.
 
-router.get("/msp/config-state/collections/:runId", requireRole("MSPOperator"),
+router.get("/msp/config-state/collections/:runId", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const runId = Number(req.params.runId);
@@ -342,7 +342,7 @@ router.get("/msp/config-state/collections/:runId", requireRole("MSPOperator"),
  * READ of a tenant, not a write. Every call the collector makes is a GET or a `Get-*`
  * cmdlet; the ps-execution container will not resolve a write cmdlet at all (#209).
  */
-router.post("/msp/config-state/collections", requireRole("MSPOperator"),
+router.post("/msp/config-state/collections", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as Record<string, unknown>;
@@ -427,7 +427,7 @@ router.post("/msp/config-state/collections", requireRole("MSPOperator"),
 
 // ── GET /api/msp/config-state/snapshots/:id ──────────────────────────────────
 
-router.get("/msp/config-state/snapshots/:id", requireRole("MSPOperator"),
+router.get("/msp/config-state/snapshots/:id", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);
@@ -482,7 +482,7 @@ router.get("/msp/config-state/snapshots/:id", requireRole("MSPOperator"),
 
 // ── GET /api/msp/config-state/snapshots/:id/objects ──────────────────────────
 
-router.get("/msp/config-state/snapshots/:id/objects", requireRole("MSPOperator"),
+router.get("/msp/config-state/snapshots/:id/objects", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);

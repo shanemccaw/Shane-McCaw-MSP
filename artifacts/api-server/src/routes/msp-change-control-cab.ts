@@ -30,7 +30,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
 import { personIdForUser } from "../lib/portal-ownership";
 import { logger } from "../lib/logger";
@@ -95,7 +95,7 @@ const addMemberSchema = z.object({
   isEcab: z.boolean().default(false),
 });
 
-router.get("/msp/change-control/cab/members", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/change-control/cab/members", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   try {
@@ -109,7 +109,7 @@ router.get("/msp/change-control/cab/members", requireAuth, requireRole("MSPOpera
   }
 });
 
-router.post("/msp/change-control/cab/members", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/cab/members", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const parsed = addMemberSchema.safeParse(req.body);
@@ -138,7 +138,7 @@ router.post("/msp/change-control/cab/members", requireAuth, requireRole("MSPOper
   }
 });
 
-router.delete("/msp/change-control/cab/members/:id", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.delete("/msp/change-control/cab/members/:id", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const memberId = Number(req.params.id);
@@ -170,7 +170,7 @@ const scheduleMeetingSchema = z.object({
   notes: z.string().trim().max(4_000).default(""),
 });
 
-router.get("/msp/change-control/cab/meetings", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/change-control/cab/meetings", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   try {
@@ -188,7 +188,7 @@ router.get("/msp/change-control/cab/meetings", requireAuth, requireRole("MSPOper
   }
 });
 
-router.post("/msp/change-control/cab/meetings", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/cab/meetings", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const parsed = scheduleMeetingSchema.safeParse(req.body);
@@ -212,7 +212,7 @@ router.post("/msp/change-control/cab/meetings", requireAuth, requireRole("MSPOpe
   }
 });
 
-router.get("/msp/change-control/cab/meetings/:id", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/change-control/cab/meetings/:id", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const meetingId = Number(req.params.id);
@@ -237,7 +237,7 @@ router.get("/msp/change-control/cab/meetings/:id", requireAuth, requireRole("MSP
   }
 });
 
-router.post("/msp/change-control/cab/meetings/:id/start", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/cab/meetings/:id/start", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const meetingId = Number(req.params.id);
@@ -254,7 +254,7 @@ router.post("/msp/change-control/cab/meetings/:id/start", requireAuth, requireRo
   }
 });
 
-router.post("/msp/change-control/cab/meetings/:id/close", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/cab/meetings/:id/close", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const meetingId = Number(req.params.id);
@@ -272,7 +272,7 @@ router.post("/msp/change-control/cab/meetings/:id/close", requireAuth, requireRo
   }
 });
 
-router.post("/msp/change-control/cab/meetings/:id/cancel", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/cab/meetings/:id/cancel", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const meetingId = Number(req.params.id);
@@ -291,7 +291,7 @@ router.post("/msp/change-control/cab/meetings/:id/cancel", requireAuth, requireR
 
 // ── Agenda ───────────────────────────────────────────────────────────────────
 
-router.get("/msp/change-control/cab/meetings/:id/eligible-changes", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/change-control/cab/meetings/:id/eligible-changes", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const meetingId = Number(req.params.id);
@@ -314,7 +314,7 @@ const addAgendaItemSchema = z.object({
   presenterName: z.string().trim().max(200).default(""),
 });
 
-router.post("/msp/change-control/cab/meetings/:id/agenda", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/cab/meetings/:id/agenda", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const meetingId = Number(req.params.id);
@@ -341,7 +341,7 @@ const updateAgendaItemSchema = z.object({
   discussionNotes: z.string().trim().max(4_000).optional(),
 });
 
-router.patch("/msp/change-control/cab/agenda/:id", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.patch("/msp/change-control/cab/agenda/:id", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const agendaItemId = Number(req.params.id);
@@ -368,7 +368,7 @@ const decisionSchema = z.object({
   note: z.string().trim().max(2_000).default(""),
 });
 
-router.post("/msp/change-control/cab/agenda/:id/decision", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/cab/agenda/:id/decision", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const agendaItemId = Number(req.params.id);
@@ -393,7 +393,7 @@ router.post("/msp/change-control/cab/agenda/:id/decision", requireAuth, requireR
 
 const deferSchema = z.object({ deferredToMeetingId: z.number().int().positive().nullable().default(null) });
 
-router.post("/msp/change-control/cab/agenda/:id/defer", requireAuth, requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/change-control/cab/agenda/:id/defer", requireAuth, requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = mspContext(req, res);
   if (mspId === null) return;
   const agendaItemId = Number(req.params.id);

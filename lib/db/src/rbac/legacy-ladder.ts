@@ -51,6 +51,60 @@ export const LEGACY_ROLE_ORDER = [
 
 export type LegacyRole = typeof LEGACY_ROLE_ORDER[number];
 
+/**
+ * The seven role values by name — #2460's single home for the strings themselves.
+ *
+ * #2460's contract is mechanical: `grep -rn '"MSPAdmin"\|"MSPOperator"\|...' artifacts/ lib/`
+ * must return nothing outside this shim. That is not a spelling exercise. Before
+ * this, ~100 files each carried a hardcoded authorization or tenancy decision as a
+ * bare string, which is precisely what #1696 records as the failure — *"every one of
+ * those is a hardcoded authorization decision that a database-driven model is
+ * supposed to own."* Anything that is genuinely a route GATE now names a capability
+ * (see `LADDER` below) and asks the database. What legitimately remains is the role
+ * as a VALUE — the thing stored in `users.msp_role`, compared when deciding which
+ * ORG BOUNDARY a principal sits on, written by a seed, or asserted by a test — and
+ * those reference it from here.
+ *
+ * The distinction is #1696's own axis separation: tenancy ("whose org do you belong
+ * to") and account type are legitimately still read off this column; permission
+ * ("what may you do") is not, and every remaining permission read was moved onto the
+ * evaluator by #2458/#2460.
+ */
+export const LEGACY_ROLE = Object.freeze({
+  assessment: "Assessment",
+  free: "Free",
+  customerUser: "CustomerUser",
+  serviceAccount: "ServiceAccount",
+  mspOperator: "MSPOperator",
+  mspAdmin: "MSPAdmin",
+  platformAdmin: "PlatformAdmin",
+} as const satisfies Record<string, LegacyRole>);
+
+/**
+ * MSP-side staff, as a value set: the two rungs that mean "works for the MSP".
+ *
+ * Deliberately NOT `ServiceAccount` and NOT `PlatformAdmin` — several real call
+ * sites want exactly these two and nothing else (customer scoping, staff pickers,
+ * invite roles). Sites that want a different set build their own from `LEGACY_ROLE`
+ * rather than bending this one.
+ */
+export const LEGACY_MSP_STAFF_ROLES = Object.freeze([
+  LEGACY_ROLE.mspAdmin,
+  LEGACY_ROLE.mspOperator,
+] as const);
+
+/**
+ * The three customer-facing tiers, as a value set.
+ *
+ * `portal-team.ts`'s live rule tests membership of exactly these three (which is why
+ * `ServiceAccount` passes it without a flag — the ladder artifact #1696 records).
+ */
+export const LEGACY_CUSTOMER_TIER_ROLES = Object.freeze([
+  LEGACY_ROLE.customerUser,
+  LEGACY_ROLE.free,
+  LEGACY_ROLE.assessment,
+] as const);
+
 const LEGACY_ROLE_SET: ReadonlySet<string> = new Set(LEGACY_ROLE_ORDER);
 
 /** True for the seven `MSP_ROLES` values and nothing else. */
@@ -150,10 +204,33 @@ export const LADDER_CAPABILITY_KEYS: Readonly<Record<LegacyRole, string>> = Obje
   PlatformAdmin: "ladder.platform-admin",
 });
 
-/** The capability that means "passes `requireRole(<role>)`". */
+/** The capability that means "clears the `<role>` floor". */
 export function ladderCapabilityKey(role: LegacyRole): string {
   return LADDER_CAPABILITY_KEYS[role];
 }
+
+/**
+ * The seven ladder capability keys, by name — what a route gate actually names.
+ *
+ * `requireCapability(LADDER.mspAdmin)` reads as *"this route needs whatever the
+ * `ladder.msp-admin` row says"*, and that row is editable. It is deliberately NOT
+ * an alias for the role: two roles can be granted the same capability, one role can
+ * be granted several, and neither is expressible against a rung. The keys are also
+ * written out literally at most call sites (`"ladder.msp-admin"`) — they are real
+ * row keys in `msp_feature_role_mapping`, and
+ * `artifacts/api-server/src/middlewares/requireCapability-keys.test.ts` asserts
+ * mechanically that every literal reaching `requireCapability` is catalogued, so a
+ * typo on an authorization path cannot ship silently.
+ */
+export const LADDER = Object.freeze({
+  assessment: LADDER_CAPABILITY_KEYS.Assessment,
+  free: LADDER_CAPABILITY_KEYS.Free,
+  customerUser: LADDER_CAPABILITY_KEYS.CustomerUser,
+  serviceAccount: LADDER_CAPABILITY_KEYS.ServiceAccount,
+  mspOperator: LADDER_CAPABILITY_KEYS.MSPOperator,
+  mspAdmin: LADDER_CAPABILITY_KEYS.MSPAdmin,
+  platformAdmin: LADDER_CAPABILITY_KEYS.PlatformAdmin,
+} as const);
 
 const LADDER_ROLE_BY_KEY: ReadonlyMap<string, LegacyRole> = new Map(
   (Object.entries(LADDER_CAPABILITY_KEYS) as Array<[LegacyRole, string]>).map(([role, key]) => [key, role]),

@@ -66,7 +66,7 @@ import {
 const ASSESSMENT_DOC_WORKFLOW_NAME =
   "__system__: Assessment Document Generation — Service-Mapped, Sequenced SOW";
 import { eq, and, desc, asc, gte, inArray, sql } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { runDiagnostics } from "../lib/diagnostics-runner";
 import { isProductionEnvironment } from "../lib/env.ts";
@@ -129,7 +129,7 @@ router.get(
   // Floor is Assessment (the lowest role); CustomerUser/Free above it also carry
   // a customerId and may read their own status. MSP-side roles have no customerId
   // claim and fall through to the 403 below.
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     const userId = req.user?.id;
@@ -573,7 +573,7 @@ router.get(
 router.get(
   "/portal/pillars/history",
   // Same floor as /portal/diagnostics/status — the assessment wizard's own role.
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -656,7 +656,7 @@ router.get(
 router.get(
   "/portal/diagnostics/telemetry-comparison",
   // Same floor as /portal/diagnostics/status — the assessment wizard's own role.
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -690,7 +690,7 @@ router.get(
 router.get(
   "/portal/pillars",
   // Same floor as the telemetry panel — the assessment/pillar-summary role.
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -730,7 +730,7 @@ router.get(
 router.get(
   "/portal/diagnostics/copilot-readiness-narrative",
   // Same floor as the pillar stats it is grounded in.
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -794,7 +794,7 @@ router.get(
 router.get(
   "/portal/diagnostics/security-posture-narrative",
   // Same floor as the pillar stats it is grounded in.
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -868,7 +868,7 @@ function registerPillarReportNarrativeRoute(
   router.get(
     path,
     // Same floor as the pillar stats it is grounded in.
-    requireRole("Assessment"),
+    requireCapability("ladder.assessment"),
     async (req: Request, res: Response): Promise<void> => {
       const customerId = resolveCustomerId(req);
       if (customerId === null) {
@@ -952,7 +952,7 @@ registerPillarReportNarrativeRoute(
 // progress bar) can poll cheaply without re-deriving the whole wizard state.
 router.get(
   "/portal/scan-status",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     // users.id — needed only for the doc-workflow run lookup below, whose trigger
@@ -1159,7 +1159,7 @@ router.get(
 // the one that renders the row.
 router.get(
   "/portal/scan-plan",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -1224,7 +1224,7 @@ router.get(
 // status/severityMatched values.
 router.get(
   "/portal/diagnostics/history",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -1288,7 +1288,7 @@ router.get(
 // backlog: [Shane to add ticket].
 router.post(
   "/portal/diagnostics/debug-trigger-scan",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -1382,7 +1382,7 @@ router.post(
 // it) entirely before production. See backlog: [Shane to add ticket].
 router.get(
   "/portal/diagnostics/testbed-status",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -1429,7 +1429,7 @@ router.get(
 // add ticket].
 router.post(
   "/portal/diagnostics/debug-reset-session",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     const userId = req.user?.id;

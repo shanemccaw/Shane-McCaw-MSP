@@ -23,7 +23,7 @@
  *   PATCH  /api/msp/active-directory/ou-assignments/:id
  *   DELETE /api/msp/active-directory/ou-assignments/:id
  *
- * Every route is gated `requireRole("MSPOperator")` (MSPAdmin and
+ * Every route is gated `requireCapability("ladder.msp-operator")` (MSPAdmin and
  * PlatformAdmin clear that floor too) and scoped through
  * `assertCustomerAccess` — the same ownership + per-staff-scoping single
  * source of truth every other `/api/msp/*` route in this repo uses. A
@@ -51,7 +51,7 @@
  *   GET   /api/msp/active-directory/ou-assignment-requests
  *   PATCH /api/msp/active-directory/ou-assignment-requests/:id
  *
- * Same `requireRole("MSPOperator")` + ownership/staff-scoping discipline as
+ * Same `requireCapability("ladder.msp-operator")` + ownership/staff-scoping discipline as
  * every route above. Approving (or fulfilling) a request that named a real
  * `requestedOuId` immediately applies it — upserts the real
  * `active_directory_ou_assignments` row via the exact same Graph-verified
@@ -69,7 +69,7 @@ import {
   type ActiveDirectoryOuAssignmentRequest,
 } from "@workspace/db";
 import { eq, asc, desc, inArray, and } from "drizzle-orm";
-import { requireAuth, requireRole, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireAuth, requireCapability, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
@@ -90,7 +90,7 @@ function auditActor(req: Request): { actorUserId: number; actorName: string; act
 router.get(
   "/msp/active-directory/ou/:id/assignments",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -134,7 +134,7 @@ router.get(
 router.post(
   "/msp/active-directory/ou/:id/assignments",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -234,7 +234,7 @@ router.post(
 router.patch(
   "/msp/active-directory/ou-assignments/:id",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -309,7 +309,7 @@ router.patch(
 router.delete(
   "/msp/active-directory/ou-assignments/:id",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -372,7 +372,7 @@ router.delete(
 router.get(
   "/msp/active-directory/ou-assignment-requests",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -415,7 +415,7 @@ const RESOLVABLE_STATUSES = ["approved", "rejected", "fulfilled"] as const;
 router.patch(
   "/msp/active-directory/ou-assignment-requests/:id",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {

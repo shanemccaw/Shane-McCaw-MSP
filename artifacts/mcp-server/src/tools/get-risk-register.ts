@@ -6,7 +6,7 @@ import type { ToolDef } from "./registry.ts";
  * get_risk_register — the operator's Risk-Based Decisions (the risk register).
  *
  * Wrapping decision: the issue named `portal-risk-register.ts`, but those GET
- * routes are `requireRole("CustomerUser")` scoped by the JWT `customerId` — the
+ * routes are `requireCapability("ladder.customer-user")` scoped by the JWT `customerId` — the
  * operator (PlatformAdmin, no customerId) gets 403 there. The MSP-operator
  * surface `msp-rbd.ts` (GET /msp/rbd, requireRole MSPOperator, scoped by
  * resolveMspIdStrict) reads the SAME msp_risk_decisions table and IS reachable

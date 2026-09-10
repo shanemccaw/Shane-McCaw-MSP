@@ -91,7 +91,7 @@ export async function hasPlanFeature(mspId: number, feature: string): Promise<bo
  * capability enabled. Responds with 402 and a structured upgrade prompt on failure.
  *
  * Usage:
- *   router.post("/some-feature", requireRole("MSPOperator"), requirePlanFeature("custom_workflows"), handler);
+ *   router.post("/some-feature", requireCapability("ladder.msp-operator"), requirePlanFeature("custom_workflows"), handler);
  */
 export function requirePlanFeature(feature: string) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {

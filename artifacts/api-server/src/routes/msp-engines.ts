@@ -8,7 +8,7 @@
  * can have rules that override platform defaults. Editing those rules requires
  * the `sla_scope_creep_custom_rules` plan feature (Pro tier).
  *
- * Auth: requireRole("MSPOperator") — requires a valid MSP JWT with at least
+ * Auth: requireCapability("ladder.msp-operator") — requires a valid MSP JWT with at least
  * MSPOperator role. PlatformAdmin bypasses all scope checks.
  *
  * Plan gating: requirePlanFeature("sla_scope_creep_custom_rules") for write ops.
@@ -17,7 +17,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { ENGINE_DEFS } from "../lib/engine-registry";
 
@@ -44,7 +44,7 @@ const MSP_OWNED_ENGINES = new Set(
 
 router.get(
   "/msp/engines",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   (_req: Request, res: Response) => {
     res.json({
       engines: ENGINE_DEFS.map(e => ({
@@ -67,7 +67,7 @@ router.get(
 
 router.get(
   "/msp/engines/:key/configuration",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const key = req.params["key"] as string;
     const user = req.user!;
@@ -147,7 +147,7 @@ router.get(
 
 router.post(
   "/msp/engines/:key/rules",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requirePlanFeature("sla_scope_creep_custom_rules"),
   async (req: Request, res: Response) => {
     const key = req.params["key"] as string;
@@ -205,7 +205,7 @@ router.post(
 
 router.delete(
   "/msp/engines/:key/rules/:ruleId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requirePlanFeature("sla_scope_creep_custom_rules"),
   async (req: Request, res: Response) => {
     const key = req.params["key"] as string;

@@ -67,7 +67,7 @@
  * less, not a reason to fail a page that has other real rows to show.
  *
  * ── Role floor ─────────────────────────────────────────────────────────────
- * `requireRole("CustomerUser")`, which admits CustomerUser and every MSP/admin
+ * `requireCapability("ladder.customer-user")`, which admits CustomerUser and every MSP/admin
  * role above it, and excludes `Free` and `Assessment`. Note this is a HIGHER
  * floor than the neighbouring `portal-change-control.ts` and
  * `portal-remediation-tracker.ts`, which floor at `Assessment`. It is not a
@@ -125,7 +125,7 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 
-import { requireRole, type AuthUser } from "../middlewares/requireAuth";
+import { requireCapability, type AuthUser } from "../middlewares/requireAuth";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import {
   resolveCustomerId,
@@ -420,7 +420,7 @@ export interface WireOwnershipPayload {
 
 router.get(
   "/portal/ownership",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   // #1168: writes below stay unconditional; only this READ checks the
   // customer's purchased Monitoring tier bundles RACI/Ownership.
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.ownership),
@@ -606,7 +606,7 @@ function actingName(req: Request): string {
  */
 router.post(
   "/portal/ownership/assign",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = scopedCustomerId(req, res);
     if (customerId === null) return;
@@ -724,7 +724,7 @@ router.post(
  */
 router.post(
   "/portal/ownership/reorder",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = scopedCustomerId(req, res);
     if (customerId === null) return;
@@ -806,7 +806,7 @@ router.post(
  */
 router.post(
   "/portal/ownership/accept",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = scopedCustomerId(req, res);
     if (customerId === null) return;
@@ -899,7 +899,7 @@ router.post(
  */
 router.post(
   "/portal/ownership/decline",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = scopedCustomerId(req, res);
     if (customerId === null) return;
@@ -1002,7 +1002,7 @@ router.post(
  */
 router.post(
   "/portal/ownership/delegations",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = scopedCustomerId(req, res);
     if (customerId === null) return;
@@ -1041,7 +1041,7 @@ router.post(
  */
 router.post(
   "/portal/ownership/delegations/end",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = scopedCustomerId(req, res);
     if (customerId === null) return;
@@ -1086,7 +1086,7 @@ router.post(
  */
 router.post(
   "/portal/ownership/rows",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = scopedCustomerId(req, res);
     if (customerId === null) return;
@@ -1144,7 +1144,7 @@ router.post(
  */
 router.get(
   "/portal/ownership/events",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.ownership),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = scopedCustomerId(req, res);

@@ -13,7 +13,7 @@
  * escalateToAdmin() in support-chat.ts) same as any other real field on the
  * ticket, not a fabricated "type" enum.
  *
- * Auth: requireRole("MSPOperator") on every route (MSPAdmin passes the same
+ * Auth: requireCapability("ladder.msp-operator") on every route (MSPAdmin passes the same
  * gate — see requireRole's own role-hierarchy). mspId is read strictly from
  * the caller's own session (resolveMspIdStrict) — no :mspId in the URL and no
  * ?mspId= override, same discipline as msp-message-center.ts.
@@ -28,7 +28,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { logger } from "../lib/logger";
 import { ZohoNotConnectedError, ZohoApiError } from "../lib/zoho-client.ts";
@@ -51,7 +51,7 @@ function isZohoUnavailable(err: unknown): boolean {
 // ── GET /api/msp/support/requests ───────────────────────────────────────────
 // Every ticket under the caller's MSP's Zoho Desk org — customer-opened
 // requests and chat escalations both live here, newest-modified first.
-router.get("/msp/support/requests", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/support/requests", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (mspId === null) {
     res.status(403).json({ error: "MSP context required" });
@@ -82,7 +82,7 @@ router.get("/msp/support/requests", requireRole("MSPOperator"), async (req: Requ
 // One ticket's detail + FULL conversation thread, including private agent
 // notes a customer never sees (getDeskTicketThreadForOperator, unlike the
 // customer route's getDeskTicketThread).
-router.get("/msp/support/requests/:ticketId", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/support/requests/:ticketId", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (mspId === null) {
     res.status(403).json({ error: "MSP context required" });
@@ -118,7 +118,7 @@ router.get("/msp/support/requests/:ticketId", requireRole("MSPOperator"), async 
 // name-prefixing needed here (unlike the customer route) — Zoho already
 // attributes a public comment to the connected agent, which for this route
 // IS the operator actually replying.
-router.post("/msp/support/requests/:ticketId/reply", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/support/requests/:ticketId/reply", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (mspId === null) {
     res.status(403).json({ error: "MSP context required" });

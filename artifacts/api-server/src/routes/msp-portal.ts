@@ -18,7 +18,7 @@ import { db, mspsTable, tenantsTable, mspEventStoreTable, mspAuditLogsTable, sal
 import { eq, and, count, sql, gte, like, sum, or, desc, ilike, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { hashBody, checkIdempotency, recordIdempotency } from "../lib/idempotency.ts";
-import { requireAuth, requireRole, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth.ts";
 import { randomUUID } from "crypto";
 import { getRequestContext } from "../lib/request-context.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
@@ -103,7 +103,7 @@ router.get(
 
 router.get(
   "/msp/portfolio-risk",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -127,7 +127,7 @@ router.get(
 
 router.get(
   "/msp/dashboard",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -378,7 +378,7 @@ router.get(
 
 router.post(
   "/msp/offboarding/request",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -459,7 +459,7 @@ router.post(
 
 router.post(
   "/msp/offboarding/export",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -601,7 +601,7 @@ router.post(
 
 router.post(
   "/msp/offboarding/archive",
-  requireRole("PlatformAdmin"),
+  requireCapability("ladder.platform-admin"),
   async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as Record<string, unknown>;
@@ -687,7 +687,7 @@ router.post(
 
 router.get(
   "/msp/events",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -762,7 +762,7 @@ router.get(
 
 router.post(
   "/msp/customers/bulk",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -985,7 +985,7 @@ const createCustomerSchema = z.object({
 
 router.post(
   "/msp/customers",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -1056,7 +1056,7 @@ router.post(
 
 router.get(
   "/msp/customers",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -1136,7 +1136,7 @@ router.get(
 
 router.get(
   "/msp/customers/:id",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseInt(String(req.params.id ?? ""), 10);
@@ -1215,7 +1215,7 @@ const editCustomerSchema = z.object({
 
 router.patch(
   "/msp/customers/:id",
-  requireRole("MSPAdmin"),
+  requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseInt(String(req.params.id ?? ""), 10);
@@ -1333,7 +1333,7 @@ router.patch(
 
 router.get(
   "/portal/msp-suspension",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     try {
       const userId = req.user!.id;

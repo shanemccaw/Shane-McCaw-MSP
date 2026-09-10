@@ -49,7 +49,7 @@ import {
   quizOutcomesTable,
   QUIZ_CATALOG_ALL_PERSONAS,
 } from "@workspace/db";
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -265,7 +265,7 @@ async function probeCatalogVisibility(): Promise<Record<string, unknown>> {
 
 router.get(
   "/portal/copilot-assessment/quiz-catalog",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const industry = typeof req.query.industry === "string" ? req.query.industry.trim() : "";
     if (!industry) {

@@ -22,7 +22,7 @@ import {
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 
-import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf";
 import {
@@ -280,7 +280,7 @@ function toEvidenceHtml(customerName: string, rows: readonly EvidenceRow[]): str
 
 router.get(
   "/msp/customers/:customerId/remediation-tracker/export.csv",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;
@@ -307,7 +307,7 @@ router.get(
 
 router.get(
   "/msp/customers/:customerId/remediation-tracker/export.pdf",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;
@@ -335,7 +335,7 @@ router.get(
 
 router.get(
   "/msp/customers/:customerId/remediation-tracker/evidence-pack.pdf",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;

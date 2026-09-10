@@ -38,7 +38,7 @@
  *     — Override audit trail for one customer (break_glass_override_audit),
  *       with the acting admin's name/email resolved for display.
  *
- * Auth: requireRole("MSPOperator") on every route (admits MSPOperator, MSPAdmin,
+ * Auth: requireCapability("ladder.msp-operator") on every route (admits MSPOperator, MSPAdmin,
  * PlatformAdmin — see requireAuth.ts roleIndex) plus assertCustomerAccess on
  * every :customerId-scoped route, exactly the ownership-check pattern every
  * other MSP-scoped route in this repo uses (e.g. msp-diagnostics.ts). Both
@@ -57,7 +57,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
-import { requireRole, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { z } from "zod";
 import {
@@ -78,7 +78,7 @@ const router: IRouter = Router();
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /msp/break-glass — cross-tenant pending list, MSP-scoped
 // ─────────────────────────────────────────────────────────────────────────────
-router.get("/msp/break-glass", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/break-glass", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -159,7 +159,7 @@ router.get("/msp/break-glass", requireRole("MSPOperator"), async (req: Request, 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /msp/customers/:customerId/break-glass — per-customer pending-secret history
 // ─────────────────────────────────────────────────────────────────────────────
-router.get("/msp/customers/:customerId/break-glass", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/customers/:customerId/break-glass", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const customerId = parseInt(req.params.customerId as string, 10);
   if (isNaN(customerId)) return res.status(400).json({ error: "Invalid customerId" });
 
@@ -202,7 +202,7 @@ router.get("/msp/customers/:customerId/break-glass", requireRole("MSPOperator"),
 // ─────────────────────────────────────────────────────────────────────────────
 router.get(
   "/msp/customers/:customerId/break-glass/:pendingSecretId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const customerId = parseInt(req.params.customerId as string, 10);
     const pendingSecretId = parseInt(req.params.pendingSecretId as string, 10);
@@ -266,7 +266,7 @@ router.get(
 // ─────────────────────────────────────────────────────────────────────────────
 router.post(
   "/msp/customers/:customerId/break-glass/:pendingSecretId/admin-override",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const customerId = parseInt(req.params.customerId as string, 10);
     const pendingSecretId = parseInt(req.params.pendingSecretId as string, 10);
@@ -309,7 +309,7 @@ router.post(
 // ─────────────────────────────────────────────────────────────────────────────
 router.get(
   "/msp/customers/:customerId/break-glass/audit",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const customerId = parseInt(req.params.customerId as string, 10);
     if (isNaN(customerId)) return res.status(400).json({ error: "Invalid customerId" });

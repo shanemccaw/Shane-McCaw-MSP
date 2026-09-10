@@ -36,7 +36,7 @@ import {
 } from "@workspace/db";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { resolveFixRoute, resolveTenantWriteCeiling, FIX_ROUTE_AFFORDANCE } from "../lib/remediation-fix-route";
 
@@ -71,7 +71,7 @@ function resolveCustomerId(req: Request): number | null {
 
 router.get(
   "/portal/remediation/fix-routes",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

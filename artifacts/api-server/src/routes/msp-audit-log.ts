@@ -11,7 +11,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspAuditLogsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, count, ilike, or, gte, lte, inArray, type SQL } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 
 const router: IRouter = Router();
 
@@ -19,7 +19,7 @@ function p(val: string | string[] | undefined): string {
   return Array.isArray(val) ? (val[0] ?? "") : (val ?? "");
 }
 
-router.get("/msp/audit", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/audit", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const user = req.user!;
   const page = Math.max(1, parseInt(p(req.query["page"] as string | undefined) || "1", 10));
   const limit = Math.min(100, Math.max(1, parseInt(p(req.query["limit"] as string | undefined) || "30", 10)));

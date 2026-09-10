@@ -18,7 +18,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, platformAgreementsTable, mspAgreementAcceptancesTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
-import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "auth" });
@@ -158,7 +158,7 @@ router.post("/platform/agreement/accept", requireAuth, async (req: Request, res:
 
 // ── Admin: list all agreement versions ───────────────────────────────────────
 
-router.get("/admin/platform-agreements", requireRole("PlatformAdmin"), async (_req: Request, res: Response) => {
+router.get("/admin/platform-agreements", requireCapability("ladder.platform-admin"), async (_req: Request, res: Response) => {
   try {
     const agreements = await db
       .select()
@@ -173,7 +173,7 @@ router.get("/admin/platform-agreements", requireRole("PlatformAdmin"), async (_r
 
 // ── Admin: create a new draft version ────────────────────────────────────────
 
-router.post("/admin/platform-agreements", requireRole("PlatformAdmin"), async (req: Request, res: Response) => {
+router.post("/admin/platform-agreements", requireCapability("ladder.platform-admin"), async (req: Request, res: Response) => {
   const { version, title, body } = req.body as { version?: string; title?: string; body?: string };
 
   if (!version || !body) {
@@ -202,7 +202,7 @@ router.post("/admin/platform-agreements", requireRole("PlatformAdmin"), async (r
 
 // ── Admin: update a draft ─────────────────────────────────────────────────────
 
-router.put("/admin/platform-agreements/:id", requireRole("PlatformAdmin"), async (req: Request, res: Response) => {
+router.put("/admin/platform-agreements/:id", requireCapability("ladder.platform-admin"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
@@ -241,7 +241,7 @@ router.put("/admin/platform-agreements/:id", requireRole("PlatformAdmin"), async
 
 // ── Admin: publish a version (makes it the current version) ──────────────────
 
-router.patch("/admin/platform-agreements/:id/publish", requireRole("PlatformAdmin"), async (req: Request, res: Response) => {
+router.patch("/admin/platform-agreements/:id/publish", requireCapability("ladder.platform-admin"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 

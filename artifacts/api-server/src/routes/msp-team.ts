@@ -29,7 +29,7 @@
  * helper): that helper's second gate, the per-user `canManageTeam` DB flag, only ever applies
  * to the customer tier — "MSP staff and PlatformAdmin bypass this second check entirely (role
  * is the gate for them)" (contract pack §0). Every route in this file is already behind
- * `requireRole("MSPOperator")`, so role is already established; the only remaining question is
+ * `requireCapability("ladder.msp-operator")`, so role is already established; the only remaining question is
  * tenant ownership + per-staff-member scoping, which is exactly what `assertCustomerAccess`
  * answers — the same helper `denyIfCannotManageTeam` itself calls first, and the same
  * ownership+scope gate every other MSP-scoped route in this repo uses
@@ -54,7 +54,7 @@ import {
   mfaBypassCodesTable,
 } from "@workspace/db";
 import { eq, and, inArray, gte, isNull, sql, count } from "drizzle-orm";
-import { requireRole, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth.ts";
+import { requireCapability, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
 import { createAuditLog } from "../lib/audit.ts";
@@ -109,7 +109,7 @@ function reduceMfaStatus(methods: string[]): "TOTP" | "FIDO2" | "SMS" | "Disable
 
 // ── GET /api/msp/customers/:customerId/team — roster for one customer ─────────
 
-router.get("/msp/customers/:customerId/team", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/customers/:customerId/team", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -213,7 +213,7 @@ router.get("/msp/customers/:customerId/team", requireRole("MSPOperator"), async 
 
 // ── POST /api/msp/customers/:customerId/team/invite — invite a teammate ───────
 
-router.post("/msp/customers/:customerId/team/invite", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/customers/:customerId/team/invite", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -314,7 +314,7 @@ router.post("/msp/customers/:customerId/team/invite", requireRole("MSPOperator")
 
 // ── DELETE /api/msp/team/:userId/sessions ──────────────────────────────────────
 
-router.delete("/msp/team/:userId/sessions", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.delete("/msp/team/:userId/sessions", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const resolved = await resolveTargetCustomerId(req);
     if ("status" in resolved) {
@@ -333,7 +333,7 @@ router.delete("/msp/team/:userId/sessions", requireRole("MSPOperator"), async (r
 
 // ── PATCH /api/msp/team/:userId/status ─────────────────────────────────────────
 
-router.patch("/msp/team/:userId/status", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.patch("/msp/team/:userId/status", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const { isActive } = req.body as { isActive?: boolean };
     if (typeof isActive !== "boolean") {
@@ -378,7 +378,7 @@ router.patch("/msp/team/:userId/status", requireRole("MSPOperator"), async (req:
 
 // ── PATCH /api/msp/team/:userId/mfa-enforcement ────────────────────────────────
 
-router.patch("/msp/team/:userId/mfa-enforcement", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.patch("/msp/team/:userId/mfa-enforcement", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const { enforced } = req.body as { enforced?: boolean };
     if (typeof enforced !== "boolean") {
@@ -412,7 +412,7 @@ router.patch("/msp/team/:userId/mfa-enforcement", requireRole("MSPOperator"), as
 
 // ── POST /api/msp/team/:userId/unlock ──────────────────────────────────────────
 
-router.post("/msp/team/:userId/unlock", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/team/:userId/unlock", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const resolved = await resolveTargetCustomerId(req);
     if ("status" in resolved) {
@@ -445,7 +445,7 @@ const TEAM_RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour, matches /auth/forgot-
 
 // ── POST /api/msp/team/:userId/reset-password ──────────────────────────────────
 
-router.post("/msp/team/:userId/reset-password", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/team/:userId/reset-password", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const resolved = await resolveTargetCustomerId(req);
     if ("status" in resolved) {
@@ -496,7 +496,7 @@ router.post("/msp/team/:userId/reset-password", requireRole("MSPOperator"), asyn
 
 // ── POST /api/msp/team/:userId/temp-password ───────────────────────────────────
 
-router.post("/msp/team/:userId/temp-password", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/team/:userId/temp-password", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const resolved = await resolveTargetCustomerId(req);
     if ("status" in resolved) {
@@ -538,7 +538,7 @@ router.post("/msp/team/:userId/temp-password", requireRole("MSPOperator"), async
 
 // ── POST /api/msp/team/:userId/reset-mfa ───────────────────────────────────────
 
-router.post("/msp/team/:userId/reset-mfa", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/team/:userId/reset-mfa", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const resolved = await resolveTargetCustomerId(req);
     if ("status" in resolved) {
@@ -605,7 +605,7 @@ router.post("/msp/team/:userId/reset-mfa", requireRole("MSPOperator"), async (re
 
 // ── POST /api/msp/team/:userId/emergency-bypass ────────────────────────────────
 
-router.post("/msp/team/:userId/emergency-bypass", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/team/:userId/emergency-bypass", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const resolved = await resolveTargetCustomerId(req);
     if ("status" in resolved) {

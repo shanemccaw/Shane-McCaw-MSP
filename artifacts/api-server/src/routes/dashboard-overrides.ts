@@ -59,7 +59,7 @@ import {
 } from "@workspace/db";
 import { getValidRenderersForMetric } from "@workspace/dashboard-registry";
 import { and, eq, inArray } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -258,7 +258,7 @@ async function resolveMonitoringPackageKeys(mspId: number, customerId: number): 
 
 // ── GET /api/dashboard/resolved ────────────────────────────────────────────
 
-router.get("/dashboard/resolved", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.get("/dashboard/resolved", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   const user = req.user!;
   if (user.mspId == null) {
     res.status(400).json({ error: "No MSP association on this session" });
@@ -296,7 +296,7 @@ router.get("/dashboard/resolved", requireRole("CustomerUser"), async (req: Reque
 // actually built a dashboard_templates row for. "project"/"assessment" are
 // excluded — blocked on the projectsTable -> mspId/customerId linkage gap.
 
-router.get("/dashboard/resolved-list", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.get("/dashboard/resolved-list", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   const user = req.user!;
   if (user.mspId == null) {
     res.status(400).json({ error: "No MSP association on this session" });
@@ -394,7 +394,7 @@ const saveOverrideBodySchema = z.object({
   targetKey: z.string().min(1).nullable().optional(),
 });
 
-router.put("/dashboard/overrides", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.put("/dashboard/overrides", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   const user = req.user!;
   if (user.mspId == null) {
     res.status(400).json({ error: "No MSP association on this session" });
@@ -520,7 +520,7 @@ router.put("/dashboard/overrides", requireRole("CustomerUser"), async (req: Requ
 
 // ── DELETE /api/dashboard/overrides — reset to template default ───────────
 
-router.delete("/dashboard/overrides", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.delete("/dashboard/overrides", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   const user = req.user!;
   if (user.mspId == null) {
     res.status(400).json({ error: "No MSP association on this session" });

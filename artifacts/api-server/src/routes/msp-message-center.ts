@@ -13,7 +13,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspMessageCenterItemsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { logger } from "../lib/logger";
 
@@ -21,7 +21,7 @@ const log = logger.child({ channel: "integration.azure" });
 
 const router: IRouter = Router();
 
-router.get("/msp/message-center", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/message-center", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {

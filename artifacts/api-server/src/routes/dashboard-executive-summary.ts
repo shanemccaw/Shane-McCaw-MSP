@@ -14,7 +14,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
 import { getOrGenerateExecutiveSummary } from "../lib/dashboard-executive-summary.ts";
 import { logger } from "../lib/logger";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
@@ -25,7 +25,7 @@ const router: IRouter = Router();
 
 router.get(
   "/dashboard/executive-summary",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const user = req.user!;
     const effectiveRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;

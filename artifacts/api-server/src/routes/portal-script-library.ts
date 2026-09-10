@@ -17,7 +17,7 @@ import {
   scriptDownloadTokensTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "workflow.script" });
 import { randomUUID, createHash } from "crypto";
@@ -78,7 +78,7 @@ function Submit-ScriptResults {
 
 router.get(
   "/portal/scripts",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (_req: Request, res: Response) => {
     try {
       const rows = await pool.query<{
@@ -122,7 +122,7 @@ router.get(
 
 router.post(
   "/portal/scripts/:id/download",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const { id } = req.params as { id: string };
     const user = req.user!;

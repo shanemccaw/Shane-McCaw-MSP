@@ -91,7 +91,7 @@ import {
 } from "@workspace/db";
 import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
 import { resolveConfigStateBook } from "../lib/msp-config-state-scope.ts";
@@ -160,7 +160,7 @@ function violatesConstraint(err: unknown, constraint: string): boolean {
 
 // ── GET /api/msp/config-state/diffs ──────────────────────────────────────────
 
-router.get("/msp/config-state/diffs", requireRole("MSPOperator"),
+router.get("/msp/config-state/diffs", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);
@@ -226,7 +226,7 @@ router.get("/msp/config-state/diffs", requireRole("MSPOperator"),
 // ── GET /api/msp/config-state/diffs/rules ────────────────────────────────────
 // Registered BEFORE `/:diffId` so the literal path is not swallowed by the param route.
 
-router.get("/msp/config-state/diffs/rules", requireRole("MSPOperator"),
+router.get("/msp/config-state/diffs/rules", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const includeInactive = req.query.includeInactive === "true";
@@ -277,7 +277,7 @@ interface ComputeBody {
   resourceKeys?: unknown;
 }
 
-router.post("/msp/config-state/diffs", requireRole("MSPOperator"),
+router.post("/msp/config-state/diffs", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as ComputeBody;
@@ -425,7 +425,7 @@ router.post("/msp/config-state/diffs", requireRole("MSPOperator"),
 
 // ── GET /api/msp/config-state/diffs/:diffId ──────────────────────────────────
 
-router.get("/msp/config-state/diffs/:diffId", requireRole("MSPOperator"),
+router.get("/msp/config-state/diffs/:diffId", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);
@@ -528,7 +528,7 @@ router.get("/msp/config-state/diffs/:diffId", requireRole("MSPOperator"),
 // Register and writes only its own tables. It never modifies a change request, never
 // modifies a risk decision, and never touches the sealed diff.
 
-router.post("/msp/config-state/diffs/:diffId/attribution", requireRole("MSPOperator"),
+router.post("/msp/config-state/diffs/:diffId/attribution", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);
@@ -548,7 +548,7 @@ router.post("/msp/config-state/diffs/:diffId/attribution", requireRole("MSPOpera
 
 // ── GET /api/msp/config-state/baselines ──────────────────────────────────────
 
-router.get("/msp/config-state/baselines", requireRole("MSPOperator"),
+router.get("/msp/config-state/baselines", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);
@@ -627,7 +627,7 @@ router.get("/msp/config-state/baselines", requireRole("MSPOperator"),
  * caller's claim, so a PlatformAdmin declaring a baseline for someone else's customer
  * records the right owner instead of a null.
  */
-router.post("/msp/config-state/baselines", requireRole("MSPOperator"),
+router.post("/msp/config-state/baselines", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as Record<string, unknown>;
@@ -715,7 +715,7 @@ router.post("/msp/config-state/baselines", requireRole("MSPOperator"),
  * nothing. A retired baseline MUST carry its reason; the database enforces that with a
  * CHECK constraint, and so does this handler.
  */
-router.patch("/msp/config-state/baselines/:baselineId", requireRole("MSPOperator"),
+router.patch("/msp/config-state/baselines/:baselineId", requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const baselineId = String(req.params.baselineId);

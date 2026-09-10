@@ -43,7 +43,7 @@ import {
 import { eq, and, isNull, gte, or, desc } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { getMspPortalLandingUrl } from "../lib/portal-url.ts";
 import { logger } from "../lib/logger.ts";
 import { getActiveMfaMethods } from "./mfa.ts";
@@ -86,7 +86,7 @@ function honeypotTriggered(body: Record<string, unknown>): boolean {
 router.post(
   "/msp/onboarding/generate-link",
   generateLinkLimiter,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const {
       customerEmail,
@@ -152,7 +152,7 @@ router.post(
 
 router.get(
   "/msp/onboarding/links",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = req.user!.mspId;
     if (!mspId) {

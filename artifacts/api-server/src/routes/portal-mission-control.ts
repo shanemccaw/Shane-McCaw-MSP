@@ -42,7 +42,7 @@ import {
   servicesTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { runEngineManifestForTenant } from "../lib/engine-registry";
 import { ConfigPackError, runConfigPackForCustomer } from "../lib/config-pack-orchestrator";
 import { resolvePackKeyForService } from "../lib/remediation-catalog";
@@ -222,7 +222,7 @@ const enginesCache = new Map<number, { at: number; promise: Promise<EnginesRespo
 
 router.get(
   "/portal/mission-control/engines",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -363,7 +363,7 @@ export async function listRemediableOffers(customerId: number): Promise<Remediab
 
 router.get(
   "/portal/mission-control/overview",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -546,7 +546,7 @@ const CONFIG_PACK_ERROR_STATUS: Record<ConfigPackError["code"], number> = {
 
 router.post(
   "/portal/mission-control/remediate",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

@@ -34,7 +34,7 @@ import { db, vipClassificationsTable, tenantsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
 import { personIdForUser } from "../lib/portal-ownership";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
@@ -68,7 +68,7 @@ async function customerBelongsToMsp(customerId: number, mspId: number): Promise<
 router.get(
   "/msp/vip-classifications",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -112,7 +112,7 @@ const toldSchema = z.object({
 router.post(
   "/msp/vip-classifications",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -198,7 +198,7 @@ const discoverySchema = z.object({
 router.post(
   "/msp/vip-classifications/discover",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);

@@ -6,7 +6,7 @@
  * catalog scope per role (matching the shared-page pattern used elsewhere in the
  * portal: Sharing, Account Basics, GDPR self-service).
  *
- * Auth: requireRole("Assessment") — the LOWEST portal role floor, so BOTH
+ * Auth: requireCapability("ladder.assessment") — the LOWEST portal role floor, so BOTH
  *   Assessment-tier and CustomerUser-tier (and higher) customers can browse.
  *   The caller's effective role then narrows WHICH services are returned.
  *
@@ -36,7 +36,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, servicesTable, type MspRole } from "@workspace/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "growth.marketplace" });
@@ -67,7 +67,7 @@ function effectiveRole(req: Request): MspRole | undefined {
 /** The serviceType set this role is allowed to browse. */
 function serviceTypesForRole(role: MspRole | undefined): readonly string[] {
   // Assessment-tier is the only role that gets the narrowed catalog. Every other
-  // role that clears the requireRole("Assessment") floor (CustomerUser and up)
+  // role that clears the requireCapability("ladder.assessment") floor (CustomerUser and up)
   // gets the fuller purchasable catalog.
   return role === "Assessment" ? ASSESSMENT_SERVICE_TYPES : CUSTOMER_SERVICE_TYPES;
 }
@@ -161,7 +161,7 @@ export function toMarketplaceService(row: ServiceRow): MarketplaceService {
 
 router.get(
   "/portal/marketplace/catalog",
-  requireRole("Assessment"),
+  requireCapability("ladder.assessment"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const role = effectiveRole(req);

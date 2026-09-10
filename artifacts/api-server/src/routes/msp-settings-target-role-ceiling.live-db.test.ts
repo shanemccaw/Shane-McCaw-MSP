@@ -2,7 +2,7 @@
  * Live-Postgres regression test for the Git #3032 privilege-escalation fix.
  *
  * `msp-settings.ts`'s five credential/security-action routes gated the CALLER at
- * `requireRole("MSPAdmin")` (a minimum-tier floor) but applied NO check comparing the
+ * `requireCapability("ladder.msp-admin")` (a minimum-tier floor) but applied NO check comparing the
  * caller's role to the TARGET user's role — only an `mspId` ownership filter. Since
  * `PlatformAdmin` carries `mspId` the same as any other role at that MSP, a real
  * MSPAdmin JWT could reset a PlatformAdmin's password, mint a temp password (returned

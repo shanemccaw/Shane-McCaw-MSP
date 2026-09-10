@@ -19,7 +19,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import {
   db,
@@ -61,7 +61,7 @@ const BALANCED_DEFAULTS: Record<CustomerAlertCategory, CategoryPrefShape> = Obje
 
 // ── GET /api/portal/alert-preferences ─────────────────────────────────────────
 
-router.get("/portal/alert-preferences", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.get("/portal/alert-preferences", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   const customerId = req.user!.customerId;
   if (!customerId) {
     res.status(400).json({ error: "No customer account associated with this user" });
@@ -153,7 +153,7 @@ const putSchema = z.object({
   })).max(50),
 });
 
-router.put("/portal/alert-preferences", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+router.put("/portal/alert-preferences", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   const customerId = req.user!.customerId;
   if (!customerId) {
     res.status(400).json({ error: "No customer account associated with this user" });

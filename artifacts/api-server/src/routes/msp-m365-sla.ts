@@ -20,7 +20,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantsTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
-import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { computeM365UptimeForTenant, SLA_TARGET_UPTIME_PERCENT } from "../lib/sla-uptime";
 import { logger } from "../lib/logger";
@@ -29,7 +29,7 @@ const log = logger.child({ channel: "integration.azure" });
 
 const router: IRouter = Router();
 
-router.get("/msp/m365-sla", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/m365-sla", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {

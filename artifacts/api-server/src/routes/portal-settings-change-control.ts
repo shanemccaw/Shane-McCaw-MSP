@@ -67,7 +67,7 @@ import {
 } from "@workspace/db";
 import { and, asc, eq } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { resolveCustomerId } from "../lib/portal-customer-scope";
 import { logger } from "../lib/logger";
 import { personIdForUser, toWirePerson, sidesFor, type UserRow } from "../lib/portal-ownership";
@@ -136,7 +136,7 @@ async function activeTenantUsers(customerId: number): Promise<UserRow[]> {
 
 router.get(
   "/portal/settings/change-control",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -226,7 +226,7 @@ function scopedCustomerId(req: Request, res: Response): number | null {
 
 router.put(
   "/portal/settings/change-control/policy",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = scopedCustomerId(req, res);
     if (customerId === null) return;
@@ -271,7 +271,7 @@ router.put(
 
 router.put(
   "/portal/settings/change-control/notifications/:eventKey",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = scopedCustomerId(req, res);
     if (customerId === null) return;

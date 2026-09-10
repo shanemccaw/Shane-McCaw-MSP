@@ -61,7 +61,7 @@ import {
   monitoringPackageChecksTable,
 } from "@workspace/db";
 import { eq, and, desc, count, or, sql, inArray } from "drizzle-orm";
-import { requireRole, requireAuth, assertCustomerAccess, isCustomerBlockedByStaffScope, type AuthUser } from "../middlewares/requireAuth";
+import { requireCapability, requireAuth, assertCustomerAccess, isCustomerBlockedByStaffScope, type AuthUser } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
 import { runDiagnostics } from "../lib/diagnostics-runner";
@@ -242,7 +242,7 @@ async function resolveCallerCustomerId(user: AuthUser): Promise<number | null> {
 
 router.get(
   "/msp/monitoring-packages",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (_req: Request, res: Response) => {
     try {
       const packages = await db
@@ -272,7 +272,7 @@ router.get(
 
 router.post(
   "/msp/customers/:customerId/diagnostics/run",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseInt(req.params["customerId"] as string, 10);
@@ -391,7 +391,7 @@ router.post(
 
 router.get(
   "/msp/customers/:customerId/monitoring-package",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseInt(req.params["customerId"] as string, 10);
@@ -450,7 +450,7 @@ router.get(
 
 router.get(
   "/msp/customers/:customerId/diagnostics",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseInt(req.params["customerId"] as string, 10);
@@ -501,7 +501,7 @@ router.get(
 
 router.get(
   "/msp/customers/:customerId/diagnostics/runs",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseInt(req.params["customerId"] as string, 10);
@@ -541,7 +541,7 @@ router.get(
 
 router.get(
   "/msp/customers/:customerId/diagnostics/runs/:runId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseInt(req.params["customerId"] as string, 10);
@@ -706,7 +706,7 @@ router.get(
 
 router.get(
   "/msp/customers/:customerId/scripts",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseInt(req.params["customerId"] as string, 10);
@@ -813,7 +813,7 @@ router.get(
 
 router.get(
   "/msp/customers/:customerId/scripts/:checkKey/download",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     try {
       const customerId = parseInt(req.params["customerId"] as string, 10);
@@ -1035,7 +1035,7 @@ router.get(
 
 router.get(
   "/portal/health-benchmark",
-  // requireAuth, not requireRole("CustomerUser") — every other customer-facing
+  // requireAuth, not requireCapability("ladder.customer-user") — every other customer-facing
   // route in this file (diagnostics/latest, scripts/download, diagnostics/runs,
   // diagnostics/results) only requires authentication. The stricter floor here
   // silently 403'd Free-tier customers who already have real diagnostic data,

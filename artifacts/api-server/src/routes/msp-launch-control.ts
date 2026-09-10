@@ -6,7 +6,7 @@
  * time. Distinct from Mission Control (the existing customer monitoring
  * dashboard).
  *
- * Auth: requireRole("MSPOperator") + requireMspScope("params") (path-based
+ * Auth: requireCapability("ladder.msp-operator") + requireMspScope("params") (path-based
  * :mspId). Every customerId is additionally re-checked via
  * assertCustomerAccess so a staff member can never reach a customer outside
  * their own MSP, or outside their per-staff tenant scope.
@@ -43,7 +43,7 @@ import {
   type WriteActionCatalog,
 } from "@workspace/db";
 import { eq, and, asc, inArray } from "drizzle-orm";
-import { requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth";
+import { requireCapability, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth";
 import { loadTier, tierAllowsFeature } from "../lib/msp-entitlement";
 import { resolveCustomerUserIds } from "../lib/tenant-signals";
 import { logger } from "../lib/logger";
@@ -134,7 +134,7 @@ function computeAvailability(
 
 router.get(
   "/msp/:mspId/launch-control/actions",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = parseInt(p(req.params["mspId"]), 10);
@@ -184,7 +184,7 @@ router.get(
 
 router.post(
   "/msp/:mspId/launch-control/execute",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = parseInt(p(req.params["mspId"]), 10);
@@ -305,7 +305,7 @@ router.post(
 
 router.post(
   "/msp/:mspId/launch-control/rollback/:auditLogId",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   requireMspScope("params"),
   async (req: Request, res: Response): Promise<void> => {
     const mspId = parseInt(p(req.params["mspId"]), 10);

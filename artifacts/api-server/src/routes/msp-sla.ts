@@ -2,7 +2,7 @@
  * msp-sla.ts
  *
  * MSP-scoped SLA Engine API surface.
- * Authenticated via MSP JWT (requireRole("MSPOperator")).
+ * Authenticated via MSP JWT (requireCapability("ladder.msp-operator")).
  * All queries are automatically scoped to the calling MSP's mspId.
  *
  * Route prefix: /api/msp/sla
@@ -12,7 +12,7 @@
 import { Router, type Request, type Response } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.sla" });
 import { runSlaEngineForMsp, resolveSlaTimer } from "../lib/sla-engine";
@@ -35,7 +35,7 @@ function scopeSlaRows<T extends Record<string, unknown>>(rows: T[], scopedIds: n
 // ── GET /api/msp/sla/policies ──────────────────────────────────────────────────
 // Active policies that apply to this MSP (own + global defaults).
 
-router.get("/msp/sla/policies", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/sla/policies", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   try {
@@ -61,7 +61,7 @@ router.get("/msp/sla/policies", requireRole("MSPOperator"), async (req: Request,
 
 // ── GET /api/msp/sla/policies/:id ──────────────────────────────────────────────
 
-router.get("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/sla/policies/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const id = Number(req.params.id);
@@ -91,7 +91,7 @@ router.get("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: Requ
 
 // ── POST /api/msp/sla/policies ─────────────────────────────────────────────────
 
-router.post("/msp/sla/policies", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/sla/policies", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const b = req.body as Record<string, unknown>;
@@ -124,7 +124,7 @@ router.post("/msp/sla/policies", requireRole("MSPOperator"), async (req: Request
 
 // ── PATCH /api/msp/sla/policies/:id ─────────────────────────────────────────────
 
-router.patch("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.patch("/msp/sla/policies/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const id = Number(req.params.id);
@@ -193,7 +193,7 @@ router.patch("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: Re
 
 // ── DELETE /api/msp/sla/policies/:id ───────────────────────────────────────────
 
-router.delete("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.delete("/msp/sla/policies/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const id = Number(req.params.id);
@@ -241,7 +241,7 @@ router.delete("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: R
 // ── GET /api/msp/sla/timers ────────────────────────────────────────────────────
 // Active timers for this MSP's customers. Optional ?customerId and ?status filters.
 
-router.get("/msp/sla/timers", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/sla/timers", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const customerId = req.query["customerId"] ? Number(req.query["customerId"]) : null;
@@ -299,7 +299,7 @@ router.get("/msp/sla/timers", requireRole("MSPOperator"), async (req: Request, r
 // ── GET /api/msp/sla/breaches ──────────────────────────────────────────────────
 // Unresolved breaches for this MSP. Optional ?customerId and ?resolved filters.
 
-router.get("/msp/sla/breaches", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/sla/breaches", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const customerId = req.query["customerId"] ? Number(req.query["customerId"]) : null;
@@ -347,7 +347,7 @@ router.get("/msp/sla/breaches", requireRole("MSPOperator"), async (req: Request,
 // ── GET /api/msp/sla/escalations ───────────────────────────────────────────────
 // Open escalations for this MSP.
 
-router.get("/msp/sla/escalations", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/sla/escalations", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   try {
@@ -372,7 +372,7 @@ router.get("/msp/sla/escalations", requireRole("MSPOperator"), async (req: Reque
 // ── GET /api/msp/sla/compliance ────────────────────────────────────────────────
 // Monthly compliance history for this MSP. Optional ?customerId filter.
 
-router.get("/msp/sla/compliance", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/sla/compliance", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const customerId = req.query["customerId"] ? Number(req.query["customerId"]) : null;
@@ -407,7 +407,7 @@ router.get("/msp/sla/compliance", requireRole("MSPOperator"), async (req: Reques
 // ── POST /api/msp/sla/evaluate ─────────────────────────────────────────────────
 // Run the SLA engine for this MSP's portfolio. Returns summary, timers, breaches.
 
-router.post("/msp/sla/evaluate", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.post("/msp/sla/evaluate", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   try {
@@ -424,7 +424,7 @@ router.post("/msp/sla/evaluate", requireRole("MSPOperator"), async (req: Request
 
 router.post(
   "/msp/sla/timers/:timerId/resolve",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response) => {
     const mspId = req.user!.mspId;
     if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
@@ -450,7 +450,7 @@ router.post(
 // ── GET /api/msp/sla/summary ───────────────────────────────────────────────────
 // Aggregate stats for the SLA dashboard header cards.
 
-router.get("/msp/sla/summary", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/sla/summary", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   try {
@@ -497,7 +497,7 @@ router.get("/msp/sla/summary", requireRole("MSPOperator"), async (req: Request, 
 // Virtual operator task queue: aggregates unresolved SLA breaches and scope-creep
 // violations as tasks with deep links to the Admin Panel engine detail pages.
 
-router.get("/msp/operator-tasks", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/operator-tasks", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   try {
@@ -558,7 +558,7 @@ router.get("/msp/operator-tasks", requireRole("MSPOperator"), async (req: Reques
 // dashboards can refresh without polling. Emits heartbeat every 30s to keep
 // the connection alive through proxies.
 
-router.get("/msp/sla/events/stream", requireRole("MSPOperator"), (req: Request, res: Response) => {
+router.get("/msp/sla/events/stream", requireCapability("ladder.msp-operator"), (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
 

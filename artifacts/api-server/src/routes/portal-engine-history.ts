@@ -20,7 +20,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth";
 import { getEngineDef } from "../lib/engine-registry";
 import { getEngineHistoryMerged, getBaselineEvents, getSignalDeltasForRange } from "../lib/engine-history";
 import { logger } from "../lib/logger";
@@ -32,7 +32,7 @@ const router: IRouter = Router();
 
 router.get(
   "/portal/engines/:key/history",
-  requireRole("CustomerUser"),
+  requireCapability("ladder.customer-user"),
   async (req: Request, res: Response) => {
     const { key } = req.params;
 

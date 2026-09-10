@@ -1,10 +1,17 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { db, tenantsTable, mspStaffCustomerScopesTable, type MspRole } from "@workspace/db";
+import { db, tenantsTable, mspStaffCustomerScopesTable } from "@workspace/db";
+import {
+  LEGACY_CUSTOMER_TIER_ROLES,
+  LEGACY_ROLE,
+  effectiveLegacyRole,
+  ladderCapabilityRole,
+  type LegacyRole,
+} from "@workspace/db/rbac/legacy-ladder";
 import { and, eq } from "drizzle-orm";
 import { enrichRequestContext } from "../lib/request-context.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
-import { userClearsLadderFloor } from "./rbac-ladder.ts";
+import { userClearsLadderCapability } from "./rbac-ladder.ts";
 
 export interface AuthUser {
   id: number;
@@ -20,7 +27,7 @@ export interface AuthUser {
   impersonatedMspId?: number;
   // MSP extended claims, sourced from the user's own row in the single users
   // table (Tenant/User Refactor Phase 1, #94 — msp_users no longer exists).
-  mspRole?: MspRole;
+  mspRole?: LegacyRole;
   mspId?: number;
   /**
    * Frozen claim name carrying `users.tenantId` — the id of the tenant this
@@ -73,76 +80,54 @@ declare global {
   }
 }
 
-// ── MSP role hierarchy ─────────────────────────────────────────────────────────
-// Higher index = higher privilege. "Assessment" and "Free" share the bottom tier
-// (both below CustomerUser): every requireRole() floor in the codebase is
-// CustomerUser or higher, so both are rejected identically. Assessment is placed
-// at the absolute bottom so it can never resolve to a higher privilege than Free
-// under index comparison.
+// ── MSP privilege ladder — RETIRED HERE (#2460) ────────────────────────────
 //
-// #2458 — NO LONGER READ ON THE REQUEST PATH. requireRole() now decides from the
-// seeded `ladder.*` mapping rows via ./rbac-ladder.ts, and the last two request-path
-// readers of this ordering (the msp-sales-offers SSE route's hand-copied ROLE_ORDER
-// and msp-settings' target-role ceiling check) went with it. What remains is:
-//   - `LEGACY_ROLE_ORDER` in @workspace/db/rbac, which #2457's seed and its parity
-//     check are computed from, and which `legacy-ladder.test.ts` asserts still matches
-//     this array exactly — so if this array is edited without reseeding, that test
-//     fails loudly rather than the two models silently disagreeing;
-//   - `roleIndex`/`effectiveMspRole` below, kept exported for the reason each states.
-// Retiring the array itself is #2460, once MSP_ROLES has no readers at all.
+// This file used to hold `ROLE_ORDER` — a totally ordered array of the seven
+// `MSP_ROLES` values — and `roleIndex()`, and every route gate was the comparison
+// `roleIndex(effectiveRole) >= roleIndex(minimumRole)`. #1696's diagnosis of that
+// shape, *"this is not RBAC, it is a privilege ladder"*, is the reason the redesign
+// exists: a total order cannot express a sideways permission, which is why
+// `can_approve_purchases` and `can_manage_team` had to be bolted on beside it one
+// column at a time.
 //
-// The two ordering artifacts #1696 flagged are settled here rather than left to be
-// rediscovered, and BOTH are deliberately carried forward:
+// #2458 moved the DECISION onto the seeded `ladder.*` mapping rows while keeping
+// this array as the (unread) definition of the ordering. #2460 removes the array,
+// the index function, and `MSP_ROLES` itself. The ordering still exists — as data,
+// in `msp_feature_role_mapping`, where changing who clears a gate is an UPDATE
+// rather than a deploy — and its one remaining source-of-truth transcription lives
+// in `@workspace/db/rbac/legacy-ladder` (`LEGACY_ROLE_ORDER`), the migration's own
+// compatibility shim, which #2457's seed and its parity check are computed from.
 //
-//  1. `ServiceAccount` sits ABOVE `CustomerUser`, so a machine credential clears every
-//     floor a human customer clears. #1696 records this as "an artifact of jamming
-//     account type into the same ordering as permission level, not a decision anyone
-//     made", and #2458 asks whether it is still relied upon. It is: the real code
-//     treats a ServiceAccount as MSP-side infrastructure, not as a customer —
-//     subscription-gate.ts:119 lists it in OPERATOR_ROLES, msp-ownership.ts:69 in
-//     MSP_SCOPED_ROLES, msp-/portal-remediation-tracker-export.ts in MSP_STAFF_ROLES,
-//     and event-bus.ts:221 mints ServiceAccount actors. Demoting it below CustomerUser
-//     would strip it of the 238 `requireRole("CustomerUser")` and 122
-//     `requireRole("Assessment")` routes at once. So the rung order is transcribed
-//     as-is; expressing "machine credential" as its own capability set rather than a
-//     rung is what the lattice is for, and belongs to #2459/#2460.
+// The two ordering artifacts #1696 flagged were settled by #2458 and carry forward
+// into the rows unchanged:
 //
-//  2. `user.role === "admin"` → `PlatformAdmin`. Carried forward deliberately, in
-//     ./rbac-ladder.ts via `effectiveLegacyRole` (the cited transcription), with a test
-//     asserting it agrees with `effectiveMspRole` below for every principal shape.
-//     One real user holds `role = 'admin'` today; dropping the promotion would lock it
-//     out of all 35 `requireRole("PlatformAdmin")` routes.
-const ROLE_ORDER: MspRole[] = [
-  "Assessment",
-  "Free",
-  "CustomerUser",
-  "ServiceAccount",
-  "MSPOperator",
-  "MSPAdmin",
-  "PlatformAdmin",
-];
+//  1. `ServiceAccount` sits ABOVE `CustomerUser`, so a machine credential clears
+//     every floor a human customer clears. Real code depends on it —
+//     subscription-gate.ts's operator role set, msp-ownership.ts's MSP-scoped role
+//     set, the remediation-tracker exports' staff role set, and event-bus.ts minting
+//     ServiceAccount actors. Expressing "machine credential" as its own capability
+//     set rather than a rung is what the lattice is for, and is now possible: it is
+//     an edit to the `ladder.*` allow sets, not a code change.
+//
+//  2. `user.role === "admin"` promoting to the top rung. Carried forward
+//     deliberately, in ./rbac-ladder.ts via `effectiveLegacyRole` (the cited
+//     transcription). One real user holds `role = 'admin'` today; dropping the
+//     promotion would lock it out of every platform-admin-gated route.
+//
+// Do NOT reintroduce an ordering comparison here. A fresh one would be a rule the
+// database does not know about, which is the whole failure #1696 exists to end.
 
-// Was exported for the target-role ceiling check (Git #3032) so it could reuse the
-// exact comparison requireRole() made, instead of hand-rolling a second one.
-//
-// #2458 — that consumer (msp-settings.ts's `targetOutranksOrEqualsCaller`) now asks
-// the evaluator the same question through `roleClearsLadderFloor`, so this has no
-// remaining request-path caller. Kept exported, not deleted, for two honest reasons:
-// the ladder-vs-evaluator agreement tests compare against it directly, and removing a
-// public export is #2460's grep-verified retirement, not this step's. Do NOT add a new
-// caller — a fresh ordering comparison here would be a rule the database does not know
-// about, which is the whole failure #1696 exists to end.
-export function roleIndex(role: MspRole | undefined): number {
-  if (!role) return -1;
-  return ROLE_ORDER.indexOf(role);
-}
-
-// Same legacy-admin normalization requireRole() applies to the caller —
-// exported so a route can compute "what role does this caller effectively
-// hold" itself when it needs to compare against a target's role, not just
-// against a fixed minimum.
-export function effectiveMspRole(user: Pick<AuthUser, "role" | "mspRole">): MspRole | undefined {
-  return user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+/**
+ * The legacy-admin normalization applied to a caller before any capability check.
+ *
+ * Exported so a route can compute "what role does this caller effectively hold"
+ * when it needs to compare against a TARGET's role (a role-assignment ceiling),
+ * rather than against a route requirement. The authoritative copy of the rule is
+ * `effectiveLegacyRole` in the shim; this wrapper is the request-shaped form, so a
+ * route need not reach past the middleware layer for it.
+ */
+export function effectiveMspRole(user: Pick<AuthUser, "role" | "mspRole">): LegacyRole | undefined {
+  return effectiveLegacyRole({ role: user.role, mspRole: user.mspRole ?? null });
 }
 
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -247,33 +232,44 @@ export function requireAdminOrIngestToken(envVar = "BUILD_TRACKER_INGEST_TOKEN")
   };
 }
 
-// ── MSP role guard ─────────────────────────────────────────────────────────────
+// ── Capability guard ───────────────────────────────────────────────────────────
 /**
- * Require the user to have AT LEAST the specified MSP role.
- * Also accepts legacy `role: "admin"` users as PlatformAdmin.
+ * Require the authenticated caller to hold a capability.
  *
  * Example:
- *   router.get("/msps", requireRole("MSPAdmin"), handler);
+ *   router.get("/msps", requireCapability(LADDER.mspAdmin), handler);
  *
- * ── #2458: the decision moved, the signature did not ────────────────────────
- * The answer no longer comes from the `ROLE_ORDER` index comparison below — it
- * comes from the seeded `ladder.*` feature→role mapping rows, through the shared
- * RBAC evaluator, in `./rbac-ladder.ts` (read its header for why the principal is
- * still identified from the JWT and why the rows are read platform-scoped only).
- * This function's signature, its 403 body and all 616 real call sites in
- * `src/routes` are untouched, which is exactly #1696's migration step 3.
+ * ── #2460: the route now names a CAPABILITY, not a role ─────────────────────
+ * This replaces `requireRole(minimumRole: MspRole)`. #2458 had already moved the
+ * decision onto the seeded `ladder.*` feature→role mapping rows while deliberately
+ * keeping the old role-shaped signature, so that step could not change behaviour;
+ * #1696's step 5 is what removes the role literal from the call sites themselves.
+ * Read ./rbac-ladder.ts's header for why the principal is still identified from the
+ * JWT and why these rows are read platform-scoped only.
  *
- * The returned middleware is now async internally. Express ignores a middleware's
+ * What a call site passes is now a real row key in `msp_feature_role_mapping` —
+ * one of the seven `LADDER.*` values — so "who clears this gate" is an UPDATE
+ * against that row rather than a redeploy, and a route requirement is no longer a
+ * rung in a total order it must be a superset of. An unrecognised key is a coding
+ * error on an authorization path: it fails CLOSED as `unavailable` (503), never as
+ * an allow, and `requireCapability-keys.test.ts` asserts mechanically that every
+ * key literal reaching this function is catalogued (#1696 requirement 3).
+ *
+ * The 403 body is deliberately byte-identical to the one the retired `ROLE_ORDER`
+ * comparison produced — the rung is recovered from the key purely to build it — so
+ * no client, test manifest or log consumer sees this migration at all.
+ *
+ * The returned middleware is async internally. Express ignores a middleware's
  * return value, and every path below either calls `next()` or writes a response —
  * nothing can reject out of it — which is the same shape `requireCustomerScope`
  * has always had.
  */
-export function requireRole(minimumRole: MspRole) {
+export function requireCapability(capability: string) {
   return (req: Request, res: Response, next: NextFunction): void => {
     requireAuth(req, res, () => {
       void (async () => {
         try {
-          const outcome = await userClearsLadderFloor(req.user!, minimumRole);
+          const outcome = await userClearsLadderCapability(req.user!, capability);
 
           if (outcome.kind === "allow") {
             next();
@@ -286,23 +282,39 @@ export function requireRole(minimumRole: MspRole) {
             // where #2457's seed has not been run) as a permission decision, which
             // is the one thing that would make this cutover undiagnosable.
             req.log?.error(
-              { minimumRole, reason: outcome.reason },
-              "requireRole could not consult the RBAC model — failing closed",
+              { capability, reason: outcome.reason },
+              "requireCapability could not consult the RBAC model — failing closed",
             );
             apiError(res, 503, ApiErrorCode.INTERNAL, "Authorization is temporarily unavailable");
             return;
           }
 
-          apiError(res, 403, ApiErrorCode.FORBIDDEN, `Insufficient privileges — ${minimumRole} or above required`);
+          apiError(res, 403, ApiErrorCode.FORBIDDEN, denialMessage(capability));
         } catch (err) {
-          // Unreachable by design — userClearsLadderFloor catches its own errors —
-          // but an authorization path does not get to throw an unhandled rejection.
-          req.log?.error({ err, minimumRole }, "requireRole threw unexpectedly — failing closed");
+          // Unreachable by design — userClearsLadderCapability catches its own
+          // errors — but an authorization path does not get to throw an unhandled
+          // rejection.
+          req.log?.error({ err, capability }, "requireCapability threw unexpectedly — failing closed");
           apiError(res, 503, ApiErrorCode.INTERNAL, "Authorization is temporarily unavailable");
         }
       })();
     });
   };
+}
+
+/**
+ * The 403 body, unchanged from the ladder's.
+ *
+ * `Insufficient privileges — <Rung> or above required` is what 616 route gates have
+ * returned for as long as they have existed, and it is asserted byte-for-byte by
+ * `rbac-ladder.live-db.test.ts`. Recovering the rung name from the capability key is
+ * a DISPLAY concern only — the decision above was already made from the rows.
+ */
+function denialMessage(capability: string): string {
+  const rung = ladderCapabilityRole(capability);
+  return rung
+    ? `Insufficient privileges — ${rung} or above required`
+    : "Insufficient privileges";
 }
 
 // ── MSP scope guard ───────────────────────────────────────────────────────────
@@ -323,9 +335,8 @@ export function requireMspScope(source: "params" | "query" | "body" = "params") 
     }
 
     // PlatformAdmin bypasses tenant isolation
-    const effectiveRole: MspRole | undefined =
-      user.role === "admin" ? "PlatformAdmin" : user.mspRole;
-    if (effectiveRole === "PlatformAdmin") {
+    const effectiveRole = effectiveMspRole(user);
+    if (effectiveRole === LEGACY_ROLE.platformAdmin) {
       next();
       return;
     }
@@ -376,12 +387,11 @@ export function requireMspScope(source: "params" | "query" | "body" = "params") 
  * the table the IDOR check resolves against moved (msp_customers → tenants).
  */
 export async function assertCustomerAccess(user: AuthUser, customerId: number): Promise<boolean> {
-  const effectiveRole: MspRole | undefined =
-    user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+  const effectiveRole = effectiveMspRole(user);
 
-  if (effectiveRole === "PlatformAdmin") return true;
+  if (effectiveRole === LEGACY_ROLE.platformAdmin) return true;
 
-  if (effectiveRole === "MSPAdmin" || effectiveRole === "MSPOperator") {
+  if (effectiveRole === LEGACY_ROLE.mspAdmin || effectiveRole === LEGACY_ROLE.mspOperator) {
     if (!user.mspId) return false;
     const [tenant] = await db
       .select({ id: tenantsTable.id })
@@ -399,7 +409,7 @@ export async function assertCustomerAccess(user: AuthUser, customerId: number): 
     return true;
   }
 
-  if (effectiveRole === "CustomerUser" || effectiveRole === "Free" || effectiveRole === "Assessment") {
+  if (effectiveRole !== undefined && (LEGACY_CUSTOMER_TIER_ROLES as readonly string[]).includes(effectiveRole)) {
     return user.customerId === customerId;
   }
 
@@ -430,9 +440,8 @@ export async function assertCustomerAccess(user: AuthUser, customerId: number): 
  * `isCustomerBlockedByStaffScope`.
  */
 export async function resolveStaffScopedCustomerIds(user: AuthUser): Promise<number[] | null> {
-  const effectiveRole: MspRole | undefined =
-    user.role === "admin" ? "PlatformAdmin" : user.mspRole;
-  if (effectiveRole !== "MSPAdmin" && effectiveRole !== "MSPOperator") return null;
+  const effectiveRole = effectiveMspRole(user);
+  if (effectiveRole !== LEGACY_ROLE.mspAdmin && effectiveRole !== LEGACY_ROLE.mspOperator) return null;
 
   const rows = await db
     .select({ customerId: mspStaffCustomerScopesTable.customerId })
@@ -463,7 +472,7 @@ export function requireCustomerScope(source: "params" | "query" | "body" = "para
     }
 
     // PlatformAdmin bypasses all customer scope checks (no customerId required)
-    if (user.role === "admin" || user.mspRole === "PlatformAdmin") {
+    if (effectiveMspRole(user) === LEGACY_ROLE.platformAdmin) {
       next();
       return;
     }

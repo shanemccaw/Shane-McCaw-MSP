@@ -18,7 +18,7 @@ import { db, tenantsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
@@ -39,7 +39,7 @@ async function loadOwnedTenant(mspId: number, tenantId: number) {
 router.get(
   "/msp/tenants/:tenantId/policy-engine",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);
@@ -70,7 +70,7 @@ const patchSchema = z.object({ optIn: z.boolean() });
 router.patch(
   "/msp/tenants/:tenantId/policy-engine",
   requireAuth,
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const mspId = resolveMspIdStrict(req);

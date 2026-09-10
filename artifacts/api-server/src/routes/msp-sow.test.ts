@@ -103,7 +103,7 @@ vi.mock("../lib/workflow-executor", () => ({
 }));
 
 vi.mock("../middlewares/requireAuth.ts", () => ({
-  requireRole: () => (_req: Request, _res: Response, next: NextFunction) => next(),
+  requireCapability: () => (_req: Request, _res: Response, next: NextFunction) => next(),
   requireAuth:  (_req: Request, _res: Response, next: NextFunction) => next(),
 }));
 

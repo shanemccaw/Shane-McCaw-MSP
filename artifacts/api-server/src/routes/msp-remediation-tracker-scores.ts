@@ -21,7 +21,7 @@ import {
 } from "@workspace/db";
 import { and, asc, desc, eq } from "drizzle-orm";
 
-import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { computeCopilotGate, type CopilotGateResult } from "../lib/copilot-gate";
 import { REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "../lib/remediation-tracker-verification";
@@ -63,7 +63,7 @@ async function resolveAuthorizedCustomerId(req: Request, res: Response): Promise
 
 router.get(
   "/msp/customers/:customerId/remediation-tracker/pillar-scores",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;

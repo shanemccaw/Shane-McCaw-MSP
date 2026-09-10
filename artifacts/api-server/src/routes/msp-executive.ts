@@ -23,7 +23,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { gatherExecutiveBook } from "../lib/msp-executive-data.ts";
 import { getCurrentPartnerQbr, getOrGeneratePartnerQbr, currentQuarterKey } from "../lib/partner-qbr-generator.ts";
@@ -34,7 +34,7 @@ const log = logger.child({ channel: "engine.dashboard" });
 const router: IRouter = Router();
 
 // ── Top risks + top opportunities (scoped to the caller's book) ────────────────
-router.get("/msp/executive", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+router.get("/msp/executive", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -52,7 +52,7 @@ router.get("/msp/executive", requireRole("MSPOperator"), async (req: Request, re
 });
 
 // ── Current quarter's cached Partner QBR (viewing never triggers generation) ───
-router.get("/msp/executive/qbr", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/executive/qbr", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {
@@ -69,7 +69,7 @@ router.get("/msp/executive/qbr", requireRole("MSPAdmin"), async (req: Request, r
 });
 
 // ── Generate / regenerate the current quarter's Partner QBR ────────────────────
-router.post("/msp/executive/qbr/generate", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.post("/msp/executive/qbr/generate", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   try {
     const mspId = resolveMspIdStrict(req);
     if (mspId === null) {

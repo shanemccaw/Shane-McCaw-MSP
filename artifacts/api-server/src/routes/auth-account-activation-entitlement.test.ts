@@ -140,7 +140,7 @@ mock.module("../middlewares/requireAuth.ts", {
   namedExports: {
     requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
     requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
-    requireRole: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+    requireCapability: () => (_req: unknown, _res: unknown, next: () => void) => next(),
     requireMspScope: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   },
 });

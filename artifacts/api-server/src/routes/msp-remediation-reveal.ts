@@ -22,7 +22,7 @@ import {
 import { formatChangeRequestCode } from "../lib/portal-change-control";
 import { personIdForUser } from "../lib/portal-ownership";
 import { resolveTenantScope } from "../lib/portal-customer-scope";
-import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
@@ -55,7 +55,7 @@ async function resolveAuthorizedCustomerId(req: Request, res: Response): Promise
 
 router.post(
   "/msp/customers/:customerId/remediation/fix-routes/:checkKey/reveal",
-  requireRole("MSPOperator"),
+  requireCapability("ladder.msp-operator"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await resolveAuthorizedCustomerId(req, res);
     if (customerId === null) return;
