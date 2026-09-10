@@ -79,34 +79,11 @@
                         <TextBlock x:Name="OpenLastTabsText" FontSize="10.5" FontWeight="Bold"
                                    Foreground="{StaticResource BlueBrush}"/>
                     </Border>
-                    <Border x:Name="PointsChip" Background="{StaticResource Surface0Brush}" CornerRadius="9"
-                            Padding="8,1" Margin="12,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
-                        <TextBlock x:Name="PointsText" FontSize="10.5" FontWeight="Bold"
-                                   Foreground="{StaticResource YellowBrush}"/>
-                    </Border>
-                    <Border x:Name="AchvChip" Background="{StaticResource Surface0Brush}" CornerRadius="9"
-                            Padding="8,1" Margin="8,0,0,0" VerticalAlignment="Center" Cursor="Hand"
-                            Visibility="Collapsed" MouseLeftButtonUp="AchvChip_Click"
-                            ToolTip="Your Focus achievements">
-                        <TextBlock x:Name="AchvText" FontSize="10.5" Foreground="{StaticResource Subtext1Brush}"/>
-                    </Border>
-                    <!-- In-Progress quick chats -->
-                    <StackPanel x:Name="InProgressStrip" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0" Visibility="Collapsed">
-                        <TextBlock Text="⚡" FontSize="11" Foreground="{StaticResource YellowBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                        <TextBlock Text="In Progress:" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource YellowBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <StackPanel x:Name="InProgressList" Orientation="Horizontal" VerticalAlignment="Center"/>
-                    </StackPanel>
                 </StackPanel>
 
-                <!-- right: hidden count + exit -->
+                <!-- right: exit -->
                 <StackPanel x:Name="RightPanel" Grid.Column="3" Orientation="Horizontal"
                             VerticalAlignment="Center" Visibility="Collapsed">
-                    <TextBlock x:Name="HiddenText" FontSize="10.5" Foreground="{StaticResource Subtext0Brush}"
-                               VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <Button x:Name="ImmersiveBtn" Content="⛶ Immersive" Height="24" Margin="0,0,8,0" Padding="12,0"
-                            FontSize="11" FontWeight="SemiBold" Cursor="Hand"
-                            Style="{StaticResource PrimaryButton}" Click="ImmersiveBtn_Click"
-                            ToolTip="Zoom into a dedicated full-screen view of just this epic (Ctrl+Shift+F)"/>
                     <Button x:Name="ExitBtn" Content="Exit focus" Height="24" Padding="10,0" FontSize="11"
                             Cursor="Hand" Foreground="{StaticResource TextBrush}"
                             Background="{StaticResource Surface1Brush}" BorderThickness="0"

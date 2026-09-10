@@ -49,19 +49,16 @@ namespace BuildConsole.Controls
             {
                 var svc = FocusModeService.Instance;
                 svc.StateChanged += OnStateChanged;
-                svc.InProgressChatsChanged += OnInProgressChatsChanged;
                 Refresh();
             };
             Unloaded += (_, _) =>
             {
                 var svc = FocusModeService.Instance;
                 svc.StateChanged -= OnStateChanged;
-                svc.InProgressChatsChanged -= OnInProgressChatsChanged;
             };
         }
 
         private void OnStateChanged() => Dispatcher.Invoke(Refresh);
-        private void OnInProgressChatsChanged() => Dispatcher.Invoke(RefreshInProgressChats);
 
         /// <summary>Git #2708 — MainWindow calls this whenever the real unrestored-last-session-tab
         /// count changes (loaded at launch, cleared once reopened or once the user opens any chat
@@ -88,7 +85,6 @@ namespace BuildConsole.Controls
             RightPanel.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
 
             PopulatePicker(svc.Milestones);
-            RefreshInProgressChats();
 
             if (active)
             {
@@ -122,86 +118,6 @@ namespace BuildConsole.Controls
                 OpenLastTabsChip.Visibility = showOpenLastTabs ? Visibility.Visible : Visibility.Collapsed;
                 OpenLastTabsText.Text = $"↩ Open Last Tabs ({_unrestoredTabCount})";
 
-                PointsChip.Visibility = !showOpenLastTabs && svc.Points > 0 ? Visibility.Visible : Visibility.Collapsed;
-                PointsText.Text = $"⭐ {svc.Points} pts";
-
-                var latest = svc.Achievements.OrderByDescending(a => a.UnlockedAt).FirstOrDefault();
-                if (!showOpenLastTabs && latest != null)
-                {
-                    AchvChip.Visibility = Visibility.Visible;
-                    AchvText.Text = $"{latest.Emoji} {latest.Title}" + (svc.Achievements.Count > 1 ? $"  (+{svc.Achievements.Count - 1})" : "");
-                }
-                else AchvChip.Visibility = Visibility.Collapsed;
-
-                int hidden = svc.HiddenIssueCount();
-                HiddenText.Text = hidden > 0 ? $"{hidden} hidden" : "";
-                HiddenText.ToolTip = hidden > 0 ? $"{hidden} off-milestone issue(s) hidden by focus" : null;
-            }
-        }
-
-        private void RefreshInProgressChats()
-        {
-            var svc = FocusModeService.Instance;
-            // Git #2663 — GLOBAL across both accounts (was Git #1480's per-account filter
-            // via svc.InProgressChatsForAccount(CurrentAccountLabel())). A chat marked under
-            // one account silently vanished from the strip the moment Shane flipped the
-            // title-bar Primary/Secondary toggle — the "chips just disappear on their own"
-            // symptom. Showing every marked chat regardless of the active account is the
-            // safer default for "why did this disappear." NOTE: this is a judgment-call
-            // default per the #2663 dispatch, not a confirmed product decision — if Shane
-            // wants per-account scoping back, restore the InProgressChatsForAccount(...) call
-            // (and surface an "N more on <other account>" indicator instead of hiding).
-            var list = svc.InProgressChats;
-            if (list == null || list.Count == 0)
-            {
-                InProgressStrip.Visibility = Visibility.Collapsed;
-                InProgressList.Children.Clear();
-                return;
-            }
-
-            InProgressStrip.Visibility = Visibility.Visible;
-            InProgressList.Children.Clear();
-
-            foreach (var item in list)
-            {
-                var chip = new Border
-                {
-                    Background = (Brush)FindResource("Surface0Brush"),
-                    BorderBrush = (Brush)FindResource("Surface1Brush"),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(6, 2, 6, 2),
-                    Margin = new Thickness(0, 0, 6, 0),
-                    Cursor = Cursors.Hand,
-                    ToolTip = $"Click to open \"{item.Title}\""
-                };
-
-                var txt = new TextBlock
-                {
-                    Text = item.Title,
-                    FontSize = 10.5,
-                    Foreground = (Brush)FindResource("TextBrush"),
-                    MaxWidth = 130,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                chip.Child = txt;
-                chip.MouseLeftButtonUp += (s, e) =>
-                {
-                    InProgressChatActivated?.Invoke(item);
-                };
-
-                // Git #2663 — right-click a chip to swap which chat is "in progress" in ONE
-                // action: unmark this chip's chat and mark whatever chat tab is currently
-                // active. `item` is captured per-chip (foreach's own loop variable).
-                var captured = item;
-                var cm = new ContextMenu();
-                var miReplace = new MenuItem { Header = "Replace with active tab" };
-                miReplace.Click += (_, _) => InProgressChatReplaceRequested?.Invoke(captured);
-                cm.Items.Add(miReplace);
-                chip.ContextMenu = cm;
-
-                InProgressList.Children.Add(chip);
             }
         }
 
@@ -245,14 +161,10 @@ namespace BuildConsole.Controls
 
         private void ExitBtn_Click(object sender, RoutedEventArgs e) => FocusModeService.Instance.Deactivate();
 
-        private void ImmersiveBtn_Click(object sender, RoutedEventArgs e) => ImmersiveRequested?.Invoke();
-
         private void ActiveTitle_Click(object sender, MouseButtonEventArgs e)
         {
             var n = FocusModeService.Instance.ActiveMilestoneNumber;
             if (n.HasValue) MilestoneOpenRequested?.Invoke(n.Value);
         }
-
-        private void AchvChip_Click(object sender, MouseButtonEventArgs e) => AchievementsRequested?.Invoke();
     }
 }
