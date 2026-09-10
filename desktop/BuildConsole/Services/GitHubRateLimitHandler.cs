@@ -21,15 +21,49 @@ namespace BuildConsole.Services
     /// real response comes back rate-limited (429, or 403 with GitHub's rate-limit headers), the
     /// breaker is tripped — honoring <c>x-ratelimit-reset</c> / <c>Retry-After</c> for the window —
     /// so the NEXT tick's calls short-circuit instead of hammering. Any success closes it.
+    ///
+    /// Git #3511 — <b>manual-priority mode</b> (constructed via
+    /// <see cref="GitHubApiClient.ForManualAction"/>). A single, deliberate, user-initiated action
+    /// (Dispatch, a board move, closing/editing an issue, posting a comment) is NOT the high-volume
+    /// automatic background polling this breaker exists to throttle, yet before #3511 it shared the
+    /// SAME undifferentiated gate — so once background load tripped the circuit, Shane's one manual
+    /// escape hatch (Dispatch) failed with "Couldn't reach GitHub" at exactly the moment he needed
+    /// to intervene. In manual-priority mode this handler ALWAYS lets the first real attempt through
+    /// regardless of the broader circuit's open/closed state, and still reports the real outcome to
+    /// the shared breaker — a success even CLOSES it (helping background callers recover), a real
+    /// rate-limit TRIPS it. Only if THIS manual client's own call comes back rate-limited does it
+    /// then honour the backoff for its subsequent calls (so a rare multi-write manual action stops
+    /// once GitHub itself says no, rather than hammering). This deliberately does NOT remove
+    /// rate-limit protection: every automatic/background caller (the real volume) still constructs a
+    /// plain, fully-gated client.
     /// </summary>
     public sealed class GitHubRateLimitHandler : DelegatingHandler
     {
-        public GitHubRateLimitHandler(HttpMessageHandler inner) : base(inner) { }
+        /// <summary>Git #3511 — true when this handler backs a manual, user-initiated action's client
+        /// (see the class doc). Per-handler, set once at construction.</summary>
+        private readonly bool _manualPriority;
+
+        /// <summary>Git #3511 — manual-priority only: set once THIS client's own call has itself come
+        /// back rate-limited, at which point it stops bypassing and honours the shared backoff for the
+        /// rest of its (short) lifetime. <c>volatile</c> because a single client can issue concurrent
+        /// requests (e.g. Task.WhenAll); a benign race at worst lets one extra attempt through.</summary>
+        private volatile bool _selfRateLimited;
+
+        public GitHubRateLimitHandler(HttpMessageHandler inner, bool manualPriority = false) : base(inner)
+        {
+            _manualPriority = manualPriority;
+        }
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            if (GitHubRateLimitCircuit.ShouldShortCircuit(out var reason))
+            // Git #3511 — a manual-priority client bypasses the circuit's pre-emptive suppression for
+            // its immediate attempt(s), UNTIL one of its own calls is itself rate-limited (then it
+            // falls back to the shared backoff like everyone else). A background client always
+            // consults the breaker. Either way the real outcome below is still reported to the shared
+            // circuit, so a manual success closes it and a manual rate-limit trips it.
+            bool bypassSuppression = _manualPriority && !_selfRateLimited;
+            if (!bypassSuppression && GitHubRateLimitCircuit.ShouldShortCircuit(out var reason))
             {
                 return new HttpResponseMessage(HttpStatusCode.Forbidden)
                 {
@@ -42,11 +76,20 @@ namespace BuildConsole.Services
             var res = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
             if (IsRateLimited(res))
+            {
+                _selfRateLimited = true; // Git #3511 — no-op for a background client; gates a manual one's next call
                 GitHubRateLimitCircuit.RecordRateLimited("HTTP API", ReadResetUtc(res));
+            }
             else if (res.IsSuccessStatusCode && await IsGraphQlRateLimitedBodyAsync(request, res).ConfigureAwait(false))
+            {
+                _selfRateLimited = true;
                 GitHubRateLimitCircuit.RecordRateLimited("GraphQL body");
+            }
             else if (res.IsSuccessStatusCode || res.StatusCode == HttpStatusCode.NotModified)
+            {
+                _selfRateLimited = false;
                 GitHubRateLimitCircuit.RecordSuccess();
+            }
             // Any other failure (404, a genuine non-rate-limit 403 permission error, 5xx) leaves the
             // breaker untouched — we only trip on a real rate-limit signal, never a generic error.
 

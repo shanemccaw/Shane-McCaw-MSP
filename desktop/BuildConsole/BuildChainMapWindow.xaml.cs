@@ -167,7 +167,10 @@ namespace BuildConsole
                     return;
                 }
 
-                var client = new GitHubApiClient(settings.GitHubPat);
+                // Git #3511 — the Build Chain Map is a manual editing surface; its board moves and
+                // blocked_by edge writes (ChainPersistence) are deliberate user actions that must not be
+                // pre-blocked by the circuit automatic background polling trips.
+                var client = GitHubApiClient.ForManualAction(settings.GitHubPat);
                 _client = client;
 
                 // Git #2486 — resolve the local dispatch queue once, so a Map board move can

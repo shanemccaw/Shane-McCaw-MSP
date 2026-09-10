@@ -57,7 +57,10 @@ namespace BuildConsole.Services
                     Message = "No GitHub PAT configured — set one in Settings.",
                 };
 
-            var gh = new GitHubApiClient(settings.GitHubPat);
+            // Git #3511 — Dispatch is THE manual escape hatch; it must not be pre-blocked by the
+            // circuit that automatic background polling trips. A manual-priority client always makes
+            // the immediate real attempt regardless of the circuit's open/closed state.
+            var gh = GitHubApiClient.ForManualAction(settings.GitHubPat);
 
             GitHubIssueDetail? issue;
             try
