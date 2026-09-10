@@ -2646,8 +2646,26 @@ namespace BuildConsole.Controls
                 };
                 return dot;
             }
-            else
+            else if (node.Status == "canceled")
             {
+                // Git #3514 — mirror the card pill: a canceled build is terminal, not up-next.
+                // Without this it fell through to the laneBrush "UP NEXT" dot below (same
+                // root-cause fallthrough the card pill had).
+                var dot = new Ellipse
+                {
+                    Width = QueueGraphDotRadius * 2,
+                    Height = QueueGraphDotRadius * 2,
+                    Fill = new SolidColorBrush(Color.FromRgb(0x58, 0x5B, 0x70)),
+                    Stroke = mantle,
+                    StrokeThickness = 1.5,
+                    ToolTip = $"🚫 Build {node.DisplayRef} (CANCELED)"
+                };
+                return dot;
+            }
+            else if (node.Status == "queued")
+            {
+                // Git #3514 — the up-next lane dot is reachable only for a genuinely queued
+                // node now, so an unenumerated status can't be painted as a claim candidate.
                 var dot = new Ellipse
                 {
                     Width = QueueGraphDotRadius * 2,
@@ -2656,6 +2674,21 @@ namespace BuildConsole.Controls
                     Stroke = mantle,
                     StrokeThickness = 1.5,
                     ToolTip = $"⏳ Build {node.DisplayRef} (UP NEXT)\nReady to run when slot is free"
+                };
+                return dot;
+            }
+            else
+            {
+                // Git #3514 — any other/unexpected status: neutral dot labeled with its real
+                // status, never the misleading "UP NEXT".
+                var dot = new Ellipse
+                {
+                    Width = QueueGraphDotRadius * 2,
+                    Height = QueueGraphDotRadius * 2,
+                    Fill = new SolidColorBrush(Color.FromRgb(0x6C, 0x70, 0x86)),
+                    Stroke = mantle,
+                    StrokeThickness = 1.5,
+                    ToolTip = $"Build {node.DisplayRef} ({(node.Status ?? "unknown").ToUpperInvariant()})"
                 };
                 return dot;
             }
@@ -3703,8 +3736,40 @@ namespace BuildConsole.Controls
                               " This original row is closed out so it no longer sits in the active queue."
                 };
             }
-            else
+            else if (item.Status == "canceled")
             {
+                // Git #3514 — a canceled build is terminal, NOT up-next. Before this branch
+                // existed it fell through to the "UP NEXT" else below and rendered as a genuine
+                // claim candidate under the "All" view — while the "Queued" filter and the four
+                // summary counts (which correctly key off status == "queued") showed it nowhere.
+                // That was the exact divergence #3514 traced: #3471 (status 'canceled') visibly
+                // tagged UP NEXT under All, but "In queue: 0 · Up next: 0". Muted gray with a
+                // strike icon, deliberately distinct from failed's red — abandoned, not an error.
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x30)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x58, 0x5B, 0x70)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = "🚫 CANCELED",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x93, 0x99, 0xB2)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Canceled — a terminal state, not waiting to run. Findable under the Canceled filter."
+                };
+            }
+            else if (item.Status == "queued")
+            {
+                // Git #3514 — the "UP NEXT"/"🔒 BLOCKED" pill is now reachable ONLY for a
+                // genuinely queued row (IsGenuinelyBlocked itself returns false for any
+                // non-queued status), so nothing that isn't actually a claim candidate can
+                // be painted as one. isBlocked here means the live open-issue set still
+                // reports one of its declared blockers open.
                 statusPill = new Border
                 {
                     Background = new SolidColorBrush(isBlocked ? Color.FromRgb(0x3A, 0x1E, 0x26) : Color.FromRgb(0x21, 0x22, 0x34)),
@@ -3720,6 +3785,31 @@ namespace BuildConsole.Controls
                     FontWeight = FontWeights.Bold,
                     Foreground = new SolidColorBrush(isBlocked ? Color.FromRgb(0xF3, 0x8B, 0xA8) : Color.FromRgb(0xBA, 0xB4, 0xCD)),
                     VerticalAlignment = VerticalAlignment.Center
+                };
+            }
+            else
+            {
+                // Git #3514 — any status not explicitly handled above must NOT masquerade as
+                // "UP NEXT". Render the real status string, neutral, so a new/unexpected DB
+                // status is visible for what it is instead of being silently mislabeled a
+                // claim candidate (the root of #3514: a fallthrough that assumed "everything
+                // left is queued").
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x21, 0x22, 0x2E)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x6C, 0x70, 0x86)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = (item.Status ?? "unknown").ToUpperInvariant(),
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x93, 0x99, 0xB2)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "This build's status isn't one of the pipeline states — shown verbatim rather than assumed up-next."
                 };
             }
             topRow.Children.Add(statusPill);
@@ -4283,7 +4373,13 @@ namespace BuildConsole.Controls
             if (node.Status == "done") return ("✨ DONE", Color.FromRgb(0xA6, 0xE3, 0xA1));
             if (node.Status == "failed") return ("✕ FAILED", Color.FromRgb(0xF3, 0x8B, 0xA8));
             if (node.Status == "restart") return ("🔄 RESTART", Color.FromRgb(0xCB, 0xA6, 0xF7));
-            return ("⏳ UP NEXT", Color.FromRgb(0xBA, 0xB4, 0xCD));
+            // Git #3514 — a canceled blocker is terminal, not up-next; don't let it fall
+            // through to the "UP NEXT" label below.
+            if (node.Status == "canceled") return ("🚫 CANCELED", Color.FromRgb(0x93, 0x99, 0xB2));
+            // Git #3514 — only a genuinely queued ghost is "UP NEXT"; any other status shows
+            // verbatim rather than masquerading as a claim candidate.
+            if (node.Status == "queued") return ("⏳ UP NEXT", Color.FromRgb(0xBA, 0xB4, 0xCD));
+            return ((node.Status ?? "unknown").ToUpperInvariant(), Color.FromRgb(0x93, 0x99, 0xB2));
         }
 
         private static string CapitalizeFirst(string s) =>
