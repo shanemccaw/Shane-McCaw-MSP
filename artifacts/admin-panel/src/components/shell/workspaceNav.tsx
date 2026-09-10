@@ -71,7 +71,6 @@ import {
   MessagesSquare,
   Star,
   Rocket,
-  ExternalLink,
   FolderTree,
   GitCompare,
 } from "lucide-react";
@@ -249,7 +248,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         items: [
           { id: "cmd-overview", label: "Overview", path: "/command/overview", icon: LayoutDashboard },
           { id: "cmd-analytics", label: "Analytics", path: "/command/analytics", icon: BarChart3 },
-          { id: "cmd-clarity", label: "Microsoft Clarity", path: "https://clarity.microsoft.com", icon: ExternalLink, external: true },
           { id: "cmd-doc-generator", label: "Document Generator", path: "/command/doc-generator", icon: FileText },
         ],
       },
