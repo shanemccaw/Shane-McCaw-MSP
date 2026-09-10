@@ -4870,3 +4870,61 @@ export * from "./config-attribution";
 export * from "./retention";
 
 export * from "./rbac";
+
+/**
+ * Git #3390 (Feature #3377) — GitHub MCP server, bearer tokens.
+ *
+ * The `artifacts/github-mcp-server` package exposes real GitHub operations to a
+ * Claude conversation over an HTTP MCP endpoint, holding the GitHub PAT
+ * server-side so it never enters chat history. A Claude connection authenticates
+ * to that server with one of these bearer tokens — same discipline as Shane's
+ * Life's own `mcp_tokens`: a high-entropy value handed out exactly once, only its
+ * SHA-256 fingerprint ever stored here, revocable, and every call it makes lands
+ * in `github_mcp_activity` (the Recent-Activity trail). This is NOT the GitHub PAT
+ * itself — the PAT lives only in the server's env, never in the database.
+ */
+export const githubMcpTokensTable = pgTable("github_mcp_tokens", {
+  id:         serial("id").primaryKey(),
+  /** SHA-256 hex of the `ghmcp_…` token. The plaintext is shown once at mint and never stored. */
+  tokenHash:  text("token_hash").notNull(),
+  /** Human label for this connection ("Claude Desktop", "web chat"), so Recent Activity can say which Claude wrote what. */
+  label:      text("label").notNull().default("unnamed"),
+  createdAt:  timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  /** Set on revoke; a revoked token resolves as invalid without being deleted (keeps the activity trail's FK intact). */
+  revokedAt:  timestamp("revoked_at", { withTimezone: true }),
+  callCount:  integer("call_count").notNull().default(0),
+}, (table) => ({
+  tokenHashUnique: uniqueIndex("github_mcp_tokens_token_hash_unique").on(table.tokenHash),
+}));
+
+export type InsertGithubMcpToken = typeof githubMcpTokensTable.$inferInsert;
+export type GithubMcpToken       = typeof githubMcpTokensTable.$inferSelect;
+
+/**
+ * Git #3390 — the server's Recent-Activity audit trail. One row per MCP tool
+ * call, tagged with the calling token, its (redacted) params, and the outcome.
+ * The PAT is never written here; params naming a secret are masked before insert.
+ */
+export const githubMcpActivityTable = pgTable("github_mcp_activity", {
+  id:        serial("id").primaryKey(),
+  /** FK → github_mcp_tokens(id) ON DELETE SET NULL — which Claude connection made the call. Null once its token is deleted. */
+  tokenId:   integer("token_id"),
+  /** Denormalized label copy so a deleted token still reads "Claude Desktop · whoami" in the trail. */
+  tokenLabel: text("token_label"),
+  tool:      text("tool").notNull(),
+  /** Redacted tool arguments (no secrets). */
+  params:    jsonb("params"),
+  /** success | failure */
+  outcome:   text("outcome").notNull(),
+  /** Short human detail / error message; never contains the PAT. */
+  detail:    text("detail"),
+  durationMs: integer("duration_ms"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  tokenIdIdx:   index("github_mcp_activity_token_id_idx").on(table.tokenId),
+  createdAtIdx: index("github_mcp_activity_created_at_idx").on(table.createdAt),
+}));
+
+export type InsertGithubMcpActivity = typeof githubMcpActivityTable.$inferInsert;
+export type GithubMcpActivity       = typeof githubMcpActivityTable.$inferSelect;
