@@ -60,16 +60,41 @@ function toSecSession(row: WireSessionRow): LiveSecSession {
   };
 }
 
+/** Real `login_method` enum, `user_sessions.login_method` (`lib/db/src/schema/msp.ts:696`). */
+export type LoginMethod = "password" | "totp" | "sms" | "passkey" | "impersonation" | "bypass";
+
+/**
+ * `LoginHistoryView` (`session-tracking.ts:171-179`), the full six-field shape
+ * `GET /auth/login-history` (`auth.ts:909-913`) actually returns. Previously only
+ * `id`/`createdAt`/`ipAddress` were parsed here — `loginMethod`, `browser`, `os`,
+ * `revoked` were real fields the route already sent and this client discarded (#1603).
+ */
 interface WireLoginHistoryRow {
   id: number;
-  createdAt: string;
+  loginMethod: LoginMethod;
+  browser: string;
+  os: string;
   ipAddress: string | null;
+  createdAt: string;
+  revoked: boolean;
+}
+
+export interface LiveLoginHistoryRow {
+  readonly id: number;
+  readonly loginMethod: LoginMethod;
+  readonly browser: string;
+  readonly os: string;
+  readonly ipAddress: string | null;
+  readonly createdAt: string;
+  readonly revoked: boolean;
 }
 
 export interface AccountSecurityLiveState {
   readonly mfa: LiveMfaEnrollments | null;
   readonly sessions: LiveSecSession[] | null;
   readonly lastSignInAt: string | null;
+  /** Full sign-in history, all six real fields — null only on a genuine read failure, never on an honest-empty result. */
+  readonly loginHistory: LiveLoginHistoryRow[] | null;
   /** loading until MFA + sessions + login-history have all settled at least once */
   readonly loading: boolean;
   /** true only when a read genuinely failed (never for an honest-empty result) */
@@ -92,6 +117,7 @@ export function useAccountSecurityLive(): AccountSecurityLiveState {
   const [mfa, setMfa] = useState<LiveMfaEnrollments | null>(null);
   const [sessions, setSessions] = useState<LiveSecSession[] | null>(null);
   const [lastSignInAt, setLastSignInAt] = useState<string | null>(null);
+  const [loginHistory, setLoginHistory] = useState<LiveLoginHistoryRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [readFailed, setReadFailed] = useState(false);
   const [revoking, setRevoking] = useState<Record<number, boolean>>({});
@@ -118,14 +144,15 @@ export function useAccountSecurityLive(): AccountSecurityLiveState {
       fetchWithAuth(LOGIN_HISTORY_URL, undefined, { silent: true }).then(async (res) => {
         if (!res.ok) throw new Error(`login-history ${res.status}`);
         const body = (await res.json()) as { history: WireLoginHistoryRow[] };
-        return body.history[0]?.createdAt ?? null;
+        return body.history;
       }),
     ])
-      .then(([mfaBody, sessionRows, lastSignIn]) => {
+      .then(([mfaBody, sessionRows, historyRows]) => {
         if (cancelled) return;
         setMfa(mfaBody);
         setSessions(sessionRows.map(toSecSession));
-        setLastSignInAt(lastSignIn);
+        setLastSignInAt(historyRows[0]?.createdAt ?? null);
+        setLoginHistory(historyRows);
         setReadFailed(false);
       })
       .catch(() => {
@@ -215,6 +242,7 @@ export function useAccountSecurityLive(): AccountSecurityLiveState {
     mfa,
     sessions,
     lastSignInAt,
+    loginHistory,
     loading,
     readFailed,
     revokeSession,

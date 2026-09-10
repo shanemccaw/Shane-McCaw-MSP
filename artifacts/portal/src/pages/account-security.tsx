@@ -13,6 +13,16 @@ const BLUE = "#60a5fa";
 
 const REQUIRED_PHRASE = "DELETE MY ACCOUNT";
 
+/** Real `login_method` enum, `user_sessions.login_method` (`lib/db/src/schema/msp.ts:696`) — no invented values. */
+const LOGIN_METHOD_LABELS: Record<string, string> = {
+  password: "Password",
+  totp: "Authenticator app",
+  sms: "Text message",
+  passkey: "Passkey",
+  impersonation: "Admin impersonation",
+  bypass: "Bypass",
+};
+
 type PanelKey = "passkey" | "app" | "sms" | null;
 
 function last4(phone: string | null): string {
@@ -474,6 +484,52 @@ export default function AccountSecurityPage() {
                       {live.revoking[s.id] ? "Revoking…" : "Revoke"}
                     </button>
                   )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Sign-in history (#1603 — GET /auth/login-history, all six real fields) */}
+          <div className="rounded-[14px] px-5 pb-4 pt-[15px]" style={{ border: `1px solid ${HAIRLINE}`, background: CARD_BG }}>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-[13.5px] font-semibold text-[#f8fafc]">Sign-in history</span>
+              <span className="text-[11px] text-[#64748b]">
+                {live.loginHistory === null ? "—" : `${live.loginHistory.length} recorded`}
+              </span>
+            </div>
+            {live.loginHistory?.length === 0 ? (
+              <div
+                className="mt-3 rounded-[10px] py-[18px] text-center text-[12px] text-[#64748b]"
+                style={{ border: "1px dashed rgba(148,163,184,.25)" }}
+                data-testid="account-security-login-history-empty"
+              >
+                No recorded sign-ins.
+              </div>
+            ) : null}
+            <div className="mt-1 flex flex-col">
+              {(live.loginHistory ?? []).map((h) => (
+                <div
+                  key={h.id}
+                  className="flex flex-wrap items-center gap-[11px] border-t py-[11px]"
+                  style={{ borderColor: "rgba(255,255,255,.06)" }}
+                  data-testid={`account-security-login-history-row-${h.id}`}
+                >
+                  <span className="size-[7px] shrink-0 rounded-full" style={{ background: h.revoked ? "#64748b" : GRN }} />
+                  <span className="w-[150px] min-w-[112px] shrink-0 text-[12.5px] font-semibold text-[#e2e8f0]">
+                    {LOGIN_METHOD_LABELS[h.loginMethod] ?? h.loginMethod}
+                  </span>
+                  <span className="text-[12px] text-[#94a3b8]">
+                    {h.os} · {h.browser} · {h.ipAddress ?? "IP unavailable"}
+                  </span>
+                  <span className="text-[11.5px] text-[#64748b]">{new Date(h.createdAt).toLocaleString()}</span>
+                  {h.revoked ? (
+                    <span
+                      className="ml-auto shrink-0 rounded-full px-[9px] py-[3px] text-[9.5px] font-bold"
+                      style={{ color: "#94a3b8", border: "1px solid rgba(148,163,184,.3)", letterSpacing: ".1em" }}
+                    >
+                      REVOKED
+                    </span>
+                  ) : null}
                 </div>
               ))}
             </div>
