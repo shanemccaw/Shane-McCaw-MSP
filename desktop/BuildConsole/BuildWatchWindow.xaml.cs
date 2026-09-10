@@ -78,6 +78,11 @@ namespace BuildConsole
             public Grid ContentGrid = null!;
             public TextBlock EmptyText = null!;
             public ChatSessionPane Pane = null!;
+            /// <summary>Git #3491 — one-shot timer backing the "selected from Build Queue" flash
+            /// (see SelectSlotForQueueItem). Stopped/replaced if a second selection lands on the
+            /// same slot before the first flash finishes, so rapid re-clicks restart cleanly
+            /// instead of stacking timers.</summary>
+            public DispatcherTimer? SelectionFlashTimer;
 
             // ── Interactive chat input (only wired for BuildConsole-owned queue builds) ──
             public bool InteractiveBound;
@@ -164,6 +169,10 @@ namespace BuildConsole
         private readonly Brush _pillErrorTone;
         private readonly Brush _pillWarningTone;
         private readonly Brush _pillSuccessTone;
+        /// <summary>Git #3491 — same BlueBrush BuildQueuePanel already uses for its own selected-card
+        /// border, reused here so a slot flashed from a Build Queue click reads as the same
+        /// "selected" color/language the queue panel already established, not an invented one.</summary>
+        private readonly Brush _selectionBorder;
         private bool _loaded;
 
         // Whole-app polish pass — soft, low-intensity slot auras (Shane: bright hurts;
@@ -175,6 +184,13 @@ namespace BuildConsole
         // to many slots at once, never animated. See ApplySlotGlow.
         private static readonly System.Windows.Media.Effects.DropShadowEffect _runningGlow = BuildGlow("#89B4FA", 12, 0.30);
         private static readonly System.Windows.Media.Effects.DropShadowEffect _doneGlow    = BuildGlow("#34D399", 16, 0.32);
+        /// <summary>Git #3491 — a brighter, wider halo for the brief "just selected from the Build
+        /// Queue panel" flash (see SelectSlotForQueueItem), distinct from the steady per-state
+        /// glows above so a selection reads as a momentary pulse, not a new persistent state.</summary>
+        private static readonly System.Windows.Media.Effects.DropShadowEffect _selectionFlashGlow = BuildGlow("#89B4FA", 22, 0.85);
+        /// <summary>How long the selection-flash border/glow (see SelectSlotForQueueItem) stays on
+        /// before reverting to the slot's normal state styling.</summary>
+        private static readonly TimeSpan SelectionFlashDuration = TimeSpan.FromSeconds(1.8);
 
         private static System.Windows.Media.Effects.DropShadowEffect BuildGlow(string hex, double blur, double opacity)
         {
@@ -238,6 +254,7 @@ namespace BuildConsole
             _pillErrorTone = (Brush)FindResource("ChatPane.Danger");
             _pillWarningTone = (Brush)FindResource("ChatPane.Warning");
             _pillSuccessTone = (Brush)FindResource("ChatPane.Success");
+            _selectionBorder = (Brush)FindResource("BlueBrush");
 
             for (int i = 0; i < SlotCount; i++)
             {
@@ -1224,6 +1241,57 @@ namespace BuildConsole
                 }
                 OccupySlot(target, item);
             }
+        }
+
+        /// <summary>
+        /// Git #3491 — the real public entry point for an external caller (MainWindow, wiring
+        /// BuildQueuePanel's own item-click handler) to select/highlight the slot tracking a
+        /// specific queue item, if this window is open and that build is currently running here.
+        ///
+        /// Deliberately a silent no-op when there's no matching occupied slot — a queued/done/
+        /// failed build, or one this window was never tracking, has nothing here to highlight, and
+        /// this method is never used to force-open the window itself (that's the caller's own
+        /// choice — see MainWindow's wiring for the reasoning: a plain queue-item click stays a
+        /// "sync if already open" action, matching the Log Viewer's existing TaskSelected pattern,
+        /// rather than yanking a floaty window open on every click).
+        /// </summary>
+        public void SelectSlotForQueueItem(int queueItemId)
+        {
+            var slot = _slots.FirstOrDefault(s => s.Occupied && s.QueueItemId == queueItemId);
+            if (slot == null) return;
+
+            slot.Container.BringIntoView();
+            FlashSlotSelection(slot);
+        }
+
+        /// <summary>Brief, brighter halo + accent border pulse marking a slot as "just selected
+        /// from the Build Queue panel" (see SelectSlotForQueueItem) — distinct from the steady
+        /// per-state glow ApplySlotGlow already draws, and reverting back to it automatically
+        /// after SelectionFlashDuration rather than leaving a stale "selected" look behind.</summary>
+        private void FlashSlotSelection(BuildWatchSlot slot)
+        {
+            slot.SelectionFlashTimer?.Stop();
+
+            var originalBorder = slot.Container.BorderBrush;
+            var originalThickness = slot.Container.BorderThickness;
+            slot.Container.BorderBrush = _selectionBorder;
+            slot.Container.BorderThickness = new Thickness(2.5);
+            slot.Container.Effect = _selectionFlashGlow;
+
+            var timer = new DispatcherTimer { Interval = SelectionFlashDuration };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                if (slot.SelectionFlashTimer == timer) slot.SelectionFlashTimer = null;
+                // Slot may have changed state (or been cleared) during the flash — reapply
+                // whatever border/glow its current, real state actually calls for rather than
+                // just restoring the pre-flash snapshot.
+                slot.Container.BorderBrush = slot.Occupied ? originalBorder : _emptyBorder;
+                slot.Container.BorderThickness = originalThickness;
+                ApplySlotGlow(slot);
+            };
+            slot.SelectionFlashTimer = timer;
+            timer.Start();
         }
 
         private BuildWatchSlot? FindEmptySlot() => _slots.FirstOrDefault(s => !s.Occupied);
