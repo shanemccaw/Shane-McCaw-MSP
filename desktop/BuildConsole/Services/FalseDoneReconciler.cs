@@ -63,13 +63,17 @@ namespace BuildConsole.Services
         private const int OpenIssueSnapshotLimit = 5000;
 
         /// <summary>
-        /// Runs one reconciliation pass. Returns the number of rows actually corrected this pass (Shape A
-        /// cancels + Shape B reverts/cancels). Never throws into the caller — a reconciliation failure is
-        /// logged, not propagated, so it can never break the board-refresh cascade it rides on.
+        /// Runs one reconciliation pass. Returns a <see cref="ReconciliationResult"/> carrying both the
+        /// count of rows actually corrected this pass (Shape A cancels + Shape B reverts/cancels) AND a
+        /// structured, per-row list of every real action taken (Git #3518 — so the caller can surface a
+        /// visible, click-through notification, not just the ActivityLog lines this still writes exactly as
+        /// before). Never throws into the caller — a reconciliation failure is logged, not propagated, so
+        /// it can never break the board-refresh cascade it rides on.
         /// </summary>
-        public static async Task<int> ReconcileAsync(BuildQueuePostgresClient db, GitHubApiClient gh, Action<string> log)
+        public static async Task<ReconciliationResult> ReconcileAsync(BuildQueuePostgresClient db, GitHubApiClient gh, Action<string> log)
         {
-            if (db == null) return 0;
+            var actions = new List<ReconciliationNotice>();
+            if (db == null) return new ReconciliationResult(0, actions);
 
             List<(int Id, int GithubNumber, string Status)> candidateRows;
             try
@@ -79,9 +83,9 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 log($"Git #2685/#2775/#3513 false-done reconcile: could not read done/verifying rows: {ex.Message}");
-                return 0;
+                return new ReconciliationResult(0, actions);
             }
-            if (candidateRows.Count == 0) return 0;
+            if (candidateRows.Count == 0) return new ReconciliationResult(0, actions);
 
             int reconciled = 0;
 
@@ -107,9 +111,19 @@ namespace BuildConsole.Services
 
                     reconciled++;
                     bool moved = await TryMoveToBacklogAsync(gh, row.GithubNumber, log);
-                    log($"Git #2685/#2775 false-done reconcile: queue row {row.Id} (#{row.GithubNumber}) was '{row.Status}' " +
-                        $"but its origin/main bookend says BLOCKED — reset to 'canceled' (re-dispatchable) " +
-                        (moved ? "and board Status moved to Backlog." : "(board move to Backlog did not confirm — see above)."));
+                    string reason = $"Queue row {row.Id} (#{row.GithubNumber}) was '{row.Status}' but its origin/main " +
+                        "bookend says BLOCKED — reset to 'canceled' (re-dispatchable) " +
+                        (moved ? "and board Status moved to Backlog." : "(board move to Backlog did NOT confirm).");
+                    log("Git #2685/#2775 false-done reconcile: " + reason);
+                    actions.Add(new ReconciliationNotice
+                    {
+                        IssueNumber = row.GithubNumber,
+                        QueueRowId = row.Id,
+                        PreviousStatus = row.Status,
+                        Kind = ReconciliationActionKind.BlockedReset,
+                        BoardMovedToBacklog = moved,
+                        Reason = reason,
+                    });
                 }
                 catch (Exception ex)
                 {
@@ -128,12 +142,12 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 log($"Git #3513 false-done reconcile: open-issue fetch threw ({ex.Message}) — skipping done+open detection this pass (fail closed).");
-                return reconciled;
+                return new ReconciliationResult(reconciled, actions);
             }
             if (!openResult.Success)
             {
                 log($"Git #3513 false-done reconcile: couldn't fetch the open-issue set ({openResult.Error}) — skipping done+open detection this pass (fail closed; no row cancelled or reverted on unverified data).");
-                return reconciled;
+                return new ReconciliationResult(reconciled, actions);
             }
             var open = openResult.OpenNumbers;
             if (open.Count == 0)
@@ -141,7 +155,7 @@ namespace BuildConsole.Services
                 // A successful fetch that is genuinely empty is implausible for this repo and matches the
                 // failure shape the source guard already rejects — treat it as untrustworthy and skip.
                 log("Git #3513 false-done reconcile: open-issue set came back empty on a 'successful' fetch — treating as untrustworthy, skipping done+open detection this pass (fail closed).");
-                return reconciled;
+                return new ReconciliationResult(reconciled, actions);
             }
 
             var doneOpenRows = candidateRows
@@ -150,7 +164,7 @@ namespace BuildConsole.Services
                             && open.Contains(r.GithubNumber))
                 .ToList();
             if (doneOpenRows.Count == 0)
-                return reconciled;
+                return new ReconciliationResult(reconciled, actions);
 
             // The subset whose real work genuinely landed (git-verified DONE bookend). Everything else in
             // doneOpenRows had no proof of landed work and is re-dispatched.
@@ -162,7 +176,7 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 log($"Git #3513 false-done reconcile: DONE-bookend verification failed ({ex.Message}) — skipping done+open remediation this pass (fail closed).");
-                return reconciled;
+                return new ReconciliationResult(reconciled, actions);
             }
 
             foreach (var row in doneOpenRows)
@@ -176,9 +190,19 @@ namespace BuildConsole.Services
                         int changed = await db.RevertFalseDoneToVerifyingAsync(row.Id);
                         if (changed == 0) continue; // concurrently moved on
                         reconciled++;
-                        log($"Git #3513 false-done reconcile: queue row {row.Id} (#{row.GithubNumber}) was 'done' but GH #{row.GithubNumber} is STILL OPEN " +
+                        string reason = $"Queue row {row.Id} (#{row.GithubNumber}) was 'done' but GH #{row.GithubNumber} is STILL OPEN " +
                             "while its origin/main bookend is a git-verified DONE — the issue was never really closed (false promotion). " +
-                            "Reverted 'done' → 'verifying' so it is visible and awaiting the real close, not silently hidden or re-run.");
+                            "Reverted 'done' → 'verifying' so it is visible and awaiting the real close, not silently hidden or re-run.";
+                        log("Git #3513 false-done reconcile: " + reason);
+                        actions.Add(new ReconciliationNotice
+                        {
+                            IssueNumber = row.GithubNumber,
+                            QueueRowId = row.Id,
+                            PreviousStatus = row.Status,
+                            Kind = ReconciliationActionKind.FalseDoneReverted,
+                            BoardMovedToBacklog = false,
+                            Reason = reason,
+                        });
                     }
                     else
                     {
@@ -188,10 +212,20 @@ namespace BuildConsole.Services
                         if (changed == 0) continue; // concurrently moved on
                         reconciled++;
                         bool moved = await TryMoveToBacklogAsync(gh, row.GithubNumber, log);
-                        log($"Git #3513 false-done reconcile: queue row {row.Id} (#{row.GithubNumber}) was 'done' but GH #{row.GithubNumber} is STILL OPEN " +
+                        string reason = $"Queue row {row.Id} (#{row.GithubNumber}) was 'done' but GH #{row.GithubNumber} is STILL OPEN " +
                             "and has NO git-verified DONE bookend (no bookend, or a DONE claim whose commit is not on origin/main) — " +
                             "the work never landed (false promotion). Reset 'done' → 'canceled' (re-dispatchable) " +
-                            (moved ? "and board Status moved to Backlog." : "(board move to Backlog did not confirm — see above)."));
+                            (moved ? "and board Status moved to Backlog." : "(board move to Backlog did NOT confirm).");
+                        log("Git #3513 false-done reconcile: " + reason);
+                        actions.Add(new ReconciliationNotice
+                        {
+                            IssueNumber = row.GithubNumber,
+                            QueueRowId = row.Id,
+                            PreviousStatus = row.Status,
+                            Kind = ReconciliationActionKind.FalseDoneReset,
+                            BoardMovedToBacklog = moved,
+                            Reason = reason,
+                        });
                     }
                 }
                 catch (Exception ex)
@@ -200,7 +234,7 @@ namespace BuildConsole.Services
                 }
             }
 
-            return reconciled;
+            return new ReconciliationResult(reconciled, actions);
         }
 
         /// <summary>
@@ -220,6 +254,24 @@ namespace BuildConsole.Services
                 log($"false-done reconcile: #{githubNumber} DB reset succeeded, but board move to Backlog FAILED: {ex.Message}");
                 return false;
             }
+        }
+    }
+
+    /// <summary>
+    /// Git #3518 — the outcome of one <see cref="FalseDoneReconciler.ReconcileAsync"/> pass: the count of
+    /// rows corrected (unchanged semantics from the old <c>int</c> return) plus the structured, per-row
+    /// list of every real action taken, so the caller can persist and surface a visible, click-through
+    /// notification instead of the action only ever existing as an ActivityLog line.
+    /// </summary>
+    public sealed class ReconciliationResult
+    {
+        public int Count { get; }
+        public IReadOnlyList<ReconciliationNotice> Actions { get; }
+
+        public ReconciliationResult(int count, IReadOnlyList<ReconciliationNotice> actions)
+        {
+            Count = count;
+            Actions = actions ?? new List<ReconciliationNotice>();
         }
     }
 }

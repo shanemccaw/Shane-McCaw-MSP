@@ -961,11 +961,23 @@ namespace BuildConsole
                     var settings = Services.BuildConsoleSettings.Load();
                     if (!settings.HasGitHubPat) return;
                     var gh = new Services.GitHubApiClient(settings.GitHubPat);
-                    int n = await Services.FalseDoneReconciler.ReconcileAsync(
+                    var result = await Services.FalseDoneReconciler.ReconcileAsync(
                         _queueDb, gh, msg => Services.ActivityLog.Log("batter-up", msg));
-                    if (n > 0)
+                    if (result.Count > 0)
+                    {
                         Services.ActivityLog.Log("batter-up",
-                            $"Git #2685/#3513 false-done reconcile: {n} false-done row(s) corrected this refresh (reset to 'canceled' + Backlog, or reverted 'done' → 'verifying' where the work genuinely landed).");
+                            $"Git #2685/#3513 false-done reconcile: {result.Count} false-done row(s) corrected this refresh (reset to 'canceled' + Backlog, or reverted 'done' → 'verifying' where the work genuinely landed).");
+
+                        // Git #3518 — an automated cancel of real, dispatched work must NEVER be silent again.
+                        // Persist every real action (survives an app restart) and surface a real, persistent,
+                        // click-through summary toast — not just this ActivityLog line Shane would only see if
+                        // reading raw logs at the exact moment it fired.
+                        if (result.Actions.Count > 0)
+                        {
+                            Services.ReconciliationNoticeStore.AddRange(result.Actions);
+                            ShowReconciliationSummaryToast();
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -1289,6 +1301,60 @@ namespace BuildConsole
                 // Always mark ready — even on a partial/failed init the overlay must never
                 // hang. The service's own global cap is a further backstop.
                 _startupConnectivity?.MarkShellReady();
+
+                // Git #3518 — replay any reconciliation notices Shane has NOT yet seen. This is the
+                // overnight case the issue was filed for: the reconciler cancelled real dispatched work
+                // while he was away / the app has since restarted, so a toast that only lived in the last
+                // session is gone. The store persisted them to disk; show the persistent summary again now
+                // that the shell is up, so he actually sees it the next time BuildConsole is open.
+                ShowReconciliationSummaryToast();
+            }
+        }
+
+        /// <summary>
+        /// Git #3518 — surfaces a real, persistent (never auto-dismiss), click-through summary of every
+        /// not-yet-seen <see cref="Services.FalseDoneReconciler"/> action, so an automated cancel of real
+        /// dispatched work is visible instead of buried in the raw ActivityLog. Persistent + restart-durable
+        /// was the deliberate choice over a one-time toast (the issue's open design question): the failure
+        /// mode is overnight, when Shane is not looking and the app may restart before he ever sees a
+        /// transient toast. No-ops when there is nothing unseen. Clicking opens
+        /// <see cref="ReconciliationDetailWindow"/>, which marks them seen so this stops re-nagging.
+        /// </summary>
+        private void ShowReconciliationSummaryToast()
+        {
+            try
+            {
+                var unseen = Services.ReconciliationNoticeStore.GetUnseen();
+                if (unseen.Count == 0) return;
+
+                int reverted = unseen.Count(n => n.Kind == Services.ReconciliationActionKind.FalseDoneReverted);
+                int reset = unseen.Count(n => n.Kind == Services.ReconciliationActionKind.FalseDoneReset
+                                           || n.Kind == Services.ReconciliationActionKind.BlockedReset);
+
+                var parts = new List<string>();
+                if (reverted > 0) parts.Add($"{reverted} reverted to verifying");
+                if (reset > 0) parts.Add($"{reset} reset for re-dispatch");
+
+                string body = $"{unseen.Count} dispatched build{(unseen.Count == 1 ? "" : "s")} were auto-reconciled"
+                            + (parts.Count > 0 ? " — " + string.Join(", ", parts) : "")
+                            + ". None were relaunched. Click to see exactly which issues and why.";
+
+                ToastEngine.ShowPersistent("Builds auto-reconciled", body, ToastKind.Warning, onClick: () =>
+                {
+                    try
+                    {
+                        var win = new ReconciliationDetailWindow { Owner = this };
+                        win.Show();
+                    }
+                    catch (Exception ex)
+                    {
+                        Services.ActivityLog.Log("batter-up", $"Git #3518 reconciliation detail window failed to open: {ex.Message}");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Services.ActivityLog.Log("batter-up", $"Git #3518 reconciliation summary toast failed: {ex.Message}");
             }
         }
 
