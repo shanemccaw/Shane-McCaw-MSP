@@ -14,8 +14,10 @@ import {
   attachRoomWatermark,
   rollPeekers,
 } from "./critters.js";
-import { fetchWeather, sampleWeather, cachedWeather, WX_GLOW } from "./weather.js";
+import { fetchWeather, sampleWeather, cachedWeather, weatherOverride, WX_GLOW } from "./weather.js";
 import { themeFor, todayOverride } from "./theme.js";
+import { getDevOverrides, resolveDevModeFromUrl } from "./dev-overrides.js";
+import { mountDevPanel } from "./dev-panel.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -710,10 +712,14 @@ function weatherParticlesHtml(theme) {
  *  Halloween/birthday week, and the fox gets its holiday hat. `whereText`/`whereColor` stay
  *  real, not fabricated: no location feed exists yet (see build-journal/3144.md), so this only
  *  ever shows the one state that's actually true, "Home", never the design's "· from location"
- *  qualifier that would claim a signal we don't have. */
-function renderTodayHeader(now, dateNow, wx, foxLine, theme) {
+ *  qualifier that would claim a signal we don't have. `skyOverride` is the dev floaty panel's
+ *  `sky` tweak (Git #3146, `auto|dawn|day|dusk|night`) -- `auto` (or unset) leaves the real
+ *  hour-driven phase alone; anything else forces that phase without touching `now`/`foxLine`'s
+ *  own real clock-driven Morning/Afternoon/Evening opener, exactly like the prototype's own
+ *  `sky` prop only ever substituting for `skyKey`, never for `hour` itself. */
+function renderTodayHeader(now, dateNow, wx, foxLine, theme, skyOverride) {
   const hour = now.getHours();
-  const phase = skyPhase(hour);
+  const phase = skyOverride && skyOverride !== "auto" ? skyOverride : skyPhase(hour);
   const isNight = phase === "night";
   const orangeMoon = theme.orangeMoon && wx.kind === "moon";
   const scene = el("div", { class: "today-scene" }, [
@@ -1500,6 +1506,30 @@ function foxMatchLine(nextKind, data) {
   return null;
 }
 
+/** The dev floaty panel's `nextDemo` override (Git #3146, scope item 3: "changing nextDemo
+ *  should swap the real Next card content live") -- forces `resolveNextKind`'s real output to a
+ *  chosen kind so every Next-card variant can be previewed without the real date/weather/
+ *  location naturally matching (the issue's own Verification section). If the real `data`
+ *  already carries the matching real field (a real appointment today, a real Tonight plan,
+ *  etc.), that real value renders untouched; only a genuinely absent field gets a clearly-
+ *  synthetic preview value, scoped to this one render and never written back anywhere. Returns
+ *  `null` for `nextKind` when there's no override (`auto`/unset) so the caller falls back to the
+ *  real `resolveNextKind(data, hour)`. */
+function applyNextDemoOverride(data, forcedKind) {
+  if (!forcedKind || forcedKind === "auto") return { data, nextKind: null };
+  const preview = { ...data };
+  if (forcedKind === "doctor" && !preview.appointmentToday) {
+    preview.appointmentToday = { id: "dev-preview", provider: "Dr. Demo", title: "Checkup", atTime: "14:00", kind: "appt", categoryLabel: "Appointment" };
+  } else if (forcedKind === "headingHome" && !preview.headingHome) {
+    preview.headingHome = { recommendedLabel: "Home", recommendedHouse: "home", vehicleDisplayName: "Tesla", alternatives: [] };
+  } else if (forcedKind === "dinner" && !preview.tonight) {
+    preview.tonight = { id: "dev-preview", dishText: "Chicken, potatoes, green beans" };
+  } else if (forcedKind === "home" && !preview.groceries) {
+    preview.groceries = { openCount: 6, listId: "dev-preview" };
+  }
+  return { data: preview, nextKind: forcedKind };
+}
+
 function renderNextCardV3(data, nextKind) {
   if (nextKind === "doctor") {
     const appt = data.appointmentToday;
@@ -2036,19 +2066,26 @@ async function viewToday(view) {
   // theme.js's `todayOverride`).
   const dateNow = todayOverride() || now;
   const theme = themeFor(dateNow);
-  const nextKind = resolveNextKind(data, hour);
-  const matchLine = foxMatchLine(nextKind, data);
+  // Git #3146's own dev floaty panel overrides -- see dev-overrides.js and applyNextDemoOverride
+  // above for the real reasoning on each.
+  const devOverrides = getDevOverrides();
+  const nextOverride = applyNextDemoOverride(data, devOverrides.nextDemo);
+  const nextData = nextOverride.data;
+  const nextKind = nextOverride.nextKind || resolveNextKind(data, hour);
+  const matchLine = foxMatchLine(nextKind, nextData);
   // A holiday's own line (README "Seasons and holidays") wins over the generic opener+matchLine
   // pairing -- but a real doctor appointment today still wins over the holiday, exactly as the
   // prototype's own `foxLine` ternary orders it (doctor check before `th.thFox`).
   const foxLine = nextKind === "doctor" ? `${foxOpener(hour)} ${matchLine}` : theme.thFox || (matchLine ? `${foxOpener(hour)} ${matchLine}` : foxOpener(hour));
-  const wx = cachedWeather() || sampleWeather(hour >= 7 && hour < 19);
-  const todayScene = renderTodayHeader(now, dateNow, wx, foxLine, theme);
+  const wx = weatherOverride() || cachedWeather() || sampleWeather(hour >= 7 && hour < 19);
+  const todayScene = renderTodayHeader(now, dateNow, wx, foxLine, theme, devOverrides.sky);
   view.append(todayScene);
   // The design's own stated fallback: render instantly with the sample/cached weather, then
   // swap in the real Open-Meteo read the moment it answers (decorative only -- a failed fetch
-  // just leaves the sample in place, see weather.js).
-  if (!cachedWeather()) {
+  // just leaves the sample in place, see weather.js). Skipped entirely while the dev panel's
+  // `weather` override is active -- fetching a real read we're about to ignore is pointless
+  // network traffic on a metered connection.
+  if (!cachedWeather() && !weatherOverride()) {
     fetchWeather().then((real) => {
       if (real && state.route === "today") render();
     });
@@ -2142,7 +2179,7 @@ async function viewToday(view) {
   // timers above (design's own `d.acts` order: timer, car, trunk, then trip -- this app has no
   // car-preconditioning/trunk act rows yet, so trip simply follows the timers that do exist).
   if (data.later?.trip) next.append(tripActRow(data.later.trip));
-  next.append(renderNextCardV3(data, nextKind));
+  next.append(renderNextCardV3(nextData, nextKind));
   view.append(next);
 
   // Git #3332: Shane's own real fix -- Next overlaps the tail of `.today-scene`'s box (its real
@@ -11712,6 +11749,11 @@ function attachPullToRefresh() {
 }
 
 async function start() {
+  // Git #3146's dev floaty panel -- resolves/consumes a `?dev=1`/`?dev=0` URL flag once (before
+  // the auth gate below, so the flag itself is stripped from the URL even on a cold, signed-out
+  // load); the panel itself only actually mounts once a real session exists (see below) --
+  // never on the login/enrolment screen, since none of its overrides mean anything there.
+  const devModeOn = resolveDevModeFromUrl();
   // The critter sprite (Git #3119) loads in parallel with everything else -- it's decorative,
   // so nothing in the real startup path waits on it.
   loadCritterSprite();
@@ -11723,6 +11765,11 @@ async function start() {
   if (enrollmentTokenFromUrl()) return showEnroll();
   const user = await loadMe();
   if (!user) return showLogin();
+  if (devModeOn) {
+    mountDevPanel(() => {
+      if (state.route === "today") render();
+    });
+  }
   // A Plaid OAuth bank sends the whole tab to its own site and back here (Git #3168). Resuming
   // has to happen before the normal render, or the return lands on the app shell with a live
   // Link session nobody ever picks back up.

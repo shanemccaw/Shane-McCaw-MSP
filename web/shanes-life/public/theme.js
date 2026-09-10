@@ -10,6 +10,8 @@
 
 /** The Nth weekday-of-month helper the design uses for "the fourth Thursday of November"
  *  (Thanksgiving). `weekday` is JS's 0=Sunday..6=Saturday; here always 4 (Thursday). */
+import { getDevOverrides } from "./dev-overrides.js";
+
 function nthWeekday(year, month, weekday, n) {
   const first = new Date(year, month, 1).getDay();
   return 1 + ((weekday - first + 7) % 7) + 7 * (n - 1);
@@ -120,13 +122,16 @@ export function parseTodayOverride(raw) {
   return isNaN(d) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12);
 }
 
-/** The app's real override entry point -- a `?today=` query param, read once per page load. No
- *  dev floaty panel exists yet (design handoff's own sibling Feature, unbuilt), so a URL param
- *  is the real, testable mechanism the spec calls for ("build the real underlying override
- *  mechanism here even before the panel UI exists"). Only the calendar date is overridden --
- *  the clock hour driving the sky phase and the fox's Morning/Afternoon/Evening opener always
- *  stays the device's real current time, exactly as the prototype's own `hour` (always
+/** The app's real override entry point. The dev floaty panel (Git #3146, `dev-panel.js`) is the
+ *  primary real mechanism now -- it writes to `dev-overrides.js`'s live store, so a `today`
+ *  override there takes effect on the very next render, no reload. The `?today=` query param
+ *  (Git #3145, the mechanism built before the panel UI existed) still works as a fallback for a
+ *  cold-load/shareable-link override. Only the calendar date is overridden -- the clock hour
+ *  driving the sky phase and the fox's Morning/Afternoon/Evening opener always stays the
+ *  device's real current time, exactly as the prototype's own `hour` (always
  *  `new Date().getHours()`, never touched by `dateNow`) does it. */
 export function todayOverride() {
+  const panelValue = getDevOverrides().today;
+  if (panelValue) return parseTodayOverride(panelValue);
   return parseTodayOverride(new URLSearchParams(location.search).get("today"));
 }

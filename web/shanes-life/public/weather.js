@@ -6,6 +6,8 @@
 // lat/long -- that's real device-location work, out of this Feature's scope (filed as its own
 // finding, see build-journal/3144.md), so this stays the one fixed coordinate pair the design
 // itself specifies until that lands.
+import { getDevOverrides } from "./dev-overrides.js";
+
 const WX_URL =
   "https://api.open-meteo.com/v1/forecast?latitude=28.36&longitude=-80.68&current=temperature_2m,weather_code,is_day&temperature_unit=fahrenheit";
 
@@ -41,6 +43,28 @@ function wmoLabel(kind, code) {
  *  the header never waits on a network round-trip before it can render at all. */
 export function sampleWeather(isDay) {
   return isDay ? { kind: "sun", tempF: 86, text: "86° · Sunny" } : { kind: "moon", tempF: 74, text: "74° · Clear" };
+}
+
+/** The dev floaty panel's `weather` override -- exact preview `{kind, tempF, text}` values,
+ *  ported byte-for-byte from the First Slice Prototype's own `door()` `wxText` ternary
+ *  (`{ sun: '86° · Sunny', moon: '74° · Clear', cloud: '78° · Cloudy', rain: '76° · Rain',
+ *  storm: '88° · Storms', snow: '31° · Snow' }`), not approximated. */
+const WX_OVERRIDE_VALUES = {
+  sun: { kind: "sun", tempF: 86, text: "86° · Sunny" },
+  moon: { kind: "moon", tempF: 74, text: "74° · Clear" },
+  cloud: { kind: "cloud", tempF: 78, text: "78° · Cloudy" },
+  rain: { kind: "rain", tempF: 76, text: "76° · Rain" },
+  storm: { kind: "storm", tempF: 88, text: "88° · Storms" },
+  snow: { kind: "snow", tempF: 31, text: "31° · Snow" },
+};
+
+/** Non-null only while the dev floaty panel's `weather` override is set to something other than
+ *  `live` (Git #3146, scope item 3: "changing weather/sky should immediately re-render the real
+ *  weather sky/particles without needing a real Open-Meteo call"). Callers check this before
+ *  falling back to `cachedWeather()`/`sampleWeather()`. */
+export function weatherOverride() {
+  const kind = getDevOverrides().weather;
+  return kind && kind !== "live" ? WX_OVERRIDE_VALUES[kind] || null : null;
 }
 
 let cached = null; // { kind, tempF, text }
