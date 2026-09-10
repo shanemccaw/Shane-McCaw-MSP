@@ -98,6 +98,18 @@ namespace BuildConsole.Services
         /// slow at all.</summary>
         public static readonly TimeSpan FullSyncInterval = TimeSpan.FromMinutes(30);
 
+        /// <summary>Git #3359 — how stale the mirrored CLOSED-issue history may get before the full
+        /// sync opportunistically re-walks it (one ALL-states walk, see
+        /// <see cref="MaybeBackfillClosedIssuesAsync"/>). Deliberately MUCH longer than
+        /// <see cref="FullSyncInterval"/>: the historical closed set is effectively immutable (a
+        /// closed issue's created_at/closed_at/milestone don't change) and a freshly-closed issue is
+        /// already captured within minutes by the incremental <c>since=</c> pass (which sets its real
+        /// closed_at), so this only needs to be a slow reconciliation. Gating on it means a normal
+        /// 30-min full walk almost never pays the extra ALL-states walk — Home's dashboard time
+        /// series (<see cref="GitHubIssueTimeSeriesService"/>) reads the mirror instead of firing its
+        /// own live ALL walk every 5 minutes, which is the whole point of Git #3359.</summary>
+        public static readonly TimeSpan ClosedBackfillInterval = TimeSpan.FromHours(24);
+
         /// <summary>Runaway guard on the per-blocked-issue <c>blocked_by</c> fetch during a sync
         /// (the one part of the sync that is still per-issue REST). Only issues carrying the
         /// <c>blocked</c> label are ever fetched — normally a handful — and this caps a pathological
@@ -578,6 +590,36 @@ namespace BuildConsole.Services
             return at != null;
         }
 
+        /// <summary>Git #3359 — when the closed-issue backfill last completed, or null if it never
+        /// has. The Home dashboard time series (<see cref="GitHubIssueTimeSeriesService.GetAllIssuesAsync"/>)
+        /// reads this (via <see cref="HasClosedBackfillAsync"/>) to decide whether the mirror's CLOSED
+        /// set is genuinely present (serve mirror) or not yet (fall back to a live ALL walk) — the same
+        /// fail-closed discipline as <see cref="HasUsableDataAsync"/>. Null / any error reads as
+        /// "not backfilled yet".</summary>
+        public static async Task<DateTime?> GetClosedBackfillAtAsync()
+        {
+            try
+            {
+                await using var conn = await TryOpenAsync();
+                if (conn == null) return null;
+                await using var cmd = new NpgsqlCommand(
+                    "SELECT last_closed_backfill_at FROM bt_issue_mirror_sync_state WHERE id = 1", conn);
+                var val = await cmd.ExecuteScalarAsync();
+                return val is DateTime dt ? dt : (DateTime?)null;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("issue-mirror", $"GetClosedBackfillAtAsync failed ({ex.Message}) — reads as not-yet-backfilled.");
+                return null;
+            }
+        }
+
+        /// <summary>Git #3359 — true once the closed-issue backfill has completed at least once, i.e.
+        /// the mirror genuinely holds the historical CLOSED set (with real created_at/closed_at) that a
+        /// burndown/velocity time series needs. Until then <see cref="GitHubIssueTimeSeriesService.GetAllIssuesAsync"/>
+        /// stays on a live ALL walk rather than serving a badly-truncated closed history.</summary>
+        public static async Task<bool> HasClosedBackfillAsync() => (await GetClosedBackfillAtAsync()) != null;
+
         // ── Sync ───────────────────────────────────────────────────────────────────────────────
 
         public sealed class SyncSummary
@@ -700,7 +742,18 @@ namespace BuildConsole.Services
             {
                 _lastAttemptUtc = DateTime.UtcNow;
                 _lastSkipLogUtc = DateTime.MinValue; // a real attempt is running — let the next skip log promptly.
-                if (runFull) return await SyncAsync(gh);
+                if (runFull)
+                {
+                    var full = await SyncAsync(gh);
+                    // Git #3359 — opportunistically backfill the CLOSED-issue history the Home
+                    // dashboard time series needs, gated internally to ~once/24h so a normal 30-min
+                    // full walk does NOT pay the extra ALL-states walk. Only after a SUCCESSFUL full
+                    // sync (a failed one means GitHub is unreachable — no point attempting the heavier
+                    // closed walk), and single-flighted with it (we're inside the _syncing guard).
+                    // Best-effort: its own failure never affects the full sync's result.
+                    if (full.Ok) await MaybeBackfillClosedIssuesAsync(gh);
+                    return full;
+                }
 
                 // lastFullAt is guaranteed non-null here (runFull is only false when fullAt != null and
                 // still within FullSyncInterval) — that's the incremental pass's real `since=` baseline,
@@ -1305,6 +1358,187 @@ namespace BuildConsole.Services
             }
 
             return summary;
+        }
+
+        /// <summary>
+        /// Git #3359 — populate the mirror's CLOSED-issue history (each with its real created_at /
+        /// closed_at, milestone, parent and sub-issue rollup fields) so Home's dashboard time series
+        /// (<see cref="GitHubIssueTimeSeriesService"/>) can read it locally instead of firing its OWN
+        /// live <c>ListBoardIssuesAsync(All)</c> walk every 5 minutes — the third live-fetch path
+        /// #3113/#3134/#3358 never migrated.
+        ///
+        /// Why this exists rather than a like-for-like migration: the mirror's full walk only ever
+        /// fetches the OPEN set, so it holds essentially no historical closed data (a live snapshot
+        /// showed 273 closed rows, only 31 with a real closed_at, all from a single day — a burndown
+        /// built off that would be worse than an honest fail-closed). The mirror already carries every
+        /// column the series needs (all added by #3358), so the ONLY missing piece is populating the
+        /// closed rows — which this does.
+        ///
+        /// Gated on <see cref="ClosedBackfillInterval"/> (~24h) so this heavier ALL-states walk runs at
+        /// most once/day, NOT on every 30-min full walk: the closed set is effectively immutable and
+        /// freshly-closed issues are already captured within minutes by the incremental <c>since=</c>
+        /// pass. Runs ONE <c>ListBoardIssuesAsync(All)</c> walk (the same enriched, post-processed shape
+        /// the board renders — so parent/milestone-inheritance/child reconciliation is correct across
+        /// the full open+closed graph), keeps only the CLOSED issues, and upserts them touching ONLY
+        /// the time-series/display columns — board_status / blocked_by / blocking are deliberately
+        /// PRESERVED (those stay the full walk's job). OPEN rows are filtered out and never touched, so
+        /// the Git Board (#3358, openOnly reads) is unaffected. Fail-closed: a rate-limit-circuit-open
+        /// state or any error skips/aborts WITHOUT recording a backfill, so the reader stays on live
+        /// until a real backfill lands. Never throws (best-effort, called after the full sync).
+        /// </summary>
+        public static async Task MaybeBackfillClosedIssuesAsync(GitHubApiClient gh)
+        {
+            if (gh == null) return;
+            try
+            {
+                // Gate: only run when genuinely due (never run, or older than the interval).
+                var lastAt = await GetClosedBackfillAtAsync();
+                if (lastAt != null && DateTime.UtcNow - lastAt.Value.ToUniversalTime() < ClosedBackfillInterval)
+                    return;
+
+                // Never add rate-limit pressure while the circuit is open — the historical closed set
+                // isn't urgent; wait for a healthy window rather than risk tripping the secondary limit.
+                if (GitHubRateLimitCircuit.IsOpen)
+                {
+                    ActivityLog.Log("issue-mirror",
+                        $"closed-issue backfill due but SKIPPED — GitHub rate-limit circuit open " +
+                        $"({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); the time series stays on its live/last path until a healthy window (Git #3359).");
+                    return;
+                }
+
+                var sw = Stopwatch.StartNew();
+                List<GitBoardIssue> all;
+                try
+                {
+                    all = await gh.ListBoardIssuesAsync(GitHubIssueState.All);
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("issue-mirror",
+                        $"closed-issue backfill: ALL-states walk failed ({ex.Message}) — mirror closed set left as-is, no backfill recorded (Git #3359).");
+                    return;
+                }
+
+                var closed = all.Where(i => i.IsClosed).ToList();
+
+                try
+                {
+                    await using var conn = await TryOpenAsync();
+                    if (conn == null)
+                    {
+                        ActivityLog.Log("issue-mirror", "closed-issue backfill: DB unavailable — mirror left untouched (Git #3359).");
+                        return;
+                    }
+
+                    await using var tx = await conn.BeginTransactionAsync();
+                    await using (var cmd = new NpgsqlCommand(@"
+                        INSERT INTO bt_issue_mirror
+                            (issue_number, title, state, labels, html_url, created_at, closed_at,
+                             body, milestone_title, milestone_number, parent_number, parent_milestone_number,
+                             sub_issue_count, sub_issue_completed, sub_issue_percent, child_issue_numbers, database_id,
+                             last_synced_at, updated_at)
+                        VALUES
+                            (@n, @title, 'closed', @labels, @url, @createdAt, @closedAt,
+                             @body, @mTitle, @mNumber, @pNumber, @pmNumber,
+                             @subCount, @subCompleted, @subPercent, @children, @dbId,
+                             NOW(), NOW())
+                        ON CONFLICT (issue_number) DO UPDATE SET
+                            title  = EXCLUDED.title,
+                            state  = 'closed',
+                            labels = EXCLUDED.labels,
+                            html_url = EXCLUDED.html_url,
+                            created_at = COALESCE(EXCLUDED.created_at, bt_issue_mirror.created_at),
+                            closed_at  = COALESCE(EXCLUDED.closed_at, bt_issue_mirror.closed_at),
+                            body = EXCLUDED.body,
+                            milestone_title = EXCLUDED.milestone_title,
+                            milestone_number = EXCLUDED.milestone_number,
+                            parent_number = EXCLUDED.parent_number,
+                            parent_milestone_number = EXCLUDED.parent_milestone_number,
+                            sub_issue_count = EXCLUDED.sub_issue_count,
+                            sub_issue_completed = EXCLUDED.sub_issue_completed,
+                            sub_issue_percent = EXCLUDED.sub_issue_percent,
+                            child_issue_numbers = EXCLUDED.child_issue_numbers,
+                            database_id = EXCLUDED.database_id,
+                            -- board_status_*, blocked_by_numbers, blocking_numbers are deliberately
+                            -- PRESERVED here (the full walk owns those); a closed issue simply keeps
+                            -- its last-known board status.
+                            last_synced_at = NOW(),
+                            updated_at = NOW()", conn, tx))
+                    {
+                        var pN = cmd.Parameters.Add(new NpgsqlParameter("@n", NpgsqlDbType.Integer));
+                        var pTitle = cmd.Parameters.Add(new NpgsqlParameter("@title", NpgsqlDbType.Text));
+                        var pLabels = cmd.Parameters.Add(new NpgsqlParameter("@labels", NpgsqlDbType.Array | NpgsqlDbType.Text));
+                        var pUrl = cmd.Parameters.Add(new NpgsqlParameter("@url", NpgsqlDbType.Text));
+                        var pCreated = cmd.Parameters.Add(new NpgsqlParameter("@createdAt", NpgsqlDbType.TimestampTz));
+                        var pClosed = cmd.Parameters.Add(new NpgsqlParameter("@closedAt", NpgsqlDbType.TimestampTz));
+                        var pBody = cmd.Parameters.Add(new NpgsqlParameter("@body", NpgsqlDbType.Text));
+                        var pMTitle = cmd.Parameters.Add(new NpgsqlParameter("@mTitle", NpgsqlDbType.Text));
+                        var pMNumber = cmd.Parameters.Add(new NpgsqlParameter("@mNumber", NpgsqlDbType.Integer));
+                        var pPNumber = cmd.Parameters.Add(new NpgsqlParameter("@pNumber", NpgsqlDbType.Integer));
+                        var pPMNumber = cmd.Parameters.Add(new NpgsqlParameter("@pmNumber", NpgsqlDbType.Integer));
+                        var pSubCount = cmd.Parameters.Add(new NpgsqlParameter("@subCount", NpgsqlDbType.Integer));
+                        var pSubCompleted = cmd.Parameters.Add(new NpgsqlParameter("@subCompleted", NpgsqlDbType.Integer));
+                        var pSubPercent = cmd.Parameters.Add(new NpgsqlParameter("@subPercent", NpgsqlDbType.Integer));
+                        var pChildren = cmd.Parameters.Add(new NpgsqlParameter("@children", NpgsqlDbType.Array | NpgsqlDbType.Integer));
+                        var pDbId = cmd.Parameters.Add(new NpgsqlParameter("@dbId", NpgsqlDbType.Bigint));
+
+                        foreach (var issue in closed)
+                        {
+                            pN.Value = issue.Number;
+                            pTitle.Value = issue.Title ?? "";
+                            pLabels.Value = issue.Labels.Select(l => l.Name).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToArray();
+                            pUrl.Value = issue.HtmlUrl ?? "";
+                            pCreated.Value = (object?)issue.CreatedAt ?? DBNull.Value;
+                            pClosed.Value = (object?)issue.ClosedAt ?? DBNull.Value;
+                            pBody.Value = issue.Body ?? "";
+                            pMTitle.Value = (object?)issue.MilestoneTitle ?? DBNull.Value;
+                            pMNumber.Value = (object?)issue.MilestoneNumber ?? DBNull.Value;
+                            pPNumber.Value = (object?)issue.ParentNumber ?? DBNull.Value;
+                            pPMNumber.Value = (object?)issue.ParentMilestoneNumber ?? DBNull.Value;
+                            pSubCount.Value = issue.SubIssueCount;
+                            pSubCompleted.Value = issue.SubIssueCompleted;
+                            pSubPercent.Value = issue.SubIssuePercent;
+                            pChildren.Value = issue.ChildIssueNumbers?.ToArray() ?? Array.Empty<int>();
+                            pDbId.Value = issue.DatabaseId;
+                            await cmd.ExecuteNonQueryAsync();
+                        }
+                    }
+                    await tx.CommitAsync();
+                    await RecordClosedBackfillAsync();
+                    sw.Stop();
+                    ActivityLog.Log("issue-mirror",
+                        $"closed-issue backfill ok — {closed.Count} closed issue(s) upserted with real created/closed timestamps from a single ALL-states walk ({all.Count} total walked), in {sw.ElapsedMilliseconds}ms. Home's dashboard time series now reads the local mirror instead of its own per-5-min live ALL walk (Git #3359).");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("issue-mirror",
+                        $"closed-issue backfill upsert failed ({ex.Message}) — transaction rolled back, no backfill recorded (Git #3359).");
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("issue-mirror", $"closed-issue backfill unexpected failure ({ex.Message}) — non-fatal (Git #3359).");
+            }
+        }
+
+        /// <summary>Git #3359 — records that the closed-issue backfill just completed successfully.
+        /// A plain UPDATE (not INSERT ON CONFLICT): the singleton sync-state row is guaranteed to exist
+        /// by the time this can run, since a backfill only ever fires after a successful full sync,
+        /// whose own <see cref="RecordSyncStateAsync"/> created the row.</summary>
+        private static async Task RecordClosedBackfillAsync()
+        {
+            try
+            {
+                await using var conn = await TryOpenAsync();
+                if (conn == null) return;
+                await using var cmd = new NpgsqlCommand(
+                    "UPDATE bt_issue_mirror_sync_state SET last_closed_backfill_at = NOW() WHERE id = 1", conn);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("issue-mirror", $"RecordClosedBackfillAsync failed ({ex.Message}) — backfill bookkeeping not updated.");
+            }
         }
 
         private static async Task RecordSyncStateAsync(bool ok, string? note)

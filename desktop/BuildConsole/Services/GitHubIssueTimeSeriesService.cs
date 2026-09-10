@@ -193,6 +193,36 @@ namespace BuildConsole.Services
                     if (_cache != null && DateTime.UtcNow - _cacheFetchedUtc < CacheTtl)
                         return IssueFetchResult.Ok(_cache);
                 }
+
+                // Git #3359 — read the whole issue set (open + closed, with each issue's real
+                // created/closed timestamps) from the local mirror instead of firing a live
+                // ALL-states GraphQL walk, exactly like #3358 did for the Git Board tree. This is
+                // what removes Home's own per-5-min live walk from GitHub's secondary-rate-limit
+                // budget — the whole point of this issue. Two gates, both fail-closed to the live path
+                // so a burndown is never built off partial data:
+                //   • HasUsableDataAsync — the mirror has completed at least one full sync at all;
+                //   • HasClosedBackfillAsync — the CLOSED history has genuinely been backfilled (the
+                //     mirror's full walk only ever fetches the OPEN set, so without this gate the
+                //     closed side would be badly truncated — see GitHubIssueMirror.MaybeBackfillClosedIssuesAsync).
+                // Any miss / never-synced / error returns null and falls through to the live path
+                // below, so this can never make Home worse than today — only cheaper and rate-limit
+                // proof on the common hit. A manual refresh (forceRefresh) deliberately still goes
+                // live, matching #3358's guaranteed-fresh manual-refresh escape hatch.
+                if (await GitHubIssueMirror.HasUsableDataAsync() && await GitHubIssueMirror.HasClosedBackfillAsync())
+                {
+                    var mirrored = await GitHubIssueMirror.TryGetBoardIssuesAsync(openOnly: false);
+                    if (mirrored != null)
+                    {
+                        lock (_lock)
+                        {
+                            _cache = mirrored;
+                            _cacheFetchedUtc = DateTime.UtcNow;
+                        }
+                        ActivityLog.Log("git-board.data",
+                            $"issue time-series fetch: {mirrored.Count} real issue(s) (open+closed) served from the local mirror — no live GitHub call (Git #3359); cached for {CacheTtl.TotalMinutes:0}m.");
+                        return IssueFetchResult.Ok(mirrored);
+                    }
+                }
             }
 
             var settings = BuildConsoleSettings.Load();
