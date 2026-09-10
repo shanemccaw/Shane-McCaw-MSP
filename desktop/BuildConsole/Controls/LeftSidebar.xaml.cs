@@ -6900,6 +6900,27 @@ namespace BuildConsole.Controls
 
             if (rawComment == null || parsed == null)
             {
+                // Git #3509 — claim this issue's dispatch BEFORE asking any chat to write+post a
+                // BUILD: comment. This popover and DispatchPanel's Dispatch box each independently
+                // check for a BUILD: comment and, finding none, ask the active chat to post one —
+                // with nothing previously stopping both from targeting the SAME issue at once
+                // (confirmed live on #3493: two asks landed six minutes apart). bt_dispatch_claims
+                // is the one shared source of truth: a second claim on the same issue fails
+                // atomically while the first is still live.
+                var claim = _db != null
+                    ? await _db.TryClaimDispatchAsync(issue.IssueNumber, "BuildConsole:GitBoard")
+                    : new BuildQueuePostgresClient.DispatchClaimResult { Claimed = true }; // no DB connected — fail open rather than block this action entirely
+
+                if (!claim.Claimed)
+                {
+                    var heldFor = claim.ExistingClaimedAtUtc.HasValue ? DateTime.UtcNow - claim.ExistingClaimedAtUtc.Value : (TimeSpan?)null;
+                    ToastEngine.Info("Dispatch", $"#{issue.IssueNumber} is already being dispatched (claimed by {claim.ExistingClaimedBy ?? "another flow"}" +
+                        (heldFor.HasValue ? $", {Math.Max(0, (int)heldFor.Value.TotalMinutes)}m ago" : "") +
+                        ") — not asking the active chat again.");
+                    ActivityLog.Log("dispatch", $"Dispatch #{issue.IssueNumber} (Git Board) — dispatch claim already held by {claim.ExistingClaimedBy ?? "unknown"}; skipped duplicate ask (Git #3509).");
+                    return;
+                }
+
                 var mainWindow = Application.Current.MainWindow as MainWindow;
                 string askStatus = mainWindow != null
                     ? await mainWindow.SendToActiveChatAsync(ActiveChatBuildRequestHelper.BuildAskMessage(issue.IssueNumber, issue.Title))
@@ -6915,6 +6936,10 @@ namespace BuildConsole.Controls
                 ToastEngine.Error("Dispatch", "Not connected to the build queue database.");
                 return;
             }
+
+            // Git #3509 — a real BUILD: comment now exists; release any outstanding dispatch claim
+            // for this issue so it can't linger and block a legitimate future ask.
+            await _db.ReleaseDispatchClaimAsync(issue.IssueNumber);
 
             var (model, effort, buildSet, _, prompt) = parsed.Value;
             var existing = await _db.FindDedupCandidateAsync(issue.IssueNumber, prompt);

@@ -540,6 +540,44 @@ getting re-read as current state caused real confusion on #1511 and #1522. A com
 before this rule has no `Posted:` line — that's a legacy comment, not a parse failure; nothing
 backfills it.
 
+### Claim the issue before posting a `BUILD:` comment (Git #3509)
+
+**Before writing and posting a `BUILD:` comment on any issue, claim it:**
+
+```
+node scripts/dev-server/claim-dispatch.mjs <issueNumber>
+```
+
+Exit code 0 means the claim was acquired — safe to write and post the comment now. Exit
+code 1 means another flow already claimed this issue's dispatch (the output names who,
+when, and when it expires) — **do not post a duplicate `BUILD:` comment.** Re-check the
+issue's real comments first (`gh issue view <n> --json comments`) — the other flow may
+already have posted one — and only proceed if that claim is genuinely stale and past its
+own expiry.
+
+**Why this is mandatory:** two independent flows (a `MyArchitect`-set dispatch and a
+`BatterUpClearOut`-set dispatch) each separately found issue #3493 had no `BUILD:`
+comment yet and each posted one — six minutes apart, with neither aware the other had
+just done the same thing (Git #3509). Nothing previously serialized that decision across
+flows; whichever chat happens to be "active" when someone decides an issue is ready can
+post a comment with no way to know another chat just did the same. `bt_dispatch_claims`
+(a short-lived, TTL-bound row in the same Postgres database `bt_build_queue` lives in) is
+the one real source of truth every flow claims through — BuildConsole's own Dispatch box
+and Git Board hover popover claim through the identical table
+(`BuildQueuePostgresClient.TryClaimDispatchAsync`) before asking their own active chat to
+post, so this is genuinely one gate regardless of whether the dispatch originates from
+BuildConsole's UI or a chat working the Build Queue Method directly.
+
+Once the `BUILD:` comment is actually posted, release the claim so it can't linger and
+block a legitimate future dispatch of the same issue:
+
+```
+node scripts/dev-server/release-dispatch-claim.mjs <issueNumber>
+```
+
+An unreleased claim expires on its own (default 20 minutes) — releasing explicitly is
+tidy, not required for correctness.
+
 ### `--buildSet` — when and why to use it
 
 Shane routinely stacks 10-20 related builds in the queue, properly blocked by

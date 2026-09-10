@@ -95,6 +95,12 @@ namespace BuildConsole.Services
 
             var (model, effort, buildSet, _, prompt) = parsed.Value;
 
+            // Git #3509 — a real BUILD: comment now exists (whoever posted it, via whichever flow
+            // claimed it first) — release any outstanding dispatch claim for this issue so it can't
+            // linger and block a legitimate future ask. Best-effort: db availability is checked
+            // just below, so guard here rather than reordering the existing NoDb branch.
+            if (db != null) await db.ReleaseDispatchClaimAsync(issueNumber);
+
             var blockers = await gh.GetBlockedByAsync(issueNumber);
             var blockedByNumbers = blockers.Select(b => b.Number).ToList();
             var openBlockedByNumbers = blockers.Where(b => !b.IsClosed).Select(b => b.Number).ToList();

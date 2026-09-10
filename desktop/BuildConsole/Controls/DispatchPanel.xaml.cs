@@ -202,6 +202,28 @@ namespace BuildConsole.Controls
                 switch (result.Outcome)
                 {
                     case Services.DispatchOutcome.NoBuildComment:
+                        // Git #3509 — claim this issue's dispatch BEFORE asking any chat to write+post
+                        // a BUILD: comment. Real finding: two independent flows (this Dispatch box and
+                        // the Git Board hover popover — or a chat working the CLAUDE.md Build Queue
+                        // Method directly) can each separately find no BUILD: comment yet and each ask
+                        // their own active chat, with nothing previously stopping both from targeting
+                        // the SAME issue at once (confirmed live on #3493, two asks six minutes apart).
+                        // bt_dispatch_claims is the one shared source of truth: a second claim attempt
+                        // on the same issue fails atomically while the first is still live.
+                        var claim = _db != null
+                            ? await _db.TryClaimDispatchAsync(issueNumber, "BuildConsole:DispatchPanel")
+                            : new Services.BuildQueuePostgresClient.DispatchClaimResult { Claimed = true }; // no DB connected — nothing to dedupe against; fail open rather than block Dispatch entirely
+
+                        if (!claim.Claimed)
+                        {
+                            var heldFor = claim.ExistingClaimedAtUtc.HasValue ? DateTime.UtcNow - claim.ExistingClaimedAtUtc.Value : (TimeSpan?)null;
+                            ShowStatus($"#{issueNumber} is already being dispatched (claimed by {claim.ExistingClaimedBy ?? "another flow"}" +
+                                (heldFor.HasValue ? $", {Math.Max(0, (int)heldFor.Value.TotalMinutes)}m ago" : "") +
+                                ") — not asking the active chat again.", (Brush)Application.Current.FindResource("Subtext0Brush"));
+                            Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} — dispatch claim already held by {claim.ExistingClaimedBy ?? "unknown"}; skipped duplicate ask (Git #3509).");
+                            return;
+                        }
+
                         // Git #2063 — rather than dead-ending here, ask whatever chat is CURRENTLY
                         // ACTIVE (not necessarily the epic-linked chat — Shane just decided "this is
                         // ready" in some active chat right before hitting Dispatch) to write and post

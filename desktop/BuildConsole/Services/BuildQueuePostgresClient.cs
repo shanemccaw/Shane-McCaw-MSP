@@ -682,6 +682,87 @@ namespace BuildConsole.Services
             return row;
         }
 
+        /// <summary>Git #3509 — the real result of a <see cref="TryClaimDispatchAsync"/> attempt,
+        /// carrying the existing holder's info on a lost claim so the caller can show WHO already
+        /// has it and WHEN it expires, rather than a bare "no".</summary>
+        public sealed class DispatchClaimResult
+        {
+            public bool Claimed { get; init; }
+            public string? ExistingClaimedBy { get; init; }
+            public DateTime? ExistingClaimedAtUtc { get; init; }
+            public DateTime? ExistingExpiresAtUtc { get; init; }
+        }
+
+        /// <summary>
+        /// Git #3509 — the one real source of truth closing the duplicate-BUILD:-dispatch race:
+        /// two independent flows (DispatchPanel's Dispatch box, the Git Board hover popover, or a
+        /// chat following CLAUDE.md's Build Queue Method directly) each check an issue for a
+        /// `BUILD:` comment and, finding none, ask their own active chat to write and post one —
+        /// with nothing previously stopping two flows from asking about the SAME issue at once
+        /// (confirmed live on #3493: two asks landed six minutes apart). This claims
+        /// <paramref name="githubNumber"/> atomically via `INSERT ... ON CONFLICT DO NOTHING`
+        /// against <c>bt_dispatch_claims</c> — a second caller's claim attempt on the same issue
+        /// fails while the first is still live, and gets the existing holder's info back instead of
+        /// silently duplicating the ask. Claims expire on their own after <paramref name="ttlMinutes"/>
+        /// (a stale/abandoned claim is purged before the attempt) so a forgotten ask can never hold
+        /// an issue's dispatch hostage forever.
+        /// </summary>
+        public async Task<DispatchClaimResult> TryClaimDispatchAsync(int githubNumber, string claimedBy, int ttlMinutes = 20)
+        {
+            await using var conn = await OpenAsync();
+
+            await using (var purge = new NpgsqlCommand(
+                "DELETE FROM bt_dispatch_claims WHERE github_number = @num AND expires_at <= now()", conn))
+            {
+                purge.Parameters.AddWithValue("@num", githubNumber);
+                await purge.ExecuteNonQueryAsync();
+            }
+
+            await using (var insert = new NpgsqlCommand(@"
+                INSERT INTO bt_dispatch_claims (github_number, claimed_by, expires_at)
+                VALUES (@num, @by, now() + (@ttl || ' minutes')::interval)
+                ON CONFLICT (github_number) DO NOTHING", conn))
+            {
+                insert.Parameters.AddWithValue("@num", githubNumber);
+                insert.Parameters.AddWithValue("@by", claimedBy);
+                insert.Parameters.AddWithValue("@ttl", ttlMinutes);
+                var rows = await insert.ExecuteNonQueryAsync();
+                if (rows > 0) return new DispatchClaimResult { Claimed = true };
+            }
+
+            // Lost the race — report the real current holder so the caller can show WHO and WHEN.
+            await using (var select = new NpgsqlCommand(
+                "SELECT claimed_by, claimed_at, expires_at FROM bt_dispatch_claims WHERE github_number = @num", conn))
+            {
+                select.Parameters.AddWithValue("@num", githubNumber);
+                await using var reader = await select.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    return new DispatchClaimResult
+                    {
+                        Claimed = false,
+                        ExistingClaimedBy = reader.GetString(0),
+                        ExistingClaimedAtUtc = reader.GetDateTime(1),
+                        ExistingExpiresAtUtc = reader.GetDateTime(2),
+                    };
+                }
+            }
+            // Vanishingly rare TOCTOU (purged/expired between the failed insert and this select) —
+            // fail closed once here rather than looping; the caller's next real attempt resolves it.
+            return new DispatchClaimResult { Claimed = false };
+        }
+
+        /// <summary>Git #3509 — releases a dispatch claim once it's no longer needed: the real
+        /// `BUILD:` comment was found (whoever posted it), so nothing further should be blocked by
+        /// this issue's claim. Idempotent — deleting a claim that's already gone/expired is a no-op.</summary>
+        public async Task ReleaseDispatchClaimAsync(int githubNumber)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand("DELETE FROM bt_dispatch_claims WHERE github_number = @num", conn);
+            cmd.Parameters.AddWithValue("@num", githubNumber);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
         /// <summary>
         /// Adds (or, for an issue-linked build, re-queues) a build. Replicates
         /// POST /admin/build-tracker/extension/queue's DB logic verbatim, including
