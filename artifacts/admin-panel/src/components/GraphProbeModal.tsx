@@ -17,7 +17,7 @@ const ENDPOINT_PRESETS = [
   { url: "/api/admin/observability/service-health", label: "Service Health Metrics" },
   { url: "/api/admin/observability/event-bus", label: "Event Bus Live stats" },
   { url: "/api/admin/observability/alert-events", label: "Alert Configuration & Events" },
-  { url: "/api/msp/audit-logs", label: "MSP Audit Log Telemetry" },
+  { url: "/api/msp/audit", label: "MSP Audit Log Telemetry" },
 ];
 
 const SCOPE_OPTIONS = [
