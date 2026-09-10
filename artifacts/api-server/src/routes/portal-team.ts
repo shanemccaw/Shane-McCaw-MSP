@@ -49,6 +49,22 @@ const router: IRouter = Router();
  * without waiting for token refresh — the property Git #1142 chose the column shape
  * for in the first place, preserved deliberately.
  *
+ * ── #3360 — the second gate fails closed on its own ────────────────────────
+ *
+ * Before #2460 the privilege half tested `isCustomerTier` and returned "permitted" for
+ * every role it did not name — including a caller with no `mspRole` claim at all,
+ * which `buildUserPayload` really can sign. Only assertCustomerAccess in front of it,
+ * which ends in `return false`, kept that unreachable. The capability read has no such
+ * branch: a claim naming no rung contributes no role, so the caller is decided on
+ * explicit `cap.*` grants alone and denied by default. portal-team.test.ts pins this
+ * with gate 1 forced open, so the second gate is proven to hold by itself.
+ *
+ * This is deliberately NOT `requireCapability`. That middleware decides the seven
+ * platform `ladder.*` keys only (requireCapability-keys.test.ts enforces it, and a
+ * `customer:` key would 503), and it runs before the handler knows whose team is being
+ * touched — the tenant-isolation half needs the TARGET's tenant, which only exists
+ * after each route's own lookup.
+ *
  * Returns the HTTP status to answer with on denial, or null when the caller may
  * proceed. Both denial reasons answer 403 and never leak which gate failed — except
  * an unreadable/unseeded model, which is 503 and NOT a denial (see

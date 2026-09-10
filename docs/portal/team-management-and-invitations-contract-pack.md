@@ -73,19 +73,22 @@ this file except the read-only `GET /portal/team`. Two ordered checks:
    tenant belongs to their MSP (plus per-staff-member scope, `isCustomerBlockedByStaffScope`);
    CustomerUser/Free/Assessment iff `user.customerId === targetCustomerId` (own tenant only).
    Failing this returns 403 before the second check runs.
-2. **Team-admin capability** — only applies to the customer tier (CustomerUser/Free/
-   Assessment). That tier must additionally carry `usersTable.canManageTeam = true`, read LIVE
-   from the DB on every call (`portal-team.ts:49-54`) — never cached in the JWT, so revoking the
-   flag takes effect on the caller's very next request, no token refresh needed. MSP staff and
-   PlatformAdmin bypass this second check entirely (role is the gate for them).
+2. **Team-admin capability** — `customer:team.manage`, read from the RBAC model through
+   `userHasCapability` (`rbac-capability.ts`) since #2460 retired the `can_manage_team` column.
+   The seeded allow set is {`cap.team.manage`, MSPAdmin, MSPOperator, PlatformAdmin,
+   ServiceAccount}: MSP staff and PlatformAdmin pass by role, and a customer-tier user
+   (CustomerUser/Free/Assessment) passes only while holding the `cap.team.manage` grant, read
+   LIVE on every call — never cached in the JWT, so a revoke takes effect on the caller's very
+   next request, no token refresh needed. It is an allow-list, so a caller whose `mspRole`
+   claim is absent or unrecognised is denied here too (#3360 — before #2460 this check was
+   `isCustomerTier` and let such a caller through).
 
 Both denial paths answer a uniform `403 { error: "Access to this team member is not permitted"
 }` (or the invite route's own wording) — the response never leaks which of the two gates
-failed. `canManageTeam` mirrors the shape of `usersTable.canApprovePurchases` (purchase-approval
-authority) and `usersTable.canApproveChanges` (change-control approval authority) — three
-distinct per-user capability flags on the same table, deliberately not merged, since each
-grants a different authority nobody should get by accident from one flag (`index.ts:88-113`
-comments). The new §4i manager-assignment route gates on this same flag — there is no separate
+failed. `customer:team.manage` stays distinct from `msp:purchases.approve` and
+`customer:changes.approve` — separate capabilities with separate `cap.*` grant roles, deliberately
+not merged, since each grants a different authority nobody should get by accident from another.
+The new §4i manager-assignment route gates on this same capability — there is no separate
 "who may set reporting lines" capability.
 
 Every mutating route additionally: parses `req.params.userId` with `parseInt(...,10)`, 400s

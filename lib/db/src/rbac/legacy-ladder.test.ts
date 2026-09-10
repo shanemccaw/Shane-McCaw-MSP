@@ -207,7 +207,7 @@ describe("the capability columns are read ASYMMETRICALLY today, and the transcri
   });
 
   it("customer:team.manage exempts the three customer tiers only — so ServiceAccount passes flagless", () => {
-    // portal-team.ts:40-54 tests isCustomerTier, an allow-list of three NAMES.
+    // portal-team.ts before #2460 tested isCustomerTier, an allow-list of three NAMES.
     for (const role of ["Assessment", "Free", "CustomerUser"] as const) {
       expect(legacyDecision(asRole(role), "customer", "team.manage")).toBe(false);
       expect(legacyDecision(asRole(role, { canManageTeam: true }), "customer", "team.manage")).toBe(true);
@@ -253,10 +253,11 @@ describe("the capability columns are read ASYMMETRICALLY today, and the transcri
   });
 
   it("customer:team.manage FAILS OPEN for an unrecognised role — the #3360 defect, recorded not reproduced", () => {
-    // isCustomerTier is false for an unknown role, so the live code takes its
-    // permitted branch. The new model denies this principal instead, which is
-    // why parity-check.ts registers it as a known fail-closed divergence rather
-    // than seeding a rung the user does not have.
+    // isCustomerTier was false for an unknown role, so the pre-#2460 code took its
+    // permitted branch. The new model denies this principal instead — and so has
+    // the live route since #2460 (pinned by portal-team.test.ts) — which is why
+    // parity-check.ts registers it as a known fail-closed divergence rather than
+    // seeding a rung the user does not have.
     expect(legacyDecision(principal({ mspRole: "NotARole" }), "customer", "team.manage")).toBe(true);
     expect(legacyDecision(principal({ mspRole: null }), "customer", "team.manage")).toBe(true);
   });

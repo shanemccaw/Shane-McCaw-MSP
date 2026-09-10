@@ -75,18 +75,25 @@ function check(label: string, actual: unknown, expected: unknown): void {
 /**
  * Places where the new model deliberately does NOT reproduce the old one.
  *
- * There is exactly one root cause, and it is a bug in today's code that #2457
- * declined to copy: `denyIfCannotManageTeam` (portal-team.ts:40-54) tests
- * `isCustomerTier`, an allow-list of three role names, and takes the PERMITTED
- * branch for anything it does not recognise — including a principal with no
- * `mspRole` claim at all, which `buildUserPayload` (auth.ts:217) really can sign.
- * It fails open. Filed as #3360 with the full evidence; it is not exploitable
- * today only because `assertCustomerAccess` in front of it fails closed.
+ * There is exactly one root cause, and it was a bug in the code #2457 transcribed
+ * that #2457 declined to copy: `denyIfCannotManageTeam` (portal-team.ts:40-56 as of
+ * 2868efa79^) tested `isCustomerTier`, an allow-list of three role names, and took
+ * the PERMITTED branch for anything it did not recognise — including a principal
+ * with no `mspRole` claim at all, which `buildUserPayload` (auth.ts:217) really can
+ * sign. It failed open. Filed as #3360; it was not exploitable only because
+ * `assertCustomerAccess` in front of it fails closed.
  *
  * The new model denies that principal, because a principal holding no role row
  * is denied by default (the evaluator's rule 3). Reproducing the fail-open
  * behaviour in the seed — by granting a rung to a user who has none — would be
  * writing a privilege escalation into the data to make a number go green.
+ *
+ * Since #2460 (2868efa79) the LIVE route reads `customer:team.manage` from these
+ * rows, so it has denied that principal too; #3360 verified this and pinned it in
+ * portal-team.test.ts. What still disagrees is the new model and the transcription
+ * of the OLD rule in `LEGACY_CAPABILITY_RULES`, which stays verbatim because it is
+ * this harness's oracle. The entries below are that recorded history, not a live
+ * defect.
  *
  * So these two are allowed to disagree, under three conditions the run enforces:
  * each must be named here, each must diverge in the fail-CLOSED direction only
@@ -108,7 +115,7 @@ const KNOWN_FAIL_CLOSED_DIVERGENCES: readonly KnownDivergence[] = [
     system: "customer",
     capability: "team.manage",
     issue: "#3360",
-    why: "portal-team.ts:40-54 permits an unrecognised role; the new model denies it",
+    why: "pre-#2460 portal-team.ts permitted an unrecognised role; the new model, live since #2460, denies it",
   },
   {
     shape: "unrecognised msp_role",

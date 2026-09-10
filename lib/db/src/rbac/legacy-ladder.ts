@@ -334,16 +334,21 @@ export const LEGACY_CAPABILITY_RULES: readonly LegacyCapabilityRule[] = Object.f
   {
     system: "customer",
     key: "team.manage",
-    source: "artifacts/api-server/src/routes/portal-team.ts:40-54 (denyIfCannotManageTeam)",
+    source: "artifacts/api-server/src/routes/portal-team.ts:40-56 as of 2868efa79^ (denyIfCannotManageTeam, pre-#2460)",
     /**
      * *"a customer-tier user (CustomerUser/Free/Assessment) must ADDITIONALLY
      * carry the live `canManageTeam` flag. MSP staff (MSPAdmin/MSPOperator) and
      * PlatformAdmin manage customer teams by virtue of their role."*
      *
-     * The live test is `isCustomerTier`, not a rung comparison — so `ServiceAccount`
+     * The old test was `isCustomerTier`, not a rung comparison — so `ServiceAccount`
      * passes without the flag, because it is not one of the three tiers named. That
      * is the ladder artifact #1696 records, and it is transcribed rather than
      * corrected.
+     *
+     * The same allow-list is why an UNRECOGNISED role passed too (#3360). That half
+     * is not carried into the seed, and since #2460 the live route reads the seeded
+     * row instead of this rule, so it denies that principal. This rule is the old
+     * behaviour, kept verbatim as parity-check.ts's oracle.
      */
     decide: (user) => {
       const effective = effectiveLegacyRole(user);
