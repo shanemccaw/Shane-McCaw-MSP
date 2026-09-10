@@ -277,9 +277,11 @@ describe("MSP impersonation endpoint — POST /api/msp/:mspId/customers/:custome
     });
 
     it("error message indicates access is not permitted", () => {
+      const error = json.error as { code?: string; message?: string };
+      assert.equal(error.code, "FORBIDDEN", `expected code FORBIDDEN, got: ${JSON.stringify(json.error)}`);
       assert.ok(
-        typeof json.error === "string" && json.error.toLowerCase().includes("not permitted"),
-        `expected "not permitted" in error, got: ${JSON.stringify(json.error)}`,
+        typeof error.message === "string" && error.message.toLowerCase().includes("not permitted"),
+        `expected "not permitted" in error.message, got: ${JSON.stringify(json.error)}`,
       );
     });
 
