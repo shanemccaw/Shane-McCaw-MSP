@@ -524,13 +524,13 @@ public partial class MainWindow : FluentWindow
     /// Open-intent list (nothing tenant-specific to select yet,
     /// so fixed-tab legal), same shape as Break-Glass's pending list on Admin. SLA's five
     /// galleries are also Open-intent: Breaches/Compliance carry a numeric customerId filter
-    /// server-side, but <see cref="TryResolveLaunchControlScope"/>'s customerId half is the same
-    /// real, already-filed gap (#3540 — TenantService is fixture data, no numeric tenants.id)
-    /// every other customer-keyed surface in this app hits today; those two galleries state that
-    /// honestly and show the full MSP book rather than guessing an id. M365 Uptime is different:
-    /// msp-m365-sla.ts's response carries the real tenant GUID per customer, which this app's
-    /// fixture <see cref="ITenantService.CurrentTenant"/> already has — so that one gallery is
-    /// genuinely filtered to the selected tenant today.</summary>
+    /// server-side, but wiring that filter through these two galleries is a separate, scoped
+    /// change from #3540 (which only made <see cref="TryResolveLaunchControlScope"/>'s
+    /// customerId real, not every gallery that could now use it) — they still show the full MSP
+    /// book rather than filtering. M365 Uptime is different: msp-m365-sla.ts's response carries
+    /// the real tenant GUID per customer, which this app's real
+    /// <see cref="ITenantService.CurrentTenant"/> already has — so that one gallery is genuinely
+    /// filtered to the selected tenant today.</summary>
     private void RegisterWatchTab()
     {
         _shellRegistry.RegisterFixedTabGroup(FixedTab.Watch, new RibbonGroupSpec
@@ -2026,7 +2026,7 @@ public partial class MainWindow : FluentWindow
         {
             var reason = !_authService.IsAuthenticated
                 ? "Sign in to open the Script Library"
-                : "Script Library needs a real customer id — TenantService is fixture data (#3540)";
+                : "Script Library needs a customer selected — pick one from the tenant switcher";
             _shellRegistry.OpenRecord(new RecordWorkspaceSpec
             {
                 Kind = "script-library-action",
@@ -3006,16 +3006,15 @@ public partial class MainWindow : FluentWindow
     /// "open a workspace with write-through Edits + a confirm-armed Action" shape as
     /// <see cref="OpenScriptLibraryRecord"/>, targeting
     /// <see cref="IAdminRetainerService.LogUnscopedHoursAsync"/> instead. Real customerId
-    /// resolution is the same remaining gap <see cref="TryResolveLaunchControlScope"/> already
-    /// documents honestly (TenantService is fixture data — #3502/#3505/#3540) — this opens a
-    /// stated-blocked workspace rather than guessing a customer id.</summary>
+    /// resolution is the same real <see cref="TryResolveLaunchControlScope"/> uses (#3540) — this
+    /// opens a stated-blocked workspace only when no customer is actually selected.</summary>
     private void OpenLogAdHocHoursRecord()
     {
         if (!TryResolveLaunchControlScope(out _, out var customerId))
         {
             var reason = !_authService.IsAuthenticated
                 ? "Sign in to log retainer hours"
-                : "Logging hours needs a real customer id — TenantService is fixture data (#3502/#3505/#3540)";
+                : "Logging hours needs a customer selected — pick one from the tenant switcher";
             _shellRegistry.OpenRecord(new RecordWorkspaceSpec
             {
                 Kind = "retainer-unscoped-entry",
@@ -3131,15 +3130,12 @@ public partial class MainWindow : FluentWindow
     }
 
     /// <summary>Real numeric `tenants.id` resolution for the remediation tracker's
-    /// customer-keyed endpoints. Returns false today: <see cref="ITenantService"/> is fixture
-    /// data (fake tenant guids, no numeric id at all) — filed as #3540, the same underlying gap
-    /// <see cref="TryResolveLaunchControlScope"/> already documents for Script Library. Never
-    /// guesses an id; once #3540 gives this app a real customer source, this is the one place to
-    /// wire it in.</summary>
+    /// customer-keyed endpoints — the same real <see cref="ITenantService.CurrentTenant"/>
+    /// resolution <see cref="TryResolveLaunchControlScope"/> uses (#3540).</summary>
     private bool TryResolveTrackerCustomerId(out int customerId)
     {
-        customerId = 0;
-        return false;
+        customerId = _tenantService.CurrentTenant?.CustomerId ?? 0;
+        return customerId > 0;
     }
 
     /// <summary>Checklist-style half of #3471's two sources. Real rows from
@@ -3157,7 +3153,7 @@ public partial class MainWindow : FluentWindow
                 new GalleryRowSpec
                 {
                     Id = "tracker-blocked",
-                    Name = "Remediation tracker needs a real customer id — TenantService is fixture data (#3540)",
+                    Name = "Remediation tracker needs a customer selected — pick one from the tenant switcher",
                     OnSelect = () => { },
                 },
             };
@@ -3484,7 +3480,7 @@ public partial class MainWindow : FluentWindow
         {
             var reason = !_authService.IsAuthenticated
                 ? "Sign in to check VIP status"
-                : "VIP lookup needs a real customer id — TenantService is fixture data (#3540)";
+                : "VIP lookup needs a customer selected — pick one from the tenant switcher";
             LeftReferencePanelControl.ShowVipLookupResult(upn, null, reason);
             return;
         }
@@ -3525,15 +3521,14 @@ public partial class MainWindow : FluentWindow
     /// <summary>Real MSP+customer id resolution shared by every real MSP-console call that needs
     /// one — Launch Control (#3460), ad-hoc retainer hours (#3464), and now Runbooks (#3479). As
     /// of #3501 the <paramref name="mspId"/> comes from the real signed-in session (users.msp_id
-    /// claim). The <paramref name="customerId"/> — the target customer being operated on — still
-    /// cannot be resolved: MyArchitect's <see cref="TenantService"/> is fixture data (fake
-    /// tenant GUIDs, no numeric tenants.id). That remaining gap is filed and tracked at
-    /// #3502/#3505/#3540 (owned by #3457, the Feature that actually owns TenantService) — not
-    /// re-filed here. Returns true only when BOTH ids are real.</summary>
+    /// claim). As of #3540 the <paramref name="customerId"/> comes from
+    /// <see cref="ITenantService.CurrentTenant"/>'s real numeric <c>Tenant.CustomerId</c> — loaded
+    /// from the real <c>GET /api/msp/v1/msps/:mspId/customers</c> list, not fixture data. Returns
+    /// true only when BOTH ids are real (a customer is genuinely selected).</summary>
     private bool TryResolveLaunchControlScope(out int mspId, out int customerId)
     {
         mspId = _authService.MspId ?? 0;
-        customerId = 0; // no real customer list yet — TenantService is fixture (separate finding)
+        customerId = _tenantService.CurrentTenant?.CustomerId ?? 0;
         return mspId > 0 && customerId > 0;
     }
 
@@ -3546,11 +3541,11 @@ public partial class MainWindow : FluentWindow
     {
         if (!TryResolveLaunchControlScope(out var mspId, out var customerId))
         {
-            // Distinguish the two real remaining reasons, honestly (#3501): not signed in vs.
-            // signed in but with no real customer to scope to (fixture TenantService).
+            // Distinguish the two real remaining reasons, honestly: not signed in vs. signed
+            // in but no customer selected in the tenant switcher yet.
             var reason = !_authService.IsAuthenticated
                 ? "Sign in to load the Script Library"
-                : "Script Library needs a real customer list — TenantService is fixture data";
+                : "Script Library needs a customer selected — pick one from the tenant switcher";
             return new[]
             {
                 new GalleryRowSpec { Id = "blocked", Name = reason, OnSelect = () => { } },
@@ -3773,7 +3768,7 @@ public partial class MainWindow : FluentWindow
     /// <summary>Live count badge for the Watch tab's "Alerts" command (UI_RULES.md §8's one
     /// allowed badge) — the real, current <c>total</c> GET /api/msp/alerts already computed
     /// server-side, not a client-side re-count. Never throws: a 401/403 before sign-in (this
-    /// renders at shell startup, before <see cref="ApplyAuthState"/> has run) or a transient
+    /// renders at shell startup, before <see cref="ApplyAuthStateAsync"/> has run) or a transient
     /// network failure reads as "0 open" rather than crashing ribbon render — the gallery itself
     /// (<see cref="BuildAlertRows"/>) is where a real failure is surfaced honestly.</summary>
     private int GetOpenAlertsCount()
@@ -3961,7 +3956,7 @@ public partial class MainWindow : FluentWindow
         {
             var reason = !_authService.IsAuthenticated
                 ? "Sign in to load Runbooks"
-                : "Runbooks needs a real customer id — TenantService is fixture data (#3502/#3505/#3540)";
+                : "Runbooks needs a customer selected — pick one from the tenant switcher";
             return new[] { new GalleryRowSpec { Id = "blocked", Name = reason, OnSelect = () => { } } };
         }
 
@@ -4004,7 +3999,7 @@ public partial class MainWindow : FluentWindow
         {
             var reason = !_authService.IsAuthenticated
                 ? "Sign in to load Hold Windows"
-                : "Hold Windows needs a real customer id — TenantService is fixture data (#3502/#3505/#3540)";
+                : "Hold Windows needs a customer selected — pick one from the tenant switcher";
             return new[] { new GalleryRowSpec { Id = "blocked", Name = reason, OnSelect = () => { } } };
         }
 
@@ -4120,13 +4115,11 @@ public partial class MainWindow : FluentWindow
     /// <summary>Real rows from GET /api/msp/documents-hub (#3486). Unlike Launch Control's write
     /// actions (<see cref="TryResolveLaunchControlScope"/>), this endpoint is book-wide and does
     /// NOT require a customerId to work — only mspId. #3486's own checklist item names "browse/
-    /// view for the selected tenant," but <see cref="Models.Tenant.Id"/> is a display string, not
-    /// the numeric <c>tenants.id</c> the endpoint's <c>customerId</c> filter takes, and
-    /// TenantService remains fixture data for that numeric id (the same real, already-tracked gap
-    /// #3502/#3505/#3540 document for every other gallery in this file). Filtering by a
-    /// non-numeric fixture id would be inventing a match, not honoring the real selection — so
-    /// until that numeric id is real, Document Hub browses the caller's whole book rather than
-    /// guessing a filter.</summary>
+    /// view for the selected tenant," and <see cref="Models.Tenant.CustomerId"/> is now a real
+    /// numeric <c>tenants.id</c> as of #3540 — but wiring a customerId filter into this endpoint
+    /// is its own scoped change, not something to fold into #3540's TenantService fix. Document
+    /// Hub still browses the caller's whole book here; narrowing it to the selected tenant is a
+    /// real, separate follow-up.</summary>
     private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildDocumentHubRows()
     {
         if (!_authService.IsAuthenticated)
@@ -4592,7 +4585,7 @@ public partial class MainWindow : FluentWindow
         {
             ShowLoginDialog();
         }
-        ApplyAuthState();
+        await ApplyAuthStateAsync();
 
         if (_tenantService.CurrentTenant != null)
         {
@@ -4608,14 +4601,17 @@ public partial class MainWindow : FluentWindow
     /// touching services/UI.</summary>
     private void OnAuthSessionChanged()
     {
-        if (Dispatcher.CheckAccess()) ApplyAuthState();
-        else Dispatcher.Invoke(ApplyAuthState);
+        if (Dispatcher.CheckAccess()) _ = ApplyAuthStateAsync();
+        else Dispatcher.Invoke(() => _ = ApplyAuthStateAsync());
     }
 
     /// <summary>Push the current session's bearer token into every service that attaches an
-    /// Authorization header, and refresh the status-bar sign-in indicator. This is the single
-    /// place the token is fanned out, so a refresh updates all of them at once.</summary>
-    private void ApplyAuthState()
+    /// Authorization header, refresh the status-bar sign-in indicator, and load the real
+    /// customer list (#3540) for the session's mspId. This is the single place the token is
+    /// fanned out, so a refresh updates all of them at once. Returns the in-flight tenant-load
+    /// Task so a caller that needs the list before proceeding (app startup) can await it instead
+    /// of racing it.</summary>
+    private async Task ApplyAuthStateAsync()
     {
         var token = _authService.AccessToken;
 
@@ -4635,6 +4631,7 @@ public partial class MainWindow : FluentWindow
         _slaService.AuthToken = token;
         _taskQueueService.AuthToken = token;
         _alertsService.AuthToken = token;
+        _tenantService.AuthToken = token;
         TelemetryDashboardView.SetAuthToken(token);
         SowAssessmentDashboardView.SetAuthToken(token);
         EvidenceGalleryPanel.SetAuthToken(token);
@@ -4642,12 +4639,17 @@ public partial class MainWindow : FluentWindow
         UpdateSessionStatusUi();
         _ = RefreshContractHoursAsync();
         RestartTaskQueueEventStream();
+
+        // Real customer list load (#3540) — the mspId that just landed on the session is what
+        // GET /api/msp/v1/msps/:mspId/customers is scoped to. mspId <= 0 (signed out, or no MSP
+        // context) clears the list inside LoadTenantsAsync rather than issuing a request.
+        await _tenantService.LoadTenantsAsync(_authService.MspId ?? 0);
     }
 
     // ---- Task Queue (#3490) — real msp-sla.ts operator-tasks + events/stream client -------
 
     /// <summary>Stops any running SSE subscription and starts a fresh one iff a token is present
-    /// — called from <see cref="ApplyAuthState"/> so sign-in starts the stream and sign-out stops
+    /// — called from <see cref="ApplyAuthStateAsync"/> so sign-in starts the stream and sign-out stops
     /// it (an unauthenticated stream would just 401 and end immediately, but there's no reason to
     /// hold the connection open at all with nothing to authorize it).</summary>
     private void RestartTaskQueueEventStream()
@@ -4666,7 +4668,7 @@ public partial class MainWindow : FluentWindow
     /// <summary>One real SSE connection to /api/msp/sla/events/stream for as long as
     /// <paramref name="cancellationToken"/> allows. A dropped/failed connection ends the loop
     /// rather than retrying indefinitely (Git #2160's bounded-wait discipline) — the next
-    /// ApplyAuthState (a token refresh, ~hourly) reconnects it. Each real event bumps the Watch
+    /// ApplyAuthStateAsync (a token refresh, ~hourly) reconnects it. Each real event bumps the Watch
     /// tab's live-count badges via ShellRegistry.RefreshLiveCounts so the Task Queue count reacts
     /// to a push rather than only refreshing when the tab happens to redraw.</summary>
     private async Task RunTaskQueueEventStreamAsync(CancellationToken cancellationToken)
@@ -4723,7 +4725,7 @@ public partial class MainWindow : FluentWindow
         else
         {
             ShowLoginDialog();
-            ApplyAuthState();
+            _ = ApplyAuthStateAsync();
         }
     }
 
@@ -4922,15 +4924,13 @@ public partial class MainWindow : FluentWindow
 
     // ---- Contract-hours utilization (#3474) — real GET /api/admin/retainer/:customerId -------
 
-    /// <summary>Real customerId resolution for the retainer call. <see cref="TenantService"/> is
-    /// fixture data (fake tenant GUIDs, no real numeric tenants.id) — the exact same gap
-    /// <c>TryResolveLaunchControlScope</c> hit and correctly deferred to #3540 (parented under
-    /// #3457, the Feature that actually owns TenantService). Returns true only when a real
-    /// customerId is resolvable; rebuilding TenantService here would be scope creep into #3457's
-    /// own named responsibility, so this states the honest block instead of guessing an id.</summary>
+    /// <summary>Real customerId resolution for the retainer call — the same real
+    /// <see cref="ITenantService.CurrentTenant"/>.<c>CustomerId</c> resolution
+    /// <see cref="TryResolveLaunchControlScope"/> uses (#3540). Returns true only when a
+    /// customer is genuinely selected.</summary>
     private bool TryResolveRetainerCustomerId(out int customerId)
     {
-        customerId = 0; // no real customer list yet — TenantService is fixture (#3540)
+        customerId = _tenantService.CurrentTenant?.CustomerId ?? 0;
         return customerId > 0;
     }
 

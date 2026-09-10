@@ -34,6 +34,9 @@ public partial class TenantSwitcher : System.Windows.Controls.UserControl
     {
         _tenantService = tenantService ?? throw new ArgumentNullException(nameof(tenantService));
         _tenantService.CurrentTenantChanged += (s, tenant) => UpdateCurrentTenantView(tenant);
+        // Real customer list (#3540) loads async after sign-in — refresh the popup's list each
+        // time it changes rather than reading it once at construction (when it's still empty).
+        _tenantService.TenantsChanged += (s, e) => RefreshList();
         UpdateCurrentTenantView(_tenantService.CurrentTenant);
         RefreshList();
     }

@@ -1,55 +1,52 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 using MyArchitect.Models;
 
 namespace MyArchitect.Services;
 
 /// <summary>
-/// In-memory tenant service providing tenant registration and current active tenant scoping.
+/// Real client for <c>GET /api/msp/v1/msps/:mspId/customers</c>
+/// (<c>artifacts/api-server/src/routes/msp-v1.ts</c>) — the MSP-scoped, paginated customer
+/// list, gated by <c>requireCapability("ladder.msp-operator")</c> +
+/// <c>requireMspScope("params")</c>. Replaces the four hardcoded fixture tenants MyArchitect
+/// shipped with (#3540); the mspId comes from #3501's real signed-in session and the bearer
+/// token is fanned out from <c>MainWindow.ApplyAuthState</c> exactly like every other
+/// real-endpoint service in this app.
 /// </summary>
 public sealed class TenantService : ITenantService
 {
-    private readonly List<Tenant> _tenants;
+    // Server's own MAX_PAGE_SIZE (artifacts/api-server/src/lib/api-helpers.ts) — requesting more
+    // than this per page is silently clamped server-side, so this is also this client's page size.
+    private const int PageSize = 100;
+
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private readonly HttpClient _httpClient;
+    private readonly string _baseUrl;
+    private readonly List<Tenant> _tenants = new();
     private Tenant? _currentTenant;
 
     public event EventHandler<Tenant?>? CurrentTenantChanged;
+    public event EventHandler? TenantsChanged;
 
-    public TenantService()
+    public string? AuthToken { get; set; }
+    public bool IsLoaded { get; private set; }
+    public string? LoadError { get; private set; }
+
+    public TenantService(HttpClient? httpClient = null, string? baseUrl = null)
     {
-        _tenants = new List<Tenant>
-        {
-            new Tenant
-            {
-                Id = "tenant-001",
-                Name = "Contoso Managed Services",
-                TenantGuid = "72f988bf-86f1-41af-91ab-2d7cd011db47",
-                PortalUrls = TenantPortalUrls.CreateForTenant("72f988bf-86f1-41af-91ab-2d7cd011db47")
-            },
-            new Tenant
-            {
-                Id = "tenant-002",
-                Name = "Fabrikam Global Cloud",
-                TenantGuid = "49a463a8-4e89-4d64-9b2f-87d465f12e8b",
-                PortalUrls = TenantPortalUrls.CreateForTenant("49a463a8-4e89-4d64-9b2f-87d465f12e8b")
-            },
-            new Tenant
-            {
-                Id = "tenant-003",
-                Name = "Northwind IT Infrastructure",
-                TenantGuid = "b84501a3-1a2f-45be-bb3b-6320a02316e2",
-                PortalUrls = TenantPortalUrls.CreateForTenant("b84501a3-1a2f-45be-bb3b-6320a02316e2")
-            },
-            new Tenant
-            {
-                Id = "tenant-004",
-                Name = "Shane McCaw Consulting Internal",
-                TenantGuid = "e9a0c201-92be-49b0-94d1-c11579be4001",
-                PortalUrls = TenantPortalUrls.CreateForTenant("e9a0c201-92be-49b0-94d1-c11579be4001")
-            }
-        };
+        _baseUrl = !string.IsNullOrWhiteSpace(baseUrl)
+            ? baseUrl.TrimEnd('/')
+            : (Environment.GetEnvironmentVariable("API_BASE_URL")?.TrimEnd('/') ?? "http://localhost:8080");
 
-        _currentTenant = _tenants.FirstOrDefault();
+        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
     }
 
     public IReadOnlyList<Tenant> Tenants => _tenants.AsReadOnly();
@@ -75,5 +72,129 @@ public sealed class TenantService : ITenantService
         {
             CurrentTenant = tenant;
         }
+    }
+
+    public async Task LoadTenantsAsync(int mspId, CancellationToken cancellationToken = default)
+    {
+        if (mspId <= 0)
+        {
+            // No real MSP context (signed out) — clear rather than call an endpoint that would
+            // 401/403 anyway.
+            _tenants.Clear();
+            CurrentTenant = null;
+            IsLoaded = false;
+            LoadError = null;
+            TenantsChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        try
+        {
+            var loaded = new List<Tenant>();
+            var page = 1;
+            while (true)
+            {
+                using var request = new HttpRequestMessage(
+                    HttpMethod.Get,
+                    $"{_baseUrl}/api/msp/v1/msps/{mspId}/customers?page={page}&pageSize={PageSize}&sortBy=name&sortDir=asc");
+
+                if (!string.IsNullOrWhiteSpace(AuthToken))
+                {
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AuthToken);
+                }
+
+                using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    // Real, honest failure — most likely 401/403 while auth is settling, or a
+                    // genuinely unreachable server. Never synthesized client-side.
+                    throw new InvalidOperationException(
+                        $"GET /api/msp/v1/msps/{mspId}/customers returned {(int)response.StatusCode} {response.ReasonPhrase}: {body}");
+                }
+
+                var parsed = JsonSerializer.Deserialize<CustomerListResponse>(body, JsonOptions) ?? new CustomerListResponse();
+                loaded.AddRange(parsed.Data.Select(ToTenant));
+
+                if (parsed.Data.Count == 0 || parsed.Meta.Page >= parsed.Meta.TotalPages)
+                {
+                    break;
+                }
+
+                page++;
+            }
+
+            var previousGuid = _currentTenant?.TenantGuid;
+
+            _tenants.Clear();
+            _tenants.AddRange(loaded);
+            IsLoaded = true;
+            LoadError = null;
+
+            // Preserve the current selection across a reload when it still exists; otherwise
+            // fall back to the first real customer (or null if the MSP genuinely has none).
+            var restored = !string.IsNullOrEmpty(previousGuid)
+                ? _tenants.FirstOrDefault(t => t.TenantGuid.Equals(previousGuid, StringComparison.OrdinalIgnoreCase))
+                : null;
+            CurrentTenant = restored ?? _tenants.FirstOrDefault();
+
+            TenantsChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _tenants.Clear();
+            CurrentTenant = null;
+            IsLoaded = false;
+            LoadError = ex.Message;
+            TenantsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private static Tenant ToTenant(CustomerDto dto) => new()
+    {
+        Id = dto.Id.ToString(),
+        CustomerId = dto.Id,
+        Name = dto.Name,
+        TenantGuid = dto.TenantId ?? string.Empty,
+        Domain = dto.Domain,
+        Industry = dto.Industry,
+        Status = dto.Status,
+        IsTestbed = dto.IsTestbed,
+        PortalUrls = TenantPortalUrls.CreateForTenant(dto.TenantId ?? string.Empty),
+    };
+
+    // ── Wire DTOs — mirror msp-v1.ts's explicit projection exactly (msp-v1.ts:144-157) ─────────
+
+    private sealed class CustomerListResponse
+    {
+        [JsonPropertyName("data")]
+        public List<CustomerDto> Data { get; set; } = new();
+
+        [JsonPropertyName("meta")]
+        public PaginationMeta Meta { get; set; } = new();
+    }
+
+    private sealed class CustomerDto
+    {
+        public int Id { get; set; }
+        public int MspId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? Domain { get; set; }
+        public string? Industry { get; set; }
+        public string? TenantId { get; set; }
+        public string? TenantUrl { get; set; }
+        public string? Status { get; set; }
+        public bool IsTestbed { get; set; }
+        public DateTimeOffset? CreatedAt { get; set; }
+        public DateTimeOffset? UpdatedAt { get; set; }
+    }
+
+    private sealed class PaginationMeta
+    {
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; }
+        public int Total { get; set; }
+        public int TotalPages { get; set; } = 1;
     }
 }
