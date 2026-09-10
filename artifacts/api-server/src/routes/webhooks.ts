@@ -45,19 +45,41 @@ export const SUBSCRIBABLE_EVENT_TYPES = [
 
 // ── Validation schemas ────────────────────────────────────────────────────────
 
-const createWebhookSchema = z.object({
+// The canonical, currently-dispatchable catalog is the single source of truth for
+// what a webhook may subscribe to (#1607). A subscription to a string outside this
+// list can never receive an event, so create/PATCH reject any such value up front
+// instead of silently persisting a dead subscription. Membership is O(1) via a Set.
+const SUBSCRIBABLE_EVENT_TYPE_SET: ReadonlySet<string> = new Set<string>(
+  SUBSCRIBABLE_EVENT_TYPES,
+);
+
+const eventTypesSchema = z
+  .array(z.string().min(1))
+  .superRefine((types, ctx) => {
+    const unknown = types.filter((t) => !SUBSCRIBABLE_EVENT_TYPE_SET.has(t));
+    if (unknown.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          `Unknown event type(s): ${unknown.join(", ")}. ` +
+          `Subscribe only to types returned by GET /api/portal/webhooks/event-types.`,
+      });
+    }
+  });
+
+export const createWebhookSchema = z.object({
   label: z.string().min(1).max(120),
   url: z.string().url("Must be a valid HTTPS URL").refine(
     (u) => u.startsWith("https://") || u.startsWith("http://"),
     "URL must start with http:// or https://",
   ),
-  eventTypes: z.array(z.string().min(1)).default([]),
+  eventTypes: eventTypesSchema.default([]),
 });
 
-const updateWebhookSchema = z.object({
+export const updateWebhookSchema = z.object({
   label: z.string().min(1).max(120).optional(),
   url: z.string().url("Must be a valid URL").optional(),
-  eventTypes: z.array(z.string().min(1)).optional(),
+  eventTypes: eventTypesSchema.optional(),
   isActive: z.boolean().optional(),
 });
 
