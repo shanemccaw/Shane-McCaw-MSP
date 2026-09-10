@@ -316,12 +316,6 @@ export default function ClientDetailPage() {
   const [healthTrends, setHealthTrends] = useState<HealthTrendsResponse | null>(null);
   const [healthTrendsLoading, setHealthTrendsLoading] = useState(false);
 
-  // Status Reports
-  const [showReports, setShowReports] = useState(false);
-  const [statusReports, setStatusReports] = useState<Array<{id:number;title:string;period:string;reportStatus:string;clientStatus:string;executiveSummary:string|null;keyOutcomes:string|null;sentAt:string|null;reportDate:string|null;createdAt:string;projectId:number|null}>>([]);
-  const [reportsLoading, setReportsLoading] = useState(false);
-  const [expandedReportId, setExpandedReportId] = useState<number|null>(null);
-
   // Invoices
   const [showInvoices, setShowInvoices] = useState(false);
   const [clientInvoices, setClientInvoices] = useState<Array<{id:number;invoiceNumber:string;invoiceType:string;status:string;amount:string;currency:string;dueDate:string|null;paidAt:string|null;discountAmount:string|null;couponCode:string|null;createdAt:string}>>([]);
@@ -381,20 +375,6 @@ export default function ClientDetailPage() {
       }
     } finally {
       setDocsLoading(false);
-    }
-  }, [fetchWithAuth, clientId]);
-
-  const loadStatusReports = useCallback(async () => {
-    if (!clientId) return;
-    setReportsLoading(true);
-    try {
-      const res = await fetchWithAuth(`/api/admin/clients/${clientId}/status-reports`);
-      if (res.ok) {
-        const data = await res.json() as typeof statusReports;
-        setStatusReports(data);
-      }
-    } finally {
-      setReportsLoading(false);
     }
   }, [fetchWithAuth, clientId]);
 
@@ -513,9 +493,8 @@ export default function ClientDetailPage() {
       void loadAppReg();
       void loadMfaMethods();
       void loadDocuments();
-      void loadStatusReports();
     }
-  }, [loadCommandCenter, loadAzureCred, loadAppReg, loadMfaMethods, loadDocuments, loadStatusReports, clientId]);
+  }, [loadCommandCenter, loadAzureCred, loadAppReg, loadMfaMethods, loadDocuments, clientId]);
 
   async function handleSaveInfo(e: React.FormEvent) {
     e.preventDefault();
@@ -1791,162 +1770,6 @@ export default function ClientDetailPage() {
                   </svg>
                   Add Document
                 </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── Status Reports Section ───────────────────────────────────────────── */}
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <button
-          onClick={() => { setShowReports(s => { if (!s) void loadStatusReports(); return !s; }); }}
-          className="w-full flex items-center justify-between px-5 py-4 hover:bg-accent transition-colors text-left"
-        >
-          <div className="flex items-center gap-3">
-            <p className="text-sm font-bold text-foreground">Status Reports</p>
-            {statusReports.length > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/20">
-                {statusReports.length} report{statusReports.length !== 1 ? "s" : ""}
-              </span>
-            )}
-            {statusReports.some(r => r.clientStatus === "has_questions") && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20">
-                Has questions
-              </span>
-            )}
-          </div>
-          <svg className={`w-4 h-4 text-muted-foreground transition-transform ${showReports ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-        </button>
-
-        {showReports && (
-          <div className="border-t border-border">
-            {/* AI action bar */}
-            <div className="px-4 pt-3 pb-2 flex gap-2 flex-wrap">
-              {[
-                { label: "Summarize Reports", icon: "📋" },
-                { label: "Extract Action Items", icon: "✅" },
-              ].map(action => (
-                <button
-                  key={action.label}
-                  onClick={() => toast({ title: action.label, description: "AI report actions coming soon." })}
-                  className="flex items-center gap-1.5 text-[10px] font-semibold border border-primary/20 bg-primary/10 text-primary hover:bg-primary/20 px-2.5 py-1 rounded-lg transition-colors"
-                >
-                  <span>{action.icon}</span>
-                  {action.label}
-                </button>
-              ))}
-              <button
-                onClick={() => navigate(`/crm/status-reports?client=${clientId}`)}
-                className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground hover:text-foreground transition-colors ml-auto"
-              >
-                View all in Reports →
-              </button>
-            </div>
-
-            {/* Report timeline */}
-            {reportsLoading ? (
-              <p className="text-xs text-muted-foreground px-4 py-4 text-center">Loading reports…</p>
-            ) : statusReports.length === 0 ? (
-              <div className="px-4 py-6 text-center">
-                <p className="text-xs text-muted-foreground">No status reports yet for this client.</p>
-                <button
-                  onClick={() => navigate("/crm/status-reports")}
-                  className="mt-2 text-xs font-semibold text-primary hover:underline"
-                >
-                  Create first report →
-                </button>
-              </div>
-            ) : (
-              <div className="px-4 pb-4 space-y-2">
-                {statusReports.map(report => {
-                  const clientStatusCls: Record<string, string> = {
-                    pending: "text-muted-foreground bg-border border-border",
-                    accepted: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-                    has_questions: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-                  };
-                  const clientStatusLabel: Record<string, string> = {
-                    pending: "Awaiting",
-                    accepted: "Accepted",
-                    has_questions: "Has Questions",
-                  };
-                  const periodLabel: Record<string, string> = {
-                    weekly: "Weekly", monthly: "Monthly",
-                    executive_summary: "Executive", other: "Report",
-                  };
-                  const isExpanded = expandedReportId === report.id;
-                  const dateStr = report.sentAt
-                    ? new Date(report.sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                    : new Date(report.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-                  return (
-                    <div key={report.id} className="bg-accent rounded-lg overflow-hidden border border-border">
-                      <button
-                        onClick={() => setExpandedReportId(isExpanded ? null : report.id)}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-border/40 transition-colors"
-                      >
-                        <svg className="w-4 h-4 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-xs font-semibold text-foreground truncate">{report.title}</p>
-                            <span className="text-[9px] font-bold uppercase text-muted-foreground">{periodLabel[report.period] ?? report.period}</span>
-                          </div>
-                          <p className="text-[10px] text-muted-foreground">{dateStr}</p>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {report.reportStatus === "sent" && (
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${clientStatusCls[report.clientStatus] ?? "text-muted-foreground"}`}>
-                              {clientStatusLabel[report.clientStatus] ?? report.clientStatus}
-                            </span>
-                          )}
-                          {report.reportStatus === "draft" && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border border-border text-muted-foreground">Draft</span>
-                          )}
-                          <svg className={`w-3 h-3 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </div>
-                      </button>
-                      {isExpanded && (
-                        <div className="px-3 pb-3 border-t border-border space-y-2 pt-2">
-                          {report.executiveSummary && (
-                            <div>
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Executive Summary</p>
-                              <p className="text-xs text-foreground/80 leading-relaxed line-clamp-4">{report.executiveSummary}</p>
-                            </div>
-                          )}
-                          {report.keyOutcomes && (
-                            <div>
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Key Outcomes</p>
-                              <p className="text-xs text-foreground/80 leading-relaxed line-clamp-3">{report.keyOutcomes}</p>
-                            </div>
-                          )}
-                          <div className="flex gap-2 pt-1 flex-wrap">
-                            <button
-                              onClick={() => toast({ title: "AI Summary", description: "AI report summary coming soon." })}
-                              className="text-[10px] font-semibold text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20 px-2 py-1 rounded-lg transition-colors"
-                            >
-                              AI Summary
-                            </button>
-                            <button
-                              onClick={() => toast({ title: "Extract Action Items", description: "Action item extraction coming soon." })}
-                              className="text-[10px] font-semibold text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20 px-2 py-1 rounded-lg transition-colors"
-                            >
-                              Extract Action Items
-                            </button>
-                            <button
-                              onClick={() => navigate(`/crm/status-reports?id=${report.id}`)}
-                              className="text-[10px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                              Open Full Report →
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
               </div>
             )}
           </div>

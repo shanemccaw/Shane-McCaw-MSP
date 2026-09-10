@@ -331,8 +331,10 @@ namespace BuildConsole.TestPad
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 6, 0),
             };
-            select.Checked += (_, _) => { note.IsSelected = true; TestPadService.NotifyMutated(); };
-            select.Unchecked += (_, _) => { note.IsSelected = false; TestPadService.NotifyMutated(); };
+            // #3466 — route selection through the service funnel so it's persisted (survives
+            // restart), rather than mutating the note in-place and only firing NotifyMutated.
+            select.Checked += (_, _) => TestPadService.SetSelected(note.Id, true);
+            select.Unchecked += (_, _) => TestPadService.SetSelected(note.Id, false);
             Grid.SetColumn(select, 0);
             grid.Children.Add(select);
 

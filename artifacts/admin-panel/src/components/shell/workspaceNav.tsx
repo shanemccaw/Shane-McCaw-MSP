@@ -67,7 +67,6 @@ import {
   CreditCard,
   TicketPercent,
   PieChart,
-  FileCheck2,
   MessagesSquare,
   Star,
   Rocket,
@@ -344,7 +343,7 @@ export const WORKSPACES: WorkspaceDef[] = [
     description: "Projects, workflows & activity",
     icon: ClipboardCheck,
     prefix: "/delivery",
-    extraPrefixes: ["/crm/projects/", "/crm/documents", "/crm/status-reports", "/crm/testimonials"],
+    extraPrefixes: ["/crm/projects/", "/crm/documents", "/crm/testimonials"],
     defaultPath: "/delivery/projects",
     sections: [
       {
@@ -412,7 +411,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         id: "client-records", label: "Client Records", defaultOpen: false,
         items: [
           { id: "del-documents", label: "Documents", path: "/crm/documents", icon: FolderOpen },
-          { id: "del-status-reports", label: "Status Reports", path: "/crm/status-reports", icon: FileCheck2 },
           { id: "del-testimonials", label: "Testimonials", path: "/crm/testimonials", icon: Star },
         ],
       },

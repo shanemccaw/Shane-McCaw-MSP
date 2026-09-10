@@ -9,8 +9,6 @@ import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import RunScriptConfirmDialog from "@/components/RunScriptConfirmDialog";
 import { TypedCardContent, TASK_TYPE_CONFIG } from "@/components/kanban/TypedCardContent";
 import type { TaskType } from "@/components/kanban/TypedCardContent";
-import StatusReportForm from "@/components/StatusReportForm";
-import type { StatusReport } from "@/components/StatusReportForm";
 import {
   DndContext,
   DragOverlay,
@@ -115,10 +113,6 @@ interface KanbanTask {
   priority: string | null;
   createdAt: string;
   updatedAt: string;
-  statusReportId: number | null;
-  statusReportQuestion: string | null;
-  statusReportAdminReply: string | null;
-  statusReportReplyThread: Array<{ sender: "client" | "admin"; content: string; timestamp: string }>;
   taskType: string | null;
   taskMetadata: Record<string, unknown> | null;
 }
@@ -181,7 +175,7 @@ function AssigneeAvatar({ name }: { name: string }) {
 }
 
 function DraggableCard({
-  task, onDelete, projectId, steps, onQuickMove, onCardClick, onReply, clientUserId, clientName, hasCustomerUpload,
+  task, onDelete, projectId, steps, onQuickMove, onCardClick, clientUserId, clientName, hasCustomerUpload,
 }: {
   task: KanbanTask;
   onDelete: (taskId: number, projectId: number) => void;
@@ -189,7 +183,6 @@ function DraggableCard({
   steps: WorkflowStep[];
   onQuickMove: (task: KanbanTask, targetColumn: ColumnKey) => void;
   onCardClick: (task: KanbanTask) => void;
-  onReply: (reportId: number, reply: string) => Promise<void>;
   clientUserId?: number | null;
   clientName?: string | null;
   hasCustomerUpload?: boolean;
@@ -198,9 +191,6 @@ function DraggableCard({
   const { fetchWithAuth } = useAuth();
   const [expanded, setExpanded] = useState(false);
   const [customerViewOpen, setCustomerViewOpen] = useState(false);
-  const [replyDraft, setReplyDraft] = useState("");
-  const [replySending, setReplySending] = useState(false);
-  const [replySent, setReplySent] = useState(false);
   const [confirmRunOpen, setConfirmRunOpen] = useState(false);
   const [scriptRunning, setScriptRunning] = useState(() => isTaskRunning(task.id));
   const [, setLocation] = useLocation();
@@ -243,10 +233,7 @@ function DraggableCard({
     clientDeliverables.length > 0 ||
     task.waitingReason ||
     task.completionStatus ||
-    task.completionNotes ||
-    task.statusReportQuestion ||
-    task.statusReportAdminReply ||
-    task.statusReportReplyThread?.length > 0
+    task.completionNotes
   );
 
   return (
@@ -344,53 +331,6 @@ function DraggableCard({
               onViewResults={handleViewResults}
               onOpenScript={handleOpenScript}
             />
-
-            {task.statusReportId && (
-              <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/100/10 px-2.5 py-2">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-amber-400 mb-1.5 flex items-center gap-1">
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Customer Question
-                </p>
-                {replySent ? (
-                  <p className="text-[9px] font-semibold text-green-400 flex items-center gap-1">
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                    Reply sent
-                  </p>
-                ) : (
-                  <div className="space-y-1.5">
-                    <textarea
-                      value={replyDraft}
-                      onChange={e => setReplyDraft(e.target.value)}
-                      onClick={e => e.stopPropagation()}
-                      placeholder="Type your reply…"
-                      rows={2}
-                      className="w-full text-[10px] border border-amber-500/20 rounded px-2 py-1 resize-none focus:outline-none focus:ring-1 focus:ring-amber-400 bg-card"
-                    />
-                    <button
-                      disabled={!replyDraft.trim() || replySending}
-                      onClick={async e => {
-                        e.stopPropagation();
-                        if (!replyDraft.trim() || replySending) return;
-                        setReplySending(true);
-                        await onReply(task.statusReportId!, replyDraft.trim());
-                        setReplySent(true);
-                        setReplySending(false);
-                      }}
-                      className="flex items-center gap-1 text-[9px] font-bold text-white bg-primary hover:bg-primary/90 disabled:opacity-50 px-2 py-1 rounded transition-colors"
-                    >
-                      {replySending ? (
-                        <div className="w-2.5 h-2.5 border border-white/40 border-t-white rounded-full animate-spin" />
-                      ) : (
-                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-                      )}
-                      Send Reply
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
 
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               {task.assignedTo && <AssigneeAvatar name={task.assignedTo} />}
@@ -507,39 +447,6 @@ function DraggableCard({
                       <div>
                         <p className="text-[9px] font-bold uppercase tracking-wider text-foreground/50 mb-0.5">Task Results</p>
                         <pre className="text-[9px] text-foreground bg-card border border-border rounded px-2 py-1.5 whitespace-pre-wrap font-mono leading-relaxed max-h-32 overflow-y-auto">{task.completionNotes}</pre>
-                      </div>
-                    )}
-                    {(task.statusReportQuestion || task.statusReportAdminReply || task.statusReportReplyThread?.length > 0) && (
-                      <div>
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-amber-600 mb-1">Status Report Q&amp;A</p>
-                        <div className="space-y-1">
-                          {task.statusReportQuestion && (
-                            <div className="bg-amber-500/10 border border-amber-100 rounded px-2 py-1.5">
-                              <p className="text-[8px] font-bold text-amber-600 mb-0.5 uppercase tracking-wider">Client question</p>
-                              <p className="text-[10px] text-amber-400 leading-snug whitespace-pre-wrap">{task.statusReportQuestion}</p>
-                            </div>
-                          )}
-                          {task.statusReportAdminReply && (
-                            <div className="bg-primary/10 border border-primary/20 rounded px-2 py-1.5">
-                              <p className="text-[8px] font-bold text-primary mb-0.5 uppercase tracking-wider">Shane (reply)</p>
-                              <p className="text-[10px] text-foreground leading-snug whitespace-pre-wrap">{task.statusReportAdminReply}</p>
-                            </div>
-                          )}
-                          {task.statusReportReplyThread?.map((msg, i) => (
-                            <div
-                              key={i}
-                              className={`rounded px-2 py-1.5 ${msg.sender === "admin"
-                                ? "bg-primary/10 border border-primary/20"
-                                : "bg-amber-500/10 border border-amber-100"}`}
-                            >
-                              <p className={`text-[8px] font-bold mb-0.5 uppercase tracking-wider ${msg.sender === "admin" ? "text-primary" : "text-amber-600"}`}>
-                                {msg.sender === "admin" ? "Shane (thread reply)" : "Client"}
-                              </p>
-                              <p className={`text-[10px] leading-snug whitespace-pre-wrap ${msg.sender === "admin" ? "text-foreground" : "text-amber-400"}`}>{msg.content}</p>
-                              <p className="text-[8px] text-foreground/40 mt-0.5">{new Date(msg.timestamp).toLocaleDateString()}</p>
-                            </div>
-                          ))}
-                        </div>
                       </div>
                     )}
                   </div>
@@ -695,7 +602,7 @@ function CardOverlay({ task }: { task: KanbanTask }) {
 }
 
 function DroppableColumn({
-  col, tasks, onDelete, projectId, isOver, steps, onQuickMove, onCardClick, onReply, clientUserId, clientName, customerUploadTaskIds,
+  col, tasks, onDelete, projectId, isOver, steps, onQuickMove, onCardClick, clientUserId, clientName, customerUploadTaskIds,
 }: {
   col: { key: string; label: string };
   tasks: KanbanTask[];
@@ -705,7 +612,6 @@ function DroppableColumn({
   steps: WorkflowStep[];
   onQuickMove: (task: KanbanTask, targetColumn: ColumnKey) => void;
   onCardClick: (task: KanbanTask) => void;
-  onReply: (reportId: number, reply: string) => Promise<void>;
   clientUserId?: number | null;
   clientName?: string | null;
   customerUploadTaskIds?: Set<number>;
@@ -742,7 +648,6 @@ function DroppableColumn({
             steps={steps}
             onQuickMove={onQuickMove}
             onCardClick={onCardClick}
-            onReply={onReply}
             clientUserId={clientUserId}
             clientName={clientName}
             hasCustomerUpload={customerUploadTaskIds?.has(task.id)}
@@ -864,27 +769,6 @@ function KanbanBoard({
     setPendingMove(null);
   };
 
-  const handleReply = async (reportId: number, reply: string): Promise<void> => {
-    try {
-      const res = await fetchWithAuth(`/api/admin/status-reports/${reportId}/reply`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reply }),
-      });
-      if (!res.ok) {
-        const data = await res.json() as { error?: string };
-        toast({ title: "Reply failed", description: data.error ?? "Could not send reply.", variant: "destructive" });
-        throw new Error(data.error ?? "Reply failed");
-      }
-      onMutation();
-    } catch (err) {
-      if (!(err instanceof Error && err.message === "Reply failed")) {
-        toast({ title: "Reply failed", description: "Could not send reply. Please try again.", variant: "destructive" });
-      }
-      throw err;
-    }
-  };
-
   const isWaitingModal = pendingMove?.targetColumn === "waiting_on_customer";
   const isCompletedModal = pendingMove?.targetColumn === "completed";
 
@@ -904,7 +788,6 @@ function KanbanBoard({
               steps={steps}
               onQuickMove={interceptMove}
               onCardClick={onCardClick}
-              onReply={handleReply}
               clientUserId={clientUserId}
               clientName={clientName}
               customerUploadTaskIds={customerUploadTaskIds}
@@ -1181,7 +1064,6 @@ export default function ProjectDetailPage() {
   const [savingStepDesc, setSavingStepDesc] = useState<Record<number, boolean>>({});
 
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<{ taskId: number } | null>(null);
-  const [statusReportOpen, setStatusReportOpen] = useState(false);
 
   const [spFolderCreating, setSpFolderCreating] = useState(false);
   const [automationFiring, setAutomationFiring] = useState(false);
@@ -2157,15 +2039,6 @@ export default function ProjectDetailPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7 8v2a2 2 0 002 2h6a2 2 0 002-2V8M9 12l3 3 3-3M12 3v12" />
               </svg>
               Import JSON
-            </button>
-            <button
-              onClick={() => setStatusReportOpen(true)}
-              className="flex items-center gap-1.5 border border-primary text-primary text-sm font-semibold px-3 py-2 rounded-lg hover:bg-primary/10 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Generate Status Report
             </button>
             <button
               onClick={() => setAddStepOpen(s => !s)}
@@ -3371,48 +3244,6 @@ export default function ProjectDetailPage() {
 
       {/* ── Closure Sign-Off ────────────────────────────────────────────────── */}
       <ClosureCard projectId={projectId} projectStatus={project?.status} fetchWithAuth={fetchWithAuth} toast={toast} />
-
-      {/* Status Report slide-over */}
-      <Dialog open={statusReportOpen} onOpenChange={open => { if (!open) setStatusReportOpen(false); }}>
-        <DialogContent className="max-w-5xl w-full max-h-[90vh] overflow-y-auto p-0">
-          <DialogHeader className="px-6 pt-5 pb-0">
-            <DialogTitle className="flex items-center gap-2 text-foreground">
-              <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Generate Status Report — {project.title}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="px-6 pb-6 pt-4">
-            {statusReportOpen && (
-              <StatusReportForm
-                key={`sr-${projectId}`}
-                lockedProjectId={projectId ?? undefined}
-                embedded
-                autoFill
-                onSaved={(saved: StatusReport) => {
-                  setStatusReportOpen(false);
-                  toast({
-                    title: "Status report saved",
-                    description: (
-                      <span>
-                        &ldquo;{saved.title}&rdquo; was created.{" "}
-                        <button
-                          onClick={() => navigate(`/crm/status-reports?report=${saved.id}`)}
-                          className="underline font-semibold hover:opacity-80 transition-opacity"
-                        >
-                          View Report
-                        </button>
-                      </span>
-                    ),
-                  });
-                }}
-                onCancel={() => setStatusReportOpen(false)}
-              />
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* JSON Import dialog */}
       <Dialog open={jsonImportOpen} onOpenChange={open => { if (!open) setJsonImportOpen(false); }}>
