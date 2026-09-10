@@ -39,9 +39,24 @@
                 </Border>
                 <StackPanel x:Name="BookmarksList" Margin="0,4,0,12" />
 
-                <!-- VIP lookup — #3484, not built yet: real stated empty state, not a fake box. -->
+                <!-- VIP lookup — #3484: real check against msp-vip-classifications before acting
+                     on a user (surfaced here, and inline in the Console/Remediation Run flow). -->
                 <TextBlock Text="VIP LOOKUP" Foreground="#858585" FontSize="10" FontWeight="Bold" Margin="4,8,0,4" />
-                <TextBlock Text="Not available yet — Feature #3484." Foreground="#5A5A5A" FontSize="11"
+                <Border Margin="4,0,4,4" Background="#222222" CornerRadius="4" BorderBrush="#333333" BorderThickness="1" Padding="8,4">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="VipUpnBox" Grid.Column="0" Background="Transparent" BorderThickness="0"
+                                 Foreground="#E0E0E0" CaretBrush="#FFFFFF" FontSize="11"
+                                 ToolTip="Principal UPN, e.g. alice@contoso.com"
+                                 KeyDown="VipUpnBox_KeyDown" />
+                        <Button x:Name="VipCheckButton" Grid.Column="1" Content="Check" FontSize="10"
+                                Padding="6,2" Margin="6,0,0,0" Click="VipCheckButton_Click" />
+                    </Grid>
+                </Border>
+                <TextBlock x:Name="VipResultText" Text="" Foreground="#5A5A5A" FontSize="11"
                            TextWrapping="Wrap" Margin="4,0,4,12" />
 
                 <!-- Consent status — #3485, not built yet. -->

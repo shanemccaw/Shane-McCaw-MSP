@@ -37,6 +37,7 @@ public partial class MainWindow : FluentWindow
     private readonly IChangeRequestReplayService _changeRequestReplayService;
     private readonly IChangeControlService _changeControlService;
     private readonly IRemediationTrackerService _remediationTrackerService;
+    private readonly IVipClassificationsService _vipClassificationsService;
     private readonly ILaunchControlActionsService _launchControlActionsService;
     private readonly IAdminRetainerService _adminRetainerService;
     private readonly IRunbooksService _runbooksService;
@@ -72,6 +73,7 @@ public partial class MainWindow : FluentWindow
         _tenantModuleConnectionService = new TenantModuleConnectionService(_tenantService, _consoleService);
         _changeControlService = new ChangeControlService();
         _remediationTrackerService = new RemediationTrackerService();
+        _vipClassificationsService = new VipClassificationsService();
         _launchControlActionsService = new LaunchControlActionsService();
         _adminRetainerService = new AdminRetainerService();
         _runbooksService = new RunbooksService();
@@ -116,6 +118,7 @@ public partial class MainWindow : FluentWindow
                 await OpenPortalTabAsync(_tenantService.CurrentTenant, portalType);
             }
         };
+        LeftReferencePanelControl.VipLookupRequested += upn => RunVipLookup(upn);
 
         InitializeShell();
         InitializeStatusBar();
@@ -1865,6 +1868,57 @@ public partial class MainWindow : FluentWindow
         _shellRegistry.OpenRecord(spec);
     }
 
+    // ---- VIP classification lookup (#3484) — real safety check surfaced in the left panel and
+    // inline before the Script Library "Run" action fires (same shared path Console (#3459) and
+    // Remediation execution (#3471) both run catalog-backed items through). -------------------
+
+    /// <summary>Left panel's "Check" button — resolves the real customer scope (same gap
+    /// <see cref="TryResolveLaunchControlScope"/> already documents honestly) and reports the
+    /// real classification back, or the real reason none could be checked.</summary>
+    private void RunVipLookup(string upn)
+    {
+        if (!TryResolveLaunchControlScope(out _, out var customerId))
+        {
+            var reason = !_authService.IsAuthenticated
+                ? "Sign in to check VIP status"
+                : "VIP lookup needs a real customer id — TenantService is fixture data (#3540)";
+            LeftReferencePanelControl.ShowVipLookupResult(upn, null, reason);
+            return;
+        }
+
+        try
+        {
+            var classification = FindVipClassification(customerId, upn);
+            if (classification == null)
+            {
+                LeftReferencePanelControl.ShowVipLookupResult(upn, null, "No classification on record.");
+                return;
+            }
+
+            var detail = classification.IsVip
+                ? $"classified by {classification.ClassifiedByName ?? classification.Source} on {classification.ClassifiedAt:d}"
+                : $"de-classified ({classification.Source}) on {classification.ClassifiedAt:d}";
+            LeftReferencePanelControl.ShowVipLookupResult(upn, classification.IsVip, detail);
+        }
+        catch (VipClassificationsException ex)
+        {
+            LeftReferencePanelControl.ShowVipLookupResult(upn, null, $"Lookup failed: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            LeftReferencePanelControl.ShowVipLookupResult(upn, null, $"Lookup failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Real GET against `msp-vip-classifications`, matched by UPN case-insensitively —
+    /// the endpoint has no by-UPN filter, so this fetches the customer's real list and finds the
+    /// row client-side rather than inventing a query param the route doesn't support.</summary>
+    private VipClassification? FindVipClassification(int customerId, string upn)
+    {
+        var classifications = _vipClassificationsService.GetClassificationsAsync(customerId).GetAwaiter().GetResult();
+        return classifications.FirstOrDefault(c => string.Equals(c.PrincipalUpn, upn, StringComparison.OrdinalIgnoreCase));
+    }
+
     /// <summary>Real MSP+customer id resolution shared by every real MSP-console call that needs
     /// one — Launch Control (#3460), ad-hoc retainer hours (#3464), and now Runbooks (#3479). As
     /// of #3501 the <paramref name="mspId"/> comes from the real signed-in session (users.msp_id
@@ -2028,6 +2082,7 @@ public partial class MainWindow : FluentWindow
     {
         ShowDocument(ConsolePanel);
         ConsolePanel.AppendExternal($"[Script Library] Running \"{action.ActionName}\" against customer {customerId}…");
+        SurfaceVipStatusBeforeExecute(customerId, variableValues);
 
         try
         {
@@ -2056,6 +2111,57 @@ public partial class MainWindow : FluentWindow
         catch (Exception ex)
         {
             ConsolePanel.AppendExternal($"[Script Library] Exception: {ex.Message}");
+        }
+    }
+
+    /// <summary>#3484's own scope: "surface whether a user is VIP-classified before executing
+    /// anything against them," in the Console (#3459) and Remediation execution (#3471) flows —
+    /// both of which run catalog-backed items through this same <see cref="RunScriptLibraryAction"/>
+    /// path. A required variable is treated as a target-user field when its filled-in value looks
+    /// like a UPN (contains '@') — the catalog carries no structured "this variable is a
+    /// principal" flag, so this is the same real signal a human reads off the value itself. This
+    /// surfaces information; it does not block the run — the issue's own wording is "surface,"
+    /// not "gate."</summary>
+    private void SurfaceVipStatusBeforeExecute(int customerId, System.Collections.Generic.Dictionary<string, string> variableValues)
+    {
+        var candidateUpns = variableValues.Values
+            .Where(v => !string.IsNullOrWhiteSpace(v) && v.Contains('@'))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (candidateUpns.Count == 0)
+        {
+            return;
+        }
+
+        if (customerId <= 0)
+        {
+            ConsolePanel.AppendExternal("[VIP Check] Skipped — no real customer id yet (#3540).");
+            return;
+        }
+
+        foreach (var upn in candidateUpns)
+        {
+            try
+            {
+                var classification = FindVipClassification(customerId, upn);
+                if (classification == null)
+                {
+                    ConsolePanel.AppendExternal($"[VIP Check] {upn}: no classification on record.");
+                }
+                else if (classification.IsVip)
+                {
+                    ConsolePanel.AppendExternal($"[VIP Check] {upn} is VIP-classified — proceed with caution.");
+                }
+                else
+                {
+                    ConsolePanel.AppendExternal($"[VIP Check] {upn}: not VIP-classified.");
+                }
+            }
+            catch (VipClassificationsException ex)
+            {
+                ConsolePanel.AppendExternal($"[VIP Check] {upn}: lookup failed — {ex.Message}");
+            }
         }
     }
 
@@ -2532,6 +2638,7 @@ public partial class MainWindow : FluentWindow
         _breakGlassService.AuthToken = token;
         _adminRetainerService.AuthToken = token;
         _remediationTrackerService.AuthToken = token;
+        _vipClassificationsService.AuthToken = token;
         _retainerService.AuthToken = token;
         _runbooksService.AuthToken = token;
         _poamsService.AuthToken = token;

@@ -24,6 +24,10 @@ public partial class LeftReferencePanel : UserControl
 {
     public event Action<PortalType>? BookmarkSelected;
 
+    /// <summary>Raised when the operator submits a UPN to check — #3484. The host resolves
+    /// the real customer scope and reports back via <see cref="ShowVipLookupResult"/>.</summary>
+    public event Action<string>? VipLookupRequested;
+
     private readonly List<Button> _bookmarkButtons = new();
 
     private static readonly (PortalType Type, string Name, string SubUrl, string Color)[] Bookmarks =
@@ -106,5 +110,52 @@ public partial class LeftReferencePanel : UserControl
                 ? Visibility.Visible
                 : Visibility.Collapsed;
         }
+    }
+
+    // ---- VIP lookup (#3484) — real check against msp-vip-classifications, surfaced before
+    // acting on a user in Console/Remediation execution flows. This box is the same "before I
+    // touch this account" safety check, addressable directly. ----------------------------------
+
+    private void VipCheckButton_Click(object sender, RoutedEventArgs e) => SubmitVipLookup();
+
+    private void VipUpnBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter)
+        {
+            SubmitVipLookup();
+        }
+    }
+
+    private void SubmitVipLookup()
+    {
+        var upn = VipUpnBox.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(upn))
+        {
+            return;
+        }
+
+        VipResultText.Text = "Checking…";
+        VipResultText.Foreground = Brushes.Gray;
+        VipLookupRequested?.Invoke(upn);
+    }
+
+    /// <summary>Host reports the real result back — never guessed client-side. <paramref name="isVip"/>
+    /// is null when the principal has no classification row at all (neither told nor discovered).</summary>
+    public void ShowVipLookupResult(string upn, bool? isVip, string? detail)
+    {
+        if (!string.Equals(VipUpnBox.Text?.Trim(), upn, StringComparison.OrdinalIgnoreCase))
+        {
+            return; // operator already typed something else — don't overwrite with a stale result
+        }
+
+        VipResultText.Text = isVip switch
+        {
+            true => $"VIP — {detail}",
+            false => $"Not VIP — {detail}",
+            null => detail ?? "No classification on record.",
+        };
+        VipResultText.Foreground = isVip == true
+            ? (Brush)new BrushConverter().ConvertFromString("#F2A900")!
+            : Brushes.Gray;
     }
 }
