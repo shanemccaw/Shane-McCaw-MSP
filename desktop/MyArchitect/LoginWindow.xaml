@@ -1,0 +1,98 @@
+<ui:FluentWindow x:Class="MyArchitect.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        mc:Ignorable="d"
+        Title="Sign in — MyArchitect"
+        Height="560" Width="460"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        ExtendsContentIntoTitleBar="True"
+        WindowBackdropType="Mica">
+
+    <ui:FluentWindow.Resources>
+        <Style x:Key="LoginInput" TargetType="Control">
+            <Setter Property="Background" Value="#252526" />
+            <Setter Property="Foreground" Value="#E0E0E0" />
+            <Setter Property="BorderBrush" Value="#3C3C3C" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+        <Style x:Key="LoginPrimary" TargetType="Button">
+            <Setter Property="Background" Value="#0E639C" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style x:Key="LoginLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#858585" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style x:Key="LinkButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#4DA3E0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+        </Style>
+    </ui:FluentWindow.Resources>
+
+    <Grid Background="#1E1E1E">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="MyArchitect" ShowMaximize="False" ShowMinimize="False" />
+
+        <!-- ============ CREDENTIALS ============ -->
+        <StackPanel x:Name="CredentialsPanel" Grid.Row="1"
+                    MaxWidth="360" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Text="Sign in to MyArchitect" Foreground="#FFFFFF" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,6" />
+            <TextBlock TextWrapping="Wrap" Foreground="#B0B0B0" FontSize="12" Margin="0,0,0,20"
+                       Text="Use your MSP operator account — the same credentials as the Portal and Admin Panel." />
+
+            <TextBlock Style="{StaticResource LoginLabel}" Text="Email" />
+            <TextBox x:Name="EmailBox" Style="{StaticResource LoginInput}" />
+
+            <TextBlock Style="{StaticResource LoginLabel}" Text="Password" />
+            <PasswordBox x:Name="PasswordBox" Style="{StaticResource LoginInput}" />
+
+            <TextBlock x:Name="CredentialsError" Foreground="#F48771" FontSize="12" TextWrapping="Wrap"
+                       Visibility="Collapsed" Margin="0,0,0,12" />
+
+            <Button x:Name="SignInButton" Style="{StaticResource LoginPrimary}" Content="Sign in"
+                    HorizontalAlignment="Stretch" Click="SignInButton_Click" />
+
+            <TextBlock x:Name="EndpointNote" Foreground="#5A5A5A" FontSize="10" Margin="0,16,0,0" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!-- ============ MFA ============ -->
+        <StackPanel x:Name="MfaPanel" Grid.Row="1" Visibility="Collapsed"
+                    MaxWidth="360" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Text="Two-factor authentication" Foreground="#FFFFFF" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,6" />
+            <TextBlock x:Name="MfaSubtitle" TextWrapping="Wrap" Foreground="#B0B0B0" FontSize="12" Margin="0,0,0,20"
+                       Text="Enter the code from your authenticator app." />
+
+            <TextBlock Style="{StaticResource LoginLabel}" Text="Authentication code" />
+            <TextBox x:Name="MfaCodeBox" Style="{StaticResource LoginInput}" MaxLength="10" />
+
+            <TextBlock x:Name="MfaError" Foreground="#F48771" FontSize="12" TextWrapping="Wrap"
+                       Visibility="Collapsed" Margin="0,0,0,12" />
+
+            <Button x:Name="VerifyButton" Style="{StaticResource LoginPrimary}" Content="Verify"
+                    HorizontalAlignment="Stretch" Click="VerifyButton_Click" />
+
+            <Button Style="{StaticResource LinkButton}" Content="Back to sign in" Margin="0,16,0,0" Click="BackToCredentials_Click" />
+        </StackPanel>
+    </Grid>
+</ui:FluentWindow>

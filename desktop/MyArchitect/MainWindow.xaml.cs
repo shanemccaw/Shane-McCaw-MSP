@@ -38,6 +38,7 @@ public partial class MainWindow : FluentWindow
     private readonly IChangeControlService _changeControlService;
     private readonly ILaunchControlActionsService _launchControlActionsService;
     private readonly IVaultService _vaultService;
+    private readonly IAuthService _authService;
 
     private readonly ShellRegistry _shellRegistry = new();
     private FixedRibbonRenderer? _ribbonRenderer;
@@ -64,6 +65,8 @@ public partial class MainWindow : FluentWindow
         _changeControlService = new ChangeControlService();
         _launchControlActionsService = new LaunchControlActionsService();
         _vaultService = new VaultService();
+        _authService = new AuthService();
+        _authService.SessionChanged += OnAuthSessionChanged;
         _consoleService.CommandExecuted += (s, record) => _consoleHistoryService.Add(record);
 
         ShellTenantSwitcher.Initialize(_tenantService);
@@ -443,17 +446,18 @@ public partial class MainWindow : FluentWindow
         _shellRegistry.OpenRecord(spec);
     }
 
-    /// <summary>Real MSP+customer id resolution for every Launch Control call. Returns false
-    /// today because MyArchitect has no auth/session mechanism anywhere to source either id
-    /// from (#3501, also noted on <see cref="ILaunchControlActionsService"/> itself) — Tenant
-    /// only ever carries a TenantGuid (string), never a numeric mspId/tenants.id. Kept as its
-    /// own resolver, not inlined, so the one thing that changes once #3501 lands is this
-    /// method's body — the gallery/record-workspace/execute wiring below it doesn't move.</summary>
+    /// <summary>Real MSP+customer id resolution for every Launch Control call. As of #3501 the
+    /// <paramref name="mspId"/> now comes from the real signed-in session (users.msp_id claim).
+    /// The <paramref name="customerId"/> — the target customer being operated on — still cannot
+    /// be resolved: MyArchitect's <see cref="TenantService"/> is fixture data (fake tenant GUIDs,
+    /// no numeric tenants.id), so there is no real customer to scope to. That remaining gap is a
+    /// separate data-loading problem (filed as its own finding), not an auth one. Returns true
+    /// only when BOTH ids are real.</summary>
     private bool TryResolveLaunchControlScope(out int mspId, out int customerId)
     {
-        mspId = 0;
-        customerId = 0;
-        return false;
+        mspId = _authService.MspId ?? 0;
+        customerId = 0; // no real customer list yet — TenantService is fixture (separate finding)
+        return mspId > 0 && customerId > 0;
     }
 
     /// <summary>Real catalog rows, real mapping (tile/name/sub from
@@ -465,14 +469,14 @@ public partial class MainWindow : FluentWindow
     {
         if (!TryResolveLaunchControlScope(out var mspId, out var customerId))
         {
+            // Distinguish the two real remaining reasons, honestly (#3501): not signed in vs.
+            // signed in but with no real customer to scope to (fixture TenantService).
+            var reason = !_authService.IsAuthenticated
+                ? "Sign in to load the Script Library"
+                : "Script Library needs a real customer list — TenantService is fixture data";
             return new[]
             {
-                new GalleryRowSpec
-                {
-                    Id = "blocked",
-                    Name = "Script Library needs MSP/customer identity — not yet resolvable (#3501)",
-                    OnSelect = () => { },
-                },
+                new GalleryRowSpec { Id = "blocked", Name = reason, OnSelect = () => { } },
             };
         }
 
@@ -725,10 +729,87 @@ public partial class MainWindow : FluentWindow
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        // Real login/session bootstrap (#3501): try to silently restore a session from the
+        // DPAPI-stored refresh token; if that fails, prompt the operator to sign in. Either way
+        // the resolved token/mspId is pushed into every service via OnAuthSessionChanged.
+        var restored = await _authService.TryRestoreSessionAsync();
+        if (!restored)
+        {
+            ShowLoginDialog();
+        }
+        ApplyAuthState();
+
         if (_tenantService.CurrentTenant != null)
         {
             LeftReferencePanelControl.SetTenantName(_tenantService.CurrentTenant.Name);
             await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.M365Admin);
+        }
+    }
+
+    // ---- Auth/session wiring (#3501) -------------------------------------------------------
+
+    /// <summary>Fired by <see cref="IAuthService"/> on sign-in, sign-out, and every token
+    /// refresh — possibly from the refresh timer thread, so marshal to the UI thread before
+    /// touching services/UI.</summary>
+    private void OnAuthSessionChanged()
+    {
+        if (Dispatcher.CheckAccess()) ApplyAuthState();
+        else Dispatcher.Invoke(ApplyAuthState);
+    }
+
+    /// <summary>Push the current session's bearer token into every service that attaches an
+    /// Authorization header, and refresh the status-bar sign-in indicator. This is the single
+    /// place the token is fanned out, so a refresh updates all of them at once.</summary>
+    private void ApplyAuthState()
+    {
+        var token = _authService.AccessToken;
+
+        _launchControlActionsService.AuthToken = token;
+        _changeControlService.AuthToken = token;
+        TelemetryDashboardView.SetAuthToken(token);
+        SowAssessmentDashboardView.SetAuthToken(token);
+        EvidenceGalleryPanel.SetAuthToken(token);
+
+        UpdateSessionStatusUi();
+    }
+
+    private void UpdateSessionStatusUi()
+    {
+        if (_authService.IsAuthenticated)
+        {
+            var email = _authService.CurrentSession?.User.Email;
+            SessionStatusButton.Content = string.IsNullOrWhiteSpace(email)
+                ? "Signed in · Sign out"
+                : $"Signed in: {email} · Sign out";
+        }
+        else
+        {
+            SessionStatusButton.Content = "Not signed in · Sign in";
+        }
+    }
+
+    private void ShowLoginDialog()
+    {
+        var login = new LoginWindow(_authService) { Owner = IsLoaded ? this : null };
+        login.ShowDialog();
+    }
+
+    private async void SessionStatusButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_authService.IsAuthenticated)
+        {
+            var confirm = System.Windows.MessageBox.Show(
+                "Sign out of MyArchitect? Every auth-gated surface will stop loading real data until you sign in again.",
+                "Sign out", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
+            if (confirm != System.Windows.MessageBoxResult.Yes) return;
+
+            await _authService.SignOutAsync();
+            // OnAuthSessionChanged already re-applied the (now null) token + status.
+        }
+        else
+        {
+            ShowLoginDialog();
+            ApplyAuthState();
         }
     }
 
@@ -742,6 +823,7 @@ public partial class MainWindow : FluentWindow
         }
         _tenantModuleConnectionService.Dispose();
         _consoleService.Dispose();
+        (_authService as IDisposable)?.Dispose();
     }
 
     public async Task<PortalTabItem> OpenPortalTabAsync(Tenant tenant, PortalType portalType, string? customUrl = null)

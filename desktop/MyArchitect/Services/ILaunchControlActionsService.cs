@@ -13,6 +13,10 @@ namespace MyArchitect.Services;
 /// </summary>
 public interface ILaunchControlActionsService
 {
+    /// <summary>Bearer access token from the real MyArchitect session (#3501). Set by the shell
+    /// on sign-in/refresh so this auth-gated endpoint receives a real Authorization header.</summary>
+    string? AuthToken { get; set; }
+
     /// <summary>
     /// Fetches the entitlement-resolved action catalog for one MSP+customer pair.
     /// Served from cache when a fresh-enough entry exists unless

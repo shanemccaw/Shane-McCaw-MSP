@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading.Tasks;
 using MyArchitect.Models;
@@ -17,6 +19,18 @@ public sealed class TelemetryService : ITelemetryService
     private readonly HttpClient _httpClient;
     private readonly string _baseUrl;
 
+    /// <summary>Bearer token attached to every request, sourced from the real MyArchitect
+    /// session (#3501) and pushed in by the shell on sign-in/refresh. All five telemetry
+    /// endpoints are auth-gated; with this unset they 401 — which previously vanished into a
+    /// generic "Backend Standby / Offline" status. When set, real data flows; when a call
+    /// comes back 401/403, that is now surfaced as an authentication failure rather than
+    /// masked as the backend being offline (#3476).</summary>
+    public string? AuthToken { get; set; }
+
+    // Records whether the most recent FetchTelemetryAsync saw a 401/403, so the source-status
+    // line can distinguish "not signed in / not authorized" from "backend genuinely offline".
+    private bool _lastRunHadAuthFailure;
+
     public TelemetryService(HttpClient? httpClient = null, string? baseUrl = null)
     {
         _baseUrl = !string.IsNullOrWhiteSpace(baseUrl)
@@ -27,6 +41,25 @@ public sealed class TelemetryService : ITelemetryService
         {
             Timeout = TimeSpan.FromSeconds(3)
         };
+    }
+
+    /// <summary>Issues a GET with the current <see cref="AuthToken"/> attached as a Bearer
+    /// header, and records a 401/403 into <see cref="_lastRunHadAuthFailure"/> so the caller
+    /// can surface a real auth failure instead of swallowing it as "offline".</summary>
+    private async Task<HttpResponseMessage> SendGetAsync(string url)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        if (!string.IsNullOrWhiteSpace(AuthToken))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AuthToken);
+        }
+
+        var response = await _httpClient.SendAsync(request);
+        if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+        {
+            _lastRunHadAuthFailure = true;
+        }
+        return response;
     }
 
     public async Task<TenantTelemetryDashboard> FetchTelemetryAsync(Tenant tenant, bool sinceYesterdayOnly = false)
@@ -41,6 +74,7 @@ public sealed class TelemetryService : ITelemetryService
         };
 
         bool anyEndpointReached = false;
+        _lastRunHadAuthFailure = false;
 
         // 1. Live Engine Outputs (/api/admin/engines/:key/dashboard)
         string[] engineKeys = { "security", "compliance", "identity", "copilot" };
@@ -48,7 +82,7 @@ public sealed class TelemetryService : ITelemetryService
         {
             try
             {
-                var res = await _httpClient.GetAsync($"{_baseUrl}/api/admin/engines/{key}/dashboard?tenantId={tenant.TenantGuid}");
+                var res = await SendGetAsync($"{_baseUrl}/api/admin/engines/{key}/dashboard?tenantId={tenant.TenantGuid}");
                 if (res.IsSuccessStatusCode)
                 {
                     anyEndpointReached = true;
@@ -75,7 +109,7 @@ public sealed class TelemetryService : ITelemetryService
         // 2. Drift Changes (/api/admin/drift/events or /api/admin/engines/drift/history)
         try
         {
-            var res = await _httpClient.GetAsync($"{_baseUrl}/api/admin/drift/events?tenantId={tenant.TenantGuid}");
+            var res = await SendGetAsync($"{_baseUrl}/api/admin/drift/events?tenantId={tenant.TenantGuid}");
             if (res.IsSuccessStatusCode)
             {
                 anyEndpointReached = true;
@@ -106,7 +140,7 @@ public sealed class TelemetryService : ITelemetryService
         // 3. SOW Progress (/api/portal/remediation/checklist)
         try
         {
-            var res = await _httpClient.GetAsync($"{_baseUrl}/api/portal/remediation/checklist?tenantId={tenant.TenantGuid}");
+            var res = await SendGetAsync($"{_baseUrl}/api/portal/remediation/checklist?tenantId={tenant.TenantGuid}");
             if (res.IsSuccessStatusCode)
             {
                 anyEndpointReached = true;
@@ -141,7 +175,7 @@ public sealed class TelemetryService : ITelemetryService
         //    same real tenant_engine_snapshots history the health engine's copilot sub-score reads from)
         try
         {
-            var res = await _httpClient.GetAsync($"{_baseUrl}/api/admin/engines/copilot/history?customerId={tenant.Id}");
+            var res = await SendGetAsync($"{_baseUrl}/api/admin/engines/copilot/history?customerId={tenant.Id}");
             if (res.IsSuccessStatusCode)
             {
                 anyEndpointReached = true;
@@ -177,7 +211,7 @@ public sealed class TelemetryService : ITelemetryService
         // 5. Aggregated Customer Timeline Feed (/api/portal/customer/timeline or /api/msp/timeline)
         try
         {
-            var res = await _httpClient.GetAsync($"{_baseUrl}/api/portal/customer/timeline?tenantId={tenant.TenantGuid}");
+            var res = await SendGetAsync($"{_baseUrl}/api/portal/customer/timeline?tenantId={tenant.TenantGuid}");
             if (res.IsSuccessStatusCode)
             {
                 anyEndpointReached = true;
@@ -217,7 +251,12 @@ public sealed class TelemetryService : ITelemetryService
 
         if (!anyEndpointReached)
         {
-            dashboard.SourceStatus = "Live Telemetry (Backend Standby / Offline)";
+            // Surface a real auth failure honestly instead of masking it as "offline" (#3476,
+            // #3501): if every call came back 401/403, the backend is reachable — we're just
+            // not signed in / not authorized — which is an actionable, different problem.
+            dashboard.SourceStatus = _lastRunHadAuthFailure
+                ? "Live Telemetry (Authentication required — sign in)"
+                : "Live Telemetry (Backend Standby / Offline)";
         }
 
         return dashboard;

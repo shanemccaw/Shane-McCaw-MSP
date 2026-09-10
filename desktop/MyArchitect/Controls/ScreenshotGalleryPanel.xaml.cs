@@ -28,6 +28,10 @@ public partial class ScreenshotGalleryPanel : UserControl
     {
     }
 
+    /// <summary>Push the current session's bearer token (#3501) into the evidence-post client so
+    /// the auth-gated attach-evidence endpoints receive a real Authorization header.</summary>
+    public void SetAuthToken(string? token) => _evidencePostClient.AuthToken = token;
+
     public ScreenshotGalleryPanel(IEvidencePostClient evidencePostClient)
     {
         InitializeComponent();

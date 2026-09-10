@@ -48,6 +48,18 @@ public partial class SowAssessmentView : UserControl
         }
     }
 
+    /// <summary>Push the current session's bearer token (#3501) into the assessment service and
+    /// re-load, so a view that first rendered "Authentication required" refreshes with real data
+    /// the moment the operator signs in (or a token refresh lands).</summary>
+    public void SetAuthToken(string? token)
+    {
+        _assessmentService.AuthToken = token;
+        if (_tenantService?.CurrentTenant != null)
+        {
+            _ = LoadForTenantAsync(_tenantService.CurrentTenant);
+        }
+    }
+
     public async Task LoadForTenantAsync(Tenant tenant)
     {
         try

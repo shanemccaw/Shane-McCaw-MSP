@@ -14,6 +14,11 @@ namespace MyArchitect.Services;
 /// </summary>
 public interface IChangeControlService
 {
+    /// <summary>Bearer access token from the real MyArchitect session (#3501). Set by the shell
+    /// on sign-in/refresh so these auth-gated change-control endpoints receive a real
+    /// Authorization header.</summary>
+    string? AuthToken { get; set; }
+
     /// <summary>
     /// GET /api/msp/change-requests — the caller's full MSP change-request
     /// queue. That route has no per-tenant filter server-side, so when

@@ -27,6 +27,10 @@ public sealed class EvidencePostResult
 /// </summary>
 public interface IEvidencePostClient
 {
+    /// <summary>Bearer access token from the real MyArchitect session (#3501). Set by the shell
+    /// on sign-in/refresh so these auth-gated evidence endpoints receive a real Authorization header.</summary>
+    string? AuthToken { get; set; }
+
     /// <summary>
     /// True now that #3503 shipped the real attach-evidence endpoints — the backend
     /// schema/route gap that previously blocked this is resolved.

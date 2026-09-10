@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading.Tasks;
 using MyArchitect.Models;
@@ -17,6 +19,14 @@ public sealed class AssessmentService : IAssessmentService
     private readonly HttpClient _httpClient;
     private readonly string _baseUrl;
 
+    /// <summary>Bearer token from the real MyArchitect session (#3501), pushed in by the shell
+    /// on sign-in/refresh. These portal/admin endpoints are auth-gated; unset they 401, which
+    /// used to disappear into a generic "Standby / Disconnected" status. When a call comes back
+    /// 401/403 that is now surfaced as an authentication failure rather than masked as offline.</summary>
+    public string? AuthToken { get; set; }
+
+    private bool _lastRunHadAuthFailure;
+
     public AssessmentService(HttpClient? httpClient = null, string? baseUrl = null)
     {
         _baseUrl = !string.IsNullOrWhiteSpace(baseUrl)
@@ -27,6 +37,24 @@ public sealed class AssessmentService : IAssessmentService
         {
             Timeout = TimeSpan.FromSeconds(3)
         };
+    }
+
+    /// <summary>Issues a GET with the current <see cref="AuthToken"/> as a Bearer header and
+    /// records a 401/403 so the snapshot's Source line can name a real auth failure (#3501).</summary>
+    private async Task<HttpResponseMessage> SendGetAsync(string url)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        if (!string.IsNullOrWhiteSpace(AuthToken))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AuthToken);
+        }
+
+        var response = await _httpClient.SendAsync(request);
+        if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+        {
+            _lastRunHadAuthFailure = true;
+        }
+        return response;
     }
 
     public async Task<TenantAssessmentSnapshot> FetchLiveAssessmentAsync(Tenant tenant)
@@ -42,11 +70,12 @@ public sealed class AssessmentService : IAssessmentService
         };
 
         bool anyEndpointReached = false;
+        _lastRunHadAuthFailure = false;
 
         // 1. Copilot Gate & Pillar Scores (/portal/pillars)
         try
         {
-            var res = await _httpClient.GetAsync($"{_baseUrl}/api/portal/pillars?tenantId={tenant.TenantGuid}");
+            var res = await SendGetAsync($"{_baseUrl}/api/portal/pillars?tenantId={tenant.TenantGuid}");
             if (res.IsSuccessStatusCode)
             {
                 anyEndpointReached = true;
@@ -79,7 +108,7 @@ public sealed class AssessmentService : IAssessmentService
         // 2. Drift History (/api/admin/drift/events or /admin/engines/drift/history)
         try
         {
-            var res = await _httpClient.GetAsync($"{_baseUrl}/api/admin/drift/events?tenantId={tenant.TenantGuid}");
+            var res = await SendGetAsync($"{_baseUrl}/api/admin/drift/events?tenantId={tenant.TenantGuid}");
             if (res.IsSuccessStatusCode)
             {
                 anyEndpointReached = true;
@@ -114,7 +143,7 @@ public sealed class AssessmentService : IAssessmentService
         // 3. Oversharing Sites (/api/portal/oversharing/sites)
         try
         {
-            var res = await _httpClient.GetAsync($"{_baseUrl}/api/portal/oversharing/sites?tenantId={tenant.TenantGuid}");
+            var res = await SendGetAsync($"{_baseUrl}/api/portal/oversharing/sites?tenantId={tenant.TenantGuid}");
             if (res.IsSuccessStatusCode)
             {
                 anyEndpointReached = true;
@@ -144,7 +173,7 @@ public sealed class AssessmentService : IAssessmentService
         // 4. DLP & PII Governance Signals (/api/portal/pii-governance)
         try
         {
-            var res = await _httpClient.GetAsync($"{_baseUrl}/api/portal/pii-governance?tenantId={tenant.TenantGuid}");
+            var res = await SendGetAsync($"{_baseUrl}/api/portal/pii-governance?tenantId={tenant.TenantGuid}");
             if (res.IsSuccessStatusCode)
             {
                 anyEndpointReached = true;
@@ -163,7 +192,7 @@ public sealed class AssessmentService : IAssessmentService
         // 5. Remediation Progress (/api/portal/remediation-checklist)
         try
         {
-            var res = await _httpClient.GetAsync($"{_baseUrl}/api/portal/remediation-checklist?tenantId={tenant.TenantGuid}");
+            var res = await SendGetAsync($"{_baseUrl}/api/portal/remediation-checklist?tenantId={tenant.TenantGuid}");
             if (res.IsSuccessStatusCode)
             {
                 anyEndpointReached = true;
@@ -200,7 +229,11 @@ public sealed class AssessmentService : IAssessmentService
 
         if (!anyEndpointReached)
         {
-            snapshot.Source = "Live Backend (API Server Standby / Disconnected)";
+            // Distinguish a real auth failure from the backend being offline (#3501/#3476):
+            // if every call 401/403'd, the server is reachable — we're just not signed in.
+            snapshot.Source = _lastRunHadAuthFailure
+                ? "Live Backend (Authentication required — sign in)"
+                : "Live Backend (API Server Standby / Disconnected)";
         }
 
         return snapshot;
