@@ -44,6 +44,7 @@ public partial class MainWindow : FluentWindow
     private readonly IDocumentHubService _documentHubService;
     private readonly IVaultService _vaultService;
     private readonly IBreakGlassService _breakGlassService;
+    private readonly ISupportTicketsService _supportTicketsService;
     private readonly IAuthService _authService;
     private readonly IRetainerService _retainerService;
     private readonly IPoamsService _poamsService;
@@ -81,6 +82,7 @@ public partial class MainWindow : FluentWindow
         _documentHubService = new DocumentHubService();
         _vaultService = new VaultService();
         _breakGlassService = new BreakGlassService();
+        _supportTicketsService = new SupportTicketsService();
         _authService = new AuthService();
         _retainerService = new RetainerService();
         _poamsService = new PoamsService();
@@ -167,13 +169,14 @@ public partial class MainWindow : FluentWindow
 
         RegisterHomeTab();
         RegisterConsoleTab();
+        RegisterWatchTab();
         RegisterDocumentsTab();
         RegisterAdminTab();
-        // Watch is intentionally left unregistered here — its real content is #3483/#3487/#3490,
-        // separate Features. FixedRibbonRenderer renders a stated empty state until those land
-        // (SHELL.md §6) — never a fabricated placeholder group. Admin now carries Vault (#3461);
-        // Audit Log (#3489), Break-Glass (#3480) and consent status (#3485) attach here as they
-        // land. Documents now carries Document Hub (#3486).
+        // Watch now carries Support Tickets (#3488); Alerts (#3483), Task Queue (#3490) and SLA
+        // breaches (#3487) attach here as they land, consolidated into shared themed groups per
+        // UI_RULES.md §2. Admin now carries Vault (#3461); Audit Log (#3489), Break-Glass (#3480)
+        // and consent status (#3485) attach here as they land. Documents now carries Document Hub
+        // (#3486).
 
         _shellRegistry.RegisterPaletteProvider(BuildPaletteCommands);
     }
@@ -453,6 +456,274 @@ public partial class MainWindow : FluentWindow
             },
         });
     }
+
+    /// <summary>Watch tab (UI_RULES.md §2) — "the one 'what needs me' surface." Alerts (#3483),
+    /// Task Queue (#3490) and SLA breaches (#3487) land here as they're built, consolidated per
+    /// UI_RULES.md's own Watch-tab example. Support Tickets (#3488) is the first group to land on
+    /// this fixed tab: an operator's Zoho Desk queue is exactly this kind of "needs a reply from
+    /// me" surface — a cross-tenant Open-intent list (nothing tenant-specific to select yet, so
+    /// fixed-tab legal), same shape as Break-Glass's pending list on Admin.</summary>
+    private void RegisterWatchTab()
+    {
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Watch, new RibbonGroupSpec
+        {
+            Label = "Support Tickets",
+            Order = 10,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Open Requests",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Every ticket under your MSP's Zoho Desk org — customer requests + chat escalations (GET /api/msp/support/requests, #3488)",
+                    OnSelect = () => OpenSupportTicketsList(),
+                },
+            },
+        });
+    }
+
+    // ---- Support Tickets (#3488) — real msp-support.ts client, full-panel workspaces ------------
+
+    /// <summary>Opens the cross-org ticket list (GET /api/msp/support/requests) as a full-panel
+    /// record workspace. A <c>configured: false</c> response (no Zoho Desk connection yet) renders
+    /// as a real, honest state rather than an error or an empty list indistinguishable from "zero
+    /// tickets." On an auth or transport failure the record states the honest reason.</summary>
+    private void OpenSupportTicketsList()
+    {
+        SupportRequestsList result;
+        try
+        {
+            result = _supportTicketsService.GetRequestsAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "support-tickets",
+                Id = "support-tickets",
+                Eyebrow = "Support Tickets",
+                Title = "Open Requests",
+                Sub = "Could not load",
+                Body = ("Error", DescribeSupportTicketsError(ex)),
+            });
+            return;
+        }
+
+        if (!result.Configured)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "support-tickets",
+                Id = "support-tickets",
+                Eyebrow = "Support Tickets",
+                Title = "Open Requests",
+                Sub = "Zoho Desk isn't connected for this MSP yet",
+                Body = ("Not connected", "No requests can load until Zoho Desk is connected for your org."),
+            });
+            return;
+        }
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "support-tickets",
+            Id = "support-tickets",
+            Eyebrow = "Support Tickets",
+            Title = "Open Requests",
+            Sub = result.Requests.Count == 0
+                ? "No tickets under your MSP's Zoho Desk org"
+                : $"{result.Count} ticket(s), most recently modified first",
+            List = result.Requests.Count == 0
+                ? null
+                : ("Requests", result.Requests.Select(t => new WorkspaceListRow
+                {
+                    Id = t.Id,
+                    Name = t.Subject,
+                    Sub = $"{(string.IsNullOrEmpty(t.TicketNumber) ? $"#{t.Id}" : $"#{t.TicketNumber}")} · {t.Status ?? t.StatusType ?? "?"}",
+                    Right = t.ModifiedTime,
+                    OnSelect = () => OpenSupportTicketRecord(t.Id, t.Subject),
+                }).ToList()),
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Opens one ticket (GET /api/msp/support/requests/:ticketId) as a full-panel record
+    /// with its full operator-visible conversation thread (private notes included) and a
+    /// write-through reply action — public (customer-visible) or internal-only, per the route's
+    /// own <c>isPublic</c> flag. Not confirm-armed: a reply/note isn't destructive.</summary>
+    private void OpenSupportTicketRecord(string ticketId, string? subjectHint)
+    {
+        SupportTicketDetail? detail;
+        try
+        {
+            detail = _supportTicketsService.GetTicketDetailAsync(ticketId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "support-ticket",
+                Id = $"support-ticket-{ticketId}",
+                Eyebrow = "Support Tickets",
+                Title = subjectHint ?? $"Ticket #{ticketId}",
+                Sub = "Could not load",
+                Body = ("Error", DescribeSupportTicketsError(ex)),
+            });
+            return;
+        }
+
+        if (detail == null)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "support-ticket",
+                Id = $"support-ticket-{ticketId}",
+                Eyebrow = "Support Tickets",
+                Title = subjectHint ?? $"Ticket #{ticketId}",
+                Sub = "Not found",
+                Body = ("Not found", "This request no longer exists in your MSP's Zoho Desk org."),
+            });
+            return;
+        }
+
+        var request = detail.Request;
+        var replyMessage = string.Empty;
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "support-ticket",
+            Id = $"support-ticket-{request.Id}",
+            Eyebrow = "Support Tickets",
+            Title = request.Subject,
+            Sub = $"{(string.IsNullOrEmpty(request.TicketNumber) ? $"#{request.Id}" : $"#{request.TicketNumber}")} · {request.Status ?? "?"}",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Status", Value = request.Status ?? "?" },
+                new WorkspaceFact { Label = "Type", Value = request.StatusType ?? "?" },
+                new WorkspaceFact { Label = "Created", Value = request.CreatedTime ?? "?", Prose = true },
+                new WorkspaceFact { Label = "Modified", Value = request.ModifiedTime ?? "?", Prose = true },
+            },
+            List = detail.Thread.Count == 0
+                ? null
+                : ("Conversation", detail.Thread.Select(t => new WorkspaceListRow
+                {
+                    Id = t.Id,
+                    Name = string.IsNullOrEmpty(t.Author) ? "(no author)" : t.Author!,
+                    Sub = $"{(t.Kind == "comment" ? "internal note" : t.Direction == "in" ? "from customer" : "reply")}"
+                          + (t.IsPublic ? "" : " · private") + " · " + t.Content,
+                    Right = t.CreatedTime,
+                    OnSelect = () => { }, // thread entries have no deeper record — display only
+                }).ToList()),
+        };
+
+        spec.Edits.Add(new WorkspaceEdit
+        {
+            Key = "reply-message",
+            Label = "Reply message",
+            Value = string.Empty,
+            OnChange = v => replyMessage = v,
+        });
+        spec.Actions.Add(new WorkspaceAction
+        {
+            Label = "Send reply to customer",
+            OnSelect = () => RunSupportTicketReply(request.Id, request.Subject, () => replyMessage, isPublic: true),
+        });
+        spec.Actions.Add(new WorkspaceAction
+        {
+            Label = "Add internal note",
+            OnSelect = () => RunSupportTicketReply(request.Id, request.Subject, () => replyMessage, isPublic: false),
+        });
+        if (!string.IsNullOrEmpty(request.WebUrl))
+        {
+            spec.Actions.Add(new WorkspaceAction
+            {
+                Label = "Open in Zoho Desk",
+                OnSelect = () => Process.Start(new ProcessStartInfo(request.WebUrl!) { UseShellExecute = true }),
+            });
+        }
+        spec.Actions.Add(new WorkspaceAction
+        {
+            Label = "Back to Open Requests",
+            OnSelect = () => OpenSupportTicketsList(),
+        });
+
+        _shellRegistry.OpenContextual(
+            new TrailEntry("support-ticket", request.Id, request.Subject,
+                () => OpenSupportTicketRecord(request.Id, request.Subject)),
+            new ContextualTabSpec
+            {
+                Id = "support-ticket",
+                Label = "Support Ticket",
+                Groups =
+                {
+                    new RibbonGroupSpec
+                    {
+                        Label = "Actions",
+                        Large = { new RibbonCommandSpec
+                        {
+                            Label = "Send reply to customer",
+                            Intent = RibbonIntent.Record,
+                            OnSelect = () => { },
+                        } },
+                    },
+                },
+            },
+            onSearchEverything: () => PaletteOverlay.Open());
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Performs the real POST .../reply with the operator-supplied message, then reopens
+    /// the ticket record so the new reply/note shows in the conversation immediately. Message is
+    /// validated client-side first to avoid a guaranteed 400.</summary>
+    private void RunSupportTicketReply(string ticketId, string? subjectHint, Func<string> messageGetter, bool isPublic)
+    {
+        var message = (messageGetter() ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(message))
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "support-ticket-reply",
+                Id = $"support-ticket-reply-{ticketId}",
+                Eyebrow = "Support Tickets",
+                Title = subjectHint ?? $"Ticket #{ticketId}",
+                Sub = "Nothing sent",
+                Body = ("Reply", "Enter a message before sending."),
+                Actions = { new WorkspaceAction { Label = "Back to ticket", OnSelect = () => OpenSupportTicketRecord(ticketId, subjectHint) } },
+            });
+            return;
+        }
+
+        try
+        {
+            var result = _supportTicketsService.ReplyAsync(ticketId, message, isPublic).GetAwaiter().GetResult();
+            ConsolePanel.AppendExternal($"[Support Tickets] {result.Message}");
+        }
+        catch (Exception ex)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "support-ticket-reply",
+                Id = $"support-ticket-reply-{ticketId}",
+                Eyebrow = "Support Tickets",
+                Title = subjectHint ?? $"Ticket #{ticketId}",
+                Sub = "Failed",
+                Body = ("Server response", DescribeSupportTicketsError(ex)),
+                Actions = { new WorkspaceAction { Label = "Back to ticket", OnSelect = () => OpenSupportTicketRecord(ticketId, subjectHint) } },
+            });
+            return;
+        }
+
+        OpenSupportTicketRecord(ticketId, subjectHint);
+    }
+
+    /// <summary>Best-effort human message from a <see cref="SupportTicketsServiceException"/> (which
+    /// already parses the route's <c>{ error }</c>) or any other transport error.</summary>
+    private static string DescribeSupportTicketsError(Exception ex) => ex switch
+    {
+        SupportTicketsServiceException stse => stse.Message,
+        _ => ex.Message,
+    };
 
     // ---- Break-Glass Access (#3480) — real msp-break-glass.ts client, full-panel workspaces ----
 
@@ -2750,6 +3021,7 @@ public partial class MainWindow : FluentWindow
             new() { Id = "dest:telemetry", Type = PaletteType.Destination, Name = "Live Telemetry Console", Sub = "Engines, Drift, SOW & Feed", Run = () => ShowTelemetryView() },
             new() { Id = "dest:vault", Type = PaletteType.Destination, Name = "Credential Vault", Sub = "Per-tenant, local-only, DPAPI-encrypted (#3461)", Run = () => ShowDocument(VaultPanel) },
             new() { Id = "dest:break-glass", Type = PaletteType.Destination, Name = "Break-Glass Requests", Sub = "Cross-tenant pending break-glass deliveries (#3480)", Run = () => OpenBreakGlassPendingList() },
+            new() { Id = "dest:support-tickets", Type = PaletteType.Destination, Name = "Support Tickets", Sub = "Every ticket under your MSP's Zoho Desk org (#3488)", Run = () => OpenSupportTicketsList() },
             new() { Id = "act:open-all", Type = PaletteType.Action, Name = "Open all portals", Run = () => _ = OpenAllPortalsAsync() },
             new() { Id = "ans:open-tabs", Type = PaletteType.Answer, Name = "Open portal tabs", Live = _tabs.Count.ToString(), Run = () => { } },
         };
@@ -2869,6 +3141,7 @@ public partial class MainWindow : FluentWindow
         _launchControlActionsService.AuthToken = token;
         _changeControlService.AuthToken = token;
         _breakGlassService.AuthToken = token;
+        _supportTicketsService.AuthToken = token;
         _adminRetainerService.AuthToken = token;
         _remediationTrackerService.AuthToken = token;
         _vipClassificationsService.AuthToken = token;
