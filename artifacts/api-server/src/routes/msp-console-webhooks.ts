@@ -352,6 +352,8 @@ router.get(
 
       const webhookId = req.params["webhookId"] as string;
       const limit = Math.min(Number(req.query["limit"]) || 50, 200);
+      const cursorParam = req.query["cursor"] ? Number(req.query["cursor"]) : undefined;
+      const before = cursorParam != null && Number.isFinite(cursorParam) ? cursorParam : undefined;
 
       const [existing] = await db
         .select({ webhookId: outboundWebhooksTable.webhookId })
@@ -364,8 +366,8 @@ router.get(
         return;
       }
 
-      const deliveries = await getDeliveryLog(webhookId, limit);
-      res.json({ deliveries });
+      const { entries, nextCursor } = await getDeliveryLog(webhookId, limit, before);
+      res.json({ deliveries: entries, nextCursor });
     } catch (err) {
       log.error({ err, webhookId: req.params["webhookId"] }, "msp-console-webhooks: failed to load delivery log");
       res.status(500).json({ error: "Unable to load the delivery log right now. Please try again shortly." });

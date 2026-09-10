@@ -53,9 +53,19 @@ function makeSelectChain(rows: unknown[]) {
   return c;
 }
 
+const noopLogger: Record<string, unknown> = {
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+  debug: () => {},
+};
+// webhook-delivery.ts calls logger.child({ channel: ... }) at module load — the mock
+// must expose it (returning itself, chainable) or importing the module under test throws.
+noopLogger["child"] = () => noopLogger;
+
 mock.module("./logger.ts", {
   namedExports: {
-    logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+    logger: noopLogger,
   },
 });
 
@@ -113,6 +123,7 @@ mock.module("drizzle-orm", {
     and: (..._args: unknown[]) => "and_clause",
     desc: (_col: unknown) => "desc_clause",
     or: (..._args: unknown[]) => "or_clause",
+    lt: (_a: unknown, _b: unknown) => "lt_clause",
     inArray: (_col: unknown, _vals: unknown[]) => "inArray_clause",
     sql: Object.assign((_s: TemplateStringsArray) => "sql_clause", { raw: () => "sql_raw" }),
   },
@@ -131,7 +142,11 @@ let fanOutWebhooks: (event: {
   customerId?: number | null;
   payload?: Record<string, unknown>;
 }) => Promise<void>;
-let getDeliveryLog: (webhookId: string, limit?: number) => Promise<unknown[]>;
+let getDeliveryLog: (
+  webhookId: string,
+  limit?: number,
+  before?: number,
+) => Promise<{ entries: unknown[]; nextCursor: number | null }>;
 
 before(async () => {
   const mod = await import("./webhook-delivery.ts");
@@ -399,9 +414,10 @@ describe("fanOutWebhooks", () => {
 // ── getDeliveryLog ────────────────────────────────────────────────────────────
 
 describe("getDeliveryLog", () => {
-  it("returns mapped delivery rows from DB", async () => {
+  it("returns mapped delivery rows from DB, including the stored request body snapshot", async () => {
     deliveryRows = [
       {
+        id: 1,
         deliveryId: "d-uuid-1",
         webhookId: "wh-uuid-1",
         eventId: "e-uuid-1",
@@ -410,18 +426,74 @@ describe("getDeliveryLog", () => {
         status: "success",
         statusCode: 200,
         responseSnippet: null,
+        requestBodySnapshot: { eventType: "tenant.created", payload: { tenantId: 1 } },
         nextRetryAt: null,
         deliveredAt: new Date("2026-07-01T00:00:00Z"),
         createdAt: new Date("2026-07-01T00:00:00Z"),
       },
     ];
 
-    const result = await getDeliveryLog("wh-uuid-1", 20);
+    const { entries, nextCursor } = await getDeliveryLog("wh-uuid-1", 20);
 
-    assert.ok(Array.isArray(result), "getDeliveryLog should return an array");
-    assert.equal(result.length, 1);
-    assert.equal((result[0] as Record<string, unknown>)["deliveryId"], "d-uuid-1");
-    assert.equal((result[0] as Record<string, unknown>)["eventType"], "tenant.created");
-    assert.equal((result[0] as Record<string, unknown>)["status"], "success");
+    assert.ok(Array.isArray(entries), "getDeliveryLog should return an entries array");
+    assert.equal(entries.length, 1);
+    assert.equal((entries[0] as Record<string, unknown>)["deliveryId"], "d-uuid-1");
+    assert.equal((entries[0] as Record<string, unknown>)["eventType"], "tenant.created");
+    assert.equal((entries[0] as Record<string, unknown>)["status"], "success");
+    assert.deepEqual((entries[0] as Record<string, unknown>)["requestBodySnapshot"], {
+      eventType: "tenant.created",
+      payload: { tenantId: 1 },
+    });
+    assert.equal(nextCursor, null, "no further page when fewer rows than the limit come back");
+  });
+
+  it("returns null requestBodySnapshot when the column is null", async () => {
+    deliveryRows = [
+      {
+        id: 2,
+        deliveryId: "d-uuid-2",
+        webhookId: "wh-uuid-1",
+        eventId: null,
+        eventType: "tenant.created",
+        attempt: 1,
+        status: "pending",
+        statusCode: null,
+        responseSnippet: null,
+        requestBodySnapshot: null,
+        nextRetryAt: null,
+        deliveredAt: null,
+        createdAt: new Date("2026-07-01T00:00:00Z"),
+      },
+    ];
+
+    const { entries } = await getDeliveryLog("wh-uuid-1", 20);
+    assert.equal((entries[0] as Record<string, unknown>)["requestBodySnapshot"], null);
+  });
+
+  it("returns a nextCursor and trims to `limit` when more rows exist than the page size", async () => {
+    deliveryRows = [3, 2, 1].map((id) => ({
+      id,
+      deliveryId: `d-uuid-${id}`,
+      webhookId: "wh-uuid-1",
+      eventId: null,
+      eventType: "tenant.created",
+      attempt: 1,
+      status: "success",
+      statusCode: 200,
+      responseSnippet: null,
+      requestBodySnapshot: null,
+      nextRetryAt: null,
+      deliveredAt: null,
+      createdAt: new Date("2026-07-01T00:00:00Z"),
+    }));
+
+    // Page size of 2 against 3 mocked rows: the mock returns all rows regardless of
+    // `.limit()`, exercising the real `limit + 1` / `hasMore` trim in getDeliveryLog itself.
+    const { entries, nextCursor } = await getDeliveryLog("wh-uuid-1", 2);
+
+    assert.equal(entries.length, 2);
+    assert.equal((entries[0] as Record<string, unknown>)["deliveryId"], "d-uuid-3");
+    assert.equal((entries[1] as Record<string, unknown>)["deliveryId"], "d-uuid-2");
+    assert.equal(nextCursor, 2, "cursor should be the id of the oldest row in this page");
   });
 });

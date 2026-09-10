@@ -12,7 +12,7 @@
 
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { db, outboundWebhooksTable, outboundWebhookDeliveriesTable } from "@workspace/db";
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq, and, inArray, desc, lt } from "drizzle-orm";
 import { logger } from "./logger.ts";
 const log = logger.child({ channel: "comms.webhook" });
 import type { DispatchedEvent } from "./event-bus.ts";
@@ -321,33 +321,64 @@ export interface DeliveryLogEntry {
   status: string;
   statusCode: number | null;
   responseSnippet: string | null;
+  requestBodySnapshot: Record<string, unknown> | null;
   nextRetryAt: Date | null;
   deliveredAt: Date | null;
   createdAt: Date;
 }
 
+export interface DeliveryLogPage {
+  entries: DeliveryLogEntry[];
+  /**
+   * Opaque cursor (the internal serial `id` of the oldest row in this page) to pass
+   * back as `before` to fetch the next, older page. `null` once there is nothing older.
+   */
+  nextCursor: number | null;
+}
+
+/**
+ * Paged delivery log, newest-first. `before` (if supplied) is a cursor previously
+ * returned as `nextCursor` — pass it back to fetch the page of deliveries older than
+ * that cursor. Keyset pagination on the internal serial `id` column (monotonic,
+ * primary-key-indexed), not on `createdAt`, so paging is stable even when multiple
+ * rows share the same timestamp.
+ */
 export async function getDeliveryLog(
   webhookId: string,
   limit = 50,
-): Promise<DeliveryLogEntry[]> {
+  before?: number,
+): Promise<DeliveryLogPage> {
+  const conditions = [eq(outboundWebhookDeliveriesTable.webhookId, webhookId)];
+  if (before != null) {
+    conditions.push(lt(outboundWebhookDeliveriesTable.id, before));
+  }
+
+  // Fetch one extra row to know whether a further (older) page exists.
   const rows = await db
     .select()
     .from(outboundWebhookDeliveriesTable)
-    .where(eq(outboundWebhookDeliveriesTable.webhookId, webhookId))
-    .orderBy(desc(outboundWebhookDeliveriesTable.createdAt))
-    .limit(limit);
+    .where(and(...conditions))
+    .orderBy(desc(outboundWebhookDeliveriesTable.id))
+    .limit(limit + 1);
 
-  return rows.map((r) => ({
-    deliveryId: r.deliveryId,
-    webhookId: r.webhookId,
-    eventId: r.eventId ?? null,
-    eventType: r.eventType,
-    attempt: r.attempt,
-    status: r.status,
-    statusCode: r.statusCode ?? null,
-    responseSnippet: r.responseSnippet ?? null,
-    nextRetryAt: r.nextRetryAt ?? null,
-    deliveredAt: r.deliveredAt ?? null,
-    createdAt: r.createdAt,
-  }));
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  return {
+    entries: page.map((r) => ({
+      deliveryId: r.deliveryId,
+      webhookId: r.webhookId,
+      eventId: r.eventId ?? null,
+      eventType: r.eventType,
+      attempt: r.attempt,
+      status: r.status,
+      statusCode: r.statusCode ?? null,
+      responseSnippet: r.responseSnippet ?? null,
+      requestBodySnapshot: (r.requestBodySnapshot as Record<string, unknown> | null) ?? null,
+      nextRetryAt: r.nextRetryAt ?? null,
+      deliveredAt: r.deliveredAt ?? null,
+      createdAt: r.createdAt,
+    })),
+    nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+  };
 }

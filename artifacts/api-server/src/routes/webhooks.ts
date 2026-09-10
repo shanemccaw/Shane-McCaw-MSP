@@ -431,6 +431,8 @@ router.get(
     const webhookId = req.params['webhookId'] as string;
     const ownerConditions = buildOwnerWhere(ctx);
     const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const cursorParam = req.query.cursor ? Number(req.query.cursor) : undefined;
+    const before = cursorParam != null && Number.isFinite(cursorParam) ? cursorParam : undefined;
 
     // Ownership check
     const [existing] = await db
@@ -444,8 +446,8 @@ router.get(
       return;
     }
 
-    const deliveries = await getDeliveryLog(webhookId, limit);
-    res.json({ deliveries });
+    const { entries, nextCursor } = await getDeliveryLog(webhookId, limit, before);
+    res.json({ deliveries: entries, nextCursor });
   },
 );
 
@@ -486,6 +488,8 @@ router.get(
   async (req: Request, res: Response) => {
     const webhookId = req.params['webhookId'] as string;
     const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const cursorParam = req.query.cursor ? Number(req.query.cursor) : undefined;
+    const before = cursorParam != null && Number.isFinite(cursorParam) ? cursorParam : undefined;
 
     const [existing] = await db
       .select({ webhookId: outboundWebhooksTable.webhookId })
@@ -498,8 +502,8 @@ router.get(
       return;
     }
 
-    const deliveries = await getDeliveryLog(webhookId, limit);
-    res.json({ deliveries });
+    const { entries, nextCursor } = await getDeliveryLog(webhookId, limit, before);
+    res.json({ deliveries: entries, nextCursor });
   },
 );
 
