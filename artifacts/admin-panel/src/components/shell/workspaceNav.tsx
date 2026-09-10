@@ -61,7 +61,6 @@ import {
   DollarSign,
   FlaskConical,
   SlidersHorizontal,
-  FileSearch,
   Server,
   CreditCard,
   TicketPercent,
@@ -205,7 +204,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         items: [
           { id: "sys-security", label: "Security", path: "/system/security", icon: ShieldCheck },
           { id: "sys-signal-mappings", label: "Signal Mappings", path: "/system/signal-mappings", icon: SlidersHorizontal },
-          { id: "sys-sow-debug", label: "SOW Debug", path: "/system/sow-debug", icon: FileSearch },
         ],
       },
       {
