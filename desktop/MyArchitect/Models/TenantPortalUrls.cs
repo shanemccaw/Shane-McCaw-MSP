@@ -12,7 +12,10 @@ public enum PortalType
     AzurePortal,
     EntraAdmin,
     IntuneAdmin,
-    ExchangeAdmin
+    ExchangeAdmin,
+    SecurityAdmin,
+    ComplianceAdmin,
+    TeamsAdmin
 }
 
 /// <summary>
@@ -26,6 +29,9 @@ public sealed class TenantPortalUrls
     public string EntraAdminUrl { get; set; } = string.Empty;
     public string IntuneAdminUrl { get; set; } = string.Empty;
     public string ExchangeAdminUrl { get; set; } = string.Empty;
+    public string SecurityAdminUrl { get; set; } = string.Empty;
+    public string ComplianceAdminUrl { get; set; } = string.Empty;
+    public string TeamsAdminUrl { get; set; } = string.Empty;
 
     public static TenantPortalUrls CreateForTenant(string tenantGuid)
     {
@@ -36,7 +42,10 @@ public sealed class TenantPortalUrls
             AzurePortalUrl = $"https://portal.azure.com/{tenantGuid}",
             EntraAdminUrl = $"https://entra.microsoft.com/{tenantGuid}",
             IntuneAdminUrl = $"https://intune.microsoft.com/{tenantGuid}",
-            ExchangeAdminUrl = $"https://admin.exchange.microsoft.com/?tid={tenantGuid}"
+            ExchangeAdminUrl = $"https://admin.exchange.microsoft.com/?tid={tenantGuid}",
+            SecurityAdminUrl = $"https://security.microsoft.com/?tid={tenantGuid}",
+            ComplianceAdminUrl = $"https://compliance.microsoft.com/?tid={tenantGuid}",
+            TeamsAdminUrl = $"https://admin.teams.microsoft.com/?tid={tenantGuid}"
         };
     }
 
@@ -47,6 +56,9 @@ public sealed class TenantPortalUrls
         PortalType.EntraAdmin => EntraAdminUrl,
         PortalType.IntuneAdmin => IntuneAdminUrl,
         PortalType.ExchangeAdmin => ExchangeAdminUrl,
+        PortalType.SecurityAdmin => SecurityAdminUrl,
+        PortalType.ComplianceAdmin => ComplianceAdminUrl,
+        PortalType.TeamsAdmin => TeamsAdminUrl,
         _ => M365AdminUrl
     };
 

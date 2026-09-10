@@ -14,7 +14,7 @@ using MyArchitect.Services;
 namespace MyArchitect;
 
 /// <summary>
-/// Main window operator shell hosting tenant switcher, activity bar, isolated WebView2 profile tabs, and tray management.
+/// Main window operator shell hosting tenant switcher, activity bar, bookmarks side panel, isolated WebView2 profile tabs, and tray management.
 /// </summary>
 public partial class MainWindow : FluentWindow
 {
@@ -46,6 +46,7 @@ public partial class MainWindow : FluentWindow
     {
         if (_tenantService.CurrentTenant != null)
         {
+            BookmarksTenantSubtext.Text = $"Active: {_tenantService.CurrentTenant.Name}";
             await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.M365Admin);
         }
     }
@@ -159,7 +160,7 @@ public partial class MainWindow : FluentWindow
         tab.WebView.Visibility = Visibility.Visible;
 
         UrlTextBox.Text = tab.Url;
-        IsolatedProfileBadgeTextBlock.Text = $"Isolated: {tab.Tenant.Name}";
+        IsolatedProfileBadgeTextBlock.Text = $"Profile: {tab.Tenant.Name}";
         StatusProfileTextBlock.Text = $"Session Isolation: {tab.Tenant.Name} [{tab.Tenant.TenantGuid}]";
 
         UpdateTabsState();
@@ -216,6 +217,7 @@ public partial class MainWindow : FluentWindow
     {
         if (tenant == null) return;
 
+        BookmarksTenantSubtext.Text = $"Active: {tenant.Name}";
         _trayIconManager.UpdateTenant(tenant);
 
         var existingTab = _tabs.FirstOrDefault(t => t.Tenant.Id.Equals(tenant.Id, StringComparison.OrdinalIgnoreCase));
@@ -236,6 +238,9 @@ public partial class MainWindow : FluentWindow
         PortalType.EntraAdmin => ("Entra ID", SymbolRegular.Shield24),
         PortalType.IntuneAdmin => ("Intune", SymbolRegular.Globe24),
         PortalType.ExchangeAdmin => ("Exchange", SymbolRegular.Mail24),
+        PortalType.SecurityAdmin => ("Defender", SymbolRegular.Shield24),
+        PortalType.ComplianceAdmin => ("Purview", SymbolRegular.Shield24),
+        PortalType.TeamsAdmin => ("Teams Admin", SymbolRegular.Globe24),
         _ => ("Portal", SymbolRegular.Globe24)
     };
 
@@ -255,54 +260,126 @@ public partial class MainWindow : FluentWindow
         }
     }
 
+    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && e.Key == Key.B)
+        {
+            ToggleBookmarksPanel();
+            e.Handled = true;
+        }
+    }
+
+    private void ToggleBookmarksPanel()
+    {
+        if (BookmarksSidePanel.Visibility == Visibility.Visible)
+        {
+            BookmarksSidePanel.Visibility = Visibility.Collapsed;
+            ActivityBookmarksRadio.IsChecked = false;
+        }
+        else
+        {
+            BookmarksSidePanel.Visibility = Visibility.Visible;
+            ActivityBookmarksRadio.IsChecked = true;
+            PortalSearchTextBox.Focus();
+        }
+    }
+
+    private void ActivityBookmarksRadio_Click(object sender, RoutedEventArgs e)
+    {
+        if (BookmarksSidePanel.Visibility == Visibility.Visible && ActivityBookmarksRadio.IsChecked == false)
+        {
+            BookmarksSidePanel.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            BookmarksSidePanel.Visibility = Visibility.Visible;
+            ActivityBookmarksRadio.IsChecked = true;
+            PortalSearchTextBox.Focus();
+        }
+    }
+
+    private void CollapseBookmarksButton_Click(object sender, RoutedEventArgs e)
+    {
+        BookmarksSidePanel.Visibility = Visibility.Collapsed;
+        ActivityBookmarksRadio.IsChecked = false;
+    }
+
     private void NewTabButton_Click(object sender, RoutedEventArgs e)
     {
-        NewTabPopup.IsOpen = !NewTabPopup.IsOpen;
+        BookmarksSidePanel.Visibility = Visibility.Visible;
+        ActivityBookmarksRadio.IsChecked = true;
+        PortalSearchTextBox.Focus();
+        PortalSearchTextBox.SelectAll();
     }
 
-    private async void OpenM365Tab_Click(object sender, RoutedEventArgs e)
+    private void PortalSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        NewTabPopup.IsOpen = false;
-        if (_tenantService.CurrentTenant != null)
+        var filter = PortalSearchTextBox.Text?.Trim() ?? string.Empty;
+        foreach (var child in BookmarksItemsStackPanel.Children)
         {
+            if (child is System.Windows.Controls.Button btn)
+            {
+                if (string.IsNullOrWhiteSpace(filter))
+                {
+                    btn.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    var tag = btn.Tag?.ToString() ?? string.Empty;
+                    btn.Visibility = tag.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+                }
+            }
+        }
+    }
+
+    private async void BookmarkM365_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tenantService.CurrentTenant != null)
             await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.M365Admin);
-        }
     }
 
-    private async void OpenAzureTab_Click(object sender, RoutedEventArgs e)
+    private async void BookmarkEntra_Click(object sender, RoutedEventArgs e)
     {
-        NewTabPopup.IsOpen = false;
         if (_tenantService.CurrentTenant != null)
-        {
-            await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.AzurePortal);
-        }
-    }
-
-    private async void OpenEntraTab_Click(object sender, RoutedEventArgs e)
-    {
-        NewTabPopup.IsOpen = false;
-        if (_tenantService.CurrentTenant != null)
-        {
             await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.EntraAdmin);
-        }
     }
 
-    private async void OpenIntuneTab_Click(object sender, RoutedEventArgs e)
+    private async void BookmarkAzure_Click(object sender, RoutedEventArgs e)
     {
-        NewTabPopup.IsOpen = false;
         if (_tenantService.CurrentTenant != null)
-        {
+            await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.AzurePortal);
+    }
+
+    private async void BookmarkIntune_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tenantService.CurrentTenant != null)
             await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.IntuneAdmin);
-        }
     }
 
-    private async void OpenExchangeTab_Click(object sender, RoutedEventArgs e)
+    private async void BookmarkExchange_Click(object sender, RoutedEventArgs e)
     {
-        NewTabPopup.IsOpen = false;
         if (_tenantService.CurrentTenant != null)
-        {
             await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.ExchangeAdmin);
-        }
+    }
+
+    private async void BookmarkSecurity_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tenantService.CurrentTenant != null)
+            await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.SecurityAdmin);
+    }
+
+    private async void BookmarkCompliance_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tenantService.CurrentTenant != null)
+            await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.ComplianceAdmin);
+    }
+
+    private async void BookmarkTeams_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tenantService.CurrentTenant != null)
+            await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.TeamsAdmin);
     }
 
     private void BackButton_Click(object sender, RoutedEventArgs e)
