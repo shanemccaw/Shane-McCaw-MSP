@@ -10,29 +10,30 @@ does not cover `msp-sales-offers.ts` or `msp-sales-bundles.ts`'s own routes. Thi
 extracted to the same standard: read-only, every field cited to file:line, cross-checked live
 against local PostgreSQL. **Nothing here is authored or invented.**
 
-Backend: two files, all 20 routes live and mounted (`artifacts/api-server/src/routes/index.ts:238,
-240, 602, 604` — `import mspSalesBundlesRouter from "./msp-sales-bundles"; ... import
+Backend: two files, all 20 routes live and mounted (`artifacts/api-server/src/routes/index.ts:235,
+237, 598, 600` — `import mspSalesBundlesRouter from "./msp-sales-bundles"; ... import
 mspSalesOffersRouter from "./msp-sales-offers"; ... router.use(mspSalesBundlesRouter); ...
 router.use(mspSalesOffersRouter);`):
 
-- `artifacts/api-server/src/routes/msp-sales-offers.ts` (425 lines) — MSP-scoped Sales Offer
+- `artifacts/api-server/src/routes/msp-sales-offers.ts` (436 lines) — MSP-scoped Sales Offer
   Engine surface: generate/list/get/patch/transition/delete an offer, plus an SSE stream.
-- `artifacts/api-server/src/routes/msp-sales-bundles.ts` (836 lines) — MSP Sales Bundle Builder:
+- `artifacts/api-server/src/routes/msp-sales-bundles.ts` (837 lines) — MSP Sales Bundle Builder:
   compose/price/assign platform-authored Monitoring Packages under an MSP's own branded bundles.
 
-Schema: `lib/db/src/schema/index.ts:3384` (`SALES_OFFER_STATES`), `:3397` (`salesOffersTable`),
-`:3471` (`salesOfferEventsTable`), `:3493` (`salesOfferConfigTable`); `lib/db/src/schema/msp.ts:2228`
-(`monitoringPackagesTable`), `:3529` (`MSP_SALES_BUNDLE_STATUS`), `:3532` (`mspSalesBundlesTable`),
-`:3563` (`MSP_BUNDLE_ASSIGNMENT_STATUS`), `:3566` (`mspSalesBundleAssignmentsTable`). Verified live
+Schema: `lib/db/src/schema/index.ts:3415` (`SALES_OFFER_STATES`), `:3428` (`salesOffersTable`),
+`:3502` (`salesOfferEventsTable`), `:3524` (`salesOfferConfigTable`); `lib/db/src/schema/msp.ts:2229`
+(`monitoringPackagesTable`), `:3530` (`MSP_SALES_BUNDLE_STATUS`), `:3533` (`mspSalesBundlesTable`),
+`:3564` (`MSP_BUNDLE_ASSIGNMENT_STATUS`), `:3567` (`mspSalesBundleAssignmentsTable`). Verified live
 against local PostgreSQL (`psql "$DATABASE_URL" -c '\d sales_offers'` / `'\d msp_sales_bundles'` /
 `'\d msp_sales_bundle_assignments'` / `'\d monitoring_packages'`) — every FK and column cited below
 confirmed present on the running schema, not just the Drizzle source. §6c's finding was **only
 discoverable live**, cross-referencing a third file (a manual migration) neither route file
 touches.
 
-Sources read in full: `msp-sales-offers.ts` (425 lines, no test file exists for it — a real gap,
-see §9), `msp-sales-bundles.ts` (836 lines) + `msp-sales-bundles.test.ts` (295 lines, pure-logic
-unit tests — read to confirm real, currently-asserted behavior, not as a source of new facts),
+Sources read in full: `msp-sales-offers.ts` (425 lines at original write, 436 lines as re-verified
+2026-09-10 per §11.1 — no test file exists for it, a real gap, see §9), `msp-sales-bundles.ts` (836
+lines at original write, 837 lines as re-verified) + `msp-sales-bundles.test.ts` (295 lines,
+pure-logic unit tests — read to confirm real, currently-asserted behavior, not as a source of new facts),
 `sales-offer-engine.ts` (534 lines, every exported function), `resolve-msp-id.ts` (all 4 exports),
 `requireAuth.ts` (`requireRole`, `requireMspScope`, `assertCustomerAccess`,
 `isCustomerBlockedByStaffScope`), `msp-entitlement.ts` (`requirePlanFeature`, `PLAN_FEATURE_DEFS`),
@@ -49,26 +50,26 @@ current line numbers), `portal-offers.ts` (`POST /portal/offers/:id/accept` and 
 
 | Endpoint | Method | Line | Consumer today | Status |
 |---|---|---|---|---|
-| `/api/msp/:mspId/sales-offers` | GET | `msp-sales-offers.ts:70` | none | live, zero UI callers |
-| `/api/msp/sales-offers/sse` | GET | `:108` | none | live, zero UI callers |
-| `/api/msp/sales-offers/generate` | POST | `:160` | none | live, zero UI callers |
-| `/api/msp/:mspId/sales-offers/expire-stale` | POST | `:210` | none | live, zero UI callers |
-| `/api/msp/:mspId/sales-offers/:id` | GET | `:231` | none | live, zero UI callers |
-| `/api/msp/sales-offers/:id/events` | GET | `:260` | none | live, zero UI callers |
-| `/api/msp/sales-offers/:id` | PATCH | `:294` | none | live, zero UI callers |
-| `/api/msp/sales-offers/:id/state` | PATCH | `:344` | none | live, zero UI callers |
-| `/api/msp/sales-offers/:id` | DELETE | `:392` | none | live, zero UI callers |
-| `/api/msp/monitoring-packages` | GET | `msp-sales-bundles.ts:152` | none | live, zero UI callers |
-| `/api/msp/sales-bundles/pricing-preview` | GET | `:187` | none | live, zero UI callers |
-| `/api/msp/sales-bundles` | GET | `:237` | none | live, zero UI callers |
-| `/api/msp/sales-bundles` | POST | `:281` | none | live, zero UI callers |
-| `/api/msp/sales-bundles/:bundleId` | GET | `:361` | none | live, zero UI callers |
-| `/api/msp/sales-bundles/:bundleId` | PATCH | `:412` | none | live, zero UI callers |
-| `/api/msp/sales-bundles/:bundleId` | DELETE | `:504` | none | live, zero UI callers |
-| `/api/msp/sales-bundles/:bundleId/assignments` | GET | `:557` | none | live, zero UI callers |
-| `/api/msp/sales-bundles/:bundleId/assignments` | POST | `:613` | none | live, zero UI callers |
-| `/api/msp/sales-bundles/:bundleId/assignments/:assignmentId` | DELETE | `:711` | none | live, zero UI callers |
-| `/api/msp/customers/:customerId/bundle-assignments` | GET | `:781` | none | live, zero UI callers |
+| `/api/msp/:mspId/sales-offers` | GET | `msp-sales-offers.ts:72` | none | live, zero UI callers |
+| `/api/msp/sales-offers/sse` | GET | `:110` | none | live, zero UI callers |
+| `/api/msp/sales-offers/generate` | POST | `:171` | none | live, zero UI callers |
+| `/api/msp/:mspId/sales-offers/expire-stale` | POST | `:221` | none | live, zero UI callers |
+| `/api/msp/:mspId/sales-offers/:id` | GET | `:242` | none | live, zero UI callers |
+| `/api/msp/sales-offers/:id/events` | GET | `:271` | none | live, zero UI callers |
+| `/api/msp/sales-offers/:id` | PATCH | `:305` | none | live, zero UI callers |
+| `/api/msp/sales-offers/:id/state` | PATCH | `:355` | none | live, zero UI callers |
+| `/api/msp/sales-offers/:id` | DELETE | `:403` | none | live, zero UI callers |
+| `/api/msp/monitoring-packages` | GET | `msp-sales-bundles.ts:153` | none | live, zero UI callers |
+| `/api/msp/sales-bundles/pricing-preview` | GET | `:188` | none | live, zero UI callers |
+| `/api/msp/sales-bundles` | GET | `:238` | none | live, zero UI callers |
+| `/api/msp/sales-bundles` | POST | `:282` | none | live, zero UI callers |
+| `/api/msp/sales-bundles/:bundleId` | GET | `:362` | none | live, zero UI callers |
+| `/api/msp/sales-bundles/:bundleId` | PATCH | `:413` | none | live, zero UI callers |
+| `/api/msp/sales-bundles/:bundleId` | DELETE | `:505` | none | live, zero UI callers |
+| `/api/msp/sales-bundles/:bundleId/assignments` | GET | `:558` | none | live, zero UI callers |
+| `/api/msp/sales-bundles/:bundleId/assignments` | POST | `:614` | none | live, zero UI callers |
+| `/api/msp/sales-bundles/:bundleId/assignments/:assignmentId` | DELETE | `:712` | none | live, zero UI callers |
+| `/api/msp/customers/:customerId/bundle-assignments` | GET | `:782` | none | live, zero UI callers |
 
 **All 20 are genuinely unconsumed today** (§7) — the expected pre-Design/pre-wire state.
 `artifacts/msp-console` exists as a real, running, registered Vite app (unlike the SOW pack's own
@@ -82,51 +83,58 @@ ever had a live frontend caller anywhere in the tree — not `artifacts/msp-cons
 
 `msp-sales-offers.ts`'s header comment itself distinguishes two shapes: `GET
 /api/msp/:mspId/sales-offers`, `GET .../:id`, and `POST .../expire-stale` are **path-scoped**
-(`:mspId` in the URL, gated by `requireMspScope("params")`, `requireAuth.ts:245-281`) — the
-correct pattern per `resolveMspIdStrict()`'s own doc comment (`resolve-msp-id.ts:64-77`) for
+(`:mspId` in the URL, gated by `requireMspScope("params")`, `requireAuth.ts:329-364`) — the
+correct pattern per `resolveMspIdStrict()`'s own doc comment (`resolve-msp-id.ts:65-78`) for
 admin-facing cross-MSP access. The other 5 routes (`generate`, `:id/events`, `PATCH :id`, `PATCH
 :id/state`, `DELETE :id`) are **session-scoped** (no `:mspId` in the URL) but resolve via
-`resolveMspId(req)` (`resolve-msp-id.ts:28-53`) instead of the strict variant — which still allows
+`resolveMspId(req)` (`resolve-msp-id.ts:29-54`) instead of the strict variant — which still allows
 a `PlatformAdmin`/`admin` `?mspId=` override on a route shape `resolveMspIdStrict()`'s own comment
 says should never allow one. `msp-sales-bundles.ts` doesn't use either shared helper at all — its
-own private `getMspId()` (`:56-65`) does the same query-override resolution, and **none** of its 11
+own private `getMspId()` (`:57-66`) does the same query-override resolution, and **none** of its 11
 routes has a `:mspId` path segment to justify it. Filed as **#3387** (§6b).
 
 ---
 
 ## 1. Wire contract — `msp-sales-offers.ts`
 
-### 1.1 `GET /api/msp/:mspId/sales-offers` (`:70-102`) — list
+### 1.1 `GET /api/msp/:mspId/sales-offers` (`:72-104`) — list
 
-`requireRole("MSPOperator")`, `requireMspScope("params")`. Filters: `state` (validated against
-`SALES_OFFER_STATES`, silently ignored if not a member — no 400), `customerId`, `limit` (default
-200, capped 500), `offset`. Ordered `score DESC, createdAt DESC` (`:92`) — highest-relevance offers
+`requireCapability("ladder.msp-operator")`, `requireMspScope("params")`. Filters: `state`
+(validated against `SALES_OFFER_STATES`, silently ignored if not a member — no 400), `customerId`,
+`limit` (default 200, capped 500), `offset`. Ordered `score DESC, createdAt DESC` (`:94`) — highest-relevance offers
 surface first, not newest-first. Returns the **entire raw row set** — no curated `Wire*` shape,
 same as the SOW pack's §0.2 finding for its own file. Response: `{offers, limit, offset}`.
 
-### 1.2 `GET /api/msp/sales-offers/sse` (`:108-156`) — real-time offer-change stream
+### 1.2 `GET /api/msp/sales-offers/sse` (`:110-167`) — real-time offer-change stream
 
-No `requireRole`/`requireAuth` middleware at all on the route itself — auth is done **entirely
-inline** (`:108-129`) because `EventSource` cannot set an `Authorization` header, so the JWT is
-accepted via `?token=` instead. Verifies with `jwt.verify(token, process.env["JWT_SECRET"])`
-(`:118`), then re-derives the effective role and checks it against a **hand-rolled role-order
-array** (`ROLE_ORDER`, `:125`) rather than importing `requireRole`'s own comparison — a second,
-independent copy of the same MSP role hierarchy (`Assessment < Free < CustomerUser <
-ServiceAccount < MSPOperator < MSPAdmin < PlatformAdmin`). `mspId` resolution here (`:131-133`) is
-its own third variant: admin/PlatformAdmin reads `?mspId=` with **no fallback** to the caller's own
-`mspId` if absent (unlike `msp-sales-bundles.ts`'s `getMspId()`, §0.2) — an admin with no
-`?mspId=` gets a `400` here, not their own MSP's stream. Registers via
-`registerMspOfferSSEClient(mspId, res, ...)` (`sse-channels.ts:253-255`) on the shared
-`"engine.offer"` hub channel; a 30s heartbeat (`:148-150`) keeps the connection alive.
+No `requireCapability`/`requireAuth` middleware at all on the route itself — auth is done
+**entirely inline** (`:110-140`) because `EventSource` cannot set an `Authorization` header, so
+the JWT is accepted via `?token=` instead. Verifies with `jwt.verify(token, secret)` (`:120`, where
+`secret = process.env["JWT_SECRET"]`), then asks the shared RBAC evaluator directly: a code comment
+(`:126-131`) states this route "cannot use the requireCapability middleware... and it had grown its
+own hand-copied `ROLE_ORDER` array to reproduce the operator floor inline. A second copy of the
+ladder is exactly the drift #1696 is about" — that inline array is now **gone**, replaced
+(`:132-140`) by a direct call to `userClearsLadderCapability(user, LADDER.mspOperator)`, the same
+evaluator every `requireCapability`-gated route asks, failing closed (`503`) on `"unavailable"` and
+`403` on any other non-`"allow"` outcome. This closes what was, as of the pack's first pass, the one
+inline exception to the shared evaluator on this surface — real substantive code change since the
+pack's original read, not just a citation shift. `mspId` resolution here (`:142-144`, 400 check
+`:146-149`) is unchanged in behavior — its own third variant: admin/PlatformAdmin reads `?mspId=`
+with **no fallback** to the caller's own `mspId` if absent (unlike `msp-sales-bundles.ts`'s
+`getMspId()`, §0.2) — an admin with no `?mspId=` gets a `400` here, not their own MSP's stream.
+Registers via `registerMspOfferSSEClient(mspId, res, ...)` (`:163-166`, defined at
+`sse-channels.ts:253-255`, unchanged) on the shared `"engine.offer"` hub channel; a 30s heartbeat
+(`:159-161`) keeps the connection alive.
 
-### 1.3 `POST /api/msp/sales-offers/generate` (`:160-206`) — run engine + persist
+### 1.3 `POST /api/msp/sales-offers/generate` (`:171-217`) — run engine + persist
 
-`requireRole("MSPOperator")`, `requirePlanFeature("sales_offers")` (`msp-entitlement.ts:96-154` —
-gated per-tier via `tier.tierCapabilities`, defined in `PLAN_FEATURE_DEFS`,
-`msp-entitlement.ts:229-232`; missing key = not gated). `mspId` via `resolveMspId(req)` (§0.2).
-Body: `customerId` (required, numeric). **Ownership check runs before the engine fires**
-(`:178-181`, `assertCustomerAccess(req.user!, customerId)`, `requireAuth.ts:306-335`) — the route's
-own comment (`:175-177`) states this replaced an earlier version that "trusted `body.customerId`
+`requireCapability("ladder.msp-operator")`, `requirePlanFeature("sales_offers")`
+(`msp-entitlement.ts:97-155` — gated per-tier via `tier.tierCapabilities`, defined in
+`PLAN_FEATURE_DEFS`, `msp-entitlement.ts:230-233`; missing key = not gated). `mspId` via
+`resolveMspId(req)` (§0.2). Body: `customerId` (required, numeric). **Ownership check runs before
+the engine fires** (`:189-192`, `assertCustomerAccess(req.user!, customerId)`,
+`requireAuth.ts:389-417`) — the route's own comment (`:186-188`) states this replaced an earlier
+version that "trusted `body.customerId`
 and relied solely on the engine's `mspId` scoping," a real, acknowledged prior gap now closed.
 Calls `runSalesOfferEngineForTenant()` then `persistSalesOfferCandidates()` (§2). Broadcasts
 `broadcastMspOfferChange()` only if `insertedIds.length > 0` — a re-run that produces zero new
@@ -134,9 +142,9 @@ offers (all idempotency keys already exist) emits **no** SSE event, correctly di
 nothing new" from "ran, something changed." Response `201`: `{insertedOfferIds, candidateCount,
 firedSignals}`.
 
-### 1.4 `POST /api/msp/:mspId/sales-offers/expire-stale` (`:210-227`)
+### 1.4 `POST /api/msp/:mspId/sales-offers/expire-stale` (`:221-238`)
 
-`requireRole("MSPOperator")`, `requireMspScope("params")`, `requirePlanFeature("sales_offers")`.
+`requireCapability("ladder.msp-operator")`, `requireMspScope("params")`, `requirePlanFeature("sales_offers")`.
 Calls `expireStaleSalesOffers(mspId)` (§2, scoped sweep). This is the **MSP-scoped** counterpart to
 `sales-offers.ts`'s own `requireAdmin`-gated, path-less `POST /api/sales-offers/expire-stale`
 (`sales-offers.ts:244-263`), which calls `expireStaleSalesOffers()` with **no** argument — the
@@ -151,45 +159,45 @@ stale until one of these two routes is called by hand — not filed (no live cal
 either route today, same pre-wire state as everything else in §0.1), flagged for whoever wires this
 Feature's real UI.
 
-### 1.5 `GET /api/msp/:mspId/sales-offers/:id` (`:231-256`) — get single offer
+### 1.5 `GET /api/msp/:mspId/sales-offers/:id` (`:242-267`) — get single offer
 
-`requireRole("MSPOperator")`, `requireMspScope("params")`. `(id, mspId)` lookup, 404 otherwise.
+`requireCapability("ladder.msp-operator")`, `requireMspScope("params")`. `(id, mspId)` lookup, 404 otherwise.
 Full raw row, wrapped `{offer}` (unlike §1.1's bare `{offers}` array — a real, minor shape
 asymmetry between the list and detail responses of the same resource, not filed).
 
-### 1.6 `GET /api/msp/sales-offers/:id/events` (`:260-290`) — event log
+### 1.6 `GET /api/msp/sales-offers/:id/events` (`:271-301`) — event log
 
-`requireRole("MSPOperator")`. `mspId` via `resolveMspId(req)` (§0.2). Confirms the offer belongs to
-the resolved `mspId` first (`:271-276`, 404 otherwise), then returns every
+`requireCapability("ladder.msp-operator")`. `mspId` via `resolveMspId(req)` (§0.2). Confirms the
+offer belongs to the resolved `mspId` first (`:282-287`, 404 otherwise), then returns every
 `salesOfferEventsTable` row for that offer, ordered `createdAt ASC` (oldest first — a true
 chronological audit trail, unlike some other list endpoints in this codebase that default to
 newest-first). See §6a — this table is not a complete acceptance record.
 
-### 1.7 `PATCH /api/msp/sales-offers/:id` (`:294-340`) — edit title/rationale
+### 1.7 `PATCH /api/msp/sales-offers/:id` (`:305-351`) — edit title/rationale
 
-`requireRole("MSPOperator")`, `requirePlanFeature("sales_offers")`. `mspId` via `resolveMspId(req)`
-(§0.2). **422 unless `state === "draft"`** (`:318-321`) — an offer that has ever been sent can
-never have its title/rationale edited again, by design. Trims both fields; empty-string
-`rationale` is stored as `null` (`:325`), not an empty string. Broadcasts
+`requireCapability("ladder.msp-operator")`, `requirePlanFeature("sales_offers")`. `mspId` via
+`resolveMspId(req)` (§0.2). **422 unless `state === "draft"`** (`:329-332`) — an offer that has
+ever been sent can never have its title/rationale edited again, by design. Trims both fields;
+empty-string `rationale` is stored as `null` (`:336`), not an empty string. Broadcasts
 `broadcastMspOfferChange()` unconditionally on success.
 
-### 1.8 `PATCH /api/msp/sales-offers/:id/state` (`:344-388`) — transition offer state
+### 1.8 `PATCH /api/msp/sales-offers/:id/state` (`:355-399`) — transition offer state
 
-`requireRole("MSPOperator")`, `requirePlanFeature("sales_offers")`. `mspId` via `resolveMspId(req)`
-(§0.2). Body: `newState` (must be a member of `SALES_OFFER_STATES`, 400 otherwise),
-`rejectionReason` (optional). Calls the shared `transitionOfferState()` (§2) — the **same**
-function `portal-offers.ts`'s customer-facing accept/reject routes call. **This is the most
-severe real finding in this pack — §6a, filed as #3386**: this generic transition endpoint has no
-knowledge of `services.serviceClass` and performs **zero fulfillment** — an MSPOperator can move an
-offer straight to the terminal `"accepted"` state with no SOW created, no Stripe charge, no
+`requireCapability("ladder.msp-operator")`, `requirePlanFeature("sales_offers")`. `mspId` via
+`resolveMspId(req)` (§0.2). Body: `newState` (must be a member of `SALES_OFFER_STATES`, 400
+otherwise), `rejectionReason` (optional). Calls the shared `transitionOfferState()` (§2) — the
+**same** function `portal-offers.ts`'s customer-facing accept/reject routes call. **This is the
+most severe real finding in this pack — §6a, filed as #3386**: this generic transition endpoint has
+no knowledge of `services.serviceClass` and performs **zero fulfillment** — an MSPOperator can move
+an offer straight to the terminal `"accepted"` state with no SOW created, no Stripe charge, no
 Monitoring-Tier gate, and (per `VALID_TRANSITIONS`, §2) no way back out. Broadcasts to both the
 MSP's own channel and, if `existing.customerId` is set, the customer's channel too
-(`broadcastCustomerOfferChange`, `:373-375`) — a real cross-tenant-facing side effect from an
+(`broadcastCustomerOfferChange`, `:384-386`) — a real cross-tenant-facing side effect from an
 MSP-console-only action, correctly scoped to the specific customer, not broadcast platform-wide.
 
-### 1.9 `DELETE /api/msp/sales-offers/:id` (`:392-423`)
+### 1.9 `DELETE /api/msp/sales-offers/:id` (`:403-434`)
 
-`requireRole("MSPOperator")`, `requirePlanFeature("sales_offers")`. `mspId` via `resolveMspId(req)`
+`requireCapability("ladder.msp-operator")`, `requirePlanFeature("sales_offers")`. `mspId` via `resolveMspId(req)`
 (§0.2). **422 unless `state === "draft"`** — matches §1.7's edit gate exactly; once an offer has
 ever been sent, it can be transitioned or left alone, but never deleted or edited. Combined with
 §1.8's finding: an offer stuck in `"accepted"` via the generic transition route cannot be cleaned
@@ -255,19 +263,19 @@ discipline the SOW pack's §1.7 noted for `triggerMspCharge()`).
 
 ## 3. Wire contract — `msp-sales-bundles.ts`
 
-### 3.1 `GET /api/msp/monitoring-packages` (`:152-181`) — list platform-authored packages
+### 3.1 `GET /api/msp/monitoring-packages` (`:153-182`) — list platform-authored packages
 
-`requireRole("MSPOperator")`. **No plan gate** (the file's own header comment, `:8-10`, states this
+`requireCapability("ladder.msp-operator")`. **No plan gate** (the file's own header comment, `:8-10`, states this
 deliberately: "Does not gate on plan — the UI uses `requiredPlanFeature` to inform the user, and
 bundle creation gates on `custom_bundle_composition`"). Filters `status = "active"` only — a
 platform admin's draft/deprecated packages never leak into an MSP's own bundle-builder list.
-Returns the curated 10-field projection (`:160-171`), including each package's own
+Returns the curated 10-field projection (`:161-172`), including each package's own
 `requiredPlanFeature` string (informational — the client is expected to grey out a package the
 MSP's tier doesn't cover, since the server itself doesn't block *listing* it).
 
-### 3.2 `GET /api/msp/sales-bundles/pricing-preview` (`:187-233`) — no-side-effect cost calculator
+### 3.2 `GET /api/msp/sales-bundles/pricing-preview` (`:188-234`) — no-side-effect cost calculator
 
-`requireRole("MSPOperator")`. Query: `packageKeys[]` (repeatable). Empty input → `{packageKeys: [],
+`requireCapability("ladder.msp-operator")`. Query: `packageKeys[]` (repeatable). Empty input → `{packageKeys: [],
 internalCostCents: 0, breakdown: []}` — a real, deliberate empty-state, not an error. For a
 non-empty set, looks up matching `monitoring_packages` rows and returns a per-package
 `{key, label, platformCostCents, engines, requiredPlanFeature, available}` breakdown
@@ -280,17 +288,17 @@ are where an unknown key is actually rejected — but worth Design awareness: a 
 its "here's what you selected" UI purely from this response's `breakdown` array would silently drop
 an invalid selection with no error surfaced to the operator.
 
-### 3.3 `GET /api/msp/sales-bundles` (`:237-275`) — list MSP's bundles
+### 3.3 `GET /api/msp/sales-bundles` (`:238-276`) — list MSP's bundles
 
-`requireRole("MSPOperator")`. `mspId` via the file's own `getMspId()` (§0.2). Optional `status`
-filter (cast directly to the enum type with no membership validation — same pattern the SOW pack's
-§1.3 flagged for `msp-sow.ts`'s own list route: an invalid string produces zero matching rows via
-Drizzle's typed `eq`, not a 400). Two parallel queries (`Promise.all`, `:255-267`) for the page plus
-a separate `count()` for `total`. Ordered `createdAt DESC`.
+`requireCapability("ladder.msp-operator")`. `mspId` via the file's own `getMspId()` (§0.2). Optional
+`status` filter (cast directly to the enum type with no membership validation — same pattern the
+SOW pack's §1.3 flagged for `msp-sow.ts`'s own list route: an invalid string produces zero matching
+rows via Drizzle's typed `eq`, not a 400). Two parallel queries (`Promise.all`, `:256-268`) for the
+page plus a separate `count()` for `total`. Ordered `createdAt DESC`.
 
-### 3.4 `POST /api/msp/sales-bundles` (`:281-357`) — create bundle
+### 3.4 `POST /api/msp/sales-bundles` (`:282-358`) — create bundle
 
-`requireRole("MSPAdmin")` — **stricter than every other route in this file** (all others are
+`requireCapability("ladder.msp-admin")` — **stricter than every other route in this file** (all others are
 `MSPOperator`). This is the one real role-tier asymmetry in the bundles surface: an ordinary
 MSPOperator can list/preview/view bundles and assignments but cannot create, edit, delete, assign,
 or revoke — those five mutating routes (§3.4, §3.6, §3.7, §3.8, §3.9) all require `MSPAdmin`.
@@ -300,32 +308,34 @@ other. Not filed (plausibly deliberate — bundles carry real pricing/margin dec
 shouldn't set unilaterally — but flagged since nothing in either file's comments states the
 asymmetry is intentional).
 
-Validates body via `createBundleSchema` (Zod, `:124-131`: `name` 1-120 chars, `monitoringPackageKeys`
+Validates body via `createBundleSchema` (Zod, `:125-132`: `name` 1-120 chars, `monitoringPackageKeys`
 1-20 entries, `resalePriceCents` ≥0 integer, `trialDays` 1-365 or null, `status` draft/active
-default draft). **Plan-gate is inline, not middleware-declarative** (`:295-305`): because gating
+default draft). **Plan-gate is inline, not middleware-declarative** (`:296-306`): because gating
 depends on the parsed body (`monitoringPackageKeys.length > 1`), the route manually invokes
 `requirePlanFeature("custom_bundle_composition")` as a plain function inside a `new Promise`,
 checking `res.headersSent` to detect whether the gate already responded — a real, unusual pattern
 compared to every other `requirePlanFeature` call in this codebase (all of which are declared
 declaratively in the route's own middleware chain). Functionally correct (confirmed by
-`msp-sales-bundles.test.ts`'s own plan-gating suite, `:112-173`, though those tests exercise the
-tier-capability logic directly, not this inline-invocation wrapper itself). Every submitted key is
-validated against real `monitoring_packages` rows — unknown (`:314-319`) or inactive (`:320-324`)
-keys 400 the whole request, no partial bundle is ever created. `internalCostCents` computed
-server-side from real `platformCostCents` sums — never trusts a client-supplied cost.
+`msp-sales-bundles.test.ts`'s own plan-gating suite, `:112-173`, unchanged since this pack's first
+pass — its mock middleware now stubs `requireCapability` in place of `requireRole`, but the tests
+exercise the tier-capability logic directly, not this inline-invocation wrapper itself). Every
+submitted key is validated against real `monitoring_packages` rows — unknown (`:315-320`) or
+inactive (`:321-325`) keys 400 the whole request, no partial bundle is ever created.
+`internalCostCents` computed server-side from real `platformCostCents` sums — never trusts a
+client-supplied cost.
 
-### 3.5 `GET /api/msp/sales-bundles/:bundleId` (`:361-408`) — detail
+### 3.5 `GET /api/msp/sales-bundles/:bundleId` (`:362-409`) — detail
 
-`requireRole("MSPOperator")`. `(bundleId, mspId)` lookup, 404 otherwise. Enriches with the full
-package objects for every key in `bundle.monitoringPackageKeys` (`:378-392`) and a live
-`activeAssignmentCount` (`:394-400`, filtered `status = "active"`). **§6c's finding lives here**:
+`requireCapability("ladder.msp-operator")`. `(bundleId, mspId)` lookup, 404 otherwise. Enriches with
+the full package objects for every key in `bundle.monitoringPackageKeys` (`:379-393`) and a live
+`activeAssignmentCount` (`:395-401`, filtered `status = "active"`). **§6c's finding lives here**:
 for the one real MSP whose bundle references non-existent package keys, this enrichment silently
 returns `packages: []` — no error, no partial match, nothing to signal the mismatch to whoever
 built the UI against this response.
 
-### 3.6 `PATCH /api/msp/sales-bundles/:bundleId` (`:412-499`) — update
+### 3.6 `PATCH /api/msp/sales-bundles/:bundleId` (`:413-500`) — update
 
-`requireRole("MSPAdmin")`. Same `createBundleSchema`-adjacent Zod validation (`updateBundleSchema`,
+`requireCapability("ladder.msp-admin")`. Same `createBundleSchema`-adjacent Zod validation (`updateBundleSchema`,
 all fields optional), same inline plan-gate pattern (re-evaluated against `newKeys = body.
 monitoringPackageKeys ?? existing.monitoringPackageKeys` — so shrinking a bundle from 3 packages to
 1 does **not** re-check the gate, only a resulting multi-package count triggers it), same
@@ -335,55 +345,55 @@ of the three enum values is accepted from any current status, unlike the offers 
 `VALID_TRANSITIONS`); nothing here prevents un-archiving a bundle back to `active`, and nothing
 prevents that either — the schema simply permits the full three-value enum unconditionally.
 
-### 3.7 `DELETE /api/msp/sales-bundles/:bundleId` (`:504-553`)
+### 3.7 `DELETE /api/msp/sales-bundles/:bundleId` (`:505-554`)
 
-`requireRole("MSPAdmin")`. **409 if any active assignment exists** (`:521-531`) — a bundle
-currently in use by even one customer cannot be deleted; the operator must revoke every assignment
-first. Real guard against silently orphaning a customer's active monitoring coverage.
+`requireCapability("ladder.msp-admin")`. **409 if any active assignment exists** (`:522-532`) — a
+bundle currently in use by even one customer cannot be deleted; the operator must revoke every
+assignment first. Real guard against silently orphaning a customer's active monitoring coverage.
 
-### 3.8 `GET /api/msp/sales-bundles/:bundleId/assignments` (`:557-605`) — list a bundle's customers
+### 3.8 `GET /api/msp/sales-bundles/:bundleId/assignments` (`:558-606`) — list a bundle's customers
 
-`requireRole("MSPOperator")`. Left-joins `tenantsTable` for `customerName`/`customerDomain`
-(`:592-595`, with an inline comment noting these are aliased to keep the HTTP field names frozen
+`requireCapability("ladder.msp-operator")`. Left-joins `tenantsTable` for `customerName`/`customerDomain`
+(`:593-596`, with an inline comment noting these are aliased to keep the HTTP field names frozen
 across the `msp_customers` → `customerName` rename, #92 Phase 4 — the same rename discipline the
-SOW pack's assignment routes reference). **Not scoped by `mspId` in its own query** (`:596` filters
+SOW pack's assignment routes reference). **Not scoped by `mspId` in its own query** (`:597` filters
 only `bundleId`) — but the bundle itself was already confirmed to belong to the caller's `mspId`
-two lines earlier (`:565-572`), so cross-MSP leakage would require a bundle ID belonging to another
+two lines earlier (`:566-573`), so cross-MSP leakage would require a bundle ID belonging to another
 MSP to somehow pass that check, which it cannot. Not a gap.
 
-### 3.9 `POST /api/msp/sales-bundles/:bundleId/assignments` (`:613-707`) — assign to customer
+### 3.9 `POST /api/msp/sales-bundles/:bundleId/assignments` (`:614-708`) — assign to customer
 
-`requireRole("MSPAdmin")`. Body: `customerId` (required), `tenantId` (optional override). Bundle
-must belong to the caller's MSP and be `status === "active"` (`:637-641`, 409 otherwise — a draft or
-archived bundle cannot be assigned, matching the create-route's "activate first" comment). Customer
-must belong to the same MSP (`:644-651`, 404 otherwise). `resolvedTenantId` prefers the request
-body's explicit `tenantId`, falling back to the customer's own `tenantsTable.tenantId`
-(`:653`). Trial expiry computed server-side from `bundle.trialDays` (`:656-658`). **Fan-out**:
-`emitBundleActivationEvents()` (`sse-channels.ts`-adjacent helper defined in this same file,
-`:78-99`) writes one `mspEventStoreTable` row per package key (not one row for the whole bundle) —
-the file's own comment (`:609-611`) explains this is deliberate: "Mixed-frequency packages are
-fanned out as individual events — each package's engine (Monitoring Package Engine or Live Monitor
-Engine) picks up the event matching its frequency." §6c's live bundle would fan out 10 real
-`bundle.package.activated` events carrying package keys that match nothing in `monitoring_packages`
-— harmless only because that specific bundle's packages have zero `monitoring_package_checks` rows
-attached (dashboard-tab containers, per the migration's own Part A comment) and so no engine is
-listening for them regardless.
+`requireCapability("ladder.msp-admin")`. Body: `customerId` (required), `tenantId` (optional
+override). Bundle must belong to the caller's MSP and be `status === "active"` (`:638-642`, 409
+otherwise — a draft or archived bundle cannot be assigned, matching the create-route's "activate
+first" comment). Customer must belong to the same MSP (`:645-652`, 404 otherwise).
+`resolvedTenantId` prefers the request body's explicit `tenantId`, falling back to the customer's
+own `tenantsTable.tenantId` (`:654`). Trial expiry computed server-side from `bundle.trialDays`
+(`:657-659`). **Fan-out**: `emitBundleActivationEvents()` (`sse-channels.ts`-adjacent helper defined
+in this same file, `:79-100`) writes one `mspEventStoreTable` row per package key (not one row for
+the whole bundle) — the file's own comment (`:610-612`) explains this is deliberate:
+"Mixed-frequency packages are fanned out as individual events — each package's engine (Monitoring
+Package Engine or Live Monitor Engine) picks up the event matching its frequency." §6c's live
+bundle would fan out 10 real `bundle.package.activated` events carrying package keys that match
+nothing in `monitoring_packages` — harmless only because that specific bundle's packages have zero
+`monitoring_package_checks` rows attached (dashboard-tab containers, per the migration's own Part A
+comment) and so no engine is listening for them regardless.
 
-### 3.10 `DELETE /api/msp/sales-bundles/:bundleId/assignments/:assignmentId` (`:711-773`) — revoke
+### 3.10 `DELETE /api/msp/sales-bundles/:bundleId/assignments/:assignmentId` (`:712-774`) — revoke
 
-`requireRole("MSPAdmin")`. 409 if already `"revoked"` — not silently a no-op. Sets `status:
-"revoked"`, `revokedAt`, then emits one `bundle.package.deactivated` event per package key
-(`:745-758`) — the deactivation-side mirror of §3.9's fan-out. **Assignment is looked up scoped to
-`(assignmentId, bundleId, mspId)`** (`:720-727`) — correctly triple-scoped, no cross-MSP leakage
+`requireCapability("ladder.msp-admin")`. 409 if already `"revoked"` — not silently a no-op. Sets
+`status: "revoked"`, `revokedAt`, then emits one `bundle.package.deactivated` event per package key
+(`:746-759`) — the deactivation-side mirror of §3.9's fan-out. **Assignment is looked up scoped to
+`(assignmentId, bundleId, mspId)`** (`:721-728`) — correctly triple-scoped, no cross-MSP leakage
 possible even with a guessed `assignmentId`.
 
-### 3.11 `GET /api/msp/customers/:customerId/bundle-assignments` (`:781-834`) — a customer's own assignments
+### 3.11 `GET /api/msp/customers/:customerId/bundle-assignments` (`:782-835`) — a customer's own assignments
 
-`requireRole("MSPOperator")`. The file's own header comment (`:19-22`) frames this as "the
-customer-centric complement" to §3.8 — same underlying table, filtered by `customerId` instead of
-`bundleId`, inner-joined with `mspSalesBundlesTable` for `bundleName`/`bundleStatus`. **Per-staff
-customer scoping is checked here** (`isCustomerBlockedByStaffScope`, `:800-802`,
-`requireAuth.ts:380-383`) — a scoped MSP staff member with no assigned relationship to this
+`requireCapability("ladder.msp-operator")`. The file's own header comment (`:19-22`) frames this as
+"the customer-centric complement" to §3.8 — same underlying table, filtered by `customerId` instead
+of `bundleId`, inner-joined with `mspSalesBundlesTable` for `bundleName`/`bundleStatus`.
+**Per-staff customer scoping is checked here** (`isCustomerBlockedByStaffScope`, `:801-803`,
+`requireAuth.ts:461-464`) — a scoped MSP staff member with no assigned relationship to this
 customer gets the same 404 as "customer not found in this MSP," fencing a scoped operator out of an
 unassigned customer's bundle data. **§3.8 (the bundle-centric list) has no equivalent staff-scope
 check** — a scoped MSPOperator can list every customer assigned to a bundle they can see, including
@@ -400,9 +410,9 @@ for whoever wires per-staff scoping onto this Feature's real UI.
 | Edge | Mechanism | Notes |
 |---|---|---|
 | `sales_offers` / `sales_offer_events` shared with `sales-offers.ts` | Two separate route files (`msp-sales-offers.ts`, MSP-scoped vs. `sales-offers.ts`, `requireAdmin`, unscoped/`?mspId=`-filterable) both import `sales-offer-engine.ts` directly | One real implementation, two real entry points — same discipline the SOW pack's §1.7 documented for `triggerMspCharge()` |
-| Three real paths to `sales_offers.state = "accepted"` | (1) `msp-sow.ts:141-407`'s dedicated project/add_on/subscription accept route (real fulfillment, raw `UPDATE` — bypasses `transitionOfferState()` entirely, so **no** `sales_offer_events` row is ever written for this path); (2) `portal-offers.ts:214-281`'s customer-facing accept (calls `transitionOfferState()` **and** `fulfillAcceptedProjectOffer()` — real fulfillment, real event row); (3) `msp-sales-offers.ts:344-388`'s generic `PATCH .../state` (calls `transitionOfferState()` only — **no** fulfillment, but **does** write an event row) | §6a's finding (filed #3386): only path (3) produces an "accepted" offer with zero fulfillment, and it is the only MSP-console-native way to do it. Path (1) leaves the fullest fulfillment trail but the thinnest event-log trail; paths (2) and (3) are the reverse — `sales_offer_events` is not, by itself, a complete acceptance audit trail across all three |
+| Three real paths to `sales_offers.state = "accepted"` | (1) `msp-sow.ts:141-407`'s dedicated project/add_on/subscription accept route (real fulfillment, raw `UPDATE` — bypasses `transitionOfferState()` entirely, so **no** `sales_offer_events` row is ever written for this path; unchanged since this pack's first pass, only its own `requireRole("MSPOperator")` → `requireCapability("ladder.msp-operator")` on this route, no line shift); (2) `portal-offers.ts:214-281`'s customer-facing accept (calls `transitionOfferState()` **and** `fulfillAcceptedProjectOffer()` — real fulfillment, real event row; likewise only a same-line `requireRole` → `requireCapability("ladder.customer-user")` swap, no line shift); (3) `msp-sales-offers.ts:355-399`'s generic `PATCH .../state` (calls `transitionOfferState()` only — **no** fulfillment, but **does** write an event row) | §6a's finding (filed #3386): only path (3) produces an "accepted" offer with zero fulfillment, and it is the only MSP-console-native way to do it. Path (1) leaves the fullest fulfillment trail but the thinnest event-log trail; paths (2) and (3) are the reverse — `sales_offer_events` is not, by itself, a complete acceptance audit trail across all three |
 | Offer generation → Notification Center | `persistSalesOfferCandidates()` → `createNotification()` (`sales-offer-engine.ts:396-411`) | Real, live, non-fatal — matches the customer-portal's own notification bell, deep-linked to `/customer-offers` |
-| `custom_bundle_composition` / `sales_offers` plan features | `PLAN_FEATURE_DEFS` (`msp-entitlement.ts:212-238`) | Both real, registered entries — not invented gate strings; the same registry backs `GET /api/admin/plan-features` for the Admin Panel's tier editor |
+| `custom_bundle_composition` / `sales_offers` plan features | `PLAN_FEATURE_DEFS` (`msp-entitlement.ts:213-239`) | Both real, registered entries — not invented gate strings; the same registry backs `GET /api/admin/plan-features` for the Admin Panel's tier editor |
 | `msp_sales_bundle_assignments` → dashboard category tabs | `lib/db/migrations/manual/2026-07-19-customer-dashboard-category-tabs.sql` | §6c — the one live bundle exists specifically to drive this mechanism, and its stored keys don't match live `monitoring_packages` rows, so it cannot |
 | `engine.offer` SSE channel | `sse-channels.ts:245-267` — namespaced so an MSP's numeric id and a customer's numeric id (both start at 1) can never cross-talk (`registerMspOfferSSEClient` vs. `registerCustomerOfferSSEClient`, the latter keyed `"customer:<id>"`) | Real, deliberate isolation, not an incidental prefix |
 
@@ -412,10 +422,10 @@ for whoever wires per-staff scoping onto this Feature's real UI.
 
 | Vocabulary | Values | Where fixed | Enforced by |
 |---|---|---|---|
-| `sales_offers.state` | `draft`, `sent`, `accepted`, `rejected`, `expired` | `SALES_OFFER_STATES`, `index.ts:3384` | `VALID_TRANSITIONS` (`sales-offer-engine.ts:456-462`) inside `transitionOfferState()` only — no DB CHECK constraint (confirmed live: no `sales_offers_state_check` in `\d sales_offers`) |
-| `msp_sales_bundles.status` | `draft`, `active`, `archived` | `MSP_SALES_BUNDLE_STATUS`, `msp.ts:3529` | Zod enum on create/update only (`createBundleSchema`/`updateBundleSchema`) — no transition-order enforcement (§3.6) and no DB CHECK (confirmed live) |
-| `msp_sales_bundle_assignments.status` | `active`, `suspended`, `revoked` | `MSP_BUNDLE_ASSIGNMENT_STATUS`, `msp.ts:3563` | **`suspended` is declared but never written anywhere in either route file** — only `active` (on create) and `revoked` (on the one revoke route) are ever set. A real, unused third member of a live enum — not filed (harmless, no code path is missing because of it — just an unimplemented lifecycle state), flagged for Design awareness |
-| `monitoring_packages.status` | inherits `MONITOR_CHECK_STATUS` (defined elsewhere; `"active"` is the only value either file ever queries for, `msp.ts:2235`) | Read-only in both files | — |
+| `sales_offers.state` | `draft`, `sent`, `accepted`, `rejected`, `expired` | `SALES_OFFER_STATES`, `index.ts:3415` | `VALID_TRANSITIONS` (`sales-offer-engine.ts:456-462`) inside `transitionOfferState()` only — no DB CHECK constraint (confirmed live: no `sales_offers_state_check` in `\d sales_offers`) |
+| `msp_sales_bundles.status` | `draft`, `active`, `archived` | `MSP_SALES_BUNDLE_STATUS`, `msp.ts:3530` | Zod enum on create/update only (`createBundleSchema`/`updateBundleSchema`) — no transition-order enforcement (§3.6) and no DB CHECK (confirmed live) |
+| `msp_sales_bundle_assignments.status` | `active`, `suspended`, `revoked` | `MSP_BUNDLE_ASSIGNMENT_STATUS`, `msp.ts:3564` | **`suspended` is declared but never written anywhere in either route file** — only `active` (on create) and `revoked` (on the one revoke route) are ever set. A real, unused third member of a live enum — not filed (harmless, no code path is missing because of it — just an unimplemented lifecycle state), flagged for Design awareness |
+| `monitoring_packages.status` | inherits `MONITOR_CHECK_STATUS` (defined elsewhere; `"active"` is the only value either file ever queries for, `msp.ts:2236`) | Read-only in both files | — |
 
 ---
 
@@ -492,7 +502,7 @@ their own Features under this Epic — not a gap to file.
   1 `msp_sales_bundles` row (§6c), 0 `msp_sales_bundle_assignments` rows, 21 `monitoring_packages`
   rows (all `status: "active"`, **all with `platform_cost_cents = 0` and `required_plan_feature:
   NULL`** — confirmed live). That last point means `computeInternalCost()` (§3, `msp-sales-
-  bundles.ts:68-75`) and every bundle's `internalCostCents` field genuinely compute to `0` for every
+  bundles.ts:69-76`) and every bundle's `internalCostCents` field genuinely compute to `0` for every
   real package that exists today — the "MSP internal cost" concept is fully live and correctly
   wired, but numerically inert against current catalog data. Not a bug — an honest reflection of
   the platform's own current cost data, not a fixture standing in for it.
@@ -543,17 +553,17 @@ dashboard Feature's own contract is a separate surface.
 ## 11. Provenance
 
 Written 2026-09-10 against `main` (branch `agent/3357-q2093`), for #3357. Read in full: `msp-sales-
-offers.ts` (425 lines, no test file exists), `msp-sales-bundles.ts` (836 lines) + `msp-sales-
-bundles.test.ts` (295 lines, all suites), `sales-offer-engine.ts` (534 lines, every export).
-Cross-referenced in full or in relevant part: `resolve-msp-id.ts` (all 4 exports), `requireAuth.ts`
-(`requireRole`, `requireMspScope`, `assertCustomerAccess`, `isCustomerBlockedByStaffScope`),
-`msp-entitlement.ts` (`requirePlanFeature`, `PLAN_FEATURE_DEFS`), `sse-channels.ts` (the
-`engine.offer` channel), `sales-offers.ts` (the platform-admin sibling surface, for §4's cross-
-reference), `msp-sow.ts` and `portal-offers.ts` (both re-read for §4/§6a's three-accept-paths
-finding), `lib/db/migrations/manual/2026-07-19-customer-dashboard-category-tabs.sql` (full read,
-for §6c). Verified live against local PostgreSQL — `sales_offers`, `sales_offer_events`,
-`msp_sales_bundles`, `msp_sales_bundle_assignments`, `monitoring_packages`, and
-`dashboard_templates` schemas and row contents all queried directly; §6c's finding was only
+offers.ts` (425 lines at the time, no test file exists), `msp-sales-bundles.ts` (836 lines at the
+time) + `msp-sales-bundles.test.ts` (295 lines, all suites), `sales-offer-engine.ts` (534 lines,
+every export). Cross-referenced in full or in relevant part: `resolve-msp-id.ts` (all 4 exports),
+`requireAuth.ts` (`requireRole`, `requireMspScope`, `assertCustomerAccess`,
+`isCustomerBlockedByStaffScope`), `msp-entitlement.ts` (`requirePlanFeature`, `PLAN_FEATURE_DEFS`),
+`sse-channels.ts` (the `engine.offer` channel), `sales-offers.ts` (the platform-admin sibling
+surface, for §4's cross-reference), `msp-sow.ts` and `portal-offers.ts` (both re-read for
+§4/§6a's three-accept-paths finding), `lib/db/migrations/manual/2026-07-19-customer-dashboard-
+category-tabs.sql` (full read, for §6c). Verified live against local PostgreSQL — `sales_offers`,
+`sales_offer_events`, `msp_sales_bundles`, `msp_sales_bundle_assignments`, `monitoring_packages`,
+and `dashboard_templates` schemas and row contents all queried directly; §6c's finding was only
 discoverable this way, not from any single file's source alone.
 
 Three real findings filed as sibling sub-issues of #1571 (this issue's own direct EPIC parent — no
@@ -563,3 +573,64 @@ session-scoped routes), **#3389** (§6c, the live bundle/migration key-prefix mi
 milestone v1.1, board status "AI Batter Up." Zero orphaned-endpoint sub-issues filed — every route
 in this pack is pre-#1571-wire unconsumed, the expected state. No product code, schema, or UI was
 changed by this pass.
+
+### 11.1 Citation re-extraction pass — 2026-09-10, #3533
+
+Three commits landed on `main` shortly after the pass above, retiring the exact auth mechanism this
+pack documented throughout: `bba7eeb9e` (requireRole enforcement moves onto the RBAC evaluator,
+#2458), `3dddd4b26` (RBAC: requireRole → requireCapability, retire ROLE_ORDER/roleIndex, #2460),
+`c770ac7dd` (RBAC: retire MSP_ROLES and the two capability columns, #2460). Filed as #3533; this
+section records the fresh re-extraction it called for, re-read in full against current `main`
+(commit `8efd98d4f` at the time of this pass) rather than patched by inference:
+
+- `msp-sales-offers.ts`: 425 → **436 lines**. Two new imports (`userClearsLadderCapability`,
+  `LADDER`/`LEGACY_ROLE`) shift everything from §1.1 onward by **+2**; the SSE route (§1.2) itself
+  replaced its inline hand-rolled `ROLE_ORDER` array with a direct call to the shared
+  `userClearsLadderCapability()` evaluator — a real behavior-neutral but line-count-changing
+  rewrite (net **+9** lines inside that one route) — so every route from §1.3 onward shifts a
+  further +9, landing at a uniform **+11** relative to the pack's original citations. All of
+  §1.1–§1.9 and the §0.1 consumer-map rows for this file are updated above to the resulting exact
+  new lines, verified by direct re-read, not estimation.
+- `msp-sales-bundles.ts`: 836 → **837 lines**. Exactly one line added (`import { LEGACY_ROLE } from
+  "@workspace/db/rbac/legacy-ladder";` at line 44) — every citation from old `:44` onward (i.e. all
+  of §0.2 and §3) shifts by a uniform **+1**, confirmed line-by-line above, not just at the file's
+  own stated new total.
+- `requireAuth.ts`: `requireRole` no longer exists; replaced by `requireCapability` (now at
+  `:267-303`, the 403 body byte-identical per that function's own doc comment). The shift here is
+  **not uniform** — `requireMspScope` moved from old `:245-281` to current `:329-364` (+84);
+  `assertCustomerAccess` moved from old `:306-335` to current `:389-417` (+83);
+  `isCustomerBlockedByStaffScope` moved to `:461-464` (+81) — the large capability-guard rewrite
+  (`requireCapability`'s own ~35-line doc comment plus its async body, §"Capability guard" in the
+  file) sits between these functions and grows the file by a different amount at each point.
+- `resolve-msp-id.ts`: uniform **+1** (one new `LEGACY_ROLE` import at line 18) —
+  `resolveMspId()` now `:29-54`, `resolveMspIdStrict()` (doc comment + body) now `:65-78`.
+- `msp-entitlement.ts`: uniform **+1** (one new `LEGACY_ROLE` import at line 15) —
+  `requirePlanFeature()` now `:97-155`, `PLAN_FEATURE_DEFS` now `:213-239`, its `sales_offers`
+  entry now `:230-233`.
+- `lib/db/src/schema/index.ts` / `lib/db/src/schema/msp.ts`: independent schema drift, unrelated to
+  the RBAC commits — `SALES_OFFER_STATES` `:3384→:3415` (+31), `salesOffersTable` `:3397→:3428`,
+  `salesOfferEventsTable` `:3471→:3502`, `salesOfferConfigTable` `:3493→:3524`;
+  `monitoringPackagesTable` `:2228→:2229` (+1), `MSP_SALES_BUNDLE_STATUS` `:3529→:3530` (+1),
+  `mspSalesBundlesTable` `:3532→:3533`, `MSP_BUNDLE_ASSIGNMENT_STATUS` `:3563→:3564`,
+  `mspSalesBundleAssignmentsTable` `:3566→:3567`. All confirmed by direct `grep -n` against current
+  `main`, not carried forward from the old pack's arithmetic.
+- `artifacts/api-server/src/routes/index.ts`: the two route-file imports and their `router.use()`
+  calls also drifted independently (`:238,240,602,604` → `:235,237,598,600`) — unrelated to this
+  issue's RBAC scope, confirmed by direct re-read.
+- `msp-sow.ts` and `portal-offers.ts` (cross-referenced in §4, not one of the 7 files #3533's own
+  body flagged as drifted): both changed since the pack's original read (`git diff
+  31fbfc360..HEAD --stat` shows +17/-17 and +12/-12 respectively), but every changed line is a
+  same-line `requireRole(...)` → `requireCapability(...)` substitution (plus one net `+1`-line
+  `LEGACY_ROLE` import added well after `msp-sow.ts`'s own cited range) — **zero line-count drift
+  within the cited ranges**, confirmed by full diff read. `msp-sow.ts:141-407` and
+  `portal-offers.ts:214-281` (§4) are unchanged and required no update.
+- `sales-offer-engine.ts`, `sse-channels.ts`, `sales-offers.ts` (the platform-admin sibling), and
+  `msp-sales-bundles.test.ts`: confirmed **zero diff** against `31fbfc360` (`git diff --stat`
+  returns nothing for the first three; the test file's one line changed swaps its mocked
+  `requireRole` for `requireCapability` with no net line-count change) — every citation into these
+  four files elsewhere in this pack is unchanged and accurate as originally written.
+
+No substantive analysis or finding changes as a result of this pass — §6a/§6b/§6c and the three
+filed issues (#3386, #3387, #3389) stand exactly as originally documented; this section is a
+citation and (for §1.2 only) a real behavior-preserving-rewrite description refresh, not new
+analysis. No product code, schema, or UI was changed by this pass either.
