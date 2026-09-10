@@ -36,6 +36,11 @@ public sealed class RemediationTrackerStep
     /// recompute this client-side; it already folds status + verificationState.</summary>
     [JsonPropertyName("terminalState")]
     public string TerminalState { get; set; } = string.Empty;
+
+    /// <summary>MSP operator's free-text note (#3472 — Session Notes). Null until one
+    /// is written; written through its own endpoint, never through the status PUT.</summary>
+    [JsonPropertyName("note")]
+    public string? Note { get; set; }
 }
 
 /// <summary>One phase's live pricing — mirrors RemediationTrackerPhasePricing.</summary>
@@ -161,6 +166,11 @@ public sealed class RemediationTrackerCatalogueStep
 
     [JsonPropertyName("terminalState")]
     public string TerminalState { get; set; } = string.Empty;
+
+    /// <summary>MSP operator's free-text note (#3472 — Session Notes). Null until one
+    /// is written.</summary>
+    [JsonPropertyName("note")]
+    public string? Note { get; set; }
 }
 
 /// <summary>One assignable status this route will accept on a PUT — real

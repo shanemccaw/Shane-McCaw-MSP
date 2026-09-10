@@ -119,6 +119,40 @@ public sealed class RemediationTrackerService : IRemediationTrackerService
             body);
     }
 
+    public async Task<RemediationTrackerStep> SetStepNoteAsync(
+        int customerId,
+        string stepId,
+        string? note,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(stepId)) throw new ArgumentException("stepId is required", nameof(stepId));
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Put,
+            $"{_baseUrl}/api/msp/customers/{customerId}/remediation-tracker/steps/{Uri.EscapeDataString(stepId)}/note")
+        {
+            Content = JsonContent.Create(new { note }, options: JsonOptions),
+        };
+        Authorize(request);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new RemediationTrackerException(
+                $"PUT /api/msp/customers/{customerId}/remediation-tracker/steps/{stepId}/note returned {(int)response.StatusCode} {response.ReasonPhrase}",
+                (int)response.StatusCode,
+                body);
+        }
+
+        var parsed = JsonSerializer.Deserialize<RemediationTrackerStepUpdateResponse>(body, JsonOptions);
+        return parsed?.Step ?? throw new RemediationTrackerException(
+            $"PUT /api/msp/customers/{customerId}/remediation-tracker/steps/{stepId}/note returned an empty step",
+            (int)response.StatusCode,
+            body);
+    }
+
     private void Authorize(HttpRequestMessage request)
     {
         if (!string.IsNullOrWhiteSpace(AuthToken))

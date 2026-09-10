@@ -47,4 +47,16 @@ public interface IRemediationTrackerService
         string stepId,
         string status,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// PUT /api/msp/customers/:customerId/remediation-tracker/steps/:stepId/note —
+    /// writes this step's free-text MSP operator note (#3472 — Session Notes),
+    /// independent of <see cref="SetStepStatusAsync"/>. Never resets
+    /// verification state the way a status write does. Pass null/empty to clear it.
+    /// </summary>
+    Task<RemediationTrackerStep> SetStepNoteAsync(
+        int customerId,
+        string stepId,
+        string? note,
+        CancellationToken cancellationToken = default);
 }

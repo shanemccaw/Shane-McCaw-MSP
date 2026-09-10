@@ -70,6 +70,12 @@ const putStepSchema = z.object({
   status: z.enum(REMEDIATION_TRACKER_STEP_STATUS),
 });
 
+/** #3472 — a note write is independent of the status write above: no length
+ * beyond a sane cap, and `null`/empty clears it. */
+const putStepNoteSchema = z.object({
+  note: z.string().max(4000).nullable(),
+});
+
 /** Same three-state read model as portal-remediation-tracker.ts (#1542). */
 type RemediationTerminalState = "verified" | "accepted" | "outstanding";
 
@@ -87,6 +93,8 @@ interface WireTrackerStep {
   readonly verificationState: string;
   readonly verifiedAt: string | null;
   readonly terminalState: RemediationTerminalState;
+  /** MSP operator's free-text note (#3472) — null until one is written. */
+  readonly note: string | null;
 }
 
 function toWire(row: {
@@ -96,6 +104,7 @@ function toWire(row: {
   updatedAt: Date | string | null;
   verificationState: string;
   verifiedAt: Date | string | null;
+  note?: string | null;
 }): WireTrackerStep {
   const iso = (v: Date | string | null): string | null =>
     v === null ? null : v instanceof Date ? v.toISOString() : String(v);
@@ -107,6 +116,7 @@ function toWire(row: {
     verificationState: row.verificationState,
     verifiedAt: iso(row.verifiedAt),
     terminalState: remediationTerminalState(row.status, row.verificationState),
+    note: row.note ?? null,
   };
 }
 
@@ -146,6 +156,7 @@ router.get(
           updatedAt: remediationTrackerStepsTable.updatedAt,
           verificationState: remediationTrackerStepsTable.verificationState,
           verifiedAt: remediationTrackerStepsTable.verifiedAt,
+          note: remediationTrackerStepsTable.note,
         })
         .from(remediationTrackerStepsTable)
         .where(eq(remediationTrackerStepsTable.customerId, customerId));
@@ -193,6 +204,7 @@ router.get(
           updatedAt: remediationTrackerStepsTable.updatedAt,
           verificationState: remediationTrackerStepsTable.verificationState,
           verifiedAt: remediationTrackerStepsTable.verifiedAt,
+          note: remediationTrackerStepsTable.note,
         })
         .from(remediationTrackerStepsTable)
         .where(eq(remediationTrackerStepsTable.customerId, customerId));
@@ -217,6 +229,7 @@ router.get(
           verificationState,
           verifiedAt: iso(stored?.verifiedAt ?? null),
           terminalState: remediationTerminalState(status, verificationState),
+          note: stored?.note ?? null,
         };
       });
 
@@ -346,6 +359,84 @@ router.put(
     } catch (err) {
       log.error({ err, customerId, stepId, status }, "PUT /msp/customers/:customerId/remediation-tracker/steps failed");
       res.status(500).json({ error: "Failed to save remediation step" });
+    }
+  },
+);
+
+// ── Note (#3472 — Session Notes) ─────────────────────────────────────────────
+/**
+ * PUT /msp/customers/:customerId/remediation-tracker/steps/:stepId/note —
+ * writes the MSP operator's free-text note for this step, independent of the
+ * status write above. Deliberately its own route rather than an optional
+ * field on `putStepSchema`: a note edit must never touch
+ * `verificationState`/`verifiedAt` the way the status PUT intentionally
+ * resets them on every claim change. Upserts the same way the status route
+ * does — a step with no row yet gets one, defaulted to `not_started`/
+ * `unverified`, with only the note set.
+ */
+router.put(
+  "/msp/customers/:customerId/remediation-tracker/steps/:stepId/note",
+  requireCapability("ladder.msp-operator"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = await resolveAuthorizedCustomerId(req, res);
+    if (customerId === null) return;
+
+    const stepId = String(req.params.stepId ?? "");
+    if (!STEP_ID_SET.has(stepId)) {
+      res.status(400).json({ error: "Unknown remediation step" });
+      return;
+    }
+
+    const parsed = putStepNoteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+      return;
+    }
+
+    const note = parsed.data.note?.trim() || null;
+    const now = new Date();
+    const userId = typeof req.user?.id === "number" ? req.user.id : null;
+
+    try {
+      await db
+        .insert(remediationTrackerStepsTable)
+        .values({
+          customerId,
+          stepId,
+          note,
+          updatedByUserId: userId,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [remediationTrackerStepsTable.customerId, remediationTrackerStepsTable.stepId],
+          set: { note, updatedByUserId: userId, updatedAt: now },
+        });
+
+      const [row] = await db
+        .select({
+          stepId: remediationTrackerStepsTable.stepId,
+          status: remediationTrackerStepsTable.status,
+          completedAt: remediationTrackerStepsTable.completedAt,
+          updatedAt: remediationTrackerStepsTable.updatedAt,
+          verificationState: remediationTrackerStepsTable.verificationState,
+          verifiedAt: remediationTrackerStepsTable.verifiedAt,
+          note: remediationTrackerStepsTable.note,
+        })
+        .from(remediationTrackerStepsTable)
+        .where(
+          and(
+            eq(remediationTrackerStepsTable.customerId, customerId),
+            eq(remediationTrackerStepsTable.stepId, stepId),
+          ),
+        )
+        .limit(1);
+
+      log.info({ customerId, stepId, userId }, "MSP-side remediation tracker step note updated");
+
+      res.json({ step: row ? toWire(row) : null });
+    } catch (err) {
+      log.error({ err, customerId, stepId }, "PUT /msp/customers/:customerId/remediation-tracker/steps/:stepId/note failed");
+      res.status(500).json({ error: "Failed to save remediation step note" });
     }
   },
 );

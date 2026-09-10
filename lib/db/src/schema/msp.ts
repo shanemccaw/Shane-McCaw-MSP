@@ -7668,6 +7668,16 @@ export const remediationTrackerStepsTable = pgTable("remediation_tracker_steps",
    * only of a decision made about the step.
    */
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  /**
+   * Free-text MSP operator note on this step — #3472 (Session Notes). Written
+   * through its own PUT .../note route (msp-remediation-tracker.ts), separate
+   * from the status write above so setting a note never resets
+   * `verificationState`/`verifiedAt` the way a status change deliberately
+   * does. NULL until an operator writes one; never customer-visible (this
+   * table's MSP-side write path only — the customer-facing
+   * portal-remediation-tracker.ts route does not read or write it).
+   */
+  note: text("note"),
   /** users.id of whoever last changed this row. Nullable for rows written by anything but a person. */
   updatedByUserId: integer("updated_by_user_id"),
   /**

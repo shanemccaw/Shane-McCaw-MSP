@@ -809,6 +809,12 @@ public partial class MainWindow : FluentWindow
 
     private void OpenChangeRequestRecord(ChangeRequest cr)
     {
+        // Session Notes (#3472) — the change-control-linked half. attestationNote already
+        // exists, real, on the server's own POST .../human-action route; the only gap was
+        // this client never collecting one. Captured here (write-through, no save step) and
+        // threaded into RecordHumanActionAsync's real attestationNote parameter below.
+        var attestationNote = string.Empty;
+
         var spec = new RecordWorkspaceSpec
         {
             Kind = "change-request",
@@ -824,6 +830,16 @@ public partial class MainWindow : FluentWindow
                 new WorkspaceFact { Label = "Impacted users", Value = cr.ImpactedUsersCount.ToString() },
             },
             Body = ("Description", string.IsNullOrEmpty(cr.Description) ? "(none)" : cr.Description),
+            Edits =
+            {
+                new WorkspaceEdit
+                {
+                    Key = "attestationNote",
+                    Label = "Session Note",
+                    Value = string.Empty,
+                    OnChange = v => attestationNote = v,
+                },
+            },
             Actions =
             {
                 new WorkspaceAction
@@ -834,7 +850,9 @@ public partial class MainWindow : FluentWindow
                     {
                         var numericId = cr.NumericId;
                         if (numericId == null) return;
-                        _ = _changeControlService.RecordHumanActionAsync(numericId.Value);
+                        _ = _changeControlService.RecordHumanActionAsync(
+                            numericId.Value,
+                            attestationNote: string.IsNullOrWhiteSpace(attestationNote) ? null : attestationNote);
                     },
                 },
             },
@@ -1642,6 +1660,35 @@ public partial class MainWindow : FluentWindow
                 },
             });
         }
+
+        // Session Notes (#3472) — a free-text write-through note, independent of the status
+        // edit above and calling its own SetStepNoteAsync endpoint so writing a note never
+        // resets verificationState the way a status change deliberately does. Available
+        // regardless of status, including accepted_risk (the signed fact itself is not
+        // settable by an MSP operator, but a note about it is). Auto-tagged with this
+        // record's context (tenant/step) for free — ShellRegistry.RecordOpened already
+        // calls ActivityContextService.RecordOpen for every workspace this opens.
+        spec.Edits.Add(new WorkspaceEdit
+        {
+            Key = "note",
+            Label = "Session Note",
+            Value = step.Note ?? string.Empty,
+            OnChange = newValue =>
+            {
+                try
+                {
+                    var updated = _remediationTrackerService.SetStepNoteAsync(customerId, step.StepId, newValue).GetAwaiter().GetResult();
+                    step.Note = updated.Note;
+                }
+                catch (RemediationTrackerException)
+                {
+                    // Real, honest failure surfaced via the Console pane rather than swallowed —
+                    // same pattern SubmitAdHocHours uses for a failed write.
+                    ShowDocument(ConsolePanel);
+                    ConsolePanel.AppendExternal($"[Session Notes] Could not save note for {step.StepId} — try again.");
+                }
+            },
+        });
 
         _shellRegistry.OpenContextual(
             new TrailEntry("remediation-tracker-step", step.StepId, step.Title, () => OpenTrackerStepRecord(step, catalogue, customerId)),

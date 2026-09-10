@@ -70,6 +70,7 @@ vi.mock("@workspace/db", () => {
       verifiedAt: "verified_at",
       verifiedByRunId: "verified_by_run_id",
       updatedAt: "updated_at",
+      note: "note",
     },
     tenantsTable: { id: "id", tenantId: "tenant_id" },
     REMEDIATION_TRACKER_STEP_STATUS: [
@@ -271,6 +272,78 @@ describe("PUT /msp/customers/:customerId/remediation-tracker/steps/:stepId", () 
     expect(mockLogRetainerWorkFromTracker).toHaveBeenCalledWith(
       expect.objectContaining({ customerId: 42, mspId: 9, source: "remediation_tracker" }),
     );
+  });
+});
+
+describe("PUT /msp/customers/:customerId/remediation-tracker/steps/:stepId/note", () => {
+  it("404s a customer outside the caller's book", async () => {
+    mockAssertCustomerAccess.mockResolvedValue(false);
+    const res = await request(buildApp())
+      .put("/api/msp/customers/999/remediation-tracker/steps/s1/note")
+      .send({ note: "checked with the client" });
+    expect(res.status).toBe(404);
+  });
+
+  it("400s an unknown stepId", async () => {
+    mockAssertCustomerAccess.mockResolvedValue(true);
+    const res = await request(buildApp())
+      .put("/api/msp/customers/42/remediation-tracker/steps/s999/note")
+      .send({ note: "x" });
+    expect(res.status).toBe(400);
+  });
+
+  it("400s a malformed body", async () => {
+    mockAssertCustomerAccess.mockResolvedValue(true);
+    const res = await request(buildApp())
+      .put("/api/msp/customers/42/remediation-tracker/steps/s1/note")
+      .send({ note: 12345 });
+    expect(res.status).toBe(400);
+    expect(mockInsertValues).toHaveLength(0);
+  });
+
+  it("upserts only the note — never touches status/verification the way the status PUT does", async () => {
+    mockAssertCustomerAccess.mockResolvedValue(true);
+    mockSelectResultsQueue.push([
+      {
+        stepId: "s1",
+        status: "in_progress",
+        completedAt: null,
+        updatedAt: new Date(),
+        verificationState: "verified",
+        verifiedAt: new Date(),
+        note: "checked with the client",
+      },
+    ]);
+    const res = await request(buildApp())
+      .put("/api/msp/customers/42/remediation-tracker/steps/s1/note")
+      .send({ note: "checked with the client" });
+    expect(res.status).toBe(200);
+    expect(res.body.step).toMatchObject({ note: "checked with the client", status: "in_progress", verificationState: "verified" });
+    expect(mockConflictSets[0]).toEqual(
+      expect.objectContaining({ note: "checked with the client" }),
+    );
+    expect(mockConflictSets[0]).not.toHaveProperty("status");
+    expect(mockConflictSets[0]).not.toHaveProperty("verificationState");
+  });
+
+  it("clears the note when sent empty/whitespace", async () => {
+    mockAssertCustomerAccess.mockResolvedValue(true);
+    mockSelectResultsQueue.push([
+      {
+        stepId: "s1",
+        status: "not_started",
+        completedAt: null,
+        updatedAt: new Date(),
+        verificationState: "unverified",
+        verifiedAt: null,
+        note: null,
+      },
+    ]);
+    const res = await request(buildApp())
+      .put("/api/msp/customers/42/remediation-tracker/steps/s1/note")
+      .send({ note: "   " });
+    expect(res.status).toBe(200);
+    expect(mockConflictSets[0]).toMatchObject({ note: null });
   });
 });
 
