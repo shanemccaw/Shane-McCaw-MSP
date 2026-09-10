@@ -2,9 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   minutesToHours,
   hoursToMinutes,
-  periodMonthOf,
-  periodBefore,
-  periodAfter,
+  isoDateKey,
+  periodKeyOf,
+  periodKeyBefore,
+  periodKeyAfter,
   isoWeekLabel,
   computeMonthBucket,
   usedMinutesByPeriod,
@@ -27,16 +28,62 @@ describe("minutes ⇄ hours", () => {
   });
 });
 
-describe("period math", () => {
-  it("formats YYYY-MM in UTC", () => {
-    expect(periodMonthOf(new Date("2026-08-15T12:00:00Z"))).toBe("2026-08");
-    expect(periodMonthOf(new Date("2026-01-01T00:00:00Z"))).toBe("2026-01");
+describe("isoDateKey", () => {
+  it("formats YYYY-MM-DD in UTC", () => {
+    expect(isoDateKey(new Date("2026-08-15T12:00:00Z"))).toBe("2026-08-15");
+    expect(isoDateKey(new Date("2026-01-01T00:00:00Z"))).toBe("2026-01-01");
   });
-  it("walks a month back and forward, crossing the year boundary", () => {
-    expect(periodBefore("2026-01")).toBe("2025-12");
-    expect(periodBefore("2026-08")).toBe("2026-07");
-    expect(periodAfter("2025-12")).toBe("2026-01");
-    expect(periodAfter("2026-07")).toBe("2026-08");
+});
+
+describe("periodKeyOf — anniversary-based (Git #3473)", () => {
+  it("REGRESSION: a customer signed up mid-month resets on THEIR real day, not the 1st", () => {
+    // The exact bug: a customer whose real Stripe cycle starts the 14th used to
+    // get bucketed into the shared calendar month regardless. Anchor day 14.
+    const anchorDay = 14;
+    // Just before the anniversary → still last period.
+    expect(periodKeyOf(anchorDay, new Date("2026-08-13T23:59:59Z"))).toBe("2026-07-14");
+    // On the anniversary itself → the new period starts.
+    expect(periodKeyOf(anchorDay, new Date("2026-08-14T00:00:00Z"))).toBe("2026-08-14");
+    // Mid-period.
+    expect(periodKeyOf(anchorDay, new Date("2026-08-20T12:00:00Z"))).toBe("2026-08-14");
+    // The OLD calendar-month bug would have bucketed 2026-08-01..31 as one
+    // shared "2026-08" period regardless of the 14th boundary — assert the two
+    // dates straddling the real anniversary land in DIFFERENT periods.
+    expect(periodKeyOf(anchorDay, new Date("2026-08-13T00:00:00Z"))).not.toBe(
+      periodKeyOf(anchorDay, new Date("2026-08-14T00:00:00Z")),
+    );
+  });
+
+  it("clamps a short-month anchor day to that month's real last day (Stripe's own behavior)", () => {
+    const anchorDay = 31;
+    // February has no 31st — clamps to the 28th (2026 is not a leap year).
+    expect(periodKeyOf(anchorDay, new Date("2026-02-20T00:00:00Z"))).toBe("2026-01-31");
+    expect(periodKeyOf(anchorDay, new Date("2026-02-28T00:00:00Z"))).toBe("2026-02-28");
+    // March has 31 days again — back to the real anchor day.
+    expect(periodKeyOf(anchorDay, new Date("2026-03-31T00:00:00Z"))).toBe("2026-03-31");
+  });
+
+  it("still works for a plain 1st-of-month anchor (the old default-of-nothing shape)", () => {
+    expect(periodKeyOf(1, new Date("2026-08-15T12:00:00Z"))).toBe("2026-08-01");
+    expect(periodKeyOf(1, new Date("2026-01-01T00:00:00Z"))).toBe("2026-01-01");
+  });
+});
+
+describe("periodKeyBefore / periodKeyAfter — anniversary-based", () => {
+  it("walks a period back and forward on a mid-month anchor, crossing the year boundary", () => {
+    const anchorDay = 14;
+    expect(periodKeyBefore(anchorDay, "2026-01-14")).toBe("2025-12-14");
+    expect(periodKeyBefore(anchorDay, "2026-08-14")).toBe("2026-07-14");
+    expect(periodKeyAfter(anchorDay, "2025-12-14")).toBe("2026-01-14");
+    expect(periodKeyAfter(anchorDay, "2026-07-14")).toBe("2026-08-14");
+  });
+
+  it("keeps stepping off the ORIGINAL anchor day even after a clamp, not the clamped day", () => {
+    // Anchor day 31. Nov has 30 days → clamps to "2026-11-30". Stepping forward
+    // to December must return to day 31 (min(31,31)=31), not 31+1=Dec 1.
+    const anchorDay = 31;
+    expect(periodKeyAfter(anchorDay, "2026-11-30")).toBe("2026-12-31");
+    expect(periodKeyBefore(anchorDay, "2026-12-31")).toBe("2026-11-30");
   });
 });
 
@@ -58,15 +105,15 @@ describe("pillarColor", () => {
   });
 });
 
-describe("computeMonthBucket — rollover", () => {
+describe("computeMonthBucket — rollover, calendar-anchor (anchorDay=1) parity with the old behavior", () => {
   it("matches the design's headline figures (July→August)", () => {
     // July: retained 8h (480), used 6h (360) → 2h unused rolls into August.
     // August: retained 8h, rolled 2h, used 5.5h → 4.5h remaining.
     const used = usedMinutesByPeriod([
-      { periodMonth: "2026-07", minutes: 360 },
-      { periodMonth: "2026-08", minutes: 330 },
+      { periodMonth: "2026-07-01", minutes: 360 },
+      { periodMonth: "2026-08-01", minutes: 330 },
     ]);
-    const bucket = computeMonthBucket("2026-08", 480, used);
+    const bucket = computeMonthBucket(1, "2026-08-01", 480, used);
     expect(minutesToHours(bucket.retainedMinutes)).toBe(8);
     expect(minutesToHours(bucket.rolledMinutes)).toBe(2);
     expect(minutesToHours(bucket.usedMinutes)).toBe(5.5);
@@ -74,45 +121,34 @@ describe("computeMonthBucket — rollover", () => {
   });
 
   it("rolls forward only ONE month, then expires", () => {
-    // July retained 8h used 0 → 8h unused. But only retained-unused rolls, and
-    // rolled hours themselves do NOT roll a second time.
-    // Aug: rolled 8h, used 0 → Aug retained-unused = 8 (rolled first means Aug's
-    // rolled 8 goes untouched, Aug retained 8 untouched). rolled into Sep = Aug
-    // retained unused = 8; Aug's own rolled 8 expires.
     const used = usedMinutesByPeriod([
-      { periodMonth: "2026-07", minutes: 0 },
-      { periodMonth: "2026-08", minutes: 0 },
+      { periodMonth: "2026-07-01", minutes: 0 },
+      { periodMonth: "2026-08-01", minutes: 0 },
     ]);
-    const sep = computeMonthBucket("2026-09", 480, used);
-    // Sep rolled = Aug retained-unused = 8h (NOT 16h — Aug's rolled 8h expired).
+    const sep = computeMonthBucket(1, "2026-09-01", 480, used);
     expect(minutesToHours(sep.rolledMinutes)).toBe(8);
   });
 
   it("consumes rolled hours first (expiring hours spent before fresh allotment)", () => {
-    // July retained 8h used 8h → 0 rolls. Wait — pick a case where rolled-first
-    // matters: June retained 8h used 0 → 8h rolls to July. July retained 8h,
-    // rolled 8h, used 8h. Rolled-first: the 8h used comes entirely from rolled,
-    // leaving July's retained 8h fully unused → 8h rolls to August.
     const used = usedMinutesByPeriod([
-      { periodMonth: "2026-06", minutes: 0 },
-      { periodMonth: "2026-07", minutes: 480 },
+      { periodMonth: "2026-06-01", minutes: 0 },
+      { periodMonth: "2026-07-01", minutes: 480 },
     ]);
-    const aug = computeMonthBucket("2026-08", 480, used);
+    const aug = computeMonthBucket(1, "2026-08-01", 480, used);
     expect(minutesToHours(aug.rolledMinutes)).toBe(8);
   });
 
   it("floors remaining at zero on an overage, but reports the overage honestly and uncapped", () => {
-    const used = usedMinutesByPeriod([{ periodMonth: "2026-08", minutes: 900 }]); // 15h used
-    const bucket = computeMonthBucket("2026-08", 480, used);
+    const used = usedMinutesByPeriod([{ periodMonth: "2026-08-01", minutes: 900 }]); // 15h used
+    const bucket = computeMonthBucket(1, "2026-08-01", 480, used);
     expect(bucket.remainingMinutes).toBe(0);
     expect(minutesToHours(bucket.usedMinutes)).toBe(15);
-    // 15h delivered against 8h retained → 7h over, not silently dropped.
     expect(minutesToHours(bucket.overMinutes)).toBe(7);
   });
 
   it("matches the design's own headline over-month example (10h retained · 12h delivered)", () => {
-    const used = usedMinutesByPeriod([{ periodMonth: "2026-08", minutes: 720 }]); // 12h used
-    const bucket = computeMonthBucket("2026-08", 600, used); // 10h retained, no rollover
+    const used = usedMinutesByPeriod([{ periodMonth: "2026-08-01", minutes: 720 }]); // 12h used
+    const bucket = computeMonthBucket(1, "2026-08-01", 600, used); // 10h retained, no rollover
     expect(minutesToHours(bucket.retainedMinutes)).toBe(10);
     expect(minutesToHours(bucket.usedMinutes)).toBe(12);
     expect(minutesToHours(bucket.overMinutes)).toBe(2);
@@ -120,17 +156,14 @@ describe("computeMonthBucket — rollover", () => {
   });
 
   it("does NOT flag over-month when used exactly matches the allotment", () => {
-    // A customer who used exactly what they retained ran out (remaining = 0) but
-    // did not deliver MORE than retained — over-month must stay false here, not be
-    // inferred from remainingMinutes === 0.
-    const used = usedMinutesByPeriod([{ periodMonth: "2026-08", minutes: 480 }]);
-    const bucket = computeMonthBucket("2026-08", 480, used);
+    const used = usedMinutesByPeriod([{ periodMonth: "2026-08-01", minutes: 480 }]);
+    const bucket = computeMonthBucket(1, "2026-08-01", 480, used);
     expect(bucket.remainingMinutes).toBe(0);
     expect(bucket.overMinutes).toBe(0);
   });
 
-  it("gives a clean bucket for a month with no prior activity", () => {
-    const bucket = computeMonthBucket("2026-08", 480, new Map());
+  it("gives a clean bucket for a period with no prior activity", () => {
+    const bucket = computeMonthBucket(1, "2026-08-01", 480, new Map());
     expect(minutesToHours(bucket.rolledMinutes)).toBe(0);
     expect(minutesToHours(bucket.usedMinutes)).toBe(0);
     expect(minutesToHours(bucket.remainingMinutes)).toBe(8);
@@ -138,14 +171,56 @@ describe("computeMonthBucket — rollover", () => {
   });
 
   it("counts rolled hours toward the over-month threshold, not just the fresh allotment", () => {
-    // June retained 8h used 0 → 8h rolls to July. July retained 8h + rolled 8h =
-    // 16h available; using 20h should be 4h over, not 12h over.
     const used = usedMinutesByPeriod([
-      { periodMonth: "2026-06", minutes: 0 },
-      { periodMonth: "2026-07", minutes: 1200 }, // 20h
+      { periodMonth: "2026-06-01", minutes: 0 },
+      { periodMonth: "2026-07-01", minutes: 1200 }, // 20h
     ]);
-    const bucket = computeMonthBucket("2026-07", 480, used);
+    const bucket = computeMonthBucket(1, "2026-07-01", 480, used);
     expect(minutesToHours(bucket.rolledMinutes)).toBe(8);
     expect(minutesToHours(bucket.overMinutes)).toBe(4);
+  });
+});
+
+describe("computeMonthBucket — REGRESSION: real anniversary anchor (Git #3473)", () => {
+  it("a customer signed up on the 14th rolls over on THEIR real 14th boundary, not the calendar month", () => {
+    const anchorDay = 14;
+    // "July" for this customer runs 2026-07-14 .. 2026-08-13.
+    // "August" for this customer runs 2026-08-14 .. 2026-09-13.
+    // Log 6h against the customer's real July anniversary period, and 5.5h
+    // against their real August anniversary period — using calendar-month
+    // dates that straddle the boundary would have gone to the WRONG bucket
+    // under the old periodMonth-of-calendar-date bug.
+    const julyKey = periodKeyOf(anchorDay, new Date("2026-07-20T00:00:00Z"));
+    const augKey = periodKeyOf(anchorDay, new Date("2026-08-20T00:00:00Z"));
+    expect(julyKey).toBe("2026-07-14");
+    expect(augKey).toBe("2026-08-14");
+
+    const used = usedMinutesByPeriod([
+      { periodMonth: julyKey, minutes: 360 }, // 6h
+      { periodMonth: augKey, minutes: 330 }, // 5.5h
+    ]);
+    const bucket = computeMonthBucket(anchorDay, augKey, 480, used);
+    expect(minutesToHours(bucket.rolledMinutes)).toBe(2); // 8h - 6h used in July
+    expect(minutesToHours(bucket.usedMinutes)).toBe(5.5);
+    expect(minutesToHours(bucket.remainingMinutes)).toBe(4.5);
+  });
+
+  it("hours logged on the 13th (still last period) do NOT count toward the period starting the 14th", () => {
+    const anchorDay = 14;
+    const augKey = periodKeyOf(anchorDay, new Date("2026-08-20T00:00:00Z")); // "2026-08-14"
+    // Work logged 2026-08-13 (one day before the anniversary) belongs to the
+    // PRIOR period, "2026-07-14", not "2026-08-14" — the exact distinction the
+    // old shared calendar-month key could not make (both dates were "2026-08").
+    const priorPeriodKey = periodKeyOf(anchorDay, new Date("2026-08-13T00:00:00Z"));
+    expect(priorPeriodKey).toBe("2026-07-14");
+    expect(priorPeriodKey).not.toBe(augKey);
+
+    // 2h used against the prior 8h allotment → 6h unused rolls forward.
+    const used = usedMinutesByPeriod([{ periodMonth: priorPeriodKey, minutes: 120 }]);
+    const bucket = computeMonthBucket(anchorDay, augKey, 480, used);
+    // None of the prior-period hours count as "used" THIS period — they only
+    // affect this period's rollover.
+    expect(bucket.usedMinutes).toBe(0);
+    expect(minutesToHours(bucket.rolledMinutes)).toBe(6);
   });
 });

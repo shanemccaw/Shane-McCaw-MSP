@@ -16,7 +16,8 @@
 
 import { db, retainerWorkLogTable, type RetainerWorkSource } from "@workspace/db";
 import { logger } from "./logger.ts";
-import { periodMonthOf, isoWeekLabel } from "./retainer-hours.ts";
+import { periodKeyOf, isoWeekLabel } from "./retainer-hours.ts";
+import { resolveRetainerAnchorDay } from "./retainer-period-anchor.ts";
 
 const log = logger.child({ channel: "billing" });
 
@@ -62,12 +63,13 @@ export interface LogRetainerWorkInput {
 export async function logRetainerWorkFromTracker(input: LogRetainerWorkInput): Promise<boolean> {
   try {
     const occurredAt = input.occurredAt ?? new Date();
+    const anchorDay = await resolveRetainerAnchorDay(input.customerId);
     const inserted = await db
       .insert(retainerWorkLogTable)
       .values({
         customerId: input.customerId,
         mspId: input.mspId,
-        periodMonth: periodMonthOf(occurredAt),
+        periodMonth: periodKeyOf(anchorDay, occurredAt),
         weekLabel: isoWeekLabel(occurredAt),
         item: input.item,
         minutes: 0,

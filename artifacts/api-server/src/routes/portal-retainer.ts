@@ -44,7 +44,8 @@ import { requireAuth } from "../middlewares/requireAuth.ts";
 import { resolveCustomerId } from "../lib/portal-customer-scope.ts";
 import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
 import { logger } from "../lib/logger.ts";
-import { periodMonthOf, computeMonthBucket, usedMinutesByPeriod, minutesToHours } from "../lib/retainer-hours.ts";
+import { periodKeyOf, computeMonthBucket, usedMinutesByPeriod, minutesToHours } from "../lib/retainer-hours.ts";
+import { resolveRetainerAnchorDay } from "../lib/retainer-period-anchor.ts";
 import { DEFAULT_RETAINED_MINUTES, entryToWire, bucketToWire } from "./admin-retainer.ts";
 
 const log = logger.child({ channel: "billing" });
@@ -73,8 +74,11 @@ router.get("/portal/retainer", requireAuth, async (req: Request, res: Response) 
 
     const retainedMinutes = settings?.retainedMinutesPerMonth ?? DEFAULT_RETAINED_MINUTES;
     const usedByPeriod = usedMinutesByPeriod(entries);
-    const period = periodMonthOf(new Date());
-    const bucket = computeMonthBucket(period, retainedMinutes, usedByPeriod);
+    // Git #3473 — anniversary-based, not calendar-month: bucket against THIS
+    // customer's real Stripe cycle anchor, not a shared calendar month.
+    const anchorDay = await resolveRetainerAnchorDay(customerId, { settingsCreatedAt: settings?.createdAt ?? null });
+    const period = periodKeyOf(anchorDay, new Date());
+    const bucket = computeMonthBucket(anchorDay, period, retainedMinutes, usedByPeriod);
 
     // #1923: status_reports.customerId (tenants.id) is now the authoritative scope
     // — a report addressed to nobody in particular (clientUserId null) is still

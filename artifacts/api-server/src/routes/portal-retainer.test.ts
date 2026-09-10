@@ -77,6 +77,16 @@ vi.mock("../lib/tenant-signals", () => ({
   resolveCustomerUserIds: (customerId: number) => mockResolveCustomerUserIds(customerId),
 }));
 
+// Git #3473 — anniversary-based period bucketing. Its own DB-backed priority
+// rule (active subscription → latest subscription → retainer_settings
+// .createdAt → day 1) is covered in retainer-period-anchor.test.ts; this route
+// pins it to anchor day 1 (the plain calendar-month shape) so the existing
+// "August 2026" fixtures below stay meaningful without re-deriving them.
+const mockResolveRetainerAnchorDay = vi.fn(async () => 1);
+vi.mock("../lib/retainer-period-anchor", () => ({
+  resolveRetainerAnchorDay: (...args: unknown[]) => (mockResolveRetainerAnchorDay as (...a: unknown[]) => unknown)(...args),
+}));
+
 vi.mock("../lib/logger", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
@@ -105,14 +115,17 @@ function makeApp(user: Record<string, unknown> | null) {
 
 beforeEach(() => {
   // The ledger fixtures below are all written against "now" being inside
-  // August 2026 (periodMonth: "2026-08") — pin the clock there so
-  // portal-retainer.ts's `periodMonthOf(new Date())` "current month" bucket
-  // doesn't silently drift as real wall-clock time moves past that month.
+  // August 2026 (periodMonth: "2026-08-01" — anchor day 1, pinned via the
+  // resolveRetainerAnchorDay mock above) — pin the clock there so
+  // portal-retainer.ts's `periodKeyOf(anchorDay, new Date())` "current period"
+  // bucket doesn't silently drift as real wall-clock time moves past that month.
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
   mockSelectResultsQueue = [];
   mockResolveCustomerUserIds.mockClear();
   mockResolveCustomerUserIds.mockImplementation(async (customerId: number) => [customerId]);
+  mockResolveRetainerAnchorDay.mockClear();
+  mockResolveRetainerAnchorDay.mockImplementation(async () => 1);
 });
 
 afterEach(() => {
@@ -145,7 +158,7 @@ describe("GET /api/portal/retainer", () => {
         {
           id: 9,
           customerId: 42,
-          periodMonth: "2026-08",
+          periodMonth: "2026-08-01",
           weekLabel: "W34",
           item: "Cleared sync errors",
           minutes: 90,
@@ -173,6 +186,65 @@ describe("GET /api/portal/retainer", () => {
       finding: "HLT-02",
       state: "Closed",
     });
+  });
+
+  it("REGRESSION #3473: a customer signed up mid-month (anchor day 14) buckets against THEIR real anniversary, not the calendar month", async () => {
+    // Pin the anchor to the 14th — as if this customer's real Stripe
+    // currentPeriodStart falls on the 14th, resolved by resolveRetainerAnchorDay
+    // (its own DB-backed priority rule is covered in retainer-period-anchor.test.ts).
+    mockResolveRetainerAnchorDay.mockImplementation(async () => 14);
+    // "now" is pinned to 2026-08-15 (beforeEach) — one day AFTER this
+    // customer's real August anniversary (the 14th), so their real "current
+    // period" is 2026-08-14..09-13, keyed "2026-08-14".
+    mockSelectResultsQueue = [
+      [{ customerId: 42, retainedMinutesPerMonth: 480, hourlyRateCents: 30000, architectName: "Priya Raman", active: true }],
+      [
+        // Logged 2026-08-13 — one day BEFORE this customer's real anniversary,
+        // so it belongs to their PRIOR period ("2026-07-14"), not the current
+        // one. Under the old shared calendar-month bug this would have wrongly
+        // counted as "2026-08" usage alongside a same-calendar-month entry.
+        {
+          id: 10,
+          customerId: 42,
+          periodMonth: "2026-07-14",
+          weekLabel: "W33",
+          item: "Pre-anniversary work",
+          minutes: 120,
+          pillar: null,
+          finding: null,
+          outcome: null,
+          state: "closed",
+          source: "unscoped",
+          sourceRefId: null,
+          occurredAt: new Date("2026-08-13T00:00:00Z"),
+        },
+        // Logged 2026-08-20 — inside the current real anniversary period.
+        {
+          id: 11,
+          customerId: 42,
+          periodMonth: "2026-08-14",
+          weekLabel: "W34",
+          item: "Post-anniversary work",
+          minutes: 90,
+          pillar: "Health",
+          finding: null,
+          outcome: null,
+          state: "closed",
+          source: "unscoped",
+          sourceRefId: null,
+          occurredAt: new Date("2026-08-20T00:00:00Z"),
+        },
+      ],
+      [], // statusReports
+    ];
+    const res = await request(makeApp({ id: 1, customerId: 42 })).get("/api/portal/retainer");
+    expect(res.status).toBe(200);
+    // Only the post-anniversary 1.5h counts as THIS period's usage.
+    expect(res.body.bucket.usedHours).toBe(1.5);
+    // The pre-anniversary period retained 8h, used only 2h → 6h rolls forward.
+    expect(res.body.bucket.rolledHours).toBe(6);
+    expect(res.body.bucket.period).toBe("2026-08-14");
+    expect(res.body.entries).toHaveLength(2);
   });
 
   it("does not surface an inactive retainer as configured", async () => {

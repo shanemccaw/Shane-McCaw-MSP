@@ -25,6 +25,7 @@ import {
   retainerSettingsTable,
   retainerWorkLogTable,
   tenantsTable,
+  tenantSubscriptionsTable,
   RETAINER_WORK_STATES,
 } from "@workspace/db";
 import { and, eq, desc } from "drizzle-orm";
@@ -35,13 +36,14 @@ import { logger } from "../lib/logger.ts";
 import {
   minutesToHours,
   hoursToMinutes,
-  periodMonthOf,
+  periodKeyOf,
   isoWeekLabel,
   computeMonthBucket,
   usedMinutesByPeriod,
   pillarColor,
   RETAINER_STATE_DISPLAY,
 } from "../lib/retainer-hours.ts";
+import { resolveRetainerAnchorDay, anchorDayFromRows, type AnchorSubscriptionRow } from "../lib/retainer-period-anchor.ts";
 
 const log = logger.child({ channel: "billing" });
 
@@ -132,12 +134,36 @@ router.get("/admin/retainer/customers", requireAdmin, async (_req: Request, res:
       logByCustomer.set(r.customerId, arr);
     }
 
-    const currentPeriod = periodMonthOf(new Date());
+    // Git #3473 — one bulk read of every tenant's subscription history, so the
+    // per-customer anniversary anchor (see retainer-period-anchor.ts) resolves
+    // from rows already in memory instead of one round trip per customer.
+    // Ordered most-recent-first per tenant, matching `anchorDayFromRows`'s
+    // "already ordered" contract.
+    const subRows = await db
+      .select({
+        tenantId: tenantSubscriptionsTable.tenantId,
+        status: tenantSubscriptionsTable.status,
+        currentPeriodStart: tenantSubscriptionsTable.currentPeriodStart,
+        startedAt: tenantSubscriptionsTable.startedAt,
+        id: tenantSubscriptionsTable.id,
+      })
+      .from(tenantSubscriptionsTable)
+      .orderBy(desc(tenantSubscriptionsTable.startedAt), desc(tenantSubscriptionsTable.id));
+    const subsByCustomer = new Map<number, AnchorSubscriptionRow[]>();
+    for (const r of subRows) {
+      const arr = subsByCustomer.get(r.tenantId) ?? [];
+      arr.push({ status: r.status, currentPeriodStart: r.currentPeriodStart });
+      subsByCustomer.set(r.tenantId, arr);
+    }
+
+    const now = new Date();
     const customers = tenants.map((t) => {
       const settings = settingsByCustomer.get(t.id);
       const retainedMinutes = settings?.retainedMinutesPerMonth ?? DEFAULT_RETAINED_MINUTES;
       const usedByPeriod = usedMinutesByPeriod(logByCustomer.get(t.id) ?? []);
-      const bucket = computeMonthBucket(currentPeriod, retainedMinutes, usedByPeriod);
+      const anchorDay = anchorDayFromRows(subsByCustomer.get(t.id) ?? [], settings?.createdAt ?? null);
+      const period = periodKeyOf(anchorDay, now);
+      const bucket = computeMonthBucket(anchorDay, period, retainedMinutes, usedByPeriod);
       return {
         customerId: t.id,
         name: t.name,
@@ -184,8 +210,10 @@ router.get("/admin/retainer/:customerId", requireAdmin, async (req: Request, res
 
     const retainedMinutes = settings?.retainedMinutesPerMonth ?? DEFAULT_RETAINED_MINUTES;
     const usedByPeriod = usedMinutesByPeriod(entries);
-    const period = periodMonthOf(new Date());
-    const bucket = computeMonthBucket(period, retainedMinutes, usedByPeriod);
+    // Git #3473 — anniversary-based, not calendar-month.
+    const anchorDay = await resolveRetainerAnchorDay(customerId, { settingsCreatedAt: settings?.createdAt ?? null });
+    const period = periodKeyOf(anchorDay, new Date());
+    const bucket = computeMonthBucket(anchorDay, period, retainedMinutes, usedByPeriod);
 
     const settingsWire: SettingsWire = {
       customerId,
@@ -299,12 +327,14 @@ router.post("/admin/retainer/:customerId/unscoped", requireAdmin, async (req: Re
     }
 
     const occurredAt = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : new Date();
+    // Git #3473 — anniversary-based, not calendar-month.
+    const anchorDay = await resolveRetainerAnchorDay(customerId);
     const [inserted] = await db
       .insert(retainerWorkLogTable)
       .values({
         customerId,
         mspId: scope.mspId,
-        periodMonth: periodMonthOf(occurredAt),
+        periodMonth: periodKeyOf(anchorDay, occurredAt),
         weekLabel: isoWeekLabel(occurredAt),
         item: parsed.data.item,
         minutes: hoursToMinutes(parsed.data.hours),

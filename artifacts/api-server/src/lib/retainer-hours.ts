@@ -12,6 +12,28 @@
  *
  * This module is intentionally dependency-free (no logger, no db) so its
  * arithmetic is unit-testable without provisioning a database.
+ *
+ * ── Anniversary-based periods (Git #3473) ───────────────────────────────────
+ * Periods used to key on the shared calendar month ("YYYY-MM"), which reset
+ * every customer's retainer on the 1st regardless of when their own Stripe
+ * billing cycle actually started. That was a real, confirmed bug. Periods now
+ * key on each customer's own real cycle boundary: every period function below
+ * takes an `anchorDay` (1-31 — the day-of-month `tenant_subscriptions
+ * .currentPeriodStart` falls on for that customer; see
+ * `../lib/retainer-period-anchor.ts` for how that's resolved) and a period's
+ * `key` is the ISO "YYYY-MM-DD" of ITS OWN start date, not a shared "YYYY-MM"
+ * label. A short month clamps the anchor day to that month's real last day
+ * (day 31 in February lands on the 28th/29th), matching how Stripe itself
+ * anchors monthly subscriptions.
+ *
+ * Flagged, not solved (per #3473's own stated scope): if a customer's anchor
+ * day itself changes mid-history (a plan swap that shifts
+ * `currentPeriodStart`'s day-of-month), period keys logged under the OLD
+ * anchor day won't line up with keys `periodKeyBefore`/`periodKeyAfter`
+ * compute under the NEW one, and rollover across that transition will be
+ * imprecise. No real historical data exists yet (Shane confirmed the ledger
+ * is agent-test data only, cleared as part of #3473), so this has zero
+ * present impact — it's recorded here rather than guessed at.
  */
 
 /** Stored lowercase; the customer page's display vocabulary. */
@@ -51,20 +73,62 @@ export function hoursToMinutes(hours: number): number {
   return Math.round(hours * 60);
 }
 
-/** "YYYY-MM" for a Date, in the given timezone offset (default UTC). */
-export function periodMonthOf(date: Date): string {
+/** "YYYY-MM-DD" for a Date, in UTC. The building block period keys are made of. */
+export function isoDateKey(date: Date): string {
   const y = date.getUTCFullYear();
   const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
+  const d = String(date.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
-/** The previous "YYYY-MM" bucket. periodBefore("2026-01") === "2025-12". */
-export function periodBefore(period: string): string {
-  const [y, m] = period.split("-").map((n) => parseInt(n, 10));
-  if (!Number.isFinite(y) || !Number.isFinite(m)) return period;
-  const d = new Date(Date.UTC(y, m - 1, 1));
-  d.setUTCMonth(d.getUTCMonth() - 1);
-  return periodMonthOf(d);
+function parseIsoDateKey(key: string): { year: number; month: number; day: number } {
+  const [y, m, d] = key.split("-").map((n) => parseInt(n, 10));
+  return { year: y, month: (Number.isFinite(m) ? m : 1) - 1, day: Number.isFinite(d) ? d : 1 };
+}
+
+/**
+ * `anchorDay` (1-31) placed into a given UTC year/month, clamped to that
+ * month's real last day. day 31 in February → the 28th (or 29th). Matches how
+ * Stripe itself anchors a monthly subscription on a short month.
+ */
+function anchorDateInMonth(anchorDay: number, year: number, monthIndex0: number): Date {
+  const daysInMonth = new Date(Date.UTC(year, monthIndex0 + 1, 0)).getUTCDate();
+  const day = Math.min(Math.max(1, anchorDay), daysInMonth);
+  return new Date(Date.UTC(year, monthIndex0, day));
+}
+
+/**
+ * The anniversary-period key covering `date`: the ISO "YYYY-MM-DD" of that
+ * period's OWN start date, anchored on `anchorDay`. Replaces the old shared
+ * calendar "YYYY-MM" keying (Git #3473) — see the module doc above.
+ */
+export function periodKeyOf(anchorDay: number, date: Date): string {
+  let year = date.getUTCFullYear();
+  let month = date.getUTCMonth();
+  let start = anchorDateInMonth(anchorDay, year, month);
+  if (date.getTime() < start.getTime()) {
+    // Before this month's anchor day → the covering period actually started
+    // last month.
+    month -= 1;
+    if (month < 0) {
+      month = 11;
+      year -= 1;
+    }
+    start = anchorDateInMonth(anchorDay, year, month);
+  }
+  return isoDateKey(start);
+}
+
+/** The previous anniversary-period key, same anchor. */
+export function periodKeyBefore(anchorDay: number, key: string): string {
+  const { year, month } = parseIsoDateKey(key);
+  let y = year;
+  let m = month - 1;
+  if (m < 0) {
+    m = 11;
+    y -= 1;
+  }
+  return isoDateKey(anchorDateInMonth(anchorDay, y, m));
 }
 
 /**
@@ -83,9 +147,9 @@ export function isoWeekLabel(date: Date): string {
 }
 
 export interface MonthBucket {
-  /** "YYYY-MM" */
+  /** ISO "YYYY-MM-DD" of THIS period's own anniversary start date (Git #3473). */
   readonly period: string;
-  /** This month's allotment, in minutes. */
+  /** This period's allotment, in minutes. */
   readonly retainedMinutes: number;
   /** Unused RETAINED minutes carried from last month (rolled once, then expire). */
   readonly rolledMinutes: number;
@@ -113,23 +177,30 @@ export interface MonthBucket {
  *   rolled(M)    = max(0, retained(M-1) − max(0, used(M-1) − rolled(M-1)))
  *   remaining(M) = max(0, retained(M) + rolled(M) − used(M))
  *
- * `usedByPeriod` maps "YYYY-MM" → minutes used that month. `retainedMinutes` is
- * held constant across months (the settings' current allotment); a customer who
- * changes bands mid-history is a rare enough case that per-month allotment
- * history is deliberately out of scope here — noted, not silently assumed.
+ * `usedByPeriod` maps a period key (see `periodKeyOf`) → minutes used that
+ * period. `retainedMinutes` is held constant across periods (the settings'
+ * current allotment); a customer who changes bands mid-history is a rare
+ * enough case that per-period allotment history is deliberately out of scope
+ * here — noted, not silently assumed.
+ *
+ * `anchorDay` (1-31) is the customer's real cycle anchor (Git #3473) — it's
+ * how the walk steps from one period key to the next via `periodKeyAfter`,
+ * so the walk follows THIS customer's own cycle boundaries, not a shared
+ * calendar month.
  *
  * Verified against the design's own headline figures: July retained 8h, used 6h
  * → 2h roll into August; August retained 8h + rolled 2h − used 5.5h = 4.5h
  * remaining. (retainerData.ts RET_HOURS = { retained: 8, rolled: 2, used: 5.5 }.)
  */
 export function computeMonthBucket(
+  anchorDay: number,
   targetPeriod: string,
   retainedMinutes: number,
   usedByPeriod: ReadonlyMap<string, number>,
 ): MonthBucket {
-  // Walk forward from the earliest month with activity (or the target itself),
-  // carrying `rolled` one month at a time. Bounded to at most 24 months back so
-  // a stray far-past row can't make this loop unbounded.
+  // Walk forward from the earliest period with activity (or the target itself),
+  // carrying `rolled` one period at a time. Bounded to at most 24 periods back
+  // so a stray far-past row can't make this loop unbounded.
   const periods = [...usedByPeriod.keys()].filter((p) => p <= targetPeriod).sort();
   const start = periods.length > 0 && periods[0] < targetPeriod ? periods[0] : targetPeriod;
 
@@ -155,7 +226,7 @@ export function computeMonthBucket(
     prevRetained = retainedMinutes;
     prevRolled = rolled;
     prevUsed = used;
-    cursor = periodAfter(cursor);
+    cursor = periodKeyAfter(anchorDay, cursor);
     if (++guard > 240) {
       // Unreachable in practice; a safety valve, not a real path.
       const usedGuard = usedByPeriod.get(targetPeriod) ?? 0;
@@ -171,16 +242,19 @@ export function computeMonthBucket(
   }
 }
 
-/** The next "YYYY-MM" bucket. periodAfter("2025-12") === "2026-01". */
-export function periodAfter(period: string): string {
-  const [y, m] = period.split("-").map((n) => parseInt(n, 10));
-  if (!Number.isFinite(y) || !Number.isFinite(m)) return period;
-  const d = new Date(Date.UTC(y, m - 1, 1));
-  d.setUTCMonth(d.getUTCMonth() + 1);
-  return periodMonthOf(d);
+/** The next anniversary-period key, same anchor. */
+export function periodKeyAfter(anchorDay: number, key: string): string {
+  const { year, month } = parseIsoDateKey(key);
+  let y = year;
+  let m = month + 1;
+  if (m > 11) {
+    m = 0;
+    y += 1;
+  }
+  return isoDateKey(anchorDateInMonth(anchorDay, y, m));
 }
 
-/** Sum minutes by "YYYY-MM" from a list of ledger rows. */
+/** Sum minutes by period key from a list of ledger rows. */
 export function usedMinutesByPeriod(
   rows: ReadonlyArray<{ periodMonth: string; minutes: number }>,
 ): Map<string, number> {
