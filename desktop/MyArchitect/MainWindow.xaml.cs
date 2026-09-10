@@ -37,6 +37,7 @@ public partial class MainWindow : FluentWindow
     private readonly IChangeRequestReplayService _changeRequestReplayService;
     private readonly IChangeControlService _changeControlService;
     private readonly ILaunchControlActionsService _launchControlActionsService;
+    private readonly IAdminRetainerService _adminRetainerService;
     private readonly IVaultService _vaultService;
     private readonly IAuthService _authService;
     private readonly IRetainerService _retainerService;
@@ -67,6 +68,7 @@ public partial class MainWindow : FluentWindow
         _tenantModuleConnectionService = new TenantModuleConnectionService(_tenantService, _consoleService);
         _changeControlService = new ChangeControlService();
         _launchControlActionsService = new LaunchControlActionsService();
+        _adminRetainerService = new AdminRetainerService();
         _vaultService = new VaultService();
         _authService = new AuthService();
         _retainerService = new RetainerService();
@@ -235,6 +237,22 @@ public partial class MainWindow : FluentWindow
                 },
             },
         });
+
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Home, new RibbonGroupSpec
+        {
+            Label = "Retainer Hours",
+            Order = 40,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Log Ad-Hoc Hours",
+                    Intent = RibbonIntent.Create,
+                    ToolTip = "POST /api/admin/retainer/:customerId/unscoped — work not tied to a tracker step or change request (#3464)",
+                    OnSelect = () => OpenLogAdHocHoursRecord(),
+                },
+            },
+        });
     }
 
     private void RegisterConsoleTab()
@@ -399,6 +417,123 @@ public partial class MainWindow : FluentWindow
 
         _shellRegistry.OpenRecord(spec);
     }
+
+    /// <summary>The ad-hoc half of #3464's real hour-logging scope — work not tied to a
+    /// remediation-tracker step or a change request. Same gallery-less
+    /// "open a workspace with write-through Edits + a confirm-armed Action" shape as
+    /// <see cref="OpenScriptLibraryRecord"/>, targeting
+    /// <see cref="IAdminRetainerService.LogUnscopedHoursAsync"/> instead. Real customerId
+    /// resolution is the same remaining gap <see cref="TryResolveLaunchControlScope"/> already
+    /// documents honestly (TenantService is fixture data — #3502/#3505/#3540) — this opens a
+    /// stated-blocked workspace rather than guessing a customer id.</summary>
+    private void OpenLogAdHocHoursRecord()
+    {
+        if (!TryResolveLaunchControlScope(out _, out var customerId))
+        {
+            var reason = !_authService.IsAuthenticated
+                ? "Sign in to log retainer hours"
+                : "Logging hours needs a real customer id — TenantService is fixture data (#3502/#3505/#3540)";
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "retainer-unscoped-entry",
+                Id = "blocked",
+                Eyebrow = "Retainer Hours",
+                Title = "Log Ad-Hoc Hours",
+                Sub = reason,
+            });
+            return;
+        }
+
+        var fields = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["item"] = string.Empty,
+            ["hours"] = string.Empty,
+            ["pillar"] = string.Empty,
+            ["finding"] = string.Empty,
+            ["outcome"] = string.Empty,
+        };
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "retainer-unscoped-entry",
+            Id = "new",
+            Eyebrow = "Retainer Hours",
+            Title = "Log Ad-Hoc Hours",
+            Sub = "Work not tied to a tracker step or change request",
+            Edits =
+            {
+                new WorkspaceEdit { Key = "item", Label = "Item", Value = string.Empty, OnChange = v => fields["item"] = v },
+                new WorkspaceEdit { Key = "hours", Label = "Hours", Value = string.Empty, OnChange = v => fields["hours"] = v },
+                new WorkspaceEdit { Key = "pillar", Label = "Pillar", Value = string.Empty, OnChange = v => fields["pillar"] = v },
+                new WorkspaceEdit { Key = "finding", Label = "Finding", Value = string.Empty, OnChange = v => fields["finding"] = v },
+                new WorkspaceEdit { Key = "outcome", Label = "Outcome", Value = string.Empty, OnChange = v => fields["outcome"] = v },
+            },
+            Actions =
+            {
+                new WorkspaceAction
+                {
+                    Label = "Log Hours",
+                    Confirm = true,
+                    OnSelect = () => SubmitAdHocHours(customerId, fields),
+                },
+            },
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Real POST — validates the two required fields client-side (matching the server's
+    /// own `unscopedSchema`: non-empty item, non-negative hours) and reports the real result to
+    /// the Console pane, the same feedback channel <see cref="RunScriptLibraryAction"/> already
+    /// uses for a real POST's outcome.</summary>
+    private void SubmitAdHocHours(int customerId, System.Collections.Generic.Dictionary<string, string> fields)
+    {
+        var item = fields["item"];
+        if (string.IsNullOrWhiteSpace(item))
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal("[Retainer Hours] Item is required — nothing logged.");
+            return;
+        }
+
+        if (!double.TryParse(fields["hours"], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var hours) || hours < 0)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[Retainer Hours] \"{fields["hours"]}\" is not a valid non-negative hours value — nothing logged.");
+            return;
+        }
+
+        ShowDocument(ConsolePanel);
+        ConsolePanel.AppendExternal($"[Retainer Hours] Logging {hours}h — \"{item}\"…");
+
+        try
+        {
+            var entry = _adminRetainerService
+                .LogUnscopedHoursAsync(
+                    customerId,
+                    item,
+                    hours,
+                    Nullify(fields["pillar"]),
+                    Nullify(fields["finding"]),
+                    Nullify(fields["outcome"]))
+                .GetAwaiter().GetResult();
+
+            ConsolePanel.AppendExternal($"[Retainer Hours] Logged entry #{entry.Id} · {entry.Hours}h · {entry.State}");
+        }
+        catch (AdminRetainerException ex)
+        {
+            // Real, honest failure — most likely a 403 (signed in without the `admin` role this
+            // route requires, see IAdminRetainerService's own doc comment), not a bug in this
+            // client.
+            ConsolePanel.AppendExternal($"[Retainer Hours] Log failed: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            ConsolePanel.AppendExternal($"[Retainer Hours] Exception: {ex.Message}");
+        }
+    }
+
+    private static string? Nullify(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     /// <summary>#3459's real console-history surface, rendered via the shell's own full-panel
     /// record workspace (UI_RULES.md §3) rather than a second list control invented inside
@@ -870,6 +1005,7 @@ public partial class MainWindow : FluentWindow
 
         _launchControlActionsService.AuthToken = token;
         _changeControlService.AuthToken = token;
+        _adminRetainerService.AuthToken = token;
         _retainerService.AuthToken = token;
         TelemetryDashboardView.SetAuthToken(token);
         SowAssessmentDashboardView.SetAuthToken(token);
