@@ -20,6 +20,8 @@ namespace BuildConsole.Services
         FalseDoneReverted,
         /// <summary>Shape B (#3513): 'done' but the GitHub issue is still OPEN and NO verified DONE bookend exists → reset 'done' → 'canceled' (re-dispatchable) + Backlog.</summary>
         FalseDoneReset,
+        /// <summary>Shape C (#3521): a stale 'canceled' row whose GitHub issue is now CLOSED (resolved on GitHub, often weeks ago) → moved 'canceled' → 'superseded' so it drops out of the active Canceled list instead of lingering as if it were current, actionable canceled work.</summary>
+        StaleCanceledResolved,
     }
 
     /// <summary>
@@ -52,6 +54,7 @@ namespace BuildConsole.Services
             ReconciliationActionKind.FalseDoneReverted => "reverted to verifying",
             ReconciliationActionKind.FalseDoneReset => "reset for re-dispatch",
             ReconciliationActionKind.BlockedReset => "reset for re-dispatch (BLOCKED)",
+            ReconciliationActionKind.StaleCanceledResolved => "cleared (issue closed)",
             _ => "reconciled",
         };
     }

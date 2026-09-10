@@ -1330,10 +1330,12 @@ namespace BuildConsole
                 int reverted = unseen.Count(n => n.Kind == Services.ReconciliationActionKind.FalseDoneReverted);
                 int reset = unseen.Count(n => n.Kind == Services.ReconciliationActionKind.FalseDoneReset
                                            || n.Kind == Services.ReconciliationActionKind.BlockedReset);
+                int cleared = unseen.Count(n => n.Kind == Services.ReconciliationActionKind.StaleCanceledResolved);
 
                 var parts = new List<string>();
                 if (reverted > 0) parts.Add($"{reverted} reverted to verifying");
                 if (reset > 0) parts.Add($"{reset} reset for re-dispatch");
+                if (cleared > 0) parts.Add($"{cleared} stale canceled cleared (issue closed)");
 
                 string body = $"{unseen.Count} dispatched build{(unseen.Count == 1 ? "" : "s")} were auto-reconciled"
                             + (parts.Count > 0 ? " — " + string.Join(", ", parts) : "")

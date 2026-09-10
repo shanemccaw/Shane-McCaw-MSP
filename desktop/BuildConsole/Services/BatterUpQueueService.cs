@@ -111,6 +111,16 @@ namespace BuildConsole.Services
     /// </summary>
     public static class BatterUpQueueService
     {
+        /// <summary>
+        /// Git #3521 — how many times the free-flow path will AUTO-re-queue one supervisory cancel
+        /// (a 'canceled' row with exit_code=0 whose work never landed) before it stops and leaves the
+        /// row for a manual Queue click. One auto attempt: a supervisory cancel whose blocker has
+        /// cleared (or is still open, held by the #1600 gate) gets exactly one automatic shot; if that
+        /// relaunch false-done-s and re-cancels, it is not auto-re-queued again — the #1997 no-auto-loop
+        /// guard. Kept at 1 deliberately; raising it would trade loop-safety for forgiveness.
+        /// </summary>
+        public const int MaxSupervisoryAutoRequeues = 1;
+
         // ── Git #3512 — in-memory BUILD-comment resolution cache ─────────────────────────────
         // Why: #3494 made both Batter Up panels THROW when the shared #2815 rate-limit circuit was
         // open, because ResolveBuildCommentsAsync could make no live GitHub call and returned
@@ -841,31 +851,45 @@ namespace BuildConsole.Services
                 bool dead = BuildQueuePostgresClient.IsTerminalStatus(existing.Status)
                             && !string.Equals(existing.Status, "done", StringComparison.OrdinalIgnoreCase);
 
-                // Git #3517 — the ONE free-flow exception to the #1997 no-auto-requeue guard. A
-                // SUPERVISORY cancel (status 'canceled' with exit_code == 0) is not a genuine build
-                // failure: the build ran and exited clean but landed no work because it was
-                // dispatched against a blocker that wasn't actually finished, so the false-done /
-                // board reconcile (MarkFalseDoneReconciledAsync / FalseDoneReconciler) reset it to
-                // 'canceled' while leaving its clean exit_code=0 intact. (A genuinely-failed build is
-                // 'failed'; a user-cancelled queued row is 'canceled' with exit_code NULL — it never
-                // ran — so neither matches this predicate.) When such a row is STILL genuinely blocked
-                // (row.IsBlocked — a live GitHub blocked_by dependency that is open AND not yet
-                // satisfied by a verified DONE bookend), free-flow re-queues it so it re-enters the
-                // queue automatically once its real blocker clears.
+                // Git #3517, corrected by #3521 — the ONE free-flow exception to the #1997
+                // no-auto-requeue guard. A SUPERVISORY cancel (status 'canceled' with exit_code == 0)
+                // is not a genuine build failure: the build ran and exited clean but landed no work
+                // because it was dispatched against a blocker that wasn't actually finished, so the
+                // false-done / board reconcile (MarkFalseDoneReconciledAsync / FalseDoneReconciler)
+                // reset it to 'canceled' while leaving its clean exit_code=0 intact. (A genuinely-failed
+                // build is 'failed'; a user-cancelled queued row is 'canceled' with exit_code NULL — it
+                // never ran — so neither matches this predicate.)
                 //
-                // Loop-safe: the re-queued row is written 'queued' (exit_code reset to NULL) and the
-                // #1600 fail-closed launch gate (GetNextAsync) holds it until its blocker genuinely
-                // closes, then launches it exactly once — it does NOT relaunch-and-recancel, so there
-                // is no fail→requeue→fail loop. On the next free-flow pass the dedup candidate is
-                // 'queued' (not terminal), so this branch no longer matches and it is left alone. If a
-                // relaunched build re-cancels with no work, its blocker has by then cleared, so
-                // row.IsBlocked is false and free-flow will not touch it again (manual-only, unchanged).
-                bool supervisoryCancelStillBlocked =
+                // #3517 originally re-queued such a row ONLY while it was STILL blocked (row.IsBlocked).
+                // That stranded the exact case #3521 was filed for: once the real blocker CLOSES,
+                // row.IsBlocked flips false, so the one condition meant to catch it — "blocker cleared,
+                // should launch now" — instead DISQUALIFIED it, and it sat 'canceled' forever (confirmed
+                // live for #3459 after its blocker #3493 closed: the manual Refresh Git DID invoke this
+                // re-check under free flow, and it declined purely because IsBlocked was false). So the
+                // gate is no longer "still blocked" — a supervisory cancel is re-queued whether or not
+                // its blocker is currently open: still-blocked → the #1600 fail-closed launch gate holds
+                // the re-queued 'queued' row until the blocker genuinely closes; blocker-cleared → it
+                // launches on the next pass. Either way it re-enters the queue automatically.
+                //
+                // Loop-safe WITHOUT relying on IsBlocked (which no longer gates it): each free-flow
+                // supervisory re-queue increments supervisory_requeue_count, and this fires only while
+                // that count is below MaxSupervisoryAutoRequeues (1). The re-queued row is written
+                // 'queued' (exit_code reset to NULL) so on the next pass the dedup candidate is not
+                // terminal and this branch no longer matches; if the relaunch false-done-s and
+                // re-cancels (canceled+exit 0 again), the count is now at the cap, so it is NOT
+                // auto-re-queued again — it stays visible for a manual Queue click (allowRequeueTerminal),
+                // exactly the fail→requeue→fail loop the #1997 guard exists to prevent.
+                bool isSupervisoryCancel =
                     string.Equals(existing.Status, "canceled", StringComparison.OrdinalIgnoreCase)
-                    && existing.ExitCode == 0
-                    && row.IsBlocked;
+                    && existing.ExitCode == 0;
+                bool freeFlowSupervisoryRequeue = false;
+                if (isSupervisoryCancel && !allowRequeueTerminal)
+                {
+                    int priorRequeues = await queueDb.GetSupervisoryRequeueCountAsync(existing.Id);
+                    freeFlowSupervisoryRequeue = priorRequeues < MaxSupervisoryAutoRequeues;
+                }
 
-                if ((allowRequeueTerminal && dead) || supervisoryCancelStillBlocked)
+                if ((allowRequeueTerminal && dead) || freeFlowSupervisoryRequeue)
                 {
                     reuseRowId = existing.Id;
                 }
@@ -873,8 +897,47 @@ namespace BuildConsole.Services
                 {
                     return false; // already tracked — dedup guard against a double-click / a peer pass
                 }
+
+                try
+                {
+                    await queueDb.QueueBuildAsync(
+                        title: row.Title,
+                        prompt: row.Prompt,
+                        model: row.Model,
+                        effort: row.Effort,
+                        cwd: null,
+                        githubNumber: row.Number,
+                        blockedByNumbers: row.BlockedByNumbers,
+                        buildSet: row.BuildSet,
+                        reuseRowId: reuseRowId);
+
+                    // Git #3521 — consume one auto-attempt for a free-flow supervisory re-queue (see the
+                    // loop-safety note above). Not incremented for a manual re-queue (Shane's explicit
+                    // click is never budget-bound) nor for a first-time auto-queue (no reuse row).
+                    if (freeFlowSupervisoryRequeue)
+                        await queueDb.IncrementSupervisoryRequeueCountAsync(existing.Id);
+
+                    string action = allowRequeueTerminal
+                        ? $"re-queued (reused dead row {reuseRowId})"
+                        // Git #3517/#3521 — free-flow re-queue of a supervisory cancel (exit 0), now
+                        // regardless of whether its blocker is still open; held 'queued' by the #1600 gate
+                        // until the blocker clears, then launches once. One auto attempt (bounded by
+                        // supervisory_requeue_count) to stay loop-safe.
+                        : $"re-queued (supervisory cancel exit 0{(row.IsBlocked ? ", still blocked — held by #1600 gate" : ", blocker cleared — will launch")} — reused row {reuseRowId}, Git #3521)";
+                    log($"Batter Up #{row.Number} \"{row.Title}\" — {action} " +
+                        $"(model={row.Model ?? "default"}, effort={row.Effort ?? "default"}, buildSet={row.BuildSet ?? "none"}" +
+                        (row.BlockedByNumbers.Count > 0 ? $", blocked-by={string.Join(",", row.BlockedByNumbers)}" : "") + ").");
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    log($"Batter Up #{row.Number} \"{row.Title}\" — auto-queue FAILED: {ex.Message}");
+                    return false;
+                }
             }
 
+            // existing == null here (a null dedup candidate falls through to a fresh insert): this is a
+            // first-time auto-queue of a never-before-tracked row, so reuseRowId is null by construction.
             try
             {
                 await queueDb.QueueBuildAsync(
@@ -887,14 +950,7 @@ namespace BuildConsole.Services
                     blockedByNumbers: row.BlockedByNumbers,
                     buildSet: row.BuildSet,
                     reuseRowId: reuseRowId);
-                string action = reuseRowId == null
-                    ? "auto-queued"
-                    : allowRequeueTerminal
-                        ? $"re-queued (reused dead row {reuseRowId})"
-                        // Git #3517 — free-flow re-queue of a supervisory cancel (exit 0) that is still
-                        // blocked; held 'queued' by the #1600 gate until its blocker clears, then launches once.
-                        : $"re-queued (supervisory cancel exit 0, still blocked — reused row {reuseRowId}, Git #3517)";
-                log($"Batter Up #{row.Number} \"{row.Title}\" — {action} " +
+                log($"Batter Up #{row.Number} \"{row.Title}\" — auto-queued " +
                     $"(model={row.Model ?? "default"}, effort={row.Effort ?? "default"}, buildSet={row.BuildSet ?? "none"}" +
                     (row.BlockedByNumbers.Count > 0 ? $", blocked-by={string.Join(",", row.BlockedByNumbers)}" : "") + ").");
                 return true;

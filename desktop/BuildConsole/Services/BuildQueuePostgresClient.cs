@@ -1078,6 +1078,87 @@ namespace BuildConsole.Services
             return rows;
         }
 
+        // ── Supervisory-cancel auto-re-queue bound (Git #3521) ────────────────────
+        /// <summary>
+        /// Git #3521 — reads a row's <c>supervisory_requeue_count</c>: how many times the free-flow
+        /// path has already AUTO-re-queued it as a supervisory cancel. <see cref="Services.BatterUpQueueService"/>
+        /// .QueueRowAsync consults this to keep the auto-re-queue loop-safe (the #1997 no-auto-loop
+        /// guard): a supervisory cancel is re-queued only while this is below <see cref="Services.BatterUpQueueService.MaxSupervisoryAutoRequeues"/>.
+        /// A missing row returns 0 (nothing to bound).
+        /// </summary>
+        public async Task<int> GetSupervisoryRequeueCountAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "SELECT supervisory_requeue_count FROM bt_build_queue WHERE id = @id", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            var val = await cmd.ExecuteScalarAsync();
+            return val == null || val == DBNull.Value ? 0 : Convert.ToInt32(val);
+        }
+
+        /// <summary>
+        /// Git #3521 — increments a row's <c>supervisory_requeue_count</c> by one, called right after a
+        /// successful free-flow supervisory re-queue so the NEXT time this same row reappears as a
+        /// supervisory cancel (it launched and false-done-ed again) it is no longer auto-re-queued —
+        /// it stays visible for a manual Queue click instead of looping. Deliberately independent of
+        /// the QueueBuildAsync reuse UPDATE (which does not touch this column), so the count survives
+        /// the row being reset to 'queued'/exit_code=NULL. Returns rows changed (0 or 1).
+        /// </summary>
+        public async Task<int> IncrementSupervisoryRequeueCountAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "UPDATE bt_build_queue SET supervisory_requeue_count = supervisory_requeue_count + 1 WHERE id = @id", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            return await cmd.ExecuteNonQueryAsync();
+        }
+
+        // ── Stale-canceled cleanup for closed issues (Git #3521, finding 2) ───────
+        /// <summary>
+        /// Git #3521 (second finding) — every issue-linked row currently sitting in terminal
+        /// <c>canceled</c>, returned so <see cref="Services.FalseDoneReconciler"/> can check each one's
+        /// real GitHub issue state on a manual refresh. A canceled row whose issue was CLOSED (resolved
+        /// on GitHub, often weeks ago) is stale local state — the work is genuinely done/decided, yet it
+        /// still shows in the Canceled list as if it were current, actionable canceled work. Nothing
+        /// reconciled these once their issue closed; this is the read half of the pass that does.
+        /// </summary>
+        public async Task<List<(int Id, int GithubNumber, int? ExitCode)>> GetCanceledGithubRowsAsync()
+        {
+            var rows = new List<(int, int, int?)>();
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT id, github_number, exit_code
+                  FROM bt_build_queue
+                 WHERE status = 'canceled'
+                   AND github_number IS NOT NULL
+                   AND github_number > 0", conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                rows.Add((reader.GetInt32(0), reader.GetInt32(1), reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2)));
+            return rows;
+        }
+
+        /// <summary>
+        /// Git #3521 (second finding) — moves a stale <c>canceled</c> row whose GitHub issue is now
+        /// CLOSED to <see cref="SupersededStatus"/>, so it drops out of the active "Canceled" list (which
+        /// keys strictly off <c>status = 'canceled'</c>) instead of lingering as if it were current work.
+        /// <c>superseded</c> is the honest terminal resting state: like a Reply-superseded row it is
+        /// resolved-elsewhere and invisible to every dedup dead-check, which is correct — a closed issue
+        /// is not re-dispatch material. Guarded <c>status = 'canceled'</c> so it is idempotent and can
+        /// never rewrite a row a concurrent pass already moved on. Returns rows changed (0 or 1).
+        /// </summary>
+        public async Task<int> MarkCanceledResolvedClosedAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status = @superseded, updated_at = NOW()
+                 WHERE id = @id AND status = 'canceled'", conn);
+            cmd.Parameters.AddWithValue("@superseded", SupersededStatus);
+            cmd.Parameters.AddWithValue("@id", id);
+            return await cmd.ExecuteNonQueryAsync();
+        }
+
         /// <summary>
         /// Git #2685, widened by #2775 — the deliberate, narrow exception to
         /// <see cref="MarkSupersededByReplyAsync"/>'s "never rewrite a terminal row" guard: a NEW,

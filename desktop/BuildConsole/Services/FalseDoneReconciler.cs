@@ -158,6 +158,55 @@ namespace BuildConsole.Services
                 return new ReconciliationResult(reconciled, actions);
             }
 
+            // ── Shape C (Git #3521): stale 'canceled' rows whose GitHub issue is now CLOSED ─────────────
+            // A second, distinct finding on #3521: rows sit in 'canceled' for GitHub issues that were
+            // fully resolved on GitHub (often weeks ago) — nothing ever reconciled them once their issue
+            // closed, so they linger in the Canceled list as if they were current, actionable canceled
+            // work (measured live: 21 such rows). Distinct from the #3459 case (a RECENT supervisory
+            // cancel whose blocker just cleared and should auto-requeue — that is QueueRowAsync's job, not
+            // this pass): here the issue is already CLOSED, so the work is done/decided and the honest move
+            // is to drop the row out of the active Canceled list. Reuses the SAME trustworthy open-issue
+            // snapshot fetched above (a canceled row whose real, positive github_number is absent from it
+            // is closed); fail-closed by construction — this only runs after the Success + non-empty guards
+            // above. Moves the row 'canceled' → 'superseded' (resolved-elsewhere, invisible to every dedup
+            // dead-check — correct for a closed issue), never touching the GitHub board, exactly like the
+            // #2136 Dismiss path.
+            try
+            {
+                var canceledRows = await db.GetCanceledGithubRowsAsync();
+                foreach (var row in canceledRows.Where(r => !open.Contains(r.GithubNumber)))
+                {
+                    try
+                    {
+                        int changed = await db.MarkCanceledResolvedClosedAsync(row.Id);
+                        if (changed == 0) continue; // concurrently moved on
+                        reconciled++;
+                        string reason = $"Queue row {row.Id} (#{row.GithubNumber}) was 'canceled' but GH " +
+                            $"#{row.GithubNumber} is CLOSED (resolved on GitHub) — stale local state that was still " +
+                            "showing as current canceled work. Moved 'canceled' → 'superseded' so it drops out of the " +
+                            "active Canceled list. Git #3521.";
+                        log("Git #3521 stale-canceled reconcile: " + reason);
+                        actions.Add(new ReconciliationNotice
+                        {
+                            IssueNumber = row.GithubNumber,
+                            QueueRowId = row.Id,
+                            PreviousStatus = "canceled",
+                            Kind = ReconciliationActionKind.StaleCanceledResolved,
+                            BoardMovedToBacklog = false,
+                            Reason = reason,
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        log($"Git #3521 stale-canceled reconcile: FAILED for row {row.Id} (#{row.GithubNumber}): {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log($"Git #3521 stale-canceled reconcile: could not read canceled rows ({ex.Message}) — skipping this pass (fail soft).");
+            }
+
             var doneOpenRows = candidateRows
                 .Where(r => string.Equals(r.Status, "done", StringComparison.OrdinalIgnoreCase)
                             && !blocked.Contains(r.GithubNumber)

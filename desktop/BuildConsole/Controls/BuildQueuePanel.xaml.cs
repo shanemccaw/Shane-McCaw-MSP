@@ -2655,11 +2655,28 @@ namespace BuildConsole.Controls
                 };
                 return dot;
             }
+            else if (node.Status == "canceled" && node.Item?.ExitCode == 0)
+            {
+                // Git #3521 — mirror the card pill's "⏳ WAITING" branch: a supervisory cancel
+                // (exit 0, work never landed) is pending re-dispatch, not abandoned. Amber dot,
+                // distinct from the gray genuine-cancel dot below.
+                var dot = new Ellipse
+                {
+                    Width = QueueGraphDotRadius * 2,
+                    Height = QueueGraphDotRadius * 2,
+                    Fill = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
+                    Stroke = mantle,
+                    StrokeThickness = 1.5,
+                    ToolTip = $"⏳ Build {node.DisplayRef} (WAITING to re-dispatch — supervisory cancel, not lost work; Git #3521)"
+                };
+                return dot;
+            }
             else if (node.Status == "canceled")
             {
                 // Git #3514 — mirror the card pill: a canceled build is terminal, not up-next.
                 // Without this it fell through to the laneBrush "UP NEXT" dot below (same
-                // root-cause fallthrough the card pill had).
+                // root-cause fallthrough the card pill had). Git #3521 — supervisory cancels
+                // (exit 0) take the amber "WAITING" dot above; this is now only a genuine cancel.
                 var dot = new Ellipse
                 {
                     Width = QueueGraphDotRadius * 2,
@@ -3745,6 +3762,38 @@ namespace BuildConsole.Controls
                               " This original row is closed out so it no longer sits in the active queue."
                 };
             }
+            else if (item.Status == "canceled" && item.ExitCode == 0)
+            {
+                // Git #3521 — a SUPERVISORY cancel is NOT abandoned work and must not read as "CANCELED"
+                // (which Shane rightly reads as "this failed / stopped / was lost"). It is a 'canceled'
+                // row with exit_code == 0: the build ran, exited clean, but landed no work because its
+                // blocker wasn't done, so the false-done/board reconciler reset it to 'canceled' pending
+                // re-dispatch. Once free flow catches it (QueueRowAsync, Git #3521) it auto-re-queues —
+                // still-blocked rows wait behind the #1600 gate, blocker-cleared rows launch. So the
+                // honest label is "waiting", amber not gray, distinct from both failed's red and a real
+                // user-cancel's gray strike below. A user-cancelled queued row that never ran carries
+                // exit_code NULL and still renders "🚫 CANCELED" via the branch below.
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x33, 0x2A, 0x1E)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = "⏳ WAITING",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Waiting to re-dispatch — a supervisory cancel, not lost work. The build exited " +
+                              "cleanly but landed no work because its blocker wasn't done yet; it re-queues " +
+                              "automatically once free flow catches it (blocked rows wait behind the launch " +
+                              "gate, blocker-cleared rows launch). Git #3521."
+                };
+            }
             else if (item.Status == "canceled")
             {
                 // Git #3514 — a canceled build is terminal, NOT up-next. Before this branch
@@ -3754,6 +3803,9 @@ namespace BuildConsole.Controls
                 // That was the exact divergence #3514 traced: #3471 (status 'canceled') visibly
                 // tagged UP NEXT under All, but "In queue: 0 · Up next: 0". Muted gray with a
                 // strike icon, deliberately distinct from failed's red — abandoned, not an error.
+                // Git #3521 — this is now ONLY a genuine cancel (exit_code != 0, incl. NULL for a
+                // queued row cancelled before it ran); supervisory cancels (exit 0) take the
+                // "⏳ WAITING" branch above.
                 statusPill = new Border
                 {
                     Background = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x30)),
@@ -4382,6 +4434,10 @@ namespace BuildConsole.Controls
             if (node.Status == "done") return ("✨ DONE", Color.FromRgb(0xA6, 0xE3, 0xA1));
             if (node.Status == "failed") return ("✕ FAILED", Color.FromRgb(0xF3, 0x8B, 0xA8));
             if (node.Status == "restart") return ("🔄 RESTART", Color.FromRgb(0xCB, 0xA6, 0xF7));
+            // Git #3521 — a supervisory cancel (exit 0, work never landed, pending re-dispatch) is
+            // waiting, not abandoned; amber "WAITING" mirrors the queue card's own pill. A genuine
+            // cancel (exit_code != 0/NULL) keeps the gray strike below.
+            if (node.Status == "canceled" && node.Item?.ExitCode == 0) return ("⏳ WAITING", Color.FromRgb(0xF9, 0xE2, 0xAF));
             // Git #3514 — a canceled blocker is terminal, not up-next; don't let it fall
             // through to the "UP NEXT" label below.
             if (node.Status == "canceled") return ("🚫 CANCELED", Color.FromRgb(0x93, 0x99, 0xB2));
