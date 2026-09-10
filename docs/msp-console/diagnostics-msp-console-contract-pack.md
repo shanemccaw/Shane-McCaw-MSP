@@ -11,17 +11,24 @@ Read-only. Every field below is extracted from the route file's own `.select()` 
 tables it owns, cited to file:line, and cross-checked live against local PostgreSQL. **Nothing
 here is authored or invented.**
 
-Backend: **one file**, `artifacts/api-server/src/routes/msp-diagnostics.ts` — 1214 lines, 13
+Backend: **one file**, `artifacts/api-server/src/routes/msp-diagnostics.ts` — 1264 lines, 14
 routes, mounted at `router.use(mspDiagnosticsRouter)` (`routes/index.ts:618`) under the app-wide
 `/api` prefix (`app.ts:127`, `app.use("/api", subscriptionGate, router)`). The file's own header
-comment (`:1-42`) enumerates all 13 routes with their real paths; every one below was re-verified
+comment (`:1-46`) enumerates all 14 routes with their real paths; every one below was re-verified
 against the route definition itself, not assumed from that comment.
 
-**Real completeness, confirmed rather than assumed from line count:** all 13 routes are
+**Real completeness, confirmed rather than assumed from line count:** all 14 routes are
 genuinely built out — no route in this file is a stub, a `TODO`, or a placeholder. What line
-count alone would have hidden (§0.1, §7) is that **7 of the 13 are live and mounted but have
+count alone would have hidden (§0.1, §7) is that **7 of the 14 are live and mounted but have
 zero real frontend consumer today** — a materially different situation from an unbuilt route,
 and documented precisely below rather than papered over.
+
+**Addendum, 2026-09-10 (#1770):** the 14th route, `GET /msp/monitoring-packages` (`:225-267`),
+was added by this pass to fill a real, confirmed gap — the AdminV2 Active Directory screen's
+"Run scan" button could trigger a run (§1.1 already accepted a `packageKey` override) but had no
+endpoint listing which packages existed to choose from. Everything else in this pack (§0–§9,
+1214-line/13-route era) describes the file exactly as a prior read-only pass (#3354) found it;
+this addendum documents only what changed. No other route in this file was touched.
 
 Schema: `lib/db/src/schema/msp.ts:3605` (`mspDiagnosticRunsTable` → `msp_diagnostic_runs`),
 `:3666` (`mspDiagnosticFindingsTable` → `msp_diagnostic_findings`). Verified live against local
@@ -38,21 +45,26 @@ findings (187 `ok`, 63 `info`, 33 `warning`, 13 `critical`).
 
 | Endpoint | Method | Route file:line | Real consumer(s) today | Status |
 |---|---|---|---|---|
-| `/api/msp/customers/:customerId/diagnostics/run` | POST | `:223-336` | `adApi.ts:258` (`runAdCustomerDiagnostics`) → `AdCustomerCanvas.tsx:125`; `ActiveDirectoryCustomerPane.tsx:709`; `SimulatorAssessmentCanvas.tsx:274` — all admin-panel (MSP Console AD-style screens) | live, real cross-screen reuse |
-| `/api/msp/customers/:customerId/monitoring-package` | GET | `:342-397` | **none found** | live, mounted, genuinely unconsumed — §7.1 |
-| `/api/msp/customers/:customerId/diagnostics` (paginated `{runs,total,limit,offset}`) | GET | `:401-445` | **none found** | live, mounted, genuinely unconsumed — §7.2 |
-| `/api/msp/customers/:customerId/diagnostics/runs` (plain array) | GET | `:452-488` | `SimulatorAssessmentCanvas.tsx:212`; `SimulatorAssessmentRunHistory.tsx:180` | live, real reuse |
-| `/api/msp/customers/:customerId/diagnostics/runs/:runId` | GET | `:492-540` | `ActiveDirectoryCustomerPane.tsx:531`; `SimulatorAssessmentCanvas.tsx:240`; `SimulatorAssessmentRunHistory.tsx:231-232` | live, real reuse |
-| `/api/msp/customers/:customerId/diagnostics/runs/:runId/sse` | GET | `:546-641` | `SimulatorAssessmentCanvas.tsx:299` (admin-panel, MSPOperator JWT); `useScanState.ts:194` (**customer portal** `artifacts/portal`, CustomerUser JWT — Mission Control live-scan strip, per the route's own header note `:20-21`) | live, real reuse, genuinely dual-role |
-| `/api/msp/customers/:customerId/scripts` | GET | `:657-756` | **none found** | live, mounted, genuinely unconsumed — §7.1. Live data has 0 `requires_script` findings today, so this route is also functionally untested against real data |
-| `/api/msp/customers/:customerId/scripts/:checkKey/download` | GET | `:764-838` | **none found** | live, mounted, genuinely unconsumed — §7.1 |
-| `/api/portal/diagnostics/latest` | GET | `:851-899` | **none found** | live, mounted, genuinely unconsumed — §7.3 |
-| `/api/portal/scripts/:checkKey/download` | GET | `:908-978` | **none found** (one doc-string mention only, `MonitorChecks.tsx:528`, not a call) | live, mounted, genuinely unconsumed — §7.1 |
-| `/api/portal/health-benchmark` | GET | `:986-1046` | **none found** | live, mounted, genuinely unconsumed — §7.3 |
-| `/api/portal/diagnostics/runs/:runId` | GET | `:1051-1094` | **none found** | live, mounted, genuinely unconsumed — §7.3, §7.4 |
-| `/api/portal/diagnostics/results/:serviceSlug` | GET | `:1099-1212` | `usePersonalizationData.ts:155` — **marketing site** (`artifacts/shane-mccaw-consulting`), personalized Assessment-tier content on topic pages | live, real, cross-app reuse |
+| `/api/msp/monitoring-packages` | GET | `:225-267` | `adApi.ts` (`fetchAdMonitoringPackages`) → `AdCustomerCanvas.tsx` run-scan picker | live, real consumer — added by #1770, this addendum |
+| `/api/msp/customers/:customerId/diagnostics/run` | POST | `:273-386` | `adApi.ts:258` (`runAdCustomerDiagnostics`, now takes an optional `packageKey` per #1770) → `AdCustomerCanvas.tsx:125`; `ActiveDirectoryCustomerPane.tsx:709`; `SimulatorAssessmentCanvas.tsx:274` — all admin-panel (MSP Console AD-style screens) | live, real cross-screen reuse |
+| `/api/msp/customers/:customerId/monitoring-package` | GET | `:392-447` | `adApi.ts` (`fetchAdCustomerMonitoringPackage`) → `AdCustomerCanvas.tsx` run-scan picker default-selection, added by #1770 | live, real consumer as of this addendum — was orphaned (§7.1) before it |
+| `/api/msp/customers/:customerId/diagnostics` (paginated `{runs,total,limit,offset}`) | GET | `:451-495` | **none found** | live, mounted, genuinely unconsumed — §7.2 |
+| `/api/msp/customers/:customerId/diagnostics/runs` (plain array) | GET | `:502-538` | `SimulatorAssessmentCanvas.tsx:212`; `SimulatorAssessmentRunHistory.tsx:180` | live, real reuse |
+| `/api/msp/customers/:customerId/diagnostics/runs/:runId` | GET | `:542-590` | `ActiveDirectoryCustomerPane.tsx:531`; `SimulatorAssessmentCanvas.tsx:240`; `SimulatorAssessmentRunHistory.tsx:231-232` | live, real reuse |
+| `/api/msp/customers/:customerId/diagnostics/runs/:runId/sse` | GET | `:596-691` | `SimulatorAssessmentCanvas.tsx:299` (admin-panel, MSPOperator JWT); `useScanState.ts:194` (**customer portal** `artifacts/portal`, CustomerUser JWT — Mission Control live-scan strip, per the route's own header note `:24-25`) | live, real reuse, genuinely dual-role |
+| `/api/msp/customers/:customerId/scripts` | GET | `:707-806` | **none found** | live, mounted, genuinely unconsumed — §7.1. Live data has 0 `requires_script` findings today, so this route is also functionally untested against real data |
+| `/api/msp/customers/:customerId/scripts/:checkKey/download` | GET | `:814-888` | **none found** | live, mounted, genuinely unconsumed — §7.1 |
+| `/api/portal/diagnostics/latest` | GET | `:901-949` | **none found** | live, mounted, genuinely unconsumed — §7.3 |
+| `/api/portal/scripts/:checkKey/download` | GET | `:958-1028` | **none found** (one doc-string mention only, `MonitorChecks.tsx:528`, not a call) | live, mounted, genuinely unconsumed — §7.1 |
+| `/api/portal/health-benchmark` | GET | `:1036-1096` | **none found** | live, mounted, genuinely unconsumed — §7.3 |
+| `/api/portal/diagnostics/runs/:runId` | GET | `:1101-1144` | **none found** | live, mounted, genuinely unconsumed — §7.3, §7.4 |
+| `/api/portal/diagnostics/results/:serviceSlug` | GET | `:1149-1262` | `usePersonalizationData.ts:155` — **marketing site** (`artifacts/shane-mccaw-consulting`), personalized Assessment-tier content on topic pages | live, real, cross-app reuse |
 
-**6 of 13 consumed, 7 of 13 orphaned.** Confirmed by direct grep of every `.ts`/`.tsx` file under
+**9 of 14 consumed, 5 of 14 orphaned** (updated by this addendum — was 6 of 13 / 7 of 13; #1770
+gave two previously-orphaned routes their first real caller and added one new consumed route).
+Line ranges for every pre-existing route shifted by the new route's insertion (`:225-267`); every
+range above was re-read at its new location, not offset-calculated. Original consumer map
+confirmed by direct grep of every `.ts`/`.tsx` file under
 `artifacts/{admin-panel,portal,shane-mccaw-consulting,mcp-server}/src` for each route's literal
 path fragment — not inferred from the route file's own comments, which in a few places (§7.3)
 describe intent that the grep did not confirm.
@@ -70,7 +82,7 @@ same underlying data through its **own**, newer routes instead:
   not this file's `GET /api/portal/health-benchmark`.
 - `GET /api/portal/diagnostics/results` (no slug — `portal-customer-engines.ts:924-928`) is a
   **separate, later route in a separate file** with the same path prefix as this file's
-  `GET /api/portal/diagnostics/results/:serviceSlug` (`:1099-1212`) — same name, different
+  `GET /api/portal/diagnostics/results/:serviceSlug` (`:1149-1262`) — same name, different
   file, different shape, not a collision (Express dispatches by the presence/absence of the
   path segment) but a real naming trap for anyone grepping "diagnostics/results" expecting one
   answer.
@@ -87,11 +99,11 @@ Unlike some MSP Console packs (e.g. the Risk Register pack's `msp-rbd-instances.
 `msp-rbd-versions.ts`), **no route in `msp-diagnostics.ts` defines a curated response type.**
 Every response is either:
 - a bare `mspDiagnosticRunsTable.$inferSelect` / `mspDiagnosticFindingsTable.$inferSelect` row
-  (full table columns, e.g. `:474-479`, `:513-520`), or
+  (full table columns, e.g. `:524-529`, `:563-570`), or
 - a hand-picked `.select({...})` projection inlined at the query site (e.g. the `scripts` route's
-  `{findingId, checkKey, checkLabel, severity, title, createdAt}` at `:693-700`), or
+  `{findingId, checkKey, checkLabel, severity, title, createdAt}` at `:743-750`), or
 - a small literal object assembled in the handler (e.g. the `run` POST's
-  `{runId, status, message}` at `:296`).
+  `{runId, status, message}` at `:346`).
 
 §1–§3 below document each shape exactly as returned, route by route, rather than inventing a
 `Wire*` name for shapes the file itself never names.
@@ -100,34 +112,60 @@ Every response is either:
 
 ## 1. MSP-operator routes (`requireRole("MSPOperator")`, `assertCustomerAccess`)
 
-All six routes in this group share the same ownership gate: look up the `tenants` row for
+Six of the seven routes in this group share the same ownership gate: look up the `tenants` row for
 `customerId`, 404 if absent, then `assertCustomerAccess(req.user!, customerId)` (§4) — 404, not
 403, on failure, so a customer id outside the caller's reach is indistinguishable from one that
-doesn't exist.
+doesn't exist. The seventh, §1.0 (added by #1770), is `requireRole("MSPOperator")` too but is
+**not** customer-scoped at all — it lists the global package catalog, so it has no `customerId`
+param and no `assertCustomerAccess` call to share.
 
-### 1.1 Trigger — `POST /msp/customers/:customerId/diagnostics/run` (`:223-336`)
+### 1.0 New — `GET /msp/monitoring-packages` (`:225-267`, #1770)
+
+No `customerId` param — lists the real, active `monitoring_packages` catalog an operator can pick
+from before triggering §1.1's run. `SELECT key, label, count(monitoring_package_checks.id) AS
+"checkCount" FROM monitoring_packages LEFT JOIN monitoring_package_checks ON package_key = key
+WHERE status = 'active' GROUP BY key, label HAVING count(...) > 0 ORDER BY label` (`:248-259`,
+`HAVING` itself at `:258`).
+
+The `HAVING count(...) > 0` is deliberate, not incidental: 10 of the table's 21 `active` rows
+(`cat-collaboration-sharing`, `cat-security-posture`, etc.) have zero linked checks — confirmed
+live, they're dashboard-tab taxonomy from a different feature
+(`lib/db/migrations/manual/2026-07-19-customer-dashboard-category-tabs.sql`) that reused this same
+table, not a runnable scan bundle. Filed as its own finding, **#3453** (parented under #1571,
+since #1770 itself has no Feature-tier parent — see #1770's own `gh issue view` result). Response,
+`200`:
+
+```json
+{ "packages": Array<{ key: string, label: string, checkCount: number }> }
+```
+
+Live data as of this pass (re-run against local `DATABASE_URL`): **11** packages returned (of 21
+active rows in the table), ranging `checkCount` 3 (`assess:teams-governance`) to 198
+(`core:premier`). §7.1 is now **partly stale** for this route — see the addendum note there.
+
+### 1.1 Trigger — `POST /msp/customers/:customerId/diagnostics/run` (`:273-386`)
 
 Fire-and-forget. Request body: optional `{ packageKey?: string }` — "default" or empty is
-treated as "not provided" (`:257-258`).
+treated as "not provided" (`:307-308`).
 
-`packageKey` resolution when not supplied (`:258-276`): the customer's most-recent **active**
+`packageKey` resolution when not supplied (`:308-326`): the customer's most-recent **active**
 `monitoring_subscription`-type `client_services` row (joined `users` → `client_services` →
 `services`, `services.type_attributes->>'packageKey'`), ordered by `clientServicesTable.id`
 descending (deterministic tie-break, replacing a prior unordered `LIMIT 1` per the inline
 comment). Falls back to `"core:security-baseline"` if the customer has none.
 
 Response, `202`: `{ runId: string (uuid), status: "pending", message: "Diagnostics run started" }`
-(`:296`). The actual scoring pipeline (`runDiagnostics`, `diagnostics-runner.ts`) and, in
+(`:346`). The actual scoring pipeline (`runDiagnostics`, `diagnostics-runner.ts`) and, in
 parallel, `runItemDetailCollection` (`item-detail-collector.ts`, #339's per-check item detail
 gather — its own package/trigger/table, cannot affect this run's scoring or findings, skipped
 when the customer has no connected `tenantId`) both fire **after** the response is sent
-(`:298-327`) — neither is awaited, both log-and-swallow their own errors.
+(`:348-377`) — neither is awaited, both log-and-swallow their own errors.
 
-Inserts one `msp_diagnostic_runs` row, `status: "pending"` (`:284-294`), passing `existingRunId`
+Inserts one `msp_diagnostic_runs` row, `status: "pending"` (`:334-344`), passing `existingRunId`
 to `runDiagnostics` so the pipeline updates this row rather than inserting a second one — the
-route's own comment (`:281-283`) cites this as a fixed historical double-insert bug.
+route's own comment (`:331-333`) cites this as a fixed historical double-insert bug.
 
-### 1.2 `GET /msp/customers/:customerId/monitoring-package` (`:342-397`)
+### 1.2 `GET /msp/customers/:customerId/monitoring-package` (`:392-447`)
 
 Same resolution query as §1.1's fallback path, always run (no body override — this route has no
 body). Response, `200`:
@@ -137,9 +175,11 @@ body). Response, `200`:
 ```
 
 `null` for all three when the customer has no active monitoring subscription — never a fabricated
-default. §7.1: no caller found for this route.
+default. **Addendum, #1770: no longer orphaned** — `adApi.ts` (`fetchAdCustomerMonitoringPackage`)
+now calls this to default the run-scan package picker's selection to the customer's real resolved
+subscription, reusing this route exactly as originally built rather than duplicating its query.
 
-### 1.3 `GET /msp/customers/:customerId/diagnostics` — paginated (`:401-445`)
+### 1.3 `GET /msp/customers/:customerId/diagnostics` — paginated (`:451-495`)
 
 Query params `limit` (default 20, capped 100) and `offset` (default 0). Response, `200`:
 
@@ -150,14 +190,14 @@ Query params `limit` (default 20, capped 100) and `offset` (default 0). Response
 `runs` is the bare `mspDiagnosticRunsTable` row shape (§2.1) — every column, unfiltered.
 §7.2: no caller found; superseded in practice by §1.4's plain-array sibling.
 
-### 1.4 `GET /msp/customers/:customerId/diagnostics/runs` — plain array (`:452-488`)
+### 1.4 `GET /msp/customers/:customerId/diagnostics/runs` — plain array (`:502-538`)
 
 Query param `limit` (default 50, capped 100), no `offset`, no total count. Response, `200`: a
 **bare array** of full `mspDiagnosticRunsTable` rows (§2.1) — **not** wrapped in an envelope,
 unlike §1.3's near-identical sibling. This is the one the real admin-panel consumers actually
 use (§0.1).
 
-### 1.5 `GET /msp/customers/:customerId/diagnostics/runs/:runId` (`:492-540`)
+### 1.5 `GET /msp/customers/:customerId/diagnostics/runs/:runId` (`:542-590`)
 
 Response, `200`:
 
@@ -170,20 +210,20 @@ Response, `200`:
 
 `run` is the full row (404 `{error:"Run not found"}` if it doesn't belong to this `customerId`).
 `findings` is every `msp_diagnostic_findings` row for the run, ordered by `severity`
-(`:524-528` — text-column order, not severity-rank order; see §7.6), each one run through
+(`:574-578` — text-column order, not severity-rank order; see §7.6), each one run through
 `withFindingClassifications` (§3) — the **only** route in this file that attaches `classification`
 to a finding.
 
-### 1.6 `GET /msp/customers/:customerId/diagnostics/runs/:runId/sse` (`:546-641`)
+### 1.6 `GET /msp/customers/:customerId/diagnostics/runs/:runId/sse` (`:596-691`)
 
 The one route in this group with no `requireRole` middleware — auth is hand-rolled because
 `EventSource` cannot send an `Authorization` header, so the JWT travels as `?jwt=` and is
-verified inline (`jwt.verify`, `:561`) against `JWT_SECRET` (falls back to the literal string
-`"dev-secret"` if unset, `:558` — a real, live default worth Design/Ops knowing about, not
+verified inline (`jwt.verify`, `:611`) against `JWT_SECRET` (falls back to the literal string
+`"dev-secret"` if unset, `:608` — a real, live default worth Design/Ops knowing about, not
 flagged further here since it's a pre-existing env-var-hygiene fact, not a diagnostics-specific
 gap).
 
-Authorization branches on the decoded token's role (`:566-606`):
+Authorization branches on the decoded token's role (`:616-656`):
 - `role === "admin"` → always allowed (legacy PlatformAdmin).
 - `mspRole` is `CustomerUser` or `Assessment` → allowed only if the token's own `customerId`
   claim equals the `:customerId` param — the customer-portal Mission Control / assessment-wizard
@@ -255,7 +295,7 @@ those routes filter it.
 
 ### 2.3 Status lifecycle, confirmed against `diagnostics-runner.ts`
 
-`pending` (insert, `:773-782` or the route's own `:284-294`) → `running` (`:790-792`, the
+`pending` (insert, `:773-782` or the route's own `:334-344`) → `running` (`:790-792`, the
 UPDATE happens instead of a second INSERT — the route's own comment cites the fixed
 double-insert bug) → **either** `completed` (all checks in the executed package ran without a
 runStatus other than `"completed"`) **or** `partial` (`pkgResult.runStatus !== "completed"`,
@@ -277,14 +317,14 @@ so a duplicate fire is a no-op.
 
 ---
 
-## 3. #379 failure classification (`:76-178`) — MSP-operator only
+## 3. #379 failure classification (`:82-184`) — MSP-operator only
 
 `ClassifiableFinding`, `rawGraphErrorOf`, `isClassifiableFinding`, `classifyDiagnosticFindings`,
 and `withFindingClassifications` are all exported pure functions (no I/O except the one
-`monitor_checks` endpoint-lookup query batched per run, `:169-176`) that attach a `classification`
+`monitor_checks` endpoint-lookup query batched per run, `:175-182`) that attach a `classification`
 field to a finding — `null` unless the finding is a genuine failure worth triage.
 
-A finding qualifies (`isClassifiableFinding`, `:120-129`) if **any** of:
+A finding qualifies (`isClassifiableFinding`, `:126-135`) if **any** of:
 - `extractedProperties._rawGraphError` is a non-empty string (#374's raw, untruncated Graph error
   text — findings written before #374 landed simply don't carry it, so they're never classified
   through this path even if they were real failures);
@@ -310,7 +350,7 @@ The classifier itself (`classifyMonitorFailure`, `monitor-failure-classifier.ts:
 ```
 
 `declaredScopes` is handed to the classifier as `REQUIRED_MT_SCOPES` (`../lib/graph`), **read-only**
-— this route never writes to it or to any permission state (module header comment, `:84-89`).
+— this route never writes to it or to any permission state (module header comment, `:90-95`).
 This whole layer is applied to exactly one response in this file: §1.5's `findings` array. The
 customer-portal findings arrays (§6.1) never carry `classification` or `extractedProperties` —
 by design (customers get a plain summary, MSP operators get the full triage).
@@ -380,7 +420,7 @@ produces. Live values seen (§2.2): `ok`, `license_gap`, `service_not_configured
 `GET /portal/diagnostics/latest` (§0.1), `GET /portal/diagnostics/runs/:runId` (§0.1), and (in a
 different, plainer shape) `GET /portal/diagnostics/results/:serviceSlug` all return findings via
 a **hand-picked projection**, never the raw `extractedProperties` or a `classification` field —
-the file's own header comment states this explicitly (`:37`, "no raw extracted_properties"). The
+the file's own header comment states this explicitly (`:41`, "no raw extracted_properties"). The
 first two share an identical shape:
 
 ```json
@@ -394,25 +434,25 @@ first two share an identical shape:
 
 ### 6.2 `resolveCallerCustomerId` is used by 3 of 4 routes — one is the odd one out
 
-`resolveCallerCustomerId(user)` (`:209-217`) reads `user.customerId` from the JWT first, falling
+`resolveCallerCustomerId(user)` (`:215-223`) reads `user.customerId` from the JWT first, falling
 back to a fresh `users.tenantId` DB lookup when the JWT claim is stale/absent — the function's own
 comment calls out that it's deliberately `users.tenantId`, not `users.mspId`, since these are
-tenant-scoped roles. `diagnostics/latest` (`:859`), `health-benchmark` (`:998`), and
-`diagnostics/results/:serviceSlug` (`:1107`) all use it, and all three degrade gracefully to an
+tenant-scoped roles. `diagnostics/latest` (`:909`), `health-benchmark` (`:1048`), and
+`diagnostics/results/:serviceSlug` (`:1157`) all use it, and all three degrade gracefully to an
 empty-but-valid `200` when no customer id resolves (`{run:null, findings:[]}` /
 `{pillars:[], asOfDate:null}` / `{score:0, status:"not_evaluated", findings:[], evaluatedAt:...}`).
 
-**`GET /portal/diagnostics/runs/:runId` (`:1051-1094`) does not.** It reads `req.user!.customerId`
-directly (`:1057`) with no DB fallback, and returns a hard `403 {error:"No customer context"}`
+**`GET /portal/diagnostics/runs/:runId` (`:1101-1144`) does not.** It reads `req.user!.customerId`
+directly (`:1107`) with no DB fallback, and returns a hard `403 {error:"No customer context"}`
 instead of an empty `200` when that claim is absent. This is a real, live asymmetry among four
 routes that otherwise share the same auth pattern and the same stale-JWT risk the other three were
 explicitly built to cover (§7.4) — not filed as its own issue since the route currently has zero
 live callers (§0.1), but worth Design/whoever wires this route next knowing before they assume
 uniform behavior across the four.
 
-### 6.3 `GET /portal/health-benchmark` (`:986-1046`)
+### 6.3 `GET /portal/health-benchmark` (`:1036-1096`)
 
-Deliberately `requireAuth`, not `requireRole("CustomerUser")` — the route's own comment (`:988-992`)
+Deliberately `requireAuth`, not `requireRole("CustomerUser")` — the route's own comment (`:1038-1042`)
 cites #1157: the stricter floor 403'd Free-tier customers who already had real diagnostic data,
 which the frontend couldn't distinguish from "no data yet."
 
@@ -421,7 +461,7 @@ Computes, in parallel: `calculateArchitectureHealthScore(customerId)` (`health-e
 `industry_benchmark_reference` (`lib/db/src/schema/index.ts:3797-3803`, PK `pillar`). Restricts
 each pillar's theoretical-max denominator to signals **this tenant's own scanned checks can
 genuinely feed** via `fetchTenantEvaluableSignalKeys` (`pillar-coverage.ts`) — the route's own
-comment (`:1011-1015`) cites #413: catalog-wide scoping previously measured the denominator over
+comment (`:1061-1065`) cites #413: catalog-wide scoping previously measured the denominator over
 checks the customer never ran while the numerator could only ever hold checks it did, an
 unwinnable clamp. `computeDisplayHealth` (`health-display.ts:353-364`) turns that into
 `{pillar: HealthPillar, displayScore: number|null}[]` — `HEALTH_PILLARS` is **6** pillars
@@ -438,9 +478,9 @@ Response, `200`:
 }
 ```
 
-Never exposes raw risk scores or `breakdown.contributions` (route's own comment, `:984`).
+Never exposes raw risk scores or `breakdown.contributions` (route's own comment, `:1034`).
 
-### 6.4 `GET /portal/diagnostics/results/:serviceSlug` (`:1099-1212`)
+### 6.4 `GET /portal/diagnostics/results/:serviceSlug` (`:1149-1262`)
 
 The one route in this file with a confirmed live cross-app consumer (marketing site's Assessment
 personalization, §0.1). Response, `200`:
@@ -456,15 +496,15 @@ personalization, §0.1). Response, `200`:
 ```
 
 `status` is derived purely from real findings on the latest run matching this `serviceSlug` as
-`packageKey` (`hasCritical`/`hasWarning` flags over the findings actually returned, `:1158-1174`)
+`packageKey` (`hasCritical`/`hasWarning` flags over the findings actually returned, `:1208-1224`)
 — never gated by coverage. `score` **is** coverage-gated (`evaluateDocGateCoverage`, §2.4's same
-50% bar): `null` when coverage is insufficient, replacing what the route's own comment (`:1176-1183`)
+50% bar): `null` when coverage is insufficient, replacing what the route's own comment (`:1226-1233`)
 says was a real prior bug — `score` defaulting to `100` ("healthy") whenever `checksTotal` was 0,
 "the worst case of this class of bug, a fully-dark run reading as a clean bill of health."
 
 **§7.4: the `score` calculation's primary branch is dead in practice.** When coverage clears the
-bar, the route checks `summaryObj.compositeScore` first (`:1192-1194`) and falls back to
-`Math.round((checksOk/checksTotal)*100)` (`:1195-1197`) only if that's absent. **No writer anywhere
+bar, the route checks `summaryObj.compositeScore` first (`:1242-1244`) and falls back to
+`Math.round((checksOk/checksTotal)*100)` (`:1245-1247`) only if that's absent. **No writer anywhere
 in this codebase ever sets `summary.compositeScore`** on a `msp_diagnostic_runs` row (verified by
 reading every `mspDiagnosticRunsTable` UPDATE call site in `diagnostics-runner.ts` and
 `cio-narrative-generator.ts`, and confirmed live: `SELECT count(*) FROM msp_diagnostic_runs WHERE
@@ -472,24 +512,29 @@ summary ? 'compositeScore'` returns **0** against local data). The route always 
 the ratio-based fallback — real, working code, just via a branch the `if` implies is the common
 case when it is actually unreachable. Not filed as its own issue: the fallback is correct and this
 route has a real live consumer already getting a correct score from it, so nothing is
-customer-visibly broken — but flagged here since a future editor reading `:1192-1194` in isolation
+customer-visibly broken — but flagged here since a future editor reading `:1242-1244` in isolation
 would reasonably assume that branch fires sometimes.
 
 ---
 
 ## 7. Open gaps and notes — flagged, not decided
 
-### 7.1 Four routes are live, mounted, and have never had a caller
+### 7.1 Three routes are live, mounted, and have never had a caller (was four — #1770 gave one its first)
 
-`GET .../monitoring-package`, `GET .../scripts` (both MSP-operator and portal variants), and
-`GET .../scripts/:checkKey/download` (both variants) — six route definitions across those, all
-real, all correctly scoped, none with a confirmed frontend caller anywhere in this repo (§0.1).
-The scripts pair is additionally never exercised against real data — 0 `requires_script` findings
-exist locally (§2.2) — so even a manual test would need seeded data first. Not filed as bugs;
-these are built-ahead-of-consumer, same standing as the Risk Register pack's "staged for #2582"
-rows — but that pack's orphaned rows had a named future wire step (#2582) waiting on them. These
-don't yet; #3354 doesn't create one, since assigning a wire step is a scoping decision for #1571,
-not something this read-only pass can settle.
+`GET .../scripts` (both MSP-operator and portal variants) and `GET .../scripts/:checkKey/download`
+(both variants) — four route definitions across those, all real, all correctly scoped, none with
+a confirmed frontend caller anywhere in this repo (§0.1). The scripts pair is additionally never
+exercised against real data — 0 `requires_script` findings exist locally (§2.2) — so even a manual
+test would need seeded data first. Not filed as bugs; these are built-ahead-of-consumer, same
+standing as the Risk Register pack's "staged for #2582" rows — but that pack's orphaned rows had a
+named future wire step (#2582) waiting on them. These don't yet; #3354 didn't create one, since
+assigning a wire step is a scoping decision for #1571, not something a read-only pass can settle.
+
+**Addendum, #1770:** `GET .../monitoring-package` (§1.2) — one of the original four — is no longer
+in this list. It now has a real caller (`AdCustomerCanvas.tsx`'s run-scan picker, §0.1), reusing
+the route exactly as originally built. This is real, organic consumption of a previously
+built-ahead-of-consumer route, not a coincidence of scope: #1770's own picker needed exactly the
+resolved-subscription-default behavior this route already provided.
 
 ### 7.2 The paginated `GET .../diagnostics` envelope has no known reason to exist alongside `.../diagnostics/runs`
 
@@ -524,7 +569,7 @@ enough to justify one on its own.
 
 ### 7.6 Findings are ordered by `severity` as a **text** column, not a severity rank
 
-Every findings query in this file (`:528`, `:706`, `:891`, `:1086`, `:1156`) orders
+Every findings query in this file (`:578`, `:756`, `:941`, `:1136`, `:1206`) orders
 `ORDER BY mspDiagnosticFindingsTable.severity` with no `CASE`/rank mapping — so results sort
 alphabetically (`critical`, `info`, `ok`, `warning`), not by real severity. `critical` happening
 to sort first alphabetically make this look intentional; `warning` sorting **last**, after `ok`,
@@ -539,8 +584,9 @@ its own issue rather than merely flagged, per this file's own standing "file eve
 1. **No cross-MSP read.** Every MSP-operator route resolves ownership through
    `assertCustomerAccess` (§4), which is always seeded from the looked-up `tenants` row's own
    `mspId`, never the caller's claimed one for the tautology check it replaced (every route's own
-   inline comment says so, e.g. `:242-244`) — verified on all 6 MSP-operator routes plus the SSE
-   route's hand-rolled equivalent (§1.6).
+   inline comment says so, e.g. `:292-294`) — verified on all 6 customer-scoped MSP-operator routes
+   plus the SSE route's hand-rolled equivalent (§1.6). §1.0 (#1770) is the 7th MSP-operator route
+   but reads no per-customer data at all, so it has nothing to scope by `mspId`.
 2. **No customer can read another customer's run.** All four customer-portal routes scope by the
    caller's own resolved `customerId`, never a param — a customer cannot address another
    customer's `runId` by guessing it (`GET .../runs/:runId` and `GET .../latest` both filter
@@ -551,10 +597,10 @@ its own issue rather than merely flagged, per this file's own standing "file eve
    (§1.5) — every customer-portal findings shape (§6.1) is a hand-picked projection that never
    includes either field.
 4. **Script downloads are ownership-scoped, not just existence-scoped.** Both download routes
-   (`:764-838` MSP-operator, `:908-978` customer) require a **matching, live `requires_script`
+   (`:814-888` MSP-operator, `:958-1028` customer) require a **matching, live `requires_script`
    finding** for that exact `customerId` + `checkKey` before resolving a package — guessing an
    unrelated `checkKey` never leaks a script body a customer/operator shouldn't see (both routes'
-   own comments state this explicitly, `:758-762`, `:901-906`).
+   own comments state this explicitly, `:808-812`, `:951-956`).
 5. **`compositeScore` is never client-suppliable.** It's not on any request body accepted by this
    file (no route in §1/§6 has a schema field for it) — the only place the string appears is the
    dead read branch at §6.4/§7.4, never a write path.
@@ -590,3 +636,26 @@ findings query in this file). No other route, in isolation, is broken — the "g
 orphaned-consumer and drift notes, not defects, per this issue's own instruction to say so plainly
 rather than paper over either direction (inventing problems that aren't there, or hiding ones that
 are). No product code, schema, or UI was changed by this pass — read-only, as scoped.
+
+### 9.1 Addendum provenance — 2026-09-10, #1770
+
+Everything above this addendum documents the file as #3354's read-only pass found it (1214
+lines, 13 routes). This addendum, done in the same session that built #1770's code (not a
+separate read-only pass), documents the one route that pass added: `GET /msp/monitoring-packages`
+(§1.0, `:225-267`). Every other pre-existing route's line citation throughout §0–§8 was
+re-verified against the file's real current line numbers (worktree `agent/1770-q2116`, now 1264
+lines / 14 routes) — the new route's insertion shifted every citation at or after the original
+`POST .../diagnostics/run` (`:223` originally) by a flat `+50`; citations before that point (the
+`#379` classification block, `resolveCallerCustomerId`, the file's own header doc comment) shifted
+by smaller, individually-verified amounts (`grep -n` against the real function/comment text, not
+arithmetic assumption). Citations into other files — `lib/db/src/schema/msp.ts`,
+`diagnostics-runner.ts`, `monitor-failure-classifier.ts`, `requireAuth.ts`, `health-engine.ts`,
+etc. — are untouched, since none of those files changed.
+
+One genuine finding from this addendum, filed as its own issue and parented under #1571 (same as
+#1770 itself, which has no Feature-tier parent): **#3453**, ten `active` `monitoring_packages`
+rows (`cat-*`) that are dead dashboard-tab taxonomy reusing this table, not runnable scan bundles
+— see §1.0. Two previously-orphaned facts from the original pass are now stale and corrected in
+place rather than left to mislead a future reader: §0.1's consumer count (was 6/13 orphaned-7,
+now 9/14 consumed-5-orphaned) and §7.1's "four orphaned routes" (now three — `GET
+.../monitoring-package` has a real caller as of this build).

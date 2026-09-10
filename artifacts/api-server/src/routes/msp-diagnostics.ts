@@ -237,8 +237,8 @@ async function resolveCallerCustomerId(user: AuthUser): Promise<number | null> {
 // category tabs, not a diagnostics scan bundle: empty `engines`, zero rows in
 // monitoring_package_checks, and no code anywhere references their keys.
 // Surfacing them here would let an operator "run" a scan that does nothing.
-// Filed as a real finding — #1571's child list — rather than silently working
-// around it.
+// Filed as a real finding, #3453 (parented under #1571), rather than
+// silently working around it.
 
 router.get(
   "/msp/monitoring-packages",
