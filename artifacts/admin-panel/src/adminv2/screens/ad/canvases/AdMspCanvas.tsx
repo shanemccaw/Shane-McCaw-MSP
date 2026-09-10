@@ -15,10 +15,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
 import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
-import { fetchAdMsp, impersonateAdMsp, reactivateAdMsp, suspendAdMsp, updateAdMspProfile } from "../adApi";
+import { fetchAdMsp, fetchAdMspAuditLog, impersonateAdMsp, reactivateAdMsp, suspendAdMsp, updateAdMspProfile } from "../adApi";
 import { setAdCachedRecord } from "../adNameCache";
 import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
-import type { AdMspDetail } from "../adTypes";
+import type { AdMspAuditEntry, AdMspDetail } from "../adTypes";
 import { AdRbacOrgRolesPanel } from "../AdRbacPanels";
 import {
   AdArmedButton,
@@ -46,6 +46,13 @@ function fmtDate(v: string | null): string {
 function usd(cents: number | null): string {
   if (cents == null) return "—";
   return (cents / 100).toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
+function fmtDateTime(v: string | null): string {
+  if (!v) return "—";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime())
+    ? "—"
+    : d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 const fieldStyle = {
@@ -111,6 +118,30 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Real per-MSP audit trail (Git #1747) — GET /api/msp/audit?mspId=, backed by
+  // mspAuditLogsTable. Loaded independently of the profile fetch so a slow audit
+  // query never blocks the rest of the canvas from rendering.
+  const [auditEntries, setAuditEntries] = useState<AdMspAuditEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(true);
+  const [auditError, setAuditError] = useState<string | null>(null);
+
+  const loadAudit = useCallback(async () => {
+    setAuditLoading(true);
+    setAuditError(null);
+    try {
+      const data = await fetchAdMspAuditLog(fetchWithAuth, mspId);
+      setAuditEntries(data.entries);
+    } catch (err) {
+      setAuditError(err instanceof Error ? err.message : "Failed to load activity for this MSP.");
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [fetchWithAuth, mspId]);
+
+  useEffect(() => {
+    void loadAudit();
+  }, [loadAudit]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -422,6 +453,30 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
         </AdSection>
 
         <AdRbacOrgRolesPanel system="msp" orgId={mspId} />
+
+        <AdSection title="Activity" note="Recent admin actions against this MSP.">
+          {auditLoading ? (
+            <AdLoading />
+          ) : auditError ? (
+            <AdLoadError message={auditError} />
+          ) : (
+            <AdListRowGroup>
+              {auditEntries.length === 0 ? (
+                <AdEmptyRow label="No recorded activity yet." />
+              ) : (
+                auditEntries.map((a) => (
+                  <AdListRow
+                    key={a.id}
+                    label={a.action}
+                    detail={`${a.actorEmail ?? a.actorRole ?? "unknown actor"}${a.resource ? ` · ${a.resource}` : ""}`}
+                    meta={fmtDateTime(a.createdAt)}
+                    metaAccent={a.outcome === "failure" ? ACCENT_TEXT.danger : undefined}
+                  />
+                ))
+              )}
+            </AdListRowGroup>
+          )}
+        </AdSection>
 
         <AdSection title="Platform agreement" note={hasAcceptedCurrentAgreement ? undefined : "The current agreement version has not been accepted."}>
           <AdListRowGroup>

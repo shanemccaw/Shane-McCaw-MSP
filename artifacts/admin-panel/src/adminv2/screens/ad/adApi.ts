@@ -17,6 +17,7 @@ import type {
   AdEntitlementsView,
   AdGroupDetail,
   AdMonitoringPackage,
+  AdMspAuditLogPage,
   AdMspDetail,
   AdMspProfile,
   AdOu,
@@ -79,6 +80,11 @@ export async function fetchAdGroup(adminFetch: AdminFetch, role: DirectoryGroupR
   const qs = q ? `?q=${encodeURIComponent(q)}` : "";
   const res = await adminFetch(`/api/admin/active-directory/group/${role}${qs}`);
   return json<AdGroupDetail>(res);
+}
+
+export async function fetchAdMspAuditLog(adminFetch: AdminFetch, mspId: number, limit = 25): Promise<AdMspAuditLogPage> {
+  const res = await adminFetch(`/api/msp/audit?mspId=${mspId}&limit=${limit}`);
+  return json<AdMspAuditLogPage>(res);
 }
 
 export async function fetchAdCustomer(adminFetch: AdminFetch, id: number): Promise<AdCustomerDetail> {

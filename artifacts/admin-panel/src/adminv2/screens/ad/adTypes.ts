@@ -170,6 +170,28 @@ export interface AdMspDetail {
   hasAcceptedCurrentAgreement: boolean;
 }
 
+// ── Audit log (GET /api/msp/audit?mspId=) ─────────────────────────────────────
+
+export interface AdMspAuditEntry {
+  id: number;
+  eventId: string;
+  actorEmail: string | null;
+  actorName: string | null;
+  actorRole: string | null;
+  action: string;
+  resource: string | null;
+  detail: string | null;
+  outcome: "success" | "failure" | "partial";
+  createdAt: string;
+}
+
+export interface AdMspAuditLogPage {
+  entries: AdMspAuditEntry[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 // ── Group detail (GET /admin/active-directory/group/:role) ───────────────────
 
 export interface AdGroupMember {
