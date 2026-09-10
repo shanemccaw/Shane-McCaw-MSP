@@ -45,7 +45,6 @@ All routes declared in `src/App.tsx`. Every route requires `RequireAdmin` except
 | `/crm/purchases` | `PurchasesPage` | Stripe self-service purchase list |
 | `/crm/purchases/:id` | `PurchaseDetailPage` | Purchase detail (read-only) |
 | `/crm/contracts` | `ContractsPage` | Signed contract log |
-| `/crm/messages` | `MessagesPage` | Portal messaging (Shane ↔ client) |
 | `/crm/reports` | `ReportsPage` | Admin-uploaded client reports |
 | `/crm/documents` | `DocumentsPage` | Cross-project document repository |
 | `/crm/status-reports` | `StatusReportsPage` | Status report list (all projects) |
@@ -259,19 +258,10 @@ Lists any client Azure credentials expiring within 30 days, linking to the relev
 
 ### 2.2 Messages
 
-**Route:** `/crm/messages` · **Component:** `src/pages/crm/Messages.tsx`
-
-An internal messaging thread between Shane and individual clients (portal messages, not email).
-
-| Element | Description |
-|---|---|
-| **Client list** (left pane) | All clients who have sent at least one message, sorted by most recent. Shows name/email, last message **date** (`toLocaleDateString()`), and **unread badge** (red pill). Clicking a row opens that client's thread. |
-| **Message thread** (right pane) | Chronological message bubbles. Shane's messages appear on the right; client messages on the left. |
-| **Reply input** | Single-line `<input>` at the bottom of the thread with placeholder "Type a message…". |
-| **Send button** | Submits the reply via `POST /api/portal/messages`. Disabled while sending. |
-| **Auto-refresh** | Thread polls every 8 seconds while a client is selected. |
-
-> **Note:** This page handles portal messages only. For full M365 email, see [Inbox](#63-inbox).
+Removed (#3418) — the Command workspace's portal-messages thread page (`/command/messages`,
+`src/pages/crm/Messages.tsx`) and its backend routes were deleted per Shane's request. The
+`/system` workspace's own Communications section (Inbox, real M365 email) is unaffected and
+lives at [Inbox](#63-inbox).
 
 ---
 

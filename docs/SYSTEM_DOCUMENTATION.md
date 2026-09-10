@@ -3761,7 +3761,6 @@ The Admin Panel is Shane's full business operating system. It is organized into 
 | Screen | Path | What it does |
 |---|---|---|
 | Overview | `/command/overview` | Business KPIs, revenue, active projects, AI next-best-actions |
-| Messages | `/command/messages` | CRM-linked email/message inbox |
 | Analytics | `/command/analytics` | Session counts, page views, revenue forecast |
 | Script Generator | `/command/scripts` | AI-powered PowerShell script authoring and Azure sync |
 | Running Scripts | `/command/running-scripts` | Live Azure Automation job monitor |

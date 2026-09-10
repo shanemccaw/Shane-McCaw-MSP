@@ -71,8 +71,8 @@ export interface CreateNotificationOptions {
   mspId?: number;
   /**
    * Set true when the caller already sends its own branded/templated email for
-   * this event (e.g. `sendEmailFromTemplate` in portal-messages.ts /
-   * admin-status-reports.ts). Suppresses this function's own
+   * this event (e.g. `sendEmailFromTemplate` in admin-status-reports.ts).
+   * Suppresses this function's own
    * `deliverPreferenceEmail` so an opted-in customer never gets both (#2933 —
    * the double-email risk #2849's migration to `createNotification()` left
    * masked as long as no customer had `emailEnabled: true` for the category).

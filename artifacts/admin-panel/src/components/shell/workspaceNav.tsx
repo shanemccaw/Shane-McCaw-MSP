@@ -242,12 +242,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         ],
       },
       {
-        id: "communications", label: "Communications", defaultOpen: true,
-        items: [
-          { id: "cmd-messages", label: "Messages", path: "/command/messages", icon: MessageSquare },
-        ],
-      },
-      {
         id: "ai-tools", label: "AI Tools", defaultOpen: true,
         items: [
           { id: "cmd-prompts", label: "AI Prompts", path: "/command/prompts", icon: Sparkles },

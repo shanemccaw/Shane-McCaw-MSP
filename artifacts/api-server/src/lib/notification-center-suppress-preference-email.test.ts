@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// #2933: portal-messages.ts / admin-status-reports.ts call sites that already
+// #2933: admin-status-reports.ts call sites that already
 // send their OWN branded template email now pass `suppressPreferenceEmail:
 // true` into createNotification() so it never ALSO fires its own
 // deliverPreferenceEmail() once the recipient has opted into email for that

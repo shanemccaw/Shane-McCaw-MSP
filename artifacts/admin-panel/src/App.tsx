@@ -342,7 +342,6 @@ function Router() {
       <Route path="/crm/opportunities"><Redirect to="/pipeline/zoho-deals" /></Route>
       <Route path="/crm/clients"><Redirect to="/pipeline/clients" /></Route>
       <Route path="/crm/m365-intelligence"><Redirect to="/pipeline/m365-intelligence" /></Route>
-      <Route path="/crm/messages"><Redirect to="/command/messages" /></Route>
 
       <Route path="/crm/projects"><Redirect to="/delivery/projects" /></Route>
       <Route path="/engagement-projects"><Redirect to="/delivery/engagement-projects" /></Route>

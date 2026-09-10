@@ -1,5 +1,4 @@
 import { type ReactNode, lazy, Suspense } from "react";
-import MessagesPage from "@/pages/crm/Messages";
 import AnalyticsPage from "@/pages/Analytics";
 import ScriptGeneratorPage from "@/pages/ScriptGeneratorPage";
 import RunningScriptsPage from "@/pages/RunningScriptsPage";
@@ -10,7 +9,6 @@ const MarketingCommandCenterPage = lazy(() => import("@/pages/MarketingCommandCe
 
 function getContent(section: string): ReactNode {
   switch (section) {
-    case "messages":         return <MessagesPage />;
     case "analytics":        return <AnalyticsPage />;
     case "scripts":          return <ScriptGeneratorPage />;
     case "running-scripts":  return <RunningScriptsPage />;
