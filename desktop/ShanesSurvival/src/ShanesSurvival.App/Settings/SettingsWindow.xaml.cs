@@ -21,21 +21,6 @@ public partial class SettingsWindow : Window
 
         var settings = _settingsService.Load();
         ConnectionStringTextBox.Text = settings.PostgresConnectionString ?? string.Empty;
-        PlaidClientIdTextBox.Text = settings.PlaidClientId ?? string.Empty;
-        PlaidSecretPasswordBox.Password = settings.PlaidSecret ?? string.Empty;
-
-        var environment = string.IsNullOrWhiteSpace(settings.PlaidEnvironment) ? "sandbox" : settings.PlaidEnvironment;
-        foreach (var item in PlaidEnvironmentComboBox.Items)
-        {
-            if (item is System.Windows.Controls.ComboBoxItem comboItem &&
-                string.Equals((string)comboItem.Content, environment, StringComparison.OrdinalIgnoreCase))
-            {
-                PlaidEnvironmentComboBox.SelectedItem = comboItem;
-                break;
-            }
-        }
-        PlaidEnvironmentComboBox.SelectedItem ??= PlaidEnvironmentComboBox.Items[0];
-
         ShanesLifeApiBaseUrlTextBox.Text = settings.ShanesLifeApiBaseUrl ?? string.Empty;
         ShanesLifeMcpTokenPasswordBox.Password = settings.ShanesLifeMcpToken ?? string.Empty;
 
@@ -76,14 +61,6 @@ public partial class SettingsWindow : Window
             PostgresConnectionString = string.IsNullOrWhiteSpace(ConnectionStringTextBox.Text)
                 ? null
                 : ConnectionStringTextBox.Text.Trim(),
-            PlaidClientId = string.IsNullOrWhiteSpace(PlaidClientIdTextBox.Text)
-                ? null
-                : PlaidClientIdTextBox.Text.Trim(),
-            PlaidSecret = string.IsNullOrWhiteSpace(PlaidSecretPasswordBox.Password)
-                ? null
-                : PlaidSecretPasswordBox.Password,
-            PlaidEnvironment = (PlaidEnvironmentComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Content as string
-                ?? "sandbox",
             ShanesLifeApiBaseUrl = string.IsNullOrWhiteSpace(ShanesLifeApiBaseUrlTextBox.Text)
                 ? null
                 : ShanesLifeApiBaseUrlTextBox.Text.Trim(),

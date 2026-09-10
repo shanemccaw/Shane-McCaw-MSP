@@ -1,9 +1,8 @@
 # Shane's Survival
 
-A personal financial survival tracker — real Plaid-connected accounts, transactions, manually
-tracked debts, and point-in-time snapshots. Standalone WPF (.NET 8) desktop app, own local
-Postgres database. **Not part of, and has no dependency on, the Shane-McCaw-MSP or
-Finance-Tracker repos** — no shared code, schema, or conventions with either.
+A standalone WPF (.NET 8) desktop app, own local Postgres database. **Not part of, and has no
+dependency on, the Shane-McCaw-MSP or Finance-Tracker repos** — no shared code, schema, or
+conventions with either.
 
 > **Why this lives under `desktop/` in Shane-McCaw-MSP:** this is Shane's personal project, not
 > MSP business code. It started life in its own standalone local repo
@@ -12,28 +11,109 @@ Finance-Tracker repos** — no shared code, schema, or conventions with either.
 > because it's part of the MSP product. The statement above still holds: nothing here shares
 > code, schema, or conventions with the rest of this repo.
 
-## Status
+## Status — real, narrowed role (#3296, 2026-09-10)
 
-Schema, connection/migration handling, and real Plaid Link + sync are all built. It is real,
-working code — not a mockup — but the feature scope so far is intentionally limited to what's
-described below. See ["What's not built yet"](#whats-not-built-yet-later-dispatches).
+**This app's real financial core (accounts, bills, debts, income, the GATE/shortfall math,
+Plaid Link/Sync, pay-period plans, the local MCP server exposing all of it) has been fully
+removed.** That was a real, phased, multi-issue decision — #3293 (Feature: ShanesSurvival/
+shanes-life financial-core unification, Option C): the financial core migrates fully into
+[`web/shanes-life`](../../web/shanes-life/), which becomes the sole hosted source of truth for
+money, and this WPF app narrows to the ad synthesizer plus any future genuinely
+browser-automation-only work. The phases:
+
+1. **#3294 — Phase 1, schema/drift audit.** Confirmed zero compatibility risk between this
+   app's schema and shanes-life's own migrations.
+2. **#3295 — Phase 2, the real data migration.** `web/shanes-life/bin/migrate-financial-core-data.mjs`
+   copied all 1298 real rows across the 11 financial-core tables into shanes-life's real
+   production Postgres — Shane ran the actual `--execute` himself (the issue's own hard gate:
+   an agent session never runs this against his real live financial data without his explicit
+   go-ahead). Real, verified row-count parity confirmed 2026-09-09.
+3. **#3296 (this document) — Phase 3, WPF narrowing.** Every financial read/write code path is
+   gone from this app — see "What was removed" below.
+4. **#3297 — Phase 4, live cutover verification** (Shane's own manual confirmation that
+   shanes-life's Money room shows the real, correctly-migrated data) is separate, later work,
+   not part of this narrowing.
+
+**What this app is now, concretely:**
+
+- **Weekly Ad (Publix) scraper** (#3288) — real WebView2 automation reading a store's real
+  rendered weekly-ad page and pushing extracted deals/coupons through shanes-life's own MCP
+  pipeline (`push_deals`/`push_coupons`). See "Weekly Ad" below — unchanged by this narrowing.
+- **Local Postgres connection + migration runner infrastructure** — kept (see "Local database"
+  below), even though no current feature reads or writes financial data through it.
+- Everything else — Dashboard, GATE/shortfall, bills/debts UI, Plaid Link/Sync/Backfill, income
+  tracking, pay-period plans, expected one-time events, and the local `ShanesSurvival.Mcp`
+  server that exposed all of it — is **removed**. shanes-life is the real, sole place for all of
+  that now.
+
+### What was removed (#3296)
+
+Every file under these paths, plus the `AssignRolesButton`/`OpenDashboardButton`/
+`LinkBankAccountButton`/`SyncNowButton`/`BackfillNamesButton` UI and their handlers in
+`MainWindow`, plus the Plaid section of `SettingsWindow` (Client ID/Secret/Environment/
+`PlaidClientUserId` — all removed from `AppSettings` too):
+
+- `src/ShanesSurvival.App/Accounts/` (`AccountRoleWindow`)
+- `src/ShanesSurvival.App/Dashboard/` (`DashboardWindow`)
+- `src/ShanesSurvival.App/Plaid/` (all of it — `IPlaidClient`, `PlaidClient`,
+  `PlaidCredentials`, `PlaidJsonModels`, `PlaidLinkService`, `PlaidLinkWindow`,
+  `PlaidSyncService`, `PlaidBackfillService`)
+- `src/ShanesSurvival.Core/Accounts/` (`AccountRepository`, `AccountRole`)
+- `src/ShanesSurvival.Core/Dashboard/` (`DashboardModels`/`DashboardService`,
+  `PayPeriodDueModels`/`PayPeriodDueService`, `PayPeriodForecastModels`/`PayPeriodForecastService`)
+- `src/ShanesSurvival.Core/Debts/` (`DebtRepository`)
+- `src/ShanesSurvival.Core/ExpectedEvents/` (`ExpectedEventRepository`)
+- `src/ShanesSurvival.Core/Income/` (`IncomeModels`, `IncomeRepository`)
+- `src/ShanesSurvival.Core/PayPeriodPlans/` (`PayPeriodPlanModels`, `PayPeriodPlanRepository`)
+- `src/ShanesSurvival.Core/Transactions/` (`TransactionRepository`, `TransactionTagRepository`)
+- **`src/ShanesSurvival.Mcp/` — the entire project**, removed from `ShanesSurvival.sln`. All 4
+  read tools (`gate_status`/`bill_status`/`spend_bleed`/`recent_transactions`) and all 4
+  Pay-Period Plan write tools were built entirely on top of the repositories above — with those
+  gone, the server had no non-financial purpose left to expose. If Claude Desktop needs
+  grounded access to Shane's real financial data going forward, that's shanes-life's own
+  existing MCP server (already used by the weekly-ad pipeline), not a second local one.
+
+**Migration files under `migrations/` were left untouched** — history isn't rewritten, and the
+real financial tables in this app's own local `finances` Postgres database were **not dropped**.
+They're inert now (nothing in this app reads or writes them, and shanes-life's production
+database is the real source of truth), kept only as a harmless, already-migrated local copy.
+Dropping them is a separate, genuinely destructive decision (out of this issue's real scope,
+which was about removing *code* read/write paths) — Shane's call if/when he wants that cleanup.
+
+### Local database — what it's actually needed for now (real scoping, not a guess)
+
+Traced directly from the code that's left, not assumed: the Weekly Ad scraper does **not** read
+or write this app's own local Postgres at all — `WeeklyAdScraperWindow` → `PublixAdParser` (pure
+text parsing, no I/O) → `ShanesLifeMcpClient`, which pushes straight to shanes-life's remote MCP
+endpoint. Nothing else remains in the app.
+
+**Real, honest conclusion: as of this narrowing, no feature in this app reads or writes its own
+local Postgres database.** The connection string field, `DatabaseConnectionTester`, and
+`MigrationRunner` are kept because removing local database *infrastructure* wasn't part of this
+issue's real scope (which was financial read/write removal + scoping, not "does WPF need a
+database at all") and because it's cheap, harmless standing infrastructure for whatever the
+app's next real browser-automation feature turns out to need (e.g. #3245, deferred — DOM
+injection for NFCU/Capital One transfer automation, which itself is unlikely to need local
+storage either, since it acts directly against a live bank site). If Shane wants this
+connection/migration UI removed entirely rather than kept dormant, that's a real product call
+for him to make — not guessed at here.
 
 ## Running it
 
 Requirements:
 - .NET 8 SDK
 - A reachable Postgres server (any Postgres 13+; developed against a local Postgres 18 install)
+  — only needed for the connection/migration status UI; no current feature writes to it (see
+  above)
 - [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
-  for the Plaid Link window (pre-installed on current Windows 10/11; only matters on an older
-  or locked-down machine)
-- A real Plaid account (sandbox is free) if you want to use Link/Sync — see
-  [Plaid setup](#plaid-setup) below
+  for the Weekly Ad scraper window (pre-installed on current Windows 10/11; only matters on an
+  older or locked-down machine)
 
 Steps:
 
-1. **Create a database** for the app. The real, live database this app actually runs
-   against is named `finances` (that's what `%AppData%\ShanesSurvival\settings.json`
-   contains) — use that name, not an arbitrary example:
+1. **Create a database** for the app (optional now — only the connection/migration status UI
+   uses it). The real, live database this app historically ran against is named `finances`
+   (that's what `%AppData%\ShanesSurvival\settings.json` contains):
    ```
    psql -h localhost -U postgres -c "CREATE DATABASE finances;"
    ```
@@ -70,105 +150,25 @@ Steps:
 There is no silent failure state: every outcome above is a distinct, explicit result the UI
 states plainly.
 
-## Plaid setup
-
-1. Create a free [Plaid developer account](https://dashboard.plaid.com/signup) and grab your
-   **Client ID** and a **Secret** for the environment you want to use (sandbox is fine to
-   start — it uses fake bank logins, no real bank account needed).
-2. Open **Settings…** in the app and fill in the **Plaid** section: Client ID, Secret,
-   Environment (`sandbox`/`development`/`production`). Same storage rule as the Postgres
-   connection string — saved only to `%AppData%\ShanesSurvival\settings.json`, never
-   hardcoded, never logged.
-   - Plaid retired `development` as its own API host in 2023; the app sends
-     `development`/`production` credentials to the same `production.plaid.com` endpoint, only
-     `sandbox` gets its own host — this matches Plaid's current setup, not a limitation of
-     this app.
-3. Click **"Link Bank Account"** on the main window. This opens a real window hosting Plaid's
-   own hosted Link flow (embedded via WebView2 — Plaid has no native desktop SDK, so this is
-   the standard way to run Link outside a browser). Pick an institution and complete the flow;
-   in sandbox, use Plaid's test credentials (`user_good` / `pass_good` works for most sandbox
-   institutions).
-4. On success, the app exchanges the real `public_token` Link returns for a real
-   `access_token` and stores it in `plaid_items` (keyed on Plaid's own Item ID, so relinking
-   the same institution updates the existing row instead of duplicating it).
-5. Click **"Sync Now"** any time to pull real account balances (`/accounts/balance/get`) and
-   real transactions via Plaid's current cursor-based `/transactions/sync` endpoint (not the
-   older `/transactions/get`) into `accounts`/`transactions`. The sync cursor is persisted per
-   item in `plaid_items.sync_cursor`, so every sync after the first is a real incremental
-   pull, not a full re-fetch — and re-clicking "Sync Now" with nothing new from Plaid is a
-   real, safe no-op. `plaid_items.last_synced_at` is updated after each successful sync.
-
-The Plaid status box on the main window reports exactly what happened: which institution
-linked, account/transaction counts per sync, or — if a step fails — the real error message
-from Plaid or Postgres, without crashing the app.
-
-## Schema
-
-Defined in [`migrations/001_init.sql`](migrations/001_init.sql),
-[`migrations/002_plaid_sync.sql`](migrations/002_plaid_sync.sql), and
-[`migrations/003_account_roles.sql`](migrations/003_account_roles.sql):
-
-| Table | Purpose |
-|---|---|
-| `plaid_items` | One row per linked Plaid Item (institution connection) — Plaid's own `plaid_item_id` (unique, added in 002), access token, institution name, `sync_cursor` (added in 002 — the `/transactions/sync` cursor), sync timestamps. |
-| `accounts` | Bank/credit accounts under a Plaid Item — balances, type/subtype, and (added in 003) `role` (`income_gate` / `bill` / `spend`, Shane-assigned — never inferred from name/type), `target_amount` (the real monthly bill figure, bill accounts only), `is_gate` (marks the GATE-tier bill accounts — mortgage, Tesla — for distinct dashboard treatment). |
-| `transactions` | Transactions under an account — amount, date, merchant, category, pending flag. |
-| `debts` | **Manually entered by Shane, not sourced from Plaid.** Real debts, collections, and garnishments often don't show up cleanly in Plaid transaction data — creditor, balance, minimum payment, delinquency status, days past due, notes. |
-| `survival_snapshots` | A point-in-time manual snapshot Shane can save of his overall position — total cash, total debt, monthly income, monthly fixed costs, notes. |
-| `pay_period_plans` | (added in 004, #2892) One real allocation plan per paycheck — pay date, income amount, status (`proposed`/`active`/`completed`), notes. |
-| `pay_period_plan_allocations` | (added in 004, #2892) One real allocation line per plan — the target account, amount, reason, and whether Shane has actually executed the real transfer (`executed`/`executed_at`). |
-
-All tables use `UUID` primary keys (`gen_random_uuid()`, built into Postgres 13+ core — no
-extension required) and `TIMESTAMPTZ` for timestamps. Foreign keys cascade on delete
-(`accounts.plaid_item_id → plaid_items.id`, `transactions.account_id → accounts.id`).
-
-Future schema changes should follow the same pattern: a new `migrations/00N_<description>.sql`
-file, hand-written — never `drizzle-kit`, EF Core migrations, or any other ORM-driven migration
-tool. Drop it in `migrations/` and the app picks it up and applies it automatically on next
-launch (or via "Apply Migrations"); no manual `psql` step needed. Like `001_init.sql`, keep
-new migrations idempotent (`CREATE TABLE/INDEX IF NOT EXISTS`, etc.) — `MigrationRunner`
-records a file as applied only after it fully commits, so a migration should be safe to
-re-attempt if the app were ever killed in between.
-
 ## Project structure
 
 ```
 ShanesSurvival.sln
-migrations/
-  001_init.sql
-  002_plaid_sync.sql
-  003_account_roles.sql
-  004_pay_period_plans.sql
+migrations/                    — historical schema (financial tables now inert, see above)
 src/
   ShanesSurvival.App/            — WPF (net8.0-windows) desktop shell, see below
-  ShanesSurvival.Core/           — net8.0 class library: settings + Dashboard shortfall math +
-                                    account/transaction/pay-period-plan reads+writes, shared by
-                                    App and Mcp so neither reimplements the other's queries
-  ShanesSurvival.Mcp/            — net8.0 console app: the real local MCP server, see below
+  ShanesSurvival.Core/           — net8.0 class library: settings + shared repositories
 
   ShanesSurvival.App/
     App.xaml(.cs)
-    MainWindow.xaml(.cs)        — shell window: connection/migration status, Link, Sync Now,
-                                  Assign Account Roles, Open Dashboard
+    MainWindow.xaml(.cs)        — shell window: connection/migration status, Settings,
+                                  Weekly Ad (Publix)
     Settings/
-      SettingsWindow.xaml(.cs)  — dialog for entering connection string + Plaid credentials
-                                  (AppSettings/SettingsService now live in ShanesSurvival.Core)
+      SettingsWindow.xaml(.cs)  — dialog for entering the Postgres connection string and
+                                  Shane's Life API base URL / MCP token
     Data/
       DatabaseConnectionTester.cs — real Npgsql connect + required-table check
       MigrationRunner.cs          — applies migrations/*.sql in order, tracked in schema_migrations
-    Plaid/
-      PlaidCredentials.cs   — client ID/secret/environment + base URL selection
-      IPlaidClient.cs       — Plaid REST boundary interface + domain types (for real testing without live credentials)
-      PlaidClient.cs        — real HTTP implementation (link/token/create, exchange, balance/get, transactions/sync)
-      PlaidLinkService.cs   — creates a Link token; exchanges public_token and stores the item
-      PlaidSyncService.cs   — pulls accounts/balances + paged transactions/sync into Postgres
-      PlaidLinkWindow.xaml(.cs) — WebView2 window hosting Plaid's real hosted Link flow
-    Accounts/
-      AccountRoleWindow.xaml(.cs) — dialog to assign role/target/GATE per synced account
-                                     (AccountRole/AccountRepository now live in ShanesSurvival.Core)
-    Dashboard/
-      DashboardWindow.xaml(.cs) — top-line covered/short, GATE cards, bills, spend bleed by merchant
-                                   (DashboardModels/DashboardService now live in ShanesSurvival.Core)
     Groceries/                    — (#3288)
       WeeklyAdScraperWindow.xaml(.cs) — real WebView2 window: Shane browses Publix's real weekly-ad
                                          page like a normal browser, then Extract & Push Deals reads
@@ -177,24 +177,9 @@ src/
 
   ShanesSurvival.Core/
     Settings/
-      AppSettings.cs            — settings shape (Postgres connection string, Plaid credentials)
+      AppSettings.cs            — settings shape (Postgres connection string, Shane's Life API
+                                   base URL + MCP token)
       SettingsService.cs        — load/save %AppData%\ShanesSurvival\settings.json
-    Accounts/
-      AccountRole.cs             — income_gate / bill / spend vocabulary
-      AccountRepository.cs       — real read/write of accounts.role / target_amount / is_gate
-    Dashboard/
-      DashboardModels.cs   — real result shapes (BillStatus, SpendAccountBleed, DashboardResult)
-      DashboardService.cs  — real shortfall math computed live off Postgres balances/transactions
-                              (the same math both the WPF Dashboard and the MCP server use —
-                              never reimplemented a second time)
-    Transactions/
-      TransactionRepository.cs — real, bounded, most-recent-first transaction reads per account
-    PayPeriodPlans/                 — (#2892)
-      PayPeriodPlanModels.cs        — real result/input shapes (PlanStatus, AllocationInput,
-                                       PayPeriodPlanRow, PlanAllocationRow)
-      PayPeriodPlanRepository.cs    — real create/revise/mark-executed/read-active, shared by
-                                       the WPF Dashboard's "Current Plan" panel and the MCP
-                                       write tools below — never reimplemented a second time
     Groceries/                      — (#3288)
       ScrapedAdModels.cs            — RawAdCard (raw DOM read), ScrapedDealItem/ScrapedCouponItem
                                        (same shapes push_deals/push_coupons already accept)
@@ -204,90 +189,11 @@ src/
       ShanesLifeMcpClient.cs        — real JSON-RPC client for shanes-life's own remote MCP
                                        server (POST /mcp) — push_deals/push_coupons, no second
                                        storage path
-
-  ShanesSurvival.Mcp/
-    Program.cs                   — real local MCP server entry point (stdio transport)
-    Tools/FinanceTools.cs        — the 4 real read-only MCP tools, see below
-    Tools/PayPeriodPlanTools.cs  — the 4 real Pay-Period Plan MCP tools (#2892), see below
 ```
-
-## MCP server (Claude Desktop)
-
-`ShanesSurvival.Mcp` is a real local [MCP](https://modelcontextprotocol.io/) server (stdio
-transport, built on the official `ModelContextProtocol` .NET SDK) so Claude Desktop can answer
-real questions grounded in this app's own real Postgres data — the same connection string from
-`%AppData%\ShanesSurvival\settings.json`, never hardcoded or logged. **Read-only in this pass —
-no write tools.** All 4 tools reuse `ShanesSurvival.Core`'s `DashboardService`/`AccountRepository`/
-`TransactionRepository` directly; none of the GATE shortfall or bleed math is re-derived here.
-
-Real tools exposed:
-
-| Tool | What it returns |
-|---|---|
-| `gate_status` | Income Gate (Direct Deposit) real balance vs. total real shortfall across every bill account — covered, or short by $X — plus the two GATE-tier bills (mortgage, Tesla). |
-| `bill_status` | Every Bill-role account: real target vs. real current Plaid balance and the real shortfall, GATE-tier called out separately, sorted worst-shortfall-first. |
-| `spend_bleed` | The 2 spend accounts' real transactions from the last 30 days, grouped and summed by merchant. |
-| `recent_transactions` | Bounded, most-recent-first real transactions for one named account (`accountName`, `limit` up to 100). |
-
-**Write tools (added in #2892), on top of the same server** — real Pay-Period Plan
-create/revise/execute-tracking. No programmatic money movement of any kind: every tool here
-only ever writes a plan/allocation row to this app's own Postgres database
-(`pay_period_plans`/`pay_period_plan_allocations`, migration 004) — Shane still makes each real
-transfer himself in his own bank's app (Navy Federal — no programmatic transfer capability
-exists via Plaid, confirmed 2026-09-04) and reports it back via `mark_allocation_executed`.
-
-| Tool | What it does |
-|---|---|
-| `create_pay_period_plan` | Creates a new plan (immediately `active`) allocating a real paycheck across named bill/spend accounts. All-or-nothing: an unrecognized account name fails the whole call, nothing is written. |
-| `revise_pay_period_plan` | Mid-cycle adjustment — replaces every not-yet-executed allocation on a plan with a new list. Already-executed allocations are left untouched. |
-| `mark_allocation_executed` | Records that Shane made a real transfer himself; idempotent. Once every allocation on a plan is executed, the plan flips to `completed` automatically. |
-| `get_active_pay_period_plan` | The current non-completed plan, every allocation alongside its account's real current Plaid balance, so progress checks are grounded in what's actually landed. |
-
-Build it:
-
-```
-dotnet build ShanesSurvival.sln
-```
-
-The server binary lands at `src\ShanesSurvival.Mcp\bin\Debug\net8.0\ShanesSurvival.Mcp.exe`
-(or `bin\Release\net8.0\...` after a Release build). It requires no arguments — on launch it
-reads the real Postgres connection string from `%AppData%\ShanesSurvival\settings.json` (same
-file, same rule as the WPF app: never hardcoded, never logged) and speaks MCP over stdio. All
-log output goes to stderr, never stdout, so it never corrupts the JSON-RPC stream.
-
-To point Claude Desktop at it, add an entry to Claude Desktop's `claude_desktop_config.json`
-(Windows: `%AppData%\Claude\claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "shanes-survival": {
-      "command": "C:\\path\\to\\ShanesSurvival\\src\\ShanesSurvival.Mcp\\bin\\Release\\net8.0\\ShanesSurvival.Mcp.exe"
-    }
-  }
-}
-```
-
-(Use the real path to wherever this repo actually lives, and a Release build for day-to-day use.)
-Restart Claude Desktop after editing the config — it launches the server as a subprocess per
-session, so no separate "start the server" step is needed. `%AppData%\ShanesSurvival\settings.json`
-must already have a real Postgres connection string configured (Settings… in the WPF app) for
-the tools to return real data instead of a "no connection string configured" message.
-
-**Live-verified, for real:** a real `initialize` → `tools/list` → `tools/call` MCP session driven
-over the server's actual stdin/stdout pipes (not a mock) confirmed all 4 tools register with
-correct schemas and execute against the real local Postgres database — `gate_status`,
-`bill_status`, and `spend_bleed` each returned real, honest "no account assigned this role yet"
-warnings (the real current state: no account has Income Gate/Bill/Spend roles assigned yet in
-the connected database), and `recent_transactions` correctly reported "no account named ... —
-none synced yet" for an unassigned name. This run caught and fixed a real bug in-session:
-`InvariantGlobalization` in the project file made `CultureInfo.GetCultureInfo("en-US")` throw at
-runtime (surfaced as MCP's generic "An error occurred invoking 'gate_status'"); removed, and all
-4 tools were re-verified clean afterward.
 
 ## Weekly Ad — real WebView2 scraping (#3288)
 
-The WPF app's own real, planned narrowed role (per shanes-life's contract pack, Section 1:
+The WPF app's own real, narrowed role (per shanes-life's contract pack, Section 1:
 "exploring WebView2 automation to pull real coupon and weekly-ad data") — a real local
 automation source for the same cross-store price comparison already built and working in
 shanes-life's Shopping room, instead of Shane manually feeding a flyer into a Claude
@@ -306,8 +212,7 @@ layout.
    picking his real store the first time (persisted in a dedicated WebView2 profile under
    `%AppData%\ShanesSurvival\WebView2WeeklyAd`, so it isn't re-asked every run) and waiting for
    the ad to actually render. No attempt is made to automate Publix's own store-picker UI —
-   same reasoning `PlaidLinkWindow` already follows for a real bank login: some steps genuinely
-   need Shane's own hands, not a scripted guess.
+   real steps that genuinely need Shane's own hands, not a scripted guess.
 3. **"Extract & Push Deals"** then reads the real rendered DOM (bounded poll, 20s, for the ad
    grid to actually contain cards — never an indefinite wait), parses each card
    (`PublixAdParser`, pure text parsing, no I/O), and pushes what it finds through
@@ -357,130 +262,17 @@ none of this could be exercised without an interactive Windows desktop session t
 (this build ran headless). Open "Weekly Ad (Publix)…", pick your store, wait for the ad to
 render, and click Extract to complete that path for real.
 
-## Dashboard — account roles, targets, and shortfall math
+## What's NOT built (later dispatches, if ever)
 
-Real account structure: exactly one `income_gate` account (Direct Deposit — all income lands
-here), ~10+ `bill` accounts (one per real bill), and 2 `spend` accounts (one per household).
-Role and `target_amount` are never inferred from a Plaid account's name/type — open
-**"Assign Account Roles…"** on the main window (after a real Link + Sync Now) and set them
-explicitly, once per account. The two real GATE-tier bills (mortgage, Tesla) get their `GATE`
-checkbox checked there too, for distinct always-visible treatment on the dashboard.
-
-**"Open Dashboard"** then shows, computed live off real Plaid balances in Postgres (not
-transaction inference — funding happens manually/irregularly, so balances are the honest
-signal):
-
-- Per bill account: `shortfall = max(0, target_amount - current_balance)`
-- Total shortfall = sum across every bill account (a bill missing its target or balance is
-  excluded from the sum and called out under Notes, never silently treated as $0)
-- Top line: Income Gate's real balance minus total shortfall — "Covered" or "Short by $X"
-- The two GATE cards, always visible, separate from the other bill accounts
-- The rest of the bill accounts, sorted worst-shortfall-first
-- A spend bleed view scoped to the 2 spend accounts only — real transactions from the last 30
-  days, grouped and summed by merchant so a pattern (e.g. many small charges at one merchant)
-  is visible at a glance
-
-**Refresh** on the dashboard reuses the existing Sync Now → `PlaidSyncService` path, then
-recomputes off the fresh balances. Opening the dashboard itself does not trigger a sync — it
-renders current Postgres state; click Refresh to pull fresh Plaid data first.
-
-## Current Plan (#2892)
-
-Below the dashboard's usual sections, a **"Current Plan"** panel renders the real active
-pay-period plan (if any) as a real GFM-style checklist — one checkbox row per allocation,
-labeled with the real account name, amount, reason, and that account's real current Plaid
-balance. This is the same real `PayPeriodPlanRepository` the MCP write tools above use — no
-math or query is reimplemented a second time between the two.
-
-Checking a box calls `MarkAllocationExecutedAsync` and re-renders from the real database
-afterward — nothing here moves any money; it only records that Shane already made the real
-transfer himself in his bank's app. An executed row's checkbox is shown checked and disabled
-(the record is final). Once every allocation on the plan is executed, the plan flips to
-`completed` and the panel shows "No active pay-period plan right now" until a new one is
-created (normally via Claude Desktop's `create_pay_period_plan`).
-
-## What's NOT built yet (later dispatches)
-
-Deliberately out of scope for this build:
-
-- Automatic/background sync — "Sync Now" (and the dashboard's "Refresh") are manual clicks;
-  no scheduled sync yet.
-- Multi-item UI beyond a plain per-institution status line — no per-account view outside the
-  Assign Account Roles dialog, no reconnect/update-mode Link flow for an expired login yet.
-- `debts` and `survival_snapshots` (manual entry) have no UI yet — schema only.
-
-## What was and wasn't live-verified
-
-Plaid Link/sync were built and reviewed against Plaid's real, documented REST API shapes (and
-cross-checked against `Finance-Tracker`'s proven `plaid.ts` route for the parts it shares —
-Link token creation, public_token exchange, and `/accounts/balance/get`; that reference itself
-uses the older `/transactions/get`, so the `/transactions/sync` cursor-paging logic here was
-built directly from Plaid's API docs, not copied from anywhere). What was and wasn't actually
-exercised, honestly:
-
-- **Live-verified, for real:** `dotnet build` clean; the app launching with the new UI and no
-  crash; migration 002 applying to a fresh Postgres database; and the full database-writing
-  path — item upsert on exchange, account upsert, paged transaction upsert, removed-transaction
-  delete, cursor persistence across syncs, and a second sync being a real safe no-op — run
-  against a real local Postgres database, with a stand-in for just the Plaid HTTP layer
-  (`IPlaidClient`) since no Plaid credentials were configured in `%AppData%\ShanesSurvival\settings.json`
-  at the time.
-- **Not live-verified:** an actual `/link/token/create` call, an actual completed Link session
-  in the WebView2 window (bank selection, sandbox login, `onSuccess`), and an actual
-  `/transactions/sync` call against Plaid's real servers. None of this could be exercised
-  without real Plaid credentials and Shane present to click through Link's UI. Add a Client
-  ID/Secret in Settings and click "Link Bank Account" to complete that path for real.
-
-Dashboard (account roles + shortfall math, added on top of the above):
-
-- **Live-verified, for real:** `dotnet build` clean; migration 003 applying to the real local
-  database (`accounts.role` / `target_amount` / `is_gate` confirmed present via `\d accounts`);
-  and the exact SQL text `DashboardService`/`AccountRepository` run — the role-scoped account
-  queries, the merchant-bleed query, and the joined account-listing query — executed against a
-  realistic fixture (one Income Gate account, GATE + non-GATE bills including one with no
-  target set, 2 spend accounts, dated transactions including a refund and an out-of-window
-  transaction) inside a transaction that was rolled back afterward, leaving the real database
-  untouched. The returned rows were hand-traced through the shortfall/top-line/sort logic and
-  matched exactly: Mortgage short $1,200, Tesla short $150, Electric short $100, Water covered,
-  Cable flagged "target not set" and excluded from the total, total shortfall $1,450, top line
-  Covered by $50.00 (income $1,500 − $1,450), GATE cards ordered Mortgage before Tesla, and the
-  spend-bleed grouping correctly summed 7-Eleven across 3 charges while excluding the refund and
-  the 45-day-old transaction.
-- **Not live-verified:** no bank account has actually been linked/synced yet in the real local
-  database (`accounts`/`plaid_items` are still empty — Plaid credentials are configured but
-  "Link Bank Account" hasn't been run), so the app's own UI has not yet rendered this dashboard
-  against real, currently-synced Shane data end-to-end. Link a real account, Sync Now, assign
-  roles/targets in "Assign Account Roles…", then open the dashboard to complete that path for
-  real.
-
-Pay-Period Plan (#2892), added on top of the above:
-
-- **Live-verified, for real:** `dotnet build` clean; migration 004 applied for real against the
-  real local database (confirmed via `schema_migrations` — `004_pay_period_plans.sql` now
-  recorded); and a full real MCP session (`initialize` → `tools/list` → `tools/call`, actual
-  stdin/stdout pipes) confirmed all 8 tools now register (the original 4 read tools plus the 4
-  new write tools). Because no real account has been linked/synced yet (`accounts` is still
-  genuinely empty — same real state noted above), a temporary real account/plaid_item row was
-  inserted for one end-to-end pass — `create_pay_period_plan` (all-or-nothing account-name
-  resolution confirmed by first proving an unrecognized name fails with nothing written) →
-  `get_active_pay_period_plan` (returned the real plan) → `revise_pay_period_plan`
-  (not-yet-executed allocation correctly replaced) → `mark_allocation_executed` (plan correctly
-  flipped to `completed` and dropped out of `get_active_pay_period_plan`) →
-  `mark_allocation_executed` again (confirmed idempotent, no error) — then the temporary
-  account/plaid_item/plan rows were fully deleted, leaving the real database exactly as found.
-- **Not live-verified:** the WPF Dashboard's "Current Plan" checklist panel itself has not been
-  clicked through in a running app window (no bank account is linked yet for it to render
-  against) — the repository logic it calls is the same one proven end-to-end above. Link a real
-  account, create a real plan via Claude Desktop, then open the dashboard to complete that path
-  for real.
+- Additional stores beyond Publix — each store's ad page has its own real layout; not assumed
+  to generalize automatically.
+- #3245 (deferred) — WebView2 + DOM injection for NFCU/Capital One transfer automation. Explicitly
+  not to be dispatched until Shane confirms auto-fill-only vs. fully-auto-submit.
 
 ## Data policy
 
 - No fixture/hardcoded financial data anywhere in this app.
-- Every row shown to Shane comes from the database, not from source.
-- Postgres connection string and Plaid credentials (Client ID, Secret) are never hardcoded in
-  source and never logged — they live only in `%AppData%\ShanesSurvival\settings.json`.
-- Real Plaid access tokens (one per linked institution) live only in `plaid_items.access_token`
-  in Postgres — never logged, never written anywhere else.
+- Postgres connection string is never hardcoded in source and never logged — it lives only in
+  `%AppData%\ShanesSurvival\settings.json`.
 - Same rule for shanes-life's API base URL and MCP bearer token (#3288) — never hardcoded,
   never logged, live only in `%AppData%\ShanesSurvival\settings.json`.

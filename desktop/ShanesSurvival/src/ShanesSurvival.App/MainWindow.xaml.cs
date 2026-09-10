@@ -1,51 +1,32 @@
 using System.Windows;
 using System.Windows.Media;
-using ShanesSurvival.App.Accounts;
-using ShanesSurvival.App.Dashboard;
 using ShanesSurvival.App.Data;
 using ShanesSurvival.App.Groceries;
-using ShanesSurvival.App.Plaid;
 using ShanesSurvival.App.Settings;
-using ShanesSurvival.Core.Accounts;
-using ShanesSurvival.Core.Dashboard;
-using ShanesSurvival.Core.Debts;
 using ShanesSurvival.Core.Groceries;
-using ShanesSurvival.Core.Income;
-using ShanesSurvival.Core.PayPeriodPlans;
 using ShanesSurvival.Core.Settings;
-using ShanesSurvival.Core.Transactions;
 
 namespace ShanesSurvival.App;
 
 /// <summary>
-/// Interaction logic for MainWindow.xaml
+/// Interaction logic for MainWindow.xaml. Narrowed in #3296 (Phase 3 of #3293's financial-core
+/// unification) — the real financial core (accounts, bills, debts, GATE/shortfall math,
+/// pay-period plans, Plaid Link/Sync) migrated fully into shanes-life (#3295, real data
+/// migration confirmed complete by Shane 2026-09-09). This app's own remaining real role is the
+/// Weekly Ad scraper (#3288) plus whatever future genuinely-browser-automation-only work lands
+/// here (e.g. deferred #3245) — connection/migration status stays since the app still owns its
+/// own local Postgres database, even though nothing currently reads or writes financial data
+/// into it.
 /// </summary>
 public partial class MainWindow : Window
 {
     private readonly SettingsService _settingsService = new();
     private readonly DatabaseConnectionTester _connectionTester = new();
     private readonly MigrationRunner _migrationRunner = new();
-    private readonly PlaidLinkService _plaidLinkService = new();
-    private readonly PlaidSyncService _plaidSyncService = new();
-    private readonly PlaidBackfillService _plaidBackfillService = new();
-    private readonly AccountRepository _accountRepository = new();
-    private readonly TransactionTagRepository _transactionTagRepository = new();
-    private readonly DashboardService _dashboardService;
-    private readonly PayPeriodPlanRepository _planRepository = new();
-    private readonly DebtRepository _debtRepository = new();
-    private readonly IncomeRepository _incomeRepository = new();
-    private readonly PayPeriodDueService _payPeriodDueService;
-    private readonly PayPeriodForecastService _payPeriodForecastService;
 
     public MainWindow()
     {
         InitializeComponent();
-        // Reuses the already-real AccountRepository/DashboardService instances above — no
-        // shortfall/due-window math is re-derived here, same discipline PayPeriodForecastService
-        // itself follows (#2918).
-        _dashboardService = new DashboardService(_transactionTagRepository);
-        _payPeriodDueService = new PayPeriodDueService(_accountRepository);
-        _payPeriodForecastService = new PayPeriodForecastService(_incomeRepository, _payPeriodDueService, _dashboardService);
         Loaded += async (_, _) => await CheckConnectionAsync();
     }
 
@@ -201,259 +182,6 @@ public partial class MainWindow : Window
             // refresh the dot/message so they reflect reality. autoApplyMigrations: false to
             // avoid immediately re-running migrations we just finished running.
             await CheckConnectionAsync(autoApplyMigrations: false);
-        }
-    }
-
-    private async void LinkBankAccountButton_Click(object sender, RoutedEventArgs e)
-    {
-        await LinkBankAccountAsync();
-    }
-
-    private async void SyncNowButton_Click(object sender, RoutedEventArgs e)
-    {
-        await SyncNowAsync();
-    }
-
-    private async void BackfillNamesButton_Click(object sender, RoutedEventArgs e)
-    {
-        await BackfillNamesAsync();
-    }
-
-    private async Task LinkBankAccountAsync()
-    {
-        LinkBankAccountButton.IsEnabled = false;
-        PlaidStatusText.Text = "Creating secure Link session…";
-        PlaidStatusText.Foreground = Brushes.Gray;
-
-        try
-        {
-            var settings = _settingsService.Load();
-            var credentials = new PlaidCredentials(settings.PlaidClientId, settings.PlaidSecret, settings.PlaidEnvironment);
-
-            if (!credentials.IsConfigured)
-            {
-                PlaidStatusText.Text = "No Plaid credentials configured. Open Settings to add your Client ID and Secret.";
-                PlaidStatusText.Foreground = Brushes.Gray;
-                return;
-            }
-            if (string.IsNullOrWhiteSpace(settings.PostgresConnectionString))
-            {
-                PlaidStatusText.Text = "No Postgres connection string configured. Open Settings first.";
-                PlaidStatusText.Foreground = Brushes.Gray;
-                return;
-            }
-
-            // Plaid requires a stable client_user_id across relinks — generate and persist it
-            // once, the first time Shane actually links something.
-            if (string.IsNullOrWhiteSpace(settings.PlaidClientUserId))
-            {
-                settings.PlaidClientUserId = Guid.NewGuid().ToString();
-                _settingsService.Save(settings);
-            }
-
-            var tokenResult = await _plaidLinkService.CreateLinkTokenAsync(credentials, settings.PlaidClientUserId);
-            if (!tokenResult.Success)
-            {
-                PlaidStatusText.Text = $"Could not start Link: {tokenResult.ErrorMessage}";
-                PlaidStatusText.Foreground = Brushes.Red;
-                return;
-            }
-
-            var linkWindow = new PlaidLinkWindow(tokenResult.LinkToken!) { Owner = this };
-            linkWindow.ShowDialog();
-            var outcome = linkWindow.Outcome;
-
-            if (outcome is null)
-            {
-                PlaidStatusText.Text = "Link window closed before it finished starting up.";
-                PlaidStatusText.Foreground = Brushes.Gray;
-                return;
-            }
-            if (!outcome.Success)
-            {
-                PlaidStatusText.Text = $"Bank link not completed: {outcome.ErrorMessage ?? "cancelled."}";
-                PlaidStatusText.Foreground = Brushes.Gray;
-                return;
-            }
-
-            PlaidStatusText.Text = $"Connected to {outcome.InstitutionName}. Saving…";
-            var exchangeResult = await _plaidLinkService.ExchangeAndStoreAsync(
-                credentials, settings.PostgresConnectionString, outcome.PublicToken!, outcome.InstitutionName ?? "Bank");
-
-            if (exchangeResult.Success)
-            {
-                PlaidStatusText.Text = $"Linked {exchangeResult.InstitutionName}. Click \"Sync Now\" to pull accounts and transactions.";
-                PlaidStatusText.Foreground = Brushes.Green;
-            }
-            else
-            {
-                PlaidStatusText.Text = $"Linked to Plaid, but could not save it to the database: {exchangeResult.ErrorMessage}";
-                PlaidStatusText.Foreground = Brushes.Red;
-            }
-        }
-        catch (Exception ex)
-        {
-            // PlaidLinkService already turns every real failure into a Result, but this is an
-            // async void event handler — anything that still escapes here (including a WPF
-            // dialog/window failure) would otherwise crash the whole process. Never let that happen.
-            PlaidStatusText.Text = $"Unexpected error linking bank account: {ex.Message}";
-            PlaidStatusText.Foreground = Brushes.Red;
-        }
-        finally
-        {
-            LinkBankAccountButton.IsEnabled = true;
-        }
-    }
-
-    private async Task SyncNowAsync()
-    {
-        SyncNowButton.IsEnabled = false;
-        PlaidStatusText.Text = "Syncing accounts and transactions…";
-        PlaidStatusText.Foreground = Brushes.Gray;
-
-        try
-        {
-            var settings = _settingsService.Load();
-            var credentials = new PlaidCredentials(settings.PlaidClientId, settings.PlaidSecret, settings.PlaidEnvironment);
-
-            if (!credentials.IsConfigured)
-            {
-                PlaidStatusText.Text = "No Plaid credentials configured. Open Settings to add your Client ID and Secret.";
-                PlaidStatusText.Foreground = Brushes.Gray;
-                return;
-            }
-            if (string.IsNullOrWhiteSpace(settings.PostgresConnectionString))
-            {
-                PlaidStatusText.Text = "No Postgres connection string configured. Open Settings first.";
-                PlaidStatusText.Foreground = Brushes.Gray;
-                return;
-            }
-
-            var result = await _plaidSyncService.SyncAllAsync(credentials, settings.PostgresConnectionString);
-            if (!result.Success)
-            {
-                PlaidStatusText.Text = $"Sync failed: {result.ErrorMessage}";
-                PlaidStatusText.Foreground = Brushes.Red;
-                return;
-            }
-            if (result.Items.Count == 0)
-            {
-                PlaidStatusText.Text = "No linked bank accounts yet. Click \"Link Bank Account\" first.";
-                PlaidStatusText.Foreground = Brushes.Gray;
-                return;
-            }
-
-            var lines = result.Items.Select(item => item.Success
-                ? $"{item.InstitutionName}: {item.AccountsUpserted} account(s), " +
-                  $"+{item.TransactionsAdded} / ~{item.TransactionsModified} / -{item.TransactionsRemoved} transaction(s)."
-                : $"{item.InstitutionName}: sync FAILED — {item.ErrorMessage}");
-            PlaidStatusText.Text = string.Join("\n", lines);
-            PlaidStatusText.Foreground = result.Items.All(item => item.Success) ? Brushes.Green : Brushes.Red;
-        }
-        catch (Exception ex)
-        {
-            // PlaidSyncService already turns every real failure into a Result, but this is an
-            // async void event handler — anything that still escapes here has no caller left
-            // to catch it and would crash the whole process. Never let that happen.
-            PlaidStatusText.Text = $"Unexpected error syncing: {ex.Message}";
-            PlaidStatusText.Foreground = Brushes.Red;
-        }
-        finally
-        {
-            SyncNowButton.IsEnabled = true;
-        }
-    }
-
-    private async Task BackfillNamesAsync()
-    {
-        BackfillNamesButton.IsEnabled = false;
-        PlaidStatusText.Text = "Backfilling transaction names for already-synced rows…";
-        PlaidStatusText.Foreground = Brushes.Gray;
-
-        try
-        {
-            var settings = _settingsService.Load();
-            var credentials = new PlaidCredentials(settings.PlaidClientId, settings.PlaidSecret, settings.PlaidEnvironment);
-
-            if (!credentials.IsConfigured)
-            {
-                PlaidStatusText.Text = "No Plaid credentials configured. Open Settings to add your Client ID and Secret.";
-                PlaidStatusText.Foreground = Brushes.Gray;
-                return;
-            }
-            if (string.IsNullOrWhiteSpace(settings.PostgresConnectionString))
-            {
-                PlaidStatusText.Text = "No Postgres connection string configured. Open Settings first.";
-                PlaidStatusText.Foreground = Brushes.Gray;
-                return;
-            }
-
-            var result = await _plaidBackfillService.BackfillAllAsync(credentials, settings.PostgresConnectionString);
-            if (!result.Success)
-            {
-                PlaidStatusText.Text = $"Backfill failed: {result.ErrorMessage}";
-                PlaidStatusText.Foreground = Brushes.Red;
-                return;
-            }
-            if (result.Items.Count == 0)
-            {
-                PlaidStatusText.Text = "No linked bank accounts yet. Click \"Link Bank Account\" first.";
-                PlaidStatusText.Foreground = Brushes.Gray;
-                return;
-            }
-
-            var lines = result.Items.Select(item => item.Success
-                ? $"{item.InstitutionName}: {item.TransactionsUpdated} transaction name(s) backfilled."
-                : $"{item.InstitutionName}: backfill FAILED — {item.ErrorMessage}");
-            PlaidStatusText.Text = string.Join("\n", lines);
-            PlaidStatusText.Foreground = result.Items.All(item => item.Success) ? Brushes.Green : Brushes.Red;
-        }
-        catch (Exception ex)
-        {
-            // PlaidBackfillService already turns every real failure into a Result, but this is an
-            // async void event handler — anything that still escapes here has no caller left
-            // to catch it and would crash the whole process. Never let that happen.
-            PlaidStatusText.Text = $"Unexpected error backfilling: {ex.Message}";
-            PlaidStatusText.Foreground = Brushes.Red;
-        }
-        finally
-        {
-            BackfillNamesButton.IsEnabled = true;
-        }
-    }
-
-    private void AssignRolesButton_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var settings = _settingsService.Load();
-            var window = new AccountRoleWindow(settings.PostgresConnectionString, _accountRepository) { Owner = this };
-            window.ShowDialog();
-        }
-        catch (Exception ex)
-        {
-            // Same reasoning as SettingsButton_Click: this handler has no caller left to catch
-            // an escaped exception, so it would otherwise crash the whole process.
-            MessageBox.Show(this, $"Could not open Assign Account Roles: {ex.Message}", "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private void OpenDashboardButton_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var window = new DashboardWindow(
-                _settingsService, _plaidSyncService, _dashboardService, _planRepository,
-                _debtRepository, _payPeriodForecastService) { Owner = this };
-            window.Show();
-        }
-        catch (Exception ex)
-        {
-            // Same reasoning as SettingsButton_Click: this handler has no caller left to catch
-            // an escaped exception, so it would otherwise crash the whole process.
-            MessageBox.Show(this, $"Could not open Dashboard: {ex.Message}", "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

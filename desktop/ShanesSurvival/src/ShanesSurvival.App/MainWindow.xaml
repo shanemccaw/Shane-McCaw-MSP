@@ -5,12 +5,11 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ShanesSurvival.App"
         mc:Ignorable="d"
-        Title="Shane's Survival" Height="450" Width="800"
+        Title="Shane's Survival" Height="360" Width="800"
         WindowStartupLocation="CenterScreen"
         Style="{StaticResource {x:Type Window}}">
     <Grid Margin="16">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -29,18 +28,8 @@
         </StackPanel>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
-            <Button x:Name="LinkBankAccountButton" Content="Link Bank Account" Height="28"
-                    Padding="8,0" VerticalAlignment="Center" Click="LinkBankAccountButton_Click"/>
-            <Button x:Name="SyncNowButton" Content="Sync Now" Height="28"
-                    Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="SyncNowButton_Click"/>
-            <Button x:Name="BackfillNamesButton" Content="Backfill Transaction Names" Height="28"
-                    Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="BackfillNamesButton_Click"/>
-            <Button x:Name="AssignRolesButton" Content="Assign Account Roles…" Height="28"
-                    Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="AssignRolesButton_Click"/>
-            <Button x:Name="OpenDashboardButton" Content="Open Dashboard" Height="28"
-                    Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="OpenDashboardButton_Click"/>
             <Button x:Name="WeeklyAdButton" Content="Weekly Ad (Publix)…" Height="28"
-                    Margin="8,0,0,0" Padding="8,0" VerticalAlignment="Center" Click="WeeklyAdButton_Click"/>
+                    Padding="8,0" VerticalAlignment="Center" Click="WeeklyAdButton_Click"/>
         </StackPanel>
 
         <Border Grid.Row="2" BorderThickness="1" Padding="12" Margin="0,0,0,12">
@@ -56,12 +45,7 @@
                        Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" VerticalAlignment="Center"/>
         </Border>
 
-        <Border Grid.Row="4" BorderThickness="1" Padding="12" Margin="0,0,0,12">
-            <TextBlock x:Name="PlaidStatusText" Text="No bank accounts linked yet. Click &quot;Link Bank Account&quot; to connect one via Plaid."
-                       Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" VerticalAlignment="Center"/>
-        </Border>
-
-        <TextBlock Grid.Row="5" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" VerticalAlignment="Top"
-                   Text="MCP server (Claude Desktop) is live — see README.md."/>
+        <TextBlock Grid.Row="4" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" VerticalAlignment="Top"
+                   Text="Financial read/write (accounts, bills, debts, GATE/shortfall, pay-period plans) has moved to shanes-life — see README.md."/>
     </Grid>
 </Window>

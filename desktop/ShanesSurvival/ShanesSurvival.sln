@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -8,8 +8,6 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShanesSurvival.App", "src\ShanesSurvival.App\ShanesSurvival.App.csproj", "{5A62879C-DFE9-4321-8376-AF4EE1A7E339}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShanesSurvival.Core", "src\ShanesSurvival.Core\ShanesSurvival.Core.csproj", "{503FCED4-E8CB-4C31-819A-0D62A21BD750}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShanesSurvival.Mcp", "src\ShanesSurvival.Mcp\ShanesSurvival.Mcp.csproj", "{4B06EA4F-8DE9-4AC3-8D67-C3BC5E097DAD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -28,14 +26,9 @@ Global
 		{503FCED4-E8CB-4C31-819A-0D62A21BD750}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{503FCED4-E8CB-4C31-819A-0D62A21BD750}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{503FCED4-E8CB-4C31-819A-0D62A21BD750}.Release|Any CPU.Build.0 = Release|Any CPU
-		{4B06EA4F-8DE9-4AC3-8D67-C3BC5E097DAD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{4B06EA4F-8DE9-4AC3-8D67-C3BC5E097DAD}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{4B06EA4F-8DE9-4AC3-8D67-C3BC5E097DAD}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{4B06EA4F-8DE9-4AC3-8D67-C3BC5E097DAD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{5A62879C-DFE9-4321-8376-AF4EE1A7E339} = {EF5A03FF-9C5E-40C5-A55F-BA724B2B7AA2}
 		{503FCED4-E8CB-4C31-819A-0D62A21BD750} = {EF5A03FF-9C5E-40C5-A55F-BA724B2B7AA2}
-		{4B06EA4F-8DE9-4AC3-8D67-C3BC5E097DAD} = {EF5A03FF-9C5E-40C5-A55F-BA724B2B7AA2}
 	EndGlobalSection
 EndGlobal
